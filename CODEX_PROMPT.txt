@@ -1,0 +1,1 @@
+AGENTS.mdを最初に読み、prompts/00_MASTER_PROMPT.mdの内容を完全に実行してください。複雑な作業なので.agent/PLANS.mdに従ってplans/active/choplab-pro-integration.mdを作成・更新し、MVPのビルド可能性を維持しながら段階的に実装してください。reference/pro-v0.2は未統合の参照コードであり、完成済みとは扱わないでください。調査は必要に応じてサブエージェントへ並列委譲し、書き込み競合は避けてください。各マイルストーンでテスト、Lint、assembleDebug、差分レビューを行い、検証できない実機項目は正直に未検証と記録してください。

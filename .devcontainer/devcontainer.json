@@ -1,0 +1,31 @@
+{
+  "name": "ChopLab Android + Codex",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "ANDROID_CMDLINE_TOOLS_VERSION": "14742923",
+      "ANDROID_PLATFORM": "36",
+      "ANDROID_BUILD_TOOLS": "36.0.0",
+      "ANDROID_NDK": "29.0.14206865",
+      "ANDROID_CMAKE": "3.22.1"
+    }
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "ANDROID_SDK_ROOT": "/opt/android-sdk",
+    "ANDROID_HOME": "/opt/android-sdk"
+  },
+  "mounts": [
+    "source=choplab-gradle-cache,target=/home/vscode/.gradle,type=volume"
+  ],
+  "postCreateCommand": "chmod +x gradlew scripts/*.sh && printf 'sdk.dir=/opt/android-sdk\\n' > local.properties && ./scripts/validate_project.sh && ./gradlew --version",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "fwcd.kotlin",
+        "ms-vscode.cpptools"
+      ]
+    }
+  }
+}

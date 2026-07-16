@@ -1,0 +1,37 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+app/build/
+
+# Native and IDE output
+/.kotlin/
+/.fleet/
+/.vscode/*.log
+**/.clangd/
+compile_commands.json
+
+# Codex/local execution artifacts
+/.codex-log/
+/codex-logs/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.zip.tmp
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# User-generated local media/output folders
+/exports/
+/recordings/
+/projects-local/
+/app/src/test/resources/generated/

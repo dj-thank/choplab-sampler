@@ -1,0 +1,19 @@
+model = "gpt-5.6"
+model_reasoning_effort = "high"
+plan_mode_reasoning_effort = "xhigh"
+model_verbosity = "medium"
+personality = "pragmatic"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "live"
+project_doc_max_bytes = 32768
+project_root_markers = [".git", "settings.gradle.kts", "AGENTS.md"]
+
+[sandbox_workspace_write]
+network_access = true
+
+[agents]
+max_threads = 5
+max_depth = 1
+job_max_runtime_seconds = 2400
+interrupt_message = true
