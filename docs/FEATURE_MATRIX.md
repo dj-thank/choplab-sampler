@@ -18,6 +18,8 @@
 | Choke group | ✅ | 1–4 |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
+| Versioned stereo-capable project domain | 🧪 foundation | Immutable PCM/project validation and legacy adapter are host-tested; save/load UI is not implemented |
+| Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
 | Project save/load | — | 未実装 |
 | MIDI | — | 未実装 |
 | Independent time-stretch | — | 未実装 |

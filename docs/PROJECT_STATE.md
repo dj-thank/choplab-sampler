@@ -2,6 +2,26 @@
 
 Last prepared: 2026-07-16
 
+## Target-machine verification — 2026-08-09
+
+Observed on Windows 11 with workspace-local Temurin JDK 17, Kotlin 2.3.21, Gradle 9.5.0, Android command-line tools 22.0, and adb 37.0.1:
+
+- `scripts/validate_project.sh` passed after the domain changes.
+- Six pure Kotlin JUnit test classes passed: `OK (12 tests)`.
+- The Gradle wrapper starts successfully on JDK 17.
+- `:app:testDebugUnitTest` reaches Android SDK dependency resolution, then stops because the authorized user has not accepted the Android SDK license for Platform 36 and Build Tools 36.0.0. No Gradle Android test, APK, or install result is claimed.
+- adb sees a physical Pixel 9a as `device` on Android 16 / API 36 / `arm64-v8a`.
+- `com.choplab.sampler` is not currently installed on that device.
+
+Source-only foundations added in this checkpoint:
+
+- Immutable, stereo-capable `PcmBuffer` validation and bounded versioned project models, including metadata and pattern-event limits.
+- Legacy MVP state-to-project adapter.
+- Pure pad-range assignment command shared by the ViewModel and host tests.
+- Playback and pattern-render service interfaces for incremental legacy/native coexistence.
+
+These foundations are host-tested but are not yet a user-visible Pro implementation. Gradle Android build, app install, and device audio tests remain behind the SDK license gate.
+
 ## Buildable baseline
 
 The active Gradle project is the MVP under the repository root.

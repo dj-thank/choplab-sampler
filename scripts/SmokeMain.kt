@@ -3,9 +3,16 @@ import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PcmBuffer
+import com.choplab.sampler.model.AudioAssetId
+import com.choplab.sampler.model.AudioAssetMetadata
+import com.choplab.sampler.model.LegacyProjectAdapter
+import com.choplab.sampler.model.ProjectPad
+import com.choplab.sampler.model.ProjectSnapshot
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
+import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stepKey
 import java.io.File
@@ -51,6 +58,62 @@ fun main() {
         ),
     ) { "Unexpected slices: $slices" }
 
+    val sourceStereo = shortArrayOf(100, -100, 200, -200)
+    val stereo = PcmBuffer.fromInterleaved(
+        samples = sourceStereo,
+        sampleRate = sampleRate,
+        channelCount = 2,
+    )
+    sourceStereo[0] = 9_999
+    check(stereo.frameCount == 2)
+    check(stereo.sampleAt(frame = 0, channel = 0) == 100.toShort())
+    check(stereo.sampleAt(frame = 0, channel = 1) == (-100).toShort())
+    expectInvalid {
+        PcmBuffer.fromInterleaved(shortArrayOf(1, 2, 3), sampleRate, channelCount = 2)
+    }
+
+    val boundedAsset = AudioAssetMetadata(
+        id = AudioAssetId("bounded-audio"),
+        name = "bounded",
+        sampleRate = sampleRate,
+        channelCount = 2,
+        frameCount = 2,
+    )
+    expectInvalid {
+        ProjectSnapshot(
+            projectId = "invalid-range",
+            name = "Invalid range",
+            audioAssets = listOf(boundedAsset),
+            pads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) ProjectPad(index, boundedAsset.id, 0, 3) else ProjectPad(index)
+            },
+        )
+    }
+
+    val assignmentState = SamplerUiState(
+        currentAudio = audio,
+        rangeStartFrame = 1_000,
+        rangeEndFrame = 90_000,
+        sliceMarkers = listOf(24_000, 60_000),
+        activeSliceIndex = 0,
+        selectedBank = 1,
+        selectedPad = 31,
+        autoNextPad = true,
+    )
+    val assignment = assignRangesToPads(
+        state = assignmentState,
+        ranges = listOf(SliceRange(1_000, 24_000)),
+        statusMessage = "assigned",
+    )
+    check(assignment.state.pads[31].startFrame == 1_000)
+    check(assignment.state.selectedPad == 16)
+    check(assignment.state.activeSliceIndex == 1)
+
+    val project = LegacyProjectAdapter.toSnapshot(assignment.state, projectName = "Smoke")
+    check(project.schemaVersion == 1)
+    check(project.audioAssets.single().channelCount == 1)
+    check(project.pads[31].assetId == project.audioAssets.single().id)
+
     val wavTest = File.createTempFile("choplab-writer", ".wav")
     WavFileWriter(wavTest, sampleRate, 1).use { writer ->
         writer.writePcm16(shortArrayOf(0, 1_000, -1_000, Short.MAX_VALUE))
@@ -95,6 +158,7 @@ fun main() {
 
     println(
         "PASS: transients=$transients, slices=${slices.size}, " +
+            "stereo=${stereo.frameCount} frames, project=v${project.schemaVersion}, " +
             "WAV header valid, pattern=${summary.frameCount} frames",
     )
 }
@@ -103,3 +167,12 @@ private fun littleEndianInt(bytes: ByteArray, offset: Int): Int =
     ByteBuffer.wrap(bytes, offset, Int.SIZE_BYTES)
         .order(ByteOrder.LITTLE_ENDIAN)
         .int
+
+private inline fun expectInvalid(block: () -> Unit) {
+    try {
+        block()
+        error("Expected IllegalArgumentException")
+    } catch (_: IllegalArgumentException) {
+        // Expected.
+    }
+}

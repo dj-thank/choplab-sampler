@@ -11,11 +11,17 @@ import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.pow
 
-/**
- * Offline renderer for a 16-step pattern. It mirrors the real-time engine's
- * pitch resampling, tone filter, gain, reverse, choke groups, and soft limiter.
- */
-object PatternRenderer {
+data class PatternRenderSummary(
+    val bars: Int,
+    val sampleRate: Int,
+    val frameCount: Int,
+    val peak: Float,
+) {
+    val durationSeconds: Double
+        get() = frameCount.toDouble() / sampleRate
+}
+
+interface PatternRenderService {
     fun renderToWav(
         outputFile: File,
         pads: List<PadModel>,
@@ -24,7 +30,23 @@ object PatternRenderer {
         swing: Float,
         bars: Int = 4,
         outputSampleRate: Int = 48_000,
-    ): RenderSummary {
+    ): PatternRenderSummary
+}
+
+/**
+ * Offline renderer for a 16-step pattern. It mirrors the real-time engine's
+ * pitch resampling, tone filter, gain, reverse, choke groups, and soft limiter.
+ */
+object PatternRenderer : PatternRenderService {
+    override fun renderToWav(
+        outputFile: File,
+        pads: List<PadModel>,
+        activeSteps: Set<Int>,
+        bpm: Float,
+        swing: Float,
+        bars: Int,
+        outputSampleRate: Int,
+    ): PatternRenderSummary {
         require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} pads" }
         require(bars in 1..64) { "bars must be between 1 and 64" }
         require(outputSampleRate in 8_000..192_000) { "Unsupported output sample rate" }
@@ -94,7 +116,7 @@ object PatternRenderer {
             if (bufferIndex > 0) writer.writePcm16(pcmBuffer, bufferIndex)
         }
 
-        return RenderSummary(
+        return PatternRenderSummary(
             bars = bars,
             sampleRate = outputSampleRate,
             frameCount = totalFrames,
@@ -119,16 +141,6 @@ object PatternRenderer {
             starts[step + 1] = starts[step] + length
         }
         return starts
-    }
-
-    data class RenderSummary(
-        val bars: Int,
-        val sampleRate: Int,
-        val frameCount: Int,
-        val peak: Float,
-    ) {
-        val durationSeconds: Double
-            get() = frameCount.toDouble() / sampleRate
     }
 
     private data class PadSnapshot(

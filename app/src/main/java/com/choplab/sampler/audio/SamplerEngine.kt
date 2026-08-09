@@ -30,7 +30,7 @@ import kotlin.math.pow
 class SamplerEngine(
     context: Context,
     private val onError: (String) -> Unit = {},
-) {
+) : SamplerPlaybackEngine {
     private val appContext = context.applicationContext
     private val commands = ConcurrentLinkedQueue<EngineCommand>()
     private val running = AtomicBoolean(false)
@@ -46,11 +46,13 @@ class SamplerEngine(
     private var nextPatternStep = 0
     private var framesUntilNextStep = 0.0
 
-    val currentStep = AtomicInteger(-1)
-    var outputSampleRate: Int = 48_000
+    private val currentStepValue = AtomicInteger(-1)
+    override val currentStep: Int
+        get() = currentStepValue.get()
+    override var outputSampleRate: Int = 48_000
         private set
 
-    fun start(): Result<Unit> {
+    override fun start(): Result<Unit> {
         if (!running.compareAndSet(false, true)) return Result.success(Unit)
         return runCatching {
             val manager = requireNotNull(appContext.getSystemService(AudioManager::class.java)) {
@@ -110,7 +112,7 @@ class SamplerEngine(
         }
     }
 
-    fun updatePad(pad: PadModel) {
+    override fun updatePad(pad: PadModel) {
         if (pad.isAssigned) {
             commands.offer(EngineCommand.SetPad(PadSnapshot.from(pad)))
         } else {
@@ -118,19 +120,19 @@ class SamplerEngine(
         }
     }
 
-    fun updateAllPads(pads: List<PadModel>) {
+    override fun updateAllPads(pads: List<PadModel>) {
         pads.forEach(::updatePad)
     }
 
-    fun triggerPad(globalIndex: Int) {
+    override fun triggerPad(globalIndex: Int) {
         commands.offer(EngineCommand.Trigger(globalIndex))
     }
 
-    fun releasePad(globalIndex: Int) {
+    override fun releasePad(globalIndex: Int) {
         commands.offer(EngineCommand.Release(globalIndex))
     }
 
-    fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int) {
+    override fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int) {
         commands.offer(
             EngineCommand.Preview(
                 PadSnapshot(
@@ -149,7 +151,7 @@ class SamplerEngine(
         )
     }
 
-    fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
+    override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
         val steps = Array(SamplerConfig.STEP_COUNT) { step ->
             (0 until SamplerConfig.PAD_COUNT)
                 .filter { pad -> stepKey(pad, step) in activeSteps }
@@ -164,19 +166,19 @@ class SamplerEngine(
         )
     }
 
-    fun startTransport() {
+    override fun startTransport() {
         commands.offer(EngineCommand.StartTransport)
     }
 
-    fun stopTransport() {
+    override fun stopTransport() {
         commands.offer(EngineCommand.StopTransport)
     }
 
-    fun stopAllVoices() {
+    override fun stopAllVoices() {
         commands.offer(EngineCommand.StopAllVoices)
     }
 
-    fun shutdown() {
+    override fun shutdown() {
         if (!running.getAndSet(false)) return
         commands.clear()
         runCatching { audioTrack?.pause() }
@@ -186,7 +188,7 @@ class SamplerEngine(
         runCatching { audioTrack?.stop() }
         runCatching { audioTrack?.release() }
         audioTrack = null
-        currentStep.set(-1)
+        currentStepValue.set(-1)
     }
 
     private fun renderLoop(track: AudioTrack, blockFrames: Int) {
@@ -241,7 +243,7 @@ class SamplerEngine(
         } finally {
             running.set(false)
             voices.clear()
-            currentStep.set(-1)
+            currentStepValue.set(-1)
         }
     }
 
@@ -270,7 +272,7 @@ class SamplerEngine(
                 }
                 EngineCommand.StopTransport -> {
                     transportRunning = false
-                    currentStep.set(-1)
+                    currentStepValue.set(-1)
                 }
                 EngineCommand.StopAllVoices -> voices.forEach { it.release(FAST_RELEASE_FRAMES) }
             }
@@ -280,7 +282,7 @@ class SamplerEngine(
     private fun processTransportFrame() {
         if (framesUntilNextStep <= 0.0) {
             val stepToPlay = nextPatternStep
-            currentStep.set(stepToPlay)
+            currentStepValue.set(stepToPlay)
             pattern[stepToPlay].forEach { padIndex ->
                 padKit.getOrNull(padIndex)?.let(::startVoice)
             }

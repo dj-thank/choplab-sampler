@@ -13,6 +13,7 @@ import com.choplab.sampler.audio.PlaybackCaptureService
 import com.choplab.sampler.audio.PlaybackCaptureState
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SamplerEngine
+import com.choplab.sampler.audio.SamplerPlaybackEngine
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
@@ -21,6 +22,7 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.activeSliceRange
+import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stepKey
@@ -39,7 +41,7 @@ import java.io.File
 class SamplerViewModel(application: Application) : AndroidViewModel(application) {
     private val decoder = AudioDecoder(application)
     private val microphoneRecorder = MicrophoneRecorder()
-    private val engine = SamplerEngine(application) { message ->
+    private val engine: SamplerPlaybackEngine = SamplerEngine(application) { message ->
         viewModelScope.launch { setStatus(message) }
     }
 
@@ -418,44 +420,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private fun assignRanges(ranges: List<SliceRange>, message: String) {
         var padsToSync: List<PadModel> = emptyList()
         mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
-            val mutablePads = state.pads.toMutableList()
-            val bankStart = state.selectedBank * SamplerConfig.PADS_PER_BANK
-            var indexInBank = state.selectedPad - bankStart
-            val changed = mutableListOf<PadModel>()
-
-            ranges.forEach { range ->
-                val globalIndex = bankStart + indexInBank
-                val oldPad = mutablePads[globalIndex]
-                val newPad = oldPad.copy(
-                    audio = audio,
-                    startFrame = range.startFrame,
-                    endFrame = range.endFrame,
-                )
-                mutablePads[globalIndex] = newPad
-                changed += newPad
-                indexInBank = (indexInBank + 1) % SamplerConfig.PADS_PER_BANK
-            }
-
-            padsToSync = changed
-            val nextPad = if (state.autoNextPad) bankStart + indexInBank else state.selectedPad
-            val currentSlice = state.activeSliceIndex
-            val nextSlice = if (
-                state.autoNextPad &&
-                ranges.size == 1 &&
-                currentSlice != null
-            ) {
-                (currentSlice + 1).takeIf { it < state.sliceRanges().size }
-                    ?: currentSlice
-            } else {
-                currentSlice
-            }
-            state.copy(
-                pads = mutablePads,
-                selectedPad = nextPad,
-                activeSliceIndex = nextSlice,
-                statusMessage = message,
-            )
+            val result = assignRangesToPads(state, ranges, message)
+            padsToSync = result.changedPads
+            result.state
         }
         padsToSync.forEach(engine::updatePad)
     }
@@ -488,7 +455,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.triggerPad(globalIndex)
 
         if (state.recordArmed && state.transportPlaying) {
-            val step = engine.currentStep.get()
+            val step = engine.currentStep
             if (step in 0 until SamplerConfig.STEP_COUNT) {
                 mutableUiState.update { current ->
                     val updated = current.activeSteps + stepKey(globalIndex, step)
@@ -725,7 +692,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private fun pollTransportStep() {
         viewModelScope.launch {
             while (isActive) {
-                val step = engine.currentStep.get()
+                val step = engine.currentStep
                 if (mutableUiState.value.currentStep != step) {
                     mutableUiState.update { it.copy(currentStep = step) }
                 }
