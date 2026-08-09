@@ -57,6 +57,7 @@ Publish the current ChopLab MVP as an open-source Android project and make a dev
 - The initial GitHub compile exposed four stale Compose extension imports; removing them restored Kotlin compilation.
 - The first strict SDK-license pipeline treated the expected `yes` Broken pipe as a failure. The workflow now checks `sdkmanager`'s own `PIPESTATUS` entry.
 - Android Lint exposed two permission-boundary errors in AudioRecord builders. The calling Activity/service already gate runtime permissions; the builder boundaries now carry explicit `MissingPermission` suppression.
+- GitHub Actions debug signing is runner-specific enough that the public Release APK could not update the earlier CI APK in place. The phone had no saved project data, so uninstall/reinstall was safe for this MVP.
 
 ## Validation log
 
@@ -68,6 +69,7 @@ Publish the current ChopLab MVP as an open-source Android project and make a dev
 - GitHub Actions release run `31319529630` — PASS: build/package and public-release publish.
 - Public Release: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.1.0-preview.1`.
 - Public Release APK — SHA-256 `4E6220484F5991B34792CBCFCC5B251460893D9433DD2BE06A6B4635BCBEA513`; downloaded `.sha256` sidecar matched.
+- Public Release APK installed after removing the earlier differently signed CI preview; the pre-uninstall read-only data check found no project files.
 
 ## Risks and rollback
 
