@@ -8,7 +8,7 @@ Publish the current ChopLab MVP as an open-source Android project and make a dev
 
 - Repository: `https://github.com/dj-thank/choplab-sampler`
 - Current implementation: `app/` AudioTrack-based MVP; `reference/pro-v0.2/` remains unverified reference material.
-- Public branch: `agent/public-choplab-release`.
+- Public preview changes are merged into `main` at merge commit `d427cd7a5f6af445703f6b964e6e862cf30a1d40`.
 - MIT `LICENSE` is present; no secrets, signing keys, `local.properties`, or generated APKs are tracked.
 
 ## Constraints and invariants
@@ -50,7 +50,7 @@ Publish the current ChopLab MVP as an open-source Android project and make a dev
 - [x] 2026-08-09 — Fixed microphone and playback-capture permission lint boundaries.
 - [x] 2026-08-09 — GitHub Actions run `31319111062` passed tests, Lint, and debug APK assembly.
 - [x] 2026-08-09 — Installed the CI APK on Pixel 9a and launched `MainActivity` without an immediate fatal exception.
-- [ ] 2026-08-09 — Merge PR #1 and publish tag `v0.1.0-preview.1`.
+- [x] 2026-08-09 — Merged PR #1 and published tag `v0.1.0-preview.1`.
 
 ## Discoveries
 
@@ -65,6 +65,9 @@ Publish the current ChopLab MVP as an open-source Android project and make a dev
 - CI artifact APK — SHA-256 `07A53C695D7A229816E0FC0F53C4B5C9F270C705228DE7320008B4074785FE67`.
 - `adb install -r app-debug.apk` on physical Pixel 9a — `Success`.
 - `adb shell am start -n com.choplab.sampler/.MainActivity` — launched; immediate fatal/crash log scan empty.
+- GitHub Actions release run `31319529630` — PASS: build/package and public-release publish.
+- Public Release: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.1.0-preview.1`.
+- Public Release APK — SHA-256 `4E6220484F5991B34792CBCFCC5B251460893D9433DD2BE06A6B4635BCBEA513`; downloaded `.sha256` sidecar matched.
 
 ## Risks and rollback
 

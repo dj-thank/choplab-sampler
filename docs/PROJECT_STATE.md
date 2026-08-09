@@ -18,6 +18,10 @@ The successful GitHub Actions run `31319111062` verified the public branch with:
 - `:app:assembleDebug`: PASS.
 - debug APK artifact: `choplab-debug-and-reports`.
 - downloaded APK SHA-256: `07A53C695D7A229816E0FC0F53C4B5C9F270C705228DE7320008B4074785FE67`.
+- public Release: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.1.0-preview.1`.
+- release workflow run `31319529630`: `build-and-package` and `publish-release` PASS.
+- public Release APK: `ChopLab-v0.1.0-preview.1-debug.apk`.
+- public Release APK SHA-256: `4E6220484F5991B34792CBCFCC5B251460893D9433DD2BE06A6B4635BCBEA513`.
 
 The APK was installed from that artifact onto the connected physical Pixel 9a. Package `com.choplab.sampler` reports version `0.1.0`, `minSdk=29`, `targetSdk=36`; `MainActivity` launched and the immediate logcat check found no fatal exception. This is launch/install evidence only, not a complete audio workflow or latency result.
 
