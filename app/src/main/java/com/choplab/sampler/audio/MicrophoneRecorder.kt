@@ -110,6 +110,7 @@ class MicrophoneRecorder {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun createAudioRecord(): AudioRecord {
         val minBuffer = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
