@@ -50,7 +50,8 @@
 - [x] 2026-08-10 — clean baselineとoffline validation PASSを確認。
 - [x] 2026-08-10 — live chop domain/engineを実装し、pure Kotlin 14 testsを通過。
 - [x] 2026-08-10 — canonical Compose UIを実装。Android compile/device確認は次項で実施。
-- [ ] 2026-08-10 — full validation、device smoke、public update。
+- [x] 2026-08-10 — public CI `31321170535`でunit/lint/APK PASS、Pixel 9aでvisualとlive-chop smoke PASS。
+- [ ] 2026-08-10 — version `0.1.1` tag-releaseとpublic Release APKの再インストール。
 
 ## Discoveries
 
@@ -69,6 +70,9 @@
 - pure Kotlin JUnit 6 classes / 14 tests — 2026-08-10 / portable Kotlin 2.3.21 + JUnit 4.13.2 — PASS after live-chop/UI source changes。
 - `scripts/validate_project.sh` — 2026-08-10 / same environment — PASS after source changes。
 - `git diff --check` — 2026-08-10 — PASS。
+- GitHub Actions `31321170535` — 2026-08-10 / Ubuntu + Android 36 — unit, lint, assembleDebug, artifact upload PASS。
+- CI APK `BDAE4725031940B8452331D61BA689905AE1C947E77C615BAF0586EB7BAD32F5` / 29,920,144 bytes — Pixel 9a install + launch PASS。
+- Pixel 9a live-chop smoke — generated mono 48 kHz WAV import, source play, PAD 01 capture, stop, assigned marker observed; no immediate fatal exception。Test WAV removed。
 
 ## Risks and rollback
 

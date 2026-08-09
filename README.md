@@ -3,11 +3,11 @@
 [![Android verification](https://github.com/dj-thank/choplab-sampler/actions/workflows/android.yml/badge.svg)](https://github.com/dj-thank/choplab-sampler/actions/workflows/android.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Android 10以降で動くモバイル・サンプラー **ChopLab** のオープンソース開発リポジトリです。
+Android 10以降で動くモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、音声の取り込み・チョップ・PAD割当・16ステップシーケンス・WAV書き出しを備えたMVPと、次段階へ移行するためのステレオ対応ドメイン基盤を公開しています。GitHub Releasesには、タグから自動生成する開発プレビューAPKを添付します。
+現在は、曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、16ステップシーケンス、WAV書き出しを備えたMVPと、次段階へ移行するためのステレオ対応ドメイン基盤を公開しています。GitHub Releasesには、タグから自動生成する開発プレビューAPKを添付します。
 
-初回タグReleaseが作成されるまではReleasesページが空の場合があります。その場合は、GitHub Actionsの`Android verification`実行に添付されたAPK artifactを開発用に取得できます。
+画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。従来の範囲編集・端末音録音・Reverse・Gate・Choke・Swing・WAV exportは「詳細機能」から利用できます。
 
 ## まず使う
 
