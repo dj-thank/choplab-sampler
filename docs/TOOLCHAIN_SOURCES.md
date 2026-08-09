@@ -1,6 +1,6 @@
 # Toolchain source record
 
-Checked on 2026-08-09. All portable tools were downloaded into the task workspace; no machine-wide installation was performed.
+Checked on 2026-08-09. All portable tools were downloaded into the task workspace; no machine-wide installation was performed. To keep build/download churn off the system NVMe SSD, `C:\Users\rambo\Documents\ChatGPT\pad\work\tools` is now an NTFS junction to `F:\CodexData\ChopLab\tools` on the 4 TB HDD. Existing project-local paths remain valid.
 
 ## JDK 17
 

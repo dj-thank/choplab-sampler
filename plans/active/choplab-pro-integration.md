@@ -137,6 +137,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - [x] 2026-08-09 — Kotlin 2.3.21 と workspace-local Gradle home を導入し、Gradle wrapper が JDK 17 上で起動することを確認。
 - [x] 2026-08-09 — Red/Green で stereo-capable project domain、legacy adapter、pure pad assignment、engine/render coexistence interfaces を追加。
 - [x] 2026-08-09 — offline validation と pure Kotlin JUnit 12 tests を通過。
+- [x] 2026-08-09 — portable toolchain、Gradle caches、build/test output を `F:\CodexData\ChopLab` へ保全移設し、元の C: path を NTFS junction として維持。移設後の JDK/adb/Kotlin/Gradle/offline validation を再確認。
 - [ ] 2026-08-09 19:24 JST — Android SDK license の authorized acceptance 待ち。Platform 36 / Build Tools 36.0.0 は未導入。
 - [ ] 2026-08-09 19:10 JST — Milestone 1 portable toolchain と baseline build を確立中。
 
@@ -147,7 +148,8 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - `codex-workspace-baseline` は annotated tag object を持つため、commit 比較では peel または merge-base を使う。
 - WSL の既定 `bash.exe` は `docker-desktop` distribution を指すが、Git for Windows Bash は別途利用できる。
 - 現タスクの spawn surface は project-local custom agent model の Luna を許可しておらず、独立監査は未実行。
-- C: free space は portable tool archives 展開後に 0 bytes まで低下した。再取得可能な download ZIP 4個だけを検証後に削除して約397 MiBを回復したが、native toolchain 導入には不足する。大容量処理前に毎回再計測する。
+- C: free space は portable tool archives 展開後に一時 0 bytes まで低下した。再取得可能な download ZIP 4個だけを検証後に削除して約397 MiBを回復し、後続の保全移設で解消した。
+- 追加の storage maintenance 後、C: は NVMe SSD、F: は 4 TB HDD と確認。ChopLab の write-heavy paths を F: へ移し、C: free space は約39.8 GiBまで回復した。NDK/CMake は junction 配下の F: 実体へ導入する。
 - Android SDK license prompt は法的権限を持つ本人の受諾を要求した。自動回答せず、Platform/Build Tools install は skip された。
 - `PcmBuffer` の defensive copy、partial-frame rejection、project asset cross-reference bounds は初期 Green 後のレビュー用 Red test で追加し、validation を強化した。
 - 固定点レビューで project/asset/pattern metadata と pattern event 数の未制限を検出し、失敗テストを追加して上限を導入した。PAD 再割当時に pitch/gain/reverse を保持する既存方針も characterization test で固定した。
@@ -160,6 +162,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - 2026-08-09 19:10 JST — Luna failure 時に Sol/Terra へ自動 fallback しない。global routing rule に従い、parent で作業を継続する。
 - 2026-08-09 19:24 JST — Android SDK license は Codex が代理受諾しない。authorized user の明示的同意後に workspace-local SDK へ導入する。
 - 2026-08-09 — MVP を一括置換せず、pure domain と interface seam を先に追加する。既存 AudioTrack path を動作 fallback として保持し、後続 Oboe 実装を段階的に差し替え可能にするため。
+- 2026-08-09 — source/Git は小容量のため C: に保持し、SDK/Gradle/build/test の write-heavy data だけを F: HDD へ junction で分離する。portable path compatibility と SSD write reduction を両立するため。
 
 ## Validation log
 
@@ -198,6 +201,9 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
   - Standards axis: AGENTS real-time/data-boundary rules and `.editorconfig`; no new callback allocation/I/O/logging path was introduced. One material unbounded-metadata finding was fixed and retested.
   - Specification axis: `prompts/02_BASELINE_AND_MODEL.md` and product requirements; domain/migration/coexistence seams and characterization coverage are present. Gradle/lint/assemble and independent `qa_reviewer` remain unverified because of the SDK license gate and unavailable Luna model, respectively.
   - Result: no remaining material source finding in the reviewed checkpoint; this is a local fallback review, not the required independent two-agent review.
+- Command: post-relocation JDK/adb/Kotlin/Gradle probes and `scripts/validate_project.sh` with temporary output on F:.
+  - Date/environment: 2026-08-09, C: NTFS junctions backed by `F:\CodexData\ChopLab`.
+  - Result: PASS。Temurin 17.0.20+8、adb 37.0.1、Kotlin 2.3.21、Gradle 9.5.0、offline project validation、Pixel 9a `device` state。Final wrapper shell returned 1 only because of a PowerShell `exit $g` spacing typo after all recorded component exit codes were 0; this is not reported as a test failure。
 
 ## Risks and rollback
 

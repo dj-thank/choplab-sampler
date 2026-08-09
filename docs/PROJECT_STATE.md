@@ -12,6 +12,7 @@ Observed on Windows 11 with workspace-local Temurin JDK 17, Kotlin 2.3.21, Gradl
 - `:app:testDebugUnitTest` reaches Android SDK dependency resolution, then stops because the authorized user has not accepted the Android SDK license for Platform 36 and Build Tools 36.0.0. No Gradle Android test, APK, or install result is claimed.
 - adb sees a physical Pixel 9a as `device` on Android 16 / API 36 / `arm64-v8a`.
 - `com.choplab.sampler` is not currently installed on that device.
+- Portable JDK/SDK/Kotlin/Gradle storage and Gradle/build/test output paths now resolve through verified NTFS junctions to `F:`. The offline validation and adb device check passed again after relocation.
 
 Source-only foundations added in this checkpoint:
 
