@@ -1,39 +1,31 @@
 package com.choplab.sampler.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFFFFB15C),
-    onPrimary = Color(0xFF2B1700),
-    secondary = Color(0xFF8FD4C7),
-    tertiary = Color(0xFFFF8A80),
-    background = Color(0xFF111315),
-    surface = Color(0xFF1B1E21),
-    surfaceVariant = Color(0xFF292D31),
-    outline = Color(0xFF777C82),
-)
-
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF8B4C00),
-    secondary = Color(0xFF006B5E),
-    tertiary = Color(0xFF9B2D24),
-    background = Color(0xFFF8F7F4),
-    surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFE9E5DF),
+    primary = Color(0xFF8A3D00),
+    onPrimary = Color(0xFFFFF6E3),
+    primaryContainer = Color(0xFFFFB15E),
+    onPrimaryContainer = Color(0xFF2A1500),
+    secondary = Color(0xFF577D32),
+    tertiary = Color(0xFFFF7A1A),
+    background = Color(0xFF14110A),
+    surface = Color(0xFFEFE6D0),
+    surfaceVariant = Color(0xFFD8CCB0),
+    onSurface = Color(0xFF241F14),
+    onSurfaceVariant = Color(0xFF5C523A),
+    outline = Color(0xFF766A4F),
 )
 
 @Composable
 fun ChopLabTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = LightColors,
         content = content,
     )
 }

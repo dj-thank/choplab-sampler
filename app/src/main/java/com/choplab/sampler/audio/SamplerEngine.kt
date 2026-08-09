@@ -36,6 +36,7 @@ class SamplerEngine(
     private val running = AtomicBoolean(false)
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val voices = mutableListOf<Voice>()
+    private var sourceVoice: Voice? = null
     private var audioTrack: AudioTrack? = null
     private var audioThread: Thread? = null
 
@@ -49,6 +50,12 @@ class SamplerEngine(
     private val currentStepValue = AtomicInteger(-1)
     override val currentStep: Int
         get() = currentStepValue.get()
+    private val currentSourceFrameValue = AtomicInteger(-1)
+    override val currentSourceFrame: Int
+        get() = currentSourceFrameValue.get()
+    private val sourcePlayingValue = AtomicBoolean(false)
+    override val sourcePlaying: Boolean
+        get() = sourcePlayingValue.get()
     override var outputSampleRate: Int = 48_000
         private set
 
@@ -151,6 +158,37 @@ class SamplerEngine(
         )
     }
 
+    override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) {
+        if (!running.get() || audio.frameCount < 1) {
+            sourcePlayingValue.set(false)
+            return
+        }
+        val safeStart = startFrame.coerceIn(0, audio.frameCount - 1)
+        currentSourceFrameValue.set(safeStart)
+        sourcePlayingValue.set(true)
+        commands.offer(
+            EngineCommand.PlaySource(
+                PadSnapshot(
+                    padIndex = SOURCE_PAD_INDEX,
+                    audio = audio,
+                    startFrame = safeStart,
+                    endFrame = audio.frameCount,
+                    pitchSemitones = pitchSemitones.coerceIn(-12f, 12f),
+                    tone = 1f,
+                    gain = 0.9f,
+                    reverse = false,
+                    playMode = PadPlayMode.ONE_SHOT,
+                    chokeGroup = 0,
+                ),
+            ),
+        )
+    }
+
+    override fun stopSource() {
+        sourcePlayingValue.set(false)
+        commands.offer(EngineCommand.StopSource)
+    }
+
     override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
         val steps = Array(SamplerConfig.STEP_COUNT) { step ->
             (0 until SamplerConfig.PAD_COUNT)
@@ -189,6 +227,8 @@ class SamplerEngine(
         runCatching { audioTrack?.release() }
         audioTrack = null
         currentStepValue.set(-1)
+        currentSourceFrameValue.set(-1)
+        sourcePlayingValue.set(false)
     }
 
     private fun renderLoop(track: AudioTrack, blockFrames: Int) {
@@ -199,11 +239,20 @@ class SamplerEngine(
             while (running.get()) {
                 drainCommands()
                 output.fill(0f)
+                var latestSourceFrame = -1
 
                 for (frame in 0 until blockFrames) {
                     if (transportRunning) processTransportFrame()
 
                     var monoMix = 0f
+                    sourceVoice?.let { source ->
+                        monoMix += source.render(outputSampleRate)
+                        latestSourceFrame = source.currentFrame
+                        if (source.finished) {
+                            sourceVoice = null
+                            sourcePlayingValue.set(false)
+                        }
+                    }
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
@@ -222,6 +271,7 @@ class SamplerEngine(
                     output[outputIndex] = limited
                     output[outputIndex + 1] = limited
                 }
+                if (latestSourceFrame >= 0) currentSourceFrameValue.set(latestSourceFrame)
 
                 var writeOffset = 0
                 while (running.get() && writeOffset < output.size) {
@@ -243,7 +293,9 @@ class SamplerEngine(
         } finally {
             running.set(false)
             voices.clear()
+            sourceVoice = null
             currentStepValue.set(-1)
+            sourcePlayingValue.set(false)
         }
     }
 
@@ -260,6 +312,11 @@ class SamplerEngine(
                     .filter { it.padIndex == command.padIndex && it.playMode == PadPlayMode.GATE }
                     .forEach { it.release(RELEASE_FRAMES) }
                 is EngineCommand.Preview -> startVoice(command.pad)
+                is EngineCommand.PlaySource -> {
+                    sourceVoice = Voice(command.source, outputSampleRate)
+                    currentSourceFrameValue.set(command.source.startFrame)
+                }
+                EngineCommand.StopSource -> sourceVoice = null
                 is EngineCommand.SetPattern -> {
                     pattern = command.steps
                     bpm = command.bpm
@@ -274,7 +331,11 @@ class SamplerEngine(
                     transportRunning = false
                     currentStepValue.set(-1)
                 }
-                EngineCommand.StopAllVoices -> voices.forEach { it.release(FAST_RELEASE_FRAMES) }
+                EngineCommand.StopAllVoices -> {
+                    voices.forEach { it.release(FAST_RELEASE_FRAMES) }
+                    sourceVoice = null
+                    sourcePlayingValue.set(false)
+                }
             }
         }
     }
@@ -321,6 +382,8 @@ class SamplerEngine(
         data class Trigger(val padIndex: Int) : EngineCommand
         data class Release(val padIndex: Int) : EngineCommand
         data class Preview(val pad: PadSnapshot) : EngineCommand
+        data class PlaySource(val source: PadSnapshot) : EngineCommand
+        data object StopSource : EngineCommand
         data class SetPattern(
             val steps: Array<IntArray>,
             val bpm: Float,
@@ -383,6 +446,8 @@ class SamplerEngine(
 
         var finished: Boolean = false
             private set
+        val currentFrame: Int
+            get() = position.toInt().coerceIn(startFrame, endFrame)
 
         init {
             val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
@@ -456,5 +521,6 @@ class SamplerEngine(
         const val RELEASE_FRAMES = 192
         const val FAST_RELEASE_FRAMES = 48
         const val CLICK_FADE_SOURCE_FRAMES = 48.0
+        const val SOURCE_PAD_INDEX = -2
     }
 }

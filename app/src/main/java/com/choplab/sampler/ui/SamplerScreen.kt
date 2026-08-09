@@ -4,27 +4,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -40,7 +33,6 @@ import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.visiblePads
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SamplerScreen(
     state: SamplerUiState,
@@ -50,83 +42,43 @@ fun SamplerScreen(
     onExportBeat: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("ChopLab", fontWeight = FontWeight.Black)
-                        Text("MPC-style mobile sampler", fontSize = 11.sp)
-                    }
-                },
-                actions = {
-                    TextButton(onClick = viewModel::stopAllSounds) {
-                        Text("ALL STOP")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SourceSection(
-                state = state,
-                onImportAudio = onImportAudio,
-                onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-                onToggleSystemAudioRecording = onToggleSystemAudioRecording,
-            )
-
-            if (state.isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = state.statusMessage,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    fontSize = 13.sp,
-                )
-            }
-
-            WaveformSection(state = state, viewModel = viewModel)
-            PadEditSection(state = state, viewModel = viewModel)
-
-            SectionCard(
-                title = "16 PAD / BANK ${bankName(state.selectedBank)}",
-                subtitle = "タップで発音、長押しで編集対象を選択",
-            ) {
-                PadGrid(
-                    pads = state.visiblePads(),
-                    selectedPad = state.selectedPad,
-                    onTrigger = viewModel::triggerPad,
-                    onRelease = viewModel::releasePad,
-                    onSelect = viewModel::selectPad,
-                )
-            }
-
-            SequencerSection(
-                state = state,
-                viewModel = viewModel,
-                onExportBeat = onExportBeat,
-            )
-
-            Text(
-                text = "ChopLabは独自UIの試作サンプラーです。AKAI Professionalの商標・製品UI・素材を複製していません。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(bottom = 24.dp),
-            )
-        }
+    OtohiroiDeck(
+        state = state,
+        onImportAudio = onImportAudio,
+        onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+        onClearChops = viewModel::clearVisibleChops,
+        onToggleSourcePlayback = viewModel::toggleSourcePlayback,
+        onSeekSource = viewModel::seekSourcePlayback,
+        onMasterPitchChange = viewModel::setMasterPitch,
+        onSelectBank = viewModel::selectBank,
+        onSelectPad = viewModel::selectPad,
+        onTriggerPad = viewModel::triggerPad,
+        onReleasePad = viewModel::releasePad,
+        onPadPitchChange = viewModel::setSelectedPadPitch,
+        onToggleBeat = viewModel::toggleTransport,
+        onBpmChange = viewModel::setBpm,
+        onToggleStep = viewModel::toggleStep,
+        onStopAll = viewModel::stopAllSounds,
+    ) {
+        SourceSection(
+            state = state,
+            onImportAudio = onImportAudio,
+            onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+            onToggleSystemAudioRecording = onToggleSystemAudioRecording,
+        )
+        WaveformSection(state = state, viewModel = viewModel)
+        PadEditSection(state = state, viewModel = viewModel)
+        SequencerSection(
+            state = state,
+            viewModel = viewModel,
+            onExportBeat = onExportBeat,
+        )
+        Text(
+            text = "ChopLabは独自UIのオープンソース・サンプラーです。第三者の商標・製品UI・素材を複製していません。",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(bottom = 18.dp),
+        )
     }
 }
 

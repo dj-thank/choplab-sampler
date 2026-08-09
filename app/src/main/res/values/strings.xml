@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">ChopLab</string>
-    <string name="capture_notification_title">ChopLab: 端末音声を録音中</string>
+    <string name="app_name">おとひろい</string>
+    <string name="capture_notification_title">おとひろい: 端末音声を録音中</string>
     <string name="capture_notification_text">タップ操作または通知の停止ボタンで録音を終了します</string>
     <string name="capture_stop">停止</string>
 </resources>

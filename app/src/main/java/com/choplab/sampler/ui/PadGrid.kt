@@ -1,5 +1,6 @@
 package com.choplab.sampler.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -11,20 +12,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PadModel
-import com.choplab.sampler.model.PadPlayMode
+
+private const val PAD_KEYS = "1234QWERASDFZXCV"
 
 @Composable
 fun PadGrid(
@@ -34,22 +41,26 @@ fun PadGrid(
     onRelease: (Int) -> Unit,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    captureMode: Boolean = false,
 ) {
     require(pads.size == 16) { "PadGrid requires exactly 16 pads" }
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        for (row in 0 until 4) {
+        repeat(4) { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                for (column in 0 until 4) {
-                    val pad = pads[row * 4 + column]
+                repeat(4) { column ->
+                    val indexInGrid = row * 4 + column
+                    val pad = pads[indexInGrid]
                     PadCell(
                         pad = pad,
+                        keyLabel = PAD_KEYS[indexInGrid].toString(),
                         selected = pad.globalIndex == selectedPad,
+                        captureMode = captureMode,
                         onTrigger = { onTrigger(pad.globalIndex) },
                         onRelease = { onRelease(pad.globalIndex) },
                         onSelect = { onSelect(pad.globalIndex) },
@@ -64,76 +75,79 @@ fun PadGrid(
 @Composable
 private fun PadCell(
     pad: PadModel,
+    keyLabel: String,
     selected: Boolean,
+    captureMode: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
-    val assignedColor = MaterialTheme.colorScheme.primaryContainer
-    val emptyColor = MaterialTheme.colorScheme.surfaceVariant
-    val borderColor = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+    val background = when {
+        pressed -> DeckPadLit
+        pad.isAssigned -> DeckPadAssigned
+        else -> DeckPad
+    }
+    val foreground = if (pressed) Color(0xFF2A1500) else if (pad.isAssigned) Color(0xFFE8D8A8) else Color(0xFF8A7C58)
+    val description = buildString {
+        append("PAD %02d".format(pad.indexInBank + 1))
+        append(if (pad.isAssigned) " 割り当て済み" else " 空")
+        if (captureMode) append("。押すと現在の再生位置を刻む")
+    }
 
-    Surface(
-        color = if (pad.isAssigned) assignedColor else emptyColor,
-        contentColor = if (pad.isAssigned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = shape,
-        tonalElevation = if (selected) 6.dp else 1.dp,
+    Box(
         modifier = modifier
-            .aspectRatio(1.08f)
-            .border(if (selected) 3.dp else 1.dp, borderColor, shape)
-            .pointerInput(pad.globalIndex, pad.playMode, pad.isAssigned) {
+            .aspectRatio(1f)
+            .background(background, shape)
+            .border(if (selected) 3.dp else 2.dp, if (selected) DeckLamp else Color.Black, shape)
+            .pointerInput(pad.globalIndex, pad.isAssigned, captureMode) {
                 detectTapGestures(
-                    onLongPress = { onSelect() },
                     onPress = {
-                        if (!pad.isAssigned) {
-                            onSelect()
-                        } else {
-                            onTrigger()
-                            val released = tryAwaitRelease()
-                            if (pad.playMode == PadPlayMode.GATE || !released) onRelease()
-                        }
+                        pressed = true
+                        onSelect()
+                        if (captureMode || pad.isAssigned) onTrigger()
+                        tryAwaitRelease()
+                        if (!captureMode && pad.isAssigned) onRelease()
+                        pressed = false
                     },
-                )
-            },
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(7.dp),
-        ) {
-            Text(
-                text = "%02d".format(pad.indexInBank + 1),
-                modifier = Modifier.align(Alignment.TopStart),
-                fontWeight = FontWeight.Black,
-                fontSize = 18.sp,
-            )
-            Text(
-                text = if (pad.isAssigned) {
-                    pad.audio?.name ?: "SAMPLE"
-                } else {
-                    "EMPTY\n長押しで選択"
-                },
-                modifier = Modifier.align(Alignment.Center),
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = 10.sp,
-                lineHeight = 12.sp,
-            )
-            if (pad.isAssigned) {
-                Text(
-                    text = buildString {
-                        append(if (pad.reverse) "REV " else "")
-                        append(if (pad.playMode == PadPlayMode.GATE) "GATE" else "ONE")
-                        if (pad.pitchSemitones != 0f) append(" ${pad.pitchSemitones.toInt()}st")
-                    },
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    fontSize = 9.sp,
-                    maxLines = 1,
                 )
             }
-        }
+            .semantics { contentDescription = description }
+            .padding(6.dp),
+    ) {
+        Text(
+            text = "%02d".format(pad.indexInBank + 1),
+            color = foreground,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        Text(
+            text = padTime(pad),
+            color = if (pressed) Color(0xFF4A2600) else DeckGreen,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 8.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        Text(
+            text = keyLabel,
+            color = if (pressed) Color(0xFF5A3210) else Color(0xFF655838),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 8.sp,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
+}
+
+private fun padTime(pad: PadModel): String {
+    val audio = pad.audio ?: return ""
+    if (!pad.isAssigned || audio.sampleRate <= 0) return ""
+    val seconds = pad.startFrame.toDouble() / audio.sampleRate
+    val minutes = (seconds / 60.0).toInt()
+    val remainder = seconds - minutes * 60.0
+    return "%d:%04.1f".format(minutes, remainder)
 }

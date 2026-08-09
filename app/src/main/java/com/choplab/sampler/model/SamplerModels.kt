@@ -78,6 +78,9 @@ data class SamplerUiState(
     val currentStep: Int = -1,
     val microphoneRecording: Boolean = false,
     val systemAudioRecording: Boolean = false,
+    val sourcePlaying: Boolean = false,
+    val sourcePlayheadFrame: Int = 0,
+    val masterPitchSemitones: Float = 0f,
 )
 
 fun SamplerUiState.visiblePads(): List<PadModel> {

@@ -2,6 +2,23 @@
 
 Last prepared: 2026-08-09
 
+## Canonical 「おとひろい」 UI — 2026-08-10
+
+The user-supplied 505-line HTML prototype is now treated as the canonical top-screen specification. Source changes add:
+
+- the cream hardware-deck visual system, Japanese `おとひろい` identity, orange sampling lamp, green waveform, 4 × 4 PAD layout, and one-row 16-step sequencer in Compose;
+- full-source playback, waveform seek, atomic source playhead reporting, ±12-semitone source pitch-by-rate, and source/beat transport exclusion;
+- live chop capture: while the source is playing, pressing a visible PAD assigns the latency-compensated playhead and reflows same-audio PAD end frames within the current bank;
+- the existing 4 BANK, advanced waveform selection, microphone/system capture, per-PAD editing, quantized record, Swing, and WAV export under an expandable details section.
+
+Observed locally before Android publication:
+
+- pure Kotlin JUnit: `OK (14 tests)` including two new live-chop boundary tests;
+- `scripts/validate_project.sh`: PASS using the preserved portable JDK 17 / Kotlin 2.3.21 environment;
+- `git diff --check`: PASS.
+
+Android Gradle compilation, Lint, APK generation, visual/device workflow, and public CI are not yet claimed in this checkpoint. The local SDK still lacks Platform 36 / Build Tools 36.0.0, so those gates must be supplied by GitHub Actions and the connected Pixel 9a.
+
 ## Public preview packaging — 2026-08-09
 
 The repository is now prepared for public preview publication at:

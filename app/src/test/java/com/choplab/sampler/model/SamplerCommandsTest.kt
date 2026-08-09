@@ -2,6 +2,7 @@ package com.choplab.sampler.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SamplerCommandsTest {
@@ -59,5 +60,71 @@ class SamplerCommandsTest {
         assertEquals(7f, result.state.pads[4].pitchSemitones)
         assertEquals(1.2f, result.state.pads[4].gain)
         assertEquals(true, result.state.pads[4].reverse)
+    }
+
+    @Test
+    fun liveChopClosesPreviousPadAtNewStartAndPreservesPadSettings() {
+        val audio = PcmAudio(name = "source", samples = ShortArray(4_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> PadModel(
+                    globalIndex = index,
+                    audio = audio,
+                    startFrame = 500,
+                    endFrame = 4_000,
+                    pitchSemitones = 5f,
+                )
+                1 -> PadModel(globalIndex = index, tone = 0.35f, gain = 1.2f)
+                else -> PadModel(index)
+            }
+        }
+        val state = SamplerUiState(
+            currentAudio = audio,
+            rangeStartFrame = 0,
+            rangeEndFrame = 4_000,
+            selectedBank = 0,
+            selectedPad = 0,
+            pads = pads,
+        )
+
+        val result = assignLiveChopToPad(state, padIndex = 1, startFrame = 1_500)
+
+        assertEquals(listOf(0, 1), result.changedPads.map(PadModel::globalIndex))
+        assertEquals(500, result.state.pads[0].startFrame)
+        assertEquals(1_500, result.state.pads[0].endFrame)
+        assertEquals(5f, result.state.pads[0].pitchSemitones)
+        assertSame(audio, result.state.pads[1].audio)
+        assertEquals(1_500, result.state.pads[1].startFrame)
+        assertEquals(4_000, result.state.pads[1].endFrame)
+        assertEquals(0.35f, result.state.pads[1].tone)
+        assertEquals(1.2f, result.state.pads[1].gain)
+        assertEquals(1, result.state.selectedPad)
+    }
+
+    @Test
+    fun liveChopOnlyReflowsCurrentBankAndCurrentAudio() {
+        val audio = PcmAudio(name = "source", samples = ShortArray(5_000), sampleRate = 48_000)
+        val otherAudio = PcmAudio(name = "other", samples = ShortArray(5_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> PadModel(index, otherAudio, 200, 900)
+                16 -> PadModel(index, audio, 1_000, 5_000)
+                else -> PadModel(index)
+            }
+        }
+        val state = SamplerUiState(
+            currentAudio = audio,
+            rangeEndFrame = 5_000,
+            selectedBank = 1,
+            selectedPad = 16,
+            pads = pads,
+        )
+
+        val result = assignLiveChopToPad(state, padIndex = 17, startFrame = 2_500)
+
+        assertEquals(900, result.state.pads[0].endFrame)
+        assertEquals(2_500, result.state.pads[16].endFrame)
+        assertEquals(5_000, result.state.pads[17].endFrame)
+        assertTrue(result.changedPads.all { it.bankIndex == 1 })
     }
 }

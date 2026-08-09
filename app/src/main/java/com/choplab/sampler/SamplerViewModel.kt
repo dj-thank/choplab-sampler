@@ -23,6 +23,7 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignRangesToPads
+import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stepKey
@@ -37,6 +38,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.pow
 
 class SamplerViewModel(application: Application) : AndroidViewModel(application) {
     private val decoder = AudioDecoder(application)
@@ -61,6 +63,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
+                    engine.stopSource()
                     mutableUiState.update { state ->
                         state.copy(
                             isLoading = false,
@@ -70,6 +73,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             sliceMarkers = emptyList(),
                             activeSliceIndex = null,
                             manualChopEnabled = false,
+                            sourcePlaying = false,
+                            sourcePlayheadFrame = 0,
+                            masterPitchSemitones = 0f,
                             statusMessage = "${audio.name} を読み込みました",
                         )
                     }
@@ -450,6 +456,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun triggerPad(globalIndex: Int) {
         val state = mutableUiState.value
+        if (state.sourcePlaying) {
+            assignLiveChop(globalIndex)
+            return
+        }
         val pad = state.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) return
         engine.triggerPad(globalIndex)
@@ -467,7 +477,102 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun releasePad(globalIndex: Int) {
+        if (mutableUiState.value.sourcePlaying) return
         engine.releasePad(globalIndex)
+    }
+
+    fun toggleSourcePlayback() {
+        val state = mutableUiState.value
+        val audio = state.currentAudio ?: run {
+            setStatus("先に曲を読み込んでください")
+            return
+        }
+        if (state.sourcePlaying) {
+            engine.stopSource()
+            mutableUiState.update {
+                it.copy(sourcePlaying = false, statusMessage = "停止中 — PADでチョップを演奏できます")
+            }
+            return
+        }
+
+        if (state.transportPlaying) {
+            engine.stopTransport()
+        }
+        val start = state.sourcePlayheadFrame
+            .takeIf { it in 0 until audio.frameCount }
+            ?: 0
+        engine.playSource(audio, start, state.masterPitchSemitones)
+        mutableUiState.update {
+            it.copy(
+                sourcePlaying = true,
+                transportPlaying = false,
+                currentStep = -1,
+                sourcePlayheadFrame = start,
+                statusMessage = "サンプリング中 — 「ここだ」でPADを叩いてください",
+            )
+        }
+    }
+
+    fun seekSourcePlayback(frame: Int) {
+        val state = mutableUiState.value
+        val audio = state.currentAudio ?: return
+        val safe = frame.coerceIn(0, audio.frameCount - 1)
+        if (state.sourcePlaying) {
+            engine.playSource(audio, safe, state.masterPitchSemitones)
+        }
+        mutableUiState.update { it.copy(sourcePlayheadFrame = safe) }
+    }
+
+    fun setMasterPitch(value: Float) {
+        val pitch = value.coerceIn(-12f, 12f)
+        val state = mutableUiState.value
+        val audio = state.currentAudio
+        val frame = engine.currentSourceFrame.takeIf { it >= 0 } ?: state.sourcePlayheadFrame
+        if (state.sourcePlaying && audio != null) {
+            engine.playSource(audio, frame.coerceIn(0, audio.frameCount - 1), pitch)
+        }
+        mutableUiState.update { it.copy(masterPitchSemitones = pitch) }
+    }
+
+    fun clearVisibleChops() {
+        val state = mutableUiState.value
+        val bankStart = state.selectedBank * SamplerConfig.PADS_PER_BANK
+        val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
+        val clearedPads = (bankStart until bankEnd).map(::PadModel)
+        mutableUiState.update { current ->
+            val pads = current.pads.toMutableList()
+            clearedPads.forEach { pads[it.globalIndex] = it }
+            current.copy(
+                pads = pads,
+                sliceMarkers = emptyList(),
+                activeSliceIndex = null,
+                activeSteps = current.activeSteps.filterNot { key ->
+                    key / SamplerConfig.STEP_COUNT in bankStart until bankEnd
+                }.toSet(),
+                selectedPad = bankStart,
+                statusMessage = "BANK ${state.selectedBank + 1} のチョップを消去しました",
+            )
+        }
+        clearedPads.forEach(engine::updatePad)
+        syncPattern()
+    }
+
+    private fun assignLiveChop(globalIndex: Int) {
+        val state = mutableUiState.value
+        val audio = state.currentAudio ?: return
+        val observedFrame = engine.currentSourceFrame
+            .takeIf { it >= 0 }
+            ?: state.sourcePlayheadFrame
+        val playbackRate = 2.0.pow(state.masterPitchSemitones.toDouble() / 12.0)
+        val latencyFrames = (audio.sampleRate * LIVE_CHOP_LATENCY_SECONDS * playbackRate).toInt()
+        val startFrame = (observedFrame - latencyFrames).coerceAtLeast(state.rangeStartFrame)
+        var changedPads: List<PadModel> = emptyList()
+        mutableUiState.update { current ->
+            val result = assignLiveChopToPad(current, globalIndex, startFrame)
+            changedPads = result.changedPads
+            result.state
+        }
+        changedPads.forEach(engine::updatePad)
     }
 
     fun toggleAutoNext() {
@@ -559,9 +664,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             engine.stopTransport()
             mutableUiState.update { it.copy(transportPlaying = false, currentStep = -1) }
         } else {
+            if (mutableUiState.value.sourcePlaying) {
+                engine.stopSource()
+            }
             syncPattern()
             engine.startTransport()
-            mutableUiState.update { it.copy(transportPlaying = true) }
+            mutableUiState.update { it.copy(transportPlaying = true, sourcePlaying = false) }
         }
     }
 
@@ -693,8 +801,27 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             while (isActive) {
                 val step = engine.currentStep
-                if (mutableUiState.value.currentStep != step) {
-                    mutableUiState.update { it.copy(currentStep = step) }
+                val sourceFrame = engine.currentSourceFrame
+                val sourceIsPlaying = engine.sourcePlaying
+                val snapshot = mutableUiState.value
+                if (
+                    snapshot.currentStep != step ||
+                    snapshot.sourcePlaying != sourceIsPlaying ||
+                    (sourceFrame >= 0 && snapshot.sourcePlayheadFrame != sourceFrame)
+                ) {
+                    mutableUiState.update { state ->
+                        state.copy(
+                            currentStep = step,
+                            sourcePlaying = sourceIsPlaying,
+                            sourcePlayheadFrame = sourceFrame.takeIf { it >= 0 }
+                                ?: state.sourcePlayheadFrame,
+                            statusMessage = if (state.sourcePlaying && !sourceIsPlaying) {
+                                "曲の再生が終わりました — PADでチョップを演奏できます"
+                            } else {
+                                state.statusMessage
+                            },
+                        )
+                    }
                 }
                 delay(24L)
             }
@@ -757,6 +884,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private companion object {
         const val EXPORT_BARS = 4
         const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
+        const val LIVE_CHOP_LATENCY_SECONDS = 0.06
     }
 
     override fun onCleared() {

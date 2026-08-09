@@ -5,6 +5,10 @@
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |
 | PAD付き | ✅ | 4 BANK × 16 PAD |
+| 「おとひろい」正式UI | 🧪 source + host validation | 提示HTMLをComposeで再構成。Android build/device visual check待ち |
+| 曲を流しながらPADで刻む | 🧪 source + pure tests | source playheadから同一BANKのPAD範囲を再計算。実機audio workflow待ち |
+| 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
+| 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
 | トーンを変える | ✅ | PAD別one-pole low-pass Tone |
