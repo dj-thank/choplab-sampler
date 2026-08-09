@@ -1,6 +1,25 @@
 # Project state
 
-Last prepared: 2026-07-16
+Last prepared: 2026-08-09
+
+## Public preview packaging — 2026-08-09
+
+The repository is now prepared for public preview publication at:
+
+- `https://github.com/dj-thank/choplab-sampler`
+- public-release branch: `agent/public-choplab-release`
+- release workflow: `.github/workflows/release.yml`
+
+The successful GitHub Actions run `31319111062` verified the public branch with:
+
+- `scripts/validate_project.sh`: PASS.
+- `:app:testDebugUnitTest`: PASS.
+- `:app:lintDebug`: PASS with warnings but no errors.
+- `:app:assembleDebug`: PASS.
+- debug APK artifact: `choplab-debug-and-reports`.
+- downloaded APK SHA-256: `07A53C695D7A229816E0FC0F53C4B5C9F270C705228DE7320008B4074785FE67`.
+
+The APK was installed from that artifact onto the connected physical Pixel 9a. Package `com.choplab.sampler` reports version `0.1.0`, `minSdk=29`, `targetSdk=36`; `MainActivity` launched and the immediate logcat check found no fatal exception. This is launch/install evidence only, not a complete audio workflow or latency result.
 
 ## Target-machine verification — 2026-08-09
 
@@ -9,9 +28,9 @@ Observed on Windows 11 with workspace-local Temurin JDK 17, Kotlin 2.3.21, Gradl
 - `scripts/validate_project.sh` passed after the domain changes.
 - Six pure Kotlin JUnit test classes passed: `OK (12 tests)`.
 - The Gradle wrapper starts successfully on JDK 17.
-- `:app:testDebugUnitTest` reaches Android SDK dependency resolution, then stops because the authorized user has not accepted the Android SDK license for Platform 36 and Build Tools 36.0.0. No Gradle Android test, APK, or install result is claimed.
+- The local Windows shell does not have `local.properties` or Platform 36 / Build Tools 36.0.0 installed, so the Android Gradle tasks were not run locally. The public GitHub Actions run listed above supplied the Android SDK and passed the Android tests, Lint, and debug APK build.
 - adb sees a physical Pixel 9a as `device` on Android 16 / API 36 / `arm64-v8a`.
-- `com.choplab.sampler` is not currently installed on that device.
+- `com.choplab.sampler` is installed from the successful CI debug artifact and launched once without an immediate fatal exception.
 - Portable JDK/SDK/Kotlin/Gradle storage and Gradle/build/test output paths now resolve through verified NTFS junctions to `F:`. The offline validation and adb device check passed again after relocation.
 
 Source-only foundations added in this checkpoint:
@@ -21,7 +40,7 @@ Source-only foundations added in this checkpoint:
 - Pure pad-range assignment command shared by the ViewModel and host tests.
 - Playback and pattern-render service interfaces for incremental legacy/native coexistence.
 
-These foundations are host-tested but are not yet a user-visible Pro implementation. Gradle Android build, app install, and device audio tests remain behind the SDK license gate.
+These foundations are host-tested but are not yet a user-visible Pro implementation. The public CI debug build and initial device launch are verified; complete device audio workflow, permissions, lifecycle, and latency tests remain open.
 
 ## Buildable baseline
 
@@ -48,7 +67,7 @@ The offline project validation script passed when this workspace was prepared:
 PASS: project-level offline validation completed
 ```
 
-A complete Android SDK/NDK build was not run in the preparation container. Codex must establish the real Gradle build status on the target machine before claiming the project builds.
+A complete Android SDK/NDK build was not run locally. The public Android debug build is verified in GitHub Actions; native NDK/Oboe targets remain unimplemented and therefore are not claimed.
 
 ## Intended Pro target
 
@@ -81,8 +100,8 @@ These artifacts are not wired into the root Gradle project and have missing depe
 
 ## Immediate next milestone
 
-1. Run Gradle sync/build and fix baseline-only issues without adding Pro features.
-2. Create `plans/active/choplab-pro-integration.md`.
+1. Keep the public preview CI and tag-release path green.
+2. Continue `plans/active/choplab-pro-integration.md` as the native/pro migration plan.
 3. Define a versioned stereo-capable domain model and pure tests.
 4. Add NDK/CMake/Oboe infrastructure and a minimal native tone/single-sample proof before replacing the existing engine.
 5. Migrate one vertical feature at a time while keeping the application buildable.
@@ -100,4 +119,4 @@ Update this file only with observed facts. Record exact commands, dates, device/
 
 ## Workspace preparation checks
 
-See `docs/PREPARATION_VALIDATION.md`. Offline validation and configuration syntax checks passed. Gradle distribution download was blocked by DNS/network restrictions in the preparation container, so Android build success remains to be established on the target machine.
+See `docs/PREPARATION_VALIDATION.md`. Offline validation and configuration syntax checks passed locally; the public GitHub Actions run established the current Android debug build status.
