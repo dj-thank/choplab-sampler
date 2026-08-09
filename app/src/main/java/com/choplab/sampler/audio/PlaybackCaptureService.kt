@@ -155,6 +155,7 @@ class PlaybackCaptureService : Service() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun buildAudioRecord(
         configuration: AudioPlaybackCaptureConfiguration,
     ): Pair<AudioRecord, Int> {

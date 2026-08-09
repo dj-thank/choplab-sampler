@@ -1,6 +1,23 @@
-# ChopLab Codex Workspace
+# ChopLab — Android sampler
 
-Android 10以降で動くモバイル・サンプラー **ChopLab** を、Codexで継続開発するための作業環境です。
+[![Android verification](https://github.com/dj-thank/choplab-sampler/actions/workflows/android.yml/badge.svg)](https://github.com/dj-thank/choplab-sampler/actions/workflows/android.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+Android 10以降で動くモバイル・サンプラー **ChopLab** のオープンソース開発リポジトリです。
+
+現在は、音声の取り込み・チョップ・PAD割当・16ステップシーケンス・WAV書き出しを備えたMVPと、次段階へ移行するためのステレオ対応ドメイン基盤を公開しています。GitHub Releasesには、タグから自動生成する開発プレビューAPKを添付します。
+
+初回タグReleaseが作成されるまではReleasesページが空の場合があります。その場合は、GitHub Actionsの`Android verification`実行に添付されたAPK artifactを開発用に取得できます。
+
+## まず使う
+
+1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から最新の`ChopLab-*-debug.apk`をAndroid端末へダウンロードします。
+2. Androidの設定で、使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
+3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
+
+リリースAPKは現時点ではGitHub Actionsのデバッグ署名による開発プレビューです。端末によっては、別のビルドへ更新する前に既存版のアンインストールが必要です。個人データを扱う前に、コードと権限要求を確認してください。
+
+## 現在の範囲
 
 このリポジトリは、次の二層を明確に分けています。
 
@@ -8,6 +25,8 @@ Android 10以降で動くモバイル・サンプラー **ChopLab** を、Codex�
 - `reference/pro-v0.2/`: Oboe、保存、ステレオ、独立タイムストレッチ、ADSR、LFO、FX、MIDI、Song、ステム書き出しの未統合参照コードと設計資料です。
 
 `reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。Codexには、参照コードを盲目的にコピーさせず、MVPへ段階的に統合し、各段階でビルドとテストを通すよう指示しています。
+
+実装済みのMVP範囲と未実装のPro範囲は[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)に記録しています。現時点で、プロジェクト保存、MIDI、独立タイムストレッチ、ネイティブOboeエンジン、ステレオ再生は完成扱いにしていません。
 
 ## 最短開始手順
 
@@ -142,3 +161,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ## ライセンス
 
 アプリ固有コードはMIT Licenseです。依存ライブラリ、Gradle Wrapper、Oboeなどは各ライセンスに従います。AKAI、AKAI Professional、MPCは各権利者の商標です。
+
+## コントリビューション
+
+提案・バグ報告・プルリクエストを歓迎します。詳しくは[`CONTRIBUTING.md`](CONTRIBUTING.md)を参照してください。音声データや認証情報、`local.properties`、署名鍵、生成APKはコミットしないでください。
