@@ -23,6 +23,18 @@ The exact CI APK was installed on the connected Pixel 9a after a content-free `r
 
 This is a focused preview smoke, not latency measurement or complete microphone/system-capture/export validation. The source pitch slider, waveform seek, lower-page sequencer controls, advanced editor, and lifecycle stress remain unverified on this APK.
 
+Final packaging for this UI milestone:
+
+- version commit: `d273fe9997afa34c23868be0477b57fddcd198ae` (`versionCode=2`, `versionName=0.1.1`);
+- final main CI: `31321683089`, all Android verification steps PASS;
+- tag: `v0.1.1-preview.1`;
+- release workflow: `31321828427`, build/package and publish jobs PASS;
+- public Release: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.1.1-preview.1`;
+- public APK: `ChopLab-v0.1.1-preview.1-debug.apk`, 29,920,144 bytes;
+- public APK SHA-256: `F4C1C47066771ABF4FD47AB1F72C06A442A30FA7B6EE13B1ADC6777C416EFB6A`.
+
+The exact public Release APK was installed on the Pixel 9a after a second content-free data check again found only cache/profile files. Package inspection reports `versionCode=2`, `versionName=0.1.1`, `minSdk=29`, and `targetSdk=36`; `MainActivity` is top-resumed and the immediate logcat query found no fatal exception.
+
 ## Public preview packaging — 2026-08-09
 
 The repository is now prepared for public preview publication at:

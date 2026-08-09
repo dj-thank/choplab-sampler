@@ -51,7 +51,7 @@
 - [x] 2026-08-10 — live chop domain/engineを実装し、pure Kotlin 14 testsを通過。
 - [x] 2026-08-10 — canonical Compose UIを実装。Android compile/device確認は次項で実施。
 - [x] 2026-08-10 — public CI `31321170535`でunit/lint/APK PASS、Pixel 9aでvisualとlive-chop smoke PASS。
-- [ ] 2026-08-10 — version `0.1.1` tag-releaseとpublic Release APKの再インストール。
+- [x] 2026-08-10 — `v0.1.1-preview.1`を公開し、public Release APKをPixel 9aへ再インストール。
 
 ## Discoveries
 
@@ -73,6 +73,8 @@
 - GitHub Actions `31321170535` — 2026-08-10 / Ubuntu + Android 36 — unit, lint, assembleDebug, artifact upload PASS。
 - CI APK `BDAE4725031940B8452331D61BA689905AE1C947E77C615BAF0586EB7BAD32F5` / 29,920,144 bytes — Pixel 9a install + launch PASS。
 - Pixel 9a live-chop smoke — generated mono 48 kHz WAV import, source play, PAD 01 capture, stop, assigned marker observed; no immediate fatal exception。Test WAV removed。
+- final main CI `31321683089` — unit/lint/assemble/artifact PASS。Release workflow `31321828427` — build/package/publish PASS。
+- public APK `F4C1C47066771ABF4FD47AB1F72C06A442A30FA7B6EE13B1ADC6777C416EFB6A` / 29,920,144 bytes — Pixel 9a install、version 0.1.1、launch PASS。
 
 ## Risks and rollback
 
