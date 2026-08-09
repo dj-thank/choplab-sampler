@@ -7,6 +7,8 @@ Android 10以降で動くモバイル・サンプラー **ChopLab** のオープ
 
 現在は、音声の取り込み・チョップ・PAD割当・16ステップシーケンス・WAV書き出しを備えたMVPと、次段階へ移行するためのステレオ対応ドメイン基盤を公開しています。GitHub Releasesには、タグから自動生成する開発プレビューAPKを添付します。
 
+初回タグReleaseが作成されるまではReleasesページが空の場合があります。その場合は、GitHub Actionsの`Android verification`実行に添付されたAPK artifactを開発用に取得できます。
+
 ## まず使う
 
 1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から最新の`ChopLab-*-debug.apk`をAndroid端末へダウンロードします。

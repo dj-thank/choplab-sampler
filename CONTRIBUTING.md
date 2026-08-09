@@ -13,14 +13,13 @@
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
-& 'C:\Program Files\Git\bin\bash.exe' .\scripts\validate_project.sh
 ```
 
 Git BashまたはmacOS/Linuxでは:
 
 ```bash
-./scripts/doctor.sh
 ./scripts/validate_project.sh
+./scripts/doctor.sh
 ```
 
 ## 変更前後の確認
