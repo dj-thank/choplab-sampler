@@ -35,7 +35,19 @@ Emulator evidence on a headless Pixel 9 AVD, Android 16/API 36, x86_64, 1080 × 
 - post-review detail screens showed Japanese-first PARAM/PLAY, PITCH/TONE/LEVEL, reverse, one-shot/gate, choke and confirmed PAD-clear labels without clipping; `完成` now includes transport state;
 - visual comparison against both selected generated targets completed after adding the direct sliders and arrange TIP; `design-qa.md` records `final result: passed`.
 
-This establishes `LOCAL_PASS` and focused `EMULATOR_PASS`. No physical phone is connected, so it does not establish `DEVICE_PASS`, physical touch comfort, haptic quality, microphone fidelity, latency, or `HUMAN_GO`. Public CI and Release evidence for this version is pending.
+Public evidence for the exact merged UI commit `a882ec633d6b9ad849a8c900171fbbd1006f29d1`:
+
+- public PR `#2`: `https://github.com/dj-thank/choplab-sampler/pull/2`, merged after the PR verification run `31357128321` passed;
+- main Android verification run `31357298769`: PASS;
+- tag Android verification run `31357435542`: PASS;
+- tag: `v0.3.0-preview.1`;
+- release workflow run `31357435588`: build/package and publication PASS;
+- public Release: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.3.0-preview.1`;
+- public APK: `ChopLab-v0.3.0-preview.1-debug.apk`, 30,116,752 bytes;
+- public APK SHA-256: `E5C79BF01F62C5445E23798CF0603B46305E37BC932F3B9AE94C580E3E4E7219`;
+- downloaded release APK and published `.sha256` file matched byte-for-byte by digest.
+
+This establishes `PUBLIC_PASS` for the public repository, CI, Release publication, downloadable APK identity, and the focused `EMULATOR_PASS` above. No physical phone is connected, so it does not establish `DEVICE_PASS`, physical touch comfort, haptic quality, microphone fidelity, latency, or `HUMAN_GO`.
 
 ## Fixed no-scroll production console — 2026-08-10
 

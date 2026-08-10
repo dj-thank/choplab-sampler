@@ -65,7 +65,7 @@
 - [x] 2026-08-10 — pure workflow modelと5工程railを実装した。
 - [x] 2026-08-10 — `入れる`、`叩く`、`並べる`、`完成` を初心者向けに統合した。
 - [x] 2026-08-10 — unit/lint/APK、Pixel 9/API 36 emulator visual QA、二軸code reviewを完了した。
-- [ ] 2026-08-10 — public previewを公開し、artifact identityを確認する。
+- [x] 2026-08-10 — public previewを公開し、artifact identityを確認した。PR #2、main/tag CI、Release workflowがPASSし、公開APKと`.sha256`のdigest一致を確認した。
 
 ## Discoveries
 
@@ -87,7 +87,8 @@
 - Pixel 9 AVD / Android 16 API 36 — capture、live chop PAD 01/02、KEY C3→C#3、TONE 32%、LEVEL 75%、steps 1/5/9/13、finish readinessを確認。
 - `design-qa.md` — 生成した`叩く`/`並べる` targetと同一状態で比較し、P2の直接調整と初心者TIPを修正後 `final result: passed`。
 - local APK — versionCode 4 / versionName 0.3.0、30,616,083 bytes、SHA-256 `718814700DF1929D53CC90B2B0A10A7230E677C598E226080114ACC8D87348D2`。
-- code review — standards hard violation 0。`CaptureWorkspace`のorientation重複と巨大UI fileは判断事項として将来分割候補に残す。spec指摘のviewport testsは既存`DeckLayoutPolicyTest`で360×640 / 412×820 / 800×320を確認済み。finish再生状態と詳細PAD editorの日本語主表示はreview後に追加した。public previewのみ次milestone。
+- code review — standards hard violation 0。`CaptureWorkspace`のorientation重複と巨大UI fileは判断事項として将来分割候補に残す。spec指摘のviewport testsは既存`DeckLayoutPolicyTest`で360×640 / 412×820 / 800×320を確認済み。finish再生状態と詳細PAD editorの日本語主表示はreview後に追加した。
+- public preview — PR `#2`、merge `a882ec633d6b9ad849a8c900171fbbd1006f29d1`、main CI `31357298769`、tag CI `31357435542`、release workflow `31357435588` がPASS。`v0.3.0-preview.1` 公開APKは30,116,752 bytes、SHA-256 `E5C79BF01F62C5445E23798CF0603B46305E37BC932F3B9AE94C580E3E4E7219`で公開`.sha256`と一致。
 
 ## Risks and rollback
 
