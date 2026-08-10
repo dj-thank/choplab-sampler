@@ -34,7 +34,16 @@ Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at de
 - intentionally truncated only the emulator app's latest autosave to four bytes, force-stopped/relaunched, and observed recovery from the previous 92 BPM generation with no fatal exception;
 - the temporary DocumentsUI `.choplab` and WAV test files were removed from emulator Downloads after verification.
 
-This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the MVP persistence slice. It does not establish physical `DEVICE_PASS`, process-death durability under real storage pressure, large-audio performance, a stable production signing/update path, or `HUMAN_GO`. Public CI and Release evidence for version 0.4.0 is pending.
+Public evidence:
+
+- PR [#3](https://github.com/dj-thank/choplab-sampler/pull/3) merged as `a1f8716339cf42660f8f9c1e7b0a3ade0cd97a46`;
+- main Android verification [run 31360839715](https://github.com/dj-thank/choplab-sampler/actions/runs/31360839715): PASS;
+- tag `v0.4.0-preview.1` resolves to the same merge commit; tag Android verification [run 31361047407](https://github.com/dj-thank/choplab-sampler/actions/runs/31361047407): PASS;
+- release workflow [run 31361047377](https://github.com/dj-thank/choplab-sampler/actions/runs/31361047377): PASS; [public release](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.4.0-preview.1) published;
+- public `ChopLab-v0.4.0-preview.1-debug.apk`: 30,215,115 bytes, SHA-256 `ACCC866289D261DBC7694A2F02A24C90E2EF1DCEFDB250DF2DDB80C1C9C12FF2`; downloaded checksum matched the attached `.sha256`;
+- the downloaded public APK was installed fresh on the Pixel 9 AVD, imported the WAV source, produced schema 2 `audio/0.wav` with `RIFF/WAVE`, restored autosave after restart, exposed SAVE/OPEN/UNDO/REDO without scrolling, and showed no focused fatal exception.
+
+This establishes `LOCAL_PASS`, focused `EMULATOR_PASS`, CI build evidence and public-release artifact identity for the MVP persistence slice. It does not establish physical `DEVICE_PASS`, process-death durability under real storage pressure, large-audio performance, a stable production signing/update path, or `HUMAN_GO`.
 
 ## Guided five-stage sampler workflow — 2026-08-10
 

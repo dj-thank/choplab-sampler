@@ -176,6 +176,9 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - Command: Pixel 9 AVD API 36 install/launch plus DocumentsUI save/open, BPM edit, Undo/Redo, app restart autosave and deliberately truncated latest-generation recovery.
   - Date/environment: 2026-08-10, Android 16/API 36 x86_64 emulator, 1080×2424 density 420.
   - Result: focused `EMULATOR_PASS`。92 save → 93 edit → Undo 92 → Redo 93 → open 92、autosave restart 94、latest autosave 4-byte truncation後previous 92 recovery。final APKではschema 1 autosaveを復元後、WAV sourceを取込、schema 2 + `audio/0.wav` (`RIFF/WAVE`) autosaveを確認し、92 save → 93 edit → open 92を再確認。focused fatal exceptionなし。物理`DEVICE_PASS`ではない。
+- Command: GitHub PR/main/tag/release verification and downloaded public APK smoke.
+  - Date/environment: 2026-08-10, public `dj-thank/choplab-sampler`, Pixel 9 AVD API 36.
+  - Result: PR #3 merge `a1f8716339cf42660f8f9c1e7b0a3ade0cd97a46`、main run `31360839715` PASS、tag run `31361047407` PASS、release run `31361047377` PASS。`v0.4.0-preview.1` public APK 30,215,115 bytes / SHA-256 `ACCC866289D261DBC7694A2F02A24C90E2EF1DCEFDB250DF2DDB80C1C9C12FF2` は添付checksumと一致し、fresh install/import/schema 2 WAV/autosave restart/fixed Finish actions smoke PASS。
 
 - Command: `Get-FileHash -Algorithm SHA256` on both input ZIPs and archived payloads.
   - Date/environment: 2026-08-09, Windows PowerShell.
