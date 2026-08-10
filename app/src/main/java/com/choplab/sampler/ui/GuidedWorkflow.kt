@@ -47,3 +47,17 @@ fun nextTonePreset(tone: Float): Float = when {
 
 fun nextLevelPreset(gain: Float): Float =
     if (gain >= 1.49f) 0f else (gain + 0.1f).coerceAtMost(1.5f)
+
+fun arrangeRepeatPrompt(isAssigned: Boolean, padLabel: String): String =
+    if (isAssigned) {
+        "2 反復を選ぶ  ${padLabel}を何拍ごとに鳴らす？"
+    } else {
+        "2 反復を選ぶ  先に音の入ったPADを選んでください"
+    }
+
+private val arrangeQuickStepLabels =
+    listOf("1 PADを選ぶ", "2 反復を選ぶ", "3 ビートを聴く")
+
+fun arrangeQuickSteps(): List<String> = arrangeQuickStepLabels
+
+val ARRANGE_QUICK_GUIDANCE = arrangeQuickStepLabels.joinToString("  →  ")

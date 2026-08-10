@@ -2,6 +2,39 @@
 
 Last prepared: 2026-08-10
 
+## Arrange quick flow and progressive controls — 2026-08-10
+
+Version `0.6.0` (`versionCode=7`) makes the existing repeat presets discoverable and reduces the default Arrange control density without removing advanced editing:
+
+- the default `4 並べる` screen now presents one explicit path: `1 PADを選ぶ → 2 反復を選ぶ → 3 ビートを聴く`;
+- the repeat area has its own permanent orange outline and heading. An empty PAD explains that an audio-filled PAD must be selected; an assigned PAD asks, for example, `A-01を何拍ごとに鳴らす？`;
+- `4つ打ち / 8分 / 16分` use beginner meanings (`1拍ごと / 半拍ごと / 細かく`) while retaining the exact existing repeat-grid behavior;
+- PLAY/STOP, next-BANK sound layering and one `細かく調整` entry remain on the quick screen;
+- REC/CLEAR, BPM/Swing, manual 16-step editing and KEY/TONE/LEVEL move to the reversible `細かく調整` view;
+- portrait and landscape use the same quick/fine hierarchy and remain fixed, without a scroll API;
+- `docs/AI_ASSIST_VISION.md` records a future one-entry, non-destructive, local-first AI proposal workflow. No AI feature is claimed as implemented.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 46 tests, zero failures/errors/skips;
+- Gradle `lintDebug`: PASS;
+- Gradle `assembleDebug`: PASS;
+- UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
+- `git diff --check`: PASS;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,904,558 bytes, SHA-256 `F503EA14A5E89B26465F32A75A223F2E0AAB087015C9E7ADD5BEB3052621AEF8`.
+
+Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
+
+- captured the v0.5.0 Arrange baseline, then the same empty-PAD viewport with the new three-step quick hierarchy and inspected a side-by-side comparison;
+- recorded a 3.1-second emulator source, assigned A-01, selected `4つ打ち`, and observed steps 1/5/9/13, the orange active preset and matching timeline markers;
+- started beat playback from `3 ビートを聴く` and observed the moving waveform playhead, current-step readout and STOP state with no focused fatal exception;
+- opened `細かく調整` and confirmed REC/CLEAR, BPM/Swing, all 16 manual steps and KEY/TONE/LEVEL remain reachable, with a visible return to quick creation;
+- rotated to 2424 × 1080 landscape and confirmed PAD, waveform, repeat question/presets and the three primary actions remained visible without clipping.
+- measured each portrait repeat preset at 127 px on the 420 dpi test device, slightly over the 48 dp minimum touch target.
+
+This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the control-hierarchy change. It does not yet establish public CI/Release identity, installation of version `0.6.0` on the physical phone, physical touch/TalkBack/haptic quality, any AI capability, or `HUMAN_GO`.
+
 ## Arrange waveform and repeat workflow — 2026-08-10
 
 Version `0.5.0` (`versionCode=6`) turns `4 並べる` into a visible one-bar beat workspace without removing the original live-chop flow:

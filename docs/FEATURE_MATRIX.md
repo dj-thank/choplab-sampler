@@ -12,6 +12,8 @@
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
 | 選択音を4つ打ち・8分・16分で反復 | ✅ | 選択PADだけを置換し、他PAD・他BANKの重ね音を保持 |
+| PAD→反復→再生の迷わない導線 | 🧪 emulator | 通常の並べる画面を3手順へ整理し、反復を見出し・質問文・オレンジ枠付きで常時表示 |
+| 上級操作の段階表示 | 🧪 emulator | 16手動step、BPM/Swing、録音/削除、KEY/TONE/LEVELを`細かく調整`へ移し、機能を削らず通常画面を簡素化 |
 | 並べる画面の実波形・再生位置 | ✅ preview | 選択sliceのPCM波形、太い16-step playhead、A〜D BANK発音マーカーを固定画面で確認し公開 |
 | BANKを替えてドラムを重ねる | ✅ preview | 全64 PADの既存layer再生、BANK別timeline marker、空の次BANK/PADから`叩く`へ直行する音追加導線を公開 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
@@ -35,3 +37,4 @@
 | Independent time-stretch | — | 未実装 |
 | Stereo internal engine | — | 未実装 |
 | Native Oboe engine | — | 未実装 |
+| LLM / 音声AIアシスト | 📝 vision | 非破壊proposal、試聴比較、Undo、local-first、cloud明示同意の境界を`docs/AI_ASSIST_VISION.md`へ定義。実装は未着手 |
