@@ -2,6 +2,20 @@
 
 Last prepared: 2026-08-10
 
+## Public v0.6.0 preview evidence — 2026-08-10
+
+- PR [#5](https://github.com/dj-thank/choplab-sampler/pull/5) merged as `db0845d9de8129dae14d813eab10ad1cda88a0de` after both branch verification runs `31391730072` and `31391734337` passed.
+- Main Android verification [run 31392024199](https://github.com/dj-thank/choplab-sampler/actions/runs/31392024199) passed before tagging.
+- Annotated tag `v0.6.0-preview.1` resolves to the same merge commit; tag Android verification [run 31392345400](https://github.com/dj-thank/choplab-sampler/actions/runs/31392345400) passed.
+- Release workflow [run 31392343101](https://github.com/dj-thank/choplab-sampler/actions/runs/31392343101) passed both build/package and publish jobs. The public prerelease is [ChopLab v0.6.0-preview.1](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.6.0-preview.1).
+- Public `ChopLab-v0.6.0-preview.1-debug.apk`: 30,313,419 bytes, SHA-256 `1E57FB66FDA11E3C4A69B2646A7CA340F67067A13AC5B11E505C40A5011B3B90`. The downloaded APK matched the Release digest and attached `.sha256`, verified with APK Signature Scheme v2, and reported package `com.choplab.sampler`, `versionCode=7`, `versionName=0.6.0`.
+- The exact public APK installed fresh and cold-launched on the Pixel 9 AVD. `MainActivity` became top-resumed and the focused log query found no fatal exception.
+- On the connected Pixel 9a, Android rejected the in-place update because the prior public debug signature differed from the new CI debug signature. Before replacing only `com.choplab.sampler`, the 12,003,624-byte autosave was backed up, its archive entries were read successfully, and device/PC SHA-256 matched at `63C3B7EA9183B9C88FADE32AD98125C6A625A1163B1921B9F62720C6494842E7`.
+- The public APK was then installed as `versionCode=7`, `versionName=0.6.0`; the same autosave was restored with the same digest. A cold launch displayed `前回の自動保存を復元しました`, no focused fatal exception was detected, and the previously focused app was reopened.
+- The exact public APK remains on the phone at `/sdcard/Download/ChopLab-v0.6.0-preview.1-debug.apk` and on the PC under the task `outputs` folder.
+
+This establishes `LOCAL_PASS`, focused `EMULATOR_PASS`, `PUBLIC_PASS`, and install/launch plus verified autosave-migration `DEVICE_PASS` for the exact public v0.6.0 preview APK. It does not establish sustained physical multi-touch performance, TalkBack/haptic quality, long-session audio latency, production signing/update continuity, implemented AI assistance, or `HUMAN_GO`.
+
 ## Arrange quick flow and progressive controls — 2026-08-10
 
 Version `0.6.0` (`versionCode=7`) makes the existing repeat presets discoverable and reduces the default Arrange control density without removing advanced editing:

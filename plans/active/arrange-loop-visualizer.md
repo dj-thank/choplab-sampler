@@ -41,6 +41,8 @@
 
 ## Progress
 
+- [x] 2026-08-10 - v0.6.0 full local validation, dual-axis review, PR/main/tag CI, public prerelease, exact public APK emulator smoke, Pixel 9a install, and verified autosave restoration completed.
+
 - [x] 2026-08-10 — 現行 Arrange を emulator で撮影し、波形・playhead・BANK layering・tone clarity の不足を監査。
 - [x] 2026-08-10 — RepeatGrid/BANK activity、audible layer filtering、repeat recognition、tone preset の Red/Green。44 unit tests PASS。
 - [x] 2026-08-10 — ViewModel と portrait/landscape Compose UI を統合。
