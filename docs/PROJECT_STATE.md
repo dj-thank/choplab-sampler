@@ -22,7 +22,7 @@ Local evidence:
 - Gradle `assembleDebug`: PASS;
 - UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
 - `git diff --check`: PASS;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,313,419 bytes, SHA-256 `4034225B24999F5494045C6C1CBA063B2F832E0E9A43C72B9A1E21211CE3D0B6`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,904,366 bytes, SHA-256 `00B2163FF4C92B1DB0887BF1A13FF2C8D08C50702CA2637AD7A8539AFAFAE928`.
 
 Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
 
@@ -31,6 +31,7 @@ Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at de
 - started beat playback from `3 ビートを聴く` and observed the moving waveform playhead, current-step readout and STOP state with no focused fatal exception;
 - opened `細かく調整` and confirmed REC/CLEAR, BPM/Swing, all 16 manual steps and KEY/TONE/LEVEL remain reachable, with a visible return to quick creation;
 - rotated to 2424 × 1080 landscape and confirmed PAD, waveform, repeat question/presets and the three primary actions remained visible without clipping.
+- measured each portrait repeat preset at 127 px on the 420 dpi test device, slightly over the 48 dp minimum touch target.
 
 This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the control-hierarchy change. It does not yet establish public CI/Release identity, installation of version `0.6.0` on the physical phone, physical touch/TalkBack/haptic quality, any AI capability, or `HUMAN_GO`.
 

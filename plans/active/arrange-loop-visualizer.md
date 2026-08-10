@@ -68,6 +68,7 @@
 - 2026-08-10: PR #4をmerge commit `48c645e`として公開。main/tag Android verificationとrelease workflow PASS。公開APK 30,297,035 bytes、SHA-256 `DB3EC8CC7B23C7DFB82547FBFC10DFEC59A11BFE11AF707AD24DC2CEBF16C4F1`。
 - 2026-08-10: 公開APKをPixel 9 AVDとPixel 9aへ導入・起動。Pixel 9aでは旧autosaveを内容非表示でbackupし、同一SHA-256のまま公開版へ復元。APKは端末Downloadへ保存。
 - 2026-08-10: v0.5.0同条件baselineとv0.6.0 quick/fineをPixel 9 AVDで比較。音入りA-01選択→4つ打ち→再生でstep 1/5/9/13、active preset、playheadを確認。landscapeもvisible clippingなし。
+- 2026-08-10: reviewで反復presetのtouch targetが約34.7dpと判明。panel高を調整し、最終UI hierarchyで127px / 420dpi（約48.4dp）を確認。
 
 ## Risks and rollback
 

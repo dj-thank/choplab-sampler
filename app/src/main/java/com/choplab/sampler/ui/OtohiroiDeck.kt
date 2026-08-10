@@ -84,6 +84,11 @@ internal val DeckPadLit = Color(0xFFFFB25E)
 private val DeckFont = FontFamily.Monospace
 private val ConsoleShape = RoundedCornerShape(13.dp)
 private val PanelShape = RoundedCornerShape(8.dp)
+private val RepeatPatternChoices = listOf(
+    RepeatGrid.QUARTER to "4つ打ち\n1拍ごと",
+    RepeatGrid.EIGHTH to "8分\n半拍ごと",
+    RepeatGrid.SIXTEENTH to "16分\n細かく",
+)
 
 private enum class PadEditorPage(val label: String) {
     PARAM("音づくり\nPARAM"),
@@ -1239,7 +1244,7 @@ private fun SequenceWorkspace(
         ) {
             if (!showFineControls) {
                 BeginnerCoachBar(
-                    text = arrangeQuickSteps().joinToString("  →  "),
+                    text = ARRANGE_QUICK_GUIDANCE,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(if (metrics.density == DeckDensity.COMPACT) 26.dp else 32.dp),
@@ -1270,7 +1275,7 @@ private fun SequenceWorkspace(
                 )
                 RepeatPatternPicker(
                     state = state,
-                    height = metrics.controlHeightDp.dp * 1.55f,
+                    height = metrics.controlHeightDp.dp * 1.85f,
                     viewModel = viewModel,
                 )
                 QuickArrangeActionRow(
@@ -1382,7 +1387,7 @@ private fun SequenceControlDeck(
     ) {
         if (!showFineControls) {
             BeginnerCoachBar(
-                text = arrangeQuickSteps().joinToString("  →  "),
+                text = ARRANGE_QUICK_GUIDANCE,
                 modifier = Modifier.fillMaxWidth().height(28.dp),
             )
             ArrangementWaveformTimeline(
@@ -1394,7 +1399,7 @@ private fun SequenceControlDeck(
             )
             RepeatPatternPicker(
                 state = state,
-                height = metrics.controlHeightDp.dp * 1.6f,
+                height = metrics.controlHeightDp.dp * 1.85f,
                 viewModel = viewModel,
             )
             QuickArrangeActionRow(
@@ -1567,11 +1572,6 @@ private fun RepeatPatternPicker(
     val pad = state.selectedPadModel()
     val activeRepeatGrid = state.activeSteps.repeatGridForPad(state.selectedPad)
     val padLabel = "${bankName(pad.bankIndex)}-%02d".format(pad.indexInBank + 1)
-    val choices = listOf(
-        RepeatGrid.QUARTER to "4つ打ち\n1拍ごと",
-        RepeatGrid.EIGHTH to "8分\n半拍ごと",
-        RepeatGrid.SIXTEENTH to "16分\n細かく",
-    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1594,7 +1594,7 @@ private fun RepeatPatternPicker(
             modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            choices.forEach { (grid, label) ->
+            RepeatPatternChoices.forEach { (grid, label) ->
                 MachineButton(
                     label = label,
                     onClick = { viewModel.fillSelectedPadPattern(grid) },

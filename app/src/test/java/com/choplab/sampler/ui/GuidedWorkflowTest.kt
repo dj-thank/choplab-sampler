@@ -78,5 +78,9 @@ class GuidedWorkflowTest {
             listOf("1 PADを選ぶ", "2 反復を選ぶ", "3 ビートを聴く"),
             arrangeQuickSteps(),
         )
+        assertEquals(
+            "1 PADを選ぶ  →  2 反復を選ぶ  →  3 ビートを聴く",
+            ARRANGE_QUICK_GUIDANCE,
+        )
     }
 }
