@@ -22,7 +22,7 @@ Local evidence:
 - Gradle `assembleDebug`: PASS;
 - UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
 - `git diff --check`: PASS;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,904,366 bytes, SHA-256 `00B2163FF4C92B1DB0887BF1A13FF2C8D08C50702CA2637AD7A8539AFAFAE928`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,904,558 bytes, SHA-256 `F503EA14A5E89B26465F32A75A223F2E0AAB087015C9E7ADD5BEB3052621AEF8`.
 
 Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
 
