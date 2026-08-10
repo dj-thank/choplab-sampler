@@ -15,6 +15,7 @@ import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
 import com.choplab.sampler.audio.TransientDetector
+import com.choplab.sampler.model.EditHistory
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
@@ -27,6 +28,8 @@ import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.persistence.AtomicProjectStore
+import com.choplab.sampler.persistence.ProjectArchiveCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -46,6 +50,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val engine: SamplerPlaybackEngine = SamplerEngine(application) { message ->
         viewModelScope.launch { setStatus(message) }
     }
+    private val editHistory = EditHistory(maxEntries = MAX_HISTORY_ENTRIES)
+    private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
+    private var autosaveJob: Job? = null
+    private var projectRevision = 0L
 
     private val mutableUiState = MutableStateFlow(SamplerUiState())
     val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
@@ -54,6 +62,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.start()
         observePlaybackCapture()
         pollTransportStep()
+        recoverAutosave()
     }
 
     fun loadAudio(uri: Uri) {
@@ -64,6 +73,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
                     engine.stopSource()
+                    editHistory.reset()
                     mutableUiState.update { state ->
                         state.copy(
                             isLoading = false,
@@ -76,9 +86,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             sourcePlaying = false,
                             sourcePlayheadFrame = 0,
                             masterPitchSemitones = 0f,
+                            canUndo = false,
+                            canRedo = false,
                             statusMessage = "${audio.name} を読み込みました",
                         )
                     }
+                    projectRevision++
+                    scheduleAutosave()
                 }
                 .onFailure { throwable ->
                     mutableUiState.update {
@@ -157,8 +171,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setRangeStart(frame: Int) {
-        mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
+        commitEdit(mergeKey = "range-start") { state ->
+            val audio = state.currentAudio ?: return@commitEdit state
             val minimum = minimumSliceFrames(audio.sampleRate)
             val upper = (state.rangeEndFrame - minimum).coerceAtLeast(0)
             val start = snapToZeroCrossing(
@@ -176,8 +190,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setRangeEnd(frame: Int) {
-        mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
+        commitEdit(mergeKey = "range-end") { state ->
+            val audio = state.currentAudio ?: return@commitEdit state
             val minimum = minimumSliceFrames(audio.sampleRate)
             val lower = (state.rangeStartFrame + minimum).coerceAtMost(audio.frameCount)
             val end = snapToZeroCrossing(
@@ -195,8 +209,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun resetRange() {
-        mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
+        commitEdit { state ->
+            val audio = state.currentAudio ?: return@commitEdit state
             state.copy(
                 rangeStartFrame = 0,
                 rangeEndFrame = audio.frameCount,
@@ -207,15 +221,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleManualChop() {
-        mutableUiState.update { it.copy(manualChopEnabled = !it.manualChopEnabled) }
+        commitEdit { it.copy(manualChopEnabled = !it.manualChopEnabled) }
     }
 
     fun addSliceMarker(frame: Int) {
-        mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
+        commitEdit { state ->
+            val audio = state.currentAudio ?: return@commitEdit state
             val minimum = minimumSliceFrames(audio.sampleRate)
             if (state.rangeEndFrame - state.rangeStartFrame < minimum * 2) {
-                return@update state.copy(statusMessage = "選択範囲が短く、チョップ位置を追加できません")
+                return@commitEdit state.copy(statusMessage = "選択範囲が短く、チョップ位置を追加できません")
             }
             val safe = snapToZeroCrossing(
                 audio = audio,
@@ -230,7 +244,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 state.sliceMarkers.filter { it in (state.rangeStartFrame + 1) until state.rangeEndFrame } +
                 state.rangeEndFrame
             if (existingPoints.any { kotlin.math.abs(it - safe) < minimum }) {
-                return@update state.copy(statusMessage = "既存スライスに近すぎます")
+                return@commitEdit state.copy(statusMessage = "既存スライスに近すぎます")
             }
             state.copy(
                 sliceMarkers = (state.sliceMarkers + safe).distinct().sorted(),
@@ -241,15 +255,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearSliceMarkers() {
-        mutableUiState.update {
+        commitEdit {
             it.copy(sliceMarkers = emptyList(), activeSliceIndex = null, statusMessage = "チョップ位置を消去しました")
         }
     }
 
     fun moveSliceMarker(markerIndex: Int, frame: Int) {
-        mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
-            if (markerIndex !in state.sliceMarkers.indices) return@update state
+        commitEdit(mergeKey = "slice-marker-$markerIndex") { state ->
+            val audio = state.currentAudio ?: return@commitEdit state
+            if (markerIndex !in state.sliceMarkers.indices) return@commitEdit state
 
             val minimum = minimumSliceFrames(audio.sampleRate)
             val lower = if (markerIndex == 0) {
@@ -262,7 +276,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             } else {
                 state.sliceMarkers[markerIndex + 1] - minimum
             }
-            if (lower > upper) return@update state
+            if (lower > upper) return@commitEdit state
 
             val markers = state.sliceMarkers.toMutableList()
             markers[markerIndex] = snapToZeroCrossing(
@@ -279,14 +293,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun removeBoundaryForActiveSlice() {
-        mutableUiState.update { state ->
+        commitEdit { state ->
             if (state.sliceMarkers.isEmpty()) {
-                return@update state.copy(statusMessage = "削除できるチョップ境界がありません")
+                return@commitEdit state.copy(statusMessage = "削除できるチョップ境界がありません")
             }
             val sliceIndex = state.activeSliceIndex
-                ?: return@update state.copy(statusMessage = "先に波形上のスライスを選択してください")
+                ?: return@commitEdit state.copy(statusMessage = "先に波形上のスライスを選択してください")
             val markerIndex = if (sliceIndex < state.sliceMarkers.size) sliceIndex else sliceIndex - 1
-            if (markerIndex !in state.sliceMarkers.indices) return@update state
+            if (markerIndex !in state.sliceMarkers.indices) return@commitEdit state
 
             val markers = state.sliceMarkers.toMutableList().apply { removeAt(markerIndex) }
             val remainingSlices = markers.size + 1
@@ -309,13 +323,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun autoChopEqual(sliceCount: Int) {
-        mutableUiState.update { state ->
-            val audio = state.currentAudio ?: return@update state
-            if (state.rangeEndFrame <= state.rangeStartFrame) return@update state
+        commitEdit { state ->
+            val audio = state.currentAudio ?: return@commitEdit state
+            if (state.rangeEndFrame <= state.rangeStartFrame) return@commitEdit state
             val length = state.rangeEndFrame - state.rangeStartFrame
             val maximumByLength = length / minimumSliceFrames(audio.sampleRate)
             if (maximumByLength < 2) {
-                return@update state.copy(statusMessage = "選択範囲が短く、等分チョップできません")
+                return@commitEdit state.copy(statusMessage = "選択範囲が短く、等分チョップできません")
             }
             val count = sliceCount.coerceIn(
                 2,
@@ -359,28 +373,32 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 .distinct()
                 .sorted()
             withContext(Dispatchers.Main) {
-                mutableUiState.update { state ->
-                    if (
-                        state.currentAudio?.id != audio.id ||
-                        state.rangeStartFrame != snapshot.rangeStartFrame ||
-                        state.rangeEndFrame != snapshot.rangeEndFrame
-                    ) {
-                        return@update state.copy(
+                val current = mutableUiState.value
+                if (
+                    current.currentAudio?.id != audio.id ||
+                    current.rangeStartFrame != snapshot.rangeStartFrame ||
+                    current.rangeEndFrame != snapshot.rangeEndFrame
+                ) {
+                    mutableUiState.update { state ->
+                        state.copy(
                             isLoading = false,
                             statusMessage = "範囲が変更されたため、自動チョップ結果を破棄しました",
                         )
                     }
-                    state.copy(
-                        isLoading = false,
-                        sliceMarkers = markers,
-                        activeSliceIndex = if (markers.isEmpty()) null else 0,
-                        manualChopEnabled = false,
-                        statusMessage = if (markers.isEmpty()) {
-                            "明確なトランジェントを検出できませんでした"
-                        } else {
-                            "${markers.size + 1} 個のスライス候補を作成しました"
-                        },
-                    )
+                } else {
+                    commitEdit { state ->
+                        state.copy(
+                            isLoading = false,
+                            sliceMarkers = markers,
+                            activeSliceIndex = if (markers.isEmpty()) null else 0,
+                            manualChopEnabled = false,
+                            statusMessage = if (markers.isEmpty()) {
+                                "明確なトランジェントを検出できませんでした"
+                            } else {
+                                "${markers.size + 1} 個のスライス候補を作成しました"
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -425,7 +443,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun assignRanges(ranges: List<SliceRange>, message: String) {
         var padsToSync: List<PadModel> = emptyList()
-        mutableUiState.update { state ->
+        commitEdit { state ->
             val result = assignRangesToPads(state, ranges, message)
             padsToSync = result.changedPads
             result.state
@@ -467,7 +485,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (state.recordArmed && state.transportPlaying) {
             val step = engine.currentStep
             if (step in 0 until SamplerConfig.STEP_COUNT) {
-                mutableUiState.update { current ->
+                commitEdit { current ->
                     val updated = current.activeSteps + stepKey(globalIndex, step)
                     current.copy(activeSteps = updated)
                 }
@@ -531,7 +549,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (state.sourcePlaying && audio != null) {
             engine.playSource(audio, frame.coerceIn(0, audio.frameCount - 1), pitch)
         }
-        mutableUiState.update { it.copy(masterPitchSemitones = pitch) }
+        commitEdit(mergeKey = "master-pitch") { it.copy(masterPitchSemitones = pitch) }
     }
 
     fun clearVisibleChops() {
@@ -539,7 +557,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val bankStart = state.selectedBank * SamplerConfig.PADS_PER_BANK
         val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
         val clearedPads = (bankStart until bankEnd).map(::PadModel)
-        mutableUiState.update { current ->
+        commitEdit { current ->
             val pads = current.pads.toMutableList()
             clearedPads.forEach { pads[it.globalIndex] = it }
             current.copy(
@@ -567,7 +585,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val latencyFrames = (audio.sampleRate * LIVE_CHOP_LATENCY_SECONDS * playbackRate).toInt()
         val startFrame = (observedFrame - latencyFrames).coerceAtLeast(state.rangeStartFrame)
         var changedPads: List<PadModel> = emptyList()
-        mutableUiState.update { current ->
+        commitEdit { current ->
             val result = assignLiveChopToPad(current, globalIndex, startFrame)
             changedPads = result.changedPads
             result.state
@@ -576,18 +594,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleAutoNext() {
-        mutableUiState.update { it.copy(autoNextPad = !it.autoNextPad) }
+        commitEdit { it.copy(autoNextPad = !it.autoNextPad) }
     }
 
-    fun setSelectedPadPitch(value: Float) = updateSelectedPad {
+    fun setSelectedPadPitch(value: Float) = updateSelectedPad("pitch") {
         it.copy(pitchSemitones = value.coerceIn(-24f, 24f))
     }
 
-    fun setSelectedPadTone(value: Float) = updateSelectedPad {
+    fun setSelectedPadTone(value: Float) = updateSelectedPad("tone") {
         it.copy(tone = value.coerceIn(0f, 1f))
     }
 
-    fun setSelectedPadGain(value: Float) = updateSelectedPad {
+    fun setSelectedPadGain(value: Float) = updateSelectedPad("gain") {
         it.copy(gain = value.coerceIn(0f, 1.5f))
     }
 
@@ -607,7 +625,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearSelectedPad() {
         var clearedPad: PadModel? = null
-        mutableUiState.update { state ->
+        commitEdit { state ->
             val mutablePads = state.pads.toMutableList()
             val empty = PadModel(state.selectedPad)
             mutablePads[state.selectedPad] = empty
@@ -625,9 +643,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
     }
 
-    private fun updateSelectedPad(transform: (PadModel) -> PadModel) {
+    private fun updateSelectedPad(
+        parameter: String? = null,
+        transform: (PadModel) -> PadModel,
+    ) {
         var changed: PadModel? = null
-        mutableUiState.update { state ->
+        val selectedPad = mutableUiState.value.selectedPad
+        val mergeKey = parameter?.let { "pad-$selectedPad-$it" }
+        commitEdit(mergeKey = mergeKey) { state ->
             val mutablePads = state.pads.toMutableList()
             val current = state.selectedPadModel()
             val updated = transform(current)
@@ -640,7 +663,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleStep(stepIndex: Int) {
         if (stepIndex !in 0 until SamplerConfig.STEP_COUNT) return
-        mutableUiState.update { state ->
+        commitEdit { state ->
             val key = stepKey(state.selectedPad, stepIndex)
             val updated = if (key in state.activeSteps) state.activeSteps - key else state.activeSteps + key
             state.copy(activeSteps = updated)
@@ -649,12 +672,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setBpm(value: Float) {
-        mutableUiState.update { it.copy(bpm = value.coerceIn(40f, 240f)) }
+        commitEdit(mergeKey = "bpm") { it.copy(bpm = value.coerceIn(40f, 240f)) }
         syncPattern()
     }
 
     fun setSwing(value: Float) {
-        mutableUiState.update { it.copy(swing = value.coerceIn(50f, 75f)) }
+        commitEdit(mergeKey = "swing") { it.copy(swing = value.coerceIn(50f, 75f)) }
         syncPattern()
     }
 
@@ -678,7 +701,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearSelectedPadPattern() {
-        mutableUiState.update { state ->
+        commitEdit { state ->
             val filtered = state.activeSteps.filterNot { key ->
                 key / SamplerConfig.STEP_COUNT == state.selectedPad
             }.toSet()
@@ -688,7 +711,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearAllPattern() {
-        mutableUiState.update { it.copy(activeSteps = emptySet(), statusMessage = "パターンを全消去しました") }
+        commitEdit { it.copy(activeSteps = emptySet(), statusMessage = "パターンを全消去しました") }
         syncPattern()
     }
 
@@ -753,8 +776,182 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun saveProject(destination: Uri) {
+        val snapshot = mutableUiState.value
+        viewModelScope.launch {
+            mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val application = getApplication<Application>()
+                    application.contentResolver.openOutputStream(destination, "w")?.use { output ->
+                        ProjectArchiveCodec.write(snapshot, output)
+                    } ?: error("保存先を開けません")
+                }
+            }.onSuccess {
+                mutableUiState.update {
+                    it.copy(isLoading = false, statusMessage = "プロジェクトを保存しました")
+                }
+            }.onFailure { throwable ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = throwable.message ?: "プロジェクトを保存できませんでした",
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadProject(source: Uri) {
+        val revisionAtStart = projectRevision
+        viewModelScope.launch {
+            mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを開いています…") }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val application = getApplication<Application>()
+                    application.contentResolver.openInputStream(source)?.use(ProjectArchiveCodec::read)
+                        ?: error("プロジェクトを開けません")
+                }
+            }.onSuccess { restored ->
+                if (projectRevision != revisionAtStart) {
+                    mutableUiState.update {
+                        it.copy(isLoading = false, statusMessage = "編集中のため読み込み結果を破棄しました")
+                    }
+                    return@onSuccess
+                }
+                editHistory.reset()
+                projectRevision++
+                applyProjectState(restored, "プロジェクトを開きました")
+                scheduleAutosave()
+            }.onFailure { throwable ->
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = throwable.message ?: "プロジェクトを開けませんでした",
+                    )
+                }
+            }
+        }
+    }
+
+    fun undoEdit() {
+        val restored = editHistory.undo(mutableUiState.value) ?: run {
+            setStatus("戻せる操作はありません")
+            return
+        }
+        projectRevision++
+        applyProjectState(restored, "1つ前の操作へ戻しました")
+        scheduleAutosave()
+    }
+
+    fun redoEdit() {
+        val restored = editHistory.redo(mutableUiState.value) ?: run {
+            setStatus("やり直せる操作はありません")
+            return
+        }
+        projectRevision++
+        applyProjectState(restored, "操作をやり直しました")
+        scheduleAutosave()
+    }
+
     fun setStatus(message: String) {
         mutableUiState.update { it.copy(statusMessage = message) }
+    }
+
+    private fun commitEdit(
+        mergeKey: String? = null,
+        transform: (SamplerUiState) -> SamplerUiState,
+    ) {
+        val before = mutableUiState.value
+        val after = transform(before)
+        if (after == before) return
+        if (before.hasSameEditableContent(after)) {
+            mutableUiState.value = after.copy(
+                canUndo = editHistory.canUndo,
+                canRedo = editHistory.canRedo,
+            )
+            return
+        }
+        editHistory.record(before, mergeKey)
+        mutableUiState.value = after.copy(
+            canUndo = editHistory.canUndo,
+            canRedo = editHistory.canRedo,
+        )
+        projectRevision++
+        scheduleAutosave()
+    }
+
+    private fun SamplerUiState.hasSameEditableContent(other: SamplerUiState): Boolean =
+        currentAudio == other.currentAudio &&
+            rangeStartFrame == other.rangeStartFrame &&
+            rangeEndFrame == other.rangeEndFrame &&
+            sliceMarkers == other.sliceMarkers &&
+            activeSliceIndex == other.activeSliceIndex &&
+            manualChopEnabled == other.manualChopEnabled &&
+            selectedBank == other.selectedBank &&
+            selectedPad == other.selectedPad &&
+            autoNextPad == other.autoNextPad &&
+            pads == other.pads &&
+            activeSteps == other.activeSteps &&
+            bpm == other.bpm &&
+            swing == other.swing &&
+            sourcePlayheadFrame == other.sourcePlayheadFrame &&
+            masterPitchSemitones == other.masterPitchSemitones
+
+    private fun applyProjectState(restored: SamplerUiState, message: String) {
+        engine.stopSource()
+        engine.stopTransport()
+        engine.stopAllVoices()
+        val stoppedRestoredState = restored.copy(
+            isLoading = false,
+            statusMessage = message,
+            transportPlaying = false,
+            recordArmed = false,
+            currentStep = -1,
+            microphoneRecording = false,
+            systemAudioRecording = false,
+            sourcePlaying = false,
+            canUndo = editHistory.canUndo,
+            canRedo = editHistory.canRedo,
+        )
+        mutableUiState.value = stoppedRestoredState
+        stoppedRestoredState.pads.forEach(engine::updatePad)
+        syncPattern()
+    }
+
+    private fun scheduleAutosave() {
+        val snapshot = mutableUiState.value
+        val revision = projectRevision
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            delay(AUTOSAVE_DELAY_MS)
+            val failure = withContext(Dispatchers.IO) {
+                runCatching { autosaveStore.save(snapshot) }.exceptionOrNull()
+            }
+            if (failure != null && projectRevision == revision) {
+                mutableUiState.update {
+                    it.copy(statusMessage = failure.message ?: "自動保存できませんでした")
+                }
+            }
+        }
+    }
+
+    private fun recoverAutosave() {
+        val revisionAtStart = projectRevision
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.load() } }
+            if (projectRevision != revisionAtStart) return@launch
+            result.onSuccess { restored ->
+                if (restored != null) {
+                    editHistory.reset()
+                    applyProjectState(restored, "前回の自動保存を復元しました")
+                }
+            }.onFailure { throwable ->
+                mutableUiState.update {
+                    it.copy(statusMessage = throwable.message ?: "前回の自動保存を復元できませんでした")
+                }
+            }
+        }
     }
 
     private fun syncPattern() {
@@ -883,6 +1080,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private companion object {
         const val EXPORT_BARS = 4
+        const val MAX_HISTORY_ENTRIES = 40
+        const val AUTOSAVE_DELAY_MS = 900L
         const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
         const val LIVE_CHOP_LATENCY_SECONDS = 0.06
     }

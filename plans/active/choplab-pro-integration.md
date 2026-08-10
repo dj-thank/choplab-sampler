@@ -138,6 +138,8 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - [x] 2026-08-09 — Red/Green で stereo-capable project domain、legacy adapter、pure pad assignment、engine/render coexistence interfaces を追加。
 - [x] 2026-08-09 — offline validation と pure Kotlin JUnit 12 tests を通過。
 - [x] 2026-08-09 — portable toolchain、Gradle caches、build/test output を `F:\CodexData\ChopLab` へ保全移設し、元の C: path を NTFS junction として維持。移設後の JDK/adb/Kotlin/Gradle/offline validation を再確認。
+- [x] 2026-08-10 — Milestone 4のMVP persistence sliceとして、schema 2/WAV `.choplab`、schema 1 migration、manual save/open、900ms debounce autosave、fsync後の二世代/pending復旧、最大40操作Undo/Redoを固定5工程UIへ接続。
+- [x] 2026-08-10 — archive round-trip、共有audio identity、migration/newer-schema rejection、path traversal、過大manifest、malformed/truncated WAV、二世代/pending fallback、history bounds/coalescingをpublic seamのJUnitで固定。
 - [ ] 2026-08-09 19:24 JST — Android SDK license の authorized acceptance 待ち。Platform 36 / Build Tools 36.0.0 は未導入。
 - [ ] 2026-08-09 19:10 JST — Milestone 1 portable toolchain と baseline build を確立中。
 
@@ -153,6 +155,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - Android SDK license prompt は法的権限を持つ本人の受諾を要求した。自動回答せず、Platform/Build Tools install は skip された。
 - `PcmBuffer` の defensive copy、partial-frame rejection、project asset cross-reference bounds は初期 Green 後のレビュー用 Red test で追加し、validation を強化した。
 - 固定点レビューで project/asset/pattern metadata と pattern event 数の未制限を検出し、失敗テストを追加して上限を導入した。PAD 再割当時に pitch/gain/reverse を保持する既存方針も characterization test で固定した。
+- MVP archive writerが呼び出し元streamを先にcloseして`fsync`を失敗させる問題を二世代復旧testが検出した。codecをnon-closing boundaryへ変更し、呼び出し元がflush/sync後に世代交代する所有権へ固定した。
 
 ## Decision log
 
@@ -163,8 +166,16 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - 2026-08-09 19:24 JST — Android SDK license は Codex が代理受諾しない。authorized user の明示的同意後に workspace-local SDK へ導入する。
 - 2026-08-09 — MVP を一括置換せず、pure domain と interface seam を先に追加する。既存 AudioTrack path を動作 fallback として保持し、後続 Oboe 実装を段階的に差し替え可能にするため。
 - 2026-08-09 — source/Git は小容量のため C: に保持し、SDK/Gradle/build/test の write-heavy data だけを F: HDD へ junction で分離する。portable path compatibility と SSD write reduction を両立するため。
+- 2026-08-10 — 完全なstereo Pro archiveを一括移植せず、現在のmono MVPで実際に再生可能な状態をschema 2 `.choplab`として保存する。音声entryは標準PCM16 WAVとし、開発中schema 1/raw PCMは追加方式で移行読込、未知のnewer schemaはactionable messageでfail-closedとする。
 
 ## Validation log
+
+- Command: `scripts/validate_project.sh`, `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`, scroll API scan and `git diff --check`.
+  - Date/environment: 2026-08-10, Windows x64, Temurin 17.0.20+8, Android SDK 36.
+  - Result: PASS。37 tests、0 failures/errors/skips、Lint 0 errors / 9 warnings、APK 30,357,226 bytes / SHA-256 `B0E9DF2E9D50E2AD3CBE1DF4C9CF8AA1F6C3296DA181BB57F25535024B205D0A`、scroll API match 0。
+- Command: Pixel 9 AVD API 36 install/launch plus DocumentsUI save/open, BPM edit, Undo/Redo, app restart autosave and deliberately truncated latest-generation recovery.
+  - Date/environment: 2026-08-10, Android 16/API 36 x86_64 emulator, 1080×2424 density 420.
+  - Result: focused `EMULATOR_PASS`。92 save → 93 edit → Undo 92 → Redo 93 → open 92、autosave restart 94、latest autosave 4-byte truncation後previous 92 recovery。final APKではschema 1 autosaveを復元後、WAV sourceを取込、schema 2 + `audio/0.wav` (`RIFF/WAVE`) autosaveを確認し、92 save → 93 edit → open 92を再確認。focused fatal exceptionなし。物理`DEVICE_PASS`ではない。
 
 - Command: `Get-FileHash -Algorithm SHA256` on both input ZIPs and archived payloads.
   - Date/environment: 2026-08-09, Windows PowerShell.

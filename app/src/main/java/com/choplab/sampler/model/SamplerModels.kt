@@ -81,6 +81,8 @@ data class SamplerUiState(
     val sourcePlaying: Boolean = false,
     val sourcePlayheadFrame: Int = 0,
     val masterPitchSemitones: Float = 0f,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
 )
 
 fun SamplerUiState.visiblePads(): List<PadModel> {

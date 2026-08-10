@@ -23,9 +23,11 @@
 | Choke group | ✅ | 1–4 |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
-| Versioned stereo-capable project domain | 🧪 foundation | Immutable PCM/project validation and legacy adapter are host-tested; save/load UI is not implemented |
+| Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは現在のmono engine状態をschema 2/WAVで保存し、schema 1/raw PCMを移行読込 |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
-| Project save/load | — | 未実装 |
+| Project save/load | ✅ MVP | `.choplab`手動保存/読込、共有PCM16 WAV、schema migration、path traversal/過大manifest/malformed WAV拒否 |
+| Autosave/recovery | ✅ MVP | 900ms debounce、fsync後の二世代置換、最新破損時は前世代、置換中断時はvalid pendingへ復旧 |
+| Undo / Redo | ✅ MVP | PAD、slice、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesce |
 | MIDI | — | 未実装 |
 | Independent time-stretch | — | 未実装 |
 | Stereo internal engine | — | 未実装 |

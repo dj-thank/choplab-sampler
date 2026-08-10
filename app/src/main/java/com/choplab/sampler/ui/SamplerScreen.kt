@@ -11,6 +11,8 @@ fun SamplerScreen(
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
     onExportBeat: () -> Unit,
+    onOpenProject: () -> Unit,
+    onSaveProject: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
     OtohiroiDeck(
@@ -19,6 +21,8 @@ fun SamplerScreen(
         onToggleMicrophoneRecording = onToggleMicrophoneRecording,
         onToggleSystemAudioRecording = onToggleSystemAudioRecording,
         onExportBeat = onExportBeat,
+        onOpenProject = onOpenProject,
+        onSaveProject = onSaveProject,
         viewModel = viewModel,
     )
 }
