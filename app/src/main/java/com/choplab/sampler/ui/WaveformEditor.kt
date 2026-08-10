@@ -3,6 +3,7 @@ package com.choplab.sampler.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
@@ -37,8 +38,15 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PcmAudio
@@ -59,6 +67,10 @@ fun WaveformEditor(
     onSliceMarkerChange: (Int, Int) -> Unit,
     onWaveformTap: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    canvasHeight: Dp = 220.dp,
+    fillCanvas: Boolean = false,
+    showViewportControls: Boolean = true,
+    compactViewportControls: Boolean = false,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
@@ -80,9 +92,8 @@ fun WaveformEditor(
 
     Column(modifier = modifier) {
         Box(
-            modifier = Modifier
+            modifier = (if (fillCanvas) Modifier.weight(1f) else Modifier.height(canvasHeight))
                 .fillMaxWidth()
-                .height(220.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(backgroundColor)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
@@ -212,21 +223,109 @@ fun WaveformEditor(
             Text(formatTime(visibleEnd, audio.sampleRate), fontSize = 11.sp)
         }
 
-        Text("ズーム ${"%.1f".format(zoom)}×", fontSize = 12.sp)
-        Slider(
-            value = zoom,
-            onValueChange = {
-                zoom = it.coerceIn(1f, 32f)
-                if (zoom <= 1.01f) scroll = 0f
+        if (showViewportControls) {
+            Text("ズーム ${"%.1f".format(zoom)}×", fontSize = 12.sp)
+            Slider(
+                value = zoom,
+                onValueChange = {
+                    zoom = it.coerceIn(1f, 32f)
+                    if (zoom <= 1.01f) scroll = 0f
+                },
+                valueRange = 1f..32f,
+            )
+            Text("表示位置", fontSize = 12.sp)
+            Slider(
+                value = scroll,
+                onValueChange = { scroll = it.coerceIn(0f, 1f) },
+                valueRange = 0f..1f,
+                enabled = zoom > 1.01f,
+            )
+        } else if (compactViewportControls) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                ViewportControlButton(
+                    label = "ZOOM -",
+                    description = "波形を縮小",
+                    enabled = zoom > 1.01f,
+                    onClick = {
+                        zoom = (zoom / 2f).coerceIn(1f, 32f)
+                        if (zoom <= 1.01f) scroll = 0f
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "${"%.1f".format(zoom)}x",
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .weight(0.7f)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(5.dp))
+                        .padding(top = 12.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                ViewportControlButton(
+                    label = "ZOOM +",
+                    description = "波形を拡大",
+                    enabled = zoom < 31.99f,
+                    onClick = { zoom = (zoom * 2f).coerceIn(1f, 32f) },
+                    modifier = Modifier.weight(1f),
+                )
+                ViewportControlButton(
+                    label = "PREV",
+                    description = "波形の前の位置を表示",
+                    enabled = zoom > 1.01f && scroll > 0f,
+                    onClick = { scroll = (scroll - 0.1f).coerceIn(0f, 1f) },
+                    modifier = Modifier.weight(0.8f),
+                )
+                ViewportControlButton(
+                    label = "NEXT",
+                    description = "波形の次の位置を表示",
+                    enabled = zoom > 1.01f && scroll < 1f,
+                    onClick = { scroll = (scroll + 0.1f).coerceIn(0f, 1f) },
+                    modifier = Modifier.weight(0.8f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewportControlButton(
+    label: String,
+    description: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(5.dp))
+            .background(
+                if (enabled) MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            )
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics {
+                role = Role.Button
+                contentDescription = description
             },
-            valueRange = 1f..32f,
-        )
-        Text("表示位置", fontSize = 12.sp)
-        Slider(
-            value = scroll,
-            onValueChange = { scroll = it.coerceIn(0f, 1f) },
-            valueRange = 0f..1f,
-            enabled = zoom > 1.01f,
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.45f),
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 8.sp,
         )
     }
 }

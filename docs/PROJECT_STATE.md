@@ -2,6 +2,24 @@
 
 Last prepared: 2026-08-09
 
+## Fixed no-scroll production console — 2026-08-10
+
+The application source now uses a fixed `CHOP / PAD / SEQ / SOURCE` console instead of the former vertically scrolling card stack. The four workspaces preserve the existing sampler engine and expose live chop, 4 BANK × 16 PAD performance, per-PAD editing, 16-step sequencing, capture/import, slicing, assignment, and WAV export without top-level vertical or horizontal scrolling.
+
+Local evidence for version `0.2.0` (`versionCode=3`):
+
+- `DeckLayoutPolicyTest`: four portrait/landscape and compact/regular policy tests pass;
+- Gradle `testDebugUnitTest`: 18 tests, zero failures/errors;
+- Gradle `lintDebug`: zero errors, nine warnings;
+- Gradle `assembleDebug`: PASS;
+- UI source scan: no `verticalScroll`, `horizontalScroll`, or `rememberScrollState` usage;
+- local debug APK: `app/build/outputs/apk/debug/app-debug.apk`;
+- local debug APK SHA-256 after compact-landscape and accessibility hardening: `CDB02CFFA5F693F2550F41260558D04E259F31AC917E998ED16CDE12D07E8ABD` (30,433,927 bytes).
+
+The current-run Android SDK Platform 36 and Build Tools 36.0.0 were installed locally after accepting their SDK licenses, allowing a real local Android compile and APK build rather than source-only validation.
+
+No phone is connected for this milestone. Therefore this section records `LOCAL_PASS` only until GitHub CI/release completes, and does not claim `DEVICE_PASS`, screenshot parity, touch comfort, clipping-free rendering, audio E2E, or `HUMAN_GO`. Previous Pixel 9a evidence below applies only to the older `v0.1.1-preview.1` artifact.
+
 ## Canonical 「おとひろい」 UI — 2026-08-10
 
 The user-supplied 505-line HTML prototype is now treated as the canonical top-screen specification. Source changes add:
