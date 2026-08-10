@@ -18,7 +18,19 @@ Local evidence for version `0.2.0` (`versionCode=3`):
 
 The current-run Android SDK Platform 36 and Build Tools 36.0.0 were installed locally after accepting their SDK licenses, allowing a real local Android compile and APK build rather than source-only validation.
 
-No phone is connected for this milestone. Therefore this section records `LOCAL_PASS` only until GitHub CI/release completes, and does not claim `DEVICE_PASS`, screenshot parity, touch comfort, clipping-free rendering, audio E2E, or `HUMAN_GO`. Previous Pixel 9a evidence below applies only to the older `v0.1.1-preview.1` artifact.
+No phone is connected for this milestone. Local validation establishes `LOCAL_PASS`, but does not claim `DEVICE_PASS`, screenshot parity, touch comfort, clipping-free rendering, audio E2E, or `HUMAN_GO`. Previous Pixel 9a evidence below applies only to the older `v0.1.1-preview.1` artifact.
+
+Public evidence for the exact UI commit `e0896adf8ff96439556d551d1cae4b9d1927f868`:
+
+- main Android verification run `31352372588`: PASS;
+- tag Android verification run `31352511018`: PASS;
+- tag: `v0.2.0-preview.1`;
+- release workflow run `31352511062`: build/package and publication PASS;
+- public Release: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.2.0-preview.1`;
+- public APK: `ChopLab-v0.2.0-preview.1-debug.apk`, 30,034,832 bytes;
+- public APK SHA-256: `B1CC4F6B014F507F3F928AF10CA0EB25E41EA58E50CCEC771CDE43A9A0F62C26`.
+
+This establishes `PUBLIC_PASS` for repository visibility, CI build, and downloadable artifact identity. It still does not establish `DEVICE_PASS` for the new fixed console because no phone was available.
 
 ## Canonical 「おとひろい」 UI — 2026-08-10
 

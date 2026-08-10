@@ -53,7 +53,7 @@ Androidスマートフォンで縦スクロールを一切使わず、主要な�
 - [x] 2026-08-10 — clean baseline、scroll原因、既存機能導線を確認。
 - [x] 2026-08-10 — layout policy Red/Green（4 tests PASS）。
 - [x] 2026-08-10 — fixed consoleと4 mode実装、scroll API除去。
-- [ ] 2026-08-10 — local Android test/lint/APK PASS。CI/review/publicationを継続中。
+- [x] 2026-08-10 — local Android test/lint/APK、review、main/tag CI、public Release完了。DEVICE_PASSのみ保留。
 
 ## Discoveries
 
@@ -73,6 +73,13 @@ Androidスマートフォンで縦スクロールを一切使わず、主要な�
 - `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 2026-08-10 / post-change — PASS。18 tests、lint 0 errors / 9 warnings。
 - source scan — 2026-08-10 / post-change — `verticalScroll`、`horizontalScroll`、`rememberScrollState`なし。
 - local APK — SHA-256 `CDB02CFFA5F693F2550F41260558D04E259F31AC917E998ED16CDE12D07E8ABD`、30,433,927 bytes（version 0.2.0、compact-landscape/accessibility hardening後）。
+- main CI `31352372588` — PASS。tag CI `31352511018` — PASS。
+- release CI `31352511062` — build/package/publish PASS。
+- public APK — `ChopLab-v0.2.0-preview.1-debug.apk`、30,034,832 bytes、SHA-256 `B1CC4F6B014F507F3F928AF10CA0EB25E41EA58E50CCEC771CDE43A9A0F62C26`。
+
+## Outcome
+
+`e0896ad`を`main`へ公開し、`v0.2.0-preview.1` Releaseを作成した。固定4 mode、無スクロール、portrait/landscape、40dp主要操作、16 PAD、haptic、二段階clear、compact波形viewportを実装した。公開APKの取得とhash照合まで完了。phone不在のため今回版のvisual/device/audio E2Eは未検証であり、`DEVICE_PASS`または`HUMAN_GO`とはしない。
 
 ## Risks and rollback
 
