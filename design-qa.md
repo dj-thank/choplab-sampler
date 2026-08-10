@@ -7,7 +7,9 @@
 - Canonical product workflow and visual language: `C:\Users\rambo\.codex\attachments\3f2fc606-7aeb-4fda-8333-83b63b96c961\pasted-text.txt`
 - Android implementation, `叩く`: `C:\Users\rambo\Documents\Codex\2026-08-09\new-chat-2\work\choplab-visual-qa\play-postfix.png`
 - Android implementation, `並べる`: `C:\Users\rambo\Documents\Codex\2026-08-09\new-chat-2\work\choplab-visual-qa\arrange-postfix2.png`
-- Android implementation, `完成`: `C:\Users\rambo\Documents\Codex\2026-08-09\new-chat-2\work\choplab-visual-qa\finish-ready.png`
+- Android implementation, detailed PAD PARAM: `C:\Users\rambo\Documents\Codex\2026-08-09\new-chat-2\work\choplab-visual-qa\pad-details-final.png`
+- Android implementation, detailed PAD PLAY: `C:\Users\rambo\Documents\Codex\2026-08-09\new-chat-2\work\choplab-visual-qa\play-details-final.png`
+- Android implementation, `完成`: `C:\Users\rambo\Documents\Codex\2026-08-09\new-chat-2\work\choplab-visual-qa\finish-final.png`
 
 Source images are 853 × 1844 px at 96 dpi. Android screenshots are 1080 × 2424 px at emulator density 420, approximately 411 × 923dp including system bars. The Android viewport is a headless Pixel 9 AVD on Android 16/API 36. Full-view comparisons were made in one combined visual input per screen, scaling the long edges for composition rather than claiming pixel parity between different aspect ratios and device chrome.
 
@@ -31,6 +33,7 @@ No actionable P0, P1, or P2 findings remain.
 - Colors and visual tokens: cream, charcoal, orange, and green consistently match the canonical original HTML. The darker generated shell is treated as workflow/quality direction, not the final palette. Orange remains the active/sampling/selected color and green remains waveform/value/guidance color.
 - Image quality and asset fidelity: the implementation has no stretched or low-resolution visible assets; controls and waveform are native Compose rendering. Generated icons and decorative hardware textures were not copied because the original HTML visual language and repository rule against distinctive MPC trade dress are canonical.
 - Copy and content: Japanese-first labels explain the task while small English captions preserve professional vocabulary. The fixed coach says `光るマスで音が鳴ります。まず 1・5・9・13 を押そう`; source playback changes its readout to `ここだと思ったらPADを押すと、その瞬間が入ります`. Status details intentionally ellipsize rather than expand or scroll.
+- Detailed editing: the review follow-up shows Japanese-first labels for sound shaping, play behavior, reverse, one-shot/gate, choke and PAD clear. The finish summary includes an explicit playback-state tile.
 - Affordances and state: active stage, bank, selected PAD, active steps, sampling state, recording state, and export readiness use both color and text. UIAutomator confirmed live-chop assignment for PAD 01/02, KEY + changing C3 to C#3, and steps 1/5/9/13 changing to `オン`.
 
 ## Intentional differences

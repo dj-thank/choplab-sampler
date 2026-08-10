@@ -64,7 +64,7 @@
 - [x] 2026-08-10 — 元HTML、選定画像、現行4モード、既存state/intentを対応付けた。
 - [x] 2026-08-10 — pure workflow modelと5工程railを実装した。
 - [x] 2026-08-10 — `入れる`、`叩く`、`並べる`、`完成` を初心者向けに統合した。
-- [x] 2026-08-10 — unit/lint/APKとPixel 9/API 36 emulator visual QAを完了。code reviewはcommit後に実施する。
+- [x] 2026-08-10 — unit/lint/APK、Pixel 9/API 36 emulator visual QA、二軸code reviewを完了した。
 - [ ] 2026-08-10 — public previewを公開し、artifact identityを確認する。
 
 ## Discoveries
@@ -82,11 +82,12 @@
 ## Validation log
 
 - `scripts/validate_project.sh` — 2026-08-10 — PASS。
-- `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 2026-08-10 — PASS。23 tests、0 failures/errors/skips、lint 0 errors / 10 warnings。
+- `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug` — 2026-08-10 — PASS。23 tests、0 failures/errors/skips、lint 0 errors / 9 warnings。
 - source scan — 2026-08-10 — scroll API match 0。
 - Pixel 9 AVD / Android 16 API 36 — capture、live chop PAD 01/02、KEY C3→C#3、TONE 32%、LEVEL 75%、steps 1/5/9/13、finish readinessを確認。
 - `design-qa.md` — 生成した`叩く`/`並べる` targetと同一状態で比較し、P2の直接調整と初心者TIPを修正後 `final result: passed`。
-- local APK — versionCode 4 / versionName 0.3.0、30,116,752 bytes、SHA-256 `F2ADA55F2D9D483DFDA0B7562DF26C9CA325FCD174C6C0AF50A62B43F8CF10E0`。
+- local APK — versionCode 4 / versionName 0.3.0、30,616,083 bytes、SHA-256 `718814700DF1929D53CC90B2B0A10A7230E677C598E226080114ACC8D87348D2`。
+- code review — standards hard violation 0。`CaptureWorkspace`のorientation重複と巨大UI fileは判断事項として将来分割候補に残す。spec指摘のviewport testsは既存`DeckLayoutPolicyTest`で360×640 / 412×820 / 800×320を確認済み。finish再生状態と詳細PAD editorの日本語主表示はreview後に追加した。public previewのみ次milestone。
 
 ## Risks and rollback
 

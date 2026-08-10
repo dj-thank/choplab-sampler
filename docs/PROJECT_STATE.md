@@ -19,11 +19,11 @@ Local evidence:
 
 - `scripts/validate_project.sh`: PASS;
 - Gradle `testDebugUnitTest`: 23 tests, zero failures/errors/skips;
-- Gradle `lintDebug`: zero errors, ten warnings;
+- Gradle `lintDebug`: zero errors, nine warnings;
 - Gradle `assembleDebug`: PASS;
 - UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
 - `git diff --check`: PASS;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,116,752 bytes, SHA-256 `F2ADA55F2D9D483DFDA0B7562DF26C9CA325FCD174C6C0AF50A62B43F8CF10E0`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,616,083 bytes, SHA-256 `718814700DF1929D53CC90B2B0A10A7230E677C598E226080114ACC8D87348D2`.
 
 Emulator evidence on a headless Pixel 9 AVD, Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
 
@@ -32,6 +32,7 @@ Emulator evidence on a headless Pixel 9 AVD, Android 16/API 36, x86_64, 1080 × 
 - microphone permission and a three-second emulator recording were used to verify capture → live source playback → PAD 01/02 assignment;
 - PAD A-02 KEY changed from C3 to C#3, TONE to 32%, and LEVEL to 75%; steps 1/5/9/13 changed to `オン`;
 - `完成` showed two assigned PADs, four audible steps, 92 BPM, enabled beat preview and enabled four-bar WAV export;
+- post-review detail screens showed Japanese-first PARAM/PLAY, PITCH/TONE/LEVEL, reverse, one-shot/gate, choke and confirmed PAD-clear labels without clipping; `完成` now includes transport state;
 - visual comparison against both selected generated targets completed after adding the direct sliders and arrange TIP; `design-qa.md` records `final result: passed`.
 
 This establishes `LOCAL_PASS` and focused `EMULATOR_PASS`. No physical phone is connected, so it does not establish `DEVICE_PASS`, physical touch comfort, haptic quality, microphone fidelity, latency, or `HUMAN_GO`. Public CI and Release evidence for this version is pending.

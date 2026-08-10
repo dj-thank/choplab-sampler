@@ -83,8 +83,8 @@ private val ConsoleShape = RoundedCornerShape(13.dp)
 private val PanelShape = RoundedCornerShape(8.dp)
 
 private enum class PadEditorPage(val label: String) {
-    PARAM("PARAM"),
-    PLAY("PLAY"),
+    PARAM("音づくり\nPARAM"),
+    PLAY("鳴り方\nPLAY"),
 }
 
 @Composable
@@ -1086,7 +1086,7 @@ private fun ParameterEditor(
 ) {
     Column(modifier = modifier) {
         MachineSlider(
-            label = "PITCH",
+            label = "音程\nPITCH",
             value = pad.pitchSemitones,
             valueRange = -24f..24f,
             valueLabel = "${signedValue(pad.pitchSemitones)} st",
@@ -1095,7 +1095,7 @@ private fun ParameterEditor(
             modifier = Modifier.weight(1f),
         )
         MachineSlider(
-            label = "TONE",
+            label = "音色\nTONE",
             value = pad.tone,
             valueRange = 0f..1f,
             valueLabel = "${(pad.tone * 100).toInt()}%",
@@ -1104,7 +1104,7 @@ private fun ParameterEditor(
             modifier = Modifier.weight(1f),
         )
         MachineSlider(
-            label = "LEVEL",
+            label = "音量\nLEVEL",
             value = pad.gain,
             valueRange = 0f..1.5f,
             valueLabel = "${(pad.gain * 100).toInt()}%",
@@ -1134,7 +1134,7 @@ private fun PlayModeEditor(
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             MachineButton(
-                label = "REVERSE",
+                label = "逆再生\nREVERSE",
                 onClick = viewModel::toggleSelectedPadReverse,
                 enabled = pad.isAssigned,
                 active = pad.reverse,
@@ -1143,7 +1143,7 @@ private fun PlayModeEditor(
                     .fillMaxHeight(),
             )
             MachineButton(
-                label = if (pad.playMode == PadPlayMode.GATE) "GATE" else "ONE SHOT",
+                label = if (pad.playMode == PadPlayMode.GATE) "押す間だけ\nGATE" else "一回鳴る\nONE SHOT",
                 onClick = viewModel::toggleSelectedPadPlayMode,
                 enabled = pad.isAssigned,
                 active = pad.playMode == PadPlayMode.GATE,
@@ -1160,7 +1160,7 @@ private fun PlayModeEditor(
         ) {
             repeat(5) { group ->
                 MachineButton(
-                    label = if (group == 0) "CHOKE OFF" else "CHOKE $group",
+                    label = if (group == 0) "同時停止なし\nOFF" else "同時停止 $group\nCHOKE",
                     onClick = { viewModel.setSelectedPadChokeGroup(group) },
                     enabled = pad.isAssigned,
                     active = pad.chokeGroup == group,
@@ -1172,8 +1172,8 @@ private fun PlayModeEditor(
             }
         }
         ConfirmActionButton(
-            label = "CLEAR SELECTED PAD",
-            confirmLabel = "CONFIRM PAD CLEAR",
+            label = "このPADを空に\nCLEAR PAD",
+            confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPad,
             enabled = pad.isAssigned,
             modifier = Modifier
@@ -1494,6 +1494,11 @@ private fun FinishWorkspace(
                     ValueDisplay(
                         label = "テンポ",
                         value = "${state.bpm.toInt()} BPM",
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    ValueDisplay(
+                        label = "再生状態",
+                        value = if (state.transportPlaying) "再生中" else "停止中",
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
@@ -1992,8 +1997,8 @@ private fun StepperControl(
     value: String,
     onDecrease: () -> Unit,
     onIncrease: () -> Unit,
-    enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier.fillMaxHeight(),
