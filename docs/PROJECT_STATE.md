@@ -2,6 +2,40 @@
 
 Last prepared: 2026-08-09
 
+## Guided five-stage sampler workflow — 2026-08-10
+
+The Android application now presents the fixed `入れる / 切る / 叩く / 並べる / 完成` journey while preserving the original HTML workflow inside `叩く`: load or record audio, play the source, and press a PAD at the desired instant to create a live chop. `切る` retains the precision waveform tools, `並べる` retains the 16-step sequencer, and `完成` accurately exposes the implemented four-bar mono WAV export.
+
+Version `0.3.0` (`versionCode=4`) adds:
+
+- a Japanese-first five-stage rail with short English production captions;
+- beginner guidance for source sampling and the starter `1・5・9・13` step pattern;
+- selected-PAD KEY note names and semitone controls, plus direct TONE/LEVEL sliders on regular portrait layouts;
+- the existing reverse, one-shot/gate, choke and PAD clear controls under `叩く` → `詳細`;
+- a finish summary with assigned PAD count, audible step count, BPM, beat preview, confirmed pattern clear and four-bar export;
+- safe restoration of legacy `CHOP / PAD / SEQ / SOURCE` saved mode names without `valueOf` crashes.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 23 tests, zero failures/errors/skips;
+- Gradle `lintDebug`: zero errors, ten warnings;
+- Gradle `assembleDebug`: PASS;
+- UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
+- `git diff --check`: PASS;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,116,752 bytes, SHA-256 `F2ADA55F2D9D483DFDA0B7562DF26C9CA325FCD174C6C0AF50A62B43F8CF10E0`.
+
+Emulator evidence on a headless Pixel 9 AVD, Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
+
+- final APK installed as `versionCode=4`, `versionName=0.3.0`, `minSdk=29`, `targetSdk=36`;
+- `MainActivity` reached `topResumedActivity`; the focused post-launch log query found no fatal exception;
+- microphone permission and a three-second emulator recording were used to verify capture → live source playback → PAD 01/02 assignment;
+- PAD A-02 KEY changed from C3 to C#3, TONE to 32%, and LEVEL to 75%; steps 1/5/9/13 changed to `オン`;
+- `完成` showed two assigned PADs, four audible steps, 92 BPM, enabled beat preview and enabled four-bar WAV export;
+- visual comparison against both selected generated targets completed after adding the direct sliders and arrange TIP; `design-qa.md` records `final result: passed`.
+
+This establishes `LOCAL_PASS` and focused `EMULATOR_PASS`. No physical phone is connected, so it does not establish `DEVICE_PASS`, physical touch comfort, haptic quality, microphone fidelity, latency, or `HUMAN_GO`. Public CI and Release evidence for this version is pending.
+
 ## Fixed no-scroll production console — 2026-08-10
 
 The application source now uses a fixed `CHOP / PAD / SEQ / SOURCE` console instead of the former vertically scrolling card stack. The four workspaces preserve the existing sampler engine and expose live chop, 4 BANK × 16 PAD performance, per-PAD editing, 16-step sequencing, capture/import, slicing, assignment, and WAV export without top-level vertical or horizontal scrolling.
