@@ -28,6 +28,7 @@ import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.clearPadSteps
+import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
@@ -855,19 +856,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun exportPattern(destination: Uri) {
         val snapshot = mutableUiState.value
-        if (
-            snapshot.activeSteps.isEmpty() &&
-            snapshot.pads.none { it.isAssigned && it.playMode == PadPlayMode.LOOP }
-        ) {
+        if (!snapshot.activeSteps.hasAudiblePatternContent(snapshot.pads)) {
             setStatus("先にビートをループするか、配置プリセットで音を置いてください")
-            return
-        }
-        val hasAudibleStep = snapshot.activeSteps.any { key ->
-            val padIndex = key / SamplerConfig.STEP_COUNT
-            snapshot.pads.getOrNull(padIndex)?.isAssigned == true
-        }
-        if (!hasAudibleStep) {
-            setStatus("ステップが配置されたPADにサンプルがありません")
             return
         }
 

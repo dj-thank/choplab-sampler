@@ -348,16 +348,16 @@ class SamplerEngine(
                     }
                 }
                 is EngineCommand.StopPad -> {
-                    voices
-                        .filter { it.padIndex == command.padIndex }
-                        .forEach { it.release(FAST_RELEASE_FRAMES) }
+                    releasePadVoices(command.padIndex, frames = FAST_RELEASE_FRAMES)
                     if (currentLoopPadValue.compareAndSet(command.padIndex, -1)) {
                         currentLoopFrameValue.set(-1)
                     }
                 }
-                is EngineCommand.Release -> voices
-                    .filter { it.padIndex == command.padIndex && it.playMode == PadPlayMode.GATE }
-                    .forEach { it.release(RELEASE_FRAMES) }
+                is EngineCommand.Release -> releasePadVoices(
+                    command.padIndex,
+                    playMode = PadPlayMode.GATE,
+                    frames = RELEASE_FRAMES,
+                )
                 is EngineCommand.Preview -> startVoice(command.pad)
                 is EngineCommand.PlaySource -> {
                     sourceVoice = Voice(command.source, outputSampleRate)
@@ -417,17 +417,41 @@ class SamplerEngine(
         if (pad.endFrame <= pad.startFrame || pad.audio.samples.isEmpty()) return
 
         if (pad.playMode == PadPlayMode.LOOP) {
-            voices
-                .filter { it.padIndex == pad.padIndex && it.playMode == PadPlayMode.LOOP }
-                .forEach { it.release(FAST_RELEASE_FRAMES) }
+            releasePadVoices(
+                pad.padIndex,
+                playMode = PadPlayMode.LOOP,
+                frames = FAST_RELEASE_FRAMES,
+            )
         }
         if (pad.chokeGroup > 0) {
-            voices
-                .filter { it.chokeGroup == pad.chokeGroup }
-                .forEach { it.release(FAST_RELEASE_FRAMES) }
+            releaseChokeGroup(pad.chokeGroup, FAST_RELEASE_FRAMES)
         }
         while (voices.size >= MAX_POLYPHONY) voices.removeAt(0)
         voices += Voice(pad, outputSampleRate)
+    }
+
+    private fun releasePadVoices(
+        padIndex: Int,
+        playMode: PadPlayMode? = null,
+        frames: Int,
+    ) {
+        var index = 0
+        while (index < voices.size) {
+            val voice = voices[index]
+            if (voice.padIndex == padIndex && (playMode == null || voice.playMode == playMode)) {
+                voice.release(frames)
+            }
+            index++
+        }
+    }
+
+    private fun releaseChokeGroup(chokeGroup: Int, frames: Int) {
+        var index = 0
+        while (index < voices.size) {
+            val voice = voices[index]
+            if (voice.chokeGroup == chokeGroup) voice.release(frames)
+            index++
+        }
     }
 
     private sealed interface EngineCommand {

@@ -43,6 +43,10 @@ fun Set<Int>.audibleStepKeys(pads: List<PadModel>): Set<Int> =
         } == true
     }
 
+fun Set<Int>.hasAudiblePatternContent(pads: List<PadModel>): Boolean =
+    pads.any { pad -> pad.isAssigned && pad.playMode == PadPlayMode.LOOP } ||
+        audibleStepKeys(pads).isNotEmpty()
+
 fun Set<Int>.repeatGridForPad(padIndex: Int): RepeatGrid? {
     require(padIndex in 0 until SamplerConfig.PAD_COUNT)
     val selectedSteps = (0 until SamplerConfig.STEP_COUNT).filterTo(linkedSetOf()) { step ->

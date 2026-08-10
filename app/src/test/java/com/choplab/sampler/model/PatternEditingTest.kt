@@ -89,6 +89,26 @@ class PatternEditingTest {
     }
 
     @Test
+    fun `pattern content accepts a loop without step events`() {
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 1) {
+                PadModel(
+                    globalIndex = index,
+                    audio = PcmAudio(name = "loop", samples = shortArrayOf(1, 2), sampleRate = 48_000),
+                    startFrame = 0,
+                    endFrame = 2,
+                    playMode = PadPlayMode.LOOP,
+                )
+            } else {
+                PadModel(globalIndex = index)
+            }
+        }
+
+        assertEquals(true, emptySet<Int>().hasAudiblePatternContent(pads))
+        assertEquals(false, setOf(stepKey(0, 0)).hasAudiblePatternContent(pads.map { PadModel(it.globalIndex) }))
+    }
+
+    @Test
     fun `repeat grid recognition matches only exact selected pad pattern`() {
         val layered = emptySet<Int>()
             .replacePadSteps(0, RepeatGrid.QUARTER)

@@ -18,19 +18,18 @@ Version `0.7.0` (`versionCode=8`) separates a continuous beat loop from step-gri
 Local evidence:
 
 - `scripts/validate_project.sh`: PASS;
-- Gradle `testDebugUnitTest`: 52 tests, zero failures/errors/skips;
+- Gradle `testDebugUnitTest`: 53 tests, zero failures/errors/skips;
 - Gradle `lintDebug`: PASS with zero errors and nine pre-existing toolchain/platform advisories;
 - Gradle `assembleDebug`: PASS;
 - `git diff --check`: PASS;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,942,730 bytes, SHA-256 `91870DBF844933B913019FE41CF04F743ADE72D18F5B5AE351464C457A045CF7`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,942,730 bytes, SHA-256 `AD0E2079574DB72B28C928439F3CF3C45BB59322C2ADECBD8E3637F67A1C945A`.
 
 Focused physical Pixel 9a evidence:
 
-- installed the exact local APK as `versionCode=8`, `versionName=0.7.0`, then copied the same bytes to `/sdcard/Download/ChopLab-v0.7.0-local-debug.apk`; device and PC SHA-256 both matched `91870DBF844933B913019FE41CF04F743ADE72D18F5B5AE351464C457A045CF7`;
+- installed the exact final local APK as `versionCode=8`, `versionName=0.7.0`, then copied the same bytes to `/sdcard/Download/ChopLab-v0.7.0-local-debug.apk`; device and PC SHA-256 both matched `AD0E2079574DB72B28C928439F3CF3C45BB59322C2ADECBD8E3637F67A1C945A`;
 - the existing project restored after cold launch and its assigned source/PADs remained available;
-- starting A-04 changed the accessible waveform state from 23% to 75%, demonstrating a moving loop cursor, while the screen showed the high-contrast playhead and `ループ停止 / STOP`;
-- after moving to empty BANK B to add a sound and returning to Arrange, the screen still showed A-04's real waveform, live loop percentage, `A-04の音声全体を繰り返し中`, and an enabled STOP action;
-- stopping from that BANK B state reported `ビートループを停止しました`; the focused app log contained no fatal exception match.
+- the final exact APK started A-04 from its saved LOOP PAD state and exposed a live 26–29% waveform position, `A-04の音声全体を繰り返し中`, and `ループ停止 / STOP` before the user returned another app to the foreground;
+- on the immediately preceding v0.7.0 candidate, starting A-04 changed the accessible waveform state from 23% to 75%; after moving to empty BANK B and returning to Arrange, A-04's real waveform, live loop percentage and enabled STOP action remained visible, stopping from BANK B reported `ビートループを停止しました`, and the focused log contained no fatal exception match. The subsequent review fixes affected only allocation-free engine release loops and the export precondition, not this UI path.
 
 This establishes `LOCAL_PASS` and a focused install/launch/control-state `DEVICE_PASS` for the exact local v0.7.0 APK. It does not yet establish CI/Release identity, `PUBLIC_PASS`, subjective loop-seam quality, sustained latency/thermal behavior, physical multi-touch layering, TalkBack/haptic quality, production signing/update continuity, or `HUMAN_GO`.
 
