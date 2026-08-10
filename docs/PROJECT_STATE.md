@@ -26,11 +26,13 @@ Local evidence:
 Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
 
 - APK installed as `versionCode=5`, `versionName=0.4.0`, `minSdk=29`, `targetSdk=36`; `MainActivity` was top-resumed and no focused fatal exception was found;
+- the final APK opened the previous schema 1 autosave at 92 BPM, then imported `choplab-ui-smoke.wav` and wrote a schema 2 autosave whose archive contained `audio/0.wav` with `RIFF/WAVE` headers;
 - the expanded `完成` action area showed SAVE PROJECT, OPEN PROJECT, UNDO and REDO without clipping or scrolling;
+- after the final APK change, a source-backed 92 BPM schema 2 project was manually saved through DocumentsUI, BPM was changed to 93, and opening the saved project restored 92 BPM with no focused fatal exception;
 - saved an empty 92 BPM project through Android DocumentsUI, changed BPM to 93, restored 92 with Undo, restored 93 with Redo, then reopened the saved project and observed 92 BPM;
 - changed the reopened project to 94 BPM, waited for autosave, force-stopped/relaunched the app, and observed 94 BPM plus the autosave-restored status;
 - intentionally truncated only the emulator app's latest autosave to four bytes, force-stopped/relaunched, and observed recovery from the previous 92 BPM generation with no fatal exception;
-- the temporary DocumentsUI `.choplab` test file was removed from emulator Downloads after verification.
+- the temporary DocumentsUI `.choplab` and WAV test files were removed from emulator Downloads after verification.
 
 This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the MVP persistence slice. It does not establish physical `DEVICE_PASS`, process-death durability under real storage pressure, large-audio performance, a stable production signing/update path, or `HUMAN_GO`. Public CI and Release evidence for version 0.4.0 is pending.
 

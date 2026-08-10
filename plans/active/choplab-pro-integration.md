@@ -175,7 +175,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
   - Result: PASS。37 tests、0 failures/errors/skips、Lint 0 errors / 9 warnings、APK 30,357,226 bytes / SHA-256 `B0E9DF2E9D50E2AD3CBE1DF4C9CF8AA1F6C3296DA181BB57F25535024B205D0A`、scroll API match 0。
 - Command: Pixel 9 AVD API 36 install/launch plus DocumentsUI save/open, BPM edit, Undo/Redo, app restart autosave and deliberately truncated latest-generation recovery.
   - Date/environment: 2026-08-10, Android 16/API 36 x86_64 emulator, 1080×2424 density 420.
-  - Result: focused `EMULATOR_PASS`。92 save → 93 edit → Undo 92 → Redo 93 → open 92、autosave restart 94、latest autosave 4-byte truncation後previous 92 recovery、fatal exceptionなし。物理`DEVICE_PASS`ではない。
+  - Result: focused `EMULATOR_PASS`。92 save → 93 edit → Undo 92 → Redo 93 → open 92、autosave restart 94、latest autosave 4-byte truncation後previous 92 recovery。final APKではschema 1 autosaveを復元後、WAV sourceを取込、schema 2 + `audio/0.wav` (`RIFF/WAVE`) autosaveを確認し、92 save → 93 edit → open 92を再確認。focused fatal exceptionなし。物理`DEVICE_PASS`ではない。
 
 - Command: `Get-FileHash -Algorithm SHA256` on both input ZIPs and archived payloads.
   - Date/environment: 2026-08-09, Windows PowerShell.
