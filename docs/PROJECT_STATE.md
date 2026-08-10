@@ -1,6 +1,20 @@
 # Project state
 
-Last prepared: 2026-08-10
+Last prepared: 2026-08-11
+
+## Public v0.7.0 whole-chop beat-loop evidence — 2026-08-11
+
+- PR [#6](https://github.com/dj-thank/choplab-sampler/pull/6) merged as `9d09228c7d19cdd709b7c864e21eddaa69715d67` after branch push run [31400890047](https://github.com/dj-thank/choplab-sampler/actions/runs/31400890047) and PR run [31400928956](https://github.com/dj-thank/choplab-sampler/actions/runs/31400928956) both passed.
+- Main Android verification [run 31401298050](https://github.com/dj-thank/choplab-sampler/actions/runs/31401298050) passed before tagging.
+- Annotated tag `v0.7.0-preview.1` resolves to the same merge commit; tag Android verification [run 31401606925](https://github.com/dj-thank/choplab-sampler/actions/runs/31401606925) passed.
+- Release workflow [run 31401606890](https://github.com/dj-thank/choplab-sampler/actions/runs/31401606890) passed build/package and publish jobs. [ChopLab v0.7.0-preview.1](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.7.0-preview.1) is public and marked as a prerelease.
+- Public `ChopLab-v0.7.0-preview.1-debug.apk`: 30,346,187 bytes, SHA-256 `3393A60EBB8FDD3CE76CD459150049807D63DC39CF62BB4CF213365FB5FD1CB2`. The reverse-downloaded APK matched both the GitHub asset digest and attached `.sha256` file.
+- The exact public APK was copied to the connected Pixel 9a at `/sdcard/Download/ChopLab-v0.7.0-preview.1-debug.apk`, where its SHA-256 matched the PC download.
+- Android correctly rejected an in-place update from the local debug signature. Before replacing only `com.choplab.sampler`, the current 12,003,628-byte autosave was backed up, its ZIP entries were read successfully, and device/PC SHA-256 matched `75C8BB8E5FFC8E6FA0006212E4A869593A2C8D680B44DD5DA7474A862CC45B42`.
+- The exact public APK was then installed as `versionCode=8`, `versionName=0.7.0`; the same autosave was restored with the same digest. A cold launch showed `Without You.mp3` and `前回の自動保存を復元しました`, the focused fatal query returned zero matches, and the previously focused Neefo activity was brought back to the foreground.
+- The reverse-downloaded public APK and verified autosave backup remain under the task `outputs` folder.
+
+This establishes `LOCAL_PASS`, `PUBLIC_PASS`, and focused install/launch plus state-migration `DEVICE_PASS` for the exact public v0.7.0 preview APK. It does not establish subjective loop-seam quality, sustained latency/thermal behavior, physical multi-touch layering, TalkBack/haptic quality, production signing/update continuity, or `HUMAN_GO`.
 
 ## Whole-chop beat loop local/device evidence — 2026-08-10
 
