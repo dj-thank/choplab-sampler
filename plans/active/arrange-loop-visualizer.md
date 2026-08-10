@@ -6,7 +6,7 @@
 
 ## Current state
 
-- `main` の開始点は `1d6a566`、公開版は `v0.4.0-preview.1`。
+- 改善開始点は `main` の `14648c8`、公開版は `v0.5.0-preview.1`。
 - 16-step transport と 64 PAD 分の重ね再生は既に engine/ViewModel に接続されている。
 - Arrange は選択 PAD の 16 ステップだけを編集できるが、現在位置は細い枠のみで、波形・BANK 横断の重なり・反復作成が見えない。
 - 2026-08-10 に API 36 emulator で Capture → Chop → Play → Arrange を同一状態で撮影した。監査画像はタスク workspace の `work/choplab-arrange-audit/` に保存している。
@@ -37,6 +37,7 @@
 4. KEY/TONE 表示と beginner coach を改善し、portrait/landscape の clipping を修正する。
 5. targeted/full unit、lint、assemble、scroll scan、diff check、独立 review を通す。
 6. emulator と Pixel 9a で install/launch/主要 Arrange flow を確認し、公開 PR/CI/release APK を作る。
+7. 反復の発見性とボタン密度を再監査し、通常の3手順と`細かく調整`へ段階表示する。
 
 ## Progress
 
@@ -45,12 +46,17 @@
 - [x] 2026-08-10 — ViewModel と portrait/landscape Compose UI を統合。
 - [x] 2026-08-10 — local validation と Standards/Spec 二軸review。修正後のmaterial finding 0。
 - [x] 2026-08-10 — PR #4、main/tag CI、公開Release、公開APKのemulator/Pixel 9a install-launch-state migration evidence。
+- [x] 2026-08-10 — v0.5.0実機相当画面を再監査。反復見出し欠如、無効時の低発見性、主要/上級操作の同時露出を確認。
+- [x] 2026-08-10 — `1 PADを選ぶ → 2 反復を選ぶ → 3 ビートを聴く`と`細かく調整`の段階表示を実装し、portrait/landscapeで固定画面確認。
+- [ ] v0.6.0 full validation、review、public/device evidence。
 
 ## Decision log
 
 - 2026-08-10 — Arrange だけを 8×2 PAD selector に圧縮し、PLAY はライブ演奏用 4×4 のまま維持する。
 - 2026-08-10 — 反復プリセットは選択 PAD の現行ステップを置換する。他 PAD/BANK は重ね音として保持する。
 - 2026-08-10 — tone は連続値を残しつつ、compact UI では「暗い・なじむ・原音」の意味名付き preset を巡回する。
+- 2026-08-10 — 通常Arrangeは初心者の3手順だけを主役にし、16-step/BPM/Swing/REC/CLEAR/KEY/TONE/LEVELは同一画面の`細かく調整`へ切り替える。削除・スクロール追加はしない。
+- 2026-08-10 — AIは未動作ボタンを増やさず、将来1つの`AIで整える`入口から非破壊proposalを出す。試聴、差分、Undo、明示同意を実装前提とする。
 
 ## Validation log
 
@@ -61,6 +67,7 @@
 - 2026-08-10: review後、空PADをBANK markerから除外し、全16-stepのTalkBack説明、columns range guard、truthful semitone表示、空BANKから`叩く`への追加導線を再検証。
 - 2026-08-10: PR #4をmerge commit `48c645e`として公開。main/tag Android verificationとrelease workflow PASS。公開APK 30,297,035 bytes、SHA-256 `DB3EC8CC7B23C7DFB82547FBFC10DFEC59A11BFE11AF707AD24DC2CEBF16C4F1`。
 - 2026-08-10: 公開APKをPixel 9 AVDとPixel 9aへ導入・起動。Pixel 9aでは旧autosaveを内容非表示でbackupし、同一SHA-256のまま公開版へ復元。APKは端末Downloadへ保存。
+- 2026-08-10: v0.5.0同条件baselineとv0.6.0 quick/fineをPixel 9 AVDで比較。音入りA-01選択→4つ打ち→再生でstep 1/5/9/13、active preset、playheadを確認。landscapeもvisible clippingなし。
 
 ## Risks and rollback
 
