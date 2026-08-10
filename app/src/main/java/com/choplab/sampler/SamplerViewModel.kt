@@ -221,7 +221,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleManualChop() {
-        mutableUiState.update { it.copy(manualChopEnabled = !it.manualChopEnabled) }
+        commitEdit { it.copy(manualChopEnabled = !it.manualChopEnabled) }
     }
 
     fun addSliceMarker(frame: Int) {
@@ -902,7 +902,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.stopSource()
         engine.stopTransport()
         engine.stopAllVoices()
-        val safe = restored.copy(
+        val stoppedRestoredState = restored.copy(
             isLoading = false,
             statusMessage = message,
             transportPlaying = false,
@@ -914,8 +914,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             canUndo = editHistory.canUndo,
             canRedo = editHistory.canRedo,
         )
-        mutableUiState.value = safe
-        safe.pads.forEach(engine::updatePad)
+        mutableUiState.value = stoppedRestoredState
+        stoppedRestoredState.pads.forEach(engine::updatePad)
         syncPattern()
     }
 

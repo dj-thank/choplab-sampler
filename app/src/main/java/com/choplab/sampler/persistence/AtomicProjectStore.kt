@@ -37,7 +37,7 @@ class AtomicProjectStore(private val directory: File) {
     }
 
     fun load(): SamplerUiState? {
-        val candidates = listOf(primaryFile, backupFile).filter(File::isFile)
+        val candidates = listOf(primaryFile, backupFile, temporaryFile).filter(File::isFile)
         if (candidates.isEmpty()) return null
         var firstFailure: Throwable? = null
         candidates.forEach { file ->

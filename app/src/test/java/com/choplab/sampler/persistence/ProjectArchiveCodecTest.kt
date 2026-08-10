@@ -108,7 +108,7 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
-    fun archiveRejectsTruncatedPcm() {
+    fun archiveRejectsTruncatedWav() {
         val audio = PcmAudio(id = 7L, name = "short.wav", samples = shortArrayOf(1, 2, 3), sampleRate = 48_000)
         val valid = archiveFor(
             SamplerUiState(
@@ -118,6 +118,85 @@ class ProjectArchiveCodecTest {
         )
         val entries = unzip(valid).map { (name, bytes) ->
             if (name.startsWith("audio/")) name to bytes.dropLast(2).toByteArray() else name to bytes
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+        }
+    }
+
+    @Test
+    fun archiveStoresEachAudioAssetAsPcm16Wav() {
+        val audio = PcmAudio(id = 9L, name = "kick.wav", samples = shortArrayOf(1, -2), sampleRate = 44_100)
+        val entries = unzip(
+            archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)),
+        )
+        val wav = entries.single { (name, _) -> name == "audio/0.wav" }.second
+
+        assertEquals("RIFF", wav.copyOfRange(0, 4).toString(Charsets.US_ASCII))
+        assertEquals("WAVE", wav.copyOfRange(8, 12).toString(Charsets.US_ASCII))
+        assertEquals("data", wav.copyOfRange(36, 40).toString(Charsets.US_ASCII))
+        assertEquals(48, wav.size)
+    }
+
+    @Test
+    fun schemaOneRawPcmArchiveMigratesOnRead() {
+        val audio = PcmAudio(id = 10L, name = "legacy.wav", samples = shortArrayOf(8, -9), sampleRate = 48_000)
+        val schemaTwoEntries = unzip(
+            archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)),
+        )
+        val schemaOneEntries = schemaTwoEntries.map { (name, bytes) ->
+            when (name) {
+                "project.txt" -> name to bytes.toString(Charsets.UTF_8)
+                    .replace("CHOPLAB_PROJECT\t2", "CHOPLAB_PROJECT\t1")
+                    .replace("audio/0.wav", "audio/0.pcm")
+                    .toByteArray(Charsets.UTF_8)
+                "audio/0.wav" -> "audio/0.pcm" to bytes.copyOfRange(44, bytes.size)
+                else -> name to bytes
+            }
+        }
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(zip(schemaOneEntries)))
+
+        assertArrayEquals(audio.samples, restored.currentAudio?.samples)
+        assertEquals(audio.sampleRate, restored.currentAudio?.sampleRate)
+    }
+
+    @Test
+    fun archiveRejectsNewerSchemaWithActionableMessage() {
+        val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
+            if (name == "project.txt") {
+                name to bytes.toString(Charsets.UTF_8)
+                    .replace("CHOPLAB_PROJECT\t2", "CHOPLAB_PROJECT\t999")
+                    .toByteArray(Charsets.UTF_8)
+            } else {
+                name to bytes
+            }
+        }
+
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+        }
+
+        assertEquals("このプロジェクトは新しいChopLabで作成されています。アプリを更新してください", failure.message)
+    }
+
+    @Test
+    fun archiveRejectsWavWhoseHeaderDisagreesWithManifest() {
+        val audio = PcmAudio(id = 11L, name = "wrong-rate.wav", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val entries = unzip(
+            archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)),
+        ).map { (name, bytes) ->
+            if (name == "audio/0.wav") {
+                name to bytes.copyOf().also { wav ->
+                    wav[24] = 0x44
+                    wav[25] = 0xAC.toByte()
+                    wav[26] = 0
+                    wav[27] = 0
+                }
+            } else {
+                name to bytes
+            }
         }
 
         assertThrows(IllegalArgumentException::class.java) {

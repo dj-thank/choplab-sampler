@@ -20,11 +20,12 @@ import java.util.zip.ZipOutputStream
 /**
  * Bounded, versioned `.choplab` archive for the currently implemented sampler state.
  *
- * The manifest is deliberately small and text based. PCM assets are stored once as
- * little-endian mono PCM-16 and shared by current-source and PAD references.
+ * The manifest is deliberately small and text based. Audio assets are stored once as
+ * canonical mono PCM-16 WAV and shared by current-source and PAD references.
  */
 object ProjectArchiveCodec {
-    private const val SCHEMA_VERSION = 1
+    private const val LEGACY_PCM_SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
     private const val MANIFEST_ENTRY = "project.txt"
     private const val MAX_MANIFEST_BYTES = 256 * 1024
     private const val MAX_MVP_AUDIO_FRAMES = 30_000_000
@@ -41,8 +42,8 @@ object ProjectArchiveCodec {
             zip.closeEntry()
 
             audio.forEachIndexed { index, value ->
-                zip.putDeterministicEntry(audioEntry(index))
-                zip.writePcm16LittleEndian(value.samples)
+                zip.putDeterministicEntry(audioEntry(index, SCHEMA_VERSION))
+                MonoPcm16WavCodec.write(zip, value.samples, value.sampleRate)
                 zip.closeEntry()
             }
         }
@@ -74,7 +75,11 @@ object ProjectArchiveCodec {
                 require(totalPcmBytes <= ProjectLimits.MAX_TOTAL_PCM_BYTES) {
                     "プロジェクト内の音声データが大きすぎます"
                 }
-                val samples = zip.readPcm16LittleEndian(metadata.frameCount)
+                val samples = when (manifest.schemaVersion) {
+                    LEGACY_PCM_SCHEMA_VERSION -> zip.readLegacyPcm16LittleEndian(metadata.frameCount)
+                    SCHEMA_VERSION -> MonoPcm16WavCodec.read(zip, metadata.frameCount, metadata.sampleRate)
+                    else -> error("未対応のプロジェクト形式です")
+                }
                 require(zip.read() == -1) { "音声データのサイズが一致しません: ${entry.name}" }
                 audioByIndex[metadata.index] = PcmAudio(
                     id = metadata.id,
@@ -131,7 +136,7 @@ object ProjectArchiveCodec {
                     value.sampleRate,
                     value.frameCount,
                     encodeText(value.name),
-                    audioEntry(index),
+                    audioEntry(index, SCHEMA_VERSION),
                 ).joinToString("\t"),
             )
         }
@@ -185,8 +190,14 @@ object ProjectArchiveCodec {
         }
 
         val header = next("CHOPLAB_PROJECT")
-        require(header.size == 2 && header[1].toIntStrict("schemaVersion") == SCHEMA_VERSION) {
-            "このプロジェクト形式には対応していません"
+        require(header.size == 2) { "プロジェクト形式が不正です" }
+        val schemaVersion = header[1].toIntStrict("schemaVersion")
+        require(schemaVersion in LEGACY_PCM_SCHEMA_VERSION..SCHEMA_VERSION) {
+            if (schemaVersion > SCHEMA_VERSION) {
+                "このプロジェクトは新しいChopLabで作成されています。アプリを更新してください"
+            } else {
+                "このプロジェクト形式には対応していません"
+            }
         }
         val audioCountLine = next("audioCount")
         require(audioCountLine.size == 2) { "audioCountが不正です" }
@@ -206,7 +217,7 @@ object ProjectArchiveCodec {
             require(name.isNotBlank() && name.length <= ProjectLimits.MAX_ASSET_NAME_CHARS) { "音声名が不正です" }
             val entryName = values[6]
             validateEntryName(entryName)
-            require(entryName == audioEntry(index)) { "音声entryが不正です" }
+            require(entryName == audioEntry(index, schemaVersion)) { "音声entryが不正です" }
             AudioManifest(index, id, sampleRate, frameCount, name, entryName)
         }
         require(audio.distinctBy { it.id }.size == audio.size) { "音声IDが重複しています" }
@@ -243,6 +254,7 @@ object ProjectArchiveCodec {
         }
         require(cursor == lines.size) { "project.txtに未対応の情報があります" }
         return Manifest(
+            schemaVersion = schemaVersion,
             audio = audio,
             rangeStartFrame = state[1].toIntStrict("rangeStartFrame"),
             rangeEndFrame = state[2].toIntStrict("rangeEndFrame"),
@@ -331,6 +343,7 @@ object ProjectArchiveCodec {
     }
 
     private data class Manifest(
+        val schemaVersion: Int,
         val audio: List<AudioManifest>,
         val rangeStartFrame: Int,
         val rangeEndFrame: Int,
@@ -375,22 +388,7 @@ object ProjectArchiveCodec {
         putNextEntry(ZipEntry(name).apply { time = 0L })
     }
 
-    private fun ZipOutputStream.writePcm16LittleEndian(samples: ShortArray) {
-        val buffer = ByteArray(8 * 1024)
-        var sampleIndex = 0
-        while (sampleIndex < samples.size) {
-            val count = minOf(buffer.size / Short.SIZE_BYTES, samples.size - sampleIndex)
-            for (offset in 0 until count) {
-                val value = samples[sampleIndex + offset].toInt()
-                buffer[offset * 2] = (value and 0xFF).toByte()
-                buffer[offset * 2 + 1] = ((value ushr 8) and 0xFF).toByte()
-            }
-            write(buffer, 0, count * Short.SIZE_BYTES)
-            sampleIndex += count
-        }
-    }
-
-    private fun InputStream.readPcm16LittleEndian(frameCount: Int): ShortArray {
+    private fun InputStream.readLegacyPcm16LittleEndian(frameCount: Int): ShortArray {
         val result = ShortArray(frameCount)
         val buffer = ByteArray(8 * 1024)
         var sampleIndex = 0
@@ -432,7 +430,8 @@ object ProjectArchiveCodec {
         require(name.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "危険な項目名です: $name" }
     }
 
-    private fun audioEntry(index: Int) = "audio/$index.pcm"
+    private fun audioEntry(index: Int, schemaVersion: Int) =
+        if (schemaVersion == LEGACY_PCM_SCHEMA_VERSION) "audio/$index.pcm" else "audio/$index.wav"
 
     private class NonClosingOutputStream(output: OutputStream) : FilterOutputStream(output) {
         override fun close() {

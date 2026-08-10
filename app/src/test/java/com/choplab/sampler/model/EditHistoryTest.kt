@@ -59,4 +59,16 @@ class EditHistoryTest {
         assertFalse(history.canUndo)
         assertFalse(history.canRedo)
     }
+
+    @Test
+    fun manualChopModeIsPartOfTheRestoredEditableState() {
+        val history = EditHistory(maxEntries = 40)
+        val before = SamplerUiState(manualChopEnabled = false)
+        val after = before.copy(manualChopEnabled = true)
+        history.record(before)
+
+        val restored = history.undo(after)
+
+        assertFalse(requireNotNull(restored).manualChopEnabled)
+    }
 }

@@ -6,21 +6,22 @@ Last prepared: 2026-08-09
 
 Version `0.4.0` (`versionCode=5`) adds a bounded persistence slice to the existing mono AudioTrack MVP without changing the original HTML live-chop flow:
 
-- manual `.choplab` save/open from `完成`, with current source, shared PCM assets, slice ranges, all 64 PAD assignments and parameters, sequence, BPM/Swing and source KEY;
-- app-owned autosave after 900 ms of edit inactivity, written through a synced temporary file and two recoverable generations;
+- manual `.choplab` save/open from `完成`, with current source, shared PCM16 WAV assets, slice ranges, all 64 PAD assignments and parameters, sequence, BPM/Swing and source KEY;
+- schema 2 writes standard WAV entries while the reader migrates schema 1 raw-PCM archives and rejects unknown newer schemas with an update message;
+- app-owned autosave after 900 ms of edit inactivity, written through a synced temporary file and two recoverable generations; a valid pending generation can also recover an interrupted replacement;
 - at most 40 Undo/Redo entries for slice, PAD, sequence and timing edits, with repeated slider updates coalesced into one operation;
-- fail-closed archive checks for schema, normalized entry names, path traversal, duplicate audio IDs/entries, manifest size, total PCM size, unknown entries, truncated PCM, invalid ranges and invalid references;
+- fail-closed archive checks for schema, normalized entry names, path traversal, duplicate audio IDs/entries, manifest size, total PCM size, unknown entries, malformed/truncated WAV, invalid ranges and invalid references;
 - transient playback, recording and loading states are never restored as active.
 
 Local evidence:
 
 - `scripts/validate_project.sh`: PASS;
-- Gradle `testDebugUnitTest`: 31 tests, zero failures/errors/skips;
+- Gradle `testDebugUnitTest`: 37 tests, zero failures/errors/skips;
 - Gradle `lintDebug`: zero errors, nine warnings;
 - Gradle `assembleDebug`: PASS;
 - UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
 - `git diff --check`: PASS;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,215,115 bytes, SHA-256 `45A8338FE745E87C77EFE7FD05D27FB8B1CE9044F71CE82897043A416B45A8BA`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,357,226 bytes, SHA-256 `B0E9DF2E9D50E2AD3CBE1DF4C9CF8AA1F6C3296DA181BB57F25535024B205D0A`.
 
 Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
 
