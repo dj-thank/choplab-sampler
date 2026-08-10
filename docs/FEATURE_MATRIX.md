@@ -11,8 +11,11 @@
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
+| 選択音を4つ打ち・8分・16分で反復 | ✅ | 選択PADだけを置換し、他PAD・他BANKの重ね音を保持 |
+| 並べる画面の実波形・再生位置 | 🧪 emulator | 選択sliceのPCM波形、太い16-step playhead、A〜D BANK発音マーカーを固定画面で確認 |
+| BANKを替えてドラムを重ねる | 🧪 emulator | 全64 PADの既存layer再生、BANK別timeline marker、空の次BANK/PADから`叩く`へ直行する音追加導線 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
-| トーンを変える | ✅ | PAD別one-pole low-pass Tone |
+| トーンを変える | ✅ | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider |
 | 長すぎる音声の箇所選択 | ✅ | 最大10分、zoom/scroll/S/E handles |
 | プロ用のようにチョップ | ✅ MVP | 手動、自動、境界drag、zero-crossing snap。高度なspectral editor等は次段階 |
 | 選択後に次の対象へ遷移 | ✅ | AUTO NEXTでPAD + active slice前進 |

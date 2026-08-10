@@ -51,21 +51,25 @@ fun PadGrid(
     modifier: Modifier = Modifier,
     captureMode: Boolean = false,
     gap: Dp = 6.dp,
+    columns: Int = 4,
 ) {
     require(pads.size == 16) { "PadGrid requires exactly 16 pads" }
+    require(columns in 1..pads.size) { "PadGrid columns must be between 1 and 16" }
+    require(pads.size % columns == 0) { "PadGrid columns must divide 16 pads" }
+    val rows = pads.size / columns
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        repeat(4) { row ->
+        repeat(rows) { row ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
-                repeat(4) { column ->
-                    val indexInGrid = row * 4 + column
+                repeat(columns) { column ->
+                    val indexInGrid = row * columns + column
                     val pad = pads[indexInGrid]
                     PerformancePad(
                         pad = pad,

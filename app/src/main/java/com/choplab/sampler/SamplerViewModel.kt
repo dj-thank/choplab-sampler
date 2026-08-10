@@ -19,12 +19,15 @@ import com.choplab.sampler.model.EditHistory
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.activeSliceRange
-import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.assignLiveChopToPad
+import com.choplab.sampler.model.assignRangesToPads
+import com.choplab.sampler.model.clearPadSteps
+import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stepKey
@@ -462,6 +465,26 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun selectLayerBank(bankIndex: Int) {
+        mutableUiState.update { state ->
+            val bank = bankIndex.coerceIn(0, SamplerConfig.BANK_COUNT - 1)
+            val indexInBank = state.selectedPad % SamplerConfig.PADS_PER_BANK
+            val selectedPad = bank * SamplerConfig.PADS_PER_BANK + indexInBank
+            val target = state.pads[selectedPad]
+            state.copy(
+                selectedBank = bank,
+                selectedPad = selectedPad,
+                statusMessage = if (target.isAssigned) {
+                    "BANK ${('A'.code + bank).toChar()}-%02dを選択。反復で重ねられます"
+                        .format(indexInBank + 1)
+                } else {
+                    "BANK ${('A'.code + bank).toChar()}-%02dは空です。PADを叩いて音を入れてください"
+                        .format(indexInBank + 1)
+                },
+            )
+        }
+    }
+
     fun selectPad(globalIndex: Int) {
         if (globalIndex !in 0 until SamplerConfig.PAD_COUNT) return
         mutableUiState.update {
@@ -702,10 +725,24 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearSelectedPadPattern() {
         commitEdit { state ->
-            val filtered = state.activeSteps.filterNot { key ->
-                key / SamplerConfig.STEP_COUNT == state.selectedPad
-            }.toSet()
+            val filtered = state.activeSteps.clearPadSteps(state.selectedPad)
             state.copy(activeSteps = filtered, statusMessage = "選択PADのシーケンスを消去しました")
+        }
+        syncPattern()
+    }
+
+    fun fillSelectedPadPattern(repeatGrid: RepeatGrid) {
+        val selectedPad = mutableUiState.value.selectedPadModel()
+        if (!selectedPad.isAssigned) {
+            setStatus("先に音が入ったPADを選んでください")
+            return
+        }
+        commitEdit { state ->
+            state.copy(
+                activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, repeatGrid),
+                statusMessage = "${repeatGrid.statusLabel}を BANK ${('A'.code + state.selectedBank).toChar()}-%02d に配置しました"
+                    .format(state.selectedPadModel().indexInBank + 1),
+            )
         }
         syncPattern()
     }
