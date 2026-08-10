@@ -2,6 +2,37 @@
 
 Last prepared: 2026-08-09
 
+## MVP project persistence and edit recovery — 2026-08-10
+
+Version `0.4.0` (`versionCode=5`) adds a bounded persistence slice to the existing mono AudioTrack MVP without changing the original HTML live-chop flow:
+
+- manual `.choplab` save/open from `完成`, with current source, shared PCM assets, slice ranges, all 64 PAD assignments and parameters, sequence, BPM/Swing and source KEY;
+- app-owned autosave after 900 ms of edit inactivity, written through a synced temporary file and two recoverable generations;
+- at most 40 Undo/Redo entries for slice, PAD, sequence and timing edits, with repeated slider updates coalesced into one operation;
+- fail-closed archive checks for schema, normalized entry names, path traversal, duplicate audio IDs/entries, manifest size, total PCM size, unknown entries, truncated PCM, invalid ranges and invalid references;
+- transient playback, recording and loading states are never restored as active.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 31 tests, zero failures/errors/skips;
+- Gradle `lintDebug`: zero errors, nine warnings;
+- Gradle `assembleDebug`: PASS;
+- UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
+- `git diff --check`: PASS;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,215,115 bytes, SHA-256 `45A8338FE745E87C77EFE7FD05D27FB8B1CE9044F71CE82897043A416B45A8BA`.
+
+Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
+
+- APK installed as `versionCode=5`, `versionName=0.4.0`, `minSdk=29`, `targetSdk=36`; `MainActivity` was top-resumed and no focused fatal exception was found;
+- the expanded `完成` action area showed SAVE PROJECT, OPEN PROJECT, UNDO and REDO without clipping or scrolling;
+- saved an empty 92 BPM project through Android DocumentsUI, changed BPM to 93, restored 92 with Undo, restored 93 with Redo, then reopened the saved project and observed 92 BPM;
+- changed the reopened project to 94 BPM, waited for autosave, force-stopped/relaunched the app, and observed 94 BPM plus the autosave-restored status;
+- intentionally truncated only the emulator app's latest autosave to four bytes, force-stopped/relaunched, and observed recovery from the previous 92 BPM generation with no fatal exception;
+- the temporary DocumentsUI `.choplab` test file was removed from emulator Downloads after verification.
+
+This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the MVP persistence slice. It does not establish physical `DEVICE_PASS`, process-death durability under real storage pressure, large-audio performance, a stable production signing/update path, or `HUMAN_GO`. Public CI and Release evidence for version 0.4.0 is pending.
+
 ## Guided five-stage sampler workflow — 2026-08-10
 
 The Android application now presents the fixed `入れる / 切る / 叩く / 並べる / 完成` journey while preserving the original HTML workflow inside `叩く`: load or record audio, play the source, and press a PAD at the desired instant to create a live chop. `切る` retains the precision waveform tools, `並べる` retains the 16-step sequencer, and `完成` accurately exposes the implemented four-bar mono WAV export.
@@ -188,8 +219,8 @@ A complete Android SDK/NDK build was not run locally. The public Android debug b
 The requested target adds:
 
 - Oboe/AAudio native audio engine.
-- Project save/load and autosave.
-- Undo/Redo.
+- stereo-aware project migration beyond the current mono MVP archive and real-device lifecycle durability;
+- deeper history policies beyond the current bounded MVP Undo/Redo;
 - Stereo import, playback, processing, and export.
 - Pitch-independent time stretch.
 - ADSR.

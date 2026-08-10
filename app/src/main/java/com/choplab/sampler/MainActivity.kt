@@ -52,6 +52,26 @@ class MainActivity : ComponentActivity() {
                     samplerViewModel.exportPattern(uri)
                 }
 
+                val openProjectLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    uri ?: return@rememberLauncherForActivityResult
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                    }
+                    samplerViewModel.loadProject(uri)
+                }
+
+                val saveProjectLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument("application/vnd.choplab.project"),
+                ) { uri ->
+                    uri ?: return@rememberLauncherForActivityResult
+                    samplerViewModel.saveProject(uri)
+                }
+
                 val projectionManager = remember {
                     requireNotNull(context.getSystemService(MediaProjectionManager::class.java)) {
                         "MediaProjectionManager is unavailable on this device"
@@ -127,6 +147,18 @@ class MainActivity : ComponentActivity() {
                     },
                     onExportBeat = {
                         exportLauncher.launch("ChopLab_${System.currentTimeMillis()}.wav")
+                    },
+                    onOpenProject = {
+                        openProjectLauncher.launch(
+                            arrayOf(
+                                "application/vnd.choplab.project",
+                                "application/zip",
+                                "application/octet-stream",
+                            ),
+                        )
+                    },
+                    onSaveProject = {
+                        saveProjectLauncher.launch("ChopLab_${System.currentTimeMillis()}.choplab")
                     },
                     onToggleSystemAudioRecording = {
                         if (state.systemAudioRecording) {

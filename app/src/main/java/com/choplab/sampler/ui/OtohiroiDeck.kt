@@ -94,6 +94,8 @@ fun OtohiroiDeck(
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
     onExportBeat: () -> Unit,
+    onOpenProject: () -> Unit,
+    onSaveProject: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
     var stageName by rememberSaveable {
@@ -197,6 +199,8 @@ fun OtohiroiDeck(
                                 state = state,
                                 metrics = metrics,
                                 onExportBeat = onExportBeat,
+                                onOpenProject = onOpenProject,
+                                onSaveProject = onSaveProject,
                                 onBackToArrange = { stageName = WorkflowStage.ARRANGE.name },
                                 viewModel = viewModel,
                             )
@@ -1442,6 +1446,8 @@ private fun FinishWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onExportBeat: () -> Unit,
+    onOpenProject: () -> Unit,
+    onSaveProject: () -> Unit,
     onBackToArrange: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
@@ -1468,9 +1474,9 @@ private fun FinishWorkspace(
                 )
                 Text(
                     text = if (ready) {
-                        "再生して確認したら、4小節のWAVとして保存します。"
+                        "操作は端末内へ自動保存。再生で確認し、4小節WAVにもできます。"
                     } else {
-                        "『並べる』でPADを選び、16個のマスをいくつか光らせてください。"
+                        "操作は端末内へ自動保存。『並べる』で鳴らすマスを光らせてください。"
                     },
                     color = Color(0xFFE8DDBF),
                     fontFamily = DeckFont,
@@ -1530,6 +1536,44 @@ private fun FinishWorkspace(
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
                 MachineButton(
+                    label = "制作を保存\nSAVE PROJECT",
+                    onClick = onSaveProject,
+                    enabled = !state.isLoading,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+                MachineButton(
+                    label = "制作を開く\nOPEN PROJECT",
+                    onClick = onOpenProject,
+                    enabled = !state.isLoading,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                MachineButton(
+                    label = "1つ戻す\nUNDO",
+                    onClick = viewModel::undoEdit,
+                    enabled = state.canUndo && !state.isLoading,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+                MachineButton(
+                    label = "やり直す\nREDO",
+                    onClick = viewModel::redoEdit,
+                    enabled = state.canRedo && !state.isLoading,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                MachineButton(
                     label = "並べるへ戻る\nBACK",
                     onClick = onBackToArrange,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1563,7 +1607,7 @@ private fun FinishWorkspace(
             actions(
                 Modifier
                     .fillMaxWidth()
-                    .height(if (metrics.density == DeckDensity.COMPACT) 144.dp else 170.dp),
+                    .height(if (metrics.density == DeckDensity.COMPACT) 202.dp else 238.dp),
             )
         }
     }
