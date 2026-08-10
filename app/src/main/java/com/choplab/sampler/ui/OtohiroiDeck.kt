@@ -84,7 +84,7 @@ internal val DeckPadLit = Color(0xFFFFB25E)
 private val DeckFont = FontFamily.Monospace
 private val ConsoleShape = RoundedCornerShape(13.dp)
 private val PanelShape = RoundedCornerShape(8.dp)
-private val RepeatPatternChoices = listOf(
+private val PlacementPresetChoices = listOf(
     RepeatGrid.QUARTER to "4つ打ち\n1拍ごと",
     RepeatGrid.EIGHTH to "8分\n半拍ごと",
     RepeatGrid.SIXTEENTH to "16分\n細かく",
@@ -1150,10 +1150,14 @@ private fun PlayModeEditor(
                     .fillMaxHeight(),
             )
             MachineButton(
-                label = if (pad.playMode == PadPlayMode.GATE) "押す間だけ\nGATE" else "一回鳴る\nONE SHOT",
+                label = when (pad.playMode) {
+                    PadPlayMode.ONE_SHOT -> "一回鳴る\nONE SHOT"
+                    PadPlayMode.GATE -> "押す間だけ\nGATE"
+                    PadPlayMode.LOOP -> "繰り返す\nLOOP"
+                },
                 onClick = viewModel::toggleSelectedPadPlayMode,
                 enabled = pad.isAssigned,
-                active = pad.playMode == PadPlayMode.GATE,
+                active = pad.playMode != PadPlayMode.ONE_SHOT,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
@@ -1255,10 +1259,12 @@ private fun SequenceWorkspace(
                     onSelectBank = viewModel::selectBank,
                 )
                 ArrangementWaveformTimeline(
-                    pad = state.selectedPadModel(),
+                    pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
                     activeSteps = state.activeSteps.audibleStepKeys(state.pads),
                     currentStep = state.currentStep,
                     transportPlaying = state.transportPlaying,
+                    loopPlayheadFrame = state.loopPlayheadFrame,
+                    loopPlaying = state.loopingPadIndex != null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.95f),
@@ -1273,7 +1279,7 @@ private fun SequenceWorkspace(
                     columns = 8,
                     modifier = Modifier.weight(1.1f),
                 )
-                RepeatPatternPicker(
+                BeatLoopControl(
                     state = state,
                     height = metrics.controlHeightDp.dp * 1.85f,
                     viewModel = viewModel,
@@ -1296,10 +1302,12 @@ private fun SequenceWorkspace(
                     onSelectBank = viewModel::selectBank,
                 )
                 ArrangementWaveformTimeline(
-                    pad = state.selectedPadModel(),
+                    pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
                     activeSteps = state.activeSteps.audibleStepKeys(state.pads),
                     currentStep = state.currentStep,
                     transportPlaying = state.transportPlaying,
+                    loopPlayheadFrame = state.loopPlayheadFrame,
+                    loopPlaying = state.loopingPadIndex != null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.75f),
@@ -1311,6 +1319,11 @@ private fun SequenceWorkspace(
                     viewModel = viewModel,
                 )
                 TempoRow(
+                    state = state,
+                    height = metrics.controlHeightDp.dp,
+                    viewModel = viewModel,
+                )
+                PlacementPresetPicker(
                     state = state,
                     height = metrics.controlHeightDp.dp,
                     viewModel = viewModel,
@@ -1391,13 +1404,15 @@ private fun SequenceControlDeck(
                 modifier = Modifier.fillMaxWidth().height(28.dp),
             )
             ArrangementWaveformTimeline(
-                pad = state.selectedPadModel(),
+                pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
                 activeSteps = state.activeSteps.audibleStepKeys(state.pads),
                 currentStep = state.currentStep,
                 transportPlaying = state.transportPlaying,
+                loopPlayheadFrame = state.loopPlayheadFrame,
+                loopPlaying = state.loopingPadIndex != null,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
-            RepeatPatternPicker(
+            BeatLoopControl(
                 state = state,
                 height = metrics.controlHeightDp.dp * 1.85f,
                 viewModel = viewModel,
@@ -1426,10 +1441,12 @@ private fun SequenceControlDeck(
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
                 ArrangementWaveformTimeline(
-                    pad = state.selectedPadModel(),
+                    pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
                     activeSteps = state.activeSteps.audibleStepKeys(state.pads),
                     currentStep = state.currentStep,
                     transportPlaying = state.transportPlaying,
+                    loopPlayheadFrame = state.loopPlayheadFrame,
+                    loopPlaying = state.loopingPadIndex != null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -1442,6 +1459,11 @@ private fun SequenceControlDeck(
                     columns = 8,
                     gap = 3.dp,
                     modifier = Modifier.weight(1f),
+                )
+                PlacementPresetPicker(
+                    state = state,
+                    height = metrics.controlHeightDp.dp,
+                    viewModel = viewModel,
                 )
             }
             Column(
@@ -1564,14 +1586,17 @@ private fun LandscapeToneLevelRow(
 }
 
 @Composable
-private fun RepeatPatternPicker(
+private fun BeatLoopControl(
     state: SamplerUiState,
     height: Dp,
     viewModel: SamplerViewModel,
 ) {
     val pad = state.selectedPadModel()
-    val activeRepeatGrid = state.activeSteps.repeatGridForPad(state.selectedPad)
     val padLabel = "${bankName(pad.bankIndex)}-%02d".format(pad.indexInBank + 1)
+    val loopingPad = state.loopingPadIndex?.let(state.pads::get)
+    val loopingPadLabel = loopingPad?.let {
+        "${bankName(it.bankIndex)}-%02d".format(it.indexInBank + 1)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1582,8 +1607,8 @@ private fun RepeatPatternPicker(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = arrangeRepeatPrompt(pad.isAssigned, padLabel),
-            color = if (pad.isAssigned) DeckGreen else DeckPanelDark,
+            text = arrangeBeatLoopPrompt(pad.isAssigned, padLabel, loopingPadLabel),
+            color = if (pad.isAssigned || loopingPad != null) DeckGreen else DeckPanelDark,
             fontFamily = DeckFont,
             fontWeight = FontWeight.Black,
             fontSize = 8.sp,
@@ -1594,16 +1619,44 @@ private fun RepeatPatternPicker(
             modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            RepeatPatternChoices.forEach { (grid, label) ->
-                MachineButton(
-                    label = label,
-                    onClick = { viewModel.fillSelectedPadPattern(grid) },
-                    enabled = pad.isAssigned,
-                    active = activeRepeatGrid == grid,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
+            MachineButton(
+                label = if (loopingPad != null) "ループ停止\nSTOP" else "ビートをループ\nSTART",
+                onClick = viewModel::toggleBeatLoopControl,
+                enabled = pad.isAssigned || loopingPad != null,
+                active = loopingPad != null,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlacementPresetPicker(
+    state: SamplerUiState,
+    height: Dp,
+    viewModel: SamplerViewModel,
+) {
+    val pad = state.selectedPadModel()
+    val activeGrid = state.activeSteps.repeatGridForPad(state.selectedPad)
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        ValueDisplay(
+            label = "配置プリセット",
+            value = if (pad.playMode == PadPlayMode.LOOP) "別PADに置く" else "鳴らす場所",
+            modifier = Modifier.weight(1.15f).fillMaxHeight(),
+        )
+        PlacementPresetChoices.forEach { (grid, label) ->
+            MachineButton(
+                label = label,
+                onClick = { viewModel.fillSelectedPadPattern(grid) },
+                enabled = pad.isAssigned && pad.playMode != PadPlayMode.LOOP,
+                active = activeGrid == grid,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
         }
     }
 }
@@ -1625,17 +1678,10 @@ private fun QuickArrangeActionRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         MachineButton(
-            label = if (state.transportPlaying) "3 ビート停止\nSTOP" else "3 ビートを聴く\nPLAY",
-            onClick = viewModel::toggleTransport,
-            active = state.transportPlaying,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            compact = true,
-        )
-        MachineButton(
             label = if (nextPadHasSound) {
-                "音を重ねる\nBANK ${bankName(nextBank)} →"
+                "3 音を重ねる\nBANK ${bankName(nextBank)} →"
             } else {
-                "音を足す\nBANK ${bankName(nextBank)} →"
+                "3 音を足す\nBANK ${bankName(nextBank)} →"
             },
             onClick = {
                 viewModel.selectLayerBank(nextBank)

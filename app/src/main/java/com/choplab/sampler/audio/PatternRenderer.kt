@@ -1,6 +1,7 @@
 package com.choplab.sampler.audio
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.stepKey
 import java.io.File
@@ -58,12 +59,19 @@ object PatternRenderer : PatternRenderService {
         val totalFrames = barFrames * bars
 
         val events = HashMap<Int, MutableList<PadSnapshot>>()
+        pads.asSequence()
+            .filter { it.playMode == PadPlayMode.LOOP }
+            .mapNotNull(PadSnapshot::from)
+            .forEach { loop -> events.getOrPut(0) { mutableListOf() } += loop }
         repeat(bars) { bar ->
             val barOffset = bar * barFrames
             repeat(SamplerConfig.STEP_COUNT) { step ->
                 val eventFrame = (barOffset + stepStarts[step]).toInt().coerceIn(0, totalFrames - 1)
                 repeat(SamplerConfig.PAD_COUNT) { padIndex ->
-                    if (stepKey(padIndex, step) in activeSteps) {
+                    if (
+                        pads[padIndex].playMode != PadPlayMode.LOOP &&
+                        stepKey(padIndex, step) in activeSteps
+                    ) {
                         PadSnapshot.from(pads[padIndex])?.let { snapshot ->
                             events.getOrPut(eventFrame) { mutableListOf() } += snapshot
                         }
@@ -152,6 +160,7 @@ object PatternRenderer : PatternRenderService {
         val tone: Float,
         val gain: Float,
         val reverse: Boolean,
+        val playMode: PadPlayMode,
         val chokeGroup: Int,
     ) {
         companion object {
@@ -169,6 +178,7 @@ object PatternRenderer : PatternRenderService {
                     tone = pad.tone.coerceIn(0f, 1f),
                     gain = pad.gain.coerceIn(0f, 1.5f),
                     reverse = pad.reverse,
+                    playMode = pad.playMode,
                     chokeGroup = pad.chokeGroup.coerceIn(0, 4),
                 )
             }
@@ -184,10 +194,16 @@ object PatternRenderer : PatternRenderService {
         private val startFrame = pad.startFrame
         private val endFrame = pad.endFrame
         private val reverse = pad.reverse
+        private val playMode = pad.playMode
         private val gain = pad.gain
         private val tone = pad.tone
-        private val signedStep: Double
-        private var position: Double
+        private val sourceStep: Double
+        private val cursor = VoicePlaybackCursor(
+            startFrame = startFrame,
+            endFrame = endFrame,
+            reverse = reverse,
+            playMode = playMode,
+        )
         private var filterState = 0f
         private var releaseFramesRemaining = -1
         private var releaseFramesTotal = 1
@@ -197,9 +213,7 @@ object PatternRenderer : PatternRenderService {
 
         init {
             val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
-            val resampleStep = pitchRatio * pad.sourceSampleRate / outputSampleRate.toDouble()
-            signedStep = if (reverse) -resampleStep else resampleStep
-            position = if (reverse) endFrame - 1.0 else startFrame.toDouble()
+            sourceStep = pitchRatio * pad.sourceSampleRate / outputSampleRate.toDouble()
         }
 
         fun release(frames: Int) {
@@ -211,10 +225,11 @@ object PatternRenderer : PatternRenderService {
         }
 
         fun render(outputSampleRate: Int): Float {
-            if (finished || position < startFrame || position >= endFrame) {
+            if (finished) {
                 finished = true
                 return 0f
             }
+            val position = cursor.position
 
             val lower = floor(position).toInt().coerceIn(startFrame, endFrame - 1)
             val upper = (lower + 1).coerceAtMost(endFrame - 1)
@@ -255,8 +270,8 @@ object PatternRenderer : PatternRenderService {
                 if (releaseFramesRemaining <= 0) finished = true
             }
 
-            position += signedStep
-            if (position < startFrame || position >= endFrame) finished = true
+            cursor.advance(sourceStep)
+            if (cursor.finished) finished = true
             return filtered * gain * boundaryEnvelope * releaseEnvelope
         }
     }

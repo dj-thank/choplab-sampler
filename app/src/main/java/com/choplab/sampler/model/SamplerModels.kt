@@ -12,6 +12,7 @@ object SamplerConfig {
 enum class PadPlayMode {
     ONE_SHOT,
     GATE,
+    LOOP,
 }
 
 data class PcmAudio(
@@ -80,6 +81,8 @@ data class SamplerUiState(
     val systemAudioRecording: Boolean = false,
     val sourcePlaying: Boolean = false,
     val sourcePlayheadFrame: Int = 0,
+    val loopingPadIndex: Int? = null,
+    val loopPlayheadFrame: Int = -1,
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,

@@ -25,7 +25,8 @@ import java.util.zip.ZipOutputStream
  */
 object ProjectArchiveCodec {
     private const val LEGACY_PCM_SCHEMA_VERSION = 1
-    private const val SCHEMA_VERSION = 2
+    private const val WAV_SCHEMA_VERSION = 2
+    private const val SCHEMA_VERSION = 3
     private const val MANIFEST_ENTRY = "project.txt"
     private const val MAX_MANIFEST_BYTES = 256 * 1024
     private const val MAX_MVP_AUDIO_FRAMES = 30_000_000
@@ -77,7 +78,8 @@ object ProjectArchiveCodec {
                 }
                 val samples = when (manifest.schemaVersion) {
                     LEGACY_PCM_SCHEMA_VERSION -> zip.readLegacyPcm16LittleEndian(metadata.frameCount)
-                    SCHEMA_VERSION -> MonoPcm16WavCodec.read(zip, metadata.frameCount, metadata.sampleRate)
+                    in WAV_SCHEMA_VERSION..SCHEMA_VERSION ->
+                        MonoPcm16WavCodec.read(zip, metadata.frameCount, metadata.sampleRate)
                     else -> error("未対応のプロジェクト形式です")
                 }
                 require(zip.read() == -1) { "音声データのサイズが一致しません: ${entry.name}" }

@@ -11,10 +11,11 @@
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
-| 選択音を4つ打ち・8分・16分で反復 | ✅ | 選択PADだけを置換し、他PAD・他BANKの重ね音を保持 |
-| PAD→反復→再生の迷わない導線 | 🧪 emulator | 通常の並べる画面を3手順へ整理し、反復を見出し・質問文・オレンジ枠付きで常時表示 |
+| チョップ済みビート音声全体を連続ループ | 🧪 local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。実機音質確認待ち |
+| 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持 |
+| PAD→ビートをループ→音を重ねる導線 | 🧪 local | 通常の並べる画面を3手順へ整理し、ループ開始・停止をオレンジ枠付きで常時表示 |
 | 上級操作の段階表示 | 🧪 emulator | 16手動step、BPM/Swing、録音/削除、KEY/TONE/LEVELを`細かく調整`へ移し、機能を削らず通常画面を簡素化 |
-| 並べる画面の実波形・再生位置 | ✅ preview | 選択sliceのPCM波形、太い16-step playhead、A〜D BANK発音マーカーを固定画面で確認し公開 |
+| 並べる画面の実波形・再生位置 | 🧪 local | 選択sliceのPCM波形、ビートループの実フレーム位置、16-step playhead、A〜D BANK発音マーカーを固定表示 |
 | BANKを替えてドラムを重ねる | ✅ preview | 全64 PADの既存layer再生、BANK別timeline marker、空の次BANK/PADから`叩く`へ直行する音追加導線を公開 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
 | トーンを変える | ✅ | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider |
@@ -24,11 +25,11 @@
 | ハードウェア系サンプラーの操作感 | ✅ preview | 5工程、固定PAD、KEY/TONE/LEVEL、触覚、二段階clearを独自UIで再構成。公開APKの実機導入・起動まで確認。連打感と触覚の最終評価はHuman判断 |
 | Pitch | ✅ | ±24 st、速度も連動 |
 | Reverse | ✅ | PAD別 |
-| One Shot / Gate | ✅ | PAD別 |
+| One Shot / Gate / Beat Loop | 🧪 local | PAD別。Beat Loopはチョップ範囲全体を連続再生 |
 | Choke group | ✅ | 1–4 |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
-| Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは現在のmono engine状態をschema 2/WAVで保存し、schema 1/raw PCMを移行読込 |
+| Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveはLOOP対応schema 3/WAVで保存し、schema 1/raw PCMとschema 2/WAVを移行読込 |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
 | Project save/load | ✅ MVP | `.choplab`手動保存/読込、共有PCM16 WAV、schema migration、path traversal/過大manifest/malformed WAV拒否 |
 | Autosave/recovery | ✅ MVP | 900ms debounce、fsync後の二世代置換、最新破損時は前世代、置換中断時はvalid pendingへ復旧 |

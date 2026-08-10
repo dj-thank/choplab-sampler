@@ -11,6 +11,7 @@ kotlinc \
   "$ROOT/app/src/main/java/com/choplab/sampler/model/ProjectModels.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/model/SamplerCommands.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/SamplerPlaybackEngine.kt" \
+  "$ROOT/app/src/main/java/com/choplab/sampler/audio/VoicePlaybackCursor.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/TransientDetector.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/WavFileWriter.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/PatternRenderer.kt" \

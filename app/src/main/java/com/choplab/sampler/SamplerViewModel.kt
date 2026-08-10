@@ -26,7 +26,9 @@ import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
+import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.clearPadSteps
+import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
@@ -475,7 +477,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 selectedBank = bank,
                 selectedPad = selectedPad,
                 statusMessage = if (target.isAssigned) {
-                    "BANK ${('A'.code + bank).toChar()}-%02dを選択。反復で重ねられます"
+                    "BANK ${('A'.code + bank).toChar()}-%02dを選択。配置プリセットで重ねられます"
                         .format(indexInBank + 1)
                 } else {
                     "BANK ${('A'.code + bank).toChar()}-%02dは空です。PADを叩いて音を入れてください"
@@ -503,6 +505,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         val pad = state.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) return
+        if (pad.playMode == PadPlayMode.LOOP && !(state.recordArmed && state.transportPlaying)) {
+            toggleBeatLoop(globalIndex)
+            return
+        }
         engine.triggerPad(globalIndex)
 
         if (state.recordArmed && state.transportPlaying) {
@@ -591,6 +597,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     key / SamplerConfig.STEP_COUNT in bankStart until bankEnd
                 }.toSet(),
                 selectedPad = bankStart,
+                loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
+                loopPlayheadFrame = if (
+                    state.loopingPadIndex?.let { it in bankStart until bankEnd } == true
+                ) {
+                    -1
+                } else {
+                    state.loopPlayheadFrame
+                },
                 statusMessage = "BANK ${state.selectedBank + 1} のチョップを消去しました",
             )
         }
@@ -636,10 +650,77 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         it.copy(reverse = !it.reverse)
     }
 
-    fun toggleSelectedPadPlayMode() = updateSelectedPad {
-        it.copy(
-            playMode = if (it.playMode == PadPlayMode.ONE_SHOT) PadPlayMode.GATE else PadPlayMode.ONE_SHOT,
-        )
+    fun toggleSelectedPadPlayMode() {
+        val selectedPad = mutableUiState.value.selectedPad
+        if (mutableUiState.value.loopingPadIndex == selectedPad) {
+            engine.stopPad(selectedPad)
+            mutableUiState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1) }
+        }
+        updateSelectedPad {
+            it.copy(
+                playMode = if (it.playMode == PadPlayMode.GATE) PadPlayMode.ONE_SHOT else PadPlayMode.GATE,
+            )
+        }
+    }
+
+    fun toggleSelectedBeatLoop() {
+        toggleBeatLoop(mutableUiState.value.selectedPad)
+    }
+
+    fun toggleBeatLoopControl() {
+        val state = mutableUiState.value
+        toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
+    }
+
+    private fun toggleBeatLoop(globalIndex: Int) {
+        val state = mutableUiState.value
+        val pad = state.pads.getOrNull(globalIndex) ?: return
+        if (!pad.isAssigned) {
+            setStatus("先に音の入ったPADを選んでください")
+            return
+        }
+        if (state.loopingPadIndex == globalIndex) {
+            engine.stopPad(globalIndex)
+            mutableUiState.update {
+                it.copy(
+                    loopingPadIndex = null,
+                    loopPlayheadFrame = -1,
+                    statusMessage = "ビートループを停止しました",
+                )
+            }
+            return
+        }
+
+        state.loopingPadIndex?.let(engine::stopPad)
+        var loopPad = pad
+        val changedPads = mutableListOf<PadModel>()
+        commitEdit { current ->
+            val pads = current.pads.map { candidate ->
+                val updated = when {
+                    candidate.globalIndex == globalIndex -> candidate.copy(playMode = PadPlayMode.LOOP)
+                    candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
+                    else -> candidate
+                }
+                if (updated != candidate) changedPads += updated
+                updated
+            }
+            loopPad = pads[globalIndex]
+            current.copy(
+                pads = pads,
+                activeSteps = current.activeSteps.clearPadSteps(globalIndex),
+            )
+        }
+        changedPads.forEach(engine::updatePad)
+        syncPattern()
+        engine.startPadLoop(globalIndex)
+        mutableUiState.update {
+            it.copy(
+                loopingPadIndex = globalIndex,
+                loopPlayheadFrame = if (loopPad.reverse) loopPad.endFrame - 1 else loopPad.startFrame,
+                statusMessage = "${('A'.code + loopPad.bankIndex).toChar()}-%02d の音声全体をループ中"
+                    .format(loopPad.indexInBank + 1),
+            )
+        }
     }
 
     fun setSelectedPadChokeGroup(group: Int) = updateSelectedPad {
@@ -647,6 +728,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearSelectedPad() {
+        val selectedPad = mutableUiState.value.selectedPad
+        if (mutableUiState.value.loopingPadIndex == selectedPad) {
+            engine.stopPad(selectedPad)
+        }
         var clearedPad: PadModel? = null
         commitEdit { state ->
             val mutablePads = state.pads.toMutableList()
@@ -659,6 +744,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             state.copy(
                 pads = mutablePads,
                 activeSteps = filteredSteps,
+                loopingPadIndex = state.loopingPadIndex?.takeUnless { it == state.selectedPad },
+                loopPlayheadFrame = if (state.loopingPadIndex == state.selectedPad) -1 else state.loopPlayheadFrame,
                 statusMessage = "選択PADを消去しました",
             )
         }
@@ -737,6 +824,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("先に音が入ったPADを選んでください")
             return
         }
+        if (selectedPad.playMode == PadPlayMode.LOOP) {
+            setStatus("ビートループは音声全体を繰り返します。配置は別PADへ追加してください")
+            return
+        }
         commitEdit { state ->
             state.copy(
                 activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, repeatGrid),
@@ -754,20 +845,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun stopAllSounds() {
         engine.stopAllVoices()
+        mutableUiState.update {
+            it.copy(
+                loopingPadIndex = null,
+                loopPlayheadFrame = -1,
+                statusMessage = "すべての音を停止しました",
+            )
+        }
     }
 
     fun exportPattern(destination: Uri) {
         val snapshot = mutableUiState.value
-        if (snapshot.activeSteps.isEmpty()) {
-            setStatus("先にシーケンサーへステップを配置してください")
-            return
-        }
-        val hasAudibleStep = snapshot.activeSteps.any { key ->
-            val padIndex = key / SamplerConfig.STEP_COUNT
-            snapshot.pads.getOrNull(padIndex)?.isAssigned == true
-        }
-        if (!hasAudibleStep) {
-            setStatus("ステップが配置されたPADにサンプルがありません")
+        if (!snapshot.activeSteps.hasAudiblePatternContent(snapshot.pads)) {
+            setStatus("先にビートをループするか、配置プリセットで音を置いてください")
             return
         }
 
@@ -948,6 +1038,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             microphoneRecording = false,
             systemAudioRecording = false,
             sourcePlaying = false,
+            loopingPadIndex = null,
+            loopPlayheadFrame = -1,
             canUndo = editHistory.canUndo,
             canRedo = editHistory.canRedo,
         )
@@ -993,7 +1085,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun syncPattern() {
         val state = mutableUiState.value
-        engine.setPattern(state.activeSteps, state.bpm, state.swing)
+        engine.setPattern(state.activeSteps.audibleStepKeys(state.pads), state.bpm, state.swing)
     }
 
     private fun observePlaybackCapture() {
@@ -1037,11 +1129,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 val step = engine.currentStep
                 val sourceFrame = engine.currentSourceFrame
                 val sourceIsPlaying = engine.sourcePlaying
+                val loopPad = engine.currentLoopPad.takeIf { it >= 0 }
+                val loopFrame = engine.currentLoopFrame
                 val snapshot = mutableUiState.value
                 if (
                     snapshot.currentStep != step ||
                     snapshot.sourcePlaying != sourceIsPlaying ||
-                    (sourceFrame >= 0 && snapshot.sourcePlayheadFrame != sourceFrame)
+                    (sourceFrame >= 0 && snapshot.sourcePlayheadFrame != sourceFrame) ||
+                    snapshot.loopingPadIndex != loopPad ||
+                    snapshot.loopPlayheadFrame != loopFrame
                 ) {
                     mutableUiState.update { state ->
                         state.copy(
@@ -1049,6 +1145,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             sourcePlaying = sourceIsPlaying,
                             sourcePlayheadFrame = sourceFrame.takeIf { it >= 0 }
                                 ?: state.sourcePlayheadFrame,
+                            loopingPadIndex = loopPad,
+                            loopPlayheadFrame = loopFrame,
                             statusMessage = if (state.sourcePlaying && !sourceIsPlaying) {
                                 "曲の再生が終わりました — PADでチョップを演奏できます"
                             } else {
