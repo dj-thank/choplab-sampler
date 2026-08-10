@@ -59,9 +59,12 @@ import com.choplab.sampler.SamplerViewModel
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.activeSliceRange
+import com.choplab.sampler.model.audibleStepKeys
+import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.visiblePads
@@ -193,6 +196,7 @@ fun OtohiroiDeck(
                             WorkflowStage.ARRANGE -> SequenceWorkspace(
                                 state = state,
                                 metrics = metrics,
+                                onOpenLayerCapture = { stageName = WorkflowStage.PLAY.name },
                                 viewModel = viewModel,
                             )
                             WorkflowStage.FINISH -> FinishWorkspace(
@@ -848,8 +852,8 @@ private fun SelectedPadQuickEditor(
                 compact = true,
             )
             ValueDisplay(
-                label = "KEY ${semitoneLabel(pad.pitchSemitones)}",
-                value = semitoneToKeyName(pad.pitchSemitones),
+                label = "KEY / PITCH",
+                value = "${signedValue(pad.pitchSemitones)} st ${pitchDirectionLabel(pad.pitchSemitones)}",
                 modifier = Modifier.weight(1.1f).fillMaxHeight(),
             )
             MachineButton(
@@ -862,22 +866,18 @@ private fun SelectedPadQuickEditor(
             if (!expanded) {
                 QuickCycleButton(
                     label = "音色",
-                    percent = (pad.tone * 100).toInt(),
+                    value = "${toneCharacterLabel(pad.tone)} ${(pad.tone * 100).toInt()}%",
                     enabled = pad.isAssigned,
                     onClick = {
-                        val next = if (pad.tone >= 0.99f) 0f else (pad.tone + 0.1f).coerceAtMost(1f)
-                        viewModel.setSelectedPadTone(next)
+                        viewModel.setSelectedPadTone(nextTonePreset(pad.tone))
                     },
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 QuickCycleButton(
                     label = "音量",
-                    percent = (pad.gain * 100).toInt(),
+                    value = "${(pad.gain * 100).toInt()}%",
                     enabled = pad.isAssigned,
-                    onClick = {
-                        val next = if (pad.gain >= 1.49f) 0f else (pad.gain + 0.1f).coerceAtMost(1.5f)
-                        viewModel.setSelectedPadGain(next)
-                    },
+                    onClick = { viewModel.setSelectedPadGain(nextLevelPreset(pad.gain)) },
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
@@ -921,21 +921,19 @@ private fun SelectedPadQuickEditor(
 @Composable
 private fun QuickCycleButton(
     label: String,
-    percent: Int,
+    value: String,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     MachineButton(
-        label = "$label\n$percent%",
+        label = "$label\n$value",
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
         compact = true,
     )
 }
-
-private fun semitoneLabel(value: Float): String = "(${signedValue(value)})"
 
 @Composable
 private fun PadWorkspace(
@@ -1191,6 +1189,7 @@ private fun PlayModeEditor(
 private fun SequenceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
+    onOpenLayerCapture: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
     val gap = metrics.gapDp.dp
@@ -1223,11 +1222,11 @@ private fun SequenceWorkspace(
             SequenceControlDeck(
                 state = state,
                 metrics = metrics,
+                onOpenLayerCapture = onOpenLayerCapture,
                 viewModel = viewModel,
                 modifier = Modifier
                     .weight(0.95f)
                     .fillMaxHeight(),
-                flexibleSteps = true,
             )
         }
     } else {
@@ -1237,7 +1236,7 @@ private fun SequenceWorkspace(
         ) {
             if (metrics.density == DeckDensity.REGULAR) {
                 BeginnerCoachBar(
-                    text = "光るマスで音が鳴ります。まず 1・5・9・13 を押そう",
+                    text = "PADを選ぶ → 反復を選ぶ → BANKを替えてドラムを重ねよう",
                     modifier = Modifier.fillMaxWidth().height(32.dp),
                 )
             }
@@ -1252,6 +1251,15 @@ private fun SequenceWorkspace(
                 gap = gap,
                 viewModel = viewModel,
             )
+            ArrangementWaveformTimeline(
+                pad = state.selectedPadModel(),
+                activeSteps = state.activeSteps.audibleStepKeys(state.pads),
+                currentStep = state.currentStep,
+                transportPlaying = state.transportPlaying,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.9f),
+            )
             PadGrid(
                 pads = state.visiblePads(),
                 selectedPad = state.selectedPad,
@@ -1259,7 +1267,14 @@ private fun SequenceWorkspace(
                 onRelease = viewModel::releasePad,
                 onSelect = viewModel::selectPad,
                 gap = gap,
-                modifier = Modifier.weight(1f),
+                columns = 8,
+                modifier = Modifier.weight(1.1f),
+            )
+            RepeatPatternRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                onOpenLayerCapture = onOpenLayerCapture,
+                viewModel = viewModel,
             )
             TempoRow(
                 state = state,
@@ -1275,12 +1290,12 @@ private fun SequenceWorkspace(
                 gap = 4.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (metrics.density == DeckDensity.COMPACT) 84.dp else 96.dp),
+                    .height(if (metrics.density == DeckDensity.COMPACT) 72.dp else 84.dp),
             )
             SelectedPadQuickEditor(
                 state = state,
                 height = metrics.controlHeightDp.dp,
-                expanded = metrics.density == DeckDensity.REGULAR,
+                expanded = false,
                 onOpenDetails = null,
                 viewModel = viewModel,
             )
@@ -1324,50 +1339,209 @@ private fun BeginnerCoachBar(
 private fun SequenceControlDeck(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
+    onOpenLayerCapture: () -> Unit,
     viewModel: SamplerViewModel,
     modifier: Modifier,
-    flexibleSteps: Boolean,
 ) {
     val gap = metrics.gapDp.dp
-    Column(
+    Row(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(gap),
+        horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
-        SequenceTransportRow(
-            state = state,
-            height = metrics.controlHeightDp.dp,
-            gap = gap,
-            viewModel = viewModel,
-        )
-        TempoRow(
-            state = state,
-            height = metrics.controlHeightDp.dp,
-            viewModel = viewModel,
-        )
-        if (metrics.density != DeckDensity.COMPACT) {
-            ValueDisplay(
-                label = "EDITING",
-                value = "PAD ${bankName(state.selectedBank)}-%02d".format(state.selectedPadModel().indexInBank + 1),
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            ArrangementWaveformTimeline(
+                pad = state.selectedPadModel(),
+                activeSteps = state.activeSteps.audibleStepKeys(state.pads),
+                currentStep = state.currentStep,
+                transportPlaying = state.transportPlaying,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(30.dp),
+                    .weight(1f),
+            )
+            RepeatPatternRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                onOpenLayerCapture = onOpenLayerCapture,
+                viewModel = viewModel,
+            )
+            StepSequencer(
+                selectedPad = state.selectedPad,
+                activeSteps = state.activeSteps,
+                currentStep = state.currentStep,
+                onToggleStep = viewModel::toggleStep,
+                columns = 8,
+                gap = 3.dp,
+                modifier = Modifier.weight(1f),
             )
         }
-        StepSequencer(
-            selectedPad = state.selectedPad,
-            activeSteps = state.activeSteps,
-            currentStep = state.currentStep,
-            onToggleStep = viewModel::toggleStep,
-            columns = 8,
-            gap = 4.dp,
-            modifier = if (flexibleSteps) Modifier.weight(1f) else Modifier,
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            SequenceTransportRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                gap = gap,
+                viewModel = viewModel,
+            )
+            LandscapeTempoRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                viewModel = viewModel,
+            )
+            LandscapeKeyRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                viewModel = viewModel,
+            )
+            LandscapeToneLevelRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                viewModel = viewModel,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LandscapeTempoRow(
+    state: SamplerUiState,
+    height: Dp,
+    viewModel: SamplerViewModel,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        listOf(
+            "BPM -\n${state.bpm.toInt()}" to { viewModel.setBpm(state.bpm - 1f) },
+            "BPM +\n${state.bpm.toInt()}" to { viewModel.setBpm(state.bpm + 1f) },
+            "SW -\n${state.swing.toInt()}%" to { viewModel.setSwing(state.swing - 1f) },
+            "SW +\n${state.swing.toInt()}%" to { viewModel.setSwing(state.swing + 1f) },
+        ).forEach { (label, action) ->
+            MachineButton(
+                label = label,
+                onClick = action,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LandscapeKeyRow(
+    state: SamplerUiState,
+    height: Dp,
+    viewModel: SamplerViewModel,
+) {
+    val pad = state.selectedPadModel()
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        MachineButton(
+            label = "KEY -",
+            onClick = { viewModel.setSelectedPadPitch(pad.pitchSemitones - 1f) },
+            enabled = pad.isAssigned,
+            modifier = Modifier.weight(0.8f).fillMaxHeight(),
+            compact = true,
         )
-        SelectedPadQuickEditor(
-            state = state,
-            height = metrics.controlHeightDp.dp,
-            expanded = false,
-            onOpenDetails = null,
-            viewModel = viewModel,
+        ValueDisplay(
+            label = "KEY / PITCH",
+            value = "${signedValue(pad.pitchSemitones)} st ${pitchDirectionLabel(pad.pitchSemitones)}",
+            modifier = Modifier.weight(1.4f).fillMaxHeight(),
+        )
+        MachineButton(
+            label = "KEY +",
+            onClick = { viewModel.setSelectedPadPitch(pad.pitchSemitones + 1f) },
+            enabled = pad.isAssigned,
+            modifier = Modifier.weight(0.8f).fillMaxHeight(),
+            compact = true,
+        )
+    }
+}
+
+@Composable
+private fun LandscapeToneLevelRow(
+    state: SamplerUiState,
+    height: Dp,
+    viewModel: SamplerViewModel,
+) {
+    val pad = state.selectedPadModel()
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        QuickCycleButton(
+            label = "音色",
+            value = "${toneCharacterLabel(pad.tone)} ${(pad.tone * 100).toInt()}%",
+            enabled = pad.isAssigned,
+            onClick = { viewModel.setSelectedPadTone(nextTonePreset(pad.tone)) },
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+        QuickCycleButton(
+            label = "音量",
+            value = "${(pad.gain * 100).toInt()}%",
+            enabled = pad.isAssigned,
+            onClick = { viewModel.setSelectedPadGain(nextLevelPreset(pad.gain)) },
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+    }
+}
+
+@Composable
+private fun RepeatPatternRow(
+    state: SamplerUiState,
+    height: Dp,
+    onOpenLayerCapture: () -> Unit,
+    viewModel: SamplerViewModel,
+) {
+    val pad = state.selectedPadModel()
+    val activeRepeatGrid = state.activeSteps.repeatGridForPad(state.selectedPad)
+    val nextBank = (state.selectedBank + 1) % SamplerConfig.BANK_COUNT
+    val nextPadIndex = nextBank * SamplerConfig.PADS_PER_BANK + pad.indexInBank
+    val nextPadHasSound = state.pads[nextPadIndex].isAssigned
+    val choices = listOf(
+        RepeatGrid.QUARTER to "4つ打ち\n1/4",
+        RepeatGrid.EIGHTH to "8分\n1/8",
+        RepeatGrid.SIXTEENTH to "16分\n1/16",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        choices.forEach { (grid, label) ->
+            MachineButton(
+                label = label,
+                onClick = { viewModel.fillSelectedPadPattern(grid) },
+                enabled = pad.isAssigned,
+                active = activeRepeatGrid == grid,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+        MachineButton(
+            label = if (nextPadHasSound) {
+                "音を重ねる\nBANK ${bankName(nextBank)} →"
+            } else {
+                "音を足す\nBANK ${bankName(nextBank)} →"
+            },
+            onClick = {
+                viewModel.selectLayerBank(nextBank)
+                if (!nextPadHasSound) onOpenLayerCapture()
+            },
+            modifier = Modifier.weight(1.15f).fillMaxHeight(),
+            compact = true,
         )
     }
 }
@@ -1392,6 +1566,7 @@ private fun SequenceTransportRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
+            compact = true,
         )
         MachineButton(
             label = if (state.recordArmed) "演奏を記録中\nREC ON" else "演奏を記録\nREC",
@@ -1400,6 +1575,7 @@ private fun SequenceTransportRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
+            compact = true,
         )
         ConfirmActionButton(
             label = "この音を消す\nCLEAR STEPS",

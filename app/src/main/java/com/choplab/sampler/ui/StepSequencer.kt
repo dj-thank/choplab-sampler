@@ -89,7 +89,7 @@ private fun StepCell(
                     step % 4 == 0 -> 2.dp
                     else -> 1.dp
                 },
-                color = DeckInk,
+                color = if (playhead) Color(0xFFFFF0D0) else DeckInk,
                 shape = shape,
             )
             .clickable {
@@ -98,7 +98,8 @@ private fun StepCell(
             }
             .semantics {
                 role = Role.Button
-                contentDescription = "ステップ ${step + 1} ${if (active) "オン" else "オフ"}"
+                contentDescription = "ステップ ${step + 1} ${if (active) "オン" else "オフ"}" +
+                    if (playhead) "。現在の再生位置" else ""
             },
         contentAlignment = Alignment.Center,
     ) {

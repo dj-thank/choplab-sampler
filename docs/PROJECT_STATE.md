@@ -2,6 +2,39 @@
 
 Last prepared: 2026-08-09
 
+## Arrange waveform and repeat workflow — 2026-08-10
+
+Version `0.5.0` (`versionCode=6`) turns `4 並べる` into a visible one-bar beat workspace without removing the original live-chop flow:
+
+- the selected PAD's real PCM slice is down-sampled into a bounded waveform and drawn over 16 beat divisions;
+- a high-contrast moving playhead, `いま xx / 16` readout and matching sequencer-cell outline show the current playback position;
+- four labelled BANK rows show every sounding layer at each step, with the selected PAD marker separated from other BANK activity;
+- `4つ打ち / 8分 / 16分` presets replace only the selected PAD's steps, preserve all other PAD/BANK layers, and remain Undo/Redo-compatible;
+- Arrange uses a compact 8 × 2 PAD selector in portrait while the live `叩く` stage keeps its 4 × 4 PAD layout;
+- `音を重ねる BANK →` selects an already-audible layer; when the same PAD in the next BANK is empty, `音を足す BANK →` moves directly to `叩く` on that BANK/PAD so a new sound can be captured;
+- KEY shows truthful semitone offset plus `原キー / 高い / 低い` without pretending to detect the imported song's musical key, and TONE cycles through `暗い / なじむ / 原音` while the continuous editor remains available;
+- landscape Arrange was reorganized into waveform/repeat/steps and transport/timing/sound columns so the new controls do not clip.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 44 tests, zero failures/errors/skips;
+- Gradle `lintDebug`: zero issues;
+- Gradle `assembleDebug`: PASS;
+- UI source scan: zero `verticalScroll`, `horizontalScroll`, or `rememberScrollState` matches;
+- `git diff --check`: PASS;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,829,070 bytes, SHA-256 `3A0487513A6455A98AAC835B2E53ECDB1AB1FFDEF80911CFFDD840651D5C7E31`.
+
+Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at density 420:
+
+- imported a 30-second WAV, created four slices, assigned A-01..04, placed A-01 as a four-on-the-floor pattern, then assigned B-01..04 and layered B-01 as eighth notes;
+- portrait playback showed the selected real waveform, moving high-contrast playhead, A/B marker rows, active 8分 preset, KEY/TONE labels and all controls without scrolling or visible clipping;
+- landscape playback/edit layout showed waveform, A/B layers, repeat presets, all 16 steps, transport, BPM/Swing, KEY and TONE/LEVEL without visible clipping;
+- selecting empty C-01 through `音を足す BANK C →` moved directly to `叩く`, selected BANK C / PAD C-01, and displayed the instruction to press a PAD while the source plays;
+- installed package reported `versionCode=6`, `versionName=0.5.0`, `minSdk=29`, `targetSdk=36`; `MainActivity` was top-resumed and the focused error-log query found no fatal exception.
+
+This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the Arrange slice. Public CI/Release identity, physical-phone install and `HUMAN_GO` are not claimed here until those gates run.
+
 ## MVP project persistence and edit recovery — 2026-08-10
 
 Version `0.4.0` (`versionCode=5`) adds a bounded persistence slice to the existing mono AudioTrack MVP without changing the original HTML live-chop flow:

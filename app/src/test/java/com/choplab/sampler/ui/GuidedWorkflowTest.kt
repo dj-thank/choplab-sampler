@@ -42,10 +42,21 @@ class GuidedWorkflowTest {
     }
 
     @Test
-    fun selectedPadPitchIsShownAsAFamiliarKeyName() {
-        assertEquals("C3", semitoneToKeyName(0f))
-        assertEquals("C#3", semitoneToKeyName(1f))
-        assertEquals("B2", semitoneToKeyName(-1f))
-        assertEquals("C5", semitoneToKeyName(24f))
+    fun selectedPadPitchExplainsDirectionWithoutClaimingSourceKeyDetection() {
+        assertEquals("低い", pitchDirectionLabel(-1f))
+        assertEquals("原キー", pitchDirectionLabel(0f))
+        assertEquals("高い", pitchDirectionLabel(1f))
+    }
+
+    @Test
+    fun tonePresetUsesBeginnerNamesAndCyclesPredictably() {
+        assertEquals("暗い", toneCharacterLabel(0.2f))
+        assertEquals("なじむ", toneCharacterLabel(0.6f))
+        assertEquals("原音", toneCharacterLabel(1f))
+        assertEquals(0.65f, nextTonePreset(0.35f))
+        assertEquals(1f, nextTonePreset(0.65f))
+        assertEquals(0.35f, nextTonePreset(1f))
+        assertEquals(1f, nextLevelPreset(0.9f))
+        assertEquals(0f, nextLevelPreset(1.5f))
     }
 }
