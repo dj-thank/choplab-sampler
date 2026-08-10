@@ -55,7 +55,9 @@ fun arrangeRepeatPrompt(isAssigned: Boolean, padLabel: String): String =
         "2 反復を選ぶ  先に音の入ったPADを選んでください"
     }
 
-fun arrangeQuickSteps(): List<String> =
+private val arrangeQuickStepLabels =
     listOf("1 PADを選ぶ", "2 反復を選ぶ", "3 ビートを聴く")
 
-const val ARRANGE_QUICK_GUIDANCE = "1 PADを選ぶ  →  2 反復を選ぶ  →  3 ビートを聴く"
+fun arrangeQuickSteps(): List<String> = arrangeQuickStepLabels
+
+val ARRANGE_QUICK_GUIDANCE = arrangeQuickStepLabels.joinToString("  →  ")

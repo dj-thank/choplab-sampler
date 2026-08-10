@@ -746,7 +746,7 @@ private fun SourceReadout(state: SamplerUiState, height: Dp) {
             color = if (state.sourcePlaying) DeckLamp else DeckGreen,
             fontFamily = DeckFont,
             fontWeight = FontWeight.Black,
-            fontSize = 8.sp,
+            fontSize = 9.sp,
         )
         Text(
             text = when {
@@ -1667,7 +1667,7 @@ private fun FineControlsHeader(
             modifier = Modifier.weight(1.7f).fillMaxHeight(),
         )
         MachineButton(
-            label = "← かんたん作成",
+            label = "かんたん作成へ戻る",
             onClick = onBack,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
