@@ -68,7 +68,7 @@
 - [x] 2026-08-10 - Completed Red/Green implementation slices for cursor wrapping, rendering, schema 3, placement separation, and beginner guidance.
 - [x] 2026-08-10 - Completed local validation, final APK generation, exact-device installation, Download copy, and focused Pixel loop checks.
 - [x] 2026-08-10 - Completed fixed-point Standards and Spec review and resolved both valid findings.
-- [ ] 2026-08-10 - Complete fix commit, PR/CI, and public preview release.
+- [x] 2026-08-11 - Completed fix commit, PR #6, main/tag CI, public preview release, reverse-download verification, and exact public APK migration on Pixel 9a.
 
 ## Discoveries
 
@@ -96,6 +96,9 @@
 - Review execution: `Execution: local parent two-pass (no substitute child model used)` against fixed point `c9f5ef15ced1464b8f3593969bf0bbd7c4f2e23b` and this plan.
 - Standards finding resolved: replaced new audio-thread `filter` allocations with indexed release scans, including the adjacent existing gate/choke paths.
 - Spec finding resolved with Red/Green evidence: loop-only export was incorrectly rejected by the ViewModel precondition even though the renderer supported it; `hasAudiblePatternContent` now accepts an assigned LOOP PAD without step events.
+- PR #6 merged as `9d09228c7d19cdd709b7c864e21eddaa69715d67`; branch/PR/main/tag Android runs `31400890047`, `31400928956`, `31401298050`, and `31401606925` passed.
+- Release run `31401606890` published prerelease `v0.7.0-preview.1`. Reverse-downloaded public APK: 30,346,187 bytes, SHA-256 `3393A60EBB8FDD3CE76CD459150049807D63DC39CF62BB4CF213365FB5FD1CB2`; GitHub digest and checksum attachment matched.
+- Pixel 9a exact-public migration: backed up/restored 12,003,628-byte autosave at SHA-256 `75C8BB8E5FFC8E6FA0006212E4A869593A2C8D680B44DD5DA7474A862CC45B42`, cold-launched v0.7.0/code 8, restored `Without You.mp3`, and found zero focused fatal matches.
 
 ## Risks and rollback
 
