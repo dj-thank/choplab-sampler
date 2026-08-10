@@ -1,6 +1,6 @@
 # Project state
 
-Last prepared: 2026-08-09
+Last prepared: 2026-08-10
 
 ## Arrange waveform and repeat workflow — 2026-08-10
 
@@ -33,7 +33,18 @@ Focused Pixel 9 AVD evidence on Android 16/API 36, x86_64, 1080 × 2424 px at de
 - selecting empty C-01 through `音を足す BANK C →` moved directly to `叩く`, selected BANK C / PAD C-01, and displayed the instruction to press a PAD while the source plays;
 - installed package reported `versionCode=6`, `versionName=0.5.0`, `minSdk=29`, `targetSdk=36`; `MainActivity` was top-resumed and the focused error-log query found no fatal exception.
 
-This establishes `LOCAL_PASS` and focused `EMULATOR_PASS` for the Arrange slice. Public CI/Release identity, physical-phone install and `HUMAN_GO` are not claimed here until those gates run.
+Public and physical-device evidence:
+
+- PR [#4](https://github.com/dj-thank/choplab-sampler/pull/4) merged as `48c645e8b6a0f96c9acf2a7249f26648e8430689`;
+- main Android verification [run 31386734837](https://github.com/dj-thank/choplab-sampler/actions/runs/31386734837): PASS;
+- tag `v0.5.0-preview.1` resolves to the same merge commit; tag Android verification [run 31387028904](https://github.com/dj-thank/choplab-sampler/actions/runs/31387028904): PASS;
+- release workflow [run 31387028918](https://github.com/dj-thank/choplab-sampler/actions/runs/31387028918): PASS; [public release](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.5.0-preview.1) published from the public repository;
+- public `ChopLab-v0.5.0-preview.1-debug.apk`: 30,297,035 bytes, SHA-256 `DB3EC8CC7B23C7DFB82547FBFC10DFEC59A11BFE11AF707AD24DC2CEBF16C4F1`; the downloaded APK matched both the Release asset digest and attached `.sha256`;
+- the downloaded public APK installed and cold-launched on the Pixel 9 AVD as `versionCode=6`, `versionName=0.5.0`, with no focused fatal exception;
+- on the connected Pixel 9a, Android correctly rejected an in-place update because the previous local debug signature differed from the CI debug signature. Before replacing only `com.choplab.sampler`, the 4,494,933-byte autosave was backed up and verified as SHA-256 `7AAB7315A7922C7075F07DF561204CB5D7C4BE9E0B59CA3E67F73B12A8884140`. The public APK was then installed, the same autosave restored with the same digest, `MainActivity` launched as version `0.5.0` without a focused fatal exception, and the previously focused app was reopened;
+- the public APK remains in the phone's Download folder; the temporary Arrange audit WAV was removed.
+
+This establishes `LOCAL_PASS`, focused `EMULATOR_PASS`, `PUBLIC_PASS`, and install/launch plus state-migration `DEVICE_PASS` for the exact public APK. It does not establish sustained physical multi-touch performance, subjective haptic quality, long-session audio latency, production signing/update continuity, or `HUMAN_GO`.
 
 ## MVP project persistence and edit recovery — 2026-08-10
 

@@ -44,7 +44,7 @@
 - [x] 2026-08-10 — RepeatGrid/BANK activity、audible layer filtering、repeat recognition、tone preset の Red/Green。44 unit tests PASS。
 - [x] 2026-08-10 — ViewModel と portrait/landscape Compose UI を統合。
 - [x] 2026-08-10 — local validation と Standards/Spec 二軸review。修正後のmaterial finding 0。
-- [ ] device/public release evidence。
+- [x] 2026-08-10 — PR #4、main/tag CI、公開Release、公開APKのemulator/Pixel 9a install-launch-state migration evidence。
 
 ## Decision log
 
@@ -59,6 +59,8 @@
 - 2026-08-10: `scripts/validate_project.sh`、44 unit tests、Lint zero issues、assemble、scroll scan 0、`git diff --check` PASS。
 - 2026-08-10: API 36 emulator で A-01 4つ打ち + B-01 8分を同時再生。portrait/landscape とも固定画面内で waveform/playhead/BANK markers/repeat/KEY/TONE を確認。
 - 2026-08-10: review後、空PADをBANK markerから除外し、全16-stepのTalkBack説明、columns range guard、truthful semitone表示、空BANKから`叩く`への追加導線を再検証。
+- 2026-08-10: PR #4をmerge commit `48c645e`として公開。main/tag Android verificationとrelease workflow PASS。公開APK 30,297,035 bytes、SHA-256 `DB3EC8CC7B23C7DFB82547FBFC10DFEC59A11BFE11AF707AD24DC2CEBF16C4F1`。
+- 2026-08-10: 公開APKをPixel 9 AVDとPixel 9aへ導入・起動。Pixel 9aでは旧autosaveを内容非表示でbackupし、同一SHA-256のまま公開版へ復元。APKは端末Downloadへ保存。
 
 ## Risks and rollback
 
