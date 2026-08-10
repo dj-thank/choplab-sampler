@@ -42,6 +42,8 @@ fun ArrangementWaveformTimeline(
     currentStep: Int,
     transportPlaying: Boolean,
     modifier: Modifier = Modifier,
+    loopPlayheadFrame: Int = -1,
+    loopPlaying: Boolean = false,
 ) {
     val peaks = remember(pad.audio?.id, pad.startFrame, pad.endFrame) {
         buildSlicePeaks(pad)
@@ -63,21 +65,30 @@ fun ArrangementWaveformTimeline(
     } else {
         "— / 16"
     }
+    val loopProgress = if (
+        loopPlaying && pad.isAssigned && loopPlayheadFrame in pad.startFrame until pad.endFrame
+    ) {
+        (loopPlayheadFrame - pad.startFrame).toFloat() /
+            (pad.endFrame - pad.startFrame).coerceAtLeast(1)
+    } else {
+        null
+    }
     val arrangementDescription = bankActivityByStep.mapIndexedNotNull { step, banks ->
         if (banks.isEmpty()) null else {
             val names = banks.joinToString("+") { bank -> ('A'.code + bank).toChar().toString() }
             "${step + 1}=$names"
         }
     }.joinToString("、").ifEmpty { "配置なし" }
-    val description = "並べる実波形。選択PAD $padLabel。現在ステップ $stepLabel。" +
+    val loopDescription = loopProgress?.let { "ビートループ中 ${(it * 100).toInt()}パーセント。" }.orEmpty()
+    val description = "並べる実波形。選択PAD $padLabel。$loopDescription 現在ステップ $stepLabel。" +
         "鳴るBANK $bankText。全配置 $arrangementDescription"
 
     Box(
         modifier = modifier
             .background(Color(0xFF090806), TimelineShape)
             .border(
-                width = if (transportPlaying) 2.dp else 1.dp,
-                color = if (transportPlaying) DeckLamp else Color(0xFF4A422E),
+                width = if (transportPlaying || loopPlaying) 2.dp else 1.dp,
+                color = if (transportPlaying || loopPlaying) DeckLamp else Color(0xFF4A422E),
                 shape = TimelineShape,
             )
             .semantics { contentDescription = description },
@@ -92,6 +103,21 @@ fun ArrangementWaveformTimeline(
             val waveBottom = (size.height - bankAreaHeight).coerceAtLeast(waveTop + 1f)
             val waveCenter = (waveTop + waveBottom) / 2f
             val waveAmplitude = (waveBottom - waveTop) * 0.42f
+
+            loopProgress?.let { progress ->
+                val playheadX = timelineLeft + progress.coerceIn(0f, 1f) * timelineWidth
+                drawLine(
+                    color = Color(0xFFFFF0D0),
+                    start = Offset(playheadX, headerHeight),
+                    end = Offset(playheadX, waveBottom),
+                    strokeWidth = 3.dp.toPx(),
+                )
+                drawCircle(
+                    color = DeckLamp,
+                    radius = 4.dp.toPx(),
+                    center = Offset(playheadX, headerHeight),
+                )
+            }
 
             if (currentStep in 0 until SamplerConfig.STEP_COUNT) {
                 val playheadX = timelineLeft + currentStep * stepWidth
@@ -166,8 +192,9 @@ fun ArrangementWaveformTimeline(
                 fontSize = 9.sp,
             )
             Text(
-                text = "いま $stepLabel  ·  BANK $bankText",
-                color = if (transportPlaying) Color(0xFFFFD29A) else Color(0xFFA89A78),
+                text = loopProgress?.let { "ループ ${(it * 100).toInt()}%  ·  PAD $padLabel" }
+                    ?: "いま $stepLabel  ·  BANK $bankText",
+                color = if (transportPlaying || loopPlaying) Color(0xFFFFD29A) else Color(0xFFA89A78),
                 fontFamily = TimelineFont,
                 fontWeight = FontWeight.Black,
                 fontSize = 9.sp,

@@ -71,18 +71,19 @@ class PatternEditingTest {
     @Test
     fun `audible steps omit events on empty pads`() {
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
-            if (index == 0) {
+            if (index == 0 || index == 1) {
                 PadModel(
                     globalIndex = index,
                     audio = PcmAudio(name = "kick", samples = shortArrayOf(1, 2), sampleRate = 48_000),
                     startFrame = 0,
                     endFrame = 2,
+                    playMode = if (index == 1) PadPlayMode.LOOP else PadPlayMode.ONE_SHOT,
                 )
             } else {
                 PadModel(globalIndex = index)
             }
         }
-        val pattern = setOf(stepKey(0, 0), stepKey(16, 0), stepKey(32, 4))
+        val pattern = setOf(stepKey(0, 0), stepKey(1, 8), stepKey(16, 0), stepKey(32, 4))
 
         assertEquals(setOf(stepKey(0, 0)), pattern.audibleStepKeys(pads))
     }

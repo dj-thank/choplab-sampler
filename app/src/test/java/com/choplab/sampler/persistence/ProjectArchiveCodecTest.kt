@@ -16,9 +16,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProjectArchiveCodecTest {
+    @Test
+    fun archiveUsesSchemaThreeWhenWholeChopLoopModeCanBeStored() {
+        val manifest = unzip(archiveFor(SamplerUiState()))
+            .single { (name, _) -> name == "project.txt" }
+            .second
+            .toString(Charsets.UTF_8)
+
+        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t3\n"))
+    }
+
     @Test
     fun projectRoundTripPreservesMusicStateAndSharesAudioAssets() {
         val audio = PcmAudio(
@@ -38,7 +49,7 @@ class ProjectArchiveCodecTest {
                     tone = 0.35f,
                     gain = 1.1f,
                     reverse = true,
-                    playMode = PadPlayMode.GATE,
+                    playMode = PadPlayMode.LOOP,
                     chokeGroup = 2,
                 )
                 1 -> PadModel(index, audio = audio, startFrame = 4, endFrame = 6)
@@ -82,7 +93,7 @@ class ProjectArchiveCodecTest {
         assertEquals(3f, restored.pads[0].pitchSemitones)
         assertEquals(0.35f, restored.pads[0].tone)
         assertEquals(1.1f, restored.pads[0].gain)
-        assertEquals(PadPlayMode.GATE, restored.pads[0].playMode)
+        assertEquals(PadPlayMode.LOOP, restored.pads[0].playMode)
         assertEquals(setOf(stepKey(0, 0), stepKey(1, 8)), restored.activeSteps)
         assertEquals(123f, restored.bpm)
         assertEquals(61f, restored.swing)
@@ -148,7 +159,7 @@ class ProjectArchiveCodecTest {
         val schemaOneEntries = schemaTwoEntries.map { (name, bytes) ->
             when (name) {
                 "project.txt" -> name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t2", "CHOPLAB_PROJECT\t1")
+                    .replace("CHOPLAB_PROJECT\t3", "CHOPLAB_PROJECT\t1")
                     .replace("audio/0.wav", "audio/0.pcm")
                     .toByteArray(Charsets.UTF_8)
                 "audio/0.wav" -> "audio/0.pcm" to bytes.copyOfRange(44, bytes.size)
@@ -163,11 +174,31 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
+    fun schemaTwoWavArchiveStillLoads() {
+        val audio = PcmAudio(id = 12L, name = "schema-two.wav", samples = shortArrayOf(3, -4), sampleRate = 48_000)
+        val entries = unzip(
+            archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)),
+        ).map { (name, bytes) ->
+            if (name == "project.txt") {
+                name to bytes.toString(Charsets.UTF_8)
+                    .replace("CHOPLAB_PROJECT\t3", "CHOPLAB_PROJECT\t2")
+                    .toByteArray(Charsets.UTF_8)
+            } else {
+                name to bytes
+            }
+        }
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+
+        assertArrayEquals(audio.samples, restored.currentAudio?.samples)
+    }
+
+    @Test
     fun archiveRejectsNewerSchemaWithActionableMessage() {
         val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t2", "CHOPLAB_PROJECT\t999")
+                    .replace("CHOPLAB_PROJECT\t3", "CHOPLAB_PROJECT\t999")
                     .toByteArray(Charsets.UTF_8)
             } else {
                 name to bytes

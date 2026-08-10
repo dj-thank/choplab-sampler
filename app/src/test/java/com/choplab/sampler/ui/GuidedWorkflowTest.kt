@@ -61,25 +61,34 @@ class GuidedWorkflowTest {
     }
 
     @Test
-    fun arrangeRepeatPromptMakesTheSecondStepExplicit() {
+    fun arrangeBeatLoopPromptNamesWholeChopPlaybackInsteadOfBeatGridRetriggering() {
         assertEquals(
-            "2 反復を選ぶ  A-01を何拍ごとに鳴らす？",
-            arrangeRepeatPrompt(isAssigned = true, padLabel = "A-01"),
+            "2 ビートをループ  A-01の音声全体を繰り返す",
+            arrangeBeatLoopPrompt(isAssigned = true, padLabel = "A-01"),
         )
         assertEquals(
-            "2 反復を選ぶ  先に音の入ったPADを選んでください",
-            arrangeRepeatPrompt(isAssigned = false, padLabel = "A-01"),
+            "2 ビートをループ  先に音の入ったPADを選んでください",
+            arrangeBeatLoopPrompt(isAssigned = false, padLabel = "A-01"),
         )
+        assertEquals(
+            "2 ビートをループ  A-04の音声全体を繰り返し中",
+            arrangeBeatLoopPrompt(
+                isAssigned = false,
+                padLabel = "B-04",
+                loopingPadLabel = "A-04",
+            ),
+        )
+        assertEquals("配置プリセット  鳴らす場所を選ぶ", placementPresetPrompt())
     }
 
     @Test
     fun arrangeQuickModeNamesTheThreePrimaryActions() {
         assertEquals(
-            listOf("1 PADを選ぶ", "2 反復を選ぶ", "3 ビートを聴く"),
+            listOf("1 PADを選ぶ", "2 ビートをループ", "3 音を重ねる"),
             arrangeQuickSteps(),
         )
         assertEquals(
-            "1 PADを選ぶ  →  2 反復を選ぶ  →  3 ビートを聴く",
+            "1 PADを選ぶ  →  2 ビートをループ  →  3 音を重ねる",
             ARRANGE_QUICK_GUIDANCE,
         )
     }

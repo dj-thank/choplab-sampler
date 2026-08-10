@@ -38,7 +38,9 @@ fun Set<Int>.activeBanksAtStep(stepIndex: Int): Set<Int> {
 fun Set<Int>.audibleStepKeys(pads: List<PadModel>): Set<Int> =
     filterTo(linkedSetOf()) { key ->
         val padIndex = key / SamplerConfig.STEP_COUNT
-        pads.getOrNull(padIndex)?.isAssigned == true
+        pads.getOrNull(padIndex)?.let { pad ->
+            pad.isAssigned && pad.playMode != PadPlayMode.LOOP
+        } == true
     }
 
 fun Set<Int>.repeatGridForPad(padIndex: Int): RepeatGrid? {

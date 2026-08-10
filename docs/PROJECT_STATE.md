@@ -2,6 +2,38 @@
 
 Last prepared: 2026-08-10
 
+## Whole-chop beat loop local/device evidence — 2026-08-10
+
+Version `0.7.0` (`versionCode=8`) separates a continuous beat loop from step-grid placement:
+
+- `4 並べる` now gives one beginner path: `1 PADを選ぶ → 2 ビートをループ → 3 音を重ねる`;
+- `ビートをループ` repeats the selected PAD's start-inclusive/end-exclusive audio range continuously instead of retriggering it on quarter/eighth/sixteenth steps;
+- one project beat-loop PAD is active at a time, duplicate infinite voices are prevented, and both the same primary control and `ALL STOP` stop playback;
+- the real loop waveform stays visible while another BANK is selected, with a live loop-position line and percentage;
+- when another BANK is selected during playback, the primary control still names the active loop PAD and remains an unambiguous `ループ停止 / STOP` action;
+- `4つ打ち / 8分 / 16分` remain available only as optional `配置プリセット` in `細かく調整`, for layering other PADs without conflating sequencing with the base loop;
+- offline export starts LOOP PADs at frame zero and renders them continuously, while project archive schema 3 preserves the new mode and still reads schema 1/raw-PCM and schema 2/WAV projects;
+- portrait and landscape keep the existing fixed console with no scrolling API.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 52 tests, zero failures/errors/skips;
+- Gradle `lintDebug`: PASS with zero errors and nine pre-existing toolchain/platform advisories;
+- Gradle `assembleDebug`: PASS;
+- `git diff --check`: PASS;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,942,730 bytes, SHA-256 `91870DBF844933B913019FE41CF04F743ADE72D18F5B5AE351464C457A045CF7`.
+
+Focused physical Pixel 9a evidence:
+
+- installed the exact local APK as `versionCode=8`, `versionName=0.7.0`, then copied the same bytes to `/sdcard/Download/ChopLab-v0.7.0-local-debug.apk`; device and PC SHA-256 both matched `91870DBF844933B913019FE41CF04F743ADE72D18F5B5AE351464C457A045CF7`;
+- the existing project restored after cold launch and its assigned source/PADs remained available;
+- starting A-04 changed the accessible waveform state from 23% to 75%, demonstrating a moving loop cursor, while the screen showed the high-contrast playhead and `ループ停止 / STOP`;
+- after moving to empty BANK B to add a sound and returning to Arrange, the screen still showed A-04's real waveform, live loop percentage, `A-04の音声全体を繰り返し中`, and an enabled STOP action;
+- stopping from that BANK B state reported `ビートループを停止しました`; the focused app log contained no fatal exception match.
+
+This establishes `LOCAL_PASS` and a focused install/launch/control-state `DEVICE_PASS` for the exact local v0.7.0 APK. It does not yet establish CI/Release identity, `PUBLIC_PASS`, subjective loop-seam quality, sustained latency/thermal behavior, physical multi-touch layering, TalkBack/haptic quality, production signing/update continuity, or `HUMAN_GO`.
+
 ## Public v0.6.0 preview evidence — 2026-08-10
 
 - PR [#5](https://github.com/dj-thank/choplab-sampler/pull/5) merged as `db0845d9de8129dae14d813eab10ad1cda88a0de` after both branch verification runs `31391730072` and `31391734337` passed.

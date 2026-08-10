@@ -8,7 +8,7 @@ enum class WorkflowStage(
     CAPTURE("入れる", "CAPTURE", "まず曲を読み込むか、マイクで録音します"),
     SLICE("切る", "SLICE", "必要なら波形を区切って、音の範囲を整えます"),
     PLAY("叩く", "PLAY", "曲を再生し、ここだと思ったらPADを押します"),
-    ARRANGE("並べる", "ARRANGE", "PADを選び、反復と波形を見ながらBANKを重ねます"),
+    ARRANGE("並べる", "ARRANGE", "ビートをループし、別BANKの音を重ねます"),
     FINISH("完成", "FINISH", "ビートを確認して、4小節WAVを書き出します"),
     ;
 
@@ -48,15 +48,23 @@ fun nextTonePreset(tone: Float): Float = when {
 fun nextLevelPreset(gain: Float): Float =
     if (gain >= 1.49f) 0f else (gain + 0.1f).coerceAtMost(1.5f)
 
-fun arrangeRepeatPrompt(isAssigned: Boolean, padLabel: String): String =
-    if (isAssigned) {
-        "2 反復を選ぶ  ${padLabel}を何拍ごとに鳴らす？"
+fun arrangeBeatLoopPrompt(
+    isAssigned: Boolean,
+    padLabel: String,
+    loopingPadLabel: String? = null,
+): String =
+    if (loopingPadLabel != null) {
+        "2 ビートをループ  ${loopingPadLabel}の音声全体を繰り返し中"
+    } else if (isAssigned) {
+        "2 ビートをループ  ${padLabel}の音声全体を繰り返す"
     } else {
-        "2 反復を選ぶ  先に音の入ったPADを選んでください"
+        "2 ビートをループ  先に音の入ったPADを選んでください"
     }
 
+fun placementPresetPrompt(): String = "配置プリセット  鳴らす場所を選ぶ"
+
 private val arrangeQuickStepLabels =
-    listOf("1 PADを選ぶ", "2 反復を選ぶ", "3 ビートを聴く")
+    listOf("1 PADを選ぶ", "2 ビートをループ", "3 音を重ねる")
 
 fun arrangeQuickSteps(): List<String> = arrangeQuickStepLabels
 
