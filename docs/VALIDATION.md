@@ -2,6 +2,18 @@
 
 作成日: 2026-07-15
 
+## 2026-08-11 v0.9.1 clarity audit validation
+
+- combined screenshot/UX audit captured seven v0.9.0 flow states and four accepted post-fix states on Pixel 9 / API 36 emulator
+- `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS
+- unit tests: 83 / failures 0 / errors 0 / skipped 0
+- lint: task PASS, errors 0
+- local APK: 30,575,559 bytes, SHA-256 `5F5059DDC6C1EFC7BA1F1FFDCED37F7BACCC81AAA7731437F0C616231E227546`
+- improved CHOP: duplicate input row removed and waveform expanded without scrolling
+- improved PADS/Layer: page occupancy labels visible; Layer loop START label no longer clipped
+- improved Scratch: waveform tap says and performs slice selection; `SOURCE RANGE` preserves existing chop markers
+- physical audio, latest-device screen, TalkBack, multi-touch, and haptic quality remain human checks
+
 ## 2026-08-11 v0.9.0 current validation
 
 - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS

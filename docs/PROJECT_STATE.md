@@ -2,6 +2,18 @@
 
 Last prepared: 2026-08-11
 
+## v0.9.1 clarity audit follow-up — 2026-08-11
+
+The post-v0.9.0 emulator audit produced a focused clarity pass without Figma or scroll containers:
+
+- the machine header now shows only the current stage and caption; transient action/recovery status remains in the bottom status strip instead of leaking into unrelated stages;
+- CHOP no longer repeats the three Capture input buttons, giving the waveform materially more editing room while input remains one top-level tap away;
+- each fixed PAD page reports its assigned count (`5音`) or empty state (`空`), so page 17–32 cannot look like lost data;
+- source Scratch always treats waveform taps as slice selection, provides an explicit non-destructive `SOURCE RANGE` choice that preserves chop markers, and ends source scratch on every dialog-dismiss path;
+- the Layer Studio loop control is tall enough to show its full START/STOP label.
+
+Validation at this checkpoint: 83 unit tests with zero failures/errors/skips, Android Lint PASS with zero errors, debug APK assemble PASS, and Pixel 9/API 36 emulator screenshots accepted for improved CHOP, PADS, Layer SOUNDS, and source Scratch. Local APK: 30,575,559 bytes, SHA-256 `5F5059DDC6C1EFC7BA1F1FFDCED37F7BACCC81AAA7731437F0C616231E227546`. Physical audio/TalkBack/multi-touch remain unclaimed.
+
 ## v0.9.0 four-stage workflow and safe playback local/device evidence — 2026-08-11
 
 Version `0.9.0` (`versionCode=10`) responds to the latest hands-on feedback without Figma:
