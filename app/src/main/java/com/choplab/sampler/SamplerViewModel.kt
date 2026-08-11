@@ -31,6 +31,7 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.SourceCaptureOperation
+import com.choplab.sampler.model.SourcePlaybackRequest
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
@@ -51,6 +52,8 @@ import com.choplab.sampler.model.selectSourceRangeForScratch
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourcePlaybackStartFrame
+import com.choplab.sampler.model.sourcePlaybackAppliedStatusMessage
+import com.choplab.sampler.model.sourcePlaybackRequestFeedback
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.trimPadBoundary
@@ -880,8 +883,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         if (state.sourcePlaying) {
             engine.stopSource()
-            mutableUiState.update {
-                it.copy(sourcePlaying = false, statusMessage = "停止中 — PADでチョップを演奏できます")
+            mutableUiState.update { current ->
+                val feedback = sourcePlaybackRequestFeedback(
+                    appliedPlaying = current.sourcePlaying,
+                    request = SourcePlaybackRequest.STOP,
+                )
+                current.copy(
+                    sourcePlaying = feedback.sourcePlaying,
+                    statusMessage = feedback.statusMessage,
+                )
             }
             return
         }
@@ -891,13 +901,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         val start = sourcePlaybackStartFrame(state.sourcePlayheadFrame, audio.frameCount)
         engine.playSource(audio, start, state.masterPitchSemitones)
-        mutableUiState.update {
-            it.copy(
-                sourcePlaying = true,
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.START,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = start,
-                statusMessage = "サンプリング中 — 「ここだ」でPADを叩いてください",
+                statusMessage = feedback.statusMessage,
             )
         }
     }
@@ -911,13 +925,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.stopTransport()
         engine.stopSource()
         engine.playSource(audio, 0, state.masterPitchSemitones)
-        mutableUiState.update {
-            it.copy(
-                sourcePlaying = true,
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.RESTART,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = 0,
-                statusMessage = "曲の頭から再生中 — 空PADを順に叩くとチョップできます",
+                statusMessage = feedback.statusMessage,
             )
         }
     }
@@ -931,13 +949,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val safe = frame.coerceIn(0, audio.frameCount - 1)
         engine.stopTransport()
         engine.playSource(audio, safe, state.masterPitchSemitones)
-        mutableUiState.update {
-            it.copy(
-                sourcePlaying = true,
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.SEEK,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = safe,
-                statusMessage = "波形で選んだ位置から再生中 — 空PADを叩くとここをチョップします",
+                statusMessage = feedback.statusMessage,
             )
         }
     }
@@ -1594,11 +1616,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             loopPlayheadFrame = loopFrame,
                             scratchingPadIndex = scratchPad,
                             scratchPlayheadFrame = scratchFrame,
-                            statusMessage = if (state.sourcePlaying && !sourceIsPlaying) {
-                                "曲の再生が終わりました — PADでチョップを演奏できます"
-                            } else {
-                                state.statusMessage
-                            },
+                            statusMessage = sourcePlaybackAppliedStatusMessage(
+                                previouslyApplied = state.sourcePlaying,
+                                nowApplied = sourceIsPlaying,
+                                currentMessage = state.statusMessage,
+                            ),
                         )
                     }
                 }
