@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -61,6 +62,7 @@ fun PadGrid(
     onTrigger: (Int) -> Unit,
     onRelease: (Int) -> Unit,
     onSelect: (Int) -> Unit,
+    onLongPress: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
     captureMode: Boolean = false,
     gap: Dp = 6.dp,
@@ -103,6 +105,7 @@ fun PadGrid(
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
                             onSelect = { onSelect(pad.globalIndex) },
+                            onLongPress = { onLongPress(pad.globalIndex) },
                             modifier = Modifier.size(geometry.cellSize.dp),
                         )
                     }
@@ -121,6 +124,7 @@ private fun PerformancePad(
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
     onSelect: () -> Unit,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
@@ -155,15 +159,21 @@ private fun PerformancePad(
             )
             .pointerInput(pad.globalIndex, pad.isAssigned, captureMode) {
                 detectTapGestures(
+                    onLongPress = {
+                        if (pad.isAssigned) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onSelect()
+                            onLongPress()
+                        }
+                    },
                     onPress = {
                         pressed = true
                         try {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onSelect()
                             if (captureMode || pad.isAssigned) onTrigger()
                             tryAwaitRelease()
                         } finally {
-                            if (!captureMode && pad.isAssigned) onRelease()
+                            if (pad.isAssigned) onRelease()
                             pressed = false
                         }
                     },
@@ -177,6 +187,13 @@ private fun PerformancePad(
                     onSelect()
                     if (captureMode || pad.isAssigned) onTrigger()
                     true
+                }
+                if (pad.isAssigned) {
+                    onLongClick(label = "切り位置を微調整") {
+                        onSelect()
+                        onLongPress()
+                        true
+                    }
                 }
             }
             .padding(horizontal = 5.dp, vertical = 4.dp),

@@ -73,6 +73,7 @@ fun WaveformEditor(
     showViewportControls: Boolean = true,
     compactViewportControls: Boolean = false,
     showTimeReadout: Boolean = true,
+    showInteractionHint: Boolean = true,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
@@ -209,18 +210,20 @@ fun WaveformEditor(
                 )
             }
 
-            Text(
-                text = if (manualChopEnabled) "波形をタップ: チョップ追加" else "波形をタップ: スライス選択",
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-                        RoundedCornerShape(6.dp),
-                    )
-                    .padding(horizontal = 7.dp, vertical = 3.dp),
-                fontSize = 11.sp,
-            )
+            if (showInteractionHint) {
+                Text(
+                    text = if (manualChopEnabled) "波形をタップ: チョップ追加" else "波形をタップ: スライス選択",
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                            RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                    fontSize = 11.sp,
+                )
+            }
         }
 
         if (showTimeReadout) {

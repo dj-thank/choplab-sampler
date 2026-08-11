@@ -16,7 +16,7 @@ fun resolvePadPressAction(
     padAssigned: Boolean,
     surfaceMode: PadSurfaceMode,
 ): PadPressAction = when {
-    sourcePlaying && surfaceMode == PadSurfaceMode.CAPTURE -> PadPressAction.CAPTURE_CHOP
+    sourcePlaying && !padAssigned && surfaceMode == PadSurfaceMode.CAPTURE -> PadPressAction.CAPTURE_CHOP
     padAssigned -> PadPressAction.PLAY_ASSIGNED
     else -> PadPressAction.SELECT_ONLY
 }

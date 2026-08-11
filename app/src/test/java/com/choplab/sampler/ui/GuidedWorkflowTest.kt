@@ -8,11 +8,11 @@ class GuidedWorkflowTest {
     @Test
     fun stagesFollowTheBeginnerProductionJourney() {
         assertEquals(
-            listOf("入れる", "チョップ", "ビート", "完成"),
+            listOf("入れる", "チョップ", "ビート", "保存"),
             WorkflowStage.entries.map(WorkflowStage::label),
         )
         assertEquals(
-            listOf("CAPTURE", "CHOP", "BEAT", "FINISH"),
+            listOf("CAPTURE", "CHOP", "BEAT", "SAVE"),
             WorkflowStage.entries.map(WorkflowStage::caption),
         )
     }
@@ -84,11 +84,11 @@ class GuidedWorkflowTest {
     @Test
     fun arrangeQuickModeNamesTheThreePrimaryActions() {
         assertEquals(
-            listOf("1 PADを選ぶ", "2 ビートをループ", "3 音を重ねる"),
+            listOf("1 PADを選ぶ", "2 ループ／並べる", "3 足す／スクラッチ"),
             arrangeQuickSteps(),
         )
         assertEquals(
-            "1 PADを選ぶ  →  2 ビートをループ  →  3 音を重ねる",
+            "1 PADを選ぶ  →  2 ループ／並べる  →  3 足す／スクラッチ",
             ARRANGE_QUICK_GUIDANCE,
         )
     }
