@@ -142,11 +142,7 @@ private fun PerformancePad(
         pad.isAssigned -> Color(0xFFF1DFAD)
         else -> Color(0xFF91825C)
     }
-    val description = buildString {
-        append("PAD %02d".format(pad.indexInBank + 1))
-        append(if (pad.isAssigned) " 割り当て済み" else " 空")
-        if (captureMode) append("。現在位置をチョップ")
-    }
+    val description = padAccessibilityDescription(pad, captureMode)
 
     BoxWithConstraints(
         modifier = modifier
@@ -256,6 +252,19 @@ private fun PerformancePad(
             fontSize = if (compact) 7.sp else 8.sp,
             modifier = Modifier.align(Alignment.BottomEnd),
         )
+    }
+}
+
+internal fun padAccessibilityDescription(
+    pad: PadModel,
+    captureMode: Boolean,
+): String = buildString {
+    append("PAD %02d".format(pad.indexInBank + 1))
+    append(if (pad.isAssigned) " 割り当て済み" else " 空")
+    if (pad.isAssigned) {
+        append("。タップで試聴。長押しで微調整")
+    } else if (captureMode) {
+        append("。現在位置をチョップ")
     }
 }
 
