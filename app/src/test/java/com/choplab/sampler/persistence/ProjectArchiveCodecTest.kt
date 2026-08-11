@@ -6,6 +6,7 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -99,6 +100,7 @@ class ProjectArchiveCodecTest {
         assertEquals(PadPlayMode.LOOP, restored.pads[0].playMode)
         assertEquals(PadContentKind.VOCAL, restored.pads[0].contentKind)
         assertEquals(setOf(stepKey(0, 0), stepKey(1, 8)), restored.activeSteps)
+        assertEquals(setOf(stepKey(1, 8)), restored.activeSteps.audibleStepKeys(restored.pads))
         assertEquals(123f, restored.bpm)
         assertEquals(61f, restored.swing)
         assertEquals(-2f, restored.masterPitchSemitones)

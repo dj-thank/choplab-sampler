@@ -156,4 +156,34 @@ class PadPressRoutingTest {
             ),
         )
     }
+
+    @Test
+    fun performanceRoutingNeverRecordsLoopOrVocalSteps() {
+        val audio = PcmAudio(name = "sound", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val loop = PadModel(0, audio, 0, 2, playMode = PadPlayMode.LOOP)
+        val vocal = PadModel(1, audio, 0, 2, contentKind = PadContentKind.VOCAL)
+        val drum = PadModel(2, audio, 0, 2, contentKind = PadContentKind.DRUM)
+        val gate = PadModel(3, audio, 0, 2, playMode = PadPlayMode.GATE)
+
+        assertEquals(
+            PerformancePadPressAction.TOGGLE_LOOP,
+            resolvePerformancePadPressAction(loop, recordArmed = true, transportPlaying = true),
+        )
+        assertEquals(
+            PerformancePadPressAction.TRIGGER_ONLY,
+            resolvePerformancePadPressAction(vocal, recordArmed = true, transportPlaying = true),
+        )
+        assertEquals(
+            PerformancePadPressAction.TRIGGER_AND_RECORD_STEP,
+            resolvePerformancePadPressAction(drum, recordArmed = true, transportPlaying = true),
+        )
+        assertEquals(
+            PerformancePadPressAction.TRIGGER_AND_RECORD_STEP,
+            resolvePerformancePadPressAction(gate, recordArmed = true, transportPlaying = true),
+        )
+        assertEquals(
+            PerformancePadPressAction.TRIGGER_ONLY,
+            resolvePerformancePadPressAction(drum, recordArmed = false, transportPlaying = true),
+        )
+    }
 }
