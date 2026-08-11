@@ -28,4 +28,4 @@ Make the main workflow understandable without music-production knowledge: load o
 
 ## Evidence
 
-Final local APK: `outputs/ChopLab-v0.9.3-simple-chop-debug.apk`, 30,641,099 bytes, SHA-256 `950AED648A74AB71027454FA0A8EFB32792ABAD69421A03E8355169FE1E7427C`.
+Final local APK: `outputs/ChopLab-v0.10.0-preview.1-local-debug.apk`, versionCode 14 / versionName 0.10.0, 30,641,099 bytes, SHA-256 `2AD63450619685094DBFAB4B5E49E10AD4A51432181995767091023F8AF28E9C`.

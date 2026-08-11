@@ -10,7 +10,7 @@ Importing a different source now starts a separate project state: old A/B/C/D PA
 
 Scratch now switches explicitly between the source range and the selected assigned PAD, offers Fine/Normal/Wide gesture sensitivity, and reports active source or PAD scratch consistently. The selected PAD trim editor presents one waveform with independent START and END controls and preview.
 
-Local gate: offline validation PASS; 103 unit tests with zero failures/errors; Android Lint PASS; debug APK assemble PASS; scroll API scan zero matches. Final local APK is 30,641,099 bytes, SHA-256 `950AED648A74AB71027454FA0A8EFB32792ABAD69421A03E8355169FE1E7427C`. It was installed in place on physical Pixel 9a `5A121JEBF08094` without uninstalling or clearing app data. The phone changed foreground apps during UI inspection, so exact final-screen interaction, subjective audio quality, scratch latency, and Human GO remain unclaimed.
+Local gate: offline validation PASS; 103 unit tests with zero failures/errors; Android Lint PASS; debug APK assemble PASS; scroll API scan zero matches. Version `0.10.0` (`versionCode=14`) local APK is 30,641,099 bytes, SHA-256 `2AD63450619685094DBFAB4B5E49E10AD4A51432181995767091023F8AF28E9C`. It was installed in place on physical Pixel 9a `5A121JEBF08094` without uninstalling or clearing app data, then copied to the phone's Downloads folder with the same hash. The phone changed foreground apps during UI inspection, so exact final-screen interaction, subjective audio quality, scratch latency, and Human GO remain unclaimed.
 
 ## v0.9.3 playable Beat selection — 2026-08-11
 
