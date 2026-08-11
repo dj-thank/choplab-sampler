@@ -8,26 +8,26 @@ class GuidedWorkflowTest {
     @Test
     fun stagesFollowTheBeginnerProductionJourney() {
         assertEquals(
-            listOf("入れる", "切る", "叩く", "並べる", "完成"),
+            listOf("入れる", "チョップ", "ビート", "完成"),
             WorkflowStage.entries.map(WorkflowStage::label),
         )
         assertEquals(
-            listOf("CAPTURE", "SLICE", "PLAY", "ARRANGE", "FINISH"),
+            listOf("CAPTURE", "CHOP", "BEAT", "FINISH"),
             WorkflowStage.entries.map(WorkflowStage::caption),
         )
     }
 
     @Test
     fun restoredStageFallsBackInsteadOfCrashing() {
-        assertEquals(WorkflowStage.PLAY, restoreWorkflowStage("CHOP"))
-        assertEquals(WorkflowStage.PLAY, restoreWorkflowStage("not-a-stage"))
-        assertEquals(WorkflowStage.ARRANGE, restoreWorkflowStage("ARRANGE"))
+        assertEquals(WorkflowStage.CHOP, restoreWorkflowStage("PLAY"))
+        assertEquals(WorkflowStage.CHOP, restoreWorkflowStage("not-a-stage"))
+        assertEquals(WorkflowStage.BEAT, restoreWorkflowStage("ARRANGE"))
     }
 
     @Test
     fun newProjectsStartAtCaptureAndLoadedProjectsStartAtPlay() {
         assertEquals(WorkflowStage.CAPTURE, initialWorkflowStage(hasAudio = false))
-        assertEquals(WorkflowStage.PLAY, initialWorkflowStage(hasAudio = true))
+        assertEquals(WorkflowStage.CHOP, initialWorkflowStage(hasAudio = true))
     }
 
     @Test
@@ -36,8 +36,8 @@ class GuidedWorkflowTest {
             assertTrue(stage.guidance.isNotBlank())
             assertTrue(stage.guidance.length <= 34)
         }
-        assertEquals(WorkflowStage.SLICE, WorkflowStage.CAPTURE.next())
-        assertEquals(WorkflowStage.FINISH, WorkflowStage.ARRANGE.next())
+        assertEquals(WorkflowStage.CHOP, WorkflowStage.CAPTURE.next())
+        assertEquals(WorkflowStage.FINISH, WorkflowStage.BEAT.next())
         assertEquals(null, WorkflowStage.FINISH.next())
     }
 

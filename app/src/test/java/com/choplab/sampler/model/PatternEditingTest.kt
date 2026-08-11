@@ -5,6 +5,17 @@ import org.junit.Test
 
 class PatternEditingTest {
     @Test
+    fun beatLaneDistinguishesSelectedSoundFromAnotherSoundInTheSameBank() {
+        val selectedPad = 16
+        val otherPad = 17
+        val steps = setOf(stepKey(selectedPad, 0), stepKey(otherPad, 4))
+
+        assertEquals(LaneStepState.SELECTED_SOUND, laneStepState(steps, 1, selectedPad, 0))
+        assertEquals(LaneStepState.OTHER_SOUND, laneStepState(steps, 1, selectedPad, 4))
+        assertEquals(LaneStepState.OFF, laneStepState(steps, 1, selectedPad, 8))
+    }
+
+    @Test
     fun `quarter repeat replaces only selected pad with four beats`() {
         val existing = setOf(
             stepKey(3, 2),

@@ -2,6 +2,35 @@
 
 Last prepared: 2026-08-11
 
+## v0.9.0 four-stage workflow and safe playback local/device evidence — 2026-08-11
+
+Version `0.9.0` (`versionCode=10`) responds to the latest hands-on feedback without Figma:
+
+- the top-level journey is now `入れる → チョップ → ビート → 完成`; `切る` and `鳴らす` are explicit submodes of one Chop stage, so there is no numbered 1→3 jump;
+- BANK roles are visible everywhere as A Melody, B Drums, C One Shots, and D Voice;
+- the performance view keeps the editable source waveform, manual/automatic chop and PAD assignment controls directly above sixteen role-colored square sample pads; live capture is an explicit `LIVE CHOP` mode, so normal PAD performance remains audible while the source song plays;
+- the Beat view is a fixed four-lane 16-step board with playhead, selected-sound rail, source/loop waveform, transport, and loop controls;
+- sample slicing uses only empty PADs, a full bank refuses replacement, and replacing BANK B with a built-in drum kit requires an explicit second press when sounds already exist;
+- manual project save validates a local archive and commits an app-owned safety copy before writing the selected destination; autosave uses a synchronized validated pending write plus three bounded generations;
+- source playback now restarts from frame zero after reaching the final frame instead of immediately ending on the next Play press.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 77 tests, zero failures/errors/skips;
+- Gradle `lintDebug` and `assembleDebug`: PASS;
+- `git diff --check`: PASS; UI source scroll API scan: zero matches;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 31,350,142 bytes, SHA-256 `9079B30A2B169E76E0B9A8F3C6EBE8E075BBA8CCA39C8D6C9E694875C1B3B3EE`.
+
+Focused physical Pixel 9a evidence:
+
+- the final local APK installed in place as `versionCode=10`, `versionName=0.9.0`, launched with the previous project intact, and was copied to `/sdcard/Download/ChopLab-0.9.0-ui-safe-playback.apk`; PC/device APK hashes matched exactly;
+- the four-stage Chop/Pads and four-lane Beat layouts fit the portrait screen with no scrolling; the condensed PADS waveform stayed clearly visible, and `MANUAL` plus a waveform tap added a numbered chop boundary on device;
+- after a completed source had left its playhead at the end, `SOURCE PLAY` changed to `SOURCE STOP`, confirming restart-from-zero behavior;
+- with BANK B selected, source still playing, and `LIVE CHOP OFF`, tapping assigned B-01 left the autosave SHA-256 unchanged at `7367C2026579C76FF7C3EE3FC5278D8600B3062DB853DEB46139CFC400D99140`, kept `SOURCE STOP` visible, and left the app process alive. The host routing test independently confirms this path selects performance playback rather than capture.
+
+This establishes `LOCAL_PASS` and focused local-build `DEVICE_PASS`. It does not yet claim `PUBLIC_PASS`, subjective audio/latency quality, physical multi-touch stress, microphone overdub, production signing/update continuity, or `HUMAN_GO`.
+
 ## v0.8.0 drum, vocal, and scratch workstation local/device evidence — 2026-08-11
 
 Version `0.8.0` (`versionCode=9`) adds one fixed `LAYER STUDIO` without using Figma or introducing scroll containers:

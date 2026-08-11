@@ -7,7 +7,37 @@ object SamplerConfig {
     const val PADS_PER_BANK = 16
     const val PAD_COUNT = BANK_COUNT * PADS_PER_BANK
     const val STEP_COUNT = 16
+    const val DRUM_BANK_INDEX = 1
     const val VOCAL_BANK_INDEX = 3
+}
+
+enum class BankRole(
+    val letter: String,
+    val japaneseLabel: String,
+    val englishLabel: String,
+) {
+    MELODY("A", "メロディー", "MELODY"),
+    DRUMS("B", "ドラム", "DRUMS"),
+    ONE_SHOTS("C", "ワンショット", "ONE SHOTS"),
+    VOICE("D", "ボイス", "VOICE"),
+}
+
+fun bankRoleFor(bankIndex: Int): BankRole =
+    BankRole.entries[bankIndex.coerceIn(0, SamplerConfig.BANK_COUNT - 1)]
+
+enum class DrumKitApplyDecision {
+    APPLY,
+    CONFIRM_REPLACE,
+}
+
+fun drumKitApplyDecision(pads: List<PadModel>): DrumKitApplyDecision {
+    require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
+    val start = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+    return if (pads.subList(start, start + SamplerConfig.PADS_PER_BANK).any(PadModel::isAssigned)) {
+        DrumKitApplyDecision.CONFIRM_REPLACE
+    } else {
+        DrumKitApplyDecision.APPLY
+    }
 }
 
 enum class PadPlayMode {

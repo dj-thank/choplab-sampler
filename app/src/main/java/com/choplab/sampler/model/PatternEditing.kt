@@ -9,6 +9,33 @@ enum class RepeatGrid(
     SIXTEENTH(intervalSteps = 1, statusLabel = "16分"),
 }
 
+enum class LaneStepState {
+    OFF,
+    OTHER_SOUND,
+    SELECTED_SOUND,
+}
+
+fun laneStepState(
+    activeSteps: Set<Int>,
+    bankIndex: Int,
+    selectedPad: Int,
+    stepIndex: Int,
+): LaneStepState {
+    require(bankIndex in 0 until SamplerConfig.BANK_COUNT)
+    require(selectedPad in 0 until SamplerConfig.PAD_COUNT)
+    require(stepIndex in 0 until SamplerConfig.STEP_COUNT)
+    if (stepKey(selectedPad, stepIndex) in activeSteps) return LaneStepState.SELECTED_SOUND
+    return if (activeSteps.any { key ->
+            key % SamplerConfig.STEP_COUNT == stepIndex &&
+                (key / SamplerConfig.STEP_COUNT) / SamplerConfig.PADS_PER_BANK == bankIndex
+        }
+    ) {
+        LaneStepState.OTHER_SOUND
+    } else {
+        LaneStepState.OFF
+    }
+}
+
 fun Set<Int>.replacePadSteps(
     padIndex: Int,
     repeatGrid: RepeatGrid,

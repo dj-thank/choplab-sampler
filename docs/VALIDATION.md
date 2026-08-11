@@ -2,6 +2,18 @@
 
 作成日: 2026-07-15
 
+## 2026-08-11 v0.9.0 current validation
+
+- `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS
+- unit tests: 77 / failures 0 / errors 0 / skipped 0
+- `scripts/validate_project.sh`: PASS with the pinned JDK/Kotlin toolchain on PATH
+- `git diff --check`: PASS; app source scroll API scan: 0 matches
+- local APK: 31,350,142 bytes, SHA-256 `9079B30A2B169E76E0B9A8F3C6EBE8E075BBA8CCA39C8D6C9E694875C1B3B3EE`
+- Pixel 9a: in-place install/launch, `versionCode=10`, `versionName=0.9.0`, four-stage fixed UI, editable source waveform in PADS, on-device manual boundary insertion, role-aware square PADs, and four-lane Beat board observed
+- source-end replay regression: host test passed and physical device changed `SOURCE PLAY` to `SOURCE STOP` after a previously completed source
+- source-playing B-01 press with `LIVE CHOP OFF`: autosave hash unchanged immediately before/after, source remained playing, process remained alive
+- physical microphone capture was not activated; subjective sound, latency, multi-touch endurance, TalkBack, and haptic quality remain human checks
+
 ## 2026-08-11 v0.8.0 current validation
 
 - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS

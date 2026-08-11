@@ -66,11 +66,13 @@ fun WaveformEditor(
     onRangeEndChange: (Int) -> Unit,
     onSliceMarkerChange: (Int, Int) -> Unit,
     onWaveformTap: (Int) -> Unit,
+    playheadFrame: Int? = null,
     modifier: Modifier = Modifier,
     canvasHeight: Dp = 220.dp,
     fillCanvas: Boolean = false,
     showViewportControls: Boolean = true,
     compactViewportControls: Boolean = false,
+    showTimeReadout: Boolean = true,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
@@ -162,6 +164,18 @@ fun WaveformEditor(
                         )
                     }
                 }
+
+                playheadFrame
+                    ?.takeIf { it in visibleStart..visibleEnd }
+                    ?.let { frame ->
+                        val x = frameToX(frame, visibleStart, visibleFrames, size.width)
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.9f),
+                            start = Offset(x, 0f),
+                            end = Offset(x, size.height),
+                            strokeWidth = 3f,
+                        )
+                    }
             }
 
             SelectionHandle(
@@ -209,18 +223,20 @@ fun WaveformEditor(
             )
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(formatTime(visibleStart, audio.sampleRate), fontSize = 11.sp)
-            Text(
-                "選択 ${formatTime(rangeStartFrame, audio.sampleRate)} – ${formatTime(rangeEndFrame, audio.sampleRate)}",
-                fontSize = 11.sp,
-            )
-            Text(formatTime(visibleEnd, audio.sampleRate), fontSize = 11.sp)
+        if (showTimeReadout) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(formatTime(visibleStart, audio.sampleRate), fontSize = 11.sp)
+                Text(
+                    "選択 ${formatTime(rangeStartFrame, audio.sampleRate)} – ${formatTime(rangeEndFrame, audio.sampleRate)}",
+                    fontSize = 11.sp,
+                )
+                Text(formatTime(visibleEnd, audio.sampleRate), fontSize = 11.sp)
+            }
         }
 
         if (showViewportControls) {

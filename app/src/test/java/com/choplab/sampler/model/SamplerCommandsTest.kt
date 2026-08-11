@@ -7,6 +7,54 @@ import org.junit.Test
 
 class SamplerCommandsTest {
     @Test
+    fun sliceAssignmentUsesNextEmptyPadInsteadOfOverwritingExistingAudio() {
+        val original = PcmAudio(name = "original", samples = ShortArray(800), sampleRate = 48_000)
+        val incoming = PcmAudio(name = "incoming", samples = ShortArray(2_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, audio = original, startFrame = 0, endFrame = 800)
+            else PadModel(index)
+        }
+        val state = SamplerUiState(
+            currentAudio = incoming,
+            rangeStartFrame = 0,
+            rangeEndFrame = 2_000,
+            pads = pads,
+            selectedBank = 0,
+            selectedPad = 0,
+        )
+
+        val result = assignRangesToPads(state, listOf(SliceRange(100, 500)), "assigned")
+
+        assertSame(original, result.state.pads[0].audio)
+        assertSame(incoming, result.state.pads[1].audio)
+        assertEquals(listOf(1), result.changedPads.map(PadModel::globalIndex))
+    }
+
+    @Test
+    fun liveChopRefusesToReplaceAnAssignedPad() {
+        val original = PcmAudio(name = "original", samples = ShortArray(800), sampleRate = 48_000)
+        val incoming = PcmAudio(name = "incoming", samples = ShortArray(2_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, audio = original, startFrame = 0, endFrame = 800)
+            else PadModel(index)
+        }
+        val state = SamplerUiState(
+            currentAudio = incoming,
+            rangeStartFrame = 0,
+            rangeEndFrame = 2_000,
+            pads = pads,
+            selectedBank = 0,
+            selectedPad = 0,
+        )
+
+        val result = assignLiveChopToPad(state, padIndex = 0, startFrame = 200)
+
+        assertTrue(result.changedPads.isEmpty())
+        assertSame(original, result.state.pads[0].audio)
+        assertTrue(result.state.statusMessage.contains("上書きしません"))
+    }
+
+    @Test
     fun assignmentWrapsWithinSelectedBankAndAdvancesActiveSlice() {
         val audio = PcmAudio(name = "source", samples = ShortArray(2_000), sampleRate = 48_000)
         val state = SamplerUiState(

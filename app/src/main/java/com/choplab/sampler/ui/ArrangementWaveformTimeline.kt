@@ -80,7 +80,7 @@ fun ArrangementWaveformTimeline(
         }
     }.joinToString("、").ifEmpty { "配置なし" }
     val loopDescription = loopProgress?.let { "ビートループ中 ${(it * 100).toInt()}パーセント。" }.orEmpty()
-    val description = "並べる実波形。選択PAD $padLabel。$loopDescription 現在ステップ $stepLabel。" +
+    val description = "ビート実波形。選択PAD $padLabel。$loopDescription 現在ステップ $stepLabel。" +
         "鳴るBANK $bankText。全配置 $arrangementDescription"
 
     Box(

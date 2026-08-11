@@ -69,6 +69,7 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.audibleStepKeys
+import com.choplab.sampler.model.bankRoleFor
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
@@ -103,6 +104,11 @@ private enum class PadEditorPage(val label: String) {
     PLAY("鳴り方\nPLAY"),
 }
 
+private enum class ChopStageMode(val label: String) {
+    CUT("切る\nEDIT CHOPS"),
+    PADS("鳴らす\nPLAY PADS"),
+}
+
 private enum class LayerStudioPage(val label: String) {
     DRUMS("DRUMS\nドラム"),
     VOICE("VOICE\n声を録る"),
@@ -125,10 +131,12 @@ fun OtohiroiDeck(
         mutableStateOf(initialWorkflowStage(state.currentAudio != null).name)
     }
     var padPageName by rememberSaveable { mutableStateOf(PadEditorPage.PARAM.name) }
+    var chopModeName by rememberSaveable { mutableStateOf(ChopStageMode.CUT.name) }
     var showPadDetails by rememberSaveable { mutableStateOf(false) }
     var showLayerStudio by rememberSaveable { mutableStateOf(false) }
     val stage = restoreWorkflowStage(stageName)
     val padPage = PadEditorPage.entries.firstOrNull { it.name == padPageName } ?: PadEditorPage.PARAM
+    val chopMode = ChopStageMode.entries.firstOrNull { it.name == chopModeName } ?: ChopStageMode.CUT
 
     Box(
         modifier = Modifier
@@ -173,7 +181,7 @@ fun OtohiroiDeck(
                         compact = metrics.density == DeckDensity.COMPACT,
                         onSelect = {
                             stageName = it.name
-                            if (it != WorkflowStage.PLAY) showPadDetails = false
+                            if (it != WorkflowStage.CHOP) showPadDetails = false
                         },
                     )
                     Box(modifier = Modifier.weight(1f)) {
@@ -184,18 +192,10 @@ fun OtohiroiDeck(
                                 onImportAudio = onImportAudio,
                                 onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                                 onToggleSystemAudioRecording = onToggleSystemAudioRecording,
-                                onContinue = { stageName = WorkflowStage.PLAY.name },
+                                onContinue = { stageName = WorkflowStage.CHOP.name },
                                 viewModel = viewModel,
                             )
-                            WorkflowStage.SLICE -> SourceWorkspace(
-                                state = state,
-                                metrics = metrics,
-                                onImportAudio = onImportAudio,
-                                onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-                                onToggleSystemAudioRecording = onToggleSystemAudioRecording,
-                                viewModel = viewModel,
-                            )
-                            WorkflowStage.PLAY -> if (showPadDetails) {
+                            WorkflowStage.CHOP -> if (showPadDetails) {
                                 PadWorkspace(
                                     state = state,
                                     metrics = metrics,
@@ -205,16 +205,19 @@ fun OtohiroiDeck(
                                     viewModel = viewModel,
                                 )
                             } else {
-                                ChopWorkspace(
+                                ChopStageWorkspace(
                                     state = state,
                                     metrics = metrics,
+                                    mode = chopMode,
+                                    onModeChange = { chopModeName = it.name },
                                     onImportAudio = onImportAudio,
                                     onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+                                    onToggleSystemAudioRecording = onToggleSystemAudioRecording,
                                     onOpenDetails = { showPadDetails = true },
                                     viewModel = viewModel,
                                 )
                             }
-                            WorkflowStage.ARRANGE -> SequenceWorkspace(
+                            WorkflowStage.BEAT -> SequenceWorkspace(
                                 state = state,
                                 metrics = metrics,
                                 onOpenLayerCapture = { showLayerStudio = true },
@@ -226,7 +229,7 @@ fun OtohiroiDeck(
                                 onExportBeat = onExportBeat,
                                 onOpenProject = onOpenProject,
                                 onSaveProject = onSaveProject,
-                                onBackToArrange = { stageName = WorkflowStage.ARRANGE.name },
+                                onBackToArrange = { stageName = WorkflowStage.BEAT.name },
                                 viewModel = viewModel,
                             )
                         }
@@ -249,6 +252,167 @@ fun OtohiroiDeck(
                 viewModel = viewModel,
             )
         }
+    }
+}
+
+@Composable
+private fun ChopStageWorkspace(
+    state: SamplerUiState,
+    metrics: DeckLayoutMetrics,
+    mode: ChopStageMode,
+    onModeChange: (ChopStageMode) -> Unit,
+    onImportAudio: () -> Unit,
+    onToggleMicrophoneRecording: () -> Unit,
+    onToggleSystemAudioRecording: () -> Unit,
+    onOpenDetails: () -> Unit,
+    viewModel: SamplerViewModel,
+) {
+    val gap = metrics.gapDp.dp
+    var liveChopArmed by rememberSaveable { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (metrics.density == DeckDensity.COMPACT) 34.dp else 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            ChopStageMode.entries.forEach { candidate ->
+                MachineButton(
+                    label = candidate.label,
+                    onClick = { onModeChange(candidate) },
+                    active = mode == candidate,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            when (mode) {
+                ChopStageMode.CUT -> SourceWorkspace(
+                    state = state,
+                    metrics = metrics,
+                    onImportAudio = onImportAudio,
+                    onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+                    onToggleSystemAudioRecording = onToggleSystemAudioRecording,
+                    viewModel = viewModel,
+                )
+                ChopStageMode.PADS -> PerformanceWorkspace(
+                    state = state,
+                    metrics = metrics,
+                    liveChopArmed = liveChopArmed,
+                    onToggleLiveChop = { liveChopArmed = !liveChopArmed },
+                    onOpenDetails = onOpenDetails,
+                    viewModel = viewModel,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerformanceWorkspace(
+    state: SamplerUiState,
+    metrics: DeckLayoutMetrics,
+    liveChopArmed: Boolean,
+    onToggleLiveChop: () -> Unit,
+    onOpenDetails: () -> Unit,
+    viewModel: SamplerViewModel,
+) {
+    val gap = metrics.gapDp.dp
+    val captureMode = liveChopArmed && state.sourcePlaying
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        SourceEditorWaveform(
+            state = state,
+            viewModel = viewModel,
+            condensed = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (metrics.density == DeckDensity.COMPACT) 58.dp else 78.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            MachineButton(
+                label = if (state.sourcePlaying) "曲を止める\nSOURCE STOP" else "曲を試聴\nSOURCE PLAY",
+                onClick = viewModel::toggleSourcePlayback,
+                enabled = state.currentAudio != null,
+                active = state.sourcePlaying,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = if (liveChopArmed) "LIVE CHOP ON\nPADへ切る" else "LIVE CHOP OFF\n普通に鳴らす",
+                onClick = onToggleLiveChop,
+                enabled = state.currentAudio != null,
+                active = liveChopArmed,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+        SourceToolRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (metrics.density == DeckDensity.COMPACT) 32.dp else 38.dp),
+        ) {
+            MachineButton(
+                label = if (state.manualChopEnabled) "手で切る ON\nTAP WAVE" else "手で切る\nMANUAL",
+                onClick = viewModel::toggleManualChop,
+                enabled = state.currentAudio != null,
+                active = state.manualChopEnabled,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "自動検出\nAUTO",
+                onClick = viewModel::autoChopTransient,
+                enabled = state.currentAudio != null,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "選択→PAD\nASSIGN",
+                onClick = viewModel::assignCurrentSelectionToPad,
+                enabled = state.currentAudio != null,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "全部→PAD\nASSIGN ALL",
+                onClick = viewModel::assignAllSlicesToPads,
+                enabled = state.currentAudio != null,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+        BankStrip(
+            selectedBank = state.selectedBank,
+            height = metrics.controlHeightDp.dp,
+            onSelectBank = viewModel::selectBank,
+        )
+        PadGrid(
+            pads = state.visiblePads(),
+            selectedPad = state.selectedPad,
+            captureMode = captureMode,
+            onTrigger = if (captureMode) viewModel::capturePad else viewModel::triggerPad,
+            onRelease = viewModel::releasePad,
+            onSelect = viewModel::selectPad,
+            gap = gap,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        SelectedPadQuickEditor(
+            state = state,
+            height = metrics.controlHeightDp.dp,
+            expanded = false,
+            onOpenDetails = onOpenDetails,
+            viewModel = viewModel,
+        )
     }
 }
 
@@ -292,8 +456,9 @@ private fun MachineHeader(
                 maxLines = 1,
             )
         }
+        val bankRole = bankRoleFor(state.selectedBank)
         Text(
-            "BANK ${bankName(state.selectedBank)}  ${state.bpm.toInt()} BPM",
+            "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
             color = DeckGreen,
             fontFamily = DeckFont,
             fontWeight = FontWeight.Bold,
@@ -470,7 +635,7 @@ private fun CaptureWorkspace(
                     onPitchChange = viewModel::setMasterPitch,
                 )
                 MachineButton(
-                    label = "音が入ったら叩くへ\nNEXT: PLAY",
+                    label = "音が入ったらチョップへ\nNEXT: CHOP",
                     onClick = onContinue,
                     enabled = audio != null,
                     active = audio != null,
@@ -509,7 +674,7 @@ private fun CaptureWorkspace(
                 onPitchChange = viewModel::setMasterPitch,
             )
             MachineButton(
-                label = "音が入ったら叩くへ  /  NEXT: PLAY",
+                label = "音が入ったらチョップへ  /  NEXT: CHOP",
                 onClick = onContinue,
                 enabled = audio != null,
                 active = audio != null,
@@ -617,7 +782,7 @@ private fun ChopWorkspace(
                     pads = state.visiblePads(),
                     selectedPad = state.selectedPad,
                     captureMode = state.sourcePlaying,
-                    onTrigger = viewModel::triggerPad,
+                    onTrigger = if (state.sourcePlaying) viewModel::capturePad else viewModel::triggerPad,
                     onRelease = viewModel::releasePad,
                     onSelect = viewModel::selectPad,
                     gap = gap,
@@ -650,7 +815,7 @@ private fun ChopWorkspace(
                 pads = state.visiblePads(),
                 selectedPad = state.selectedPad,
                 captureMode = state.sourcePlaying,
-                onTrigger = viewModel::triggerPad,
+                onTrigger = if (state.sourcePlaying) viewModel::capturePad else viewModel::triggerPad,
                 onRelease = viewModel::releasePad,
                 onSelect = viewModel::selectPad,
                 gap = gap,
@@ -912,7 +1077,7 @@ private fun SelectedPadQuickEditor(
             }
             if (onOpenDetails != null) {
                 MachineButton(
-                    label = "詳細\nEDIT",
+                    label = "音を整える\nPAD EDIT",
                     onClick = onOpenDetails,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
@@ -1072,7 +1237,7 @@ private fun PadEditor(
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             MachineButton(
-                label = "叩くへ戻る\nBACK",
+                label = "PADへ戻る\nBACK",
                 onClick = onReturn,
                 modifier = Modifier
                     .weight(1f)
@@ -1234,36 +1399,65 @@ private fun SequenceWorkspace(
         ) {
             Column(
                 modifier = Modifier
-                    .weight(1.05f)
+                    .weight(1.3f)
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
-                BankStrip(
-                    selectedBank = state.selectedBank,
-                    height = metrics.controlHeightDp.dp,
-                    onSelectBank = viewModel::selectBank,
+                ArrangementWaveformTimeline(
+                    pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
+                    activeSteps = state.activeSteps.audibleStepKeys(state.pads),
+                    currentStep = state.currentStep,
+                    transportPlaying = state.transportPlaying,
+                    loopPlayheadFrame = state.loopPlayheadFrame,
+                    loopPlaying = state.loopingPadIndex != null,
+                    modifier = Modifier.fillMaxWidth().weight(0.62f),
                 )
-                PadGrid(
-                    pads = state.visiblePads(),
+                BeatLaneBoard(
+                    pads = state.pads,
+                    activeSteps = state.activeSteps,
+                    currentStep = state.currentStep,
                     selectedPad = state.selectedPad,
-                    onTrigger = viewModel::triggerPad,
-                    onRelease = viewModel::releasePad,
-                    onSelect = viewModel::selectPad,
-                    gap = gap,
-                    modifier = Modifier.weight(1f),
+                    onSelectPad = viewModel::selectPad,
+                    onToggleStep = viewModel::toggleStep,
+                    modifier = Modifier.weight(1.38f),
                 )
             }
-            SequenceControlDeck(
-                state = state,
-                metrics = metrics,
-                onOpenLayerCapture = onOpenLayerCapture,
-                showFineControls = showFineControls,
-                onShowFineControls = { showFineControls = it },
-                viewModel = viewModel,
-                modifier = Modifier
-                    .weight(0.95f)
-                    .fillMaxHeight(),
-            )
+            if (showFineControls) {
+                SequenceControlDeck(
+                    state = state,
+                    metrics = metrics,
+                    onOpenLayerCapture = onOpenLayerCapture,
+                    showFineControls = true,
+                    onShowFineControls = { showFineControls = it },
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(0.7f).fillMaxHeight(),
+                )
+            } else {
+                Column(
+                    modifier = Modifier.weight(0.7f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    BankStrip(
+                        selectedBank = state.selectedBank,
+                        height = metrics.controlHeightDp.dp,
+                        onSelectBank = viewModel::selectBank,
+                    )
+                    BeatSoundRail(
+                        pads = state.visiblePads(),
+                        selectedPad = state.selectedPad,
+                        onSelectPad = viewModel::selectPad,
+                        onPreviewPad = viewModel::triggerPad,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SequenceTransportRow(state, metrics.controlHeightDp.dp, gap, viewModel)
+                    BeatLoopControl(state, metrics.controlHeightDp.dp * 1.5f, viewModel)
+                    QuickArrangeActionRow(
+                        height = metrics.controlHeightDp.dp,
+                        onOpenLayerCapture = onOpenLayerCapture,
+                        onOpenFineControls = { showFineControls = true },
+                    )
+                }
+            }
         }
     } else {
         Column(
@@ -1272,15 +1466,10 @@ private fun SequenceWorkspace(
         ) {
             if (!showFineControls) {
                 BeginnerCoachBar(
-                    text = ARRANGE_QUICK_GUIDANCE,
+                    text = "4レーンをタップ。A メロディー / B ドラム / C SE / D ボイス",
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(if (metrics.density == DeckDensity.COMPACT) 26.dp else 32.dp),
-                )
-                BankStrip(
-                    selectedBank = state.selectedBank,
-                    height = metrics.controlHeightDp.dp,
-                    onSelectBank = viewModel::selectBank,
                 )
                 ArrangementWaveformTimeline(
                     pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
@@ -1291,21 +1480,40 @@ private fun SequenceWorkspace(
                     loopPlaying = state.loopingPadIndex != null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.95f),
+                        .weight(0.5f),
                 )
-                PadGrid(
+                BeatLaneBoard(
+                    pads = state.pads,
+                    activeSteps = state.activeSteps,
+                    currentStep = state.currentStep,
+                    selectedPad = state.selectedPad,
+                    onSelectPad = viewModel::selectPad,
+                    onToggleStep = viewModel::toggleStep,
+                    modifier = Modifier.fillMaxWidth().weight(1.25f),
+                )
+                BankStrip(
+                    selectedBank = state.selectedBank,
+                    height = metrics.controlHeightDp.dp,
+                    onSelectBank = viewModel::selectBank,
+                )
+                BeatSoundRail(
                     pads = state.visiblePads(),
                     selectedPad = state.selectedPad,
-                    onTrigger = viewModel::triggerPad,
-                    onRelease = viewModel::releasePad,
-                    onSelect = viewModel::selectPad,
+                    onSelectPad = viewModel::selectPad,
+                    onPreviewPad = viewModel::triggerPad,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (metrics.density == DeckDensity.COMPACT) 58.dp else 68.dp),
+                )
+                SequenceTransportRow(
+                    state = state,
+                    height = metrics.controlHeightDp.dp,
                     gap = gap,
-                    columns = 8,
-                    modifier = Modifier.weight(1.1f),
+                    viewModel = viewModel,
                 )
                 BeatLoopControl(
                     state = state,
-                    height = metrics.controlHeightDp.dp * 1.85f,
+                    height = metrics.controlHeightDp.dp * 1.35f,
                     viewModel = viewModel,
                 )
                 QuickArrangeActionRow(
@@ -1715,9 +1923,6 @@ private fun LayerStudio(
 ) {
     var pageName by rememberSaveable { mutableStateOf(LayerStudioPage.DRUMS.name) }
     var kitId by rememberSaveable { mutableStateOf(state.selectedDrumKitId) }
-    var targetBank by rememberSaveable {
-        mutableStateOf(state.selectedBank.coerceIn(0, 2))
-    }
     val page = LayerStudioPage.entries.firstOrNull { it.name == pageName } ?: LayerStudioPage.DRUMS
 
     Dialog(
@@ -1809,10 +2014,16 @@ private fun LayerStudio(
                     when (page) {
                         LayerStudioPage.DRUMS -> DrumKitStudio(
                             selectedKitId = kitId,
-                            targetBank = targetBank,
+                            bankHasContent = state.pads
+                                .subList(
+                                    SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK,
+                                    (SamplerConfig.DRUM_BANK_INDEX + 1) * SamplerConfig.PADS_PER_BANK,
+                                )
+                                .any { it.isAssigned },
                             onSelectKit = { kitId = it },
-                            onSelectBank = { targetBank = it },
-                            onApply = { viewModel.applyBuiltInDrumKit(kitId, targetBank) },
+                            onApply = { replaceExisting ->
+                                viewModel.applyBuiltInDrumKit(kitId, replaceExisting)
+                            },
                             modifier = Modifier.weight(1f),
                         )
                         LayerStudioPage.VOICE -> VocalStudio(
@@ -1835,10 +2046,9 @@ private fun LayerStudio(
 @Composable
 private fun DrumKitStudio(
     selectedKitId: String,
-    targetBank: Int,
+    bankHasContent: Boolean,
     onSelectKit: (String) -> Unit,
-    onSelectBank: (Int) -> Unit,
-    onApply: () -> Unit,
+    onApply: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1859,22 +2069,27 @@ private fun DrumKitStudio(
             modifier = Modifier.fillMaxWidth().height(46.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            (0..2).forEach { bank ->
+            ValueDisplay(
+                label = "BANK B / ドラム",
+                value = "DRUMS",
+                modifier = Modifier.weight(0.9f).fillMaxHeight(),
+            )
+            if (bankHasContent) {
+                ConfirmActionButton(
+                    label = "Bの音色を入替\nKEEP SAFE",
+                    confirmLabel = "もう一度で入替",
+                    onConfirm = { onApply(true) },
+                    modifier = Modifier.weight(1.6f).fillMaxHeight(),
+                )
+            } else {
                 MachineButton(
-                    label = "BANK ${bankName(bank)}",
-                    onClick = { onSelectBank(bank) },
-                    active = targetBank == bank,
-                    modifier = Modifier.weight(0.7f).fillMaxHeight(),
+                    label = "Bに音色をセット\nKIT + STARTER BEAT",
+                    onClick = { onApply(false) },
+                    modifier = Modifier.weight(1.6f).fillMaxHeight(),
+                    active = true,
                     compact = true,
                 )
             }
-            MachineButton(
-                label = "この音色をセット\nKIT + STARTER BEAT",
-                onClick = onApply,
-                modifier = Modifier.weight(1.6f).fillMaxHeight(),
-                active = true,
-                compact = true,
-            )
         }
     }
 }
@@ -1988,7 +2203,7 @@ private fun VocalStudio(
             modifier = Modifier.fillMaxWidth().height(34.dp),
         )
         ValueDisplay(
-            label = "VOICE TAKES / BANK D",
+            label = "VOICE TAKES / D ボイス",
             value = "$takeCount / 16 テイク保存済み",
             modifier = Modifier.fillMaxWidth().height(48.dp),
         )
@@ -2265,7 +2480,7 @@ private fun FinishWorkspace(
                     text = if (ready) {
                         "操作は端末内へ自動保存。再生で確認し、4小節WAVにもできます。"
                     } else {
-                        "操作は端末内へ自動保存。『並べる』で鳴らすマスを光らせてください。"
+                        "操作は端末内へ3世代で自動保存。『ビート』で鳴らすマスを光らせてください。"
                     },
                     color = Color(0xFFE8DDBF),
                     fontFamily = DeckFont,
@@ -2363,7 +2578,7 @@ private fun FinishWorkspace(
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
                 MachineButton(
-                    label = "並べるへ戻る\nBACK",
+                    label = "ビートへ戻る\nBACK",
                     onClick = onBackToArrange,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
@@ -2549,6 +2764,7 @@ private fun SourceEditorWaveform(
     state: SamplerUiState,
     viewModel: SamplerViewModel,
     modifier: Modifier,
+    condensed: Boolean = false,
 ) {
     val audio = state.currentAudio
     MachinePanel(modifier = modifier) {
@@ -2578,9 +2794,11 @@ private fun SourceEditorWaveform(
                     if (state.manualChopEnabled) viewModel.addSliceMarker(frame)
                     else viewModel.selectSliceAt(frame)
                 },
+                playheadFrame = state.sourcePlayheadFrame,
                 fillCanvas = true,
                 showViewportControls = false,
-                compactViewportControls = true,
+                compactViewportControls = !condensed,
+                showTimeReadout = !condensed,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -2713,8 +2931,9 @@ private fun BankStrip(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         repeat(SamplerConfig.BANK_COUNT) { bank ->
+            val role = bankRoleFor(bank)
             MachineButton(
-                label = "BANK ${bankName(bank)}",
+                label = "${role.letter} ${role.japaneseLabel}\n${role.englishLabel}",
                 onClick = { onSelectBank(bank) },
                 active = selectedBank == bank,
                 modifier = Modifier
