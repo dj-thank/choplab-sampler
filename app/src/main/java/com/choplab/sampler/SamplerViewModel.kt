@@ -25,10 +25,14 @@ import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectOperationEpoch
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
+import com.choplab.sampler.model.SourceCaptureOperation
+import com.choplab.sampler.model.SourcePlaybackRequest
+import com.choplab.sampler.model.SourcePlaybackToggleAction
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
@@ -48,7 +52,10 @@ import com.choplab.sampler.model.selectPlayablePadPage as selectPlayablePadPageS
 import com.choplab.sampler.model.selectSourceRangeForScratch
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
+import com.choplab.sampler.model.sourcePlaybackAppliedStatusMessage
+import com.choplab.sampler.model.sourcePlaybackRequestFeedback
 import com.choplab.sampler.model.sourcePlaybackStartFrame
+import com.choplab.sampler.model.sourcePlaybackToggleAction
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.trimPadBoundary
@@ -79,6 +86,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private var autosaveJob: Job? = null
     private var scratchIdleJob: Job? = null
     private var projectRevision = 0L
+    private val projectOperations = ProjectOperationEpoch()
+    private val microphoneSourceCapture = SourceCaptureOperation(projectOperations)
+    private val systemSourceCapture = SourceCaptureOperation(projectOperations)
+    private val vocalCapture = SourceCaptureOperation(projectOperations)
+    private var sourceStartPending = false
 
     private val mutableUiState = MutableStateFlow(SamplerUiState())
     val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
@@ -90,30 +102,38 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         recoverAutosave()
     }
 
-    fun loadAudio(uri: Uri) {
+    fun loadAudio(uri: Uri) = loadAudio(uri, projectOperations.begin())
+
+    private fun loadAudio(uri: Uri, operation: Long) {
         viewModelScope.launch {
+            if (!projectOperations.isCurrent(operation)) return@launch
             mutableUiState.update {
                 it.copy(isLoading = true, statusMessage = "音声を解析しています…")
             }
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
-                    engine.stopSource()
-                    engine.stopTransport()
-                    engine.stopAllVoices()
-                    editHistory.reset()
-                    val replaced = replaceSourceAudio(mutableUiState.value, audio)
-                    mutableUiState.value = replaced
-                    engine.updateAllPads(replaced.pads)
-                    syncPattern()
-                    projectRevision++
-                    scheduleAutosave()
+                    projectOperations.completeIfCurrent(operation) {
+                        sourceStartPending = false
+                        engine.stopSource()
+                        engine.stopTransport()
+                        engine.stopAllVoices()
+                        editHistory.reset()
+                        val replaced = replaceSourceAudio(mutableUiState.value, audio)
+                        mutableUiState.value = replaced
+                        engine.updateAllPads(replaced.pads)
+                        syncPattern()
+                        projectRevision++
+                        scheduleAutosave()
+                    }
                 }
                 .onFailure { throwable ->
-                    mutableUiState.update {
-                        it.copy(
-                            isLoading = false,
-                            statusMessage = throwable.message ?: "音声を読み込めませんでした",
-                        )
+                    projectOperations.completeIfCurrent(operation) {
+                        mutableUiState.update {
+                            it.copy(
+                                isLoading = false,
+                                statusMessage = throwable.message ?: "音声を読み込めませんでした",
+                            )
+                        }
                     }
                 }
         }
@@ -121,37 +141,50 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun startMicrophoneRecording() {
         if (microphoneRecorder.isRecording) return
+        val operation = microphoneSourceCapture.begin()
         val directory = File(getApplication<Application>().cacheDir, "captures").apply { mkdirs() }
         val file = File(directory, "microphone_${System.currentTimeMillis()}.wav")
         val result = microphoneRecorder.start(file) { message ->
             viewModelScope.launch {
-                mutableUiState.update {
-                    it.copy(microphoneRecording = false, statusMessage = message)
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update {
+                        it.copy(microphoneRecording = false, statusMessage = message)
+                    }
                 }
             }
         }
         result.onSuccess {
-            mutableUiState.update {
-                it.copy(
-                    microphoneRecording = true,
-                    statusMessage = "マイク録音中です。停止すると波形へ読み込みます",
-                )
+            projectOperations.completeIfCurrent(operation) {
+                mutableUiState.update {
+                    it.copy(
+                        microphoneRecording = true,
+                        statusMessage = "マイク録音中です。停止すると波形へ読み込みます",
+                    )
+                }
             }
         }.onFailure { throwable ->
-            mutableUiState.update {
-                it.copy(statusMessage = throwable.message ?: "マイク録音を開始できません")
+            microphoneSourceCapture.discard(operation)
+            projectOperations.completeIfCurrent(operation) {
+                mutableUiState.update {
+                    it.copy(statusMessage = throwable.message ?: "マイク録音を開始できません")
+                }
             }
         }
     }
 
     fun stopMicrophoneRecording() {
+        val operation = microphoneSourceCapture.consumeOrBegin()
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { microphoneRecorder.stop() }
-            mutableUiState.update { it.copy(microphoneRecording = false) }
+            projectOperations.completeIfCurrent(operation) {
+                mutableUiState.update { it.copy(microphoneRecording = false) }
+            }
             result.onSuccess { file ->
-                loadAudio(Uri.fromFile(file))
+                loadAudio(Uri.fromFile(file), operation)
             }.onFailure { throwable ->
-                setStatus(throwable.message ?: "マイク録音を停止できません")
+                projectOperations.completeIfCurrent(operation) {
+                    setStatus(throwable.message ?: "マイク録音を停止できません")
+                }
             }
         }
     }
@@ -169,44 +202,63 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 return
             }
         val loopPad = state.pads[loopPadIndex]
+        val operation = vocalCapture.begin()
         val directory = File(getApplication<Application>().cacheDir, "captures").apply { mkdirs() }
         val file = File(directory, "vocal_${System.currentTimeMillis()}.wav")
         microphoneRecorder.start(file) { message ->
             viewModelScope.launch {
-                mutableUiState.update {
-                    it.copy(vocalOverdubRecording = false, statusMessage = message)
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update {
+                        it.copy(vocalOverdubRecording = false, statusMessage = message)
+                    }
                 }
             }
         }.onSuccess {
-            state.loopingPadIndex?.let(engine::stopPad)
-            state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-                .forEach { engine.triggerPad(it.globalIndex) }
-            engine.startPadLoop(loopPadIndex)
-            mutableUiState.update {
-                it.copy(
-                    vocalOverdubRecording = true,
-                    loopingPadIndex = loopPadIndex,
-                    loopPlayheadFrame = loopPad.startFrame,
-                    statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
-                )
+            projectOperations.completeIfCurrent(operation) {
+                state.loopingPadIndex?.let(engine::stopPad)
+                state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+                    .forEach { engine.triggerPad(it.globalIndex) }
+                engine.startPadLoop(loopPadIndex)
+                mutableUiState.update {
+                    it.copy(
+                        vocalOverdubRecording = true,
+                        loopingPadIndex = loopPadIndex,
+                        loopPlayheadFrame = loopPad.startFrame,
+                        statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
+                    )
+                }
             }
         }.onFailure { throwable ->
-            setStatus(throwable.message ?: "声の録音を開始できません")
+            vocalCapture.discard(operation)
+            projectOperations.completeIfCurrent(operation) {
+                setStatus(throwable.message ?: "声の録音を開始できません")
+            }
         }
     }
 
     fun stopVocalOverdubRecording() {
+        val operation = vocalCapture.consumeOrBegin()
         viewModelScope.launch {
             val stopped = withContext(Dispatchers.IO) { microphoneRecorder.stop() }
-            mutableUiState.update { it.copy(vocalOverdubRecording = false) }
+            projectOperations.completeIfCurrent(operation) {
+                mutableUiState.update { it.copy(vocalOverdubRecording = false) }
+            }
             stopped.onSuccess { file ->
                 runCatching { decoder.decode(Uri.fromFile(file)) }
-                    .onSuccess(::assignVocalTake)
+                    .onSuccess { audio ->
+                        projectOperations.completeIfCurrent(operation) {
+                            assignVocalTake(audio)
+                        }
+                    }
                     .onFailure { throwable ->
-                        setStatus(throwable.message ?: "録音した声を読み込めませんでした")
+                        projectOperations.completeIfCurrent(operation) {
+                            setStatus(throwable.message ?: "録音した声を読み込めませんでした")
+                        }
                     }
             }.onFailure { throwable ->
-                setStatus(throwable.message ?: "声の録音を停止できません")
+                projectOperations.completeIfCurrent(operation) {
+                    setStatus(throwable.message ?: "声の録音を停止できません")
+                }
             }
         }
     }
@@ -315,6 +367,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
             return
         }
+        sourceStartPending = false
         engine.stopSource()
         state.loopingPadIndex?.let(engine::stopPad)
         state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
@@ -365,23 +418,29 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun startSystemAudioCapture(resultCode: Int, resultData: Intent) {
+        val operation = systemSourceCapture.begin()
         val application = getApplication<Application>()
         val intent = PlaybackCaptureService.startIntent(application, resultCode, resultData)
         runCatching {
             ContextCompat.startForegroundService(application, intent)
         }.onSuccess {
-            mutableUiState.update {
-                it.copy(
-                    systemAudioRecording = true,
-                    statusMessage = "端末音声を録音中です。録音可能なアプリの音だけが取り込まれます",
-                )
+            projectOperations.completeIfCurrent(operation) {
+                mutableUiState.update {
+                    it.copy(
+                        systemAudioRecording = true,
+                        statusMessage = "端末音声を録音中です。録音可能なアプリの音だけが取り込まれます",
+                    )
+                }
             }
         }.onFailure { throwable ->
-            mutableUiState.update {
-                it.copy(
-                    systemAudioRecording = false,
-                    statusMessage = throwable.message ?: "端末音声録音サービスを開始できませんでした",
-                )
+            systemSourceCapture.discard(operation)
+            projectOperations.completeIfCurrent(operation) {
+                mutableUiState.update {
+                    it.copy(
+                        systemAudioRecording = false,
+                        statusMessage = throwable.message ?: "端末音声録音サービスを開始できませんでした",
+                    )
+                }
             }
         }
     }
@@ -443,8 +502,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun resetProject() {
+        projectOperations.invalidate()
         val reset = resetProjectState(mutableUiState.value)
         autosaveJob?.cancel()
+        sourceStartPending = false
         engine.stopSource()
         engine.stopTransport()
         engine.stopAllVoices()
@@ -462,7 +523,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
         autosaveJob = viewModelScope.launch {
             val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(reset) }.exceptionOrNull()
+                runCatching { autosaveStore.save(reset, revision) }.exceptionOrNull()
             }
             if (failure != null && projectRevision == revision) {
                 mutableUiState.update {
@@ -820,32 +881,67 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.releasePad(globalIndex)
     }
 
+    fun stopSourceForWorkspaceChange() {
+        val state = mutableUiState.value
+        val shouldStop = state.sourcePlaying || sourceStartPending
+        sourceStartPending = false
+        if (!shouldStop) return
+
+        engine.stopSource()
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.STOP,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
+                statusMessage = feedback.statusMessage,
+            )
+        }
+    }
+
     fun toggleSourcePlayback() {
         val state = mutableUiState.value
         val audio = state.currentAudio ?: run {
             setStatus("先に曲を読み込んでください")
             return
         }
-        if (state.sourcePlaying) {
-            engine.stopSource()
-            mutableUiState.update {
-                it.copy(sourcePlaying = false, statusMessage = "停止中 — PADでチョップを演奏できます")
+        when (sourcePlaybackToggleAction(state.sourcePlaying, sourceStartPending)) {
+            SourcePlaybackToggleAction.STOP -> {
+                sourceStartPending = false
+                engine.stopSource()
+                mutableUiState.update { current ->
+                    val feedback = sourcePlaybackRequestFeedback(
+                        appliedPlaying = current.sourcePlaying,
+                        request = SourcePlaybackRequest.STOP,
+                    )
+                    current.copy(
+                        sourcePlaying = feedback.sourcePlaying,
+                        statusMessage = feedback.statusMessage,
+                    )
+                }
+                return
             }
-            return
+            SourcePlaybackToggleAction.START -> Unit
         }
 
         if (state.transportPlaying) {
             engine.stopTransport()
         }
         val start = sourcePlaybackStartFrame(state.sourcePlayheadFrame, audio.frameCount)
+        sourceStartPending = true
         engine.playSource(audio, start, state.masterPitchSemitones)
-        mutableUiState.update {
-            it.copy(
-                sourcePlaying = true,
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.START,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = start,
-                statusMessage = "サンプリング中 — 「ここだ」でPADを叩いてください",
+                statusMessage = feedback.statusMessage,
             )
         }
     }
@@ -858,14 +954,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         engine.stopTransport()
         engine.stopSource()
+        sourceStartPending = !state.sourcePlaying
         engine.playSource(audio, 0, state.masterPitchSemitones)
-        mutableUiState.update {
-            it.copy(
-                sourcePlaying = true,
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.RESTART,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = 0,
-                statusMessage = "曲の頭から再生中 — 空PADを順に叩くとチョップできます",
+                statusMessage = feedback.statusMessage,
             )
         }
     }
@@ -878,14 +979,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         val safe = frame.coerceIn(0, audio.frameCount - 1)
         engine.stopTransport()
+        sourceStartPending = !state.sourcePlaying
         engine.playSource(audio, safe, state.masterPitchSemitones)
-        mutableUiState.update {
-            it.copy(
-                sourcePlaying = true,
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.SEEK,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = safe,
-                statusMessage = "波形で選んだ位置から再生中 — 空PADを叩くとここをチョップします",
+                statusMessage = feedback.statusMessage,
             )
         }
     }
@@ -894,7 +1000,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
         val safe = frame.coerceIn(0, audio.frameCount - 1)
-        if (state.sourcePlaying) {
+        if (state.sourcePlaying || sourceStartPending) {
+            sourceStartPending = !state.sourcePlaying
             engine.playSource(audio, safe, state.masterPitchSemitones)
         }
         mutableUiState.update { it.copy(sourcePlayheadFrame = safe) }
@@ -905,7 +1012,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio
         val frame = engine.currentSourceFrame.takeIf { it >= 0 } ?: state.sourcePlayheadFrame
-        if (state.sourcePlaying && audio != null) {
+        if ((state.sourcePlaying || sourceStartPending) && audio != null) {
+            sourceStartPending = !state.sourcePlaying
             engine.playSource(audio, frame.coerceIn(0, audio.frameCount - 1), pitch)
         }
         commitEdit(mergeKey = "master-pitch") { it.copy(masterPitchSemitones = pitch) }
@@ -1139,7 +1247,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             engine.stopTransport()
             mutableUiState.update { it.copy(transportPlaying = false, currentStep = -1) }
         } else {
-            if (mutableUiState.value.sourcePlaying) {
+            if (mutableUiState.value.sourcePlaying || sourceStartPending) {
+                sourceStartPending = false
                 engine.stopSource()
             }
             syncPattern()
@@ -1190,6 +1299,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun stopAllSounds() {
+        sourceStartPending = false
         engine.stopAllVoices()
         mutableUiState.update {
             it.copy(
@@ -1254,6 +1364,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveProject(destination: Uri) {
         val snapshot = mutableUiState.value
+        val revision = projectRevision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
             runCatching {
@@ -1268,7 +1379,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             ProjectArchiveCodec.write(snapshot, output)
                         }
                         verified.inputStream().buffered().use(ProjectArchiveCodec::read)
-                        autosaveStore.save(snapshot)
+                        autosaveStore.save(snapshot, revision)
                         application.contentResolver.openOutputStream(destination, "w")?.use { output ->
                             verified.inputStream().buffered().use { input -> input.copyTo(output) }
                         } ?: error("保存先を開けません")
@@ -1292,6 +1403,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadProject(source: Uri) {
+        val operation = projectOperations.begin()
         val revisionAtStart = projectRevision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを開いています…") }
@@ -1303,21 +1415,27 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }.onSuccess { restored ->
                 if (projectRevision != revisionAtStart) {
-                    mutableUiState.update {
-                        it.copy(isLoading = false, statusMessage = "編集中のため読み込み結果を破棄しました")
+                    projectOperations.completeIfCurrent(operation) {
+                        mutableUiState.update {
+                            it.copy(isLoading = false, statusMessage = "編集中のため読み込み結果を破棄しました")
+                        }
                     }
                     return@onSuccess
                 }
-                editHistory.reset()
-                projectRevision++
-                applyProjectState(restored, "プロジェクトを開きました")
-                scheduleAutosave()
+                projectOperations.completeIfCurrent(operation) {
+                    editHistory.reset()
+                    projectRevision++
+                    applyProjectState(restored, "プロジェクトを開きました")
+                    scheduleAutosave()
+                }
             }.onFailure { throwable ->
-                mutableUiState.update {
-                    it.copy(
-                        isLoading = false,
-                        statusMessage = throwable.message ?: "プロジェクトを開けませんでした",
-                    )
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = throwable.message ?: "プロジェクトを開けませんでした",
+                        )
+                    }
                 }
             }
         }
@@ -1389,6 +1507,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             selectedDrumKitId == other.selectedDrumKitId
 
     private fun applyProjectState(restored: SamplerUiState, message: String) {
+        sourceStartPending = false
         engine.stopSource()
         engine.stopTransport()
         engine.stopAllVoices()
@@ -1422,7 +1541,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         autosaveJob = viewModelScope.launch {
             delay(AUTOSAVE_DELAY_MS)
             val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(snapshot) }.exceptionOrNull()
+                runCatching { autosaveStore.save(snapshot, revision) }.exceptionOrNull()
             }
             if (failure != null && projectRevision == revision) {
                 mutableUiState.update {
@@ -1433,18 +1552,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun recoverAutosave() {
+        val operation = projectOperations.begin()
         val revisionAtStart = projectRevision
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.load() } }
             if (projectRevision != revisionAtStart) return@launch
-            result.onSuccess { restored ->
-                if (restored != null) {
-                    editHistory.reset()
-                    applyProjectState(restored, "前回の自動保存を復元しました")
-                }
-            }.onFailure { throwable ->
-                mutableUiState.update {
-                    it.copy(statusMessage = throwable.message ?: "前回の自動保存を復元できませんでした")
+            projectOperations.completeIfCurrent(operation) {
+                result.onSuccess { restored ->
+                    if (restored != null) {
+                        editHistory.reset()
+                        applyProjectState(restored, "前回の自動保存を復元しました")
+                    }
+                }.onFailure { throwable ->
+                    mutableUiState.update {
+                        it.copy(statusMessage = throwable.message ?: "前回の自動保存を復元できませんでした")
+                    }
                 }
             }
         }
@@ -1460,28 +1582,39 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             CaptureEventBus.state.collect { captureState ->
                 when (captureState) {
                     PlaybackCaptureState.Idle -> Unit
-                    PlaybackCaptureState.Recording -> mutableUiState.update {
-                        it.copy(
-                            systemAudioRecording = true,
-                            statusMessage = "端末音声を録音中です",
-                        )
+                    PlaybackCaptureState.Recording -> {
+                        val operation = systemSourceCapture.ensureStarted()
+                        projectOperations.completeIfCurrent(operation) {
+                            mutableUiState.update {
+                                it.copy(
+                                    systemAudioRecording = true,
+                                    statusMessage = "端末音声を録音中です",
+                                )
+                            }
+                        }
                     }
                     is PlaybackCaptureState.Completed -> {
-                        mutableUiState.update {
-                            it.copy(
-                                systemAudioRecording = false,
-                                statusMessage = "端末音声録音を読み込んでいます…",
-                            )
+                        val operation = systemSourceCapture.consumeOrBegin()
+                        projectOperations.completeIfCurrent(operation) {
+                            mutableUiState.update {
+                                it.copy(
+                                    systemAudioRecording = false,
+                                    statusMessage = "端末音声録音を読み込んでいます…",
+                                )
+                            }
                         }
                         CaptureEventBus.reset()
-                        loadAudio(Uri.fromFile(captureState.file))
+                        loadAudio(Uri.fromFile(captureState.file), operation)
                     }
                     is PlaybackCaptureState.Error -> {
-                        mutableUiState.update {
-                            it.copy(
-                                systemAudioRecording = false,
-                                statusMessage = captureState.message,
-                            )
+                        val operation = systemSourceCapture.consumeOrBegin()
+                        projectOperations.completeIfCurrent(operation) {
+                            mutableUiState.update {
+                                it.copy(
+                                    systemAudioRecording = false,
+                                    statusMessage = captureState.message,
+                                )
+                            }
                         }
                         CaptureEventBus.reset()
                     }
@@ -1496,6 +1629,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 val step = engine.currentStep
                 val sourceFrame = engine.currentSourceFrame
                 val sourceIsPlaying = engine.sourcePlaying
+                if (sourceIsPlaying) sourceStartPending = false
                 val loopPad = engine.currentLoopPad.takeIf { it >= 0 }
                 val loopFrame = engine.currentLoopFrame
                 val scratchPad = engine.currentScratchPad.takeIf { it >= 0 }
@@ -1520,11 +1654,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             loopPlayheadFrame = loopFrame,
                             scratchingPadIndex = scratchPad,
                             scratchPlayheadFrame = scratchFrame,
-                            statusMessage = if (state.sourcePlaying && !sourceIsPlaying) {
-                                "曲の再生が終わりました — PADでチョップを演奏できます"
-                            } else {
-                                state.statusMessage
-                            },
+                            statusMessage = sourcePlaybackAppliedStatusMessage(
+                                previouslyApplied = state.sourcePlaying,
+                                nowApplied = sourceIsPlaying,
+                                currentMessage = state.statusMessage,
+                            ),
                         )
                     }
                 }

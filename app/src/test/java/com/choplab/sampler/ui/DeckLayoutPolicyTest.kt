@@ -31,10 +31,24 @@ class DeckLayoutPolicyTest {
 
         assertEquals(DeckOrientation.LANDSCAPE, metrics.orientation)
         assertEquals(DeckDensity.COMPACT, metrics.density)
+        assertEquals(
+            PerformanceWorkspaceLayout.SPLIT_PAD_GRID,
+            performanceWorkspaceLayout(metrics),
+        )
         assertEquals(false, metrics.showStatusStrip)
         assertEquals(3, metrics.gapDp)
         assertTrue(metrics.waveformHeightDp <= 128)
         assertTrue(320 - metrics.fixedChromeHeightDp >= 230)
+    }
+
+    @Test
+    fun portraitKeepsTheFullWidthStackedPerformanceDeck() {
+        val metrics = resolveDeckLayout(widthDp = 412, heightDp = 820)
+
+        assertEquals(
+            PerformanceWorkspaceLayout.STACKED,
+            performanceWorkspaceLayout(metrics),
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)
