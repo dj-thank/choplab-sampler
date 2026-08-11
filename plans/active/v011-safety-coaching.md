@@ -109,6 +109,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - A bounded Sol-specified review found that post-capture guidance hid the empty-PAD add path; the fixed TIP now distinguishes empty-PAD add from assigned-PAD audition/trim at normal and 130% font scale. Effective child-model metadata remained unavailable.
 - [x] 2026-08-12 - The follow-up review found contradictory TalkBack text on assigned PADs. A deterministic Red/Green test now locks assigned audition/long-press trim versus empty-PAD capture semantics.
 - [x] 2026-08-12 - Built versionCode 18 / versionName 0.11.3; passed 144 tests, Lint, clean assemble, offline validation, diff/no-scroll checks, APK metadata/signature verification, and data-preserving `emulator-5590` install.
+- [x] 2026-08-12 - Merged PR #26, passed branch/PR/main/tag/release CI, published `v0.11.3-preview.1`, and reverse-verified public APK bytes, GitHub digest, checksum, package metadata, signature, prerelease status, and anonymous routes.
 - [ ] Install the local-signature APK on physical Pixel 9a only when exact serial `5A121JEBF08094` is attached; it remains absent from ADB/mDNS and `Present=False` in Windows PnP.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
@@ -169,6 +170,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - Gradle `testDebugUnitTest lintDebug assembleDebug` v0.11.3 - 2026-08-12 - PASS; 144 tests in 33 suites, zero failures/errors/skips; Lint zero errors and 10 warnings.
 - local v0.11.3 APK - 2026-08-12 - clean build 30,739,403 bytes; SHA-256 `463C58518F0D47B58DAD75C9DF0F0893D8838DD05372E7C74036FDBBB6908E3C`; package/version/minSdk/targetSdk and v2 signature verified; local certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
 - dedicated `emulator-5590` v0.11.3 - 2026-08-12 - in-place install preserved 5,317,098-byte autosave SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`; normal/130% Chop TIP and assigned/empty PAD accessibility labels matched runtime behavior; scrollable nodes and focused fatal/ANR matches were zero.
+- GitHub publication v0.11.3 - 2026-08-12 - PR #26 merge `17d2e203bbece5d1f1be7e46042a0389256596bc`; branch/PR/main/tag/release runs `31540964591` / `31540979286` / `31541222720` / `31541469351` / `31541469492` PASS.
+- public v0.11.3 APK - 2026-08-12 - 30,739,403 bytes; SHA-256 `D1DB9F44054C239C2B0C9438FB97487B34CB678E7EA4E5366DDEA7BBBF053867`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match; anonymous repository/Release/APK routes returned HTTP 200; public certificate `3383BD82CBF84972CFF3A8C8B4EC39061868A2B2B08A05056823FD08CACDCBAA` differs from local.
 
 ## Risks and rollback
 

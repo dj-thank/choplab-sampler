@@ -12,7 +12,11 @@ Local candidate gate: configured offline validation PASS; 144 unit tests in 33 s
 
 Dedicated Pixel 9/API 36 emulator `emulator-5590` accepted that clean APK through `adb install -r`. Its retained 5,317,098-byte autosave stayed byte-identical at SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`. Normal and Android font-scale 130% captures preserve the full TIP without ellipsis or scrolling; UI XML exposes A-01 as `PAD 01 割り当て済み。タップで試聴。長押しで微調整` and A-06 as `PAD 06 空。現在位置をチョップ`. Evidence is `work/v0113-final.png`, `work/v0113-final.xml`, `work/v0113-final-font130.png`, and `work/v0113-final-font130.xml`; the scoped fatal/ANR query returned zero matches.
 
-The physical Pixel 9a `5A121JEBF08094` is not currently attached, so this candidate does not yet claim a data-preserving phone install, physical sound/touch quality, or `HUMAN_GO`. GitHub PR/CI/tag/Release evidence is recorded only after provider completion.
+PR [#26](https://github.com/dj-thank/choplab-sampler/pull/26) merged as `17d2e203bbece5d1f1be7e46042a0389256596bc`. Branch runs `31540964591` and `31540979286`, main run `31541222720`, tag verification `31541469351`, and release run `31541469492` all passed. Annotated tag `v0.11.3-preview.1` peels to the merge commit and the [public prerelease](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.11.3-preview.1) is available. Anonymous HTTP checks returned 200 for the repository, Release page, and direct APK route.
+
+The reverse-downloaded public APK is 30,739,403 bytes with SHA-256 `D1DB9F44054C239C2B0C9438FB97487B34CB678E7EA4E5366DDEA7BBBF053867`; downloaded bytes, GitHub asset digest, and checksum sidecar match. It reports package `com.choplab.sampler`, versionCode 18, versionName 0.11.3, minSdk 29, targetSdk 36, APK Signature Scheme v2, and certificate SHA-256 `3383BD82CBF84972CFF3A8C8B4EC39061868A2B2B08A05056823FD08CACDCBAA`. This CI certificate differs from the installed local-build certificate, so the public APK was not forced over retained app data.
+
+The physical Pixel 9a `5A121JEBF08094` remains absent from ADB and mDNS, while its two Windows PnP records report `Present=False`. A data-preserving phone install, physical sound/touch quality, and `HUMAN_GO` therefore remain pending; public repository, CI, Release route, and artifact identity establish `PUBLIC_PASS` only.
 
 ## v0.11.2 truthful step placement candidate — 2026-08-12
 
