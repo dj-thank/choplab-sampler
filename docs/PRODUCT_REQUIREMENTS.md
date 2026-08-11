@@ -25,7 +25,7 @@ ChopLab is an original mobile sampler optimized for a rapid source → chop → 
 
 ## Pads and voice engine
 
-- **PAD-001** Four banks × sixteen pads.
+- **PAD-001** Four banks × thirty-two pads, exposed as fixed sixteen-pad pages.
 - **PAD-002** Velocity-sensitive trigger through UI/MIDI where input supports it.
 - **PAD-003** One-shot and gate modes.
 - **PAD-004** Reverse, choke, gain, pan, pitch, time stretch, tone/filter and resonance.
