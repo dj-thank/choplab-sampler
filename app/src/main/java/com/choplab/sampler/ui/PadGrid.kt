@@ -119,7 +119,7 @@ private fun PerformancePad(
     val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(9.dp)
     val bankRole = bankRoleFor(pad.bankIndex)
-    val accent = bankAccentColor(pad.bankIndex)
+    val accent = bankRoleAccent(pad.bankIndex)
     val background = when {
         pressed -> accent
         pad.isAssigned -> accent.copy(alpha = 0.72f)
@@ -231,13 +231,6 @@ private fun PerformancePad(
             modifier = Modifier.align(Alignment.BottomEnd),
         )
     }
-}
-
-private fun bankAccentColor(bankIndex: Int): Color = when (bankIndex) {
-    0 -> Color(0xFF3F6745)
-    1 -> Color(0xFF9A4A18)
-    2 -> Color(0xFF56507A)
-    else -> Color(0xFF7A3D48)
 }
 
 private fun buildPadMiniPeaks(pad: PadModel): FloatArray {

@@ -91,7 +91,7 @@ private fun BeatLane(
     modifier: Modifier = Modifier,
 ) {
     val bankRole = bankRoleFor(bankIndex)
-    val accent = beatLaneAccent(bankIndex)
+    val accent = bankRoleAccent(bankIndex)
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -201,7 +201,7 @@ fun BeatSoundRail(
                             .weight(1f)
                             .fillMaxHeight()
                             .background(
-                                if (selected) DeckLamp else if (pad.isAssigned) beatLaneAccent(pad.bankIndex) else DeckPanelDark,
+                                if (selected) DeckLamp else if (pad.isAssigned) bankRoleAccent(pad.bankIndex) else DeckPanelDark,
                                 RoundedCornerShape(4.dp),
                             )
                             .border(if (selected) 2.dp else 1.dp, DeckInk, RoundedCornerShape(4.dp))
@@ -230,11 +230,4 @@ fun BeatSoundRail(
             }
         }
     }
-}
-
-private fun beatLaneAccent(bankIndex: Int): Color = when (bankIndex) {
-    0 -> Color(0xFF365F40)
-    1 -> Color(0xFF8E4318)
-    2 -> Color(0xFF514C73)
-    else -> Color(0xFF713844)
 }
