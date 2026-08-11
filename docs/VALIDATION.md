@@ -2,6 +2,12 @@
 
 作成日: 2026-07-15
 
+## 2026-08-11 GitHub Actions runtime maintenance
+
+- official latest stable releases were resolved through the GitHub API and pinned to exact commit SHAs for checkout v7.0.1, setup-java v5.7.0, setup-android v4.0.1, setup-gradle v6.3.0, upload-artifact v7.0.1, and download-artifact v8.0.1
+- this removes deprecated Node.js 20 / setup-java v4 dependencies while preserving immutable action pins
+- Android verification and release-workflow smoke results are recorded after provider execution
+
 ## 2026-08-11 v0.9.2 accessibility semantics validation
 
 - regression-first host test reproduces and covers the 32-PAD Beat announcement bug
