@@ -14,7 +14,13 @@
 - accepted runtime files: `work/v0113-final.png`, `work/v0113-final.xml`, `work/v0113-final-font130.png`, and `work/v0113-final-font130.xml`; process alive; scoped fatal/ANR matches 0; system font scale restored to 1.0
 - Sol-specified review found the visual guidance issue and the contradictory TalkBack label; effective child-model metadata was unavailable, so no runtime-verified Sol claim is made
 - physical Pixel 9a `5A121JEBF08094`: not attached; data-preserving phone install and physical sound/touch checks pending
-- GitHub PR/CI/tag/public Release: pending provider execution at this candidate checkpoint
+- PR #26 merged as `17d2e203bbece5d1f1be7e46042a0389256596bc`; branch `31540964591` / `31540979286`, main `31541222720`, tag verification `31541469351`, and release `31541469492` runs PASS
+- annotated tag `v0.11.3-preview.1` peels locally/remotely to the merge commit; Release is public and marked prerelease
+- reverse-downloaded public APK: 30,739,403 bytes; SHA-256 `D1DB9F44054C239C2B0C9438FB97487B34CB678E7EA4E5366DDEA7BBBF053867`
+- downloaded APK, GitHub asset digest, and checksum sidecar three-way match; package/version/minSdk/targetSdk and APK Signature Scheme v2 verified
+- public certificate SHA-256 `3383BD82CBF84972CFF3A8C8B4EC39061868A2B2B08A05056823FD08CACDCBAA` differs from the installed local certificate, so no data-destructive replacement was attempted
+- anonymous HTTP checks: repository 200, Release page 200, direct APK 200; this establishes `PUBLIC_PASS`, not physical `DEVICE_PASS` or `HUMAN_GO`
+- final Pixel check: exact serial absent from ADB and mDNS; both Windows Pixel 9a PnP records `Present=False`
 
 ## 2026-08-12 v0.11.2 truthful step-placement candidate
 
