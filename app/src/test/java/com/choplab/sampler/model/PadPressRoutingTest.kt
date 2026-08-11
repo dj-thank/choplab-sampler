@@ -15,6 +15,7 @@ class PadPressRoutingTest {
     fun pausedSourceResumesFromCurrentFrame() {
         assertEquals(420, sourcePlaybackStartFrame(requestedFrame = 420, frameCount = 1_000))
     }
+
     @Test
     fun sourcePlaybackDoesNotTurnPerformancePadIntoCapture() {
         assertEquals(
