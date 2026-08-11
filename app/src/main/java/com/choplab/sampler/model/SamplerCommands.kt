@@ -5,6 +5,50 @@ data class PadAssignmentResult(
     val changedPads: List<PadModel>,
 )
 
+/**
+ * Returns a truly blank project state.
+ *
+ * A range reset is intentionally not enough here: starting over must drop the
+ * loaded source, every assigned PAD, the beat grid, and all live playback
+ * references so autosave cannot bring an old session back.
+ */
+fun resetProjectState(@Suppress("UNUSED_PARAMETER") state: SamplerUiState): SamplerUiState =
+    SamplerUiState(statusMessage = "新しい素材を入れてください")
+
+fun replaceSourceAudio(
+    @Suppress("UNUSED_PARAMETER") state: SamplerUiState,
+    audio: PcmAudio,
+): SamplerUiState = SamplerUiState(
+    currentAudio = audio,
+    rangeStartFrame = 0,
+    rangeEndFrame = audio.frameCount,
+    selectedBank = 0,
+    selectedPad = 0,
+    statusMessage = "${audio.name} を新しいプロジェクトとして読み込みました — A メロディーへチョップします",
+)
+
+enum class PadTrimBoundary {
+    START,
+    END,
+}
+
+fun trimPadBoundary(
+    pad: PadModel,
+    boundary: PadTrimBoundary,
+    deltaFrames: Int,
+): PadModel {
+    val audio = pad.audio ?: return pad
+    if (!pad.isAssigned || audio.frameCount < 2) return pad
+    return when (boundary) {
+        PadTrimBoundary.START -> pad.copy(
+            startFrame = (pad.startFrame + deltaFrames).coerceIn(0, pad.endFrame - 2),
+        )
+        PadTrimBoundary.END -> pad.copy(
+            endFrame = (pad.endFrame + deltaFrames).coerceIn(pad.startFrame + 2, audio.frameCount),
+        )
+    }
+}
+
 fun selectPlayablePad(state: SamplerUiState, globalIndex: Int): SamplerUiState {
     val target = state.pads.getOrNull(globalIndex) ?: return state
     if (!target.isAssigned) {

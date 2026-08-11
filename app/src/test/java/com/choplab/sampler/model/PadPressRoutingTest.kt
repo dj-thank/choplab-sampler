@@ -41,6 +41,18 @@ class PadPressRoutingTest {
     }
 
     @Test
+    fun assignedCapturePadPlaysExistingChopInsteadOfOverwritingIt() {
+        assertEquals(
+            PadPressAction.PLAY_ASSIGNED,
+            resolvePadPressAction(
+                sourcePlaying = true,
+                padAssigned = true,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+            ),
+        )
+    }
+
+    @Test
     fun emptyPerformancePadOnlyChangesSelection() {
         assertEquals(
             PadPressAction.SELECT_ONLY,

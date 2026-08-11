@@ -2,6 +2,19 @@
 
 作成日: 2026-07-15
 
+## 2026-08-12 simple Chop and project-isolation validation
+
+- RED/GREEN seams: complete project reset, new-source replacement, PAD start/end trim, and assigned-vs-empty live Chop routing
+- full host gate: 103 tests / failures 0 / errors 0; Lint PASS; assemble PASS
+- offline project validation PASS; Gradle Wrapper SHA-256 matched; `git diff --check` PASS
+- UI source scan: zero `verticalScroll`, `horizontalScroll`, `rememberScrollState`, `LazyColumn`, or `LazyRow` matches
+- local APK: 30,641,099 bytes; SHA-256 `950AED648A74AB71027454FA0A8EFB32792ABAD69421A03E8355169FE1E7427C`
+- physical Pixel 9a `5A121JEBF08094`: data-preserving `adb install -r` PASS; app data was not cleared
+- physical Pixel restored its prior source before the user switched foreground apps; destructive source replacement/reset was intentionally not invoked on the user's saved project
+- clean emulator launch showed `A MELODY`, no source, and no residual PAD content; further emulator interaction was stopped when another active task took over the shared emulator
+- two-axis local parent review found two implementation gaps and both were fixed: reset-save job ownership, and active feedback during PAD scratch
+- not claimed: subjective scratch/audio quality, measured latency, physical long-press trim flow, destructive reset on the user's project, public CI/release identity, or Human GO
+
 ## 2026-08-11 v0.9.3 playable Beat selection validation
 
 - TDD: `PlayablePadSelectionTest` and `BeatLaneAccessibilityTest` observed RED for the new public seams, then PASS

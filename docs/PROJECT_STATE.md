@@ -1,6 +1,16 @@
 # Project state
 
-Last prepared: 2026-08-11
+Last prepared: 2026-08-12
+
+## Simple Chop and project isolation — 2026-08-12
+
+The primary flow is now `入れる → チョップ → ビート → 保存`. Entering Chop starts the loaded source from the beginning, selects `A MELODY`, keeps direct live key controls beside transport, and exposes a compact A/B/C/D bank strip plus `01–16` / `17–32` pages. Empty PADs capture the current source position; assigned PADs play their existing chop and can be long-pressed for start/end trim. The main surface links directly to Beat, drums/voice layering, and Scratch without exposing the old 4/8/16 split and fine-control stack.
+
+Importing a different source now starts a separate project state: old A/B/C/D PAD assignments, beat steps, loop/scratch references, slice markers, and edit history are removed before the new source is autosaved. `RESET ALL` uses the same complete blank-state boundary and a confirmed action. Source replacement and reset are covered by deterministic host tests; the physical Pixel project was not erased just to repeat this destructive proof.
+
+Scratch now switches explicitly between the source range and the selected assigned PAD, offers Fine/Normal/Wide gesture sensitivity, and reports active source or PAD scratch consistently. The selected PAD trim editor presents one waveform with independent START and END controls and preview.
+
+Local gate: offline validation PASS; 103 unit tests with zero failures/errors; Android Lint PASS; debug APK assemble PASS; scroll API scan zero matches. Final local APK is 30,641,099 bytes, SHA-256 `950AED648A74AB71027454FA0A8EFB32792ABAD69421A03E8355169FE1E7427C`. It was installed in place on physical Pixel 9a `5A121JEBF08094` without uninstalling or clearing app data. The phone changed foreground apps during UI inspection, so exact final-screen interaction, subjective audio quality, scratch latency, and Human GO remain unclaimed.
 
 ## v0.9.3 playable Beat selection — 2026-08-11
 

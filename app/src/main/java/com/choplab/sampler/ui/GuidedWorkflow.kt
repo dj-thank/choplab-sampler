@@ -6,9 +6,9 @@ enum class WorkflowStage(
     val guidance: String,
 ) {
     CAPTURE("入れる", "CAPTURE", "曲や声を読み込んで、素材を用意します"),
-    CHOP("チョップ", "CHOP", "切る／鳴らすを切り替えて素材を仕上げます"),
-    BEAT("ビート", "BEAT", "メロディーとドラムを16ステップで組みます"),
-    FINISH("完成", "FINISH", "ビートを確認して、4小節WAVを書き出します"),
+    CHOP("チョップ", "CHOP", "曲を頭から流し、空PADを叩いて切ります"),
+    BEAT("ビート", "BEAT", "選んだ音をループするか16ステップに並べます"),
+    FINISH("保存", "SAVE", "ビートを確認して、WAVやプロジェクトを保存します"),
     ;
 
     fun next(): WorkflowStage? = entries.getOrNull(ordinal + 1)
@@ -62,7 +62,7 @@ fun arrangeBeatLoopPrompt(
 fun placementPresetPrompt(): String = "配置プリセット  鳴らす場所を選ぶ"
 
 private val arrangeQuickStepLabels =
-    listOf("1 PADを選ぶ", "2 ビートをループ", "3 音を重ねる")
+    listOf("1 PADを選ぶ", "2 ループ／並べる", "3 足す／スクラッチ")
 
 fun arrangeQuickSteps(): List<String> = arrangeQuickStepLabels
 

@@ -23,6 +23,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerConfig
@@ -34,11 +35,12 @@ import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.drumKitApplyDecision
-import com.choplab.sampler.model.defaultMelodyChopPad
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.replacePadSteps
+import com.choplab.sampler.model.replaceSourceAudio
+import com.choplab.sampler.model.resetProjectState
 import com.choplab.sampler.model.resolvePadPressAction
 import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
 import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
@@ -49,6 +51,7 @@ import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourcePlaybackStartFrame
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.model.trimPadBoundary
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
 import kotlinx.coroutines.Dispatchers
@@ -95,27 +98,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
                     engine.stopSource()
+                    engine.stopTransport()
+                    engine.stopAllVoices()
                     editHistory.reset()
-                    mutableUiState.update { state ->
-                        val melodyPad = defaultMelodyChopPad(state.pads)
-                        state.copy(
-                            isLoading = false,
-                            currentAudio = audio,
-                            rangeStartFrame = 0,
-                            rangeEndFrame = audio.frameCount,
-                            sliceMarkers = emptyList(),
-                            activeSliceIndex = null,
-                            manualChopEnabled = false,
-                            selectedBank = 0,
-                            selectedPad = melodyPad,
-                            sourcePlaying = false,
-                            sourcePlayheadFrame = 0,
-                            masterPitchSemitones = 0f,
-                            canUndo = false,
-                            canRedo = false,
-                            statusMessage = "${audio.name} を読み込みました — チョップ先は A メロディーです",
-                        )
-                    }
+                    val replaced = replaceSourceAudio(mutableUiState.value, audio)
+                    mutableUiState.value = replaced
+                    engine.updateAllPads(replaced.pads)
+                    syncPattern()
                     projectRevision++
                     scheduleAutosave()
                 }
@@ -291,8 +280,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun beginScratch() {
         val state = mutableUiState.value
-        val padIndex = state.loopingPadIndex
-            ?: state.selectedPad.takeIf { state.pads.getOrNull(it)?.isAssigned == true }
+        val padIndex = state.selectedPad.takeIf { state.pads.getOrNull(it)?.isAssigned == true }
+            ?: state.loopingPadIndex
             ?: state.pads.firstOrNull { it.isAssigned }?.globalIndex
             ?: state.selectedPad
         val pad = state.pads.getOrNull(padIndex)
@@ -450,6 +439,36 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 sliceMarkers = emptyList(),
                 activeSliceIndex = null,
             )
+        }
+    }
+
+    fun resetProject() {
+        val reset = resetProjectState(mutableUiState.value)
+        autosaveJob?.cancel()
+        engine.stopSource()
+        engine.stopTransport()
+        engine.stopAllVoices()
+        runCatching { microphoneRecorder.stop() }
+        runCatching {
+            val application = getApplication<Application>()
+            application.startService(PlaybackCaptureService.stopIntent(application))
+        }
+        CaptureEventBus.reset()
+        editHistory.reset()
+        projectRevision++
+        val revision = projectRevision
+        mutableUiState.value = reset
+        engine.updateAllPads(reset.pads)
+        syncPattern()
+        autosaveJob = viewModelScope.launch {
+            val failure = withContext(Dispatchers.IO) {
+                runCatching { autosaveStore.save(reset) }.exceptionOrNull()
+            }
+            if (failure != null && projectRevision == revision) {
+                mutableUiState.update {
+                    it.copy(statusMessage = failure.message ?: "リセット状態を保存できませんでした")
+                }
+            }
         }
     }
 
@@ -831,6 +850,46 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun restartSourcePlayback() {
+        val state = mutableUiState.value
+        val audio = state.currentAudio ?: run {
+            setStatus("先に曲を読み込んでください")
+            return
+        }
+        engine.stopTransport()
+        engine.stopSource()
+        engine.playSource(audio, 0, state.masterPitchSemitones)
+        mutableUiState.update {
+            it.copy(
+                sourcePlaying = true,
+                transportPlaying = false,
+                currentStep = -1,
+                sourcePlayheadFrame = 0,
+                statusMessage = "曲の頭から再生中 — 空PADを順に叩くとチョップできます",
+            )
+        }
+    }
+
+    fun playSourceFrom(frame: Int) {
+        val state = mutableUiState.value
+        val audio = state.currentAudio ?: run {
+            setStatus("先に曲を読み込んでください")
+            return
+        }
+        val safe = frame.coerceIn(0, audio.frameCount - 1)
+        engine.stopTransport()
+        engine.playSource(audio, safe, state.masterPitchSemitones)
+        mutableUiState.update {
+            it.copy(
+                sourcePlaying = true,
+                transportPlaying = false,
+                currentStep = -1,
+                sourcePlayheadFrame = safe,
+                statusMessage = "波形で選んだ位置から再生中 — 空PADを叩くとここをチョップします",
+            )
+        }
+    }
+
     fun seekSourcePlayback(frame: Int) {
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
@@ -915,6 +974,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun setSelectedPadGain(value: Float) = updateSelectedPad("gain") {
         it.copy(gain = value.coerceIn(0f, 1.5f))
+    }
+
+    fun setSelectedPadStartFrame(frame: Int) = updateSelectedPad("trim-start") {
+        trimPadBoundary(it, PadTrimBoundary.START, frame - it.startFrame)
+    }
+
+    fun setSelectedPadEndFrame(frame: Int) = updateSelectedPad("trim-end") {
+        trimPadBoundary(it, PadTrimBoundary.END, frame - it.endFrame)
     }
 
     fun toggleSelectedPadReverse() = updateSelectedPad {
