@@ -41,7 +41,7 @@ Two independent read-only Sol audits found the highest-value bounded work:
 
 `SamplerViewModel` owns a monotonic project-operation epoch. Source decode/load completion may mutate UI state only while it still owns the latest epoch. Reset and newer source selection advance the epoch. Persistence receives the project revision and rejects a stale write relative to the newest committed autosave revision.
 
-`SamplerEngine` owns source playback generations on the audio thread. Play/seek/live-pitch restart commands publish the playing state for their generation when applied; completion of an older generation cannot clear a newer one. Scratch speed is converted to a finite bounded value before enqueue and checked again before DSP smoothing.
+`SamplerEngine` separates the newest issued source command from the generation the audio thread actually applied. Play/seek/live-pitch restart commands publish the playing state only when applied; completion of an older applied generation cannot clear a newer applied voice. Scratch speed is converted to a finite bounded value before enqueue and checked again before DSP smoothing.
 
 Compose UI keeps confirmation state locally at the source-import entry point and delegates only a confirmed request to the existing picker. Guidance strings remain pure functions in `GuidedWorkflow`, making the novice flow deterministic and host-testable.
 
@@ -84,9 +84,9 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Captured and inspected current Capture, Chop, Beat, Layer Studio, and Scratch states on dedicated emulator `emulator-5590`.
 - [x] 2026-08-12 - Completed independent Sol UX and audio/persistence audits.
 - [x] 2026-08-12 - Passed configured doctor and offline validation baseline.
-- [ ] Implement Milestone 1 with Red/Green evidence.
-- [ ] Implement Milestone 2 with Red/Green evidence.
-- [ ] Implement Milestone 3 with Red/Green evidence.
+- [x] 2026-08-12 - Implemented Milestone 1 with Red/Green guidance, destructive-intent, compact Beat, and layout-policy evidence.
+- [x] 2026-08-12 - Implemented Milestone 2 with Red/Green project-epoch, capture-operation, and revision-arrival evidence.
+- [x] 2026-08-12 - Implemented Milestone 3 with Red/Green source-generation and finite-Scratch evidence; final review found and closed the applied-vs-issued playback gap.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
 ## Discoveries
@@ -96,6 +96,9 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - Atomic file replacement prevents corruption but does not itself prevent a logically older snapshot from winning by arrival order.
 - `Float.coerceIn` does not make NaN finite.
 - A system-level emulator ANR dialog appeared once at startup; selecting Wait restored a stable app. It is environment evidence, not an app defect claim.
+- A project epoch captured only at decode time is insufficient for microphone, Playback Capture, and vocal flows: the same capture operation must own start, stop, delayed service completion, decode, and assignment.
+- Reusing the portrait stack in landscape clipped high-value controls. Chop requires a waveform/PAD split workspace; Beat requires compact BANK/page and action rows while keeping Details reachable.
+- Source command issuance and source playback application are different facts. The public `playing` state now follows the audio-thread application rather than queue insertion.
 
 ## Decision log
 
@@ -108,6 +111,11 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 
 - `scripts/doctor.sh` - 2026-08-12, configured Git Bash/JDK 17/Android SDK - required MVP dependencies available; optional future NDK/CMake missing.
 - `scripts/validate_project.sh` - 2026-08-12, configured Git Bash/Kotlin 2.3.21 - PASS.
+- focused playback-state TDD - 2026-08-12 - RED on missing `applyPlay` / `applyStop`; GREEN after separating issued and applied generations.
+- Gradle `testDebugUnitTest lintDebug assembleDebug` - 2026-08-12 - PASS; 120 tests, zero failures/errors/skips; Lint zero errors and 11 advisories.
+- local APK - 2026-08-12 - versionCode 15 / versionName 0.11.0; 31,520,134 bytes; SHA-256 `3B3F578F8CF3D969BE4256773C87B44B86B4ABC387A27178D46D559F04A3C01D`; v2 signature verified.
+- dedicated `emulator-5590` - 2026-08-12 - in-place install PASS; autosave remained 5,316,915 bytes and SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`; cold launch alive with no focused fatal/ANR match.
+- fixed-layout audit - 2026-08-12 - accepted portrait Chop plus landscape Chop, Beat Quick, and Beat Details captures under `work/v011-audit/`; scroll API scan zero matches.
 
 ## Risks and rollback
 

@@ -122,5 +122,9 @@ class GuidedWorkflowTest {
             "1 音ありPADを選ぶ  →  2 ループ／並べる  →  3 足す／スクラッチ",
             ARRANGE_QUICK_GUIDANCE,
         )
+        assertEquals(
+            "1 PAD  →  2 ループ／並べる  →  3 足す／擦る",
+            ARRANGE_QUICK_GUIDANCE_COMPACT,
+        )
     }
 }

@@ -6,36 +6,52 @@ import org.junit.Test
 
 class SourcePlaybackStateTest {
     @Test
-    fun oldVoiceCompletionCannotStopQueuedNewGeneration() {
+    fun issuedPlayIsNotPublishedUntilAudioThreadAppliesIt() {
         val state = SourcePlaybackState()
-        val oldGeneration = state.issuePlay()
-        val newGeneration = state.issuePlay()
-
-        assertFalse(state.complete(oldGeneration))
-        assertTrue(state.isPlaying)
-        assertTrue(state.isCurrent(newGeneration))
-    }
-
-    @Test
-    fun playThenStopLeavesPublishedStateStopped() {
-        val state = SourcePlaybackState()
-        val playingGeneration = state.issuePlay()
-        val stoppedGeneration = state.issueStop()
+        val generation = state.issuePlay()
 
         assertFalse(state.isPlaying)
-        assertFalse(state.complete(playingGeneration))
-        assertTrue(state.isCurrent(stoppedGeneration))
+        assertTrue(state.applyPlay(generation))
+        assertTrue(state.isPlaying)
     }
 
     @Test
-    fun livePitchRestartRemainsPlayingUntilTheNewVoiceEnds() {
+    fun stalePlayCannotBeAppliedAfterANewerCommandWasIssued() {
+        val state = SourcePlaybackState()
+        val staleGeneration = state.issuePlay()
+        val currentGeneration = state.issuePlay()
+
+        assertFalse(state.isPlaying)
+        assertFalse(state.applyPlay(staleGeneration))
+        assertTrue(state.applyPlay(currentGeneration))
+        assertTrue(state.isPlaying)
+    }
+
+    @Test
+    fun queuedRestartDoesNotHideCompletionOfTheVoiceThatActuallyPlayed() {
         val state = SourcePlaybackState()
         val originalGeneration = state.issuePlay()
+        assertTrue(state.applyPlay(originalGeneration))
         val restartedGeneration = state.issuePlay()
 
-        assertFalse(state.complete(originalGeneration))
+        assertTrue(state.complete(originalGeneration))
+        assertFalse(state.isPlaying)
+        assertTrue(state.applyPlay(restartedGeneration))
         assertTrue(state.isPlaying)
         assertTrue(state.complete(restartedGeneration))
+        assertFalse(state.isPlaying)
+    }
+
+    @Test
+    fun issuedStopIsPublishedOnlyAfterTheAudioThreadAppliesIt() {
+        val state = SourcePlaybackState()
+        val playingGeneration = state.issuePlay()
+        assertTrue(state.applyPlay(playingGeneration))
+
+        val stoppedGeneration = state.issueStop()
+
+        assertTrue(state.isPlaying)
+        assertTrue(state.applyStop(stoppedGeneration))
         assertFalse(state.isPlaying)
     }
 }

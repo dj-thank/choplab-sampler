@@ -10,6 +10,11 @@ enum class DeckDensity {
     REGULAR,
 }
 
+enum class PerformanceWorkspaceLayout {
+    STACKED,
+    SPLIT_PAD_GRID,
+}
+
 data class DeckLayoutMetrics(
     val orientation: DeckOrientation,
     val density: DeckDensity,
@@ -71,3 +76,10 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
         )
     }
 }
+
+fun performanceWorkspaceLayout(metrics: DeckLayoutMetrics): PerformanceWorkspaceLayout =
+    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+        PerformanceWorkspaceLayout.SPLIT_PAD_GRID
+    } else {
+        PerformanceWorkspaceLayout.STACKED
+    }

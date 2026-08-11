@@ -2,7 +2,11 @@ package com.choplab.sampler.model
 
 import java.util.concurrent.atomic.AtomicLong
 
-/** Owns completion rights for the newest asynchronous project replacement. */
+/**
+ * Owns completion rights for the newest asynchronous project replacement.
+ * Callers run [completeIfCurrent] on the owning ViewModel dispatcher so the check and mutation
+ * cannot be interleaved by another project action.
+ */
 class ProjectOperationEpoch {
     private val currentEpoch = AtomicLong(0L)
 

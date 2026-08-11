@@ -2,6 +2,20 @@
 
 Last prepared: 2026-08-12
 
+## v0.11 safe handoff, beginner coaching, and landscape deck — 2026-08-12
+
+The fixed journey remains `入れる → チョップ → ビート → 保存`, but the first-beat path is now explicit on the working surfaces. Chop explains waveform seek, empty-PAD capture, assigned-PAD audition, and long-press trim according to the current state. Beat keeps `PAD → 選択音をループ／並べる → 足す／擦る` visible and leaves KEY/TONE/LEVEL directly editable during playback. Whole-Chop repetition is named `選択音をループ`, separate from 16-step pattern placement.
+
+Landscape Chop no longer compresses the stacked portrait deck: the waveform and source controls occupy the left side while a full square 4×4 PAD grid stays on the right. Landscape Beat uses compact BANK/page selection, guidance, direct sound controls, transport, selected-sound loop, recording, Add, Scratch, and Details rows. Portrait keeps the established cream/orange/green hardware-deck language and square PADs. No scroll API was added.
+
+Starting a new source while material work exists now requires an explicit second press. Successful replacement begins a clean project; cancellation, decode failure, an older decode, and delayed microphone, device-capture, or vocal completion cannot mutate a reset or newer project. Autosave now rejects older revisions even when writes complete out of order. Source playback tracks issued and audio-thread-applied generations separately, so a queued play command cannot publish `playing` before a voice exists and an old completion cannot clear a newer voice. Scratch speed is finite and bounded at both queue and render boundaries.
+
+Local gate: configured offline validation PASS; 120 unit tests with zero failures/errors/skips; Android Lint PASS with zero errors and 11 advisories; debug assemble PASS; `git diff --check` PASS; UI scroll API scan zero matches. Version `0.11.0` (`versionCode=15`) local APK is 31,520,134 bytes with SHA-256 `3B3F578F8CF3D969BE4256773C87B44B86B4ABC387A27178D46D559F04A3C01D`; package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2, certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+
+Dedicated Pixel 9/API 36 emulator `emulator-5590` received the final local APK through `adb install -r`. Its 5,316,915-byte autosave stayed byte-identical before and after installation at SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`; cold launch reported version 0.11.0, the app process remained alive, and the focused fatal/ANR query returned zero matches. Accepted fixed-layout captures are `work/v011-audit/20-chop-final.png`, `23-chop-landscape-final.png`, `26-beat-landscape-final.png`, and `28-beat-details-landscape.png`.
+
+The physical Pixel 9a `5A121JEBF08094` was not present in the final ADB inventory; data-preserving device install and physical audio interaction therefore remain pending. Public GitHub CI/release identity is also pending at this checkpoint. Subjective latency, sustained multi-touch/audio quality, microphone ambience, production signing, and `HUMAN_GO` are not claimed.
+
 ## Simple Chop and project isolation — 2026-08-12
 
 The primary flow is now `入れる → チョップ → ビート → 保存`. Entering Chop starts the loaded source from the beginning, selects `A MELODY`, keeps direct live key controls beside transport, and exposes a compact A/B/C/D bank strip plus `01–16` / `17–32` pages. Empty PADs capture the current source position; assigned PADs play their existing chop and can be long-pressed for start/end trim. The main surface links directly to Beat, drums/voice layering, and Scratch without exposing the old 4/8/16 split and fine-control stack.

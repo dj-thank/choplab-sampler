@@ -2,6 +2,21 @@
 
 作成日: 2026-07-15
 
+## 2026-08-12 v0.11 safety, coaching, and fixed-landscape validation
+
+- TDD RED/GREEN seams: source/project operation epochs, delayed mic/device/vocal completion, autosave revision arrival order, applied source-playback state, finite Scratch input, destructive import intent, state-based Chop coaching, compact Beat coaching, and landscape workspace policy
+- full host gate: 120 tests / failures 0 / errors 0 / skipped 0; Lint 0 errors / 11 advisories; assemble PASS
+- configured offline project validation PASS; Gradle Wrapper SHA-256 matched
+- UI source scan: zero `verticalScroll`, `horizontalScroll`, `LazyColumn`, or `LazyRow` matches
+- local APK: versionCode 15 / versionName 0.11.0; 31,520,134 bytes; SHA-256 `3B3F578F8CF3D969BE4256773C87B44B86B4ABC387A27178D46D559F04A3C01D`
+- local APK metadata: package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- dedicated Pixel 9 / API 36 emulator `emulator-5590`: data-preserving `adb install -r` PASS; 5,316,915-byte autosave SHA-256 stayed `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513` before and after
+- emulator cold launch: package version 0.11.0, process alive, focused `FATAL EXCEPTION` / app ANR count 0
+- accepted fixed-layout captures: portrait Chop `work/v011-audit/20-chop-final.png`; landscape Chop `23-chop-landscape-final.png`; compact landscape Beat `26-beat-landscape-final.png`; landscape Beat Details `28-beat-details-landscape.png`
+- independent final read-only review: P0/P1 none; one P2 playback-publication race reproduced in the state seam, fixed so play is published only when applied by the audio thread, then covered by the 120-test gate
+- physical Pixel 9a `5A121JEBF08094`: absent from the final ADB inventory; install and physical sound/touch checks remain pending
+- public GitHub prerelease and reverse-download identity remain pending at this checkpoint; Human GO is not claimed
+
 ## 2026-08-12 simple Chop and project-isolation validation
 
 - RED/GREEN seams: complete project reset, new-source replacement, PAD start/end trim, and assigned-vs-empty live Chop routing

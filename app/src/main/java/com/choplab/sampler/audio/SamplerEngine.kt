@@ -129,7 +129,7 @@ class SamplerEngine(
             ).apply { start() }
         }.onFailure { throwable ->
             running.set(false)
-            sourcePlaybackState.issueStop()
+            sourcePlaybackState.forceStopped()
             runCatching { audioTrack?.release() }
             audioTrack = null
             onError(throwable.message ?: "オーディオエンジンを開始できません")
@@ -233,12 +233,11 @@ class SamplerEngine(
 
     override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) {
         if (!running.get() || audio.frameCount < 1) {
-            sourcePlaybackState.issueStop()
+            sourcePlaybackState.forceStopped()
             return
         }
         val generation = sourcePlaybackState.issuePlay()
         val safeStart = startFrame.coerceIn(0, audio.frameCount - 1)
-        currentSourceFrameValue.set(safeStart)
         commands.offer(
             EngineCommand.PlaySource(
                 source = PadSnapshot(
@@ -303,7 +302,7 @@ class SamplerEngine(
         audioTrack = null
         currentStepValue.set(-1)
         currentSourceFrameValue.set(-1)
-        sourcePlaybackState.issueStop()
+        sourcePlaybackState.forceStopped()
         currentLoopPadValue.set(-1)
         currentLoopFrameValue.set(-1)
         currentScratchPadValue.set(-1)
@@ -400,7 +399,7 @@ class SamplerEngine(
             sourceVoice = null
             scratchVoice = null
             currentStepValue.set(-1)
-            sourcePlaybackState.issueStop()
+            sourcePlaybackState.forceStopped()
             currentLoopPadValue.set(-1)
             currentLoopFrameValue.set(-1)
             currentScratchPadValue.set(-1)
@@ -457,14 +456,14 @@ class SamplerEngine(
                 )
                 is EngineCommand.Preview -> startVoice(command.pad)
                 is EngineCommand.PlaySource -> {
-                    if (sourcePlaybackState.isCurrent(command.generation)) {
+                    if (sourcePlaybackState.applyPlay(command.generation)) {
                         sourceVoice = Voice(command.source, outputSampleRate)
                         sourceVoiceGeneration = command.generation
                         currentSourceFrameValue.set(command.source.startFrame)
                     }
                 }
                 is EngineCommand.StopSource -> {
-                    if (sourcePlaybackState.isCurrent(command.generation)) {
+                    if (sourcePlaybackState.applyStop(command.generation)) {
                         sourceVoice = null
                         sourceVoiceGeneration = 0L
                     }
@@ -485,7 +484,7 @@ class SamplerEngine(
                 }
                 is EngineCommand.StopAllVoices -> {
                     voices.forEach { it.release(FAST_RELEASE_FRAMES) }
-                    if (sourcePlaybackState.isCurrent(command.sourceGeneration)) {
+                    if (sourcePlaybackState.applyStop(command.sourceGeneration)) {
                         sourceVoice = null
                         sourceVoiceGeneration = 0L
                     }

@@ -82,3 +82,6 @@ private val arrangeQuickStepLabels =
 fun arrangeQuickSteps(): List<String> = arrangeQuickStepLabels
 
 val ARRANGE_QUICK_GUIDANCE = arrangeQuickStepLabels.joinToString("  →  ")
+
+val ARRANGE_QUICK_GUIDANCE_COMPACT =
+    listOf("1 PAD", "2 ループ／並べる", "3 足す／擦る").joinToString("  →  ")
