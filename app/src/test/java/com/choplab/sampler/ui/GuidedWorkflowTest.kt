@@ -1,6 +1,8 @@
 package com.choplab.sampler.ui
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -134,6 +136,25 @@ class GuidedWorkflowTest {
             "1 PAD  →  2 ループ／並べる  →  3 足す／擦る",
             ARRANGE_QUICK_GUIDANCE_COMPACT,
         )
+    }
+
+    @Test
+    fun arrangeCoachExplainsWhyLoopAndVoiceDoNotUseStepCells() {
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val loop = PadModel(0, audio, 0, 100, playMode = PadPlayMode.LOOP)
+        val vocal = PadModel(1, audio, 0, 100, contentKind = PadContentKind.VOCAL)
+        val oneShot = PadModel(2, audio, 0, 100)
+
+        assertEquals(
+            "ループは音声全体を反復。配置は別PAD",
+            arrangeQuickGuidance(loop, compact = false),
+        )
+        assertEquals(
+            "VOICEは開始時に一度再生",
+            arrangeQuickGuidance(vocal, compact = true),
+        )
+        assertEquals(ARRANGE_QUICK_GUIDANCE, arrangeQuickGuidance(oneShot, compact = false))
+        assertEquals(ARRANGE_QUICK_GUIDANCE_COMPACT, arrangeQuickGuidance(oneShot, compact = true))
     }
 
     @Test

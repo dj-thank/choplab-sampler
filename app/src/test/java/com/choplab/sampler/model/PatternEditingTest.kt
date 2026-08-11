@@ -1,6 +1,8 @@
 package com.choplab.sampler.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PatternEditingTest {
@@ -86,21 +88,75 @@ class PatternEditingTest {
     @Test
     fun `audible steps omit events on empty pads`() {
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
-            if (index == 0 || index == 1) {
+            if (index in 0..2) {
                 PadModel(
                     globalIndex = index,
                     audio = PcmAudio(name = "kick", samples = shortArrayOf(1, 2), sampleRate = 48_000),
                     startFrame = 0,
                     endFrame = 2,
                     playMode = if (index == 1) PadPlayMode.LOOP else PadPlayMode.ONE_SHOT,
+                    contentKind = if (index == 2) PadContentKind.VOCAL else PadContentKind.SAMPLE,
                 )
             } else {
                 PadModel(globalIndex = index)
             }
         }
-        val pattern = setOf(stepKey(0, 0), stepKey(1, 8), stepKey(16, 0), stepKey(32, 4))
+        val pattern = setOf(
+            stepKey(0, 0),
+            stepKey(1, 8),
+            stepKey(2, 12),
+            stepKey(16, 0),
+            stepKey(32, 4),
+        )
 
         assertEquals(setOf(stepKey(0, 0)), pattern.audibleStepKeys(pads))
+    }
+
+    @Test
+    fun `only assigned non vocal non loop pads accept step placement`() {
+        val audio = PcmAudio(name = "sound", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+
+        assertFalse(PadModel(globalIndex = 0).canUsePatternSteps())
+        assertFalse(
+            PadModel(0, audio, 0, 2, playMode = PadPlayMode.LOOP).canUsePatternSteps(),
+        )
+        assertFalse(
+            PadModel(0, audio, 0, 2, contentKind = PadContentKind.VOCAL).canUsePatternSteps(),
+        )
+        assertTrue(PadModel(0, audio, 0, 2, playMode = PadPlayMode.ONE_SHOT).canUsePatternSteps())
+        assertTrue(PadModel(0, audio, 0, 2, playMode = PadPlayMode.GATE).canUsePatternSteps())
+    }
+
+    @Test
+    fun `step toggle is a no op for loop and vocal pads`() {
+        val audio = PcmAudio(name = "sound", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val existing = setOf(stepKey(4, 8))
+        val loop = PadModel(0, audio, 0, 2, playMode = PadPlayMode.LOOP)
+        val vocal = PadModel(1, audio, 0, 2, contentKind = PadContentKind.VOCAL)
+        val oneShot = PadModel(2, audio, 0, 2)
+
+        assertEquals(existing, existing.togglePadStep(loop, stepIndex = 0))
+        assertEquals(existing, existing.togglePadStep(vocal, stepIndex = 4))
+        assertEquals(existing + stepKey(2, 4), existing.togglePadStep(oneShot, stepIndex = 4))
+        assertEquals(
+            existing,
+            (existing + stepKey(2, 4)).togglePadStep(oneShot, stepIndex = 4),
+        )
+    }
+
+    @Test
+    fun `performance recording adds only step sequenced sounds`() {
+        val audio = PcmAudio(name = "sound", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val loop = PadModel(0, audio, 0, 2, playMode = PadPlayMode.LOOP)
+        val vocal = PadModel(1, audio, 0, 2, contentKind = PadContentKind.VOCAL)
+        val drum = PadModel(2, audio, 0, 2, contentKind = PadContentKind.DRUM)
+        val gate = PadModel(3, audio, 0, 2, playMode = PadPlayMode.GATE)
+        val existing = setOf(stepKey(4, 8))
+
+        assertEquals(existing, existing.recordPadStep(loop, stepIndex = 0))
+        assertEquals(existing, existing.recordPadStep(vocal, stepIndex = 4))
+        assertEquals(existing + stepKey(2, 4), existing.recordPadStep(drum, stepIndex = 4))
+        assertEquals(existing + stepKey(3, 12), existing.recordPadStep(gate, stepIndex = 12))
     }
 
     @Test

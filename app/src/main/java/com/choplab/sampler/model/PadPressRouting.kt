@@ -11,6 +11,12 @@ enum class PadPressAction {
     SELECT_ONLY,
 }
 
+enum class PerformancePadPressAction {
+    TOGGLE_LOOP,
+    TRIGGER_ONLY,
+    TRIGGER_AND_RECORD_STEP,
+}
+
 enum class SourcePlaybackRequest {
     START,
     STOP,
@@ -36,6 +42,17 @@ fun resolvePadPressAction(
     sourcePlaying && !padAssigned && surfaceMode == PadSurfaceMode.CAPTURE -> PadPressAction.CAPTURE_CHOP
     padAssigned -> PadPressAction.PLAY_ASSIGNED
     else -> PadPressAction.SELECT_ONLY
+}
+
+fun resolvePerformancePadPressAction(
+    pad: PadModel,
+    recordArmed: Boolean,
+    transportPlaying: Boolean,
+): PerformancePadPressAction = when {
+    pad.playMode == PadPlayMode.LOOP -> PerformancePadPressAction.TOGGLE_LOOP
+    recordArmed && transportPlaying && pad.canUsePatternSteps() ->
+        PerformancePadPressAction.TRIGGER_AND_RECORD_STEP
+    else -> PerformancePadPressAction.TRIGGER_ONLY
 }
 
 fun sourcePlaybackStartFrame(requestedFrame: Int, frameCount: Int): Int {

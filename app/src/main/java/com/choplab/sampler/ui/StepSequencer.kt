@@ -37,6 +37,7 @@ fun StepSequencer(
     currentStep: Int,
     onToggleStep: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     columns: Int = 8,
     gap: Dp = 4.dp,
 ) {
@@ -57,8 +58,9 @@ fun StepSequencer(
                     val step = row * columns + column
                     StepCell(
                         step = step,
-                        active = stepKey(selectedPad, step) in activeSteps,
+                        active = enabled && stepKey(selectedPad, step) in activeSteps,
                         playhead = currentStep == step,
+                        enabled = enabled,
                         onClick = { onToggleStep(step) },
                         modifier = Modifier
                             .weight(1f)
@@ -75,6 +77,7 @@ private fun StepCell(
     step: Int,
     active: Boolean,
     playhead: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -82,7 +85,7 @@ private fun StepCell(
     val shape = RoundedCornerShape(5.dp)
     Box(
         modifier = modifier
-            .background(if (active) DeckLamp else DeckPanel, shape)
+            .background(if (!enabled) DeckPanelDark else if (active) DeckLamp else DeckPanel, shape)
             .border(
                 width = when {
                     playhead -> 3.dp
@@ -92,20 +95,25 @@ private fun StepCell(
                 color = if (playhead) Color(0xFFFFF0D0) else DeckInk,
                 shape = shape,
             )
-            .clickable {
+            .clickable(enabled = enabled) {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 onClick()
             }
             .semantics {
                 role = Role.Button
-                contentDescription = "ステップ ${step + 1} ${if (active) "オン" else "オフ"}" +
-                    if (playhead) "。現在の再生位置" else ""
+                contentDescription = "ステップ ${step + 1} " +
+                    if (enabled) {
+                        "${if (active) "オン" else "オフ"}" +
+                            if (playhead) "。現在の再生位置" else ""
+                    } else {
+                        "配置できません"
+                    }
             },
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = (step + 1).toString(),
-            color = if (active) Color(0xFF2A1500) else DeckInk,
+            color = if (!enabled) DeckInk.copy(alpha = 0.45f) else if (active) Color(0xFF2A1500) else DeckInk,
             fontFamily = FontFamily.Monospace,
             fontWeight = if (step % 4 == 0) FontWeight.Black else FontWeight.Bold,
             fontSize = 9.sp,

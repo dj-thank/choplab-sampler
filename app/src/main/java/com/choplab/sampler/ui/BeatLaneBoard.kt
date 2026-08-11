@@ -33,6 +33,8 @@ import com.choplab.sampler.model.LaneStepState
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.audibleStepKeys
+import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.laneStepState
 
 private val BeatBoardShape = RoundedCornerShape(7.dp)
@@ -49,10 +51,17 @@ internal fun beatLanePadDescription(
     return "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD $padInBank$emptyLabel"
 }
 
-internal fun laneStepAccessibilityLabel(state: LaneStepState): String = when (state) {
-    LaneStepState.SELECTED_SOUND -> "選択音"
-    LaneStepState.OTHER_SOUND -> "別の音"
-    LaneStepState.OFF -> "オフ"
+internal fun laneStepAccessibilityLabel(
+    state: LaneStepState,
+    enabled: Boolean = true,
+): String = if (!enabled) {
+    "配置できません"
+} else {
+    when (state) {
+        LaneStepState.SELECTED_SOUND -> "選択音"
+        LaneStepState.OTHER_SOUND -> "別の音"
+        LaneStepState.OFF -> "オフ"
+    }
 }
 
 internal fun beatLaneTargetPad(
@@ -64,9 +73,11 @@ internal fun beatLaneTargetPad(
     require(bankIndex in 0 until SamplerConfig.BANK_COUNT)
     val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
     val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
+    val bankPads = pads.subList(bankStart, bankEnd)
     return selectedPad
         .takeIf { it in bankStart until bankEnd && pads[it].isAssigned }
-        ?: pads.subList(bankStart, bankEnd).firstOrNull(PadModel::isAssigned)?.globalIndex
+        ?: bankPads.firstOrNull(PadModel::canUsePatternSteps)?.globalIndex
+        ?: bankPads.firstOrNull(PadModel::isAssigned)?.globalIndex
 }
 
 @Composable
@@ -80,6 +91,7 @@ fun BeatLaneBoard(
     modifier: Modifier = Modifier,
 ) {
     require(pads.size == SamplerConfig.PAD_COUNT)
+    val displayedActiveSteps = activeSteps.audibleStepKeys(pads)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -93,17 +105,19 @@ fun BeatLaneBoard(
             val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
             val targetPad = beatLaneTargetPad(pads, bank, selectedPad)
             val displayedPad = targetPad ?: bankStart
+            val stepsEnabled = targetPad?.let { pads[it].canUsePatternSteps() } == true
             BeatLane(
                 bankIndex = bank,
                 padIndex = displayedPad,
                 playable = targetPad != null,
-                activeSteps = activeSteps,
+                activeSteps = displayedActiveSteps,
                 currentStep = currentStep,
                 selected = selectedPad in bankStart until bankEnd,
+                stepsEnabled = stepsEnabled,
                 onSelectPad = { onSelectPad(displayedPad) },
                 onToggleStep = { step ->
                     onSelectPad(displayedPad)
-                    if (targetPad != null) onToggleStep(step)
+                    if (stepsEnabled) onToggleStep(step)
                 },
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
@@ -119,6 +133,7 @@ private fun BeatLane(
     activeSteps: Set<Int>,
     currentStep: Int,
     selected: Boolean,
+    stepsEnabled: Boolean,
     onSelectPad: () -> Unit,
     onToggleStep: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -164,7 +179,7 @@ private fun BeatLane(
             )
         }
         repeat(SamplerConfig.STEP_COUNT) { step ->
-            val state = if (playable) {
+            val state = if (playable && stepsEnabled) {
                 laneStepState(activeSteps, bankIndex, padIndex, step)
             } else {
                 LaneStepState.OFF
@@ -185,10 +200,12 @@ private fun BeatLane(
                         color = if (playhead) Color.White else Color(0xFF4B432F),
                         shape = RoundedCornerShape(3.dp),
                     )
-                    .clickable(role = Role.Button) { onToggleStep(step) }
+                    .clickable(enabled = stepsEnabled, role = Role.Button) { onToggleStep(step) }
                     .semantics {
                         role = Role.Button
-                        contentDescription = "${bankRole.japaneseLabel} ステップ${step + 1} ${laneStepAccessibilityLabel(state)}"
+                        contentDescription =
+                            "${bankRole.japaneseLabel} ステップ${step + 1} " +
+                                laneStepAccessibilityLabel(state, enabled = stepsEnabled)
                     },
                 contentAlignment = Alignment.Center,
             ) {

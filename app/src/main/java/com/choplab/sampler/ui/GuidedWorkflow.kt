@@ -1,6 +1,8 @@
 package com.choplab.sampler.ui
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerUiState
 
 enum class WorkflowStage(
@@ -107,3 +109,10 @@ val ARRANGE_QUICK_GUIDANCE = arrangeQuickStepLabels.joinToString("  →  ")
 
 val ARRANGE_QUICK_GUIDANCE_COMPACT =
     listOf("1 PAD", "2 ループ／並べる", "3 足す／擦る").joinToString("  →  ")
+
+fun arrangeQuickGuidance(pad: PadModel, compact: Boolean): String = when {
+    pad.playMode == PadPlayMode.LOOP -> "ループは音声全体を反復。配置は別PAD"
+    pad.contentKind == PadContentKind.VOCAL -> "VOICEは開始時に一度再生"
+    compact -> ARRANGE_QUICK_GUIDANCE_COMPACT
+    else -> ARRANGE_QUICK_GUIDANCE
+}

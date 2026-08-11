@@ -21,6 +21,7 @@ import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
+import com.choplab.sampler.model.PerformancePadPressAction
 import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimBoundary
@@ -37,15 +38,18 @@ import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
+import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
+import com.choplab.sampler.model.recordPadStep
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.replaceSourceAudio
 import com.choplab.sampler.model.resetProjectState
 import com.choplab.sampler.model.resolvePadPressAction
+import com.choplab.sampler.model.resolvePerformancePadPressAction
 import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
 import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
 import com.choplab.sampler.model.selectPlayablePadPage as selectPlayablePadPageState
@@ -57,8 +61,8 @@ import com.choplab.sampler.model.sourcePlaybackRequestFeedback
 import com.choplab.sampler.model.sourcePlaybackStartFrame
 import com.choplab.sampler.model.sourcePlaybackToggleAction
 import com.choplab.sampler.model.sourceScratchRange
-import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.trimPadBoundary
+import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
 import kotlinx.coroutines.Dispatchers
@@ -859,20 +863,26 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             PadPressAction.SELECT_ONLY -> return
             PadPressAction.PLAY_ASSIGNED -> Unit
         }
-        if (pad.playMode == PadPlayMode.LOOP && !(state.recordArmed && state.transportPlaying)) {
-            toggleBeatLoop(globalIndex)
-            return
-        }
-        engine.triggerPad(globalIndex)
-
-        if (state.recordArmed && state.transportPlaying) {
-            val step = engine.currentStep
-            if (step in 0 until SamplerConfig.STEP_COUNT) {
-                commitEdit { current ->
-                    val updated = current.activeSteps + stepKey(globalIndex, step)
-                    current.copy(activeSteps = updated)
+        when (
+            resolvePerformancePadPressAction(
+                pad = pad,
+                recordArmed = state.recordArmed,
+                transportPlaying = state.transportPlaying,
+            )
+        ) {
+            PerformancePadPressAction.TOGGLE_LOOP -> toggleBeatLoop(globalIndex)
+            PerformancePadPressAction.TRIGGER_ONLY -> engine.triggerPad(globalIndex)
+            PerformancePadPressAction.TRIGGER_AND_RECORD_STEP -> {
+                engine.triggerPad(globalIndex)
+                val step = engine.currentStep
+                if (step in 0 until SamplerConfig.STEP_COUNT) {
+                    commitEdit { current ->
+                        val currentPad = current.pads.getOrNull(globalIndex) ?: return@commitEdit current
+                        val updated = current.activeSteps.recordPadStep(currentPad, step)
+                        current.copy(activeSteps = updated)
+                    }
+                    syncPattern()
                 }
-                syncPattern()
             }
         }
     }
@@ -1153,10 +1163,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 updated
             }
             loopPad = pads[globalIndex]
-            current.copy(
-                pads = pads,
-                activeSteps = current.activeSteps.clearPadSteps(globalIndex),
-            )
+            current.copy(pads = pads)
         }
         changedPads.forEach(engine::updatePad)
         syncPattern()
@@ -1223,10 +1230,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleStep(stepIndex: Int) {
         if (stepIndex !in 0 until SamplerConfig.STEP_COUNT) return
+        val selectedPad = mutableUiState.value.selectedPadModel()
+        patternStepBlockedMessage(selectedPad)?.let { message ->
+            setStatus(message)
+            return
+        }
         commitEdit { state ->
-            val key = stepKey(state.selectedPad, stepIndex)
-            val updated = if (key in state.activeSteps) state.activeSteps - key else state.activeSteps + key
-            state.copy(activeSteps = updated)
+            val pad = state.selectedPadModel()
+            state.copy(activeSteps = state.activeSteps.togglePadStep(pad, stepIndex))
         }
         syncPattern()
     }
@@ -1271,16 +1282,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun fillSelectedPadPattern(repeatGrid: RepeatGrid) {
         val selectedPad = mutableUiState.value.selectedPadModel()
-        if (!selectedPad.isAssigned) {
-            setStatus("先に音が入ったPADを選んでください")
-            return
-        }
-        if (selectedPad.playMode == PadPlayMode.LOOP) {
-            setStatus("ビートループは音声全体を繰り返します。配置は別PADへ追加してください")
-            return
-        }
-        if (selectedPad.contentKind == PadContentKind.VOCAL) {
-            setStatus("VOICE TAKE はビート開始時に1回だけ再生します")
+        patternStepBlockedMessage(selectedPad)?.let { message ->
+            setStatus(message)
             return
         }
         commitEdit { state ->
@@ -1291,6 +1294,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         syncPattern()
+    }
+
+    private fun patternStepBlockedMessage(pad: PadModel): String? = when {
+        pad.canUsePatternSteps() -> null
+        !pad.isAssigned -> "先に音が入ったPADを選んでください"
+        pad.playMode == PadPlayMode.LOOP ->
+            "ビートループは音声全体を繰り返します。配置は別PADへ追加してください"
+        pad.contentKind == PadContentKind.VOCAL -> "VOICE TAKE はビート開始時に1回だけ再生します"
+        else -> "このPADはステップへ配置できません"
     }
 
     fun clearAllPattern() {

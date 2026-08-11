@@ -75,6 +75,8 @@ import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.canUsePatternSteps
+import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
@@ -1590,7 +1592,7 @@ private fun SequenceWorkspace(
                     verticalArrangement = Arrangement.spacedBy(gap),
                 ) {
                     BeginnerCoachBar(
-                        text = ARRANGE_QUICK_GUIDANCE_COMPACT,
+                        text = arrangeQuickGuidance(state.selectedPadModel(), compact = true),
                         modifier = Modifier.fillMaxWidth().height(24.dp),
                     )
                     Row(
@@ -1647,7 +1649,7 @@ private fun SequenceWorkspace(
         ) {
             if (!showFineControls) {
                 BeginnerCoachBar(
-                    text = ARRANGE_QUICK_GUIDANCE,
+                    text = arrangeQuickGuidance(state.selectedPadModel(), compact = false),
                     modifier = Modifier.fillMaxWidth().height(
                         if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
                     ),
@@ -1757,6 +1759,7 @@ private fun SequenceWorkspace(
                     activeSteps = state.activeSteps,
                     currentStep = state.currentStep,
                     onToggleStep = viewModel::toggleStep,
+                    enabled = state.selectedPadModel().canUsePatternSteps(),
                     columns = 8,
                     gap = 4.dp,
                     modifier = Modifier
@@ -1824,7 +1827,7 @@ private fun SequenceControlDeck(
     ) {
         if (!showFineControls) {
             BeginnerCoachBar(
-                text = ARRANGE_QUICK_GUIDANCE,
+                text = arrangeQuickGuidance(state.selectedPadModel(), compact = false),
                 modifier = Modifier.fillMaxWidth().height(28.dp),
             )
             ArrangementWaveformTimeline(
@@ -1879,6 +1882,7 @@ private fun SequenceControlDeck(
                     activeSteps = state.activeSteps,
                     currentStep = state.currentStep,
                     onToggleStep = viewModel::toggleStep,
+                    enabled = state.selectedPadModel().canUsePatternSteps(),
                     columns = 8,
                     gap = 3.dp,
                     modifier = Modifier.weight(1f),
@@ -2101,7 +2105,9 @@ private fun PlacementPresetPicker(
     viewModel: SamplerViewModel,
 ) {
     val pad = state.selectedPadModel()
-    val activeGrid = state.activeSteps.repeatGridForPad(state.selectedPad)
+    val activeGrid = state.activeSteps
+        .takeIf { pad.canUsePatternSteps() }
+        ?.repeatGridForPad(state.selectedPad)
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -2115,7 +2121,7 @@ private fun PlacementPresetPicker(
             MachineButton(
                 label = label,
                 onClick = { viewModel.fillSelectedPadPattern(grid) },
-                enabled = pad.isAssigned && pad.playMode != PadPlayMode.LOOP,
+                enabled = pad.canUsePatternSteps(),
                 active = activeGrid == grid,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
@@ -2333,8 +2339,9 @@ private fun SampleLayerStudio(
                 MachineButton(
                     label = label,
                     onClick = { viewModel.fillSelectedPadPattern(grid) },
-                    enabled = state.selectedPadModel().isAssigned,
-                    active = state.activeSteps.repeatGridForPad(state.selectedPad) == grid,
+                    enabled = state.selectedPadModel().canUsePatternSteps(),
+                    active = state.selectedPadModel().canUsePatternSteps() &&
+                        state.activeSteps.repeatGridForPad(state.selectedPad) == grid,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
@@ -2822,11 +2829,8 @@ private fun FinishWorkspace(
 ) {
     val gap = metrics.gapDp.dp
     val assignedPads = state.pads.count(PadModel::isAssigned)
-    val audibleSteps = state.activeSteps.count { key ->
-        val padIndex = key / SamplerConfig.STEP_COUNT
-        state.pads.getOrNull(padIndex)?.isAssigned == true
-    }
-    val ready = audibleSteps > 0
+    val audibleSteps = state.activeSteps.audibleStepKeys(state.pads).size
+    val ready = state.activeSteps.hasAudiblePatternContent(state.pads)
     val summary: @Composable (Modifier) -> Unit = { modifier ->
         MachinePanel(modifier = modifier) {
             Column(

@@ -101,6 +101,11 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Implemented bounded command/stop ordering, reusable PAD/source voices, owner-safe AudioTrack cleanup, and fail-closed microphone worker completion with Red/Green tests.
 - [x] 2026-08-12 - Built versionCode 16 / versionName 0.11.1, installed it in place on dedicated emulator `emulator-5590`, preserved the exact pre-interaction autosave, and observed source, Chop, Beat loop/live KEY, and Scratch runtime states without a focused fatal/ANR match.
 - [x] 2026-08-12 - Merged PR #22, passed branch/PR/main/tag/release CI, published `v0.11.1-preview.1`, corrected and hardened prerelease metadata, and reverse-verified public APK bytes, digest, checksum, package metadata, and signature.
+- [x] 2026-08-12 - A Sol-specified audit identified the mismatch where LOOP/VOCAL step cells could appear editable while realtime playback and export ignored them; follow-up review expanded the boundary to record-armed performance, persisted legacy keys, presets, and Finish truth. Effective child-model metadata was unavailable, so this is not claimed as runtime-verified Sol evidence.
+- [x] 2026-08-12 - Implemented one shared step-eligibility boundary, pure performance-pad routing, disabled accessibility/coaching, non-destructive legacy-key filtering, and focused Red/Green coverage.
+- [x] 2026-08-12 - Built versionCode 17 / versionName 0.11.2; passed 143 tests, Lint, assemble, offline validation, diff/no-scroll checks, APK metadata/signature verification, and data-preserving `emulator-5590` install.
+- [x] 2026-08-12 - On `emulator-5590`, selected A-04 LOOP, observed disabled A-step semantics and dedicated coaching, and verified a disabled step press left the stable autosave byte-identical; focused fatal/ANR matches remained zero.
+- [ ] Publish and reverse-verify `v0.11.2-preview.1`, then install the local-signature APK on physical Pixel 9a only when exact serial `5A121JEBF08094` is attached.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
 ## Discoveries
@@ -116,6 +121,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - The old `ConcurrentLinkedQueue` could grow without limit and drained the entire backlog before every render block; bounded capacity alone was insufficient because Stop All also needed an out-of-band sequence boundary.
 - The old PAD and source paths constructed `Voice` and `VoicePlaybackCursor` on the realtime thread. A fixed 32-voice pool plus one reusable source voice removes those normal-path allocations while preserving deterministic oldest-voice stealing.
 - `Thread.join` timing out is not a successful microphone stop. The WAV stays ineligible for decode until the worker has closed the writer.
+- A PAD mode is product behavior, not only a playback flag. LOOP and VOCAL must share one eligibility boundary across visible cells, direct edits, record-armed performance, presets, Finish truth, realtime playback, and export.
+- Persisted invalid step keys are safer to preserve and filter than to delete during an unrelated loop toggle; this keeps old archives non-destructive while making current sound and UI truthful.
 
 ## Decision log
 
@@ -125,6 +132,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - 2026-08-12 - Do not claim Luna fan-out: the Luna setup check found `max_concurrent_threads_per_session=10` instead of the required 40. Sol routing was explicitly requested, but returned runtime metadata did not expose the effective model name; therefore no runtime-verified Sol claim is made.
 - 2026-08-12 - Keep producer-side mailbox ordering synchronized while the audio-thread consumer remains lock-free. A 512-entry queue and 64-command per-block inspection cap bound both memory and render delay; Stop All uses an atomic latest-request boundary.
 - 2026-08-12 - Retain the current one-pattern product scope for this patch. Multi-pattern/Song mode remains a named Pro gap rather than being rushed into the reliability release.
+- 2026-08-12 - Treat assigned non-LOOP/non-VOCAL PADs as the only 16-step-eligible sounds. LOOP remains selected-sound repetition and VOCAL remains one-start playback; old invalid keys stay serialized but cannot sound or satisfy completion UI.
 
 ## Validation log
 
@@ -144,6 +152,11 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - dedicated `emulator-5590` v0.11.1 - 2026-08-12 - in-place install and cold launch PASS; autosave stayed 5,316,915 bytes / `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513` through the install checkpoint; source/Chop/Beat live loop+KEY/Scratch smoke stayed alive with zero scoped fatal/ANR matches.
 - GitHub publication - 2026-08-12 - PR #22 merge `755c30ffced5db408d89e37cf80c4caf53f02896`; branch/PR/main/tag/release runs `31530032522` / `31530071852` / `31530374176` / `31530698604` / `31530698633` PASS.
 - public APK - 2026-08-12 - 30,739,399 bytes; SHA-256 `BB4502733C3382C91BE6391F9A1EADC5E9F3BC5F0B6621E54B179B8BB16F4C65`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match; anonymous repository/Release/APK routes returned HTTP 200.
+- focused step-truth TDD - 2026-08-12 - RED on missing eligibility/mutation/routing/fallback seams; GREEN after shared filtering and explicit LOOP/VOCAL/DRUM/GATE route coverage.
+- Gradle `testDebugUnitTest lintDebug assembleDebug` v0.11.2 - 2026-08-12 - PASS; 143 tests, zero failures/errors/skips; Lint zero errors and 7 warnings.
+- `scripts/validate_project.sh` v0.11.2 - 2026-08-12, configured Git Bash/Kotlin 2.3.21 - PASS; `git diff --check` PASS; UI scroll API scan zero matches.
+- local v0.11.2 APK - 2026-08-12 - 30,739,403 bytes; SHA-256 `F706923F28495754CCB5B5DFEB42E2D7D89F574A6B27DEE10563A1A83344DAB4`; package/version/minSdk/targetSdk and v2 signature verified; local certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+- dedicated `emulator-5590` v0.11.2 - 2026-08-12 - in-place install preserved checkpoint autosave SHA-256 `76BF3EACA193F877033123590A5360E3D3A083696A812C254B029EB9EA151BF4`; A-04 LOOP displayed dedicated coaching and disabled step semantics; disabled step press preserved 5,317,098-byte autosave SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`; focused fatal/ANR matches zero.
 
 ## Risks and rollback
 

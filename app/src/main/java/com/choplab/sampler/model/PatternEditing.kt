@@ -15,6 +15,28 @@ enum class LaneStepState {
     SELECTED_SOUND,
 }
 
+fun PadModel.canUsePatternSteps(): Boolean =
+    isAssigned && playMode != PadPlayMode.LOOP && contentKind != PadContentKind.VOCAL
+
+fun Set<Int>.togglePadStep(
+    pad: PadModel,
+    stepIndex: Int,
+): Set<Int> {
+    require(stepIndex in 0 until SamplerConfig.STEP_COUNT)
+    if (!pad.canUsePatternSteps()) return this
+    val key = stepKey(pad.globalIndex, stepIndex)
+    return if (key in this) this - key else this + key
+}
+
+fun Set<Int>.recordPadStep(
+    pad: PadModel,
+    stepIndex: Int,
+): Set<Int> {
+    require(stepIndex in 0 until SamplerConfig.STEP_COUNT)
+    if (!pad.canUsePatternSteps()) return this
+    return this + stepKey(pad.globalIndex, stepIndex)
+}
+
 fun laneStepState(
     activeSteps: Set<Int>,
     bankIndex: Int,
@@ -65,11 +87,7 @@ fun Set<Int>.activeBanksAtStep(stepIndex: Int): Set<Int> {
 fun Set<Int>.audibleStepKeys(pads: List<PadModel>): Set<Int> =
     filterTo(linkedSetOf()) { key ->
         val padIndex = key / SamplerConfig.STEP_COUNT
-        pads.getOrNull(padIndex)?.let { pad ->
-            pad.isAssigned &&
-                pad.playMode != PadPlayMode.LOOP &&
-                pad.contentKind != PadContentKind.VOCAL
-        } == true
+        pads.getOrNull(padIndex)?.canUsePatternSteps() == true
     }
 
 fun Set<Int>.hasAudiblePatternContent(pads: List<PadModel>): Boolean =
