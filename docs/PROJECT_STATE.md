@@ -8,8 +8,11 @@ Version `0.9.0` (`versionCode=10`) responds to the latest hands-on feedback with
 
 - the top-level journey is now `入れる → チョップ → ビート → 完成`; `切る` and `鳴らす` are explicit submodes of one Chop stage, so there is no numbered 1→3 jump;
 - BANK roles are visible everywhere as A Melody, B Drums, C One Shots, and D Voice;
-- the performance view keeps the editable source waveform, manual/automatic chop and PAD assignment controls directly above sixteen role-colored square sample pads; live capture is an explicit `LIVE CHOP` mode, so normal PAD performance remains audible while the source song plays;
-- the Beat view is a fixed four-lane 16-step board with playhead, selected-sound rail, source/loop waveform, transport, and loop controls;
+- every BANK now holds 32 PADs, shown as fixed `01–16` / `17–32` pages; a newly loaded source always targets the first empty A Melody PAD, while schema-4 projects with 16-PAD banks migrate into page one without index drift;
+- the performance view keeps the editable source waveform, manual/automatic chop and PAD assignment controls directly above sixteen visible role-colored square sample pads; live capture is an explicit `LIVE CHOP` mode, so normal PAD performance remains audible while the source song plays;
+- the Beat view is a fixed four-lane 16-step board with playhead, selected-sound rail, source/loop waveform, transport, loop controls, and direct KEY/TONE/volume editing;
+- starting a PAD loop removes an existing audition voice for that PAD first, so previewing and then looping does not stack the same sound twice;
+- Layer Studio can place Melody, Drums, One Shots, or Voice with quarter/eighth/sixteenth presets, and Scratch uses a selectable range on the original source waveform;
 - sample slicing uses only empty PADs, a full bank refuses replacement, and replacing BANK B with a built-in drum kit requires an explicit second press when sounds already exist;
 - manual project save validates a local archive and commits an app-owned safety copy before writing the selected destination; autosave uses a synchronized validated pending write plus three bounded generations;
 - source playback now restarts from frame zero after reaching the final frame instead of immediately ending on the next Play press.
@@ -17,10 +20,16 @@ Version `0.9.0` (`versionCode=10`) responds to the latest hands-on feedback with
 Local evidence:
 
 - `scripts/validate_project.sh`: PASS;
-- Gradle `testDebugUnitTest`: 77 tests, zero failures/errors/skips;
+- Gradle `testDebugUnitTest`: 81 tests, zero failures/errors/skips;
 - Gradle `lintDebug` and `assembleDebug`: PASS;
 - `git diff --check`: PASS; UI source scroll API scan: zero matches;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 31,350,142 bytes, SHA-256 `9079B30A2B169E76E0B9A8F3C6EBE8E075BBA8CCA39C8D6C9E694875C1B3B3EE`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,716,854 bytes, SHA-256 `F27FAB5034687E165554578C8F859E12A096FC7C05A93DED0BA499C3070AC867`.
+
+Focused Pixel 9 / API 36 emulator evidence:
+
+- an exact 5,316,915-byte schema-4 Pixel autosave (SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`) restored its source waveform, chop markers, PADs, and pattern under schema 5;
+- CHOP, PADS page 17–32, BEAT with direct KEY controls, Layer Studio SOUNDS, and original-source-range Scratch all fit the 1080 × 2424 portrait screen without scrolling;
+- a fixed-size assertion left over from 16-PAD banks caused one BEAT navigation crash during validation; the assertion now targets the 16-PAD visible page, and the same navigation remained alive afterward.
 
 Focused physical Pixel 9a evidence:
 
@@ -28,6 +37,7 @@ Focused physical Pixel 9a evidence:
 - the four-stage Chop/Pads and four-lane Beat layouts fit the portrait screen with no scrolling; the condensed PADS waveform stayed clearly visible, and `MANUAL` plus a waveform tap added a numbered chop boundary on device;
 - after a completed source had left its playhead at the end, `SOURCE PLAY` changed to `SOURCE STOP`, confirming restart-from-zero behavior;
 - with BANK B selected, source still playing, and `LIVE CHOP OFF`, tapping assigned B-01 left the autosave SHA-256 unchanged at `7367C2026579C76FF7C3EE3FC5278D8600B3062DB853DEB46139CFC400D99140`, kept `SOURCE STOP` visible, and left the app process alive. The host routing test independently confirms this path selects performance playback rather than capture.
+- the latest local APK was installed in place while the phone remained locked and copied to `/sdcard/Download/ChopLab-0.9.0-latest.apk`; device/PC SHA-256 matched `F27FAB5034687E165554578C8F859E12A096FC7C05A93DED0BA499C3070AC867`. Latest-screen and subjective-audio checks remain intentionally unclaimed until the phone is unlocked.
 
 This establishes `LOCAL_PASS` and focused local-build `DEVICE_PASS`. It does not yet claim `PUBLIC_PASS`, subjective audio/latency quality, physical multi-touch stress, microphone overdub, production signing/update continuity, or `HUMAN_GO`.
 
@@ -417,7 +427,7 @@ Implemented in the baseline:
 - Android Playback Capture for sources that allow capture.
 - Mono PCM internal representation.
 - Waveform range selection, zoom, scroll, manual/equal/transient chopping, zero-crossing snap.
-- 4 banks × 16 pads.
+- 4 banks × 32 pads, presented as two fixed 16-pad pages per bank.
 - Auto-next pad/slice assignment.
 - AudioTrack-based low-latency playback.
 - Per-pad pitch-by-rate, tone, gain, reverse, one-shot/gate, choke.
