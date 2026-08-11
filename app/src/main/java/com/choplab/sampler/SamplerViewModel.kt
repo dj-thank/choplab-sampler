@@ -25,6 +25,7 @@ import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectOperationEpoch
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -79,6 +80,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private var autosaveJob: Job? = null
     private var scratchIdleJob: Job? = null
     private var projectRevision = 0L
+    private val projectOperations = ProjectOperationEpoch()
 
     private val mutableUiState = MutableStateFlow(SamplerUiState())
     val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
@@ -91,29 +93,34 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadAudio(uri: Uri) {
+        val operation = projectOperations.begin()
         viewModelScope.launch {
             mutableUiState.update {
                 it.copy(isLoading = true, statusMessage = "音声を解析しています…")
             }
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
-                    engine.stopSource()
-                    engine.stopTransport()
-                    engine.stopAllVoices()
-                    editHistory.reset()
-                    val replaced = replaceSourceAudio(mutableUiState.value, audio)
-                    mutableUiState.value = replaced
-                    engine.updateAllPads(replaced.pads)
-                    syncPattern()
-                    projectRevision++
-                    scheduleAutosave()
+                    projectOperations.completeIfCurrent(operation) {
+                        engine.stopSource()
+                        engine.stopTransport()
+                        engine.stopAllVoices()
+                        editHistory.reset()
+                        val replaced = replaceSourceAudio(mutableUiState.value, audio)
+                        mutableUiState.value = replaced
+                        engine.updateAllPads(replaced.pads)
+                        syncPattern()
+                        projectRevision++
+                        scheduleAutosave()
+                    }
                 }
                 .onFailure { throwable ->
-                    mutableUiState.update {
-                        it.copy(
-                            isLoading = false,
-                            statusMessage = throwable.message ?: "音声を読み込めませんでした",
-                        )
+                    projectOperations.completeIfCurrent(operation) {
+                        mutableUiState.update {
+                            it.copy(
+                                isLoading = false,
+                                statusMessage = throwable.message ?: "音声を読み込めませんでした",
+                            )
+                        }
                     }
                 }
         }
@@ -443,6 +450,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun resetProject() {
+        projectOperations.invalidate()
         val reset = resetProjectState(mutableUiState.value)
         autosaveJob?.cancel()
         engine.stopSource()
@@ -462,7 +470,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
         autosaveJob = viewModelScope.launch {
             val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(reset) }.exceptionOrNull()
+                runCatching { autosaveStore.save(reset, revision) }.exceptionOrNull()
             }
             if (failure != null && projectRevision == revision) {
                 mutableUiState.update {
@@ -1254,6 +1262,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveProject(destination: Uri) {
         val snapshot = mutableUiState.value
+        val revision = projectRevision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
             runCatching {
@@ -1268,7 +1277,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             ProjectArchiveCodec.write(snapshot, output)
                         }
                         verified.inputStream().buffered().use(ProjectArchiveCodec::read)
-                        autosaveStore.save(snapshot)
+                        autosaveStore.save(snapshot, revision)
                         application.contentResolver.openOutputStream(destination, "w")?.use { output ->
                             verified.inputStream().buffered().use { input -> input.copyTo(output) }
                         } ?: error("保存先を開けません")
@@ -1292,6 +1301,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadProject(source: Uri) {
+        val operation = projectOperations.begin()
         val revisionAtStart = projectRevision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを開いています…") }
@@ -1303,21 +1313,27 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }.onSuccess { restored ->
                 if (projectRevision != revisionAtStart) {
-                    mutableUiState.update {
-                        it.copy(isLoading = false, statusMessage = "編集中のため読み込み結果を破棄しました")
+                    projectOperations.completeIfCurrent(operation) {
+                        mutableUiState.update {
+                            it.copy(isLoading = false, statusMessage = "編集中のため読み込み結果を破棄しました")
+                        }
                     }
                     return@onSuccess
                 }
-                editHistory.reset()
-                projectRevision++
-                applyProjectState(restored, "プロジェクトを開きました")
-                scheduleAutosave()
+                projectOperations.completeIfCurrent(operation) {
+                    editHistory.reset()
+                    projectRevision++
+                    applyProjectState(restored, "プロジェクトを開きました")
+                    scheduleAutosave()
+                }
             }.onFailure { throwable ->
-                mutableUiState.update {
-                    it.copy(
-                        isLoading = false,
-                        statusMessage = throwable.message ?: "プロジェクトを開けませんでした",
-                    )
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = throwable.message ?: "プロジェクトを開けませんでした",
+                        )
+                    }
                 }
             }
         }
@@ -1422,7 +1438,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         autosaveJob = viewModelScope.launch {
             delay(AUTOSAVE_DELAY_MS)
             val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(snapshot) }.exceptionOrNull()
+                runCatching { autosaveStore.save(snapshot, revision) }.exceptionOrNull()
             }
             if (failure != null && projectRevision == revision) {
                 mutableUiState.update {
@@ -1433,18 +1449,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun recoverAutosave() {
+        val operation = projectOperations.begin()
         val revisionAtStart = projectRevision
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.load() } }
             if (projectRevision != revisionAtStart) return@launch
-            result.onSuccess { restored ->
-                if (restored != null) {
-                    editHistory.reset()
-                    applyProjectState(restored, "前回の自動保存を復元しました")
-                }
-            }.onFailure { throwable ->
-                mutableUiState.update {
-                    it.copy(statusMessage = throwable.message ?: "前回の自動保存を復元できませんでした")
+            projectOperations.completeIfCurrent(operation) {
+                result.onSuccess { restored ->
+                    if (restored != null) {
+                        editHistory.reset()
+                        applyProjectState(restored, "前回の自動保存を復元しました")
+                    }
+                }.onFailure { throwable ->
+                    mutableUiState.update {
+                        it.copy(statusMessage = throwable.message ?: "前回の自動保存を復元できませんでした")
+                    }
                 }
             }
         }

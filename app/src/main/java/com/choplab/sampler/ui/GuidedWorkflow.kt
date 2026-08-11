@@ -1,5 +1,8 @@
 package com.choplab.sampler.ui
 
+import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.SamplerUiState
+
 enum class WorkflowStage(
     val label: String,
     val caption: String,
@@ -24,6 +27,18 @@ fun restoreWorkflowStage(savedName: String?): WorkflowStage =
 
 fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
     if (hasAudio) WorkflowStage.CHOP else WorkflowStage.CAPTURE
+
+fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
+    state.currentAudio != null ||
+        state.pads.any(PadModel::isAssigned) ||
+        state.activeSteps.isNotEmpty()
+
+fun chopQuickGuidance(assignedPadCount: Int): String =
+    if (assignedPadCount <= 0) {
+        "波形タップ＝そこから再生 → 空PAD＝チョップ"
+    } else {
+        "PAD＝試聴／長押し＝微調整 → ビートへ"
+    }
 
 fun pitchDirectionLabel(value: Float): String = when {
     value < -0.49f -> "低い"
@@ -52,17 +67,17 @@ fun arrangeBeatLoopPrompt(
     loopingPadLabel: String? = null,
 ): String =
     if (loopingPadLabel != null) {
-        "2 ビートをループ  ${loopingPadLabel}の音声全体を繰り返し中"
+        "2 選択音をループ  ${loopingPadLabel}の音声全体を繰り返し中"
     } else if (isAssigned) {
-        "2 ビートをループ  ${padLabel}の音声全体を繰り返す"
+        "2 選択音をループ  ${padLabel}の音声全体を繰り返す"
     } else {
-        "2 ビートをループ  先に音の入ったPADを選んでください"
+        "2 選択音をループ  先に音の入ったPADを選んでください"
     }
 
 fun placementPresetPrompt(): String = "配置プリセット  鳴らす場所を選ぶ"
 
 private val arrangeQuickStepLabels =
-    listOf("1 PADを選ぶ", "2 ループ／並べる", "3 足す／スクラッチ")
+    listOf("1 音ありPADを選ぶ", "2 ループ／並べる", "3 足す／スクラッチ")
 
 fun arrangeQuickSteps(): List<String> = arrangeQuickStepLabels
 

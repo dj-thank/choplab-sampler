@@ -38,6 +38,7 @@ class SamplerEngine(
     private val controlPadKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val voices = mutableListOf<Voice>()
     private var sourceVoice: Voice? = null
+    private var sourceVoiceGeneration = 0L
     private var scratchVoice: ScratchVoice? = null
     private var audioTrack: AudioTrack? = null
     private var audioThread: Thread? = null
@@ -55,9 +56,9 @@ class SamplerEngine(
     private val currentSourceFrameValue = AtomicInteger(-1)
     override val currentSourceFrame: Int
         get() = currentSourceFrameValue.get()
-    private val sourcePlayingValue = AtomicBoolean(false)
+    private val sourcePlaybackState = SourcePlaybackState()
     override val sourcePlaying: Boolean
-        get() = sourcePlayingValue.get()
+        get() = sourcePlaybackState.isPlaying
     private val currentLoopPadValue = AtomicInteger(-1)
     override val currentLoopPad: Int
         get() = currentLoopPadValue.get()
@@ -128,6 +129,7 @@ class SamplerEngine(
             ).apply { start() }
         }.onFailure { throwable ->
             running.set(false)
+            sourcePlaybackState.issueStop()
             runCatching { audioTrack?.release() }
             audioTrack = null
             onError(throwable.message ?: "オーディオエンジンを開始できません")
@@ -198,7 +200,7 @@ class SamplerEngine(
     }
 
     override fun updateScratchSpeed(speed: Float) {
-        scratchSpeedBits.set(speed.coerceIn(-4f, 4f).toBits())
+        scratchSpeedBits.set(normalizeScratchSpeed(speed).toBits())
     }
 
     override fun endScratch() {
@@ -231,15 +233,15 @@ class SamplerEngine(
 
     override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) {
         if (!running.get() || audio.frameCount < 1) {
-            sourcePlayingValue.set(false)
+            sourcePlaybackState.issueStop()
             return
         }
+        val generation = sourcePlaybackState.issuePlay()
         val safeStart = startFrame.coerceIn(0, audio.frameCount - 1)
         currentSourceFrameValue.set(safeStart)
-        sourcePlayingValue.set(true)
         commands.offer(
             EngineCommand.PlaySource(
-                PadSnapshot(
+                source = PadSnapshot(
                     padIndex = SOURCE_PAD_INDEX,
                     audio = audio,
                     startFrame = safeStart,
@@ -251,13 +253,14 @@ class SamplerEngine(
                     playMode = PadPlayMode.ONE_SHOT,
                     chokeGroup = 0,
                 ),
+                generation = generation,
             ),
         )
     }
 
     override fun stopSource() {
-        sourcePlayingValue.set(false)
-        commands.offer(EngineCommand.StopSource)
+        val generation = sourcePlaybackState.issueStop()
+        commands.offer(EngineCommand.StopSource(generation))
     }
 
     override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
@@ -284,7 +287,8 @@ class SamplerEngine(
     }
 
     override fun stopAllVoices() {
-        commands.offer(EngineCommand.StopAllVoices)
+        val sourceGeneration = sourcePlaybackState.issueStop()
+        commands.offer(EngineCommand.StopAllVoices(sourceGeneration))
     }
 
     override fun shutdown() {
@@ -299,7 +303,7 @@ class SamplerEngine(
         audioTrack = null
         currentStepValue.set(-1)
         currentSourceFrameValue.set(-1)
-        sourcePlayingValue.set(false)
+        sourcePlaybackState.issueStop()
         currentLoopPadValue.set(-1)
         currentLoopFrameValue.set(-1)
         currentScratchPadValue.set(-1)
@@ -318,7 +322,7 @@ class SamplerEngine(
                 var latestLoopFrame = -1
                 var latestScratchFrame = -1
                 val monitoredLoopPad = currentLoopPadValue.get()
-                val scratchTargetSpeed = Float.fromBits(scratchSpeedBits.get())
+                val scratchTargetSpeed = normalizeScratchSpeed(Float.fromBits(scratchSpeedBits.get()))
 
                 for (frame in 0 until blockFrames) {
                     if (transportRunning) processTransportFrame()
@@ -328,8 +332,10 @@ class SamplerEngine(
                         monoMix += source.render(outputSampleRate)
                         latestSourceFrame = source.currentFrame
                         if (source.finished) {
+                            val completedGeneration = sourceVoiceGeneration
                             sourceVoice = null
-                            sourcePlayingValue.set(false)
+                            sourceVoiceGeneration = 0L
+                            sourcePlaybackState.complete(completedGeneration)
                         }
                     }
                     scratchVoice?.let { scratch ->
@@ -394,7 +400,7 @@ class SamplerEngine(
             sourceVoice = null
             scratchVoice = null
             currentStepValue.set(-1)
-            sourcePlayingValue.set(false)
+            sourcePlaybackState.issueStop()
             currentLoopPadValue.set(-1)
             currentLoopFrameValue.set(-1)
             currentScratchPadValue.set(-1)
@@ -451,10 +457,18 @@ class SamplerEngine(
                 )
                 is EngineCommand.Preview -> startVoice(command.pad)
                 is EngineCommand.PlaySource -> {
-                    sourceVoice = Voice(command.source, outputSampleRate)
-                    currentSourceFrameValue.set(command.source.startFrame)
+                    if (sourcePlaybackState.isCurrent(command.generation)) {
+                        sourceVoice = Voice(command.source, outputSampleRate)
+                        sourceVoiceGeneration = command.generation
+                        currentSourceFrameValue.set(command.source.startFrame)
+                    }
                 }
-                EngineCommand.StopSource -> sourceVoice = null
+                is EngineCommand.StopSource -> {
+                    if (sourcePlaybackState.isCurrent(command.generation)) {
+                        sourceVoice = null
+                        sourceVoiceGeneration = 0L
+                    }
+                }
                 is EngineCommand.SetPattern -> {
                     pattern = command.steps
                     bpm = command.bpm
@@ -469,10 +483,12 @@ class SamplerEngine(
                     transportRunning = false
                     currentStepValue.set(-1)
                 }
-                EngineCommand.StopAllVoices -> {
+                is EngineCommand.StopAllVoices -> {
                     voices.forEach { it.release(FAST_RELEASE_FRAMES) }
-                    sourceVoice = null
-                    sourcePlayingValue.set(false)
+                    if (sourcePlaybackState.isCurrent(command.sourceGeneration)) {
+                        sourceVoice = null
+                        sourceVoiceGeneration = 0L
+                    }
                     currentLoopPadValue.set(-1)
                     currentLoopFrameValue.set(-1)
                     scratchVoice = null
@@ -558,8 +574,8 @@ class SamplerEngine(
         data object EndScratch : EngineCommand
         data class Release(val padIndex: Int) : EngineCommand
         data class Preview(val pad: PadSnapshot) : EngineCommand
-        data class PlaySource(val source: PadSnapshot) : EngineCommand
-        data object StopSource : EngineCommand
+        data class PlaySource(val source: PadSnapshot, val generation: Long) : EngineCommand
+        data class StopSource(val generation: Long) : EngineCommand
         data class SetPattern(
             val steps: Array<IntArray>,
             val bpm: Float,
@@ -567,7 +583,7 @@ class SamplerEngine(
         ) : EngineCommand
         data object StartTransport : EngineCommand
         data object StopTransport : EngineCommand
-        data object StopAllVoices : EngineCommand
+        data class StopAllVoices(val sourceGeneration: Long) : EngineCommand
     }
 
     private data class PadSnapshot(
@@ -702,13 +718,13 @@ class SamplerEngine(
         private val sourceSampleRate = pad.audio.sampleRate
         private val gain = pad.gain
         private val cursor = ScratchPlaybackCursor(startFrame, endFrame, initialFrame.toDouble())
-        private var smoothedSpeed = 0.0
+        private val speedSmoother = ScratchSpeedSmoother(SCRATCH_SMOOTHING)
 
         val currentFrame: Int
             get() = cursor.position.toInt().coerceIn(startFrame, endFrame - 1)
 
         fun render(outputSampleRate: Int, targetSpeed: Float): Float {
-            smoothedSpeed += (targetSpeed.toDouble() - smoothedSpeed) * SCRATCH_SMOOTHING
+            val smoothedSpeed = speedSmoother.next(targetSpeed)
             val lower = floor(cursor.position).toInt().coerceIn(startFrame, endFrame - 1)
             val upper = (lower + 1).let { if (it >= endFrame) startFrame else it }
             val fraction = (cursor.position - lower).toFloat()

@@ -339,14 +339,14 @@ private fun PerformanceWorkspace(
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             BeginnerCoachBar(
-                text = "曲を頭から流す → 空PADを順に叩く → ビートへ",
+                text = chopQuickGuidance(state.pads.count(PadModel::isAssigned)),
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-            MachineButton(
-                label = "新しい波形\nIMPORT",
-                onClick = onImportAudio,
+            NewSourceActionButton(
+                state = state,
+                label = "新しい制作\nNEW PROJECT",
+                onConfirm = onImportAudio,
                 modifier = Modifier.width(104.dp).fillMaxHeight(),
-                compact = true,
             )
         }
         SourceEditorWaveform(
@@ -783,28 +783,28 @@ private fun CaptureChoicePanel(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                MachineButton(
+                NewSourceActionButton(
+                    state = state,
                     label = "曲を読込\nFILE",
-                    onClick = onImportAudio,
+                    onConfirm = onImportAudio,
                     enabled = !state.isLoading && !state.microphoneRecording && !state.systemAudioRecording,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
                 )
-                MachineButton(
+                NewSourceActionButton(
+                    state = state,
                     label = if (state.microphoneRecording) "録音を止める\nMIC STOP" else "マイク録音\nMIC REC",
-                    onClick = onToggleMicrophoneRecording,
+                    onConfirm = onToggleMicrophoneRecording,
                     enabled = !state.systemAudioRecording,
                     active = state.microphoneRecording,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
                 )
-                MachineButton(
+                NewSourceActionButton(
+                    state = state,
                     label = if (state.systemAudioRecording) "録音を止める\nDEVICE STOP" else "端末を録音\nDEVICE REC",
-                    onClick = onToggleSystemAudioRecording,
+                    onConfirm = onToggleSystemAudioRecording,
                     enabled = !state.microphoneRecording,
                     active = state.systemAudioRecording,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
                 )
             }
         }
@@ -1413,6 +1413,10 @@ private fun SequenceWorkspace(
                     modifier = Modifier.weight(0.7f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(gap),
                 ) {
+                    BeginnerCoachBar(
+                        text = ARRANGE_QUICK_GUIDANCE,
+                        modifier = Modifier.fillMaxWidth().height(24.dp),
+                    )
                     BankStrip(
                         selectedBank = state.selectedBank,
                         height = metrics.controlHeightDp.dp,
@@ -1450,6 +1454,12 @@ private fun SequenceWorkspace(
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             if (!showFineControls) {
+                BeginnerCoachBar(
+                    text = ARRANGE_QUICK_GUIDANCE,
+                    modifier = Modifier.fillMaxWidth().height(
+                        if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
+                    ),
+                )
                 ArrangementWaveformTimeline(
                     pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
                     activeSteps = state.activeSteps.audibleStepKeys(state.pads),
@@ -1841,7 +1851,7 @@ private fun BeatLoopControl(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             MachineButton(
-                label = if (loopingPad != null) "ループ停止\nSTOP" else "ビートをループ\nSTART",
+                label = if (loopingPad != null) "選択音ループ停止\nSTOP" else "選択音をループ\nSTART",
                 onClick = viewModel::toggleBeatLoopControl,
                 enabled = pad.isAssigned || loopingPad != null,
                 active = loopingPad != null,
@@ -1894,19 +1904,19 @@ private fun QuickArrangeActionRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         MachineButton(
-            label = "足す\nDRUM · VOICE",
+            label = "3 足す\nDRUM · VOICE",
             onClick = onOpenAdd,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
         )
         MachineButton(
-            label = "スクラッチ\nSCRATCH",
+            label = "3 スクラッチ\nSCRATCH",
             onClick = onOpenScratch,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
         )
         MachineButton(
-            label = "詳細\nSTEPS · SOUND",
+            label = "並べる詳細\nSTEPS · SOUND",
             onClick = onOpenFineControls,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
@@ -3190,6 +3200,35 @@ private fun ValueDisplay(
             fontWeight = FontWeight.Black,
             fontSize = 9.sp,
             maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun NewSourceActionButton(
+    state: SamplerUiState,
+    label: String,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    active: Boolean = false,
+) {
+    if (requiresNewProjectConfirmation(state) && !active) {
+        ConfirmActionButton(
+            label = label,
+            confirmLabel = "PAD・ビート消去\nもう一度",
+            onConfirm = onConfirm,
+            enabled = enabled,
+            modifier = modifier,
+        )
+    } else {
+        MachineButton(
+            label = label,
+            onClick = onConfirm,
+            enabled = enabled,
+            active = active,
+            modifier = modifier,
+            compact = true,
         )
     }
 }

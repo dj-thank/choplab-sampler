@@ -1,10 +1,41 @@
 package com.choplab.sampler.ui
 
+import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.stepKey
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GuidedWorkflowTest {
+    @Test
+    fun newSourceRequiresConfirmationOnlyWhenTheCurrentProjectHasMaterialWork() {
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val assignedPads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, audio, 0, 50) else PadModel(index)
+        }
+
+        assertFalse(requiresNewProjectConfirmation(SamplerUiState()))
+        assertTrue(requiresNewProjectConfirmation(SamplerUiState(currentAudio = audio)))
+        assertTrue(requiresNewProjectConfirmation(SamplerUiState(pads = assignedPads)))
+        assertTrue(requiresNewProjectConfirmation(SamplerUiState(activeSteps = setOf(stepKey(0, 0)))))
+    }
+
+    @Test
+    fun chopCoachExplainsWaveformCaptureAuditionAndTrimAtTheRightMoment() {
+        assertEquals(
+            "波形タップ＝そこから再生 → 空PAD＝チョップ",
+            chopQuickGuidance(assignedPadCount = 0),
+        )
+        assertEquals(
+            "PAD＝試聴／長押し＝微調整 → ビートへ",
+            chopQuickGuidance(assignedPadCount = 1),
+        )
+    }
+
     @Test
     fun stagesFollowTheBeginnerProductionJourney() {
         assertEquals(
@@ -63,15 +94,15 @@ class GuidedWorkflowTest {
     @Test
     fun arrangeBeatLoopPromptNamesWholeChopPlaybackInsteadOfBeatGridRetriggering() {
         assertEquals(
-            "2 ビートをループ  A-01の音声全体を繰り返す",
+            "2 選択音をループ  A-01の音声全体を繰り返す",
             arrangeBeatLoopPrompt(isAssigned = true, padLabel = "A-01"),
         )
         assertEquals(
-            "2 ビートをループ  先に音の入ったPADを選んでください",
+            "2 選択音をループ  先に音の入ったPADを選んでください",
             arrangeBeatLoopPrompt(isAssigned = false, padLabel = "A-01"),
         )
         assertEquals(
-            "2 ビートをループ  A-04の音声全体を繰り返し中",
+            "2 選択音をループ  A-04の音声全体を繰り返し中",
             arrangeBeatLoopPrompt(
                 isAssigned = false,
                 padLabel = "B-04",
@@ -84,11 +115,11 @@ class GuidedWorkflowTest {
     @Test
     fun arrangeQuickModeNamesTheThreePrimaryActions() {
         assertEquals(
-            listOf("1 PADを選ぶ", "2 ループ／並べる", "3 足す／スクラッチ"),
+            listOf("1 音ありPADを選ぶ", "2 ループ／並べる", "3 足す／スクラッチ"),
             arrangeQuickSteps(),
         )
         assertEquals(
-            "1 PADを選ぶ  →  2 ループ／並べる  →  3 足す／スクラッチ",
+            "1 音ありPADを選ぶ  →  2 ループ／並べる  →  3 足す／スクラッチ",
             ARRANGE_QUICK_GUIDANCE,
         )
     }

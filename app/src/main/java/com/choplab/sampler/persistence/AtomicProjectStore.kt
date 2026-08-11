@@ -13,9 +13,22 @@ class AtomicProjectStore(private val directory: File) {
     private val backupFile = File(directory, "autosave.previous.choplab")
     private val olderBackupFile = File(directory, "autosave.previous2.choplab")
     private val temporaryFile = File(directory, "autosave.pending.choplab")
+    private var newestCommittedRevision = Long.MIN_VALUE
 
     @Synchronized
     fun save(state: SamplerUiState) {
+        val nextRevision = if (newestCommittedRevision == Long.MAX_VALUE) {
+            Long.MAX_VALUE
+        } else {
+            newestCommittedRevision + 1L
+        }
+        save(state, nextRevision)
+    }
+
+    /** Returns false without touching disk when a newer project revision is already committed. */
+    @Synchronized
+    fun save(state: SamplerUiState, revision: Long): Boolean {
+        if (revision < newestCommittedRevision) return false
         require(directory.exists() || directory.mkdirs()) { "自動保存フォルダーを作成できません" }
         runCatching { temporaryFile.delete() }
         try {
@@ -35,6 +48,8 @@ class AtomicProjectStore(private val directory: File) {
                 }
                 throw failure
             }
+            newestCommittedRevision = revision
+            return true
         } finally {
             runCatching { temporaryFile.delete() }
         }
