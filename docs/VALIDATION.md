@@ -2,6 +2,22 @@
 
 作成日: 2026-07-15
 
+## 2026-08-11 v0.9.0 current validation
+
+- `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS
+- unit tests: 81 / failures 0 / errors 0 / skipped 0
+- `scripts/validate_project.sh`: PASS with the pinned JDK/Kotlin toolchain on PATH
+- `git diff --check`: PASS; app source scroll API scan: 0 matches
+- lint: task PASS, errors 0 (10 Android/toolchain advisories reported)
+- local APK: 30,716,854 bytes, SHA-256 `F27FAB5034687E165554578C8F859E12A096FC7C05A93DED0BA499C3070AC867`
+- Pixel 9 / API 36 emulator: exact schema-4 Pixel archive restored under schema 5; CHOP/PADS, PAD 17–32, BEAT direct KEY controls, Layer SOUNDS, and source-range Scratch were captured without scrolling
+- BEAT navigation regression: reproduced one stale 32-vs-16 size assertion crash, corrected it to the visible page size, rebuilt, and verified the process remained alive on the same route
+- Pixel 9a: in-place install/launch, `versionCode=10`, `versionName=0.9.0`, four-stage fixed UI, editable source waveform in PADS, on-device manual boundary insertion, role-aware square PADs, and four-lane Beat board observed
+- Pixel 9a latest APK: installed in place and copied to `/sdcard/Download/ChopLab-0.9.0-latest.apk`; PC/device SHA-256 matched. The phone remained locked, so latest-screen and subjective-audio checks are not claimed
+- source-end replay regression: host test passed and physical device changed `SOURCE PLAY` to `SOURCE STOP` after a previously completed source
+- source-playing B-01 press with `LIVE CHOP OFF`: autosave hash unchanged immediately before/after, source remained playing, process remained alive
+- physical microphone capture was not activated; loop de-duplication audio, source scratch sound, latency, multi-touch endurance, TalkBack, and haptic quality remain human checks
+
 ## 2026-08-11 v0.8.0 current validation
 
 - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS

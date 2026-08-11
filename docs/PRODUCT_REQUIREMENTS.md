@@ -54,7 +54,7 @@ ChopLab is an original mobile sampler optimized for a rapid source → chop → 
 
 - **MIDI-001** Discover and connect Android MIDI input devices.
 - **MIDI-002** Parse note on/off, velocity and running status correctly.
-- **MIDI-003** Provide channel/base-note mapping for 64 pads.
+- **MIDI-003** Provide channel/base-note mapping for 128 pads.
 - **MIDI-004** Support bounded CC learn for selected pad/master parameters.
 - **MIDI-005** Follow 24 PPQN clock and start/continue/stop when clock sync is enabled.
 - **MIDI-006** Disconnect/reconnect without crash or resource leak.

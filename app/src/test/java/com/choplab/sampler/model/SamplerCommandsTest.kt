@@ -7,6 +7,54 @@ import org.junit.Test
 
 class SamplerCommandsTest {
     @Test
+    fun sliceAssignmentUsesNextEmptyPadInsteadOfOverwritingExistingAudio() {
+        val original = PcmAudio(name = "original", samples = ShortArray(800), sampleRate = 48_000)
+        val incoming = PcmAudio(name = "incoming", samples = ShortArray(2_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, audio = original, startFrame = 0, endFrame = 800)
+            else PadModel(index)
+        }
+        val state = SamplerUiState(
+            currentAudio = incoming,
+            rangeStartFrame = 0,
+            rangeEndFrame = 2_000,
+            pads = pads,
+            selectedBank = 0,
+            selectedPad = 0,
+        )
+
+        val result = assignRangesToPads(state, listOf(SliceRange(100, 500)), "assigned")
+
+        assertSame(original, result.state.pads[0].audio)
+        assertSame(incoming, result.state.pads[1].audio)
+        assertEquals(listOf(1), result.changedPads.map(PadModel::globalIndex))
+    }
+
+    @Test
+    fun liveChopRefusesToReplaceAnAssignedPad() {
+        val original = PcmAudio(name = "original", samples = ShortArray(800), sampleRate = 48_000)
+        val incoming = PcmAudio(name = "incoming", samples = ShortArray(2_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, audio = original, startFrame = 0, endFrame = 800)
+            else PadModel(index)
+        }
+        val state = SamplerUiState(
+            currentAudio = incoming,
+            rangeStartFrame = 0,
+            rangeEndFrame = 2_000,
+            pads = pads,
+            selectedBank = 0,
+            selectedPad = 0,
+        )
+
+        val result = assignLiveChopToPad(state, padIndex = 0, startFrame = 200)
+
+        assertTrue(result.changedPads.isEmpty())
+        assertSame(original, result.state.pads[0].audio)
+        assertTrue(result.state.statusMessage.contains("上書きしません"))
+    }
+
+    @Test
     fun assignmentWrapsWithinSelectedBankAndAdvancesActiveSlice() {
         val audio = PcmAudio(name = "source", samples = ShortArray(2_000), sampleRate = 48_000)
         val state = SamplerUiState(
@@ -16,7 +64,7 @@ class SamplerCommandsTest {
             sliceMarkers = listOf(500, 1_000),
             activeSliceIndex = 0,
             selectedBank = 1,
-            selectedPad = 31,
+            selectedPad = 63,
             autoNextPad = true,
         )
 
@@ -26,9 +74,9 @@ class SamplerCommandsTest {
             statusMessage = "assigned",
         )
 
-        assertEquals(31, result.changedPads.single().globalIndex)
-        assertSame(audio, result.state.pads[31].audio)
-        assertEquals(16, result.state.selectedPad)
+        assertEquals(63, result.changedPads.single().globalIndex)
+        assertSame(audio, result.state.pads[63].audio)
+        assertEquals(32, result.state.selectedPad)
         assertEquals(1, result.state.activeSliceIndex)
         assertEquals("assigned", result.state.statusMessage)
     }
@@ -108,7 +156,7 @@ class SamplerCommandsTest {
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
             when (index) {
                 0 -> PadModel(index, otherAudio, 200, 900)
-                16 -> PadModel(index, audio, 1_000, 5_000)
+                32 -> PadModel(index, audio, 1_000, 5_000)
                 else -> PadModel(index)
             }
         }
@@ -116,15 +164,15 @@ class SamplerCommandsTest {
             currentAudio = audio,
             rangeEndFrame = 5_000,
             selectedBank = 1,
-            selectedPad = 16,
+            selectedPad = 32,
             pads = pads,
         )
 
-        val result = assignLiveChopToPad(state, padIndex = 17, startFrame = 2_500)
+        val result = assignLiveChopToPad(state, padIndex = 33, startFrame = 2_500)
 
         assertEquals(900, result.state.pads[0].endFrame)
-        assertEquals(2_500, result.state.pads[16].endFrame)
-        assertEquals(5_000, result.state.pads[17].endFrame)
+        assertEquals(2_500, result.state.pads[32].endFrame)
+        assertEquals(5_000, result.state.pads[33].endFrame)
         assertTrue(result.changedPads.all { it.bankIndex == 1 })
     }
 }

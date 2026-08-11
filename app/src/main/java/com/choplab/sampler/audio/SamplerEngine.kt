@@ -172,6 +172,31 @@ class SamplerEngine(
         )
     }
 
+    override fun beginSourceScratch(audio: PcmAudio, startFrame: Int, endFrame: Int) {
+        if (audio.frameCount < 2) return
+        val safeStart = startFrame.coerceIn(0, audio.frameCount - 2)
+        val safeEnd = endFrame.coerceIn(safeStart + 1, audio.frameCount)
+        val snapshot = PadSnapshot(
+            padIndex = SOURCE_SCRATCH_PAD_INDEX,
+            audio = audio,
+            startFrame = safeStart,
+            endFrame = safeEnd,
+            pitchSemitones = 0f,
+            tone = 1f,
+            gain = 0.9f,
+            reverse = false,
+            playMode = PadPlayMode.ONE_SHOT,
+            chokeGroup = 0,
+        )
+        scratchSpeedBits.set(0f.toBits())
+        commands.offer(
+            EngineCommand.BeginScratch(
+                padIndex = SOURCE_SCRATCH_PAD_INDEX,
+                voice = ScratchVoice(snapshot, safeStart),
+            ),
+        )
+    }
+
     override fun updateScratchSpeed(speed: Float) {
         scratchSpeedBits.set(speed.coerceIn(-4f, 4f).toBits())
     }
@@ -389,6 +414,15 @@ class SamplerEngine(
                 is EngineCommand.StartPadLoop -> {
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad?.playMode == PadPlayMode.LOOP) {
+                        // A sound-rail audition may still be active. The loop replaces that
+                        // voice instead of stacking a second copy of the same audio.
+                        var voiceIndex = voices.lastIndex
+                        while (voiceIndex >= 0) {
+                            if (voices[voiceIndex].padIndex == command.padIndex) {
+                                voices.removeAt(voiceIndex)
+                            }
+                            voiceIndex--
+                        }
                         currentLoopPadValue.set(command.padIndex)
                         currentLoopFrameValue.set(if (pad.reverse) pad.endFrame - 1 else pad.startFrame)
                         startVoice(pad)
@@ -693,6 +727,7 @@ class SamplerEngine(
         const val FAST_RELEASE_FRAMES = 48
         const val CLICK_FADE_SOURCE_FRAMES = 48.0
         const val SOURCE_PAD_INDEX = -2
+        const val SOURCE_SCRATCH_PAD_INDEX = -3
         const val SCRATCH_SMOOTHING = 0.025
     }
 }

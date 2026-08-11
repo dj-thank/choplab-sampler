@@ -21,6 +21,7 @@ interface SamplerPlaybackEngine {
     fun startPadLoop(globalIndex: Int)
     fun stopPad(globalIndex: Int)
     fun beginScratch(globalIndex: Int, startFrame: Int)
+    fun beginSourceScratch(audio: PcmAudio, startFrame: Int, endFrame: Int)
     fun updateScratchSpeed(speed: Float)
     fun endScratch()
     fun releasePad(globalIndex: Int)

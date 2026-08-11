@@ -9,6 +9,25 @@ import org.junit.Test
 
 class AtomicProjectStoreTest {
     @Test
+    fun twoCorruptNewestGenerationsStillRecoverTheLastGoodProject() {
+        val directory = Files.createTempDirectory("choplab-autosave-three-generation-test").toFile()
+        try {
+            val store = AtomicProjectStore(directory)
+            store.save(SamplerUiState(bpm = 90f))
+            store.save(SamplerUiState(bpm = 100f))
+            store.save(SamplerUiState(bpm = 110f))
+            File(directory, "autosave.choplab").writeBytes(byteArrayOf(1, 2, 3))
+            File(directory, "autosave.previous.choplab").writeBytes(byteArrayOf(4, 5, 6))
+
+            val recovered = store.load()
+
+            assertEquals(90f, recovered?.bpm)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun corruptLatestAutosaveFallsBackToPreviousGeneration() {
         val directory = Files.createTempDirectory("choplab-autosave-test").toFile()
         try {

@@ -2,6 +2,7 @@ package com.choplab.sampler.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -40,6 +45,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
+import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.bankRoleFor
+import kotlin.math.abs
+import kotlin.math.max
 
 private const val PAD_KEYS = "1234QWERASDFZXCV"
 
@@ -55,9 +65,15 @@ fun PadGrid(
     gap: Dp = 6.dp,
     columns: Int = 4,
 ) {
-    require(pads.size == 16) { "PadGrid requires exactly 16 pads" }
-    require(columns in 1..pads.size) { "PadGrid columns must be between 1 and 16" }
-    require(pads.size % columns == 0) { "PadGrid columns must divide 16 pads" }
+    require(pads.size == SamplerConfig.PAD_PAGE_SIZE) {
+        "PadGrid requires exactly ${SamplerConfig.PAD_PAGE_SIZE} pads"
+    }
+    require(columns in 1..pads.size) {
+        "PadGrid columns must be between 1 and ${SamplerConfig.PAD_PAGE_SIZE}"
+    }
+    require(pads.size % columns == 0) {
+        "PadGrid columns must divide ${SamplerConfig.PAD_PAGE_SIZE} pads"
+    }
     val rows = pads.size / columns
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
@@ -109,9 +125,11 @@ private fun PerformancePad(
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(9.dp)
+    val bankRole = bankRoleFor(pad.bankIndex)
+    val accent = bankRoleAccent(pad.bankIndex)
     val background = when {
-        pressed -> DeckPadLit
-        pad.isAssigned -> DeckPadAssigned
+        pressed -> accent
+        pad.isAssigned -> accent.copy(alpha = 0.72f)
         else -> DeckPad
     }
     val foreground = when {
@@ -163,7 +181,7 @@ private fun PerformancePad(
     ) {
         val compact = maxHeight < 54.dp || maxWidth < 54.dp
         Text(
-            text = "%02d".format(pad.indexInBank + 1),
+            text = "${bankRole.letter}%02d".format(pad.indexInBank + 1),
             color = foreground,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
@@ -172,23 +190,77 @@ private fun PerformancePad(
         )
         if (!compact) {
             Text(
-                text = padCenterLabel(pad),
-                color = if (pressed) Color(0xFF4A2600) else DeckGreen,
+                text = padCenterLabel(pad).ifEmpty { "EMPTY" },
+                color = if (pressed) Color(0xFF241400) else Color(0xFFFFE8B8),
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 fontSize = 8.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier.align(Alignment.Center).padding(bottom = 6.dp),
             )
+            if (pad.isAssigned) {
+                val peaks = remember(pad.audio?.id, pad.startFrame, pad.endFrame) {
+                    buildPadMiniPeaks(pad)
+                }
+                Canvas(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth(0.72f)
+                        .height(10.dp),
+                ) {
+                    if (peaks.isNotEmpty()) {
+                        val barWidth = size.width / (peaks.size * 1.65f)
+                        val spacing = (size.width - peaks.size * barWidth) /
+                            (peaks.size - 1).coerceAtLeast(1)
+                        peaks.forEachIndexed { index, amount ->
+                            val barHeight = (size.height * amount).coerceAtLeast(1f)
+                            drawRoundRect(
+                                color = Color(0xFFFFE8B8).copy(alpha = 0.72f),
+                                topLeft = Offset(index * (barWidth + spacing), (size.height - barHeight) / 2f),
+                                size = Size(barWidth, barHeight),
+                                cornerRadius = CornerRadius(barWidth / 2f),
+                            )
+                        }
+                    }
+                }
+            }
         }
         Text(
-            text = keyLabel,
+            text = when {
+                pad.playMode == PadPlayMode.LOOP -> "LOOP"
+                pad.contentKind == PadContentKind.DRUM -> "DRM"
+                pad.contentKind == PadContentKind.VOCAL -> "VOX"
+                else -> keyLabel
+            },
             color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
             fontFamily = FontFamily.Monospace,
             fontSize = if (compact) 7.sp else 8.sp,
             modifier = Modifier.align(Alignment.BottomEnd),
         )
     }
+}
+
+private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
+    val audio = pad.audio ?: return FloatArray(0)
+    if (!pad.isAssigned || audio.samples.isEmpty()) return FloatArray(0)
+    val start = pad.startFrame.coerceIn(0, audio.samples.lastIndex)
+    val end = pad.endFrame.coerceIn(start + 1, audio.samples.size)
+    val bucketCount = 9
+    val bucketSize = max(1, (end - start) / bucketCount)
+    val peaks = FloatArray(bucketCount) { bucket ->
+        val from = (start + bucket * bucketSize).coerceAtMost(end - 1)
+        val to = (from + bucketSize).coerceAtMost(end)
+        var peak = 0f
+        var frame = from
+        val stride = max(1, (to - from) / 24)
+        while (frame < to) {
+            peak = max(peak, abs(audio.samples[frame] / 32_768f))
+            frame += stride
+        }
+        peak
+    }
+    val strongest = peaks.maxOrNull()?.coerceAtLeast(0.08f) ?: 1f
+    return FloatArray(bucketCount) { index -> (peaks[index] / strongest).coerceIn(0.12f, 1f) }
 }
 
 private fun padCenterLabel(pad: PadModel): String {

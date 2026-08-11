@@ -97,7 +97,7 @@ fun main() {
         sliceMarkers = listOf(24_000, 60_000),
         activeSliceIndex = 0,
         selectedBank = 1,
-        selectedPad = 31,
+        selectedPad = SamplerConfig.PADS_PER_BANK * 2 - 1,
         autoNextPad = true,
     )
     val assignment = assignRangesToPads(
@@ -105,14 +105,14 @@ fun main() {
         ranges = listOf(SliceRange(1_000, 24_000)),
         statusMessage = "assigned",
     )
-    check(assignment.state.pads[31].startFrame == 1_000)
-    check(assignment.state.selectedPad == 16)
+    check(assignment.state.pads[SamplerConfig.PADS_PER_BANK * 2 - 1].startFrame == 1_000)
+    check(assignment.state.selectedPad == SamplerConfig.PADS_PER_BANK)
     check(assignment.state.activeSliceIndex == 1)
 
     val project = LegacyProjectAdapter.toSnapshot(assignment.state, projectName = "Smoke")
     check(project.schemaVersion == 1)
     check(project.audioAssets.single().channelCount == 1)
-    check(project.pads[31].assetId == project.audioAssets.single().id)
+    check(project.pads[SamplerConfig.PADS_PER_BANK * 2 - 1].assetId == project.audioAssets.single().id)
 
     val wavTest = File.createTempFile("choplab-writer", ".wav")
     WavFileWriter(wavTest, sampleRate, 1).use { writer ->

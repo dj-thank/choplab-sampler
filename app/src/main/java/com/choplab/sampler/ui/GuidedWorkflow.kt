@@ -5,10 +5,9 @@ enum class WorkflowStage(
     val caption: String,
     val guidance: String,
 ) {
-    CAPTURE("入れる", "CAPTURE", "まず曲を読み込むか、マイクで録音します"),
-    SLICE("切る", "SLICE", "必要なら波形を区切って、音の範囲を整えます"),
-    PLAY("叩く", "PLAY", "曲を再生し、ここだと思ったらPADを押します"),
-    ARRANGE("並べる", "ARRANGE", "ビートをループし、別BANKの音を重ねます"),
+    CAPTURE("入れる", "CAPTURE", "曲や声を読み込んで、素材を用意します"),
+    CHOP("チョップ", "CHOP", "切る／鳴らすを切り替えて素材を仕上げます"),
+    BEAT("ビート", "BEAT", "メロディーとドラムを16ステップで組みます"),
     FINISH("完成", "FINISH", "ビートを確認して、4小節WAVを書き出します"),
     ;
 
@@ -18,14 +17,13 @@ enum class WorkflowStage(
 fun restoreWorkflowStage(savedName: String?): WorkflowStage =
     WorkflowStage.entries.firstOrNull { it.name == savedName }
         ?: when (savedName) {
-            "SOURCE" -> WorkflowStage.SLICE
-            "SEQ" -> WorkflowStage.ARRANGE
-            "CHOP", "PAD" -> WorkflowStage.PLAY
-            else -> WorkflowStage.PLAY
+            "SOURCE", "SLICE", "PLAY", "PAD" -> WorkflowStage.CHOP
+            "SEQ", "ARRANGE" -> WorkflowStage.BEAT
+            else -> WorkflowStage.CHOP
         }
 
 fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
-    if (hasAudio) WorkflowStage.PLAY else WorkflowStage.CAPTURE
+    if (hasAudio) WorkflowStage.CHOP else WorkflowStage.CAPTURE
 
 fun pitchDirectionLabel(value: Float): String = when {
     value < -0.49f -> "低い"

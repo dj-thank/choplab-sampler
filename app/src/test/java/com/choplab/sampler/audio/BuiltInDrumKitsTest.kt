@@ -20,7 +20,7 @@ class BuiltInDrumKitsTest {
         val first = BuiltInDrumKits.createBankPads(kit.id, bankIndex = 1)
         val second = BuiltInDrumKits.createBankPads(kit.id, bankIndex = 1)
 
-        assertEquals(SamplerConfig.PADS_PER_BANK, first.size)
+        assertEquals(SamplerConfig.DRUM_KIT_PAD_COUNT, first.size)
         assertTrue(first.all { it.isAssigned && it.contentKind == PadContentKind.DRUM })
         assertEquals(16, first.mapNotNull { it.audio?.id }.distinct().size)
         assertArrayEquals(first[0].audio!!.samples, second[0].audio!!.samples)

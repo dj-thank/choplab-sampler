@@ -22,22 +22,39 @@ fun assignRangesToPads(
     val mutablePads = state.pads.toMutableList()
     val selectedBank = state.selectedBank.coerceIn(0, SamplerConfig.BANK_COUNT - 1)
     val bankStart = selectedBank * SamplerConfig.PADS_PER_BANK
-    var indexInBank = (state.selectedPad - bankStart).coerceIn(0, SamplerConfig.PADS_PER_BANK - 1)
+    val selectedIndexInBank = (state.selectedPad - bankStart)
+        .coerceIn(0, SamplerConfig.PADS_PER_BANK - 1)
+    val writablePadIndices = (0 until SamplerConfig.PADS_PER_BANK)
+        .map { offset -> bankStart + (selectedIndexInBank + offset) % SamplerConfig.PADS_PER_BANK }
+        .filter { index -> !mutablePads[index].isAssigned }
     val changed = mutableListOf<PadModel>()
 
-    acceptedRanges.forEach { range ->
-        val globalIndex = bankStart + indexInBank
+    acceptedRanges.zip(writablePadIndices).forEach { (range, globalIndex) ->
         val updated = mutablePads[globalIndex].copy(
             audio = audio,
             startFrame = range.startFrame,
             endFrame = range.endFrame,
+            contentKind = PadContentKind.SAMPLE,
         )
         mutablePads[globalIndex] = updated
         changed += updated
-        indexInBank = (indexInBank + 1) % SamplerConfig.PADS_PER_BANK
+    }
+    if (changed.isEmpty()) {
+        return PadAssignmentResult(
+            state.copy(statusMessage = "このBANKは満杯です。音を消さず、空きBANKを選んでください"),
+            emptyList(),
+        )
     }
 
-    val nextPad = if (state.autoNextPad) bankStart + indexInBank else state.selectedPad
+    val lastIndexInBank = changed.last().indexInBank
+    val nextPad = if (state.autoNextPad) {
+        (1..SamplerConfig.PADS_PER_BANK)
+            .map { offset -> bankStart + (lastIndexInBank + offset) % SamplerConfig.PADS_PER_BANK }
+            .firstOrNull { index -> !mutablePads[index].isAssigned }
+            ?: changed.last().globalIndex
+    } else {
+        state.selectedPad
+    }
     val nextSlice = if (
         state.autoNextPad && acceptedRanges.size == 1 && state.activeSliceIndex != null
     ) {
@@ -53,7 +70,11 @@ fun assignRangesToPads(
             selectedBank = selectedBank,
             selectedPad = nextPad,
             activeSliceIndex = nextSlice,
-            statusMessage = statusMessage,
+            statusMessage = if (changed.size == acceptedRanges.size) {
+                statusMessage
+            } else {
+                "空きPAD ${changed.size}個だけに保存しました。既存の音は上書きしていません"
+            },
         ),
         changedPads = changed,
     )
@@ -77,6 +98,12 @@ fun assignLiveChopToPad(
     val bankEndExclusive = bankStart + SamplerConfig.PADS_PER_BANK
     if (padIndex !in bankStart until bankEndExclusive) {
         return PadAssignmentResult(state, emptyList())
+    }
+    if (state.pads[padIndex].isAssigned) {
+        return PadAssignmentResult(
+            state.copy(statusMessage = "PAD ${state.pads[padIndex].indexInBank + 1}には音があります。上書きしません"),
+            emptyList(),
+        )
     }
 
     val selectionEnd = state.rangeEndFrame

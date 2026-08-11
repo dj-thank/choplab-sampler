@@ -7,12 +7,14 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-/** Two-generation app-owned autosave with a synced temporary file and recoverable replacement. */
+/** Three-generation app-owned autosave with a synced, validated temporary replacement. */
 class AtomicProjectStore(private val directory: File) {
     internal val primaryFile = File(directory, "autosave.choplab")
     private val backupFile = File(directory, "autosave.previous.choplab")
+    private val olderBackupFile = File(directory, "autosave.previous2.choplab")
     private val temporaryFile = File(directory, "autosave.pending.choplab")
 
+    @Synchronized
     fun save(state: SamplerUiState) {
         require(directory.exists() || directory.mkdirs()) { "自動保存フォルダーを作成できません" }
         runCatching { temporaryFile.delete() }
@@ -22,6 +24,8 @@ class AtomicProjectStore(private val directory: File) {
                 output.flush()
                 output.fd.sync()
             }
+            temporaryFile.inputStream().buffered().use(ProjectArchiveCodec::read)
+            if (backupFile.exists()) moveReplacing(backupFile, olderBackupFile)
             if (primaryFile.exists()) moveReplacing(primaryFile, backupFile)
             try {
                 moveReplacing(temporaryFile, primaryFile)
@@ -36,8 +40,10 @@ class AtomicProjectStore(private val directory: File) {
         }
     }
 
+    @Synchronized
     fun load(): SamplerUiState? {
-        val candidates = listOf(primaryFile, backupFile, temporaryFile).filter(File::isFile)
+        val candidates = listOf(primaryFile, temporaryFile, backupFile, olderBackupFile)
+            .filter(File::isFile)
         if (candidates.isEmpty()) return null
         var firstFailure: Throwable? = null
         candidates.forEach { file ->
