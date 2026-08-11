@@ -18,6 +18,11 @@ enum class SourcePlaybackRequest {
     SEEK,
 }
 
+enum class SourcePlaybackToggleAction {
+    START,
+    STOP,
+}
+
 data class SourcePlaybackRequestFeedback(
     val sourcePlaying: Boolean,
     val statusMessage: String,
@@ -37,6 +42,16 @@ fun sourcePlaybackStartFrame(requestedFrame: Int, frameCount: Int): Int {
     if (frameCount <= 1) return 0
     return requestedFrame.takeIf { it in 0 until frameCount - 1 } ?: 0
 }
+
+fun sourcePlaybackToggleAction(
+    appliedPlaying: Boolean,
+    startPending: Boolean,
+): SourcePlaybackToggleAction =
+    if (appliedPlaying || startPending) {
+        SourcePlaybackToggleAction.STOP
+    } else {
+        SourcePlaybackToggleAction.START
+    }
 
 /** Keeps UI playback truth on the last command applied by the audio thread. */
 fun sourcePlaybackRequestFeedback(

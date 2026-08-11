@@ -66,6 +66,22 @@ class PadPressRoutingTest {
     }
 
     @Test
+    fun secondToggleCancelsAStartThatIsStillPending() {
+        assertEquals(
+            SourcePlaybackToggleAction.START,
+            sourcePlaybackToggleAction(appliedPlaying = false, startPending = false),
+        )
+        assertEquals(
+            SourcePlaybackToggleAction.STOP,
+            sourcePlaybackToggleAction(appliedPlaying = false, startPending = true),
+        )
+        assertEquals(
+            SourcePlaybackToggleAction.STOP,
+            sourcePlaybackToggleAction(appliedPlaying = true, startPending = false),
+        )
+    }
+
+    @Test
     fun audioThreadPlaybackTransitionsReplacePendingCopyWithAppliedCopy() {
         assertEquals(
             "サンプリング中 — 「ここだ」で空PADを叩いてください",

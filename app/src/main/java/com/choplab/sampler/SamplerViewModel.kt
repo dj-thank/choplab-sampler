@@ -32,6 +32,7 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.SourceCaptureOperation
 import com.choplab.sampler.model.SourcePlaybackRequest
+import com.choplab.sampler.model.SourcePlaybackToggleAction
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
@@ -51,9 +52,10 @@ import com.choplab.sampler.model.selectPlayablePadPage as selectPlayablePadPageS
 import com.choplab.sampler.model.selectSourceRangeForScratch
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
-import com.choplab.sampler.model.sourcePlaybackStartFrame
 import com.choplab.sampler.model.sourcePlaybackAppliedStatusMessage
 import com.choplab.sampler.model.sourcePlaybackRequestFeedback
+import com.choplab.sampler.model.sourcePlaybackStartFrame
+import com.choplab.sampler.model.sourcePlaybackToggleAction
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.trimPadBoundary
@@ -88,6 +90,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val microphoneSourceCapture = SourceCaptureOperation(projectOperations)
     private val systemSourceCapture = SourceCaptureOperation(projectOperations)
     private val vocalCapture = SourceCaptureOperation(projectOperations)
+    private var sourceStartPending = false
 
     private val mutableUiState = MutableStateFlow(SamplerUiState())
     val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
@@ -110,6 +113,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
+                        sourceStartPending = false
                         engine.stopSource()
                         engine.stopTransport()
                         engine.stopAllVoices()
@@ -363,6 +367,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
             return
         }
+        sourceStartPending = false
         engine.stopSource()
         state.loopingPadIndex?.let(engine::stopPad)
         state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
@@ -500,6 +505,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         projectOperations.invalidate()
         val reset = resetProjectState(mutableUiState.value)
         autosaveJob?.cancel()
+        sourceStartPending = false
         engine.stopSource()
         engine.stopTransport()
         engine.stopAllVoices()
@@ -881,25 +887,30 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("先に曲を読み込んでください")
             return
         }
-        if (state.sourcePlaying) {
-            engine.stopSource()
-            mutableUiState.update { current ->
-                val feedback = sourcePlaybackRequestFeedback(
-                    appliedPlaying = current.sourcePlaying,
-                    request = SourcePlaybackRequest.STOP,
-                )
-                current.copy(
-                    sourcePlaying = feedback.sourcePlaying,
-                    statusMessage = feedback.statusMessage,
-                )
+        when (sourcePlaybackToggleAction(state.sourcePlaying, sourceStartPending)) {
+            SourcePlaybackToggleAction.STOP -> {
+                sourceStartPending = false
+                engine.stopSource()
+                mutableUiState.update { current ->
+                    val feedback = sourcePlaybackRequestFeedback(
+                        appliedPlaying = current.sourcePlaying,
+                        request = SourcePlaybackRequest.STOP,
+                    )
+                    current.copy(
+                        sourcePlaying = feedback.sourcePlaying,
+                        statusMessage = feedback.statusMessage,
+                    )
+                }
+                return
             }
-            return
+            SourcePlaybackToggleAction.START -> Unit
         }
 
         if (state.transportPlaying) {
             engine.stopTransport()
         }
         val start = sourcePlaybackStartFrame(state.sourcePlayheadFrame, audio.frameCount)
+        sourceStartPending = true
         engine.playSource(audio, start, state.masterPitchSemitones)
         mutableUiState.update { current ->
             val feedback = sourcePlaybackRequestFeedback(
@@ -924,6 +935,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         engine.stopTransport()
         engine.stopSource()
+        sourceStartPending = !state.sourcePlaying
         engine.playSource(audio, 0, state.masterPitchSemitones)
         mutableUiState.update { current ->
             val feedback = sourcePlaybackRequestFeedback(
@@ -948,6 +960,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         val safe = frame.coerceIn(0, audio.frameCount - 1)
         engine.stopTransport()
+        sourceStartPending = !state.sourcePlaying
         engine.playSource(audio, safe, state.masterPitchSemitones)
         mutableUiState.update { current ->
             val feedback = sourcePlaybackRequestFeedback(
@@ -968,7 +981,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
         val safe = frame.coerceIn(0, audio.frameCount - 1)
-        if (state.sourcePlaying) {
+        if (state.sourcePlaying || sourceStartPending) {
+            sourceStartPending = !state.sourcePlaying
             engine.playSource(audio, safe, state.masterPitchSemitones)
         }
         mutableUiState.update { it.copy(sourcePlayheadFrame = safe) }
@@ -979,7 +993,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio
         val frame = engine.currentSourceFrame.takeIf { it >= 0 } ?: state.sourcePlayheadFrame
-        if (state.sourcePlaying && audio != null) {
+        if ((state.sourcePlaying || sourceStartPending) && audio != null) {
+            sourceStartPending = !state.sourcePlaying
             engine.playSource(audio, frame.coerceIn(0, audio.frameCount - 1), pitch)
         }
         commitEdit(mergeKey = "master-pitch") { it.copy(masterPitchSemitones = pitch) }
@@ -1213,7 +1228,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             engine.stopTransport()
             mutableUiState.update { it.copy(transportPlaying = false, currentStep = -1) }
         } else {
-            if (mutableUiState.value.sourcePlaying) {
+            if (mutableUiState.value.sourcePlaying || sourceStartPending) {
+                sourceStartPending = false
                 engine.stopSource()
             }
             syncPattern()
@@ -1264,6 +1280,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun stopAllSounds() {
+        sourceStartPending = false
         engine.stopAllVoices()
         mutableUiState.update {
             it.copy(
@@ -1471,6 +1488,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             selectedDrumKitId == other.selectedDrumKitId
 
     private fun applyProjectState(restored: SamplerUiState, message: String) {
+        sourceStartPending = false
         engine.stopSource()
         engine.stopTransport()
         engine.stopAllVoices()
@@ -1592,6 +1610,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 val step = engine.currentStep
                 val sourceFrame = engine.currentSourceFrame
                 val sourceIsPlaying = engine.sourcePlaying
+                if (sourceIsPlaying) sourceStartPending = false
                 val loopPad = engine.currentLoopPad.takeIf { it >= 0 }
                 val loopFrame = engine.currentLoopFrame
                 val scratchPad = engine.currentScratchPad.takeIf { it >= 0 }
