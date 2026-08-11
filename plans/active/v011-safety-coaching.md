@@ -87,6 +87,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Implemented Milestone 1 with Red/Green guidance, destructive-intent, compact Beat, and layout-policy evidence.
 - [x] 2026-08-12 - Implemented Milestone 2 with Red/Green project-epoch, capture-operation, and revision-arrival evidence.
 - [x] 2026-08-12 - Implemented Milestone 3 with Red/Green source-generation and finite-Scratch evidence; final review found and closed the applied-vs-issued playback gap.
+- [x] 2026-08-12 - Merged PR #20, passed branch/PR/main/tag/release CI, published `v0.11.0-preview.1`, and reverse-verified the public APK plus checksum.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
 ## Discoveries
@@ -105,7 +106,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - 2026-08-12 - Preserve the existing visual system and fixed layout. Use existing TIP and confirmation components instead of adding controls or a tutorial page.
 - 2026-08-12 - Treat a Beat loop as repetition of one selected Chop, matching `CONTEXT.md`; label pattern placement separately.
 - 2026-08-12 - Keep the source replacement model, but require explicit intent when there is material work and reject stale asynchronous completions.
-- 2026-08-12 - Do not claim Luna fan-out: the Luna setup check found `max_concurrent_threads_per_session=10` instead of the required 40. Sol agents were explicitly requested and used through the available Sol route.
+- 2026-08-12 - Do not claim Luna fan-out: the Luna setup check found `max_concurrent_threads_per_session=10` instead of the required 40. Sol routing was explicitly requested, but returned runtime metadata did not expose the effective model name; therefore no runtime-verified Sol claim is made.
 
 ## Validation log
 
@@ -116,6 +117,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - local APK - 2026-08-12 - versionCode 15 / versionName 0.11.0; 31,516,578 bytes; SHA-256 `37D60CB25D7FC996B68BC83F7FDDCAFA3DE770117ABC1A072A53A8C256B7CC85`; v2 signature verified.
 - dedicated `emulator-5590` - 2026-08-12 - in-place install PASS; autosave remained 5,316,915 bytes and SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`; cold launch alive with no focused fatal/ANR match.
 - fixed-layout audit - 2026-08-12 - accepted portrait Chop plus landscape Chop, Beat Quick, and Beat Details captures under `work/v011-audit/`; scroll API scan zero matches.
+- GitHub publication - 2026-08-12 - PR #20 merge `1e0446a29ba245383149de9bfab7863bd69b87e8`; branch/PR/main/tag/release runs `31522964955` / `31522968714` / `31523293224` / `31523626784` / `31523626790` PASS.
+- public APK - 2026-08-12 - 30,723,019 bytes; SHA-256 `04F7284DB3EF90F37561259BF1E0DBCDE59D4AD6A06A448B8729A942AC902B39`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match.
 
 ## Risks and rollback
 

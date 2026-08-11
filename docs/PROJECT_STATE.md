@@ -14,7 +14,11 @@ Local gate: configured offline validation PASS; 125 unit tests with zero failure
 
 Dedicated Pixel 9/API 36 emulator `emulator-5590` received the final local APK through `adb install -r`. Its 5,316,915-byte autosave stayed byte-identical before and after installation at SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`; cold launch reported version 0.11.0, the app process remained alive, and the focused fatal/ANR query returned zero matches. Accepted fixed-layout captures are `work/v011-audit/20-chop-final.png`, `23-chop-landscape-final.png`, `26-beat-landscape-final.png`, and `28-beat-details-landscape.png`.
 
-The physical Pixel 9a `5A121JEBF08094` was not present in the final ADB inventory; data-preserving device install and physical audio interaction therefore remain pending. Public GitHub CI/release identity is also pending at this checkpoint. Subjective latency, sustained multi-touch/audio quality, microphone ambience, production signing, and `HUMAN_GO` are not claimed.
+PR [#20](https://github.com/dj-thank/choplab-sampler/pull/20) merged as `1e0446a29ba245383149de9bfab7863bd69b87e8`. Branch run `31522964955`, PR run `31522968714`, main run `31523293224`, tag verification `31523626784`, and release run `31523626790` all passed. Annotated tag `v0.11.0-preview.1` resolves to the merge commit and the [public prerelease](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.11.0-preview.1) is available.
+
+The reverse-downloaded public APK is 30,723,019 bytes with SHA-256 `04F7284DB3EF90F37561259BF1E0DBCDE59D4AD6A06A448B8729A942AC902B39`; GitHub asset digest and checksum sidecar match. It reports package `com.choplab.sampler`, versionCode 15, versionName 0.11.0, minSdk 29, targetSdk 36, APK Signature Scheme v2, and certificate SHA-256 `E2A9863BAAB8940BD1716D088118C1E766867CCEA48641678192F7B187F2CD1F`. That CI certificate differs from the installed local-build certificate, so the public APK was not installed over retained app data.
+
+The physical Pixel 9a `5A121JEBF08094` was not present in either the final ADB or Windows USB inventory; data-preserving device install and physical audio interaction therefore remain pending. Subjective latency, sustained multi-touch/audio quality, microphone ambience, production signing, and `HUMAN_GO` are not claimed.
 
 ## Simple Chop and project isolation — 2026-08-12
 
