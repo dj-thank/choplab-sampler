@@ -38,7 +38,7 @@ object BuiltInDrumKits {
     fun createBankPads(kitId: String, bankIndex: Int): List<PadModel> {
         require(bankIndex in 0 until SamplerConfig.BANK_COUNT)
         val kit = catalog.firstOrNull { it.id == kitId } ?: error("Unknown drum kit: $kitId")
-        return List(SamplerConfig.PADS_PER_BANK) { index ->
+        return List(SamplerConfig.DRUM_KIT_PAD_COUNT) { index ->
             val family = index / 4
             val variation = index % 4
             val samples = renderOneShot(kit, family, variation)

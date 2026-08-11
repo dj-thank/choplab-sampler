@@ -7,22 +7,24 @@ class VocalTakeRoutingTest {
     @Test
     fun nextVocalTakeUsesTheFirstEmptyPadInBankD() {
         val audio = PcmAudio(name = "voice", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val vocalStart = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
-            if (index in 48..50) {
+            if (index in vocalStart..vocalStart + 2) {
                 PadModel(index, audio = audio, startFrame = 0, endFrame = 2, contentKind = PadContentKind.VOCAL)
             } else {
                 PadModel(index)
             }
         }
 
-        assertEquals(51, pads.nextVocalPadIndex())
+        assertEquals(vocalStart + 3, pads.nextVocalPadIndex())
     }
 
     @Test
     fun fullVocalBankRefusesToOverwriteAnExistingTake() {
         val audio = PcmAudio(name = "voice", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val vocalStart = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
-            if (index >= 48) {
+            if (index >= vocalStart) {
                 PadModel(index, audio = audio, startFrame = 0, endFrame = 2, contentKind = PadContentKind.VOCAL)
             } else {
                 PadModel(index)

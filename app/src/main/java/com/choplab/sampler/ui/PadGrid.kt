@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.bankRoleFor
 import kotlin.math.abs
 import kotlin.math.max
@@ -64,9 +65,15 @@ fun PadGrid(
     gap: Dp = 6.dp,
     columns: Int = 4,
 ) {
-    require(pads.size == 16) { "PadGrid requires exactly 16 pads" }
-    require(columns in 1..pads.size) { "PadGrid columns must be between 1 and 16" }
-    require(pads.size % columns == 0) { "PadGrid columns must divide 16 pads" }
+    require(pads.size == SamplerConfig.PAD_PAGE_SIZE) {
+        "PadGrid requires exactly ${SamplerConfig.PAD_PAGE_SIZE} pads"
+    }
+    require(columns in 1..pads.size) {
+        "PadGrid columns must be between 1 and ${SamplerConfig.PAD_PAGE_SIZE}"
+    }
+    require(pads.size % columns == 0) {
+        "PadGrid columns must divide ${SamplerConfig.PAD_PAGE_SIZE} pads"
+    }
     val rows = pads.size / columns
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),

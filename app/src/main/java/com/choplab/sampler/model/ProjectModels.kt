@@ -5,7 +5,7 @@ object ProjectSchema {
 }
 
 object ProjectLimits {
-    const val MAX_AUDIO_ASSETS = 128
+    const val MAX_AUDIO_ASSETS = 256
     const val MAX_IDENTIFIER_CHARS = 128
     const val MAX_AUDIO_ASSET_ID_CHARS = MAX_IDENTIFIER_CHARS
     const val MAX_ASSET_NAME_CHARS = 240

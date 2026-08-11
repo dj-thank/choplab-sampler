@@ -175,7 +175,7 @@ fun BeatSoundRail(
     onPreviewPad: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    require(pads.size == SamplerConfig.PADS_PER_BANK)
+    require(pads.size == SamplerConfig.PAD_PAGE_SIZE)
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(3.dp),

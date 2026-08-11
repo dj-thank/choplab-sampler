@@ -4,10 +4,13 @@ import kotlin.math.max
 
 object SamplerConfig {
     const val BANK_COUNT = 4
-    const val PADS_PER_BANK = 16
+    const val PAD_PAGE_SIZE = 16
+    const val PAD_PAGES_PER_BANK = 2
+    const val PADS_PER_BANK = PAD_PAGE_SIZE * PAD_PAGES_PER_BANK
     const val PAD_COUNT = BANK_COUNT * PADS_PER_BANK
     const val STEP_COUNT = 16
     const val DRUM_BANK_INDEX = 1
+    const val DRUM_KIT_PAD_COUNT = PAD_PAGE_SIZE
     const val VOCAL_BANK_INDEX = 3
 }
 
@@ -33,7 +36,7 @@ enum class DrumKitApplyDecision {
 fun drumKitApplyDecision(pads: List<PadModel>): DrumKitApplyDecision {
     require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
     val start = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
-    return if (pads.subList(start, start + SamplerConfig.PADS_PER_BANK).any(PadModel::isAssigned)) {
+    return if (pads.subList(start, start + SamplerConfig.DRUM_KIT_PAD_COUNT).any(PadModel::isAssigned)) {
         DrumKitApplyDecision.CONFIRM_REPLACE
     } else {
         DrumKitApplyDecision.APPLY
@@ -124,6 +127,7 @@ data class SamplerUiState(
     val loopPlayheadFrame: Int = -1,
     val scratchingPadIndex: Int? = null,
     val scratchPlayheadFrame: Int = -1,
+    val sourceScratchActive: Boolean = false,
     val selectedDrumKitId: String = "dusty-jazz",
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
@@ -131,8 +135,22 @@ data class SamplerUiState(
 )
 
 fun SamplerUiState.visiblePads(): List<PadModel> {
-    val start = selectedBank * SamplerConfig.PADS_PER_BANK
-    return pads.subList(start, start + SamplerConfig.PADS_PER_BANK)
+    val bankStart = selectedBank * SamplerConfig.PADS_PER_BANK
+    val selectedPage = ((selectedPad - bankStart).coerceAtLeast(0) / SamplerConfig.PAD_PAGE_SIZE)
+        .coerceIn(0, SamplerConfig.PAD_PAGES_PER_BANK - 1)
+    val start = bankStart + selectedPage * SamplerConfig.PAD_PAGE_SIZE
+    return pads.subList(start, start + SamplerConfig.PAD_PAGE_SIZE)
+}
+
+fun SamplerUiState.selectedPadPage(): Int =
+    (selectedPad % SamplerConfig.PADS_PER_BANK) / SamplerConfig.PAD_PAGE_SIZE
+
+fun defaultMelodyChopPad(pads: List<PadModel>): Int {
+    require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
+    return pads.take(SamplerConfig.PADS_PER_BANK)
+        .firstOrNull { !it.isAssigned }
+        ?.globalIndex
+        ?: 0
 }
 
 fun SamplerUiState.selectedPadModel(): PadModel = pads[selectedPad]
@@ -161,6 +179,14 @@ fun SamplerUiState.sliceRanges(): List<SliceRange> {
 fun SamplerUiState.activeSliceRange(): SliceRange? {
     val index = activeSliceIndex ?: return null
     return sliceRanges().getOrNull(index)
+}
+
+fun SamplerUiState.sourceScratchRange(): SliceRange? {
+    val audio = currentAudio ?: return null
+    activeSliceRange()?.let { return it }
+    val start = rangeStartFrame.coerceIn(0, (audio.frameCount - 1).coerceAtLeast(0))
+    val end = rangeEndFrame.coerceIn(start + 1, audio.frameCount)
+    return SliceRange(start, end).takeIf { it.length > 1 }
 }
 
 fun stepKey(padIndex: Int, stepIndex: Int): Int =

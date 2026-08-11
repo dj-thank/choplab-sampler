@@ -22,13 +22,13 @@ import org.junit.Test
 
 class ProjectArchiveCodecTest {
     @Test
-    fun archiveUsesSchemaFourWhenPadContentRolesCanBeStored() {
+    fun archiveUsesSchemaFiveForPagedRoleBanks() {
         val manifest = unzip(archiveFor(SamplerUiState()))
             .single { (name, _) -> name == "project.txt" }
             .second
             .toString(Charsets.UTF_8)
 
-        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t4\n"))
+        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t5\n"))
     }
 
     @Test
@@ -112,6 +112,45 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
+    fun schemaFourSixteenPadBanksMigrateToFirstPageWithoutIndexDrift() {
+        val currentB01 = SamplerConfig.PADS_PER_BANK
+        val current = SamplerUiState(
+            selectedBank = 1,
+            selectedPad = currentB01,
+            activeSteps = setOf(stepKey(currentB01, 3)),
+        )
+        val entries = unzip(archiveFor(current)).map { (name, bytes) ->
+            if (name != "project.txt") return@map name to bytes
+            val migratedLines = bytes.toString(Charsets.UTF_8).lineSequence().mapNotNull { line ->
+                when {
+                    line.startsWith("CHOPLAB_PROJECT\t") -> "CHOPLAB_PROJECT\t4"
+                    line.startsWith("padCount\t") -> "padCount\t64"
+                    line.startsWith("state\t") -> line.split('\t').toMutableList().also { it[6] = "16" }.joinToString("\t")
+                    line.startsWith("steps\t") -> "steps\t${stepKey(16, 3)}"
+                    line.startsWith("pad\t") -> {
+                        val fields = line.split('\t').toMutableList()
+                        val currentIndex = fields[1].toInt()
+                        val bank = currentIndex / SamplerConfig.PADS_PER_BANK
+                        val indexInBank = currentIndex % SamplerConfig.PADS_PER_BANK
+                        if (indexInBank >= 16) null else {
+                            fields[1] = (bank * 16 + indexInBank).toString()
+                            fields.joinToString("\t")
+                        }
+                    }
+                    else -> line
+                }
+            }.joinToString("\n", postfix = "\n")
+            name to migratedLines.toByteArray(Charsets.UTF_8)
+        }
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+
+        assertEquals(currentB01, restored.selectedPad)
+        assertEquals(setOf(stepKey(currentB01, 3)), restored.activeSteps)
+        assertEquals(SamplerConfig.PAD_COUNT, restored.pads.size)
+    }
+
+    @Test
     fun archiveRejectsPathTraversalBeforeUsingUnknownContent() {
         val valid = archiveFor(SamplerUiState())
         val entries = unzip(valid).toMutableList().apply {
@@ -164,7 +203,7 @@ class ProjectArchiveCodecTest {
         val schemaOneEntries = schemaTwoEntries.map { (name, bytes) ->
             when (name) {
                 "project.txt" -> name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t1")
+                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t1")
                     .replace("audio/0.wav", "audio/0.pcm")
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
@@ -187,7 +226,7 @@ class ProjectArchiveCodecTest {
         ).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t2")
+                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t2")
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
             } else {
@@ -217,7 +256,7 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(state)).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t3")
+                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t3")
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
             } else {
@@ -236,7 +275,7 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t999")
+                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t999")
                     .toByteArray(Charsets.UTF_8)
             } else {
                 name to bytes

@@ -6,8 +6,8 @@ import org.junit.Test
 class PatternEditingTest {
     @Test
     fun beatLaneDistinguishesSelectedSoundFromAnotherSoundInTheSameBank() {
-        val selectedPad = 16
-        val otherPad = 17
+        val selectedPad = SamplerConfig.PADS_PER_BANK
+        val otherPad = selectedPad + 1
         val steps = setOf(stepKey(selectedPad, 0), stepKey(otherPad, 4))
 
         assertEquals(LaneStepState.SELECTED_SOUND, laneStepState(steps, 1, selectedPad, 0))
@@ -54,13 +54,17 @@ class PatternEditingTest {
         val existing = setOf(
             stepKey(0, 0),
             stepKey(0, 4),
-            stepKey(16, 0),
-            stepKey(32, 0),
-            stepKey(48, 0),
+            stepKey(SamplerConfig.PADS_PER_BANK, 0),
+            stepKey(SamplerConfig.PADS_PER_BANK * 2, 0),
+            stepKey(SamplerConfig.PADS_PER_BANK * 3, 0),
         )
 
         assertEquals(
-            setOf(stepKey(16, 0), stepKey(32, 0), stepKey(48, 0)),
+            setOf(
+                stepKey(SamplerConfig.PADS_PER_BANK, 0),
+                stepKey(SamplerConfig.PADS_PER_BANK * 2, 0),
+                stepKey(SamplerConfig.PADS_PER_BANK * 3, 0),
+            ),
             existing.clearPadSteps(0),
         )
     }
@@ -69,9 +73,9 @@ class PatternEditingTest {
     fun `bank activity reports layered banks for one step`() {
         val pattern = setOf(
             stepKey(0, 4),
-            stepKey(17, 4),
-            stepKey(34, 4),
-            stepKey(47, 3),
+            stepKey(SamplerConfig.PADS_PER_BANK + 1, 4),
+            stepKey(SamplerConfig.PADS_PER_BANK * 2 + 2, 4),
+            stepKey(SamplerConfig.PADS_PER_BANK * 2 + 15, 3),
         )
 
         assertEquals(setOf(0, 1, 2), pattern.activeBanksAtStep(4))
@@ -122,7 +126,7 @@ class PatternEditingTest {
     @Test
     fun `pattern content accepts a vocal take without step events`() {
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
-            if (index == 48) {
+            if (index == SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK) {
                 PadModel(
                     globalIndex = index,
                     audio = PcmAudio(name = "voice", samples = shortArrayOf(1, 2), sampleRate = 48_000),
@@ -142,10 +146,10 @@ class PatternEditingTest {
     fun `repeat grid recognition matches only exact selected pad pattern`() {
         val layered = emptySet<Int>()
             .replacePadSteps(0, RepeatGrid.QUARTER)
-            .replacePadSteps(16, RepeatGrid.EIGHTH)
+            .replacePadSteps(SamplerConfig.PADS_PER_BANK, RepeatGrid.EIGHTH)
 
         assertEquals(RepeatGrid.QUARTER, layered.repeatGridForPad(0))
-        assertEquals(RepeatGrid.EIGHTH, layered.repeatGridForPad(16))
+        assertEquals(RepeatGrid.EIGHTH, layered.repeatGridForPad(SamplerConfig.PADS_PER_BANK))
         assertEquals(null, (layered + stepKey(0, 2)).repeatGridForPad(0))
     }
 }

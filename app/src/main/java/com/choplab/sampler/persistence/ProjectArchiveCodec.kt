@@ -28,7 +28,10 @@ object ProjectArchiveCodec {
     private const val LEGACY_PCM_SCHEMA_VERSION = 1
     private const val WAV_SCHEMA_VERSION = 2
     private const val CONTENT_KIND_SCHEMA_VERSION = 4
-    private const val SCHEMA_VERSION = CONTENT_KIND_SCHEMA_VERSION
+    private const val PAGED_BANK_SCHEMA_VERSION = 5
+    private const val SCHEMA_VERSION = PAGED_BANK_SCHEMA_VERSION
+    private const val LEGACY_LAYOUT_PAD_COUNT = 64
+    private const val LEGACY_PADS_PER_BANK = 16
     private const val MANIFEST_ENTRY = "project.txt"
     private const val MAX_MANIFEST_BYTES = 256 * 1024
     private const val MAX_MVP_AUDIO_FRAMES = 30_000_000
@@ -239,7 +242,10 @@ object ProjectArchiveCodec {
         val padCountLine = next("padCount")
         require(padCountLine.size == 2) { "padCountが不正です" }
         val padCount = padCountLine[1].toIntStrict("padCount")
-        require(padCount == SamplerConfig.PAD_COUNT) { "PAD数が不正です" }
+        require(
+            padCount == SamplerConfig.PAD_COUNT ||
+                schemaVersion < PAGED_BANK_SCHEMA_VERSION && padCount == LEGACY_LAYOUT_PAD_COUNT,
+        ) { "PAD数が不正です" }
         val pads = List(padCount) { expectedIndex ->
             val values = next("pad")
             val expectedPadFields = if (schemaVersion >= CONTENT_KIND_SCHEMA_VERSION) 12 else 11
@@ -301,9 +307,18 @@ object ProjectArchiveCodec {
 
         val currentAudio = audioAt(currentAudioIndex)
         val safeEnd = currentAudio?.frameCount ?: 0
+        val legacyLayout = pads.size == LEGACY_LAYOUT_PAD_COUNT
+        val storedPadsPerBank = if (legacyLayout) LEGACY_PADS_PER_BANK else SamplerConfig.PADS_PER_BANK
+        fun currentPadIndex(storedIndex: Int): Int = if (legacyLayout) {
+            val bank = storedIndex / LEGACY_PADS_PER_BANK
+            val indexInBank = storedIndex % LEGACY_PADS_PER_BANK
+            bank * SamplerConfig.PADS_PER_BANK + indexInBank
+        } else {
+            storedIndex
+        }
         require(selectedBank in 0 until SamplerConfig.BANK_COUNT) { "選択BANKが不正です" }
-        require(selectedPad in 0 until SamplerConfig.PAD_COUNT) { "選択PADが不正です" }
-        require(selectedPad / SamplerConfig.PADS_PER_BANK == selectedBank) { "選択BANKとPADが一致しません" }
+        require(selectedPad in 0 until pads.size) { "選択PADが不正です" }
+        require(selectedPad / storedPadsPerBank == selectedBank) { "選択BANKとPADが一致しません" }
         require(rangeStartFrame in 0..safeEnd && rangeEndFrame in rangeStartFrame..safeEnd) { "選択範囲が不正です" }
         require(sliceMarkers == sliceMarkers.distinct().sorted()) { "チョップ位置が不正です" }
         require(sliceMarkers.all { it > rangeStartFrame && it < rangeEndFrame }) { "チョップ位置が範囲外です" }
@@ -312,10 +327,11 @@ object ProjectArchiveCodec {
         require(bpm in 40f..240f) { "BPMが不正です" }
         require(swing in 50f..75f) { "Swingが不正です" }
         require(masterPitchSemitones in -12f..12f) { "曲のKEYが不正です" }
-        require(activeSteps.all { it in 0 until SamplerConfig.PAD_COUNT * SamplerConfig.STEP_COUNT }) {
+        require(activeSteps.all { it in 0 until pads.size * SamplerConfig.STEP_COUNT }) {
             "シーケンス位置が不正です"
         }
-        val restoredPads = pads.map { pad ->
+        val restoredPads = MutableList(SamplerConfig.PAD_COUNT) { PadModel(it) }
+        pads.forEach { pad ->
             val padAudio = audioAt(pad.audioIndex)
             require(pad.pitchSemitones in -24f..24f) { "PAD pitchが不正です" }
             require(pad.tone in 0f..1f) { "PAD toneが不正です" }
@@ -328,8 +344,9 @@ object ProjectArchiveCodec {
                     "PAD範囲が不正です"
                 }
             }
-            PadModel(
-                globalIndex = pad.globalIndex,
+            val migratedIndex = currentPadIndex(pad.globalIndex)
+            restoredPads[migratedIndex] = PadModel(
+                globalIndex = migratedIndex,
                 audio = padAudio,
                 startFrame = pad.startFrame,
                 endFrame = pad.endFrame,
@@ -342,6 +359,12 @@ object ProjectArchiveCodec {
                 chokeGroup = pad.chokeGroup,
             )
         }
+        val restoredSteps = activeSteps.mapTo(mutableSetOf()) { key ->
+            val storedPad = key / SamplerConfig.STEP_COUNT
+            val step = key % SamplerConfig.STEP_COUNT
+            currentPadIndex(storedPad) * SamplerConfig.STEP_COUNT + step
+        }
+        val restoredSelectedPad = currentPadIndex(selectedPad)
         return SamplerUiState(
             statusMessage = "プロジェクトを復元しました",
             currentAudio = currentAudio,
@@ -351,10 +374,10 @@ object ProjectArchiveCodec {
             activeSliceIndex = activeSliceIndex.takeIf { it >= 0 },
             manualChopEnabled = manualChopEnabled,
             selectedBank = selectedBank,
-            selectedPad = selectedPad,
+            selectedPad = restoredSelectedPad,
             autoNextPad = autoNextPad,
             pads = restoredPads,
-            activeSteps = activeSteps,
+            activeSteps = restoredSteps,
             bpm = bpm,
             swing = swing,
             sourcePlayheadFrame = sourcePlayheadFrame.coerceIn(0, (safeEnd - 1).coerceAtLeast(0)),

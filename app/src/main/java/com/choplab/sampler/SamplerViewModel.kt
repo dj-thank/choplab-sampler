@@ -34,6 +34,7 @@ import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.drumKitApplyDecision
+import com.choplab.sampler.model.defaultMelodyChopPad
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.replacePadSteps
@@ -41,6 +42,7 @@ import com.choplab.sampler.model.resolvePadPressAction
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourcePlaybackStartFrame
+import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
@@ -90,6 +92,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     engine.stopSource()
                     editHistory.reset()
                     mutableUiState.update { state ->
+                        val melodyPad = defaultMelodyChopPad(state.pads)
                         state.copy(
                             isLoading = false,
                             currentAudio = audio,
@@ -98,12 +101,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             sliceMarkers = emptyList(),
                             activeSliceIndex = null,
                             manualChopEnabled = false,
+                            selectedBank = 0,
+                            selectedPad = melodyPad,
                             sourcePlaying = false,
                             sourcePlayheadFrame = 0,
                             masterPitchSemitones = 0f,
                             canUndo = false,
                             canRedo = false,
-                            statusMessage = "${audio.name} を読み込みました",
+                            statusMessage = "${audio.name} を読み込みました — チョップ先は A メロディーです",
                         )
                     }
                     projectRevision++
@@ -215,7 +220,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private fun assignVocalTake(audio: PcmAudio) {
         val bankStart = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
         val target = mutableUiState.value.pads.nextVocalPadIndex() ?: run {
-            setStatus("BANK D は16テイクで満杯です。不要なVOICE PADを消してから録音してください")
+            setStatus("BANK D は${SamplerConfig.PADS_PER_BANK}テイクで満杯です。不要なVOICE PADを消してから録音してください")
             return
         }
         val vocalPad = PadModel(
@@ -255,7 +260,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 return
             }
         val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
-        val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
+        val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
         mutableUiState.value.loopingPadIndex
             ?.takeIf { it in bankStart until bankEnd }
             ?.let(engine::stopPad)
@@ -302,7 +307,34 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 loopPlayheadFrame = -1,
                 scratchingPadIndex = padIndex,
                 scratchPlayheadFrame = startFrame,
+                sourceScratchActive = false,
                 statusMessage = "指を左右へ動かしてスクラッチ",
+            )
+        }
+    }
+
+    fun beginSourceScratch() {
+        val state = mutableUiState.value
+        val audio = state.currentAudio
+        val range = state.sourceScratchRange()
+        if (audio == null || range == null) {
+            setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
+            return
+        }
+        engine.stopSource()
+        state.loopingPadIndex?.let(engine::stopPad)
+        state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+            .forEach { engine.stopPad(it.globalIndex) }
+        engine.beginSourceScratch(audio, range.startFrame, range.endFrame)
+        mutableUiState.update {
+            it.copy(
+                sourcePlaying = false,
+                loopingPadIndex = null,
+                loopPlayheadFrame = -1,
+                scratchingPadIndex = null,
+                scratchPlayheadFrame = range.startFrame,
+                sourceScratchActive = true,
+                statusMessage = "選んだ元曲の範囲をスクラッチ中",
             )
         }
     }
@@ -324,6 +356,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 scratchingPadIndex = null,
                 scratchPlayheadFrame = -1,
+                sourceScratchActive = false,
                 statusMessage = "スクラッチ停止 — ビートループで通常再生へ戻れます",
             )
         }
@@ -625,7 +658,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("割り当てるスライスがありません")
             return
         }
-        assignRanges(ranges.take(SamplerConfig.PADS_PER_BANK), "${ranges.size.coerceAtMost(16)}スライスを連続割り当てしました")
+        assignRanges(
+            ranges.take(SamplerConfig.PADS_PER_BANK),
+            "${ranges.size.coerceAtMost(SamplerConfig.PADS_PER_BANK)}スライスを連続割り当てしました",
+        )
     }
 
     private fun assignRanges(ranges: List<SliceRange>, message: String) {
@@ -676,6 +712,16 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 selectedPad = globalIndex,
                 selectedBank = globalIndex / SamplerConfig.PADS_PER_BANK,
             )
+        }
+    }
+
+    fun selectPadPage(pageIndex: Int) {
+        if (pageIndex !in 0 until SamplerConfig.PAD_PAGES_PER_BANK) return
+        mutableUiState.update { state ->
+            val bankStart = state.selectedBank * SamplerConfig.PADS_PER_BANK
+            val indexOnPage = state.selectedPad % SamplerConfig.PAD_PAGE_SIZE
+            val target = bankStart + pageIndex * SamplerConfig.PAD_PAGE_SIZE + indexOnPage
+            state.copy(selectedPad = target)
         }
     }
 
@@ -1055,6 +1101,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 loopPlayheadFrame = -1,
                 scratchingPadIndex = null,
                 scratchPlayheadFrame = -1,
+                sourceScratchActive = false,
                 statusMessage = "すべての音を停止しました",
             )
         }
@@ -1263,6 +1310,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             loopPlayheadFrame = -1,
             scratchingPadIndex = null,
             scratchPlayheadFrame = -1,
+            sourceScratchActive = false,
             canUndo = editHistory.canUndo,
             canRedo = editHistory.canRedo,
         )
