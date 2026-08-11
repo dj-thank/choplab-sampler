@@ -410,7 +410,14 @@ class SamplerEngine(
     private fun drainCommands() {
         while (true) {
             when (val command = commands.poll() ?: break) {
-                is EngineCommand.SetPad -> padKit[command.pad.padIndex] = command.pad
+                is EngineCommand.SetPad -> {
+                    padKit[command.pad.padIndex] = command.pad
+                    var voiceIndex = 0
+                    while (voiceIndex < voices.size) {
+                        voices[voiceIndex].updateLiveParameters(command.pad, outputSampleRate)
+                        voiceIndex++
+                    }
+                }
                 is EngineCommand.ClearPad -> {
                     padKit[command.padIndex] = null
                     voices.removeAll { it.padIndex == command.padIndex }
@@ -585,7 +592,7 @@ class SamplerEngine(
         data class StopAllVoices(val sourceGeneration: Long) : EngineCommand
     }
 
-    private data class PadSnapshot(
+    internal data class PadSnapshot(
         val padIndex: Int,
         val audio: PcmAudio,
         val startFrame: Int,
@@ -616,20 +623,21 @@ class SamplerEngine(
         }
     }
 
-    private class Voice(
+    internal class Voice(
         pad: PadSnapshot,
         outputSampleRate: Int,
     ) {
         val padIndex = pad.padIndex
         val playMode = pad.playMode
         val chokeGroup = pad.chokeGroup
+        private val audioId = pad.audio.id
         private val samples = pad.audio.samples
         private val startFrame = pad.startFrame
         private val endFrame = pad.endFrame
         private val reverse = pad.reverse
-        private val gain = pad.gain
-        private val tone = pad.tone
-        private val sourceStep: Double
+        private var gain = pad.gain
+        private var tone = pad.tone
+        private var sourceStep: Double
         private val cursor = VoicePlaybackCursor(
             startFrame = startFrame,
             endFrame = endFrame,
@@ -644,10 +652,22 @@ class SamplerEngine(
             private set
         val currentFrame: Int
             get() = cursor.position.toInt().coerceIn(startFrame, endFrame - 1)
+        internal val liveSourceStep: Double
+            get() = sourceStep
+        internal val liveTone: Float
+            get() = tone
+        internal val liveGain: Float
+            get() = gain
 
         init {
-            val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
-            sourceStep = pitchRatio * pad.audio.sampleRate / outputSampleRate.toDouble()
+            sourceStep = sourceStepFor(pad, outputSampleRate)
+        }
+
+        fun updateLiveParameters(pad: PadSnapshot, outputSampleRate: Int) {
+            if (pad.padIndex != padIndex || pad.audio.id != audioId) return
+            sourceStep = sourceStepFor(pad, outputSampleRate)
+            tone = pad.tone
+            gain = pad.gain
         }
 
         fun release(frames: Int) {
@@ -704,6 +724,11 @@ class SamplerEngine(
             cursor.advance(sourceStep)
             if (cursor.finished) finished = true
             return filtered * gain * boundaryEnvelope * releaseEnvelope
+        }
+
+        private fun sourceStepFor(pad: PadSnapshot, outputSampleRate: Int): Double {
+            val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
+            return pitchRatio * pad.audio.sampleRate / outputSampleRate.toDouble()
         }
     }
 

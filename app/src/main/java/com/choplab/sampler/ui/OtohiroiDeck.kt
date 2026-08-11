@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -634,6 +635,7 @@ private fun MachineHeader(
     height: Dp,
     onStopAll: () -> Unit,
 ) {
+    val fontScale = LocalDensity.current.fontScale
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -658,13 +660,15 @@ private fun MachineHeader(
                 letterSpacing = 1.5.sp,
                 maxLines = 1,
             )
-            Text(
-                "${stage.label} / ${stage.caption}",
-                color = Color(0xFF9C906F),
-                fontFamily = DeckFont,
-                fontSize = 7.sp,
-                maxLines = 1,
-            )
+            if (machineHeaderShowsCaption(fontScale)) {
+                Text(
+                    "${stage.label} / ${stage.caption}",
+                    color = Color(0xFF9C906F),
+                    fontFamily = DeckFont,
+                    fontSize = 7.sp,
+                    maxLines = 1,
+                )
+            }
         }
         val bankRole = bankRoleFor(state.selectedBank)
         Text(
@@ -2010,6 +2014,7 @@ private fun BeatLoopControl(
     height: Dp,
     viewModel: SamplerViewModel,
 ) {
+    val fontScale = LocalDensity.current.fontScale
     val pad = state.selectedPadModel()
     val padLabel = "${bankName(pad.bankIndex)}-%02d".format(pad.indexInBank + 1)
     val loopingPad = state.loopingPadIndex?.let(state.pads::get)
@@ -2039,7 +2044,7 @@ private fun BeatLoopControl(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             MachineButton(
-                label = if (loopingPad != null) "選択音ループ停止\nSTOP" else "選択音をループ\nSTART",
+                label = beatLoopButtonLabel(looping = loopingPad != null, fontScale = fontScale),
                 onClick = viewModel::toggleBeatLoopControl,
                 enabled = pad.isAssigned || loopingPad != null,
                 active = loopingPad != null,
@@ -2057,6 +2062,7 @@ private fun LandscapeBeatPlaybackRow(
     gap: Dp,
     viewModel: SamplerViewModel,
 ) {
+    val fontScale = LocalDensity.current.fontScale
     val selectedPad = state.selectedPadModel()
     val loopingPad = state.loopingPadIndex?.let(state.pads::get)
     Row(
@@ -2071,7 +2077,7 @@ private fun LandscapeBeatPlaybackRow(
             compact = true,
         )
         MachineButton(
-            label = if (loopingPad != null) "選択音ループ停止\nSTOP" else "選択音をループ\nSTART",
+            label = beatLoopButtonLabel(looping = loopingPad != null, fontScale = fontScale),
             onClick = viewModel::toggleBeatLoopControl,
             enabled = selectedPad.isAssigned || loopingPad != null,
             active = loopingPad != null,
@@ -3506,6 +3512,7 @@ private fun MachineButton(
     active: Boolean? = null,
     compact: Boolean = false,
 ) {
+    val fontScale = LocalDensity.current.fontScale
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val background = when {
@@ -3547,8 +3554,16 @@ private fun MachineButton(
                 color = foreground,
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
-                fontSize = if (compact) 8.sp else 10.sp,
-                lineHeight = if (compact) 9.sp else 11.sp,
+                fontSize = if (compact) {
+                    compactMachineButtonFontSizeSp(fontScale).sp
+                } else {
+                    10.sp
+                },
+                lineHeight = if (compact) {
+                    compactMachineButtonLineHeightSp(fontScale).sp
+                } else {
+                    11.sp
+                },
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
