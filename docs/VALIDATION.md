@@ -2,6 +2,18 @@
 
 作成日: 2026-07-15
 
+## 2026-08-11 v0.9.2 accessibility semantics validation
+
+- regression-first host test reproduces and covers the 32-PAD Beat announcement bug
+- Beat states announce plain Japanese labels instead of internal enum names
+- selected semantics added to workflow tabs, machine toggles, PADs, sound rails, and Beat-bank selectors
+- focused accessibility tests: 2 / failures 0 / errors 0 / skipped 0
+- full host gate: 85 unit tests / failures 0 / errors 0 / skipped 0; Lint PASS; assemble PASS; offline project validation PASS; scroll API scan 0 matches
+- local APK: 31,362,206 bytes, SHA-256 `0F279F715AF9341BD47FA1FCB3463F1D98607EA0291B84618EC111F8C25283F2`
+- Pixel 9 / API 36 emulator: in-place `versionCode=12`, `versionName=0.9.2` install; restored-project launch and Beat A-20 selection stayed alive with no fatal exception and no scrolling
+- runtime UI hierarchy contains `BANK A メロディー PAD 20`, `メロディー ステップ1 オフ`, and no `SELECTED_SOUND`/`OTHER_SOUND` enum leakage
+- CI, public asset, and physical TalkBack state are recorded after their respective gates complete
+
 ## 2026-08-11 v0.9.1 clarity audit validation
 
 - combined screenshot/UX audit captured seven v0.9.0 flow states and four accepted post-fix states on Pixel 9 / API 36 emulator

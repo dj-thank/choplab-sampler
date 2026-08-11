@@ -2,6 +2,12 @@
 
 Last prepared: 2026-08-11
 
+## v0.9.2 accessibility semantics — 2026-08-11
+
+The fixed, no-scroll interface now exposes its visual selection state to accessibility services for workflow tabs, machine toggles, PADs, sound rails, and Beat-bank selectors. Beat PAD announcements use the configured 32-PAD bank size instead of a hard-coded 16, so PAD 20 is no longer announced as PAD 4. Beat step states are announced in plain Japanese (`選択音`, `別の音`, `オフ`) instead of Kotlin enum identifiers.
+
+Focused host tests cover both 32-PAD addressing and every translated Beat step state. The full local gate passes with 85 tests, zero lint errors, offline validation, and a 31,362,206-byte APK (SHA-256 `0F279F715AF9341BD47FA1FCB3463F1D98607EA0291B84618EC111F8C25283F2`). A Pixel 9/API 36 emulator restored the existing project, opened the fixed Beat view without scrolling, selected empty A-20 without crashing, and exposed `BANK A メロディー PAD 20`, plain-Japanese step states, and no enum identifiers in the runtime accessibility hierarchy. Physical TalkBack navigation remains a human/device check rather than a claimed pass.
+
 ## v0.9.1 clarity audit follow-up — 2026-08-11
 
 The post-v0.9.0 emulator audit produced a focused clarity pass without Figma or scroll containers:

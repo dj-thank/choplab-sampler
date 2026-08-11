@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +37,18 @@ import com.choplab.sampler.model.laneStepState
 
 private val BeatBoardShape = RoundedCornerShape(7.dp)
 private val BeatBoardFont = FontFamily.Monospace
+
+internal fun beatLanePadDescription(bankIndex: Int, padIndex: Int): String {
+    val bankRole = bankRoleFor(bankIndex)
+    val padInBank = padIndex % SamplerConfig.PADS_PER_BANK + 1
+    return "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD $padInBank"
+}
+
+internal fun laneStepAccessibilityLabel(state: LaneStepState): String = when (state) {
+    LaneStepState.SELECTED_SOUND -> "選択音"
+    LaneStepState.OTHER_SOUND -> "別の音"
+    LaneStepState.OFF -> "オフ"
+}
 
 @Composable
 fun BeatLaneBoard(
@@ -103,7 +116,10 @@ private fun BeatLane(
                 .background(if (selected) accent else Color(0xFF211E17), RoundedCornerShape(5.dp))
                 .border(1.dp, if (selected) Color(0xFFFFE7B0) else Color(0xFF4A422E), RoundedCornerShape(5.dp))
                 .clickable(role = Role.Button, onClick = onSelectPad)
-                .semantics { contentDescription = "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD ${padIndex % 16 + 1}" }
+                .semantics {
+                    contentDescription = beatLanePadDescription(bankIndex, padIndex)
+                    this.selected = selected
+                }
                 .padding(horizontal = 5.dp, vertical = 2.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -144,7 +160,7 @@ private fun BeatLane(
                     .clickable(role = Role.Button) { onToggleStep(step) }
                     .semantics {
                         role = Role.Button
-                        contentDescription = "${bankRole.japaneseLabel} ステップ${step + 1} ${state.name}"
+                        contentDescription = "${bankRole.japaneseLabel} ステップ${step + 1} ${laneStepAccessibilityLabel(state)}"
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -211,6 +227,7 @@ fun BeatSoundRail(
                             }
                             .semantics {
                                 contentDescription = "${role.japaneseLabel} PAD ${pad.indexInBank + 1} ${if (pad.isAssigned) "試聴" else "空"}"
+                                this.selected = selected
                             }
                             .padding(horizontal = 3.dp),
                         contentAlignment = Alignment.Center,

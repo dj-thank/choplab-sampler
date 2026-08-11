@@ -49,6 +49,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -554,6 +555,7 @@ private fun WorkflowStageButton(
             .semantics {
                 role = Role.Tab
                 contentDescription = "工程$number ${stage.label} ${stage.caption}"
+                this.selected = selected
             },
     ) {
         Column(
@@ -3035,17 +3037,17 @@ private fun MachineButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    active: Boolean = false,
+    active: Boolean? = null,
     compact: Boolean = false,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val background = when {
         pressed -> DeckPadLit
-        active -> DeckLamp
+        active == true -> DeckLamp
         else -> DeckPanelDark
     }
-    val foreground = if (pressed || active) Color(0xFF2A1000) else DeckInk
+    val foreground = if (pressed || active == true) Color(0xFF2A1000) else DeckInk
     Surface(
         color = background,
         contentColor = foreground,
@@ -3065,6 +3067,7 @@ private fun MachineButton(
             .semantics {
                 role = Role.Button
                 contentDescription = label
+                active?.let { this.selected = it }
             },
     ) {
         Box(
