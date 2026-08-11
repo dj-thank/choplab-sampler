@@ -28,6 +28,9 @@ fun restoreWorkflowStage(savedName: String?): WorkflowStage =
 fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
     if (hasAudio) WorkflowStage.CHOP else WorkflowStage.CAPTURE
 
+fun workflowStageKeepsSourcePlayback(stage: WorkflowStage): Boolean =
+    stage == WorkflowStage.CHOP
+
 fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
     state.currentAudio != null ||
         state.pads.any(PadModel::isAssigned) ||

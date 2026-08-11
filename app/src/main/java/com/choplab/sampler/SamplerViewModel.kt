@@ -881,6 +881,25 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.releasePad(globalIndex)
     }
 
+    fun stopSourceForWorkspaceChange() {
+        val state = mutableUiState.value
+        val shouldStop = state.sourcePlaying || sourceStartPending
+        sourceStartPending = false
+        if (!shouldStop) return
+
+        engine.stopSource()
+        mutableUiState.update { current ->
+            val feedback = sourcePlaybackRequestFeedback(
+                appliedPlaying = current.sourcePlaying,
+                request = SourcePlaybackRequest.STOP,
+            )
+            current.copy(
+                sourcePlaying = feedback.sourcePlaying,
+                statusMessage = feedback.statusMessage,
+            )
+        }
+    }
+
     fun toggleSourcePlayback() {
         val state = mutableUiState.value
         val audio = state.currentAudio ?: run {

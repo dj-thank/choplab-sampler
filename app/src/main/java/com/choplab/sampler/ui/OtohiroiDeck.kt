@@ -193,6 +193,9 @@ fun OtohiroiDeck(
                         height = metrics.modeBarHeightDp.dp,
                         compact = metrics.density == DeckDensity.COMPACT,
                         onSelect = {
+                            if (!workflowStageKeepsSourcePlayback(it)) {
+                                viewModel.stopSourceForWorkspaceChange()
+                            }
                             if (it == WorkflowStage.BEAT) viewModel.ensurePlayablePadSelected()
                             if (it == WorkflowStage.CHOP && state.currentAudio != null) {
                                 viewModel.selectBank(0)
@@ -241,6 +244,7 @@ fun OtohiroiDeck(
                                         showPadDetails = true
                                     },
                                     onContinueToBeat = {
+                                        viewModel.stopSourceForWorkspaceChange()
                                         viewModel.ensurePlayablePadSelected()
                                         stageName = WorkflowStage.BEAT.name
                                     },
@@ -261,6 +265,7 @@ fun OtohiroiDeck(
                                 onOpenProject = onOpenProject,
                                 onSaveProject = onSaveProject,
                                 onBackToArrange = {
+                                    viewModel.stopSourceForWorkspaceChange()
                                     viewModel.ensurePlayablePadSelected()
                                     stageName = WorkflowStage.BEAT.name
                                 },

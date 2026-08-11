@@ -49,6 +49,14 @@ class GuidedWorkflowTest {
     }
 
     @Test
+    fun onlyTheChopWorkspaceKeepsSourcePlaybackActive() {
+        assertFalse(workflowStageKeepsSourcePlayback(WorkflowStage.CAPTURE))
+        assertTrue(workflowStageKeepsSourcePlayback(WorkflowStage.CHOP))
+        assertFalse(workflowStageKeepsSourcePlayback(WorkflowStage.BEAT))
+        assertFalse(workflowStageKeepsSourcePlayback(WorkflowStage.FINISH))
+    }
+
+    @Test
     fun restoredStageFallsBackInsteadOfCrashing() {
         assertEquals(WorkflowStage.CHOP, restoreWorkflowStage("PLAY"))
         assertEquals(WorkflowStage.CHOP, restoreWorkflowStage("not-a-stage"))
