@@ -2,6 +2,18 @@
 
 Last prepared: 2026-08-12
 
+## v0.11.1 live controls and realtime reliability candidate — 2026-08-12
+
+The fixed `入れる → チョップ → ビート → 保存` console now keeps its selected PAD loop running while KEY, TONE, or LEVEL changes are applied. The voice cursor is not restarted, so pitch and timbre can be performed during playback instead of requiring a trip into detailed editing. At Android font scale 130%, the compact fixed layout keeps the important stage, loop, and action labels complete without introducing scrolling.
+
+The AudioTrack control path is now bounded to 512 queued commands and inspects at most 64 entries per render block. Stop All uses a separate sequenced boundary so it cannot be dropped by queue pressure and commands older than the stop are ignored. Thirty-two PAD voices and one source voice are created when the engine is initialized and reused on the realtime thread; normal render, command-drain, transport, and voice-start paths no longer construct `Voice` or `VoicePlaybackCursor` objects. AudioTrack teardown releases the exact owning track even after a write failure, and a replacement engine cannot start while an older render thread is still exiting. Microphone stop now fails closed when its worker has not closed the WAV writer within two seconds, preventing decode of an incomplete recording.
+
+Local candidate gate: configured offline validation PASS; 137 unit tests with zero failures/errors/skips; Android Lint PASS with zero errors and 11 advisories; debug assemble PASS; `git diff --check` PASS; UI scroll API scan zero matches. Version `0.11.1` (`versionCode=16`) local APK is 30,739,399 bytes with SHA-256 `354571D8390BA8F86B20DBEA53E3954912A8FECA47D9171253E38B864FAB4059`; package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2, certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+
+Dedicated Pixel 9/API 36 emulator `emulator-5590` accepted the candidate through `adb install -r`. Before and immediately after install, its retained autosave was byte-identical at 5,316,915 bytes and SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`. Version 0.11.1 cold-launched with the existing waveform and PAD assignments, source Play advanced the visible playhead, Chop and Beat opened, selected PAD A-04 looped with a visible loop playhead, KEY was changed live and returned, and Scratch remained directly reachable. The app process stayed alive and the scoped fatal/ANR query returned zero matches. Runtime captures are under `work/v0111-final/`.
+
+The physical Pixel 9a `5A121JEBF08094` is still absent from ADB, mDNS, and the present Windows USB inventory. The local APK has therefore not been installed onto that phone in this candidate, and physical touch/audio/latency claims remain pending. Public PR, CI, tag, Release asset, and reverse-download verification are also pending and must remain separate from this local/emulator evidence.
+
 ## v0.11 safe handoff, beginner coaching, and landscape deck — 2026-08-12
 
 The fixed journey remains `入れる → チョップ → ビート → 保存`, but the first-beat path is now explicit on the working surfaces. Chop explains waveform seek, empty-PAD capture, assigned-PAD audition, and long-press trim according to the current state. Beat keeps `PAD → 選択音をループ／並べる → 足す／擦る` visible and leaves KEY/TONE/LEVEL directly editable during playback. Whole-Chop repetition is named `選択音をループ`, separate from 16-step pattern placement.
