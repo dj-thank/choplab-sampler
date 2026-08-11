@@ -54,4 +54,28 @@ class VoicePlaybackCursorTest {
 
         assertTrue(cursor.finished)
     }
+
+    @Test
+    fun resetReusesTheCursorForANewVoiceWithoutKeepingOldPlaybackState() {
+        val cursor = VoicePlaybackCursor(
+            startFrame = 10,
+            endFrame = 14,
+            reverse = false,
+            playMode = PadPlayMode.ONE_SHOT,
+        )
+        cursor.advance(4.0)
+        assertTrue(cursor.finished)
+
+        cursor.reset(
+            startFrame = 20,
+            endFrame = 24,
+            reverse = true,
+            playMode = PadPlayMode.LOOP,
+        )
+
+        assertEquals(23.0, cursor.position, 0.0001)
+        assertFalse(cursor.finished)
+        cursor.advance(1.0)
+        assertEquals(22.0, cursor.position, 0.0001)
+    }
 }

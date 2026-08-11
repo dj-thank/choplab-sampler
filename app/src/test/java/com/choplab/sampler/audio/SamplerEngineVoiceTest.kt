@@ -4,6 +4,8 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SamplerEngineVoiceTest {
@@ -50,5 +52,48 @@ class SamplerEngineVoiceTest {
 
         voice.render(outputSampleRate = 48_000)
         assertEquals(frameBeforeEdit + 2, voice.currentFrame)
+    }
+
+    @Test
+    fun pooledVoiceCanBeDeactivatedAndStartedWithDifferentAudio() {
+        val firstAudio = PcmAudio(
+            name = "first.wav",
+            samples = ShortArray(32) { 4_000 },
+            sampleRate = 48_000,
+        )
+        val secondAudio = PcmAudio(
+            name = "second.wav",
+            samples = ShortArray(48) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val voice = SamplerEngine.Voice()
+
+        assertFalse(voice.active)
+        voice.start(
+            SamplerEngine.PadSnapshot.from(
+                PadModel(globalIndex = 0, audio = firstAudio, startFrame = 0, endFrame = 32),
+            ),
+            outputSampleRate = 48_000,
+        )
+        assertTrue(voice.active)
+        voice.render(outputSampleRate = 48_000)
+
+        voice.deactivate()
+        voice.start(
+            SamplerEngine.PadSnapshot.from(
+                PadModel(
+                    globalIndex = 17,
+                    audio = secondAudio,
+                    startFrame = 8,
+                    endFrame = 40,
+                    reverse = true,
+                ),
+            ),
+            outputSampleRate = 48_000,
+        )
+
+        assertTrue(voice.active)
+        assertEquals(17, voice.padIndex)
+        assertEquals(39, voice.currentFrame)
     }
 }

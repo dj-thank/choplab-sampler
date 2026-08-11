@@ -19,11 +19,11 @@
 | チョップ済みビート音声全体を連続ループ | 🧪 local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。実機音質確認待ち |
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持 |
 | PAD→ループ／並べる→足す／擦る導線 | ✅ device/emulator | 4レーン×16step、BANK別音色レール、選択音ループ、Add、Scratchを同一固定画面へ整理 |
-| 上級操作の段階表示 | 🧪 emulator | KEY/TONE/LEVELは通常BEAT画面から直操作。16手動step、BPM/Swing等は`細かく調整`へ整理 |
+| 上級操作の段階表示 | 🧪 emulator/local | KEY/TONE/LEVELは通常BEAT画面から直操作し、再生中の選択音へカーソルを戻さず即時反映。16手動step、BPM/Swing等は`細かく調整`へ整理 |
 | ビート画面の実波形・再生位置 | ✅ device | 選択sliceのPCM波形、ビートループ位置、16-step playhead、A〜Dの4レーン発音マーカーを固定表示 |
 | BANKを替えて音を重ねる | ✅ emulator | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、全128 PADを演奏・配置 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
-| トーンを変える | ✅ | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider |
+| トーンを変える | ✅ local | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider。再生中のloopへ即時反映するhost regressionあり |
 | 長すぎる音声の箇所選択 | ✅ | 最大10分、zoom/scroll/S/E handles |
 | プロ用のようにチョップ | ✅ MVP | 手動、自動、境界drag、zero-crossing snap。高度なspectral editor等は次段階 |
 | 選択後に次の対象へ遷移 | ✅ | AUTO NEXTでPAD + active slice前進 |
@@ -32,6 +32,8 @@
 | Reverse | ✅ | PAD別 |
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。Beat Loopはチョップ範囲全体を連続再生し、直前の同一PAD試聴voiceを先に除去 |
 | Choke group | ✅ | 1–4 |
+| リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先。32 PAD voice＋source voiceを事前確保し通常render pathのVoice生成を除去 |
+| マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
 | Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは32-PAD page対応schema 5/WAVで保存し、schema 1–4（旧4×16配置を含む）を移行読込 |

@@ -78,6 +78,14 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - Tests/checks: `scripts/validate_project.sh`, focused tests during iteration, full `testDebugUnitTest`, `lintDebug`, `assembleDebug`, `git diff --check`, no-scroll scan, emulator UI flow, physical Pixel smoke when connected, GitHub CI/tag/release checks, reverse-download hash.
 - Acceptance: all local gates pass; exact local APK identity is recorded; physical-device claims are limited to observed actions; public release asset and checksum match; Human GO and subjective audio/latency remain separate.
 
+### Milestone 3b: Live controls and realtime reliability follow-up
+
+- Scope: large-text fixed-console labels, KEY/TONE/LEVEL changes on an already-playing voice, bounded command ingress, guaranteed Stop All boundary, allocation-free PAD voice reuse, AudioTrack teardown ownership, and microphone worker completion.
+- Files/interfaces expected to change: `GuidedWorkflow.kt`, `OtohiroiDeck.kt`, `SamplerEngine.kt`, `VoicePlaybackCursor.kt`, `MicrophoneRecorder.kt`, bounded mailbox classes, and focused host tests.
+- Implementation: keep command and voice allocation on producer/initialization paths; inspect at most 64 queued commands per render block; reserve Stop All outside queue capacity; preallocate 32 PAD voices plus one source voice; reject decode after a microphone worker timeout.
+- Tests/checks: Red/Green host tests, bytecode inspection of normal render/drain/start-voice paths, full unit/Lint/assemble gate, 130% font-scale screenshots, and data-preserving emulator install.
+- Acceptance: live sound edits do not restart the loop cursor; normal audio-thread paths create no voice objects; command growth is capped; Stop All cannot be dropped by queue pressure; incomplete recording output is not decoded.
+
 ## Progress
 
 - [x] 2026-08-12 - Confirmed `main` and `origin/main` at `2c30fc3951f5ea53c52492a100619cd055697ea9`; tracked tree clean.
@@ -88,6 +96,9 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Implemented Milestone 2 with Red/Green project-epoch, capture-operation, and revision-arrival evidence.
 - [x] 2026-08-12 - Implemented Milestone 3 with Red/Green source-generation and finite-Scratch evidence; final review found and closed the applied-vs-issued playback gap.
 - [x] 2026-08-12 - Merged PR #20, passed branch/PR/main/tag/release CI, published `v0.11.0-preview.1`, and reverse-verified the public APK plus checksum.
+- [x] 2026-08-12 - A Sol-specified read-only audit identified unbounded command drain, audio-thread voice allocation, live-control, AudioTrack teardown, microphone-stop, and multi-pattern gaps; runtime metadata did not expose the effective model, so this is not claimed as runtime-verified Sol evidence.
+- [x] 2026-08-12 - Implemented live KEY/TONE/LEVEL updates without cursor restart plus 130% font-scale labels; dedicated emulator screenshots show the full `選択音ループ` label.
+- [x] 2026-08-12 - Implemented bounded command/stop ordering, reusable PAD/source voices, owner-safe AudioTrack cleanup, and fail-closed microphone worker completion with Red/Green tests.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
 ## Discoveries
@@ -100,6 +111,9 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - A project epoch captured only at decode time is insufficient for microphone, Playback Capture, and vocal flows: the same capture operation must own start, stop, delayed service completion, decode, and assignment.
 - Reusing the portrait stack in landscape clipped high-value controls. Chop requires a waveform/PAD split workspace; Beat requires compact BANK/page and action rows while keeping Details reachable.
 - Source command issuance and source playback application are different facts. The public `playing` state now follows the audio-thread application rather than queue insertion.
+- The old `ConcurrentLinkedQueue` could grow without limit and drained the entire backlog before every render block; bounded capacity alone was insufficient because Stop All also needed an out-of-band sequence boundary.
+- The old PAD and source paths constructed `Voice` and `VoicePlaybackCursor` on the realtime thread. A fixed 32-voice pool plus one reusable source voice removes those normal-path allocations while preserving deterministic oldest-voice stealing.
+- `Thread.join` timing out is not a successful microphone stop. The WAV stays ineligible for decode until the worker has closed the writer.
 
 ## Decision log
 
@@ -107,6 +121,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - 2026-08-12 - Treat a Beat loop as repetition of one selected Chop, matching `CONTEXT.md`; label pattern placement separately.
 - 2026-08-12 - Keep the source replacement model, but require explicit intent when there is material work and reject stale asynchronous completions.
 - 2026-08-12 - Do not claim Luna fan-out: the Luna setup check found `max_concurrent_threads_per_session=10` instead of the required 40. Sol routing was explicitly requested, but returned runtime metadata did not expose the effective model name; therefore no runtime-verified Sol claim is made.
+- 2026-08-12 - Keep producer-side mailbox ordering synchronized while the audio-thread consumer remains lock-free. A 512-entry queue and 64-command per-block inspection cap bound both memory and render delay; Stop All uses an atomic latest-request boundary.
+- 2026-08-12 - Retain the current one-pattern product scope for this patch. Multi-pattern/Song mode remains a named Pro gap rather than being rushed into the reliability release.
 
 ## Validation log
 
@@ -119,6 +135,9 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - fixed-layout audit - 2026-08-12 - accepted portrait Chop plus landscape Chop, Beat Quick, and Beat Details captures under `work/v011-audit/`; scroll API scan zero matches.
 - GitHub publication - 2026-08-12 - PR #20 merge `1e0446a29ba245383149de9bfab7863bd69b87e8`; branch/PR/main/tag/release runs `31522964955` / `31522968714` / `31523293224` / `31523626784` / `31523626790` PASS.
 - public APK - 2026-08-12 - 30,723,019 bytes; SHA-256 `04F7284DB3EF90F37561259BF1E0DBCDE59D4AD6A06A448B8729A942AC902B39`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match.
+- focused realtime/recorder TDD - 2026-08-12 - RED on missing bounded mailbox, cursor reset, reusable voice, and worker completion seam; GREEN after implementation.
+- Gradle `testDebugUnitTest lintDebug assembleDebug` follow-up - 2026-08-12 - PASS; 137 tests, zero failures/errors/skips; Lint zero errors and 11 advisories.
+- `scripts/validate_project.sh` follow-up - 2026-08-12, configured Git Bash/Kotlin 2.3.21 - PASS; `git diff --check` PASS; UI scroll API scan zero matches.
 
 ## Risks and rollback
 

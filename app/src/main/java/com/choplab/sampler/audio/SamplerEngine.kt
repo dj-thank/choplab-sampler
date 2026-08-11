@@ -11,7 +11,6 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.stepKey
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.PI
@@ -32,16 +31,19 @@ class SamplerEngine(
     private val onError: (String) -> Unit = {},
 ) : SamplerPlaybackEngine {
     private val appContext = context.applicationContext
-    private val commands = ConcurrentLinkedQueue<EngineCommand>()
+    private val commands = RealtimeCommandMailbox<EngineCommand, Long>(COMMAND_CAPACITY)
+    private val commandOverflowReported = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
+    private val lifecycleLock = Any()
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val controlPadKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
-    private val voices = mutableListOf<Voice>()
-    private var sourceVoice: Voice? = null
+    private val voices = Array(MAX_POLYPHONY) { Voice() }
+    private val sourceVoice = Voice()
     private var sourceVoiceGeneration = 0L
+    private var nextVoiceStartOrder = 0L
     private var scratchVoice: ScratchVoice? = null
-    private var audioTrack: AudioTrack? = null
-    private var audioThread: Thread? = null
+    @Volatile private var audioTrack: AudioTrack? = null
+    @Volatile private var audioThread: Thread? = null
 
     private var pattern: Array<IntArray> = Array(SamplerConfig.STEP_COUNT) { IntArray(0) }
     private var bpm = 92f
@@ -75,9 +77,16 @@ class SamplerEngine(
     override var outputSampleRate: Int = 48_000
         private set
 
-    override fun start(): Result<Unit> {
-        if (!running.compareAndSet(false, true)) return Result.success(Unit)
-        return runCatching {
+    override fun start(): Result<Unit> = synchronized(lifecycleLock) {
+        if (running.get()) return@synchronized Result.success(Unit)
+        if (audioThread?.isAlive == true) {
+            return@synchronized Result.failure(
+                IllegalStateException("オーディオ出力の停止処理中です"),
+            )
+        }
+        audioThread = null
+        if (!running.compareAndSet(false, true)) return@synchronized Result.success(Unit)
+        runCatching {
             val manager = requireNotNull(appContext.getSystemService(AudioManager::class.java)) {
                 "AudioManagerを取得できません"
             }
@@ -123,15 +132,18 @@ class SamplerEngine(
             audioTrack = track
             track.play()
 
-            audioThread = Thread(
+            val thread = Thread(
                 { renderLoop(track, blockFrames) },
                 "ChopLab-SamplerEngine",
-            ).apply { start() }
+            )
+            audioThread = thread
+            thread.start()
         }.onFailure { throwable ->
             running.set(false)
             sourcePlaybackState.forceStopped()
             runCatching { audioTrack?.release() }
             audioTrack = null
+            if (audioThread?.isAlive != true) audioThread = null
             onError(throwable.message ?: "オーディオエンジンを開始できません")
         }
     }
@@ -140,10 +152,10 @@ class SamplerEngine(
         if (pad.isAssigned) {
             val snapshot = PadSnapshot.from(pad)
             controlPadKit[pad.globalIndex] = snapshot
-            commands.offer(EngineCommand.SetPad(snapshot))
+            enqueue(EngineCommand.SetPad(snapshot))
         } else {
             controlPadKit[pad.globalIndex] = null
-            commands.offer(EngineCommand.ClearPad(pad.globalIndex))
+            enqueue(EngineCommand.ClearPad(pad.globalIndex))
         }
     }
 
@@ -152,21 +164,21 @@ class SamplerEngine(
     }
 
     override fun triggerPad(globalIndex: Int) {
-        commands.offer(EngineCommand.Trigger(globalIndex))
+        enqueue(EngineCommand.Trigger(globalIndex))
     }
 
     override fun startPadLoop(globalIndex: Int) {
-        commands.offer(EngineCommand.StartPadLoop(globalIndex))
+        enqueue(EngineCommand.StartPadLoop(globalIndex))
     }
 
     override fun stopPad(globalIndex: Int) {
-        commands.offer(EngineCommand.StopPad(globalIndex))
+        enqueue(EngineCommand.StopPad(globalIndex))
     }
 
     override fun beginScratch(globalIndex: Int, startFrame: Int) {
         val pad = controlPadKit.getOrNull(globalIndex) ?: return
         scratchSpeedBits.set(0f.toBits())
-        commands.offer(
+        enqueue(
             EngineCommand.BeginScratch(
                 padIndex = globalIndex,
                 voice = ScratchVoice(pad, startFrame),
@@ -191,7 +203,7 @@ class SamplerEngine(
             chokeGroup = 0,
         )
         scratchSpeedBits.set(0f.toBits())
-        commands.offer(
+        enqueue(
             EngineCommand.BeginScratch(
                 padIndex = SOURCE_SCRATCH_PAD_INDEX,
                 voice = ScratchVoice(snapshot, safeStart),
@@ -205,15 +217,15 @@ class SamplerEngine(
 
     override fun endScratch() {
         scratchSpeedBits.set(0f.toBits())
-        commands.offer(EngineCommand.EndScratch)
+        enqueue(EngineCommand.EndScratch)
     }
 
     override fun releasePad(globalIndex: Int) {
-        commands.offer(EngineCommand.Release(globalIndex))
+        enqueue(EngineCommand.Release(globalIndex))
     }
 
     override fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int) {
-        commands.offer(
+        enqueue(
             EngineCommand.Preview(
                 PadSnapshot(
                     padIndex = -1,
@@ -238,7 +250,7 @@ class SamplerEngine(
         }
         val generation = sourcePlaybackState.issuePlay()
         val safeStart = startFrame.coerceIn(0, audio.frameCount - 1)
-        commands.offer(
+        enqueue(
             EngineCommand.PlaySource(
                 source = PadSnapshot(
                     padIndex = SOURCE_PAD_INDEX,
@@ -259,7 +271,7 @@ class SamplerEngine(
 
     override fun stopSource() {
         val generation = sourcePlaybackState.issueStop()
-        commands.offer(EngineCommand.StopSource(generation))
+        enqueue(EngineCommand.StopSource(generation))
     }
 
     override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
@@ -268,7 +280,7 @@ class SamplerEngine(
                 .filter { pad -> stepKey(pad, step) in activeSteps }
                 .toIntArray()
         }
-        commands.offer(
+        enqueue(
             EngineCommand.SetPattern(
                 steps = steps,
                 bpm = bpm.coerceIn(40f, 240f),
@@ -278,35 +290,40 @@ class SamplerEngine(
     }
 
     override fun startTransport() {
-        commands.offer(EngineCommand.StartTransport)
+        enqueue(EngineCommand.StartTransport)
     }
 
     override fun stopTransport() {
-        commands.offer(EngineCommand.StopTransport)
+        enqueue(EngineCommand.StopTransport)
     }
 
     override fun stopAllVoices() {
         val sourceGeneration = sourcePlaybackState.issueStop()
-        commands.offer(EngineCommand.StopAllVoices(sourceGeneration))
+        commands.requestStop(sourceGeneration)
     }
 
-    override fun shutdown() {
-        if (!running.getAndSet(false)) return
+    override fun shutdown() = synchronized(lifecycleLock) {
+        running.set(false)
         commands.clear()
-        runCatching { audioTrack?.pause() }
-        runCatching { audioTrack?.flush() }
-        runCatching { audioThread?.join(1_500L) }
-        audioThread = null
-        runCatching { audioTrack?.stop() }
-        runCatching { audioTrack?.release() }
-        audioTrack = null
-        currentStepValue.set(-1)
-        currentSourceFrameValue.set(-1)
-        sourcePlaybackState.forceStopped()
-        currentLoopPadValue.set(-1)
-        currentLoopFrameValue.set(-1)
-        currentScratchPadValue.set(-1)
-        currentScratchFrameValue.set(-1)
+        commandOverflowReported.set(false)
+        val track = audioTrack
+        val thread = audioThread
+        runCatching { track?.pause() }
+        runCatching { track?.flush() }
+        if (thread !== Thread.currentThread()) runCatching { thread?.join(1_500L) }
+        if (audioTrack === track) {
+            runCatching { track?.stop() }
+            runCatching { track?.release() }
+            audioTrack = null
+        }
+        if (thread !== Thread.currentThread() && thread?.isAlive == true) {
+            runCatching { thread.join(500L) }
+        }
+        if (thread?.isAlive != true) {
+            if (audioThread === thread) audioThread = null
+            clearPlaybackVoices()
+        }
+        resetPublishedPlaybackState()
     }
 
     private fun renderLoop(track: AudioTrack, blockFrames: Int) {
@@ -327,12 +344,12 @@ class SamplerEngine(
                     if (transportRunning) processTransportFrame()
 
                     var monoMix = 0f
-                    sourceVoice?.let { source ->
-                        monoMix += source.render(outputSampleRate)
-                        latestSourceFrame = source.currentFrame
-                        if (source.finished) {
+                    if (sourceVoice.active) {
+                        monoMix += sourceVoice.render(outputSampleRate)
+                        latestSourceFrame = sourceVoice.currentFrame
+                        if (sourceVoice.finished) {
                             val completedGeneration = sourceVoiceGeneration
-                            sourceVoice = null
+                            sourceVoice.deactivate()
                             sourceVoiceGeneration = 0L
                             sourcePlaybackState.complete(completedGeneration)
                         }
@@ -347,16 +364,18 @@ class SamplerEngine(
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
-                        val value = voice.render(outputSampleRate)
-                        if (voice.finished) {
-                            voices.removeAt(voiceIndex)
-                        } else {
-                            if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
-                                latestLoopFrame = voice.currentFrame
+                        if (voice.active) {
+                            val value = voice.render(outputSampleRate)
+                            if (voice.finished) {
+                                voice.deactivate()
+                            } else {
+                                if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
+                                    latestLoopFrame = voice.currentFrame
+                                }
+                                monoMix += value
                             }
-                            monoMix += value
-                            voiceIndex++
                         }
+                        voiceIndex++
                     }
 
                     // Smooth saturating limiter protects against polyphonic overload.
@@ -390,50 +409,64 @@ class SamplerEngine(
                 }
             }
         } catch (throwable: Throwable) {
-            if (running.get()) {
+            if (running.getAndSet(false)) {
                 onError(throwable.message ?: "オーディオ再生中にエラーが発生しました")
             }
         } finally {
-            running.set(false)
-            voices.clear()
-            sourceVoice = null
-            scratchVoice = null
-            currentStepValue.set(-1)
-            sourcePlaybackState.forceStopped()
-            currentLoopPadValue.set(-1)
-            currentLoopFrameValue.set(-1)
-            currentScratchPadValue.set(-1)
-            currentScratchFrameValue.set(-1)
+            runCatching { track.stop() }
+            runCatching { track.release() }
+            if (audioTrack === track) audioTrack = null
+            if (audioThread === Thread.currentThread()) {
+                clearPlaybackVoices()
+                resetPublishedPlaybackState()
+                audioThread = null
+                running.set(false)
+            }
         }
     }
 
     private fun drainCommands() {
-        while (true) {
-            when (val command = commands.poll() ?: break) {
+        applyPendingStopAllVoices()
+
+        var inspectedCommands = 0
+        while (inspectedCommands < MAX_COMMANDS_PER_BLOCK) {
+            val entry = commands.pollEntry() ?: break
+            inspectedCommands++
+            applyPendingStopAllVoices()
+            if (!commands.shouldProcess(entry)) continue
+            when (val command = entry.value) {
                 is EngineCommand.SetPad -> {
                     padKit[command.pad.padIndex] = command.pad
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
-                        voices[voiceIndex].updateLiveParameters(command.pad, outputSampleRate)
+                        val voice = voices[voiceIndex]
+                        if (voice.active) voice.updateLiveParameters(command.pad, outputSampleRate)
                         voiceIndex++
                     }
                 }
                 is EngineCommand.ClearPad -> {
                     padKit[command.padIndex] = null
-                    voices.removeAll { it.padIndex == command.padIndex }
+                    var voiceIndex = 0
+                    while (voiceIndex < voices.size) {
+                        val voice = voices[voiceIndex]
+                        if (voice.active && voice.padIndex == command.padIndex) voice.deactivate()
+                        voiceIndex++
+                    }
                 }
-                is EngineCommand.Trigger -> padKit.getOrNull(command.padIndex)?.let(::startVoice)
+                is EngineCommand.Trigger -> {
+                    val pad = padKit.getOrNull(command.padIndex)
+                    if (pad != null) startVoice(pad)
+                }
                 is EngineCommand.StartPadLoop -> {
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad?.playMode == PadPlayMode.LOOP) {
                         // A sound-rail audition may still be active. The loop replaces that
                         // voice instead of stacking a second copy of the same audio.
-                        var voiceIndex = voices.lastIndex
-                        while (voiceIndex >= 0) {
-                            if (voices[voiceIndex].padIndex == command.padIndex) {
-                                voices.removeAt(voiceIndex)
-                            }
-                            voiceIndex--
+                        var voiceIndex = 0
+                        while (voiceIndex < voices.size) {
+                            val voice = voices[voiceIndex]
+                            if (voice.active && voice.padIndex == command.padIndex) voice.deactivate()
+                            voiceIndex++
                         }
                         currentLoopPadValue.set(command.padIndex)
                         currentLoopFrameValue.set(if (pad.reverse) pad.endFrame - 1 else pad.startFrame)
@@ -464,14 +497,14 @@ class SamplerEngine(
                 is EngineCommand.Preview -> startVoice(command.pad)
                 is EngineCommand.PlaySource -> {
                     if (sourcePlaybackState.applyPlay(command.generation)) {
-                        sourceVoice = Voice(command.source, outputSampleRate)
+                        sourceVoice.start(command.source, outputSampleRate)
                         sourceVoiceGeneration = command.generation
                         currentSourceFrameValue.set(command.source.startFrame)
                     }
                 }
                 is EngineCommand.StopSource -> {
-                    if (sourcePlaybackState.applyStop(command.generation)) {
-                        sourceVoice = null
+                    if (sourcePlaybackState.applyStopBoundary(command.generation)) {
+                        sourceVoice.deactivate()
                         sourceVoiceGeneration = 0L
                     }
                 }
@@ -489,28 +522,73 @@ class SamplerEngine(
                     transportRunning = false
                     currentStepValue.set(-1)
                 }
-                is EngineCommand.StopAllVoices -> {
-                    voices.forEach { it.release(FAST_RELEASE_FRAMES) }
-                    if (sourcePlaybackState.applyStop(command.sourceGeneration)) {
-                        sourceVoice = null
-                        sourceVoiceGeneration = 0L
-                    }
-                    currentLoopPadValue.set(-1)
-                    currentLoopFrameValue.set(-1)
-                    scratchVoice = null
-                    currentScratchPadValue.set(-1)
-                    currentScratchFrameValue.set(-1)
-                }
             }
         }
+        if (commands.size <= COMMAND_OVERFLOW_RESET_SIZE) commandOverflowReported.set(false)
+    }
+
+    private fun applyPendingStopAllVoices() {
+        val stop = commands.takeLatestStop()
+        if (stop != null) applyStopAllVoices(stop.payload)
+    }
+
+    private fun enqueue(command: EngineCommand): Boolean {
+        val accepted = commands.offer(command)
+        if (!accepted && commandOverflowReported.compareAndSet(false, true)) {
+            onError("操作が集中しています。停止操作を優先し、一部の連続入力を省略しました")
+        }
+        return accepted
+    }
+
+    private fun applyStopAllVoices(sourceGeneration: Long) {
+        var voiceIndex = 0
+        while (voiceIndex < voices.size) {
+            val voice = voices[voiceIndex]
+            if (voice.active) voice.release(FAST_RELEASE_FRAMES)
+            voiceIndex++
+        }
+        sourceVoice.deactivate()
+        sourceVoiceGeneration = 0L
+        sourcePlaybackState.applyStopBoundary(sourceGeneration)
+        currentLoopPadValue.set(-1)
+        currentLoopFrameValue.set(-1)
+        scratchVoice = null
+        currentScratchPadValue.set(-1)
+        currentScratchFrameValue.set(-1)
+    }
+
+    private fun clearPlaybackVoices() {
+        var voiceIndex = 0
+        while (voiceIndex < voices.size) {
+            voices[voiceIndex].deactivate()
+            voiceIndex++
+        }
+        sourceVoice.deactivate()
+        sourceVoiceGeneration = 0L
+        scratchVoice = null
+        transportRunning = false
+    }
+
+    private fun resetPublishedPlaybackState() {
+        currentStepValue.set(-1)
+        currentSourceFrameValue.set(-1)
+        sourcePlaybackState.forceStopped()
+        currentLoopPadValue.set(-1)
+        currentLoopFrameValue.set(-1)
+        currentScratchPadValue.set(-1)
+        currentScratchFrameValue.set(-1)
     }
 
     private fun processTransportFrame() {
         if (framesUntilNextStep <= 0.0) {
             val stepToPlay = nextPatternStep
             currentStepValue.set(stepToPlay)
-            pattern[stepToPlay].forEach { padIndex ->
-                padKit.getOrNull(padIndex)?.let(::startVoice)
+            val stepPads = pattern[stepToPlay]
+            var stepPadIndex = 0
+            while (stepPadIndex < stepPads.size) {
+                val pad = padKit.getOrNull(stepPads[stepPadIndex])
+                if (pad != null) startVoice(pad)
+                stepPadIndex++
             }
 
             framesUntilNextStep += stepLengthFrames(stepToPlay)
@@ -542,8 +620,19 @@ class SamplerEngine(
         if (pad.chokeGroup > 0) {
             releaseChokeGroup(pad.chokeGroup, FAST_RELEASE_FRAMES)
         }
-        while (voices.size >= MAX_POLYPHONY) voices.removeAt(0)
-        voices += Voice(pad, outputSampleRate)
+        var selectedVoice = voices[0]
+        var voiceIndex = 0
+        while (voiceIndex < voices.size) {
+            val voice = voices[voiceIndex]
+            if (!voice.active) {
+                selectedVoice = voice
+                break
+            }
+            if (voice.startOrder < selectedVoice.startOrder) selectedVoice = voice
+            voiceIndex++
+        }
+        nextVoiceStartOrder++
+        selectedVoice.start(pad, outputSampleRate, startOrder = nextVoiceStartOrder)
     }
 
     private fun releasePadVoices(
@@ -554,7 +643,11 @@ class SamplerEngine(
         var index = 0
         while (index < voices.size) {
             val voice = voices[index]
-            if (voice.padIndex == padIndex && (playMode == null || voice.playMode == playMode)) {
+            if (
+                voice.active &&
+                voice.padIndex == padIndex &&
+                (playMode == null || voice.playMode == playMode)
+            ) {
                 voice.release(frames)
             }
             index++
@@ -565,7 +658,7 @@ class SamplerEngine(
         var index = 0
         while (index < voices.size) {
             val voice = voices[index]
-            if (voice.chokeGroup == chokeGroup) voice.release(frames)
+            if (voice.active && voice.chokeGroup == chokeGroup) voice.release(frames)
             index++
         }
     }
@@ -589,7 +682,6 @@ class SamplerEngine(
         ) : EngineCommand
         data object StartTransport : EngineCommand
         data object StopTransport : EngineCommand
-        data class StopAllVoices(val sourceGeneration: Long) : EngineCommand
     }
 
     internal data class PadSnapshot(
@@ -623,35 +715,47 @@ class SamplerEngine(
         }
     }
 
-    internal class Voice(
-        pad: PadSnapshot,
-        outputSampleRate: Int,
-    ) {
-        val padIndex = pad.padIndex
-        val playMode = pad.playMode
-        val chokeGroup = pad.chokeGroup
-        private val audioId = pad.audio.id
-        private val samples = pad.audio.samples
-        private val startFrame = pad.startFrame
-        private val endFrame = pad.endFrame
-        private val reverse = pad.reverse
-        private var gain = pad.gain
-        private var tone = pad.tone
-        private var sourceStep: Double
+    internal class Voice() {
+        constructor(pad: PadSnapshot, outputSampleRate: Int) : this() {
+            start(pad, outputSampleRate)
+        }
+
+        var active: Boolean = false
+            private set
+        var padIndex: Int = -1
+            private set
+        var playMode: PadPlayMode = PadPlayMode.ONE_SHOT
+            private set
+        var chokeGroup: Int = 0
+            private set
+        var startOrder: Long = 0L
+            private set
+        private var audioId: Long? = null
+        private var samples: ShortArray = EMPTY_SAMPLES
+        private var startFrame = 0
+        private var endFrame = 1
+        private var reverse = false
+        private var gain = 0f
+        private var tone = 1f
+        private var sourceStep = 1.0
         private val cursor = VoicePlaybackCursor(
-            startFrame = startFrame,
-            endFrame = endFrame,
-            reverse = reverse,
-            playMode = playMode,
+            startFrame = 0,
+            endFrame = 1,
+            reverse = false,
+            playMode = PadPlayMode.ONE_SHOT,
         )
         private var filterState = 0f
         private var releaseFramesRemaining = -1
         private var releaseFramesTotal = 1
 
-        var finished: Boolean = false
+        var finished: Boolean = true
             private set
         val currentFrame: Int
-            get() = cursor.position.toInt().coerceIn(startFrame, endFrame - 1)
+            get() = if (active) {
+                cursor.position.toInt().coerceIn(startFrame, endFrame - 1)
+            } else {
+                -1
+            }
         internal val liveSourceStep: Double
             get() = sourceStep
         internal val liveTone: Float
@@ -659,18 +763,58 @@ class SamplerEngine(
         internal val liveGain: Float
             get() = gain
 
-        init {
+        fun start(pad: PadSnapshot, outputSampleRate: Int, startOrder: Long = 0L) {
+            require(pad.endFrame > pad.startFrame) { "Playback range must not be empty" }
+            require(pad.audio.samples.isNotEmpty()) { "Playback audio must not be empty" }
+            active = true
+            finished = false
+            padIndex = pad.padIndex
+            playMode = pad.playMode
+            chokeGroup = pad.chokeGroup
+            this.startOrder = startOrder
+            audioId = pad.audio.id
+            samples = pad.audio.samples
+            startFrame = pad.startFrame
+            endFrame = pad.endFrame
+            reverse = pad.reverse
+            gain = pad.gain
+            tone = pad.tone
             sourceStep = sourceStepFor(pad, outputSampleRate)
+            cursor.reset(startFrame, endFrame, reverse, playMode)
+            filterState = 0f
+            releaseFramesRemaining = -1
+            releaseFramesTotal = 1
+        }
+
+        fun deactivate() {
+            active = false
+            finished = true
+            padIndex = -1
+            playMode = PadPlayMode.ONE_SHOT
+            chokeGroup = 0
+            startOrder = 0L
+            audioId = null
+            samples = EMPTY_SAMPLES
+            startFrame = 0
+            endFrame = 1
+            reverse = false
+            gain = 0f
+            tone = 1f
+            sourceStep = 1.0
+            filterState = 0f
+            releaseFramesRemaining = -1
+            releaseFramesTotal = 1
         }
 
         fun updateLiveParameters(pad: PadSnapshot, outputSampleRate: Int) {
-            if (pad.padIndex != padIndex || pad.audio.id != audioId) return
+            if (!active || pad.padIndex != padIndex || pad.audio.id != audioId) return
             sourceStep = sourceStepFor(pad, outputSampleRate)
             tone = pad.tone
             gain = pad.gain
         }
 
         fun release(frames: Int) {
+            if (!active) return
             val safeFrames = frames.coerceAtLeast(1)
             if (releaseFramesRemaining < 0 || safeFrames < releaseFramesRemaining) {
                 releaseFramesRemaining = safeFrames
@@ -679,7 +823,7 @@ class SamplerEngine(
         }
 
         fun render(outputSampleRate: Int): Float {
-            if (finished) return 0f
+            if (!active || finished) return 0f
             val position = cursor.position
 
             val lower = floor(position).toInt().coerceIn(startFrame, endFrame - 1)
@@ -730,6 +874,10 @@ class SamplerEngine(
             val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
             return pitchRatio * pad.audio.sampleRate / outputSampleRate.toDouble()
         }
+
+        private companion object {
+            val EMPTY_SAMPLES = ShortArray(0)
+        }
     }
 
     private class ScratchVoice(
@@ -762,6 +910,9 @@ class SamplerEngine(
     }
 
     private companion object {
+        const val COMMAND_CAPACITY = 512
+        const val MAX_COMMANDS_PER_BLOCK = 64
+        const val COMMAND_OVERFLOW_RESET_SIZE = COMMAND_CAPACITY / 2
         const val MAX_POLYPHONY = 32
         const val RELEASE_FRAMES = 192
         const val FAST_RELEASE_FRAMES = 48
