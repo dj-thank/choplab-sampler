@@ -10,6 +10,10 @@ Beatと「音を重ねる」は、空PAD・空ページ・空BANKを編集対象
 
 Pixel 9/API 36エミュレーターへデータを消さず `versionCode=13` / `versionName=0.9.3` を上書き導入した。既存プロジェクト復元後、Beat入場で空選択から `A-04`へ復帰し、実波形・KEY/TONE・ループが有効になった。空 `A-06` と空 `PAD 17–32` のタップはいずれも `A-04`を保持し、対応する案内を表示した。runtime UI階層は非スクロールで、アプリプロセスは継続した。物理Pixelへの導入と公開Releaseはこの時点では未実施。
 
+PR [#15](https://github.com/dj-thank/choplab-sampler/pull/15) は `27d1c7ce3e1487ac23311a48674014b4edad4e22` としてmergeされた。branch run `31496922708`、PR run `31496975115`、main run `31497276645`、tag verification `31497582713`、release run `31497582655` はすべてPASS。annotated tag `v0.9.3-preview.1` はmerge commitへ解決され、[public prerelease](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.9.3-preview.1) が公開された。
+
+逆ダウンロードした公開APKは30,591,947 bytes、SHA-256 `2B1A8453830CC7D2BBB6DE2CFB8064054EE208A14C22B4108171F889F841B600`。GitHub asset digestとchecksum sidecarが一致し、APK Signature Scheme v2、package `com.choplab.sampler`、`versionCode=13`、`versionName=0.9.3`、`minSdk=29`、`targetSdk=36` を確認した。CIとローカルのdebug署名鍵が異なるため、既存ローカル版を保持するエミュレーターへの公開APK上書きは `INSTALL_FAILED_UPDATE_INCOMPATIBLE` で拒否された。データ削除は行っておらず、物理Pixelも未接続のため、公開APKの実端末導入は未達として分離する。
+
 ## v0.9.2 accessibility semantics — 2026-08-11
 
 The fixed, no-scroll interface now exposes its visual selection state to accessibility services for workflow tabs, machine toggles, PADs, sound rails, and Beat-bank selectors. Beat PAD announcements use the configured 32-PAD bank size instead of a hard-coded 16, so PAD 20 is no longer announced as PAD 4. Beat step states are announced in plain Japanese (`選択音`, `別の音`, `オフ`) instead of Kotlin enum identifiers.

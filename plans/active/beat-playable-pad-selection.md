@@ -33,7 +33,7 @@
 - [x] GREEN: PAD、ページ、BANK、ビート入場の再生可能選択ロジック。
 - [x] Compose: BeatとSample Layerの選択ハンドラーを専用操作へ接続。
 - [x] Validation: host tests、lint、assemble、offline validation、no-scroll、emulator smoke。
-- [ ] Review and delivery: Standards/Spec二軸レビュー、コミット、PR、CI、preview release。
+- [x] Review and delivery: Standards/Spec二軸レビュー、コミット、PR、CI、preview release。
 
 ## Validation log
 
@@ -42,6 +42,9 @@
 - 2026-08-11 — final reviewed gate PASS: 98 tests, Lint, assemble, offline validation, diff check, and zero scroll APIs. APK SHA-256 `3587D5CCC3BCB216D9E8FA231267420F785206388E4396F8389E023E13C34C20`.
 - 2026-08-11 — Pixel 9/API 36 emulator PASS after data-preserving cold boot: v0.9.3 restored the project, Beat selected `A-04`, and empty PAD/page taps preserved that playable selection with guidance.
 - 2026-08-11 — local parent two-pass review found no Standards violation and two Spec clarity issues; empty lanes now say `空 / EMPTY`, accessibility announces `空`, and valid selections clear stale empty-PAD guidance.
+- 2026-08-11 — PR #15 merged as `27d1c7c`; branch, PR, main, tag-verification, and release workflows passed. Public prerelease `v0.9.3-preview.1` published.
+- 2026-08-11 — reverse-downloaded public APK matched GitHub digest and sidecar at SHA-256 `2B1A8453830CC7D2BBB6DE2CFB8064054EE208A14C22B4108171F889F841B600`; v2 signature and package metadata verified.
+- 2026-08-11 — exact public APK device install remains open: CI/local debug signatures differ on the emulator, and no physical Pixel is connected. No app data was deleted.
 
 ## Risks and rollback
 
