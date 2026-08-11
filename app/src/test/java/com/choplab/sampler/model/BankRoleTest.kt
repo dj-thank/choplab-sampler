@@ -28,6 +28,22 @@ class BankRoleTest {
     }
 
     @Test
+    fun assignedPadCountIsReportedPerPage() {
+        val audio = PcmAudio(name = "used", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index in setOf(0, 3, 17)) {
+                PadModel(index, audio = audio, startFrame = 0, endFrame = 2)
+            } else {
+                PadModel(index)
+            }
+        }
+        val state = SamplerUiState(pads = pads)
+
+        assertEquals(2, state.assignedPadCountOnPage(0))
+        assertEquals(1, state.assignedPadCountOnPage(1))
+    }
+
+    @Test
     fun banksHaveStableBeginnerRolesWithoutChangingTheirIndexes() {
         assertEquals("A", bankRoleFor(0).letter)
         assertEquals("メロディー", bankRoleFor(0).japaneseLabel)
