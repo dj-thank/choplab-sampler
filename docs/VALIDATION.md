@@ -16,7 +16,13 @@
 - saved invalid LOOP/VOCAL step keys remain archive-compatible but are filtered from realtime playback, arrangement markers, Finish/preset truth, and export; new direct, preset, and record-armed mutation is blocked
 - Sol-specified audit/review closed the primary and follow-up paths; effective child-model metadata was unavailable, so no runtime-verified Sol claim is made
 - physical Pixel 9a `5A121JEBF08094`: not attached; data-preserving phone install and physical sound/touch checks pending
-- GitHub PR/CI/tag/public Release: pending provider execution at this candidate checkpoint
+- PR #24 merged as `cf6996873b446f61f2e74910e93ad4495e74b263`; branch `31536276746` / `31536297883`, main `31536570140`, tag verification `31536868910`, and release `31536868984` runs PASS
+- annotated tag `v0.11.2-preview.1` peels locally/remotely to the merge commit; Release is public and marked prerelease
+- reverse-downloaded public APK: 30,739,403 bytes; SHA-256 `7FE63CEADB27BBA59142EEDBFEB7A346C9F487E6CB00C5CD4B3EB7182EE3FCEE`
+- downloaded APK, GitHub asset digest, and checksum sidecar three-way match; package/version/minSdk/targetSdk and APK Signature Scheme v2 verified
+- public certificate SHA-256 `F100B8D8C189BDBA933779AB2ACCD6BBE374BC7D01E592F92684A26595C6B196` differs from the installed local certificate, so no data-destructive replacement was attempted
+- anonymous HTTP checks: repository 200, Release page 200, direct APK 200; this establishes `PUBLIC_PASS`, not physical `DEVICE_PASS` or `HUMAN_GO`
+- final Pixel check: exact serial absent from ADB and mDNS; both Windows Pixel 9a PnP records `Present=False`
 
 ## 2026-08-12 v0.11.1 live-control and realtime-reliability candidate
 
