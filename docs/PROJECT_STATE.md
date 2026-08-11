@@ -2,6 +2,14 @@
 
 Last prepared: 2026-08-11
 
+## v0.9.3 playable Beat selection — 2026-08-11
+
+Beatと「音を重ねる」は、空PAD・空ページ・空BANKを編集対象へ切り替えず、現在の再生可能PADを保持して日本語の案内を表示する。Beatへ入った時点で選択PADが空なら、現在BANK内、次に全BANKから既存音を選び直す。Chop/PADSの空PAD割り当て操作は従来どおり維持した。
+
+空BANKのBeatレーンは `空 / EMPTY` と表示し、ステップを押しても直前に選んだ別BANKの音へ誤配置しない。純粋状態遷移とレーン対象決定をホストテストで固定し、全98テスト、Lint、assemble、オフライン検証、`git diff --check`、スクロールAPI 0件がPASSした。ローカルAPKは31,360,414 bytes、SHA-256 `3587D5CCC3BCB216D9E8FA231267420F785206388E4396F8389E023E13C34C20`。
+
+Pixel 9/API 36エミュレーターへデータを消さず `versionCode=13` / `versionName=0.9.3` を上書き導入した。既存プロジェクト復元後、Beat入場で空選択から `A-04`へ復帰し、実波形・KEY/TONE・ループが有効になった。空 `A-06` と空 `PAD 17–32` のタップはいずれも `A-04`を保持し、対応する案内を表示した。runtime UI階層は非スクロールで、アプリプロセスは継続した。物理Pixelへの導入と公開Releaseはこの時点では未実施。
+
 ## v0.9.2 accessibility semantics — 2026-08-11
 
 The fixed, no-scroll interface now exposes its visual selection state to accessibility services for workflow tabs, machine toggles, PADs, sound rails, and Beat-bank selectors. Beat PAD announcements use the configured 32-PAD bank size instead of a hard-coded 16, so PAD 20 is no longer announced as PAD 4. Beat step states are announced in plain Japanese (`選択音`, `別の音`, `オフ`) instead of Kotlin enum identifiers.

@@ -35,10 +35,14 @@ import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.defaultMelodyChopPad
+import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.resolvePadPressAction
+import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
+import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
+import com.choplab.sampler.model.selectPlayablePadPage as selectPlayablePadPageState
 import com.choplab.sampler.model.selectSourceRangeForScratch
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
@@ -732,6 +736,22 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             val target = bankStart + pageIndex * SamplerConfig.PAD_PAGE_SIZE + indexOnPage
             state.copy(selectedPad = target)
         }
+    }
+
+    fun selectPlayablePad(globalIndex: Int) {
+        mutableUiState.update { state -> selectPlayablePadState(state, globalIndex) }
+    }
+
+    fun selectPlayablePadPage(pageIndex: Int) {
+        mutableUiState.update { state -> selectPlayablePadPageState(state, pageIndex) }
+    }
+
+    fun selectPlayableBank(bankIndex: Int) {
+        mutableUiState.update { state -> selectPlayableBankState(state, bankIndex) }
+    }
+
+    fun ensurePlayablePadSelected() {
+        mutableUiState.update(::ensurePlayablePadSelectedState)
     }
 
     fun capturePad(globalIndex: Int) {

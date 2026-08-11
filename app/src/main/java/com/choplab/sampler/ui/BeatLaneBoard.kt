@@ -38,16 +38,35 @@ import com.choplab.sampler.model.laneStepState
 private val BeatBoardShape = RoundedCornerShape(7.dp)
 private val BeatBoardFont = FontFamily.Monospace
 
-internal fun beatLanePadDescription(bankIndex: Int, padIndex: Int): String {
+internal fun beatLanePadDescription(
+    bankIndex: Int,
+    padIndex: Int,
+    playable: Boolean = true,
+): String {
     val bankRole = bankRoleFor(bankIndex)
     val padInBank = padIndex % SamplerConfig.PADS_PER_BANK + 1
-    return "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD $padInBank"
+    val emptyLabel = if (playable) "" else " 空"
+    return "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD $padInBank$emptyLabel"
 }
 
 internal fun laneStepAccessibilityLabel(state: LaneStepState): String = when (state) {
     LaneStepState.SELECTED_SOUND -> "選択音"
     LaneStepState.OTHER_SOUND -> "別の音"
     LaneStepState.OFF -> "オフ"
+}
+
+internal fun beatLaneTargetPad(
+    pads: List<PadModel>,
+    bankIndex: Int,
+    selectedPad: Int,
+): Int? {
+    require(pads.size == SamplerConfig.PAD_COUNT)
+    require(bankIndex in 0 until SamplerConfig.BANK_COUNT)
+    val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
+    val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
+    return selectedPad
+        .takeIf { it in bankStart until bankEnd && pads[it].isAssigned }
+        ?: pads.subList(bankStart, bankEnd).firstOrNull(PadModel::isAssigned)?.globalIndex
 }
 
 @Composable
@@ -72,19 +91,19 @@ fun BeatLaneBoard(
         repeat(SamplerConfig.BANK_COUNT) { bank ->
             val bankStart = bank * SamplerConfig.PADS_PER_BANK
             val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
-            val selectedInBank = selectedPad.takeIf { it in bankStart until bankEnd }
-                ?: pads.subList(bankStart, bankEnd).firstOrNull(PadModel::isAssigned)?.globalIndex
-                ?: bankStart
+            val targetPad = beatLaneTargetPad(pads, bank, selectedPad)
+            val displayedPad = targetPad ?: bankStart
             BeatLane(
                 bankIndex = bank,
-                padIndex = selectedInBank,
+                padIndex = displayedPad,
+                playable = targetPad != null,
                 activeSteps = activeSteps,
                 currentStep = currentStep,
                 selected = selectedPad in bankStart until bankEnd,
-                onSelectPad = { onSelectPad(selectedInBank) },
+                onSelectPad = { onSelectPad(displayedPad) },
                 onToggleStep = { step ->
-                    onSelectPad(selectedInBank)
-                    onToggleStep(step)
+                    onSelectPad(displayedPad)
+                    if (targetPad != null) onToggleStep(step)
                 },
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
@@ -96,6 +115,7 @@ fun BeatLaneBoard(
 private fun BeatLane(
     bankIndex: Int,
     padIndex: Int,
+    playable: Boolean,
     activeSteps: Set<Int>,
     currentStep: Int,
     selected: Boolean,
@@ -117,7 +137,7 @@ private fun BeatLane(
                 .border(1.dp, if (selected) Color(0xFFFFE7B0) else Color(0xFF4A422E), RoundedCornerShape(5.dp))
                 .clickable(role = Role.Button, onClick = onSelectPad)
                 .semantics {
-                    contentDescription = beatLanePadDescription(bankIndex, padIndex)
+                    contentDescription = beatLanePadDescription(bankIndex, padIndex, playable)
                     this.selected = selected
                 }
                 .padding(horizontal = 5.dp, vertical = 2.dp),
@@ -132,7 +152,11 @@ private fun BeatLane(
                 maxLines = 1,
             )
             Text(
-                text = "PAD %02d".format(padIndex % SamplerConfig.PADS_PER_BANK + 1),
+                text = if (playable) {
+                    "PAD %02d".format(padIndex % SamplerConfig.PADS_PER_BANK + 1)
+                } else {
+                    "空 / EMPTY"
+                },
                 color = if (selected) Color.White else Color(0xFF837858),
                 fontFamily = BeatBoardFont,
                 fontSize = 6.sp,
@@ -140,7 +164,11 @@ private fun BeatLane(
             )
         }
         repeat(SamplerConfig.STEP_COUNT) { step ->
-            val state = laneStepState(activeSteps, bankIndex, padIndex, step)
+            val state = if (playable) {
+                laneStepState(activeSteps, bankIndex, padIndex, step)
+            } else {
+                LaneStepState.OFF
+            }
             val playhead = currentStep == step
             val background = when (state) {
                 LaneStepState.SELECTED_SOUND -> DeckLamp
