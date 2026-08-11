@@ -32,10 +32,13 @@ class GuidedWorkflowTest {
             "波形タップ＝そこから再生 → 空PAD＝チョップ",
             chopQuickGuidance(assignedPadCount = 0),
         )
+        val assignedGuidance = chopQuickGuidance(assignedPadCount = 1)
         assertEquals(
-            "PAD＝試聴／長押し＝微調整 → ビートへ",
-            chopQuickGuidance(assignedPadCount = 1),
+            "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ",
+            assignedGuidance,
         )
+        assertTrue(assignedGuidance.contains("空PAD"))
+        assertTrue(assignedGuidance.contains("音ありPAD"))
     }
 
     @Test

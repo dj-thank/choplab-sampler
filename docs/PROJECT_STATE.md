@@ -2,6 +2,18 @@
 
 Last prepared: 2026-08-12
 
+## v0.11.3 clear Chop actions and accessibility candidate — 2026-08-12
+
+最初の音をチョップした後も、固定TIPが `空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ` と実際の分岐を明示する。従来は一度割り当てると「PAD＝試聴」だけになり、別の空PADへ続けて追加できることが画面から消えていた。操作や画面構成は増やさず、既存の波形、A/B/C/D BANK、正方形PAD、Beat、Add、Scratchを同じ固定コンソールに維持した。
+
+Sol指定の読み取り専用レビューは、視覚TIPの修正後も割当済みPADのTalkBack説明だけが `現在位置をチョップ` と実動作に反していることを検出した。PAD説明を純粋関数へ分離し、割当済みは `タップで試聴。長押しで微調整`、空PADだけは `現在位置をチョップ` と読み分ける回帰テストを追加した。子タスクの実効モデル名はメタデータに露出しなかったため、runtime-verified Solとは主張しない。
+
+Local candidate gate: configured offline validation PASS; 144 unit tests in 33 suites with zero failures/errors/skips; Android Lint PASS with zero errors and 10 warnings; clean debug assemble PASS; `git diff --check` PASS; UI scroll API scan zero matches. Version `0.11.3` (`versionCode=18`) local APK is 30,739,403 bytes with SHA-256 `463C58518F0D47B58DAD75C9DF0F0893D8838DD05372E7C74036FDBBB6908E3C`; package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2, certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+
+Dedicated Pixel 9/API 36 emulator `emulator-5590` accepted that clean APK through `adb install -r`. Its retained 5,317,098-byte autosave stayed byte-identical at SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`. Normal and Android font-scale 130% captures preserve the full TIP without ellipsis or scrolling; UI XML exposes A-01 as `PAD 01 割り当て済み。タップで試聴。長押しで微調整` and A-06 as `PAD 06 空。現在位置をチョップ`. Evidence is `work/v0113-final.png`, `work/v0113-final.xml`, `work/v0113-final-font130.png`, and `work/v0113-final-font130.xml`; the scoped fatal/ANR query returned zero matches.
+
+The physical Pixel 9a `5A121JEBF08094` is not currently attached, so this candidate does not yet claim a data-preserving phone install, physical sound/touch quality, or `HUMAN_GO`. GitHub PR/CI/tag/Release evidence is recorded only after provider completion.
+
 ## v0.11.2 truthful step placement candidate — 2026-08-12
 
 Beatの16ステップ配置は、実際にシーケンサー再生・WAV書き出しできるPADだけを操作対象にするよう統一した。`LOOP` は選択音全体を連続反復する専用モード、`VOCAL` は開始時に一度重ねる録音として扱い、どちらもステップセル、演奏録音、配置プリセットから新しいstepを作らない。選択中はセルを暗く無効化し、`配置できません` と `ループは音声全体を反復。配置は別PAD` / `VOICEは開始時に一度再生` を表示する。通常PADの選択・16-step配置、KEY/TONE/LEVEL、選択音ループ、Add、Scratchは従来どおり同じ固定画面に残る。

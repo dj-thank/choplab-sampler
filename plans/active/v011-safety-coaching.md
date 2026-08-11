@@ -106,6 +106,9 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Built versionCode 17 / versionName 0.11.2; passed 143 tests, Lint, assemble, offline validation, diff/no-scroll checks, APK metadata/signature verification, and data-preserving `emulator-5590` install.
 - [x] 2026-08-12 - On `emulator-5590`, selected A-04 LOOP, observed disabled A-step semantics and dedicated coaching, and verified a disabled step press left the stable autosave byte-identical; focused fatal/ANR matches remained zero.
 - [x] 2026-08-12 - Merged PR #24, passed branch/PR/main/tag/release CI, published `v0.11.2-preview.1`, and reverse-verified public APK bytes, GitHub digest, checksum, package metadata, signature, prerelease status, and anonymous routes.
+- [x] 2026-08-12 - A bounded Sol-specified review found that post-capture guidance hid the empty-PAD add path; the fixed TIP now distinguishes empty-PAD add from assigned-PAD audition/trim at normal and 130% font scale. Effective child-model metadata remained unavailable.
+- [x] 2026-08-12 - The follow-up review found contradictory TalkBack text on assigned PADs. A deterministic Red/Green test now locks assigned audition/long-press trim versus empty-PAD capture semantics.
+- [x] 2026-08-12 - Built versionCode 18 / versionName 0.11.3; passed 144 tests, Lint, clean assemble, offline validation, diff/no-scroll checks, APK metadata/signature verification, and data-preserving `emulator-5590` install.
 - [ ] Install the local-signature APK on physical Pixel 9a only when exact serial `5A121JEBF08094` is attached; it remains absent from ADB/mDNS and `Present=False` in Windows PnP.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
@@ -124,6 +127,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - `Thread.join` timing out is not a successful microphone stop. The WAV stays ineligible for decode until the worker has closed the writer.
 - A PAD mode is product behavior, not only a playback flag. LOOP and VOCAL must share one eligibility boundary across visible cells, direct edits, record-armed performance, presets, Finish truth, realtime playback, and export.
 - Persisted invalid step keys are safer to preserve and filter than to delete during an unrelated loop toggle; this keeps old archives non-destructive while making current sound and UI truthful.
+- Visual coaching and accessibility semantics are two separate product surfaces. A correct visible TIP does not guarantee that TalkBack describes the same assigned-versus-empty PAD routing.
 
 ## Decision log
 
@@ -134,6 +138,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - 2026-08-12 - Keep producer-side mailbox ordering synchronized while the audio-thread consumer remains lock-free. A 512-entry queue and 64-command per-block inspection cap bound both memory and render delay; Stop All uses an atomic latest-request boundary.
 - 2026-08-12 - Retain the current one-pattern product scope for this patch. Multi-pattern/Song mode remains a named Pro gap rather than being rushed into the reliability release.
 - 2026-08-12 - Treat assigned non-LOOP/non-VOCAL PADs as the only 16-step-eligible sounds. LOOP remains selected-sound repetition and VOCAL remains one-start playback; old invalid keys stay serialized but cannot sound or satisfy completion UI.
+- 2026-08-12 - Keep the Chop screen structurally unchanged for v0.11.3. Clarify the existing TIP and make PAD accessibility descriptions derive from assignment state instead of adding another control or tutorial layer.
 
 ## Validation log
 
@@ -160,6 +165,10 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - dedicated `emulator-5590` v0.11.2 - 2026-08-12 - in-place install preserved checkpoint autosave SHA-256 `76BF3EACA193F877033123590A5360E3D3A083696A812C254B029EB9EA151BF4`; A-04 LOOP displayed dedicated coaching and disabled step semantics; disabled step press preserved 5,317,098-byte autosave SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`; focused fatal/ANR matches zero.
 - GitHub publication v0.11.2 - 2026-08-12 - PR #24 merge `cf6996873b446f61f2e74910e93ad4495e74b263`; branch/PR/main/tag/release runs `31536276746` / `31536297883` / `31536570140` / `31536868910` / `31536868984` PASS.
 - public v0.11.2 APK - 2026-08-12 - 30,739,403 bytes; SHA-256 `7FE63CEADB27BBA59142EEDBFEB7A346C9F487E6CB00C5CD4B3EB7182EE3FCEE`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match; anonymous repository/Release/APK routes returned HTTP 200; public certificate `F100B8D8C189BDBA933779AB2ACCD6BBE374BC7D01E592F92684A26595C6B196` differs from local.
+- focused Chop guidance/accessibility TDD - 2026-08-12 - visible guidance RED/GREEN passed; assigned-PAD TalkBack repro failed twice deterministically before the fix and passed after assignment-aware semantics.
+- Gradle `testDebugUnitTest lintDebug assembleDebug` v0.11.3 - 2026-08-12 - PASS; 144 tests in 33 suites, zero failures/errors/skips; Lint zero errors and 10 warnings.
+- local v0.11.3 APK - 2026-08-12 - clean build 30,739,403 bytes; SHA-256 `463C58518F0D47B58DAD75C9DF0F0893D8838DD05372E7C74036FDBBB6908E3C`; package/version/minSdk/targetSdk and v2 signature verified; local certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+- dedicated `emulator-5590` v0.11.3 - 2026-08-12 - in-place install preserved 5,317,098-byte autosave SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`; normal/130% Chop TIP and assigned/empty PAD accessibility labels matched runtime behavior; scrollable nodes and focused fatal/ANR matches were zero.
 
 ## Risks and rollback
 
