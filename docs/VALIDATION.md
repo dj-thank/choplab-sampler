@@ -14,7 +14,13 @@
 - accepted candidate captures: `work/v0111-final/01-launch.png`, `02-source-playing.png`, `03-chop.png`, `04-beat.png`, `05-live-key-loop.png`, and `07-scratch.png`
 - after the install-integrity checkpoint, intentional KEY test operations produced a newer autosave; no claim is made that the archive stayed byte-identical after those user-equivalent edits
 - physical Pixel 9a `5A121JEBF08094`: not present in ADB/mDNS/current Windows USB inventory; data-preserving phone install and physical sound/touch checks pending
-- public PR/CI/tag/Release and reverse-downloaded asset identity pending; local/emulator evidence is not promoted to PUBLIC_PASS or HUMAN_GO
+- PR #22 merged as `755c30ffced5db408d89e37cf80c4caf53f02896`; branch `31530032522`, PR `31530071852`, main `31530374176`, tag verification `31530698604`, and release `31530698633` runs PASS
+- annotated tag `v0.11.1-preview.1` peels locally and remotely to the merge commit; Release is public and marked prerelease
+- reverse-downloaded public APK: 30,739,399 bytes; SHA-256 `BB4502733C3382C91BE6391F9A1EADC5E9F3BC5F0B6621E54B179B8BB16F4C65`
+- downloaded APK, GitHub asset digest, and attached checksum sidecar three-way match; package/version/minSdk/targetSdk and APK Signature Scheme v2 verified
+- public certificate SHA-256 `F2F5461C71A08CC71FF074B00E0F99DFCDB1489BBAD9545C29D0C93C6F86DA3D` differs from the installed local certificate, so no data-destructive replacement was attempted
+- anonymous HTTP checks: repository 200, Release page 200, direct APK 200; this establishes PUBLIC_PASS for availability and artifact identity, not physical DEVICE_PASS or HUMAN_GO
+- release workflow now passes `--prerelease` for preview-tag publication so future previews do not momentarily appear as stable releases
 
 ## 2026-08-12 v0.11 safety, coaching, and fixed-landscape validation
 

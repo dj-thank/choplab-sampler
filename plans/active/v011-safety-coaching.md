@@ -100,6 +100,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Implemented live KEY/TONE/LEVEL updates without cursor restart plus 130% font-scale labels; dedicated emulator screenshots show the full `選択音ループ` label.
 - [x] 2026-08-12 - Implemented bounded command/stop ordering, reusable PAD/source voices, owner-safe AudioTrack cleanup, and fail-closed microphone worker completion with Red/Green tests.
 - [x] 2026-08-12 - Built versionCode 16 / versionName 0.11.1, installed it in place on dedicated emulator `emulator-5590`, preserved the exact pre-interaction autosave, and observed source, Chop, Beat loop/live KEY, and Scratch runtime states without a focused fatal/ANR match.
+- [x] 2026-08-12 - Merged PR #22, passed branch/PR/main/tag/release CI, published `v0.11.1-preview.1`, corrected and hardened prerelease metadata, and reverse-verified public APK bytes, digest, checksum, package metadata, and signature.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
 ## Discoveries
@@ -141,6 +142,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - `scripts/validate_project.sh` follow-up - 2026-08-12, configured Git Bash/Kotlin 2.3.21 - PASS; `git diff --check` PASS; UI scroll API scan zero matches.
 - local v0.11.1 APK - 2026-08-12 - 30,739,399 bytes; SHA-256 `354571D8390BA8F86B20DBEA53E3954912A8FECA47D9171253E38B864FAB4059`; package/version/minSdk/targetSdk and v2 signature verified; local certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
 - dedicated `emulator-5590` v0.11.1 - 2026-08-12 - in-place install and cold launch PASS; autosave stayed 5,316,915 bytes / `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513` through the install checkpoint; source/Chop/Beat live loop+KEY/Scratch smoke stayed alive with zero scoped fatal/ANR matches.
+- GitHub publication - 2026-08-12 - PR #22 merge `755c30ffced5db408d89e37cf80c4caf53f02896`; branch/PR/main/tag/release runs `31530032522` / `31530071852` / `31530374176` / `31530698604` / `31530698633` PASS.
+- public APK - 2026-08-12 - 30,739,399 bytes; SHA-256 `BB4502733C3382C91BE6391F9A1EADC5E9F3BC5F0B6621E54B179B8BB16F4C65`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match; anonymous repository/Release/APK routes returned HTTP 200.
 
 ## Risks and rollback
 
