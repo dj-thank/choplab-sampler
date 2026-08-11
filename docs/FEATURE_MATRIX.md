@@ -14,6 +14,7 @@
 | スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのChopは波形＋右4×4 PADの左右分割、Beatはcompact操作列。UI sourceにscroll APIなし |
 | 曲を流しながらPADで刻む | ✅ preview | CI build、pure tests、Pixel 9aでimport→play→PAD 01割当→stopを観測 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
+| チョップ後のPAD操作案内 | 🧪 emulator | 最初の割当後も空PAD＝追加、音ありPAD＝試聴・長押し微調整を固定TIPとTalkBackで一致。通常／文字130%で全文表示を確認 |
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
 | チョップ済みビート音声全体を連続ループ | 🧪 local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。実機音質確認待ち |

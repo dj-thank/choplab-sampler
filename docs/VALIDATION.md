@@ -2,6 +2,20 @@
 
 作成日: 2026-07-15
 
+## 2026-08-12 v0.11.3 clear Chop actions and accessibility candidate
+
+- focused TDD: the assigned-PAD capture-mode accessibility test failed twice with `expected タップで試聴。長押しで微調整 but was 現在位置をチョップ`, then passed after the assigned/empty split
+- full host gate: 144 tests in 33 suites / failures 0 / errors 0 / skipped 0; Lint 0 errors / 10 warnings; clean assemble PASS
+- configured offline project validation PASS; Gradle Wrapper SHA-256 matched; `git diff --check` PASS; UI scroll API scan zero matches
+- local APK: versionCode 18 / versionName 0.11.3; 30,739,403 bytes; SHA-256 `463C58518F0D47B58DAD75C9DF0F0893D8838DD05372E7C74036FDBBB6908E3C`
+- local APK metadata: package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- dedicated Pixel 9 / API 36 emulator `emulator-5590`: exact clean APK accepted through data-preserving `adb install -r`; retained 5,317,098-byte autosave stayed SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`
+- normal and 130% font-scale UI: complete `空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ` TIP; assigned A-01 accessibility says audition/long-press trim; empty A-06 says chop current position; scrollable nodes 0
+- accepted runtime files: `work/v0113-final.png`, `work/v0113-final.xml`, `work/v0113-final-font130.png`, and `work/v0113-final-font130.xml`; process alive; scoped fatal/ANR matches 0; system font scale restored to 1.0
+- Sol-specified review found the visual guidance issue and the contradictory TalkBack label; effective child-model metadata was unavailable, so no runtime-verified Sol claim is made
+- physical Pixel 9a `5A121JEBF08094`: not attached; data-preserving phone install and physical sound/touch checks pending
+- GitHub PR/CI/tag/public Release: pending provider execution at this candidate checkpoint
+
 ## 2026-08-12 v0.11.2 truthful step-placement candidate
 
 - TDD RED/GREEN seams: PAD step eligibility, normal and record-armed mutation, performance-pad routing, Beat-lane fallback/disabled accessibility, LOOP/VOCAL guidance, archive round-trip, and audible legacy-step filtering
