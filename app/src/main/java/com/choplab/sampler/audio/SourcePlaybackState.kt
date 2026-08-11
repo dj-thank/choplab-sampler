@@ -25,6 +25,21 @@ class SourcePlaybackState {
     /** Called by the audio thread when this queued stop command is accepted. */
     fun applyStop(generation: Long): Boolean = apply(generation, playing = false)
 
+    /**
+     * Applies an out-of-band Stop All boundary.
+     *
+     * A newer play may have been issued concurrently after the stop generation. Publishing
+     * stopped against the newest issued generation keeps the UI truthful; a play command that
+     * is sequenced after the stop boundary can still publish playing when the audio thread
+     * subsequently applies it.
+     */
+    fun applyStopBoundary(generation: Long): Boolean {
+        val currentGeneration = issuedGeneration.get()
+        if (generation > currentGeneration) return false
+        appliedState.set(encode(currentGeneration, playing = false))
+        return true
+    }
+
     /** Returns true only when this exact active generation owned the published stop. */
     fun complete(generation: Long): Boolean = appliedState.compareAndSet(
         encode(generation, playing = true),

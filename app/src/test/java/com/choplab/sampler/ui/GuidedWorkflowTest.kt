@@ -135,4 +135,31 @@ class GuidedWorkflowTest {
             ARRANGE_QUICK_GUIDANCE_COMPACT,
         )
     }
+
+    @Test
+    fun largeTextKeepsTwoLineMachineActionsReadableWithoutChangingNormalTypography() {
+        assertEquals(8f, compactMachineButtonFontSizeSp(fontScale = 1f))
+        assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 1f))
+        assertTrue(machineHeaderShowsCaption(fontScale = 1f))
+
+        assertEquals(7f, compactMachineButtonFontSizeSp(fontScale = 1.3f))
+        assertEquals(8f, compactMachineButtonLineHeightSp(fontScale = 1.3f))
+        assertFalse(machineHeaderShowsCaption(fontScale = 1.3f))
+    }
+
+    @Test
+    fun largeTextUsesOneClearLineForTheSelectedChopLoopAction() {
+        assertEquals(
+            "選択音をループ\nSTART",
+            beatLoopButtonLabel(looping = false, fontScale = 1f),
+        )
+        assertEquals(
+            "選択音ループ",
+            beatLoopButtonLabel(looping = false, fontScale = 1.3f),
+        )
+        assertEquals(
+            "ループ停止",
+            beatLoopButtonLabel(looping = true, fontScale = 1.3f),
+        )
+    }
 }

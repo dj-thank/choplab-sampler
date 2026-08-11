@@ -9,6 +9,17 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
+internal fun awaitRecorderWorker(worker: Thread?, timeoutMillis: Long): Boolean {
+    if (worker == null) return true
+    return try {
+        worker.join(timeoutMillis.coerceAtLeast(1L))
+        !worker.isAlive
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        false
+    }
+}
+
 class MicrophoneRecorder {
     private val running = AtomicBoolean(false)
     @Volatile private var audioRecord: AudioRecord? = null
@@ -21,6 +32,9 @@ class MicrophoneRecorder {
 
     @SuppressLint("MissingPermission")
     fun start(file: File, onFailure: (String) -> Unit = {}): Result<Unit> {
+        if (worker?.isAlive == true) {
+            return Result.failure(IllegalStateException("マイク録音の停止処理中です"))
+        }
         if (!running.compareAndSet(false, true)) {
             return Result.failure(IllegalStateException("すでにマイク録音中です"))
         }
@@ -37,7 +51,7 @@ class MicrophoneRecorder {
                 error("マイク録音を開始できません")
             }
 
-            worker = Thread({
+            val recordingWorker = Thread({
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
                 val bufferFrames = max(
                     AudioRecord.getMinBufferSize(
@@ -73,10 +87,11 @@ class MicrophoneRecorder {
                     runCatching { recorder.stop() }
                     runCatching { recorder.release() }
                     audioRecord = null
+                    if (worker === Thread.currentThread()) worker = null
                 }
-            }, "ChopLab-Microphone").apply {
-                start()
-            }
+            }, "ChopLab-Microphone")
+            worker = recordingWorker
+            recordingWorker.start()
         }.onFailure { throwable ->
             running.set(false)
             runCatching { audioRecord?.release() }
@@ -86,7 +101,9 @@ class MicrophoneRecorder {
     }
 
     fun stop(): Result<File> {
-        if (!running.getAndSet(false)) {
+        val wasRunning = running.getAndSet(false)
+        val activeWorker = worker
+        if (!wasRunning && activeWorker == null) {
             val file = outputFile
             val failure = failureMessage
             return when {
@@ -97,8 +114,10 @@ class MicrophoneRecorder {
         }
 
         runCatching { audioRecord?.stop() }
-        runCatching { worker?.join(2_000L) }
-        worker = null
+        if (!awaitRecorderWorker(activeWorker, timeoutMillis = 2_000L)) {
+            return Result.failure(IllegalStateException("マイク録音の停止に時間がかかっています"))
+        }
+        if (worker === activeWorker) worker = null
 
         val file = outputFile
         return if (failureMessage != null) {

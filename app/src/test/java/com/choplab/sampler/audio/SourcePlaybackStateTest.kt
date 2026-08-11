@@ -68,4 +68,19 @@ class SourcePlaybackStateTest {
         assertTrue(state.applyStop(stoppedGeneration))
         assertFalse(state.isPlaying)
     }
+
+    @Test
+    fun stopAllBoundaryPublishesStoppedWhenANewerGenerationWasIssuedConcurrently() {
+        val state = SourcePlaybackState()
+        val playingGeneration = state.issuePlay()
+        assertTrue(state.applyPlay(playingGeneration))
+
+        val stopGeneration = state.issueStop()
+        val laterPlayGeneration = state.issuePlay()
+        state.applyStopBoundary(stopGeneration)
+
+        assertFalse(state.isPlaying)
+        assertTrue(state.applyPlay(laterPlayGeneration))
+        assertTrue(state.isPlaying)
+    }
 }

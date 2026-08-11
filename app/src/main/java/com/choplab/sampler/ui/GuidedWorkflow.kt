@@ -31,6 +31,25 @@ fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
 fun workflowStageKeepsSourcePlayback(stage: WorkflowStage): Boolean =
     stage == WorkflowStage.CHOP
 
+fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
+    if (usesLargeTextDeckMode(fontScale)) 7f else 8f
+
+fun compactMachineButtonLineHeightSp(fontScale: Float): Float =
+    if (usesLargeTextDeckMode(fontScale)) 8f else 9f
+
+fun machineHeaderShowsCaption(fontScale: Float): Boolean =
+    !usesLargeTextDeckMode(fontScale)
+
+fun beatLoopButtonLabel(looping: Boolean, fontScale: Float): String =
+    if (usesLargeTextDeckMode(fontScale)) {
+        if (looping) "ループ停止" else "選択音ループ"
+    } else {
+        if (looping) "選択音ループ停止\nSTOP" else "選択音をループ\nSTART"
+    }
+
+private fun usesLargeTextDeckMode(fontScale: Float): Boolean =
+    fontScale.isFinite() && fontScale >= 1.2f
+
 fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
     state.currentAudio != null ||
         state.pads.any(PadModel::isAssigned) ||
