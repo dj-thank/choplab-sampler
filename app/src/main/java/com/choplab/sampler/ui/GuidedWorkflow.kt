@@ -61,7 +61,7 @@ fun chopQuickGuidance(assignedPadCount: Int): String =
     if (assignedPadCount <= 0) {
         "波形タップ＝そこから再生 → 空PAD＝チョップ"
     } else {
-        "PAD＝試聴／長押し＝微調整 → ビートへ"
+        "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ"
     }
 
 fun pitchDirectionLabel(value: Float): String = when {
