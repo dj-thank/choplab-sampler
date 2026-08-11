@@ -2,6 +2,37 @@
 
 Last prepared: 2026-08-11
 
+## v0.8.0 drum, vocal, and scratch workstation local/device evidence — 2026-08-11
+
+Version `0.8.0` (`versionCode=9`) adds one fixed `LAYER STUDIO` without using Figma or introducing scroll containers:
+
+- PAD cells are the largest centered squares that fit both the existing 4×4 and Arrange 8×2 grids;
+- five original deterministic drum kits each provide 16 named KICK/SNARE/HAT/PERC one-shots, a professional list selector, BANK A〜C targeting, and a starter beat;
+- microphone overdub restarts the active beat loop, stores the decoded take in BANK D, starts vocal takes once with the loop, and includes them in offline export;
+- a large touch jog uses signed speed for forward/reverse scratch playback and stops on release;
+- schema 4 persists PAD content roles and selected kit, while schema 1–3 remain readable;
+- third-party artist recordings and unofficial branded kits are excluded. Candidate CC0 intake and provenance checks are documented in `docs/research/legal-drum-sample-sources.md`.
+
+Local evidence:
+
+- `scripts/validate_project.sh`: PASS;
+- Gradle `testDebugUnitTest`: 64 tests, zero failures/errors/skips;
+- Gradle `lintDebug`: PASS, zero errors (10 Android/toolchain advisories reported);
+- Gradle `assembleDebug`: PASS;
+- `git diff --check`: PASS;
+- UI source scan: zero scroll API matches;
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,477,259 bytes, SHA-256 `AEF6C8D1957BA226AA2DD00A6CD21404B125910A1AD233ED866A0662AA8CC0B2`.
+
+Focused physical Pixel 9a evidence on Android 17 / arm64-v8a:
+
+- the final exact APK installed as `versionCode=9`, `versionName=0.8.0`, launched with a live process, and was copied to `/sdcard/Download/ChopLab-0.8.0-drum-vocal-scratch.apk`;
+- device and PC APK SHA-256 matched exactly;
+- Android rejected the first in-place update because the installed public build used a different debug signature. The existing 4,960,607-byte autosave was copied byte-for-byte to `/sdcard/Download/ChopLab-autosave-before-drum-vocal-scratch.choplab` with SHA-256 `ACE63AE664334728BB6D7FB432261035DDBA5B5EB49E3F04647C2D25A8AE4DB0`; inspection confirmed that archive was already truncated/corrupt and the old app also reported recovery failure;
+- after the authorized package replacement, DUSTY JAZZ was applied to BANK B, real synthesized waveforms and starter-step markers appeared, square 8×2 PADs remained on-screen, and the improved DRUMS/VOICE/SCRATCH panels were captured without scrolling;
+- the resulting schema 4 autosave restored successfully after a cold app restart.
+
+This establishes `LOCAL_PASS` and focused install/launch, kit-application, fixed-layout, and schema-4 recovery `DEVICE_PASS`. It does not establish public CI/Release identity, ambient microphone recording on the user's phone, subjective drum/loop/scratch sound quality, measured latency/xRuns, sustained thermal behavior, TalkBack/haptic quality, or `HUMAN_GO`.
+
 ## Public v0.7.0 whole-chop beat-loop evidence — 2026-08-11
 
 - PR [#6](https://github.com/dj-thank/choplab-sampler/pull/6) merged as `9d09228c7d19cdd709b7c864e21eddaa69715d67` after branch push run [31400890047](https://github.com/dj-thank/choplab-sampler/actions/runs/31400890047) and PR run [31400928956](https://github.com/dj-thank/choplab-sampler/actions/runs/31400928956) both passed.

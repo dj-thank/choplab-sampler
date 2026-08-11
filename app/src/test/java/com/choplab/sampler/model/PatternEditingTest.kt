@@ -109,6 +109,25 @@ class PatternEditingTest {
     }
 
     @Test
+    fun `pattern content accepts a vocal take without step events`() {
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 48) {
+                PadModel(
+                    globalIndex = index,
+                    audio = PcmAudio(name = "voice", samples = shortArrayOf(1, 2), sampleRate = 48_000),
+                    startFrame = 0,
+                    endFrame = 2,
+                    contentKind = PadContentKind.VOCAL,
+                )
+            } else {
+                PadModel(index)
+            }
+        }
+
+        assertEquals(true, emptySet<Int>().hasAudiblePatternContent(pads))
+    }
+
+    @Test
     fun `repeat grid recognition matches only exact selected pad pattern`() {
         val layered = emptySet<Int>()
             .replacePadSteps(0, RepeatGrid.QUARTER)

@@ -15,6 +15,12 @@ enum class PadPlayMode {
     LOOP,
 }
 
+enum class PadContentKind {
+    SAMPLE,
+    DRUM,
+    VOCAL,
+}
+
 data class PcmAudio(
     val id: Long = System.nanoTime(),
     val name: String,
@@ -46,6 +52,7 @@ data class PadModel(
     val gain: Float = 0.9f,
     val reverse: Boolean = false,
     val playMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+    val contentKind: PadContentKind = PadContentKind.SAMPLE,
     val chokeGroup: Int = 0,
 ) {
     val isAssigned: Boolean
@@ -78,11 +85,15 @@ data class SamplerUiState(
     val recordArmed: Boolean = false,
     val currentStep: Int = -1,
     val microphoneRecording: Boolean = false,
+    val vocalOverdubRecording: Boolean = false,
     val systemAudioRecording: Boolean = false,
     val sourcePlaying: Boolean = false,
     val sourcePlayheadFrame: Int = 0,
     val loopingPadIndex: Int? = null,
     val loopPlayheadFrame: Int = -1,
+    val scratchingPadIndex: Int? = null,
+    val scratchPlayheadFrame: Int = -1,
+    val selectedDrumKitId: String = "dusty-jazz",
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,

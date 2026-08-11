@@ -1,6 +1,7 @@
 package com.choplab.sampler.persistence
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectLimits
@@ -26,7 +27,8 @@ import java.util.zip.ZipOutputStream
 object ProjectArchiveCodec {
     private const val LEGACY_PCM_SCHEMA_VERSION = 1
     private const val WAV_SCHEMA_VERSION = 2
-    private const val SCHEMA_VERSION = 3
+    private const val CONTENT_KIND_SCHEMA_VERSION = 4
+    private const val SCHEMA_VERSION = CONTENT_KIND_SCHEMA_VERSION
     private const val MANIFEST_ENTRY = "project.txt"
     private const val MAX_MANIFEST_BYTES = 256 * 1024
     private const val MAX_MVP_AUDIO_FRAMES = 30_000_000
@@ -157,6 +159,7 @@ object ProjectArchiveCodec {
                 state.sourcePlayheadFrame,
                 state.masterPitchSemitones,
                 state.currentAudio?.let { audioIndexById[it.id] } ?: -1,
+                encodeText(state.selectedDrumKitId),
             ).joinToString("\t"),
         )
         appendLine("slices\t${state.sliceMarkers.joinToString(",")}")
@@ -175,6 +178,7 @@ object ProjectArchiveCodec {
                     pad.gain,
                     pad.reverse.toFlag(),
                     pad.playMode.name,
+                    pad.contentKind.name,
                     pad.chokeGroup,
                 ).joinToString("\t"),
             )
@@ -228,7 +232,8 @@ object ProjectArchiveCodec {
             "プロジェクト内の音声データが大きすぎます"
         }
         val state = next("state")
-        require(state.size == 13) { "stateが不正です" }
+        val expectedStateFields = if (schemaVersion >= CONTENT_KIND_SCHEMA_VERSION) 14 else 13
+        require(state.size == expectedStateFields) { "stateが不正です" }
         val slices = next("slices").also { require(it.size in 1..2) { "slicesが不正です" } }
         val steps = next("steps").also { require(it.size in 1..2) { "stepsが不正です" } }
         val padCountLine = next("padCount")
@@ -237,7 +242,8 @@ object ProjectArchiveCodec {
         require(padCount == SamplerConfig.PAD_COUNT) { "PAD数が不正です" }
         val pads = List(padCount) { expectedIndex ->
             val values = next("pad")
-            require(values.size == 11) { "PAD情報が不正です" }
+            val expectedPadFields = if (schemaVersion >= CONTENT_KIND_SCHEMA_VERSION) 12 else 11
+            require(values.size == expectedPadFields) { "PAD情報が不正です" }
             val globalIndex = values[1].toIntStrict("pad.globalIndex")
             require(globalIndex == expectedIndex) { "PAD indexが連続していません" }
             PadManifest(
@@ -251,7 +257,13 @@ object ProjectArchiveCodec {
                 reverse = values[8].toBooleanStrict("pad.reverse"),
                 playMode = runCatching { PadPlayMode.valueOf(values[9]) }
                     .getOrElse { error("PAD playModeが不正です") },
-                chokeGroup = values[10].toIntStrict("pad.chokeGroup"),
+                contentKind = if (schemaVersion >= CONTENT_KIND_SCHEMA_VERSION) {
+                    runCatching { PadContentKind.valueOf(values[10]) }
+                        .getOrElse { error("PAD contentKindが不正です") }
+                } else {
+                    PadContentKind.SAMPLE
+                },
+                chokeGroup = values[expectedPadFields - 1].toIntStrict("pad.chokeGroup"),
             )
         }
         require(cursor == lines.size) { "project.txtに未対応の情報があります" }
@@ -270,6 +282,11 @@ object ProjectArchiveCodec {
             sourcePlayheadFrame = state[10].toIntStrict("sourcePlayheadFrame"),
             masterPitchSemitones = state[11].toFiniteFloat("masterPitchSemitones"),
             currentAudioIndex = state[12].toIntStrict("currentAudioIndex"),
+            selectedDrumKitId = if (schemaVersion >= CONTENT_KIND_SCHEMA_VERSION) {
+                decodeText(state[13]).also { require(it.length <= 64) { "drumKitIdが不正です" } }
+            } else {
+                "dusty-jazz"
+            },
             sliceMarkers = slices.getOrNull(1).toIntList("slices"),
             activeSteps = steps.getOrNull(1).toIntList("steps").toSet(),
             pads = pads,
@@ -321,6 +338,7 @@ object ProjectArchiveCodec {
                 gain = pad.gain,
                 reverse = pad.reverse,
                 playMode = pad.playMode,
+                contentKind = pad.contentKind,
                 chokeGroup = pad.chokeGroup,
             )
         }
@@ -341,6 +359,7 @@ object ProjectArchiveCodec {
             swing = swing,
             sourcePlayheadFrame = sourcePlayheadFrame.coerceIn(0, (safeEnd - 1).coerceAtLeast(0)),
             masterPitchSemitones = masterPitchSemitones,
+            selectedDrumKitId = selectedDrumKitId,
         )
     }
 
@@ -359,6 +378,7 @@ object ProjectArchiveCodec {
         val sourcePlayheadFrame: Int,
         val masterPitchSemitones: Float,
         val currentAudioIndex: Int,
+        val selectedDrumKitId: String,
         val sliceMarkers: List<Int>,
         val activeSteps: Set<Int>,
         val pads: List<PadManifest>,
@@ -383,6 +403,7 @@ object ProjectArchiveCodec {
         val gain: Float,
         val reverse: Boolean,
         val playMode: PadPlayMode,
+        val contentKind: PadContentKind,
         val chokeGroup: Int,
     )
 

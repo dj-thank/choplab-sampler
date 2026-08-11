@@ -1,6 +1,7 @@
 package com.choplab.sampler.persistence
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
@@ -21,13 +22,13 @@ import org.junit.Test
 
 class ProjectArchiveCodecTest {
     @Test
-    fun archiveUsesSchemaThreeWhenWholeChopLoopModeCanBeStored() {
+    fun archiveUsesSchemaFourWhenPadContentRolesCanBeStored() {
         val manifest = unzip(archiveFor(SamplerUiState()))
             .single { (name, _) -> name == "project.txt" }
             .second
             .toString(Charsets.UTF_8)
 
-        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t3\n"))
+        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t4\n"))
     }
 
     @Test
@@ -50,6 +51,7 @@ class ProjectArchiveCodecTest {
                     gain = 1.1f,
                     reverse = true,
                     playMode = PadPlayMode.LOOP,
+                    contentKind = PadContentKind.VOCAL,
                     chokeGroup = 2,
                 )
                 1 -> PadModel(index, audio = audio, startFrame = 4, endFrame = 6)
@@ -77,6 +79,7 @@ class ProjectArchiveCodecTest {
             sourcePlaying = true,
             sourcePlayheadFrame = 3,
             masterPitchSemitones = -2f,
+            selectedDrumKitId = "vinyl-soul",
         )
 
         val bytes = ByteArrayOutputStream().also { ProjectArchiveCodec.write(original, it) }.toByteArray()
@@ -94,10 +97,12 @@ class ProjectArchiveCodecTest {
         assertEquals(0.35f, restored.pads[0].tone)
         assertEquals(1.1f, restored.pads[0].gain)
         assertEquals(PadPlayMode.LOOP, restored.pads[0].playMode)
+        assertEquals(PadContentKind.VOCAL, restored.pads[0].contentKind)
         assertEquals(setOf(stepKey(0, 0), stepKey(1, 8)), restored.activeSteps)
         assertEquals(123f, restored.bpm)
         assertEquals(61f, restored.swing)
         assertEquals(-2f, restored.masterPitchSemitones)
+        assertEquals("vinyl-soul", restored.selectedDrumKitId)
         assertSame(restored.currentAudio, restored.pads[0].audio)
         assertSame(restored.currentAudio, restored.pads[1].audio)
         assertFalse(restored.transportPlaying)
@@ -159,8 +164,9 @@ class ProjectArchiveCodecTest {
         val schemaOneEntries = schemaTwoEntries.map { (name, bytes) ->
             when (name) {
                 "project.txt" -> name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t3", "CHOPLAB_PROJECT\t1")
+                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t1")
                     .replace("audio/0.wav", "audio/0.pcm")
+                    .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
                 "audio/0.wav" -> "audio/0.pcm" to bytes.copyOfRange(44, bytes.size)
                 else -> name to bytes
@@ -181,7 +187,8 @@ class ProjectArchiveCodecTest {
         ).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t3", "CHOPLAB_PROJECT\t2")
+                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t2")
+                    .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
             } else {
                 name to bytes
@@ -194,11 +201,42 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
+    fun schemaThreeWholeChopArchiveStillLoadsWithSampleContentRole() {
+        val audio = PcmAudio(id = 13L, name = "schema-three.wav", samples = shortArrayOf(5, -6), sampleRate = 48_000)
+        val state = SamplerUiState(
+            currentAudio = audio,
+            rangeEndFrame = audio.frameCount,
+            pads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) {
+                    PadModel(index, audio = audio, startFrame = 0, endFrame = 2, playMode = PadPlayMode.LOOP)
+                } else {
+                    PadModel(index)
+                }
+            },
+        )
+        val entries = unzip(archiveFor(state)).map { (name, bytes) ->
+            if (name == "project.txt") {
+                name to bytes.toString(Charsets.UTF_8)
+                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t3")
+                    .removeSchemaFourFields()
+                    .toByteArray(Charsets.UTF_8)
+            } else {
+                name to bytes
+            }
+        }
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+
+        assertEquals(PadPlayMode.LOOP, restored.pads[0].playMode)
+        assertEquals(PadContentKind.SAMPLE, restored.pads[0].contentKind)
+    }
+
+    @Test
     fun archiveRejectsNewerSchemaWithActionableMessage() {
         val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t3", "CHOPLAB_PROJECT\t999")
+                    .replace("CHOPLAB_PROJECT\t4", "CHOPLAB_PROJECT\t999")
                     .toByteArray(Charsets.UTF_8)
             } else {
                 name to bytes
@@ -246,6 +284,16 @@ class ProjectArchiveCodecTest {
 
     private fun archiveFor(state: SamplerUiState): ByteArray =
         ByteArrayOutputStream().also { ProjectArchiveCodec.write(state, it) }.toByteArray()
+
+    private fun String.removeSchemaFourFields(): String =
+        lineSequence().joinToString("\n") { line ->
+            val fields = line.split('\t').toMutableList()
+            when {
+                line.startsWith("state\t") -> fields.dropLast(1).joinToString("\t")
+                line.startsWith("pad\t") -> fields.apply { removeAt(10) }.joinToString("\t")
+                else -> line
+            }
+        } + "\n"
 
     private fun unzip(bytes: ByteArray): List<Pair<String, ByteArray>> = buildList {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->

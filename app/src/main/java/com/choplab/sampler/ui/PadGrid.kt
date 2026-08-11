@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
 
 private const val PAD_KEYS = "1234QWERASDFZXCV"
 
@@ -57,32 +59,36 @@ fun PadGrid(
     require(columns in 1..pads.size) { "PadGrid columns must be between 1 and 16" }
     require(pads.size % columns == 0) { "PadGrid columns must divide 16 pads" }
     val rows = pads.size / columns
-    Column(
+    BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(gap),
+        contentAlignment = Alignment.Center,
     ) {
-        repeat(rows) { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                repeat(columns) { column ->
-                    val indexInGrid = row * columns + column
-                    val pad = pads[indexInGrid]
-                    PerformancePad(
-                        pad = pad,
-                        keyLabel = PAD_KEYS[indexInGrid].toString(),
-                        selected = pad.globalIndex == selectedPad,
-                        captureMode = captureMode,
-                        onTrigger = { onTrigger(pad.globalIndex) },
-                        onRelease = { onRelease(pad.globalIndex) },
-                        onSelect = { onSelect(pad.globalIndex) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                    )
+        val geometry = resolveSquarePadGrid(
+            width = maxWidth.value,
+            height = maxHeight.value,
+            gap = gap.value,
+            columns = columns,
+        )
+        Column(
+            modifier = Modifier.size(geometry.contentWidth.dp, geometry.contentHeight.dp),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            repeat(rows) { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    repeat(columns) { column ->
+                        val indexInGrid = row * columns + column
+                        val pad = pads[indexInGrid]
+                        PerformancePad(
+                            pad = pad,
+                            keyLabel = PAD_KEYS[indexInGrid].toString(),
+                            selected = pad.globalIndex == selectedPad,
+                            captureMode = captureMode,
+                            onTrigger = { onTrigger(pad.globalIndex) },
+                            onRelease = { onRelease(pad.globalIndex) },
+                            onSelect = { onSelect(pad.globalIndex) },
+                            modifier = Modifier.size(geometry.cellSize.dp),
+                        )
+                    }
                 }
             }
         }
@@ -166,7 +172,7 @@ private fun PerformancePad(
         )
         if (!compact) {
             Text(
-                text = padTime(pad),
+                text = padCenterLabel(pad),
                 color = if (pressed) Color(0xFF4A2600) else DeckGreen,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -185,9 +191,23 @@ private fun PerformancePad(
     }
 }
 
-private fun padTime(pad: PadModel): String {
+private fun padCenterLabel(pad: PadModel): String {
     val audio = pad.audio ?: return ""
     if (!pad.isAssigned || audio.sampleRate <= 0) return ""
+    if (pad.contentKind == PadContentKind.VOCAL) return "VOX"
+    if (pad.contentKind == PadContentKind.DRUM) {
+        val name = audio.name.uppercase()
+        return when {
+            "KICK" in name -> "KICK"
+            "SNARE" in name -> "SNARE"
+            "CLOSED HAT" in name -> "C.HAT"
+            "OPEN HAT" in name -> "O.HAT"
+            "CLAP" in name -> "CLAP"
+            "SHAKER" in name -> "SHAKE"
+            "RIM" in name -> "RIM"
+            else -> "PERC"
+        }
+    }
     val seconds = pad.startFrame.toDouble() / audio.sampleRate
     val minutes = (seconds / 60.0).toInt()
     val remainder = seconds - minutes * 60.0

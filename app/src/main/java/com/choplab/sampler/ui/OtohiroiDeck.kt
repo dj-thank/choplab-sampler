@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -55,7 +57,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.choplab.sampler.SamplerViewModel
+import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
@@ -69,7 +74,10 @@ import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.visiblePads
 import kotlin.math.max
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 internal val DeckBackground = Color(0xFF0F0D08)
 internal val DeckPanel = Color(0xFFEDE2C8)
@@ -95,11 +103,18 @@ private enum class PadEditorPage(val label: String) {
     PLAY("鳴り方\nPLAY"),
 }
 
+private enum class LayerStudioPage(val label: String) {
+    DRUMS("DRUMS\nドラム"),
+    VOICE("VOICE\n声を録る"),
+    SCRATCH("SCRATCH\nこする"),
+}
+
 @Composable
 fun OtohiroiDeck(
     state: SamplerUiState,
     onImportAudio: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
+    onToggleVocalRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
     onExportBeat: () -> Unit,
     onOpenProject: () -> Unit,
@@ -111,6 +126,7 @@ fun OtohiroiDeck(
     }
     var padPageName by rememberSaveable { mutableStateOf(PadEditorPage.PARAM.name) }
     var showPadDetails by rememberSaveable { mutableStateOf(false) }
+    var showLayerStudio by rememberSaveable { mutableStateOf(false) }
     val stage = restoreWorkflowStage(stageName)
     val padPage = PadEditorPage.entries.firstOrNull { it.name == padPageName } ?: PadEditorPage.PARAM
 
@@ -201,7 +217,7 @@ fun OtohiroiDeck(
                             WorkflowStage.ARRANGE -> SequenceWorkspace(
                                 state = state,
                                 metrics = metrics,
-                                onOpenLayerCapture = { stageName = WorkflowStage.PLAY.name },
+                                onOpenLayerCapture = { showLayerStudio = true },
                                 viewModel = viewModel,
                             )
                             WorkflowStage.FINISH -> FinishWorkspace(
@@ -224,6 +240,14 @@ fun OtohiroiDeck(
                     }
                 }
             }
+        }
+        if (showLayerStudio) {
+            LayerStudio(
+                state = state,
+                onDismiss = { showLayerStudio = false },
+                onToggleVocalRecording = onToggleVocalRecording,
+                viewModel = viewModel,
+            )
         }
     }
 }
@@ -1285,11 +1309,9 @@ private fun SequenceWorkspace(
                     viewModel = viewModel,
                 )
                 QuickArrangeActionRow(
-                    state = state,
                     height = metrics.controlHeightDp.dp,
                     onOpenLayerCapture = onOpenLayerCapture,
                     onOpenFineControls = { showFineControls = true },
-                    viewModel = viewModel,
                 )
             } else {
                 FineControlsHeader(
@@ -1418,11 +1440,9 @@ private fun SequenceControlDeck(
                 viewModel = viewModel,
             )
             QuickArrangeActionRow(
-                state = state,
                 height = metrics.controlHeightDp.dp,
                 onOpenLayerCapture = onOpenLayerCapture,
                 onOpenFineControls = { onShowFineControls(true) },
-                viewModel = viewModel,
             )
             return@Column
         }
@@ -1663,30 +1683,17 @@ private fun PlacementPresetPicker(
 
 @Composable
 private fun QuickArrangeActionRow(
-    state: SamplerUiState,
     height: Dp,
     onOpenLayerCapture: () -> Unit,
     onOpenFineControls: () -> Unit,
-    viewModel: SamplerViewModel,
 ) {
-    val pad = state.selectedPadModel()
-    val nextBank = (state.selectedBank + 1) % SamplerConfig.BANK_COUNT
-    val nextPadIndex = nextBank * SamplerConfig.PADS_PER_BANK + pad.indexInBank
-    val nextPadHasSound = state.pads[nextPadIndex].isAssigned
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         MachineButton(
-            label = if (nextPadHasSound) {
-                "3 音を重ねる\nBANK ${bankName(nextBank)} →"
-            } else {
-                "3 音を足す\nBANK ${bankName(nextBank)} →"
-            },
-            onClick = {
-                viewModel.selectLayerBank(nextBank)
-                if (!nextPadHasSound) onOpenLayerCapture()
-            },
+            label = "3 音を重ねる\nDRUM · VOICE · SCRATCH",
+            onClick = onOpenLayerCapture,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
         )
@@ -1695,6 +1702,437 @@ private fun QuickArrangeActionRow(
             onClick = onOpenFineControls,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
+        )
+    }
+}
+
+@Composable
+private fun LayerStudio(
+    state: SamplerUiState,
+    onDismiss: () -> Unit,
+    onToggleVocalRecording: () -> Unit,
+    viewModel: SamplerViewModel,
+) {
+    var pageName by rememberSaveable { mutableStateOf(LayerStudioPage.DRUMS.name) }
+    var kitId by rememberSaveable { mutableStateOf(state.selectedDrumKitId) }
+    var targetBank by rememberSaveable {
+        mutableStateOf(state.selectedBank.coerceIn(0, 2))
+    }
+    val page = LayerStudioPage.entries.firstOrNull { it.name == pageName } ?: LayerStudioPage.DRUMS
+
+    Dialog(
+        onDismissRequest = {
+            if (state.scratchingPadIndex != null) viewModel.endScratch()
+            onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xCC070604))
+                .padding(horizontal = 12.dp, vertical = 18.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                color = DeckPanel,
+                contentColor = DeckInk,
+                shape = ConsoleShape,
+                shadowElevation = 14.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .widthIn(max = 760.dp)
+                    .border(2.dp, DeckLamp, ConsoleShape),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(DeckInk, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                "LAYER STUDIO",
+                                color = DeckLamp,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                            )
+                            Text(
+                                "ビートに音を重ねる",
+                                color = DeckGreen,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                            )
+                        }
+                        MachineButton(
+                            label = "閉じる\nCLOSE",
+                            onClick = {
+                                if (state.scratchingPadIndex != null) viewModel.endScratch()
+                                onDismiss()
+                            },
+                            modifier = Modifier.width(86.dp).fillMaxHeight(),
+                            compact = true,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        LayerStudioPage.entries.forEach { candidate ->
+                            MachineButton(
+                                label = candidate.label,
+                                onClick = {
+                                    if (page == LayerStudioPage.SCRATCH && state.scratchingPadIndex != null) {
+                                        viewModel.endScratch()
+                                    }
+                                    pageName = candidate.name
+                                },
+                                active = page == candidate,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                                compact = true,
+                            )
+                        }
+                    }
+                    when (page) {
+                        LayerStudioPage.DRUMS -> DrumKitStudio(
+                            selectedKitId = kitId,
+                            targetBank = targetBank,
+                            onSelectKit = { kitId = it },
+                            onSelectBank = { targetBank = it },
+                            onApply = { viewModel.applyBuiltInDrumKit(kitId, targetBank) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        LayerStudioPage.VOICE -> VocalStudio(
+                            state = state,
+                            onToggleRecording = onToggleVocalRecording,
+                            modifier = Modifier.weight(1f),
+                        )
+                        LayerStudioPage.SCRATCH -> ScratchStudio(
+                            state = state,
+                            viewModel = viewModel,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrumKitStudio(
+    selectedKitId: String,
+    targetBank: Int,
+    onSelectKit: (String) -> Unit,
+    onSelectBank: (Int) -> Unit,
+    onApply: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        BeginnerCoachBar(
+            text = "5つのオリジナル音色。選ぶだけで初心者向けパターンも入ります",
+            modifier = Modifier.fillMaxWidth().height(30.dp),
+        )
+        BuiltInDrumKits.catalog.forEachIndexed { index, kit ->
+            DrumKitCard(
+                index = index,
+                kit = kit,
+                selected = selectedKitId == kit.id,
+                onClick = { onSelectKit(kit.id) },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            (0..2).forEach { bank ->
+                MachineButton(
+                    label = "BANK ${bankName(bank)}",
+                    onClick = { onSelectBank(bank) },
+                    active = targetBank == bank,
+                    modifier = Modifier.weight(0.7f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+            MachineButton(
+                label = "この音色をセット\nKIT + STARTER BEAT",
+                onClick = onApply,
+                modifier = Modifier.weight(1.6f).fillMaxHeight(),
+                active = true,
+                compact = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrumKitCard(
+    index: Int,
+    kit: com.choplab.sampler.audio.DrumKitDefinition,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background = if (selected) DeckLamp else DeckPanelDark
+    val foreground = if (selected) Color(0xFF2A1000) else DeckInk
+    Surface(
+        color = background,
+        contentColor = foreground,
+        shape = RoundedCornerShape(7.dp),
+        shadowElevation = if (selected) 4.dp else 1.dp,
+        modifier = modifier
+            .border(if (selected) 3.dp else 1.5.dp, DeckInk, RoundedCornerShape(7.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "${kit.name} ドラムキット ${kit.character}" },
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(
+                modifier = Modifier.width(50.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "%02d".format(index + 1),
+                    color = foreground,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 17.sp,
+                )
+                Text(
+                    kit.accent,
+                    color = foreground.copy(alpha = 0.75f),
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 7.sp,
+                    maxLines = 1,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    kit.name,
+                    color = foreground,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                )
+                Text(
+                    kit.character,
+                    color = foreground.copy(alpha = 0.78f),
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 8.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "KICK · SNARE · HAT · PERC  /  16 PADS",
+                    color = foreground.copy(alpha = 0.62f),
+                    fontFamily = DeckFont,
+                    fontSize = 6.sp,
+                    maxLines = 1,
+                )
+            }
+            Canvas(modifier = Modifier.width(86.dp).fillMaxHeight().padding(vertical = 9.dp)) {
+                val bars = floatArrayOf(0.46f, 0.9f, 0.62f, 0.34f, 0.74f, 0.52f, 0.84f, 0.4f)
+                val barWidth = size.width / (bars.size * 1.65f)
+                val gap = (size.width - barWidth * bars.size) / (bars.size - 1)
+                bars.forEachIndexed { barIndex, amount ->
+                    val varied = (amount + index * 0.045f * if (barIndex % 2 == 0) 1f else -1f)
+                        .coerceIn(0.18f, 0.95f)
+                    val height = size.height * varied
+                    drawRoundRect(
+                        color = foreground.copy(alpha = if (selected) 0.8f else 0.55f),
+                        topLeft = Offset(barIndex * (barWidth + gap), (size.height - height) / 2f),
+                        size = androidx.compose.ui.geometry.Size(barWidth, height),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VocalStudio(
+    state: SamplerUiState,
+    onToggleRecording: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val takeCount = state.pads.count { it.isAssigned && it.contentKind == com.choplab.sampler.model.PadContentKind.VOCAL }
+    val loopReady = state.pads.any { it.isAssigned && it.playMode == PadPlayMode.LOOP }
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BeginnerCoachBar(
+            text = "ヘッドホン推奨：ビートを流しながらラップや声を録音します",
+            modifier = Modifier.fillMaxWidth().height(34.dp),
+        )
+        ValueDisplay(
+            label = "VOICE TAKES / BANK D",
+            value = "$takeCount / 16 テイク保存済み",
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().height(54.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            ValueDisplay(
+                label = "1 BEAT LOOP",
+                value = if (loopReady) "準備OK" else "先に開始",
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            ValueDisplay(
+                label = "2 HEADPHONE",
+                value = "装着推奨",
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            ValueDisplay(
+                label = "3 VOICE REC",
+                value = if (state.vocalOverdubRecording) "録音中" else "押して録音",
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Surface(
+                color = if (state.vocalOverdubRecording) Color(0xFFB92B24) else DeckInk,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(156.dp)
+                    .alpha(if (loopReady || state.vocalOverdubRecording) 1f else 0.42f)
+                    .border(5.dp, if (state.vocalOverdubRecording) DeckLamp else DeckPanelDark, CircleShape)
+                    .clickable(
+                        enabled = loopReady || state.vocalOverdubRecording,
+                        role = Role.Button,
+                        onClick = onToggleRecording,
+                    )
+                    .semantics { contentDescription = if (state.vocalOverdubRecording) "声の録音を停止" else "声の録音を開始" },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        when {
+                            state.vocalOverdubRecording -> "STOP\nテイクを保存"
+                            loopReady -> "REC\n声を重ねる"
+                            else -> "WAIT\n先にビートをループ"
+                        },
+                        color = Color.White,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        lineHeight = 19.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScratchStudio(
+    state: SamplerUiState,
+    viewModel: SamplerViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val padIndex = state.scratchingPadIndex
+        ?: state.loopingPadIndex
+        ?: state.selectedPad.takeIf { state.pads.getOrNull(it)?.isAssigned == true }
+        ?: state.pads.firstOrNull { it.isAssigned }?.globalIndex
+        ?: state.selectedPad
+    val pad = state.pads.getOrNull(padIndex)
+    val frame = state.scratchPlayheadFrame.takeIf { it >= 0 } ?: state.loopPlayheadFrame
+    val progress = if (pad?.isAssigned == true && frame >= pad.startFrame) {
+        (frame - pad.startFrame).toFloat() / (pad.endFrame - pad.startFrame).coerceAtLeast(1)
+    } else {
+        0f
+    }.coerceIn(0f, 1f)
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BeginnerCoachBar(
+            text = "円盤に触れたまま左右へ。右で前、左で逆再生。離すと停止",
+            modifier = Modifier.fillMaxWidth().height(32.dp),
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Surface(
+                color = Color(0xFF11100C),
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(210.dp)
+                    .border(5.dp, if (state.scratchingPadIndex != null) DeckLamp else DeckInk, CircleShape)
+                    .pointerInput(padIndex) {
+                        detectDragGestures(
+                            onDragStart = { viewModel.beginScratch() },
+                            onDragEnd = { viewModel.endScratch() },
+                            onDragCancel = { viewModel.endScratch() },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                viewModel.updateScratchSpeed(dragAmount.x / 7f)
+                            },
+                        )
+                    }
+                    .semantics {
+                        contentDescription = "スクラッチ円盤。左右へドラッグ"
+                    },
+            ) {
+                Canvas(Modifier.fillMaxSize().padding(13.dp)) {
+                    val radius = size.minDimension / 2f
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    repeat(7) { ring ->
+                        drawCircle(
+                            color = if (ring % 2 == 0) Color(0xFF665B42) else Color(0xFF342F23),
+                            radius = radius * (1f - ring * 0.105f),
+                            center = center,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f),
+                        )
+                    }
+                    drawCircle(DeckPanelDark, radius * 0.28f, center)
+                    drawCircle(DeckLamp, radius * 0.06f, center)
+                    val angle = progress * (2.0 * PI) - PI / 2.0
+                    drawLine(
+                        color = DeckLamp,
+                        start = center,
+                        end = Offset(
+                            center.x + cos(angle).toFloat() * radius * 0.78f,
+                            center.y + sin(angle).toFloat() * radius * 0.78f,
+                        ),
+                        strokeWidth = 5f,
+                    )
+                }
+            }
+        }
+        Text(
+            text = if (pad?.isAssigned == true) {
+                "${bankName(pad.bankIndex)}-%02d  •  %03d%%".format(pad.indexInBank + 1, (progress * 100).toInt())
+            } else {
+                "先に音の入ったPADを選んでください"
+            },
+            color = DeckInk,
+            fontFamily = DeckFont,
+            fontWeight = FontWeight.Black,
+            fontSize = 11.sp,
         )
     }
 }

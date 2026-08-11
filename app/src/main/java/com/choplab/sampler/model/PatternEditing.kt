@@ -39,12 +39,15 @@ fun Set<Int>.audibleStepKeys(pads: List<PadModel>): Set<Int> =
     filterTo(linkedSetOf()) { key ->
         val padIndex = key / SamplerConfig.STEP_COUNT
         pads.getOrNull(padIndex)?.let { pad ->
-            pad.isAssigned && pad.playMode != PadPlayMode.LOOP
+            pad.isAssigned &&
+                pad.playMode != PadPlayMode.LOOP &&
+                pad.contentKind != PadContentKind.VOCAL
         } == true
     }
 
 fun Set<Int>.hasAudiblePatternContent(pads: List<PadModel>): Boolean =
     pads.any { pad -> pad.isAssigned && pad.playMode == PadPlayMode.LOOP } ||
+        pads.any { pad -> pad.isAssigned && pad.contentKind == PadContentKind.VOCAL } ||
         audibleStepKeys(pads).isNotEmpty()
 
 fun Set<Int>.repeatGridForPad(padIndex: Int): RepeatGrid? {

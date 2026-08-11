@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.choplab.sampler.audio.AudioDecoder
+import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.CaptureEventBus
 import com.choplab.sampler.audio.MicrophoneRecorder
 import com.choplab.sampler.audio.PlaybackCaptureService
@@ -16,6 +17,7 @@ import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.model.EditHistory
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
@@ -144,6 +146,168 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }.onFailure { throwable ->
                 setStatus(throwable.message ?: "マイク録音を停止できません")
             }
+        }
+    }
+
+    fun startVocalOverdubRecording() {
+        if (microphoneRecorder.isRecording) {
+            setStatus("別の録音を停止してから声を重ねてください")
+            return
+        }
+        val state = mutableUiState.value
+        val loopPadIndex = state.loopingPadIndex
+            ?: state.pads.firstOrNull { it.isAssigned && it.playMode == PadPlayMode.LOOP }?.globalIndex
+            ?: run {
+                setStatus("先にビートPADを選び「ビートをループ」を開始してください")
+                return
+            }
+        val loopPad = state.pads[loopPadIndex]
+        val directory = File(getApplication<Application>().cacheDir, "captures").apply { mkdirs() }
+        val file = File(directory, "vocal_${System.currentTimeMillis()}.wav")
+        microphoneRecorder.start(file) { message ->
+            viewModelScope.launch {
+                mutableUiState.update {
+                    it.copy(vocalOverdubRecording = false, statusMessage = message)
+                }
+            }
+        }.onSuccess {
+            state.loopingPadIndex?.let(engine::stopPad)
+            state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+                .forEach { engine.triggerPad(it.globalIndex) }
+            engine.startPadLoop(loopPadIndex)
+            mutableUiState.update {
+                it.copy(
+                    vocalOverdubRecording = true,
+                    loopingPadIndex = loopPadIndex,
+                    loopPlayheadFrame = loopPad.startFrame,
+                    statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
+                )
+            }
+        }.onFailure { throwable ->
+            setStatus(throwable.message ?: "声の録音を開始できません")
+        }
+    }
+
+    fun stopVocalOverdubRecording() {
+        viewModelScope.launch {
+            val stopped = withContext(Dispatchers.IO) { microphoneRecorder.stop() }
+            mutableUiState.update { it.copy(vocalOverdubRecording = false) }
+            stopped.onSuccess { file ->
+                runCatching { decoder.decode(Uri.fromFile(file)) }
+                    .onSuccess(::assignVocalTake)
+                    .onFailure { throwable ->
+                        setStatus(throwable.message ?: "録音した声を読み込めませんでした")
+                    }
+            }.onFailure { throwable ->
+                setStatus(throwable.message ?: "声の録音を停止できません")
+            }
+        }
+    }
+
+    private fun assignVocalTake(audio: PcmAudio) {
+        val bankStart = VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val target = mutableUiState.value.pads
+            .subList(bankStart, bankStart + SamplerConfig.PADS_PER_BANK)
+            .firstOrNull { !it.isAssigned }
+            ?.globalIndex
+            ?: bankStart
+        val vocalPad = PadModel(
+            globalIndex = target,
+            audio = audio,
+            startFrame = 0,
+            endFrame = audio.frameCount,
+            gain = 0.9f,
+            contentKind = PadContentKind.VOCAL,
+        )
+        commitEdit { state ->
+            val pads = state.pads.toMutableList().also { it[target] = vocalPad }
+            state.copy(
+                pads = pads,
+                selectedBank = VOCAL_BANK_INDEX,
+                selectedPad = target,
+                activeSteps = state.activeSteps.clearPadSteps(target),
+                statusMessage = "VOICE TAKE を BANK D-%02d に保存しました".format(target - bankStart + 1),
+            )
+        }
+        engine.updatePad(vocalPad)
+        syncPattern()
+    }
+
+    fun applyBuiltInDrumKit(kitId: String, bankIndex: Int = mutableUiState.value.selectedBank) {
+        if (bankIndex !in 0 until VOCAL_BANK_INDEX) {
+            setStatus("ドラムキットは BANK A〜C を選んでください。BANK D は声用です")
+            return
+        }
+        val replacement = runCatching { BuiltInDrumKits.createBankPads(kitId, bankIndex) }
+            .getOrElse {
+                setStatus("ドラムキットを読み込めませんでした")
+                return
+            }
+        val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
+        val bankEnd = bankStart + SamplerConfig.PADS_PER_BANK
+        mutableUiState.value.loopingPadIndex
+            ?.takeIf { it in bankStart until bankEnd }
+            ?.let(engine::stopPad)
+        commitEdit { state ->
+            val pads = state.pads.toMutableList()
+            replacement.forEach { pads[it.globalIndex] = it }
+            state.copy(
+                pads = pads,
+                selectedBank = bankIndex,
+                selectedPad = bankStart,
+                selectedDrumKitId = kitId,
+                activeSteps = state.activeSteps
+                    .filterNotTo(linkedSetOf()) { key -> key / SamplerConfig.STEP_COUNT in bankStart until bankEnd } +
+                    BuiltInDrumKits.starterPattern(kitId, bankIndex),
+                loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
+                loopPlayheadFrame = if (state.loopingPadIndex in bankStart until bankEnd) -1 else state.loopPlayheadFrame,
+                statusMessage = "${BuiltInDrumKits.catalog.first { it.id == kitId }.name} を BANK ${('A'.code + bankIndex).toChar()} にセット",
+            )
+        }
+        replacement.forEach(engine::updatePad)
+        syncPattern()
+    }
+
+    fun beginScratch() {
+        val state = mutableUiState.value
+        val padIndex = state.loopingPadIndex
+            ?: state.selectedPad.takeIf { state.pads.getOrNull(it)?.isAssigned == true }
+            ?: state.pads.firstOrNull { it.isAssigned }?.globalIndex
+            ?: state.selectedPad
+        val pad = state.pads.getOrNull(padIndex)
+        if (pad?.isAssigned != true) {
+            setStatus("スクラッチするビートPADを選んでください")
+            return
+        }
+        state.loopingPadIndex?.let(engine::stopPad)
+        state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+            .forEach { engine.stopPad(it.globalIndex) }
+        val startFrame = state.loopPlayheadFrame.takeIf { it in pad.startFrame until pad.endFrame }
+            ?: pad.startFrame
+        engine.beginScratch(padIndex, startFrame)
+        mutableUiState.update {
+            it.copy(
+                loopingPadIndex = null,
+                loopPlayheadFrame = -1,
+                scratchingPadIndex = padIndex,
+                scratchPlayheadFrame = startFrame,
+                statusMessage = "指を左右へ動かしてスクラッチ",
+            )
+        }
+    }
+
+    fun updateScratchSpeed(speed: Float) {
+        engine.updateScratchSpeed(speed)
+    }
+
+    fun endScratch() {
+        engine.endScratch()
+        mutableUiState.update {
+            it.copy(
+                scratchingPadIndex = null,
+                scratchPlayheadFrame = -1,
+                statusMessage = "スクラッチ停止 — ビートループで通常再生へ戻れます",
+            )
         }
     }
 
@@ -681,6 +845,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         if (state.loopingPadIndex == globalIndex) {
             engine.stopPad(globalIndex)
+            state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+                .forEach { engine.stopPad(it.globalIndex) }
             mutableUiState.update {
                 it.copy(
                     loopingPadIndex = null,
@@ -713,6 +879,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         changedPads.forEach(engine::updatePad)
         syncPattern()
         engine.startPadLoop(globalIndex)
+        state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+            .forEach { engine.triggerPad(it.globalIndex) }
         mutableUiState.update {
             it.copy(
                 loopingPadIndex = globalIndex,
@@ -828,6 +996,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("ビートループは音声全体を繰り返します。配置は別PADへ追加してください")
             return
         }
+        if (selectedPad.contentKind == PadContentKind.VOCAL) {
+            setStatus("VOICE TAKE はビート開始時に1回だけ再生します")
+            return
+        }
         commitEdit { state ->
             state.copy(
                 activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, repeatGrid),
@@ -849,6 +1021,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             it.copy(
                 loopingPadIndex = null,
                 loopPlayheadFrame = -1,
+                scratchingPadIndex = null,
+                scratchPlayheadFrame = -1,
                 statusMessage = "すべての音を停止しました",
             )
         }
@@ -1023,7 +1197,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             bpm == other.bpm &&
             swing == other.swing &&
             sourcePlayheadFrame == other.sourcePlayheadFrame &&
-            masterPitchSemitones == other.masterPitchSemitones
+            masterPitchSemitones == other.masterPitchSemitones &&
+            selectedDrumKitId == other.selectedDrumKitId
 
     private fun applyProjectState(restored: SamplerUiState, message: String) {
         engine.stopSource()
@@ -1036,10 +1211,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             recordArmed = false,
             currentStep = -1,
             microphoneRecording = false,
+            vocalOverdubRecording = false,
             systemAudioRecording = false,
             sourcePlaying = false,
             loopingPadIndex = null,
             loopPlayheadFrame = -1,
+            scratchingPadIndex = null,
+            scratchPlayheadFrame = -1,
             canUndo = editHistory.canUndo,
             canRedo = editHistory.canRedo,
         )
@@ -1131,13 +1309,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 val sourceIsPlaying = engine.sourcePlaying
                 val loopPad = engine.currentLoopPad.takeIf { it >= 0 }
                 val loopFrame = engine.currentLoopFrame
+                val scratchPad = engine.currentScratchPad.takeIf { it >= 0 }
+                val scratchFrame = engine.currentScratchFrame
                 val snapshot = mutableUiState.value
                 if (
                     snapshot.currentStep != step ||
                     snapshot.sourcePlaying != sourceIsPlaying ||
                     (sourceFrame >= 0 && snapshot.sourcePlayheadFrame != sourceFrame) ||
                     snapshot.loopingPadIndex != loopPad ||
-                    snapshot.loopPlayheadFrame != loopFrame
+                    snapshot.loopPlayheadFrame != loopFrame ||
+                    snapshot.scratchingPadIndex != scratchPad ||
+                    snapshot.scratchPlayheadFrame != scratchFrame
                 ) {
                     mutableUiState.update { state ->
                         state.copy(
@@ -1147,6 +1329,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                                 ?: state.sourcePlayheadFrame,
                             loopingPadIndex = loopPad,
                             loopPlayheadFrame = loopFrame,
+                            scratchingPadIndex = scratchPad,
+                            scratchPlayheadFrame = scratchFrame,
                             statusMessage = if (state.sourcePlaying && !sourceIsPlaying) {
                                 "曲の再生が終わりました — PADでチョップを演奏できます"
                             } else {
@@ -1219,6 +1403,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         const val AUTOSAVE_DELAY_MS = 900L
         const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
         const val LIVE_CHOP_LATENCY_SECONDS = 0.06
+        const val VOCAL_BANK_INDEX = 3
     }
 
     override fun onCleared() {

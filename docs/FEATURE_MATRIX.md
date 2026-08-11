@@ -5,6 +5,11 @@
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |
 | PAD付き | ✅ | 4 BANK × 16 PAD |
+| 正方形PAD | ✅ device | 4×4 / 8×2とも親領域へ収まる最大正方形を中央配置。Pixel 9a portraitで確認 |
+| 内蔵ドラムキット | ✅ device | オリジナル合成5キット×16音。BANK A〜Cを選び、初心者向けstarter beatと一緒に適用 |
+| ビートへ声を重ねる | 🧪 local | loop再始動に合わせて録音し、BANK Dへ最大16テイク。project schema 4とWAV exportに含む。実環境の声は未録音 |
+| DJスクラッチ | 🧪 local/device UI | 選択音を左右dragで正逆再生、離すと停止。signed cursor/DSPはhost test、Pixel 9aで固定UIを確認 |
+| レイヤー制作UI | ✅ device | `音を重ねる` 1入口に DRUMS / VOICE / SCRATCH を集約。固定画面・スクロールなし |
 | 「おとひろい」正式UI | ✅ preview | 固定 `入れる / 切る / 叩く / 並べる / 完成` をPixel 9/API 36 emulatorで表示・操作し、公開APKをPixel 9aへ導入・起動確認 |
 | スクロールなし操作 | ✅ preview | portrait/landscapeをconstraint-driven配置。UI sourceにscroll APIなし、411 × 923dp相当portrait emulatorで全固定操作を確認 |
 | 曲を流しながらPADで刻む | ✅ preview | CI build、pure tests、Pixel 9aでimport→play→PAD 01割当→stopを観測 |
@@ -29,7 +34,7 @@
 | Choke group | ✅ | 1–4 |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
-| Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveはLOOP対応schema 3/WAVで保存し、schema 1/raw PCMとschema 2/WAVを移行読込 |
+| Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveはPAD role対応schema 4/WAVで保存し、schema 1/raw PCM、schema 2/WAV、schema 3/LOOPを移行読込 |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
 | Project save/load | ✅ MVP | `.choplab`手動保存/読込、共有PCM16 WAV、schema migration、path traversal/過大manifest/malformed WAV拒否 |
 | Autosave/recovery | ✅ MVP | 900ms debounce、fsync後の二世代置換、最新破損時は前世代、置換中断時はvalid pendingへ復旧 |
