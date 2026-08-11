@@ -2,6 +2,22 @@
 
 作成日: 2026-07-15
 
+## 2026-08-12 v0.11.2 truthful step-placement candidate
+
+- TDD RED/GREEN seams: PAD step eligibility, normal and record-armed mutation, performance-pad routing, Beat-lane fallback/disabled accessibility, LOOP/VOCAL guidance, archive round-trip, and audible legacy-step filtering
+- full host gate: 143 tests / failures 0 / errors 0 / skipped 0; Lint 0 errors / 7 warnings; assemble PASS
+- configured offline project validation PASS; Gradle Wrapper SHA-256 matched; `git diff --check` PASS; UI scroll API scan zero matches
+- local APK: versionCode 17 / versionName 0.11.2; 30,739,403 bytes; SHA-256 `F706923F28495754CCB5B5DFEB42E2D7D89F574A6B27DEE10563A1A83344DAB4`
+- local APK metadata: package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- dedicated Pixel 9 / API 36 emulator `emulator-5590`: data-preserving `adb install -r` PASS; install-checkpoint autosave SHA-256 stayed `76BF3EACA193F877033123590A5360E3D3A083696A812C254B029EB9EA151BF4`
+- emulator LOOP-path evidence: selected A-04, coaching changed to `ループは音声全体を反復。配置は別PAD`, and A step 2 exposed `配置できません` with `enabled=false`
+- disabled-step mutation check: stable 5,317,098-byte autosave remained SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689` before and more than four seconds after the press
+- accepted runtime files: `work/v0112-loop-disabled-after.png` and `work/v0112-loop-disabled-after.xml`; process alive; scoped fatal/ANR matches 0
+- saved invalid LOOP/VOCAL step keys remain archive-compatible but are filtered from realtime playback, arrangement markers, Finish/preset truth, and export; new direct, preset, and record-armed mutation is blocked
+- Sol-specified audit/review closed the primary and follow-up paths; effective child-model metadata was unavailable, so no runtime-verified Sol claim is made
+- physical Pixel 9a `5A121JEBF08094`: not attached; data-preserving phone install and physical sound/touch checks pending
+- GitHub PR/CI/tag/public Release: pending provider execution at this candidate checkpoint
+
 ## 2026-08-12 v0.11.1 live-control and realtime-reliability candidate
 
 - TDD RED/GREEN seams: live loop pitch/tone/level without cursor restart, reusable playback cursor/voice, bounded command overflow/order, out-of-band Stop All boundary, concurrent source stop state, and microphone worker completion
