@@ -185,6 +185,7 @@ fun OtohiroiDeck(
                         height = metrics.modeBarHeightDp.dp,
                         compact = metrics.density == DeckDensity.COMPACT,
                         onSelect = {
+                            if (it == WorkflowStage.BEAT) viewModel.ensurePlayablePadSelected()
                             stageName = it.name
                             if (it != WorkflowStage.CHOP) showPadDetails = false
                         },
@@ -231,7 +232,10 @@ fun OtohiroiDeck(
                                 onExportBeat = onExportBeat,
                                 onOpenProject = onOpenProject,
                                 onSaveProject = onSaveProject,
-                                onBackToArrange = { stageName = WorkflowStage.BEAT.name },
+                                onBackToArrange = {
+                                    viewModel.ensurePlayablePadSelected()
+                                    stageName = WorkflowStage.BEAT.name
+                                },
                                 viewModel = viewModel,
                             )
                         }
@@ -1252,7 +1256,7 @@ private fun SequenceWorkspace(
                     activeSteps = state.activeSteps,
                     currentStep = state.currentStep,
                     selectedPad = state.selectedPad,
-                    onSelectPad = viewModel::selectPad,
+                    onSelectPad = viewModel::selectPlayablePad,
                     onToggleStep = viewModel::toggleStep,
                     modifier = Modifier.weight(1.38f),
                 )
@@ -1275,13 +1279,13 @@ private fun SequenceWorkspace(
                     BankStrip(
                         selectedBank = state.selectedBank,
                         height = metrics.controlHeightDp.dp,
-                        onSelectBank = viewModel::selectBank,
+                        onSelectBank = viewModel::selectPlayableBank,
                     )
-                    PadPageStrip(state, 25.dp, viewModel::selectPadPage)
+                    PadPageStrip(state, 25.dp, viewModel::selectPlayablePadPage)
                     BeatSoundRail(
                         pads = state.visiblePads(),
                         selectedPad = state.selectedPad,
-                        onSelectPad = viewModel::selectPad,
+                        onSelectPad = viewModel::selectPlayablePad,
                         onPreviewPad = viewModel::triggerPad,
                         modifier = Modifier.weight(1f),
                     )
@@ -1324,24 +1328,24 @@ private fun SequenceWorkspace(
                     activeSteps = state.activeSteps,
                     currentStep = state.currentStep,
                     selectedPad = state.selectedPad,
-                    onSelectPad = viewModel::selectPad,
+                    onSelectPad = viewModel::selectPlayablePad,
                     onToggleStep = viewModel::toggleStep,
                     modifier = Modifier.fillMaxWidth().weight(1.25f),
                 )
                 BankStrip(
                     selectedBank = state.selectedBank,
                     height = metrics.controlHeightDp.dp,
-                    onSelectBank = viewModel::selectBank,
+                    onSelectBank = viewModel::selectPlayableBank,
                 )
                 PadPageStrip(
                     state = state,
                     height = if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
-                    onSelectPage = viewModel::selectPadPage,
+                    onSelectPage = viewModel::selectPlayablePadPage,
                 )
                 BeatSoundRail(
                     pads = state.visiblePads(),
                     selectedPad = state.selectedPad,
-                    onSelectPad = viewModel::selectPad,
+                    onSelectPad = viewModel::selectPlayablePad,
                     onPreviewPad = viewModel::triggerPad,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1378,7 +1382,7 @@ private fun SequenceWorkspace(
                 BankStrip(
                     selectedBank = state.selectedBank,
                     height = metrics.controlHeightDp.dp,
-                    onSelectBank = viewModel::selectBank,
+                    onSelectBank = viewModel::selectPlayableBank,
                 )
                 ArrangementWaveformTimeline(
                     pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
@@ -1915,12 +1919,12 @@ private fun SampleLayerStudio(
             text = "メロディー・ドラム・SE・声を選び、好きな間隔で同じビートへ重ねます",
             modifier = Modifier.fillMaxWidth().height(30.dp),
         )
-        BankStrip(state.selectedBank, 44.dp, viewModel::selectBank)
-        PadPageStrip(state, 27.dp, viewModel::selectPadPage)
+        BankStrip(state.selectedBank, 44.dp, viewModel::selectPlayableBank)
+        PadPageStrip(state, 27.dp, viewModel::selectPlayablePadPage)
         BeatSoundRail(
             pads = state.visiblePads(),
             selectedPad = state.selectedPad,
-            onSelectPad = viewModel::selectPad,
+            onSelectPad = viewModel::selectPlayablePad,
             onPreviewPad = viewModel::triggerPad,
             modifier = Modifier.weight(1f),
         )

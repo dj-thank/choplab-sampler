@@ -5,6 +5,75 @@ data class PadAssignmentResult(
     val changedPads: List<PadModel>,
 )
 
+fun selectPlayablePad(state: SamplerUiState, globalIndex: Int): SamplerUiState {
+    val target = state.pads.getOrNull(globalIndex) ?: return state
+    if (!target.isAssigned) {
+        return state.copy(
+            statusMessage = "${padDisplayLabel(target)}は空です。音の入ったPADを選んでください",
+        )
+    }
+    return state.copy(
+        selectedBank = target.bankIndex,
+        selectedPad = target.globalIndex,
+        statusMessage = "${padDisplayLabel(target)}を選択しました",
+    )
+}
+
+fun selectPlayablePadPage(state: SamplerUiState, pageIndex: Int): SamplerUiState {
+    if (pageIndex !in 0 until SamplerConfig.PAD_PAGES_PER_BANK) return state
+    val pageStart = state.selectedBank * SamplerConfig.PADS_PER_BANK +
+        pageIndex * SamplerConfig.PAD_PAGE_SIZE
+    val pagePads = state.pads.subList(pageStart, pageStart + SamplerConfig.PAD_PAGE_SIZE)
+    val preferredOffset = state.selectedPad % SamplerConfig.PAD_PAGE_SIZE
+    val target = pagePads[preferredOffset].takeIf(PadModel::isAssigned)
+        ?: pagePads.firstOrNull(PadModel::isAssigned)
+        ?: return state.copy(
+            statusMessage = "PAD ${pageStart % SamplerConfig.PADS_PER_BANK + 1}–${pageStart % SamplerConfig.PADS_PER_BANK + SamplerConfig.PAD_PAGE_SIZE}には音がありません",
+        )
+    return state.copy(
+        selectedPad = target.globalIndex,
+        statusMessage = "${padDisplayLabel(target)}を選択しました",
+    )
+}
+
+fun selectPlayableBank(state: SamplerUiState, bankIndex: Int): SamplerUiState {
+    if (bankIndex !in 0 until SamplerConfig.BANK_COUNT) return state
+    val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
+    val bankPads = state.pads.subList(bankStart, bankStart + SamplerConfig.PADS_PER_BANK)
+    val preferredOffset = state.selectedPad % SamplerConfig.PADS_PER_BANK
+    val role = bankRoleFor(bankIndex)
+    val target = bankPads[preferredOffset].takeIf(PadModel::isAssigned)
+        ?: bankPads.firstOrNull(PadModel::isAssigned)
+        ?: return state.copy(
+            statusMessage = "BANK ${role.letter} ${role.japaneseLabel}には音がありません。先にチョップか重ねるで音を入れてください",
+        )
+    return state.copy(
+        selectedBank = bankIndex,
+        selectedPad = target.globalIndex,
+        statusMessage = "${padDisplayLabel(target)}を選択しました",
+    )
+}
+
+fun ensurePlayablePadSelected(state: SamplerUiState): SamplerUiState {
+    if (state.pads.getOrNull(state.selectedPad)?.isAssigned == true) return state
+    val bankStart = state.selectedBank * SamplerConfig.PADS_PER_BANK
+    val target = state.pads
+        .subList(bankStart, bankStart + SamplerConfig.PADS_PER_BANK)
+        .firstOrNull(PadModel::isAssigned)
+        ?: state.pads.firstOrNull(PadModel::isAssigned)
+        ?: return state.copy(
+            statusMessage = "再生できるPADがありません。先にチョップで音を入れてください",
+        )
+    return state.copy(
+        selectedBank = target.bankIndex,
+        selectedPad = target.globalIndex,
+        statusMessage = "${padDisplayLabel(target)}をビートの操作対象にしました",
+    )
+}
+
+private fun padDisplayLabel(pad: PadModel): String =
+    "${bankRoleFor(pad.bankIndex).letter}-%02d".format(pad.indexInBank + 1)
+
 fun assignRangesToPads(
     state: SamplerUiState,
     ranges: List<SliceRange>,
