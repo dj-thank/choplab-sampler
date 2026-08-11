@@ -31,6 +31,7 @@ import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
@@ -60,6 +61,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val editHistory = EditHistory(maxEntries = MAX_HISTORY_ENTRIES)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private var autosaveJob: Job? = null
+    private var scratchIdleJob: Job? = null
     private var projectRevision = 0L
 
     private val mutableUiState = MutableStateFlow(SamplerUiState())
@@ -205,12 +207,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun assignVocalTake(audio: PcmAudio) {
-        val bankStart = VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
-        val target = mutableUiState.value.pads
-            .subList(bankStart, bankStart + SamplerConfig.PADS_PER_BANK)
-            .firstOrNull { !it.isAssigned }
-            ?.globalIndex
-            ?: bankStart
+        val bankStart = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val target = mutableUiState.value.pads.nextVocalPadIndex() ?: run {
+            setStatus("BANK D は16テイクで満杯です。不要なVOICE PADを消してから録音してください")
+            return
+        }
         val vocalPad = PadModel(
             globalIndex = target,
             audio = audio,
@@ -223,7 +224,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             val pads = state.pads.toMutableList().also { it[target] = vocalPad }
             state.copy(
                 pads = pads,
-                selectedBank = VOCAL_BANK_INDEX,
+                selectedBank = SamplerConfig.VOCAL_BANK_INDEX,
                 selectedPad = target,
                 activeSteps = state.activeSteps.clearPadSteps(target),
                 statusMessage = "VOICE TAKE を BANK D-%02d に保存しました".format(target - bankStart + 1),
@@ -234,7 +235,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun applyBuiltInDrumKit(kitId: String, bankIndex: Int = mutableUiState.value.selectedBank) {
-        if (bankIndex !in 0 until VOCAL_BANK_INDEX) {
+        if (bankIndex !in 0 until SamplerConfig.VOCAL_BANK_INDEX) {
             setStatus("ドラムキットは BANK A〜C を選んでください。BANK D は声用です")
             return
         }
@@ -298,9 +299,16 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateScratchSpeed(speed: Float) {
         engine.updateScratchSpeed(speed)
+        scratchIdleJob?.cancel()
+        scratchIdleJob = viewModelScope.launch {
+            delay(SCRATCH_IDLE_TIMEOUT_MS)
+            engine.updateScratchSpeed(0f)
+        }
     }
 
     fun endScratch() {
+        scratchIdleJob?.cancel()
+        scratchIdleJob = null
         engine.endScratch()
         mutableUiState.update {
             it.copy(
@@ -1403,7 +1411,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         const val AUTOSAVE_DELAY_MS = 900L
         const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
         const val LIVE_CHOP_LATENCY_SECONDS = 0.06
-        const val VOCAL_BANK_INDEX = 3
+        const val SCRATCH_IDLE_TIMEOUT_MS = 42L
     }
 
     override fun onCleared() {

@@ -5,7 +5,7 @@
 ## 2026-08-11 v0.8.0 current validation
 
 - `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS
-- unit tests: 64 / failures 0 / errors 0 / skipped 0
+- unit tests: 66 / failures 0 / errors 0 / skipped 0
 - lint: task PASS, errors 0, Android/toolchain advisories 10
 - `scripts/validate_project.sh`: PASS with the pinned JDK/Kotlin toolchain on PATH
 - `git diff --check`: PASS

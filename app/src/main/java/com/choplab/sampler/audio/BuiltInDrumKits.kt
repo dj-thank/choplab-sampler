@@ -17,7 +17,7 @@ data class DrumKitDefinition(
     val character: String,
     val accent: String,
     internal val tuning: Float,
-    internal val dust: Float,
+    internal val noiseAmount: Float,
 )
 
 /**
@@ -100,15 +100,15 @@ object BuiltInDrumKits {
                 0 -> {
                     val frequency = (42.0 + 92.0 * exp(-time * 24.0)) * kit.tuning
                     phase += 2.0 * PI * frequency / SAMPLE_RATE
-                    sin(phase) * exp(-time * (8.0 + variation)) + noise * kit.dust * exp(-time * 45.0)
+                    sin(phase) * exp(-time * (8.0 + variation)) + noise * kit.noiseAmount * exp(-time * 45.0)
                 }
                 1 -> {
                     val body = sin(2.0 * PI * (165.0 + variation * 13.0) * time) * exp(-time * 18.0)
-                    body * 0.42 + highNoise * exp(-time * (11.0 + variation)) * (0.72 + kit.dust)
+                    body * 0.42 + highNoise * exp(-time * (11.0 + variation)) * (0.72 + kit.noiseAmount)
                 }
                 2 -> {
                     val decay = if (variation < 2) 52.0 - variation * 7.0 else 12.0 + variation
-                    highNoise * exp(-time * decay) * (0.72 + kit.dust * 0.22)
+                    highNoise * exp(-time * decay) * (0.72 + kit.noiseAmount * 0.22)
                 }
                 else -> {
                     val burst = when (variation) {

@@ -64,7 +64,8 @@ ChopLab の固定画面を保ったまま、PAD を正方形にし、初心者�
 - [x] 2026-08-11 — RED/GREEN tests completed for geometry, drum kits, scratch cursor, vocal export, and schema migration.
 - [x] 2026-08-11 — Core domain/audio implementation completed.
 - [x] 2026-08-11 — Layer Studio UI and Android permission/lifecycle integration completed.
-- [ ] Dual-axis review, final commit, and public GitHub release evidence.
+- [x] 2026-08-11 — Dual-axis review completed; vocal-bank overwrite and realtime scratch allocation findings were fixed and regression-tested.
+- [ ] Final commit and public GitHub release evidence.
 - [x] 2026-08-11 — Full local validation, APK build, exact-hash Pixel install, fixed-layout/device screenshots, kit application, and schema-4 cold recovery completed.
 
 ## Discoveries
@@ -84,6 +85,8 @@ ChopLab の固定画面を保ったまま、PAD を正方形にし、初心者�
 
 - Baseline `scripts/doctor.ps1`: PASS with optional NDK/CMake warnings only.
 - Baseline `scripts/validate_project.sh`: PASS.
+- Final Gradle test/lint/assemble: PASS with 66 unit tests and zero lint errors.
+- Final review: BANK D full-capacity behavior is fail-safe; scratch voice construction occurs on the control thread and the audio loop performs no new per-frame allocation.
 
 ## Risks and rollback
 
@@ -94,7 +97,6 @@ ChopLab の固定画面を保ったまま、PAD を正方形にし、初心者�
 
 ## Remaining device validation
 
-- Install/launch on Pixel 9a.
-- Verify square PADs in portrait and landscape.
-- Audition each kit, start/stop a vocal take with permission handling, and exercise forward/reverse scratch gestures.
-- Confirm old autosave/project migration remains intact.
+- Install the final review-fixed APK on Pixel 9a and verify its exact hash.
+- Physical microphone capture remains intentionally untested to avoid recording ambient user audio without an explicit privacy confirmation.
+- Subjective audition of every kit and measured scratch latency remain human/device-audio checks.

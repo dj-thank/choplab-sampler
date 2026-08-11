@@ -16,12 +16,12 @@ Version `0.8.0` (`versionCode=9`) adds one fixed `LAYER STUDIO` without using Fi
 Local evidence:
 
 - `scripts/validate_project.sh`: PASS;
-- Gradle `testDebugUnitTest`: 64 tests, zero failures/errors/skips;
+- Gradle `testDebugUnitTest`: 66 tests, zero failures/errors/skips;
 - Gradle `lintDebug`: PASS, zero errors (10 Android/toolchain advisories reported);
 - Gradle `assembleDebug`: PASS;
 - `git diff --check`: PASS;
 - UI source scan: zero scroll API matches;
-- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 30,477,259 bytes, SHA-256 `AEF6C8D1957BA226AA2DD00A6CD21404B125910A1AD233ED866A0662AA8CC0B2`.
+- local APK: `app/build/outputs/apk/debug/app-debug.apk`, 31,164,002 bytes, SHA-256 `DBD637B102E6133C9C7D55EF97F7DD01D7CF65298E2CDF96E2C213033C8A73E9`.
 
 Focused physical Pixel 9a evidence on Android 17 / arm64-v8a:
 
@@ -32,6 +32,8 @@ Focused physical Pixel 9a evidence on Android 17 / arm64-v8a:
 - the resulting schema 4 autosave restored successfully after a cold app restart.
 
 This establishes `LOCAL_PASS` and focused install/launch, kit-application, fixed-layout, and schema-4 recovery `DEVICE_PASS`. It does not establish public CI/Release identity, ambient microphone recording on the user's phone, subjective drum/loop/scratch sound quality, measured latency/xRuns, sustained thermal behavior, TalkBack/haptic quality, or `HUMAN_GO`.
+
+The final two-axis review found and resolved two release blockers before publication: BANK D now refuses a seventeenth vocal take instead of overwriting D-01, and scratch-voice allocation was moved off the realtime audio thread. Scratch speed/frame atomics are handled once per block and an idle gesture returns speed to zero. The remaining duplicated realtime/offline layer scheduling is an accepted internal maintainability item, not a v0.8 behavior gap.
 
 ## Public v0.7.0 whole-chop beat-loop evidence — 2026-08-11
 

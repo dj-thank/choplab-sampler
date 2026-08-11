@@ -7,6 +7,7 @@ object SamplerConfig {
     const val PADS_PER_BANK = 16
     const val PAD_COUNT = BANK_COUNT * PADS_PER_BANK
     const val STEP_COUNT = 16
+    const val VOCAL_BANK_INDEX = 3
 }
 
 enum class PadPlayMode {
@@ -134,3 +135,11 @@ fun SamplerUiState.activeSliceRange(): SliceRange? {
 
 fun stepKey(padIndex: Int, stepIndex: Int): Int =
     padIndex * SamplerConfig.STEP_COUNT + stepIndex
+
+fun List<PadModel>.nextVocalPadIndex(): Int? {
+    require(size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
+    val start = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+    return subList(start, start + SamplerConfig.PADS_PER_BANK)
+        .firstOrNull { !it.isAssigned }
+        ?.globalIndex
+}

@@ -35,6 +35,7 @@ class SamplerEngine(
     private val commands = ConcurrentLinkedQueue<EngineCommand>()
     private val running = AtomicBoolean(false)
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
+    private val controlPadKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val voices = mutableListOf<Voice>()
     private var sourceVoice: Voice? = null
     private var scratchVoice: ScratchVoice? = null
@@ -135,8 +136,11 @@ class SamplerEngine(
 
     override fun updatePad(pad: PadModel) {
         if (pad.isAssigned) {
-            commands.offer(EngineCommand.SetPad(PadSnapshot.from(pad)))
+            val snapshot = PadSnapshot.from(pad)
+            controlPadKit[pad.globalIndex] = snapshot
+            commands.offer(EngineCommand.SetPad(snapshot))
         } else {
+            controlPadKit[pad.globalIndex] = null
             commands.offer(EngineCommand.ClearPad(pad.globalIndex))
         }
     }
@@ -158,7 +162,14 @@ class SamplerEngine(
     }
 
     override fun beginScratch(globalIndex: Int, startFrame: Int) {
-        commands.offer(EngineCommand.BeginScratch(globalIndex, startFrame))
+        val pad = controlPadKit.getOrNull(globalIndex) ?: return
+        scratchSpeedBits.set(0f.toBits())
+        commands.offer(
+            EngineCommand.BeginScratch(
+                padIndex = globalIndex,
+                voice = ScratchVoice(pad, startFrame),
+            ),
+        )
     }
 
     override fun updateScratchSpeed(speed: Float) {
@@ -280,7 +291,9 @@ class SamplerEngine(
                 output.fill(0f)
                 var latestSourceFrame = -1
                 var latestLoopFrame = -1
+                var latestScratchFrame = -1
                 val monitoredLoopPad = currentLoopPadValue.get()
+                val scratchTargetSpeed = Float.fromBits(scratchSpeedBits.get())
 
                 for (frame in 0 until blockFrames) {
                     if (transportRunning) processTransportFrame()
@@ -297,9 +310,9 @@ class SamplerEngine(
                     scratchVoice?.let { scratch ->
                         monoMix += scratch.render(
                             outputSampleRate = outputSampleRate,
-                            targetSpeed = Float.fromBits(scratchSpeedBits.get()),
+                            targetSpeed = scratchTargetSpeed,
                         )
-                        currentScratchFrameValue.set(scratch.currentFrame)
+                        latestScratchFrame = scratch.currentFrame
                     }
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
@@ -331,6 +344,7 @@ class SamplerEngine(
                         currentLoopFrameValue.set(-1)
                     }
                 }
+                if (latestScratchFrame >= 0) currentScratchFrameValue.set(latestScratchFrame)
 
                 var writeOffset = 0
                 while (running.get() && writeOffset < output.size) {
@@ -387,15 +401,9 @@ class SamplerEngine(
                     }
                 }
                 is EngineCommand.BeginScratch -> {
-                    val pad = padKit.getOrNull(command.padIndex)
-                    if (pad != null) {
-                        scratchVoice = ScratchVoice(pad, command.startFrame)
-                        scratchSpeedBits.set(0f.toBits())
-                        currentScratchPadValue.set(command.padIndex)
-                        currentScratchFrameValue.set(
-                            command.startFrame.coerceIn(pad.startFrame, pad.endFrame - 1),
-                        )
-                    }
+                    scratchVoice = command.voice
+                    currentScratchPadValue.set(command.padIndex)
+                    currentScratchFrameValue.set(command.voice.currentFrame)
                 }
                 EngineCommand.EndScratch -> {
                     scratchVoice = null
@@ -512,7 +520,7 @@ class SamplerEngine(
         data class Trigger(val padIndex: Int) : EngineCommand
         data class StartPadLoop(val padIndex: Int) : EngineCommand
         data class StopPad(val padIndex: Int) : EngineCommand
-        data class BeginScratch(val padIndex: Int, val startFrame: Int) : EngineCommand
+        data class BeginScratch(val padIndex: Int, val voice: ScratchVoice) : EngineCommand
         data object EndScratch : EngineCommand
         data class Release(val padIndex: Int) : EngineCommand
         data class Preview(val pad: PadSnapshot) : EngineCommand
