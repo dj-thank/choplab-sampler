@@ -69,6 +69,7 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.audibleStepKeys
+import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
@@ -213,9 +214,6 @@ fun OtohiroiDeck(
                                     metrics = metrics,
                                     mode = chopMode,
                                     onModeChange = { chopModeName = it.name },
-                                    onImportAudio = onImportAudio,
-                                    onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-                                    onToggleSystemAudioRecording = onToggleSystemAudioRecording,
                                     onOpenDetails = { showPadDetails = true },
                                     viewModel = viewModel,
                                 )
@@ -264,9 +262,6 @@ private fun ChopStageWorkspace(
     metrics: DeckLayoutMetrics,
     mode: ChopStageMode,
     onModeChange: (ChopStageMode) -> Unit,
-    onImportAudio: () -> Unit,
-    onToggleMicrophoneRecording: () -> Unit,
-    onToggleSystemAudioRecording: () -> Unit,
     onOpenDetails: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
@@ -297,9 +292,6 @@ private fun ChopStageWorkspace(
                 ChopStageMode.CUT -> SourceWorkspace(
                     state = state,
                     metrics = metrics,
-                    onImportAudio = onImportAudio,
-                    onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-                    onToggleSystemAudioRecording = onToggleSystemAudioRecording,
                     viewModel = viewModel,
                 )
                 ChopStageMode.PADS -> PerformanceWorkspace(
@@ -456,8 +448,7 @@ private fun MachineHeader(
                 maxLines = 1,
             )
             Text(
-                if (state.statusMessage.isBlank()) "PRO MOBILE SAMPLER / ${stage.caption}"
-                else "${stage.label} / ${state.statusMessage}",
+                "${stage.label} / ${stage.caption}",
                 color = Color(0xFF9C906F),
                 fontFamily = DeckFont,
                 fontSize = 7.sp,
@@ -1783,7 +1774,7 @@ private fun LayerStudio(
 
     Dialog(
         onDismissRequest = {
-            if (state.scratchingPadIndex != null) viewModel.endScratch()
+            if (state.scratchingPadIndex != null || state.sourceScratchActive) viewModel.endScratch()
             onDismiss()
         },
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -1959,7 +1950,7 @@ private fun SampleLayerStudio(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
-        BeatLoopControl(state, 50.dp, viewModel)
+        BeatLoopControl(state, 62.dp, viewModel)
     }
 }
 
@@ -2203,13 +2194,14 @@ private fun ScratchStudio(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BeginnerCoachBar(
-            text = "元曲の波形で好きな範囲を選び、円盤を左右へ擦ります",
+            text = "橙のS/Eをドラッグ、または波形タップでチョップを選び、円盤を擦ります",
             modifier = Modifier.fillMaxWidth().height(32.dp),
         )
         SourceEditorWaveform(
             state = state,
             viewModel = viewModel,
             condensed = true,
+            selectSliceOnly = true,
             modifier = Modifier.fillMaxWidth().height(112.dp),
         )
         Row(
@@ -2224,10 +2216,10 @@ private fun ScratchStudio(
                 compact = true,
             )
             MachineButton(
-                label = if (state.manualChopEnabled) "波形タップで区切る ON" else "波形タップで区切る",
-                onClick = viewModel::toggleManualChop,
+                label = "元曲のS/E範囲\nSOURCE RANGE",
+                onClick = viewModel::useSourceRangeForScratch,
                 enabled = audio != null,
-                active = state.manualChopEnabled,
+                active = state.activeSliceIndex == null,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
             )
@@ -2564,9 +2556,6 @@ private fun FinishWorkspace(
 private fun SourceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
-    onImportAudio: () -> Unit,
-    onToggleMicrophoneRecording: () -> Unit,
-    onToggleSystemAudioRecording: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
     val gap = metrics.gapDp.dp
@@ -2585,9 +2574,6 @@ private fun SourceWorkspace(
             SourceControlDeck(
                 state = state,
                 metrics = metrics,
-                onImportAudio = onImportAudio,
-                onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-                onToggleSystemAudioRecording = onToggleSystemAudioRecording,
                 viewModel = viewModel,
                 modifier = Modifier
                     .weight(0.8f)
@@ -2599,14 +2585,6 @@ private fun SourceWorkspace(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            SourceCaptureRow(
-                state = state,
-                height = metrics.controlHeightDp.dp,
-                gap = gap,
-                onImportAudio = onImportAudio,
-                onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-                onToggleSystemAudioRecording = onToggleSystemAudioRecording,
-            )
             SourceReadout(state = state, height = 24.dp)
             SourceEditorWaveform(
                 state = state,
@@ -2626,9 +2604,6 @@ private fun SourceWorkspace(
 private fun SourceControlDeck(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
-    onImportAudio: () -> Unit,
-    onToggleMicrophoneRecording: () -> Unit,
-    onToggleSystemAudioRecording: () -> Unit,
     viewModel: SamplerViewModel,
     modifier: Modifier,
 ) {
@@ -2637,14 +2612,6 @@ private fun SourceControlDeck(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        SourceCaptureRow(
-            state = state,
-            height = metrics.controlHeightDp.dp,
-            gap = gap,
-            onImportAudio = onImportAudio,
-            onToggleMicrophoneRecording = onToggleMicrophoneRecording,
-            onToggleSystemAudioRecording = onToggleSystemAudioRecording,
-        )
         if (metrics.density != DeckDensity.COMPACT) {
             SourceReadout(state = state, height = 28.dp)
         }
@@ -2659,55 +2626,12 @@ private fun SourceControlDeck(
 }
 
 @Composable
-private fun SourceCaptureRow(
-    state: SamplerUiState,
-    height: Dp,
-    gap: Dp,
-    onImportAudio: () -> Unit,
-    onToggleMicrophoneRecording: () -> Unit,
-    onToggleSystemAudioRecording: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height),
-        horizontalArrangement = Arrangement.spacedBy(gap),
-    ) {
-        MachineButton(
-            label = "曲を読込\nLOAD FILE",
-            onClick = onImportAudio,
-            enabled = !state.isLoading && !state.microphoneRecording && !state.systemAudioRecording,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-        )
-        MachineButton(
-            label = if (state.microphoneRecording) "録音を止める\nMIC STOP" else "マイク録音\nMIC REC",
-            onClick = onToggleMicrophoneRecording,
-            enabled = !state.systemAudioRecording,
-            active = state.microphoneRecording,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-        )
-        MachineButton(
-            label = if (state.systemAudioRecording) "録音を止める\nDEVICE STOP" else "端末を録音\nDEVICE REC",
-            onClick = onToggleSystemAudioRecording,
-            enabled = !state.microphoneRecording,
-            active = state.systemAudioRecording,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-        )
-    }
-}
-
-@Composable
 private fun SourceEditorWaveform(
     state: SamplerUiState,
     viewModel: SamplerViewModel,
     modifier: Modifier,
     condensed: Boolean = false,
+    selectSliceOnly: Boolean = false,
 ) {
     val audio = state.currentAudio
     MachinePanel(modifier = modifier) {
@@ -2723,18 +2647,19 @@ private fun SourceEditorWaveform(
                 )
             }
         } else {
+            val manualChopEnabled = state.manualChopEnabled && !selectSliceOnly
             WaveformEditor(
                 audio = audio,
                 rangeStartFrame = state.rangeStartFrame,
                 rangeEndFrame = state.rangeEndFrame,
                 sliceMarkers = state.sliceMarkers,
                 activeSlice = state.activeSliceRange(),
-                manualChopEnabled = state.manualChopEnabled,
+                manualChopEnabled = manualChopEnabled,
                 onRangeStartChange = viewModel::setRangeStart,
                 onRangeEndChange = viewModel::setRangeEnd,
                 onSliceMarkerChange = viewModel::moveSliceMarker,
                 onWaveformTap = { frame ->
-                    if (state.manualChopEnabled) viewModel.addSliceMarker(frame)
+                    if (manualChopEnabled) viewModel.addSliceMarker(frame)
                     else viewModel.selectSliceAt(frame)
                 },
                 playheadFrame = state.sourcePlayheadFrame,
@@ -2901,8 +2826,9 @@ private fun PadPageStrip(
         repeat(SamplerConfig.PAD_PAGES_PER_BANK) { page ->
             val first = page * SamplerConfig.PAD_PAGE_SIZE + 1
             val last = first + SamplerConfig.PAD_PAGE_SIZE - 1
+            val assigned = state.assignedPadCountOnPage(page)
             MachineButton(
-                label = "PAD %02d–%02d".format(first, last),
+                label = "PAD %02d–%02d  %s".format(first, last, if (assigned == 0) "空" else "${assigned}音"),
                 onClick = { onSelectPage(page) },
                 active = state.selectedPadPage() == page,
                 modifier = Modifier.weight(1f).fillMaxHeight(),

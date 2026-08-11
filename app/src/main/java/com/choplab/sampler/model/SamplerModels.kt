@@ -145,6 +145,12 @@ fun SamplerUiState.visiblePads(): List<PadModel> {
 fun SamplerUiState.selectedPadPage(): Int =
     (selectedPad % SamplerConfig.PADS_PER_BANK) / SamplerConfig.PAD_PAGE_SIZE
 
+fun SamplerUiState.assignedPadCountOnPage(pageIndex: Int): Int {
+    require(pageIndex in 0 until SamplerConfig.PAD_PAGES_PER_BANK) { "Invalid PAD page: $pageIndex" }
+    val start = selectedBank * SamplerConfig.PADS_PER_BANK + pageIndex * SamplerConfig.PAD_PAGE_SIZE
+    return pads.subList(start, start + SamplerConfig.PAD_PAGE_SIZE).count(PadModel::isAssigned)
+}
+
 fun defaultMelodyChopPad(pads: List<PadModel>): Int {
     require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
     return pads.take(SamplerConfig.PADS_PER_BANK)
@@ -188,6 +194,11 @@ fun SamplerUiState.sourceScratchRange(): SliceRange? {
     val end = rangeEndFrame.coerceIn(start + 1, audio.frameCount)
     return SliceRange(start, end).takeIf { it.length > 1 }
 }
+
+fun SamplerUiState.selectSourceRangeForScratch(): SamplerUiState = copy(
+    activeSliceIndex = null,
+    manualChopEnabled = false,
+)
 
 fun stepKey(padIndex: Int, stepIndex: Int): Int =
     padIndex * SamplerConfig.STEP_COUNT + stepIndex

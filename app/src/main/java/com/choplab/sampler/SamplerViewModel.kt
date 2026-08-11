@@ -39,6 +39,7 @@ import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.resolvePadPressAction
+import com.choplab.sampler.model.selectSourceRangeForScratch
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourcePlaybackStartFrame
@@ -335,6 +336,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 scratchPlayheadFrame = range.startFrame,
                 sourceScratchActive = true,
                 statusMessage = "選んだ元曲の範囲をスクラッチ中",
+            )
+        }
+    }
+
+    fun useSourceRangeForScratch() {
+        mutableUiState.update { state ->
+            state.selectSourceRangeForScratch().copy(
+                statusMessage = "元曲のS/E範囲をスクラッチ対象にしました",
             )
         }
     }
