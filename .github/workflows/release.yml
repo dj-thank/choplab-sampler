@@ -91,5 +91,6 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
             --title "ChopLab ${GITHUB_REF_NAME}" \
+            --prerelease \
             --generate-notes \
             --verify-tag
