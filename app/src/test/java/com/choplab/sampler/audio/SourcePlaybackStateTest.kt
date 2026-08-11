@@ -43,6 +43,20 @@ class SourcePlaybackStateTest {
     }
 
     @Test
+    fun oldVoiceCompletionCannotStopANewerAppliedGeneration() {
+        val state = SourcePlaybackState()
+        val originalGeneration = state.issuePlay()
+        assertTrue(state.applyPlay(originalGeneration))
+        val restartedGeneration = state.issuePlay()
+        assertTrue(state.applyPlay(restartedGeneration))
+
+        assertFalse(state.complete(originalGeneration))
+        assertTrue(state.isPlaying)
+        assertTrue(state.complete(restartedGeneration))
+        assertFalse(state.isPlaying)
+    }
+
+    @Test
     fun issuedStopIsPublishedOnlyAfterTheAudioThreadAppliesIt() {
         val state = SourcePlaybackState()
         val playingGeneration = state.issuePlay()

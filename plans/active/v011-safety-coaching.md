@@ -112,7 +112,7 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - `scripts/doctor.sh` - 2026-08-12, configured Git Bash/JDK 17/Android SDK - required MVP dependencies available; optional future NDK/CMake missing.
 - `scripts/validate_project.sh` - 2026-08-12, configured Git Bash/Kotlin 2.3.21 - PASS.
 - focused playback-state TDD - 2026-08-12 - RED on missing `applyPlay` / `applyStop`; GREEN after separating issued and applied generations.
-- Gradle `testDebugUnitTest lintDebug assembleDebug` - 2026-08-12 - PASS; 120 tests, zero failures/errors/skips; Lint zero errors and 11 advisories.
+- Gradle `testDebugUnitTest lintDebug assembleDebug` - 2026-08-12 - PASS; 121 tests, zero failures/errors/skips; Lint zero errors and 11 advisories.
 - local APK - 2026-08-12 - versionCode 15 / versionName 0.11.0; 31,520,134 bytes; SHA-256 `3B3F578F8CF3D969BE4256773C87B44B86B4ABC387A27178D46D559F04A3C01D`; v2 signature verified.
 - dedicated `emulator-5590` - 2026-08-12 - in-place install PASS; autosave remained 5,316,915 bytes and SHA-256 `3962BB989F4B59F8E98AB6D0C38D02DAAC46DBF6CEFDB49AA752552D2614A513`; cold launch alive with no focused fatal/ANR match.
 - fixed-layout audit - 2026-08-12 - accepted portrait Chop plus landscape Chop, Beat Quick, and Beat Details captures under `work/v011-audit/`; scroll API scan zero matches.
