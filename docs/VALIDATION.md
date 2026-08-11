@@ -12,7 +12,9 @@
 - local APK: 31,362,206 bytes, SHA-256 `0F279F715AF9341BD47FA1FCB3463F1D98607EA0291B84618EC111F8C25283F2`
 - Pixel 9 / API 36 emulator: in-place `versionCode=12`, `versionName=0.9.2` install; restored-project launch and Beat A-20 selection stayed alive with no fatal exception and no scrolling
 - runtime UI hierarchy contains `BANK A メロディー PAD 20`, `メロディー ステップ1 オフ`, and no `SELECTED_SOUND`/`OTHER_SOUND` enum leakage
-- CI, public asset, and physical TalkBack state are recorded after their respective gates complete
+- physical TalkBack traversal remains pending until the phone reconnects
+- PR #12, main verification, tag verification, and preview release workflows: PASS
+- reverse-downloaded public APK: 30,575,563 bytes, SHA-256 `BCE8A07E57E25255C57816DA21D9067A88C7B41A94E6485CA92D7A32C7B0BC5F`; GitHub digest and checksum sidecar match
 
 ## 2026-08-11 v0.9.1 clarity audit validation
 
