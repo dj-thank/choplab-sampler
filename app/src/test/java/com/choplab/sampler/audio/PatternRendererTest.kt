@@ -1,6 +1,7 @@
 package com.choplab.sampler.audio
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
@@ -13,6 +14,45 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PatternRendererTest {
+    @Test
+    fun vocalTakeRendersOnceFromTheStartWithoutStepEvents() {
+        val sampleRate = 8_000
+        val vocal = ShortArray(2_000) { 12_000 }
+        val audio = PcmAudio(name = "voice-take", samples = vocal, sampleRate = sampleRate)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 48) {
+                PadModel(
+                    globalIndex = index,
+                    audio = audio,
+                    startFrame = 0,
+                    endFrame = vocal.size,
+                    contentKind = PadContentKind.VOCAL,
+                )
+            } else {
+                PadModel(index)
+            }
+        }
+        val file = File.createTempFile("choplab-vocal", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = pads,
+                activeSteps = emptySet(),
+                bpm = 120f,
+                swing = 50f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+
+            assertTrue(summary.peak > 0f)
+            val pcm = file.readBytes().copyOfRange(44, 44 + vocal.size * Short.SIZE_BYTES)
+            assertTrue(pcm.any { it.toInt() != 0 })
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test
     fun wholeChopLoopRendersContinuouslyWithoutBeatGridEvents() {
         val sampleRate = 8_000

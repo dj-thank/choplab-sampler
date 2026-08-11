@@ -10,6 +10,8 @@ interface SamplerPlaybackEngine {
     val sourcePlaying: Boolean
     val currentLoopPad: Int
     val currentLoopFrame: Int
+    val currentScratchPad: Int
+    val currentScratchFrame: Int
     val outputSampleRate: Int
 
     fun start(): Result<Unit>
@@ -18,6 +20,9 @@ interface SamplerPlaybackEngine {
     fun triggerPad(globalIndex: Int)
     fun startPadLoop(globalIndex: Int)
     fun stopPad(globalIndex: Int)
+    fun beginScratch(globalIndex: Int, startFrame: Int)
+    fun updateScratchSpeed(speed: Float)
+    fun endScratch()
     fun releasePad(globalIndex: Int)
     fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int)
     fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float)

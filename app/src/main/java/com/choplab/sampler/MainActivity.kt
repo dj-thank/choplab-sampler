@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity() {
                     if (granted) {
                         when (pendingAction) {
                             PendingPermissionAction.MICROPHONE -> samplerViewModel.startMicrophoneRecording()
+                            PendingPermissionAction.VOCAL -> samplerViewModel.startVocalOverdubRecording()
                             PendingPermissionAction.SYSTEM_AUDIO -> requestSystemAudioProjection()
                             PendingPermissionAction.NONE -> Unit
                         }
@@ -142,6 +143,16 @@ class MainActivity : ComponentActivity() {
                             samplerViewModel.startMicrophoneRecording()
                         } else {
                             pendingAction = PendingPermissionAction.MICROPHONE
+                            recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    onToggleVocalRecording = {
+                        if (state.vocalOverdubRecording) {
+                            samplerViewModel.stopVocalOverdubRecording()
+                        } else if (hasRecordPermission()) {
+                            samplerViewModel.startVocalOverdubRecording()
+                        } else {
+                            pendingAction = PendingPermissionAction.VOCAL
                             recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     },
@@ -180,5 +191,6 @@ class MainActivity : ComponentActivity() {
 private enum class PendingPermissionAction {
     NONE,
     MICROPHONE,
+    VOCAL,
     SYSTEM_AUDIO,
 }

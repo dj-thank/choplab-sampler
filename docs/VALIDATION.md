@@ -2,6 +2,17 @@
 
 作成日: 2026-07-15
 
+## 2026-08-11 v0.8.0 current validation
+
+- `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: PASS
+- unit tests: 66 / failures 0 / errors 0 / skipped 0
+- lint: task PASS, errors 0, Android/toolchain advisories 10
+- `scripts/validate_project.sh`: PASS with the pinned JDK/Kotlin toolchain on PATH
+- `git diff --check`: PASS
+- app source scroll API scan: 0 matches
+- Pixel 9a / Android 17 / arm64-v8a: final APK install, launch, kit application, square PAD layout, fixed Layer Studio, and schema-4 autosave restart observed
+- microphone vocal capture was not activated on the physical phone to avoid recording ambient user audio; scratch sound quality and latency remain human/device-audio checks
+
 ## 実施済み
 
 ### 1. Android非依存Kotlinコンパイル
@@ -54,7 +65,7 @@ Gradle distributionは`gradle-wrapper.properties`で次のSHA-256へ固定して
 553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746
 ```
 
-## この環境で未実施
+## 初期生成環境で未実施だった項目（履歴）
 
 - `./gradlew :app:assembleDebug`
 - Android Lint

@@ -7,12 +7,19 @@ object SamplerConfig {
     const val PADS_PER_BANK = 16
     const val PAD_COUNT = BANK_COUNT * PADS_PER_BANK
     const val STEP_COUNT = 16
+    const val VOCAL_BANK_INDEX = 3
 }
 
 enum class PadPlayMode {
     ONE_SHOT,
     GATE,
     LOOP,
+}
+
+enum class PadContentKind {
+    SAMPLE,
+    DRUM,
+    VOCAL,
 }
 
 data class PcmAudio(
@@ -46,6 +53,7 @@ data class PadModel(
     val gain: Float = 0.9f,
     val reverse: Boolean = false,
     val playMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+    val contentKind: PadContentKind = PadContentKind.SAMPLE,
     val chokeGroup: Int = 0,
 ) {
     val isAssigned: Boolean
@@ -78,11 +86,15 @@ data class SamplerUiState(
     val recordArmed: Boolean = false,
     val currentStep: Int = -1,
     val microphoneRecording: Boolean = false,
+    val vocalOverdubRecording: Boolean = false,
     val systemAudioRecording: Boolean = false,
     val sourcePlaying: Boolean = false,
     val sourcePlayheadFrame: Int = 0,
     val loopingPadIndex: Int? = null,
     val loopPlayheadFrame: Int = -1,
+    val scratchingPadIndex: Int? = null,
+    val scratchPlayheadFrame: Int = -1,
+    val selectedDrumKitId: String = "dusty-jazz",
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
@@ -123,3 +135,11 @@ fun SamplerUiState.activeSliceRange(): SliceRange? {
 
 fun stepKey(padIndex: Int, stepIndex: Int): Int =
     padIndex * SamplerConfig.STEP_COUNT + stepIndex
+
+fun List<PadModel>.nextVocalPadIndex(): Int? {
+    require(size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
+    val start = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+    return subList(start, start + SamplerConfig.PADS_PER_BANK)
+        .firstOrNull { !it.isAssigned }
+        ?.globalIndex
+}

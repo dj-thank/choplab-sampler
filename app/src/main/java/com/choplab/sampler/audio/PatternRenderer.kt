@@ -1,5 +1,6 @@
 package com.choplab.sampler.audio
 
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
@@ -63,6 +64,10 @@ object PatternRenderer : PatternRenderService {
             .filter { it.playMode == PadPlayMode.LOOP }
             .mapNotNull(PadSnapshot::from)
             .forEach { loop -> events.getOrPut(0) { mutableListOf() } += loop }
+        pads.asSequence()
+            .filter { it.contentKind == PadContentKind.VOCAL && it.playMode != PadPlayMode.LOOP }
+            .mapNotNull(PadSnapshot::from)
+            .forEach { vocal -> events.getOrPut(0) { mutableListOf() } += vocal }
         repeat(bars) { bar ->
             val barOffset = bar * barFrames
             repeat(SamplerConfig.STEP_COUNT) { step ->
@@ -70,6 +75,7 @@ object PatternRenderer : PatternRenderService {
                 repeat(SamplerConfig.PAD_COUNT) { padIndex ->
                     if (
                         pads[padIndex].playMode != PadPlayMode.LOOP &&
+                        pads[padIndex].contentKind != PadContentKind.VOCAL &&
                         stepKey(padIndex, step) in activeSteps
                     ) {
                         PadSnapshot.from(pads[padIndex])?.let { snapshot ->
