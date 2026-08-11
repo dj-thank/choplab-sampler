@@ -65,7 +65,7 @@ ChopLab の固定画面を保ったまま、PAD を正方形にし、初心者�
 - [x] 2026-08-11 — Core domain/audio implementation completed.
 - [x] 2026-08-11 — Layer Studio UI and Android permission/lifecycle integration completed.
 - [x] 2026-08-11 — Dual-axis review completed; vocal-bank overwrite and realtime scratch allocation findings were fixed and regression-tested.
-- [ ] Final commit and public GitHub release evidence.
+- [x] 2026-08-11 — Final implementation commits merged through PR #8; main/tag/release CI passed and public prerelease `v0.8.0-preview.1` was reverse-verified.
 - [x] 2026-08-11 — Full local validation, APK build, exact-hash Pixel install, fixed-layout/device screenshots, kit application, and schema-4 cold recovery completed.
 
 ## Discoveries
@@ -87,6 +87,7 @@ ChopLab の固定画面を保ったまま、PAD を正方形にし、初心者�
 - Baseline `scripts/validate_project.sh`: PASS.
 - Final Gradle test/lint/assemble: PASS with 66 unit tests and zero lint errors.
 - Final review: BANK D full-capacity behavior is fail-safe; scratch voice construction occurs on the control thread and the audio loop performs no new per-frame allocation.
+- Public release: PR #8 merged at `d99a27f4bdb3aa609500bb1334aa782382fe25f8`; tag and Release workflows passed; public APK/checksum and Pixel Download copy matched SHA-256 `D3C26D20023A9D25B19E316D1C77A44D067DCA7717DDA3BDA2F82067A58EC1A8`.
 
 ## Risks and rollback
 

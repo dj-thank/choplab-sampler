@@ -11,6 +11,9 @@
 - `git diff --check`: PASS
 - app source scroll API scan: 0 matches
 - Pixel 9a / Android 17 / arm64-v8a: final APK install, launch, kit application, square PAD layout, fixed Layer Studio, and schema-4 autosave restart observed
+- public PR #8, main verification, tag verification, and v0.8.0 preview release workflow: PASS
+- reverse-downloaded public APK: 30,477,259 bytes, SHA-256 `D3C26D20023A9D25B19E316D1C77A44D067DCA7717DDA3BDA2F82067A58EC1A8`; GitHub digest, checksum sidecar, PC download, and Pixel `/sdcard/Download` copy matched
+- the installed Pixel app is the same-source locally signed build; the exact public CI-signed APK was copied to Downloads but not installed
 - microphone vocal capture was not activated on the physical phone to avoid recording ambient user audio; scratch sound quality and latency remain human/device-audio checks
 
 ## 実施済み
