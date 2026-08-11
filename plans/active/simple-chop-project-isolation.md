@@ -24,8 +24,10 @@ Make the main workflow understandable without music-production knowledge: load o
 - [x] Data-preserving final APK install on Pixel 9a
 - [ ] Physical destructive replacement/reset test, intentionally skipped to preserve the user's project
 - [ ] Physical subjective audio, scratch latency, and long-press trim audition
-- [ ] Provider CI, public GitHub artifact, and release identity
+- [x] Provider CI, public GitHub artifact, and release identity
 
 ## Evidence
 
 Final local APK: `outputs/ChopLab-v0.10.0-preview.1-local-debug.apk`, versionCode 14 / versionName 0.10.0, 30,641,099 bytes, SHA-256 `2AD63450619685094DBFAB4B5E49E10AD4A51432181995767091023F8AF28E9C`.
+
+Public prerelease APK: [v0.10.0-preview.1](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.10.0-preview.1), 30,641,099 bytes, SHA-256 `83F641A154A0287BAA29230F863257CB0C91698F65F7FF2BFE045A1CBB12FD25`.
