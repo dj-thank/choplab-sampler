@@ -31,7 +31,15 @@ Focused physical Pixel 9a evidence on Android 17 / arm64-v8a:
 - after the authorized package replacement, DUSTY JAZZ was applied to BANK B, real synthesized waveforms and starter-step markers appeared, square 8×2 PADs remained on-screen, and the improved DRUMS/VOICE/SCRATCH panels were captured without scrolling;
 - the resulting schema 4 autosave restored successfully after a cold app restart.
 
-This establishes `LOCAL_PASS` and focused install/launch, kit-application, fixed-layout, and schema-4 recovery `DEVICE_PASS`. It does not establish public CI/Release identity, ambient microphone recording on the user's phone, subjective drum/loop/scratch sound quality, measured latency/xRuns, sustained thermal behavior, TalkBack/haptic quality, or `HUMAN_GO`.
+Public evidence for the same source state:
+
+- PR [#8](https://github.com/dj-thank/choplab-sampler/pull/8) merged as `d99a27f4bdb3aa609500bb1334aa782382fe25f8`; branch push run [31457463895](https://github.com/dj-thank/choplab-sampler/actions/runs/31457463895), PR run [31457485138](https://github.com/dj-thank/choplab-sampler/actions/runs/31457485138), and main run [31457675077](https://github.com/dj-thank/choplab-sampler/actions/runs/31457675077) passed;
+- annotated tag `v0.8.0-preview.1` resolves to that merge commit; tag verification [31457697955](https://github.com/dj-thank/choplab-sampler/actions/runs/31457697955) passed;
+- release workflow [31457697961](https://github.com/dj-thank/choplab-sampler/actions/runs/31457697961) passed build/package and publish jobs. [ChopLab v0.8.0-preview.1](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.8.0-preview.1) is public and marked as a prerelease;
+- reverse-downloaded public `ChopLab-v0.8.0-preview.1-debug.apk`: 30,477,259 bytes, SHA-256 `D3C26D20023A9D25B19E316D1C77A44D067DCA7717DDA3BDA2F82067A58EC1A8`. It matched the GitHub asset digest and attached checksum file, and reports package `com.choplab.sampler`, `versionCode=9`, `versionName=0.8.0`;
+- the exact public APK was copied to the Pixel 9a at `/sdcard/Download/ChopLab-v0.8.0-preview.1-debug.apk`, where its SHA-256 matched the reverse download. The installed app remains the same-source locally signed build, so this does not claim an exact-public-APK install smoke.
+
+This establishes `LOCAL_PASS`, `PUBLIC_PASS`, and focused local-build install/launch, kit-application, fixed-layout, and schema-4 recovery `DEVICE_PASS`. It does not establish ambient microphone recording on the user's phone, subjective drum/loop/scratch sound quality, measured latency/xRuns, sustained thermal behavior, TalkBack/haptic quality, production signing/update continuity, exact-public-APK installation, or `HUMAN_GO`.
 
 The final two-axis review found and resolved two release blockers before publication: BANK D now refuses a seventeenth vocal take instead of overwriting D-01, and scratch-voice allocation was moved off the realtime audio thread. Scratch speed/frame atomics are handled once per block and an idle gesture returns speed to zero. The remaining duplicated realtime/offline layer scheduling is an accepted internal maintainability item, not a v0.8 behavior gap.
 
