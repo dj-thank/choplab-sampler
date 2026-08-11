@@ -105,7 +105,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - [x] 2026-08-12 - Implemented one shared step-eligibility boundary, pure performance-pad routing, disabled accessibility/coaching, non-destructive legacy-key filtering, and focused Red/Green coverage.
 - [x] 2026-08-12 - Built versionCode 17 / versionName 0.11.2; passed 143 tests, Lint, assemble, offline validation, diff/no-scroll checks, APK metadata/signature verification, and data-preserving `emulator-5590` install.
 - [x] 2026-08-12 - On `emulator-5590`, selected A-04 LOOP, observed disabled A-step semantics and dedicated coaching, and verified a disabled step press left the stable autosave byte-identical; focused fatal/ANR matches remained zero.
-- [ ] Publish and reverse-verify `v0.11.2-preview.1`, then install the local-signature APK on physical Pixel 9a only when exact serial `5A121JEBF08094` is attached.
+- [x] 2026-08-12 - Merged PR #24, passed branch/PR/main/tag/release CI, published `v0.11.2-preview.1`, and reverse-verified public APK bytes, GitHub digest, checksum, package metadata, signature, prerelease status, and anonymous routes.
+- [ ] Install the local-signature APK on physical Pixel 9a only when exact serial `5A121JEBF08094` is attached; it remains absent from ADB/mDNS and `Present=False` in Windows PnP.
 - [ ] Complete Milestone 4 and move this plan to `plans/completed/`.
 
 ## Discoveries
@@ -157,6 +158,8 @@ Compose UI keeps confirmation state locally at the source-import entry point and
 - `scripts/validate_project.sh` v0.11.2 - 2026-08-12, configured Git Bash/Kotlin 2.3.21 - PASS; `git diff --check` PASS; UI scroll API scan zero matches.
 - local v0.11.2 APK - 2026-08-12 - 30,739,403 bytes; SHA-256 `F706923F28495754CCB5B5DFEB42E2D7D89F574A6B27DEE10563A1A83344DAB4`; package/version/minSdk/targetSdk and v2 signature verified; local certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
 - dedicated `emulator-5590` v0.11.2 - 2026-08-12 - in-place install preserved checkpoint autosave SHA-256 `76BF3EACA193F877033123590A5360E3D3A083696A812C254B029EB9EA151BF4`; A-04 LOOP displayed dedicated coaching and disabled step semantics; disabled step press preserved 5,317,098-byte autosave SHA-256 `C5B66AF4A464186571FEBE718B307FC411D33D2A2316DBD3D87D2A31D4AE3689`; focused fatal/ANR matches zero.
+- GitHub publication v0.11.2 - 2026-08-12 - PR #24 merge `cf6996873b446f61f2e74910e93ad4495e74b263`; branch/PR/main/tag/release runs `31536276746` / `31536297883` / `31536570140` / `31536868910` / `31536868984` PASS.
+- public v0.11.2 APK - 2026-08-12 - 30,739,403 bytes; SHA-256 `7FE63CEADB27BBA59142EEDBFEB7A346C9F487E6CB00C5CD4B3EB7182EE3FCEE`; GitHub digest, checksum sidecar, v2 signature, package, and version metadata match; anonymous repository/Release/APK routes returned HTTP 200; public certificate `F100B8D8C189BDBA933779AB2ACCD6BBE374BC7D01E592F92684A26595C6B196` differs from local.
 
 ## Risks and rollback
 
