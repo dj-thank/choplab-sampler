@@ -71,7 +71,7 @@ enum class ProductionDockAction(val label: String) {
     SCRATCH("スクラッチ\nSCRATCH"),
 }
 
-fun beatProductionDockActions(@Suppress("UNUSED_PARAMETER") stepsVisible: Boolean): List<ProductionDockAction> =
+fun beatProductionDockActions(): List<ProductionDockAction> =
     listOf(
         ProductionDockAction.QUICK,
         ProductionDockAction.STEPS,

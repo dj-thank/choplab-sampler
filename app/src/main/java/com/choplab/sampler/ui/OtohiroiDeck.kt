@@ -2278,7 +2278,7 @@ private fun BeatProductionDock(
     onOpenScratch: () -> Unit,
     onStepsVisibleChange: (Boolean) -> Unit,
 ) {
-    val buttons = beatProductionDockActions(stepsVisible).map { action ->
+    val buttons = beatProductionDockActions().map { action ->
         when (action) {
             ProductionDockAction.QUICK -> ProductionDockButton(
                 label = action.label,

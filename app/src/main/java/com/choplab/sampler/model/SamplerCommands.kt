@@ -27,16 +27,27 @@ fun replaceSourceAudio(
     statusMessage = "${audio.name} を新しいプロジェクトとして読み込みました — A メロディーへチョップします",
 )
 
+fun pendingSourceCommandAfterStopRequest(appliedPlaying: Boolean): PendingSourceCommand =
+    if (appliedPlaying) PendingSourceCommand.STOP else PendingSourceCommand.NONE
+
+/**
+ * Replaces project content without claiming that an already-applied source has stopped.
+ * The audio-thread poll owns the later transition from STOPPING to STOPPED.
+ */
+fun preserveAppliedSourceTruthWhileStopping(
+    previousState: SamplerUiState,
+    replacementState: SamplerUiState,
+): SamplerUiState = replacementState.copy(
+    sourcePlaying = previousState.sourcePlaying,
+    pendingSourceCommand = pendingSourceCommandAfterStopRequest(previousState.sourcePlaying),
+)
+
 fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
     val recordingContinues = state.microphoneRecording ||
         state.systemAudioRecording ||
         state.vocalOverdubRecording
     return state.copy(
-        pendingSourceCommand = if (state.sourcePlaying) {
-            PendingSourceCommand.STOP
-        } else {
-            PendingSourceCommand.NONE
-        },
+        pendingSourceCommand = pendingSourceCommandAfterStopRequest(state.sourcePlaying),
         transportPlaying = false,
         recordArmed = false,
         currentStep = -1,
@@ -45,10 +56,15 @@ fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
         scratchingPadIndex = null,
         scratchPlayheadFrame = -1,
         sourceScratchActive = false,
-        statusMessage = if (recordingContinues) {
-            "再生音を全停止しました（録音は継続中）"
-        } else {
-            "すべての再生音を停止しました"
+        statusMessage = when {
+            state.sourcePlaying && recordingContinues ->
+                "再生音を全停止中（録音は継続中）"
+            state.sourcePlaying ->
+                "すべての再生音を停止しています"
+            recordingContinues ->
+                "再生音を全停止しました（録音は継続中）"
+            else ->
+                "すべての再生音を停止しました"
         },
     )
 }

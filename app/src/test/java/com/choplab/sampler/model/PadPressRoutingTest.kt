@@ -140,7 +140,15 @@ class PadPressRoutingTest {
             sourcePlaybackAppliedStatusMessage(
                 previouslyApplied = true,
                 nowApplied = false,
-                currentMessage = "すべての再生音を停止しました",
+                currentMessage = "すべての再生音を停止しています",
+            ),
+        )
+        assertEquals(
+            "新しい素材を入れてください",
+            sourcePlaybackAppliedStatusMessage(
+                previouslyApplied = true,
+                nowApplied = false,
+                currentMessage = "新しい素材を入れてください",
             ),
         )
     }

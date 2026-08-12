@@ -7,6 +7,38 @@ import org.junit.Test
 
 class SamplerCommandsTest {
     @Test
+    fun sourceReplacementKeepsAppliedPlaybackTruthUntilStopIsObserved() {
+        val previousAudio = PcmAudio(name = "previous", samples = ShortArray(800), sampleRate = 48_000)
+        val replacementAudio = PcmAudio(name = "replacement", samples = ShortArray(1_200), sampleRate = 48_000)
+        val previous = SamplerUiState(
+            currentAudio = previousAudio,
+            sourcePlaying = true,
+            pendingSourceCommand = PendingSourceCommand.NONE,
+        )
+        val replacement = replaceSourceAudio(previous, replacementAudio)
+
+        val stopping = preserveAppliedSourceTruthWhileStopping(previous, replacement)
+
+        assertSame(replacementAudio, stopping.currentAudio)
+        assertEquals(true, stopping.sourcePlaying)
+        assertEquals(PendingSourceCommand.STOP, stopping.pendingSourceCommand)
+    }
+
+    @Test
+    fun sourceReplacementStaysStoppedWhenNoPlaybackWasApplied() {
+        val previous = SamplerUiState(
+            sourcePlaying = false,
+            pendingSourceCommand = PendingSourceCommand.START,
+        )
+        val replacement = SamplerUiState()
+
+        val stopped = preserveAppliedSourceTruthWhileStopping(previous, replacement)
+
+        assertEquals(false, stopped.sourcePlaying)
+        assertEquals(PendingSourceCommand.NONE, stopped.pendingSourceCommand)
+    }
+
+    @Test
     fun globalStopClearsPlaybackUiButKeepsAudioThreadSourceTruthAndRecordings() {
         val state = SamplerUiState(
             sourcePlaying = true,
@@ -34,6 +66,7 @@ class SamplerCommandsTest {
         assertEquals(false, stopped.sourceScratchActive)
         assertEquals(true, stopped.microphoneRecording)
         assertTrue(stopped.statusMessage.contains("録音は継続中"))
+        assertTrue(stopped.statusMessage.contains("全停止中"))
     }
 
     @Test

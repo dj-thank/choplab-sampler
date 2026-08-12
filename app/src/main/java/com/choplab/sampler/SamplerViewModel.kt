@@ -47,6 +47,10 @@ import com.choplab.sampler.model.defaultMelodyChopPad
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
+import com.choplab.sampler.model.pendingSourceCommandAfterPlaybackRetarget
+import com.choplab.sampler.model.pendingSourceCommandAfterStartRequest
+import com.choplab.sampler.model.pendingSourceCommandAfterStopRequest
+import com.choplab.sampler.model.preserveAppliedSourceTruthWhileStopping
 import com.choplab.sampler.model.recordPadStep
 import com.choplab.sampler.model.reconcilePendingSourceCommand
 import com.choplab.sampler.model.replacePadSteps
@@ -67,6 +71,7 @@ import com.choplab.sampler.model.sourcePlaybackStartFrame
 import com.choplab.sampler.model.sourcePlaybackToggleAction
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.stopAllPlaybackState
+import com.choplab.sampler.model.shouldContinueSourcePlayback
 import com.choplab.sampler.model.trimPadBoundary
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.persistence.AtomicProjectStore
@@ -121,9 +126,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
+                        val previous = mutableUiState.value
                         engine.stopAllPlayback()
                         editHistory.reset()
-                        val replaced = replaceSourceAudio(mutableUiState.value, audio)
+                        val replaced = preserveAppliedSourceTruthWhileStopping(
+                            previousState = previous,
+                            replacementState = replaceSourceAudio(previous, audio),
+                        )
                         mutableUiState.value = replaced
                         engine.updateAllPads(replaced.pads)
                         syncPattern()
@@ -379,11 +388,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.beginSourceScratch(audio, range.startFrame, range.endFrame)
         mutableUiState.update { current ->
             current.copy(
-                pendingSourceCommand = if (current.sourcePlaying) {
-                    PendingSourceCommand.STOP
-                } else {
-                    PendingSourceCommand.NONE
-                },
+                pendingSourceCommand = pendingSourceCommandAfterStopRequest(current.sourcePlaying),
                 loopingPadIndex = null,
                 loopPlayheadFrame = -1,
                 scratchingPadIndex = null,
@@ -511,7 +516,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun resetProject() {
         projectOperations.invalidate()
-        val reset = resetProjectState(mutableUiState.value)
+        val previous = mutableUiState.value
+        val reset = resetProjectState(previous)
         autosaveJob?.cancel()
         engine.stopAllPlayback()
         runCatching { microphoneRecorder.stop() }
@@ -523,8 +529,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         editHistory.reset()
         projectRevision++
         val revision = projectRevision
-        mutableUiState.value = reset
-        engine.updateAllPads(reset.pads)
+        val stoppingReset = preserveAppliedSourceTruthWhileStopping(previous, reset)
+        mutableUiState.value = stoppingReset
+        engine.updateAllPads(stoppingReset.pads)
         syncPattern()
         autosaveJob = viewModelScope.launch {
             val failure = withContext(Dispatchers.IO) {
@@ -915,11 +922,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
             current.copy(
                 sourcePlaying = feedback.sourcePlaying,
-                pendingSourceCommand = if (current.sourcePlaying) {
-                    PendingSourceCommand.STOP
-                } else {
-                    PendingSourceCommand.NONE
-                },
+                pendingSourceCommand = pendingSourceCommandAfterStopRequest(current.sourcePlaying),
                 statusMessage = feedback.statusMessage,
             )
         }
@@ -946,11 +949,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     )
                     current.copy(
                         sourcePlaying = feedback.sourcePlaying,
-                        pendingSourceCommand = if (current.sourcePlaying) {
-                            PendingSourceCommand.STOP
-                        } else {
-                            PendingSourceCommand.NONE
-                        },
+                        pendingSourceCommand = pendingSourceCommandAfterStopRequest(current.sourcePlaying),
                         statusMessage = feedback.statusMessage,
                     )
                 }
@@ -1013,11 +1012,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
             current.copy(
                 sourcePlaying = feedback.sourcePlaying,
-                pendingSourceCommand = if (current.sourcePlaying) {
-                    PendingSourceCommand.NONE
-                } else {
-                    PendingSourceCommand.START
-                },
+                pendingSourceCommand = pendingSourceCommandAfterStartRequest(current.sourcePlaying),
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = 0,
@@ -1046,11 +1041,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
             current.copy(
                 sourcePlaying = feedback.sourcePlaying,
-                pendingSourceCommand = if (current.sourcePlaying) {
-                    PendingSourceCommand.NONE
-                } else {
-                    PendingSourceCommand.START
-                },
+                pendingSourceCommand = pendingSourceCommandAfterStartRequest(current.sourcePlaying),
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlayheadFrame = safe,
@@ -1063,19 +1054,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
         val safe = frame.coerceIn(0, audio.frameCount - 1)
-        val shouldContinuePlayback = state.pendingSourceCommand != PendingSourceCommand.STOP &&
-            (state.sourcePlaying || state.pendingSourceCommand == PendingSourceCommand.START)
+        val shouldContinuePlayback = shouldContinueSourcePlayback(
+            appliedPlaying = state.sourcePlaying,
+            pendingCommand = state.pendingSourceCommand,
+        )
         if (shouldContinuePlayback) {
             engine.playSource(audio, safe, state.masterPitchSemitones)
         }
         mutableUiState.update { current ->
             current.copy(
                 sourcePlayheadFrame = safe,
-                pendingSourceCommand = if (shouldContinuePlayback && !current.sourcePlaying) {
-                    PendingSourceCommand.START
-                } else {
-                    current.pendingSourceCommand
-                },
+                pendingSourceCommand = pendingSourceCommandAfterPlaybackRetarget(
+                    shouldContinuePlayback = shouldContinuePlayback,
+                    appliedPlaying = current.sourcePlaying,
+                    currentPendingCommand = current.pendingSourceCommand,
+                ),
             )
         }
     }
@@ -1085,19 +1078,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio
         val frame = engine.currentSourceFrame.takeIf { it >= 0 } ?: state.sourcePlayheadFrame
-        val shouldContinuePlayback = state.pendingSourceCommand != PendingSourceCommand.STOP &&
-            (state.sourcePlaying || state.pendingSourceCommand == PendingSourceCommand.START)
+        val shouldContinuePlayback = shouldContinueSourcePlayback(
+            appliedPlaying = state.sourcePlaying,
+            pendingCommand = state.pendingSourceCommand,
+        )
         if (shouldContinuePlayback && audio != null) {
             engine.playSource(audio, frame.coerceIn(0, audio.frameCount - 1), pitch)
         }
         commitEdit(mergeKey = "master-pitch") {
             it.copy(
                 masterPitchSemitones = pitch,
-                pendingSourceCommand = if (shouldContinuePlayback && !it.sourcePlaying) {
-                    PendingSourceCommand.START
-                } else {
-                    it.pendingSourceCommand
-                },
+                pendingSourceCommand = pendingSourceCommandAfterPlaybackRetarget(
+                    shouldContinuePlayback = shouldContinuePlayback,
+                    appliedPlaying = it.sourcePlaying,
+                    currentPendingCommand = it.pendingSourceCommand,
+                ),
             )
         }
     }
@@ -1249,11 +1244,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             .forEach { engine.triggerPad(it.globalIndex) }
         mutableUiState.update {
             it.copy(
-                pendingSourceCommand = if (it.sourcePlaying) {
-                    PendingSourceCommand.STOP
-                } else {
-                    PendingSourceCommand.NONE
-                },
+                pendingSourceCommand = pendingSourceCommandAfterStopRequest(it.sourcePlaying),
                 loopingPadIndex = globalIndex,
                 loopPlayheadFrame = if (loopPad.reverse) loopPad.endFrame - 1 else loopPad.startFrame,
                 statusMessage = "${('A'.code + loopPad.bankIndex).toChar()}-%02d の音声全体をループ中"
@@ -1352,11 +1343,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             mutableUiState.update {
                 it.copy(
                     transportPlaying = true,
-                    pendingSourceCommand = if (it.sourcePlaying) {
-                        PendingSourceCommand.STOP
-                    } else {
-                        PendingSourceCommand.NONE
-                    },
+                    pendingSourceCommand = pendingSourceCommandAfterStopRequest(it.sourcePlaying),
                 )
             }
         }
@@ -1603,8 +1590,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             selectedDrumKitId == other.selectedDrumKitId
 
     private fun applyProjectState(restored: SamplerUiState, message: String) {
+        val previous = mutableUiState.value
         engine.stopAllPlayback()
-        val stoppedRestoredState = restored.copy(
+        val restoredRuntimeState = restored.copy(
             isLoading = false,
             statusMessage = message,
             transportPlaying = false,
@@ -1613,8 +1601,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             microphoneRecording = false,
             vocalOverdubRecording = false,
             systemAudioRecording = false,
-            sourcePlaying = false,
-            pendingSourceCommand = PendingSourceCommand.NONE,
             loopingPadIndex = null,
             loopPlayheadFrame = -1,
             scratchingPadIndex = null,
@@ -1622,6 +1608,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             sourceScratchActive = false,
             canUndo = editHistory.canUndo,
             canRedo = editHistory.canRedo,
+        )
+        val stoppedRestoredState = preserveAppliedSourceTruthWhileStopping(
+            previousState = previous,
+            replacementState = restoredRuntimeState,
         )
         mutableUiState.value = stoppedRestoredState
         stoppedRestoredState.pads.forEach(engine::updatePad)

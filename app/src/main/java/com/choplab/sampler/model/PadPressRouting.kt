@@ -73,6 +73,25 @@ fun reconcilePendingSourceCommand(
     PendingSourceCommand.NONE -> PendingSourceCommand.NONE
 }
 
+fun pendingSourceCommandAfterStartRequest(appliedPlaying: Boolean): PendingSourceCommand =
+    if (appliedPlaying) PendingSourceCommand.NONE else PendingSourceCommand.START
+
+fun shouldContinueSourcePlayback(
+    appliedPlaying: Boolean,
+    pendingCommand: PendingSourceCommand,
+): Boolean = pendingCommand != PendingSourceCommand.STOP &&
+    (appliedPlaying || pendingCommand == PendingSourceCommand.START)
+
+fun pendingSourceCommandAfterPlaybackRetarget(
+    shouldContinuePlayback: Boolean,
+    appliedPlaying: Boolean,
+    currentPendingCommand: PendingSourceCommand,
+): PendingSourceCommand = if (shouldContinuePlayback && !appliedPlaying) {
+    PendingSourceCommand.START
+} else {
+    currentPendingCommand
+}
+
 fun resolvePadPressAction(
     sourcePlaying: Boolean,
     padAssigned: Boolean,
@@ -148,11 +167,18 @@ fun sourcePlaybackAppliedStatusMessage(
         "サンプリング中 — 「ここだ」で空PADを叩いてください"
     previouslyApplied && !nowApplied && currentMessage.startsWith("停止を準備中") ->
         "停止中 — PADでチョップを演奏できます"
+    previouslyApplied && !nowApplied && currentMessage == "すべての再生音を停止しています" ->
+        "すべての再生音を停止しました"
+    previouslyApplied && !nowApplied && currentMessage == "再生音を全停止中（録音は継続中）" ->
+        "再生音を全停止しました（録音は継続中）"
     previouslyApplied && !nowApplied && (
         currentMessage.startsWith("すべての再生音を停止") ||
             currentMessage.startsWith("再生音を全停止")
         ) -> currentMessage
-    previouslyApplied && !nowApplied ->
+    previouslyApplied && !nowApplied && (
+        currentMessage.startsWith("サンプリング中") ||
+            currentMessage.startsWith("再生中")
+        ) ->
         "曲の再生が終わりました — PADでチョップを演奏できます"
     else -> currentMessage
 }

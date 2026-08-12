@@ -62,9 +62,10 @@ The current UI derives `ChopSessionPresentation` from only `sourcePlaying`, whil
 - [x] 2026-08-12 - Built and privacy-scanned the complete one-ZIP review packet containing all 188 tracked files.
 - [x] 2026-08-12 - Recovered a grounded GPT Pro response from the exclusive ChopLab conversation after the initial capture timeout.
 - [x] 2026-08-12 - Reconciled the response with current code and selected one bounded state-truth/Production Dock slice.
-- [ ] 2026-08-12 - Observe focused RED tests and implement state/stop contracts.
-- [ ] 2026-08-12 - Wire ViewModel and fixed no-scroll UI.
-- [ ] 2026-08-12 - Complete local gates, review, APK, docs, and commit.
+- [x] 2026-08-12 - Observed focused RED failures and implemented state/stop contracts.
+- [x] 2026-08-12 - Wired ViewModel, accessibility, and the fixed no-scroll Production Dock UI.
+- [x] 2026-08-12 - Fixed review findings for replacement/reset truth and runtime-only Undo state.
+- [x] 2026-08-12 - Completed local gates, two-pass parent review, exact APK receipt, and scoped Pixel 9a validation.
 
 ## Discoveries
 
@@ -72,6 +73,10 @@ The current UI derives `ChopSessionPresentation` from only `sourcePlaying`, whil
 - `RealtimeCommandMailbox` intentionally drops queued commands older than the newest Stop All boundary. The existing `stopTransport(); stopAllVoices()` order can therefore discard the transport stop. Reversing the producer order is required, not merely changing UI state.
 - The existing audio-thread confirmation already prevents pending-start live Chop. The missing part is visible state and accessible copy, not weakening that gate.
 - A five-stage rail would visually resemble the historical HTML, but current code, tests, and product docs consistently define four working stages. This slice keeps four stages and reuses only the visual language.
+- The first Spec review found that replacement, reset, and project application still assigned `sourcePlaying = false` before the audio thread confirmed stop. One pure replacement-state helper now preserves applied truth in all three paths.
+- The final parent pass found that the new runtime-only pending command could enter Undo snapshots. The focused test failed before `historySnapshot()` explicitly reset it to `NONE`, then passed.
+- A final message-truth pass found that ALL STOP could say “stopped” while the source phase was still STOPPING and that an unrelated replacement/reset message could be overwritten when the old source retired. Focused assertions failed first; the reducer now reports stopping until the applied transition and preserves unrelated project messages.
+- The configured smoke script initially failed because the Kotlin/JVM process could not allocate about 1 MB while another scoped compiler daemon remained resident. After confirming its exact PID, parent, creation time, executable, and ChopLab Kotlin 2.3.21 purpose, only that stale daemon was stopped; the crash files were moved under untracked `work/validation-jvm-crash-20260812/`, and validation passed with a 512 MB smoke JVM. No unrelated Java process was stopped.
 
 ## Decision log
 
@@ -80,12 +85,19 @@ The current UI derives `ChopSessionPresentation` from only `sourcePlaying`, whil
 - 2026-08-12 - Keep Layer Studio as the existing modal instead of promoting a fifth top-level stage. This preserves the tested workflow and avoids a broad navigation rewrite.
 - 2026-08-12 - Keep all 128 PADs and four BANK roles; the 16-pad visuals describe one visible page, not the whole project capacity.
 - 2026-08-12 - Keep recording independent from ALL STOP to avoid data loss; the UI message will explicitly say recording continues.
+- 2026-08-12 - Keep audio-thread-applied source truth across source replacement/reset/load until polling observes stop; archive and Undo snapshots intentionally omit pending runtime commands.
 
 ## Validation log
 
 - `scripts/validate_project.sh` with configured Git Bash/JDK/SDK/Kotlin - 2026-08-12 baseline - PASS.
 - `gradlew.bat testDebugUnitTest --offline --no-daemon --max-workers=1` - 2026-08-12 baseline - PASS; 153 tests in 34 suites, zero failures/errors/skips.
 - GPT Pro full-file consultation - 2026-08-12 - completed; 188 tracked files and 193 packet entries confirmed; transcript SHA-256 `D27FFE3765E23A3CE7E05A138F387BD8874B5AD260C9441462EBFBB78CE7C52E`.
+- Focused review regressions - 2026-08-12 - intentional RED observed for missing replacement STOPPING helper and Undo restoring `PendingSourceCommand.START`; both GREEN after implementation.
+- `scripts/validate_project.sh` with configured Git Bash/JDK/SDK/Kotlin and constrained smoke JVM - 2026-08-12 final - PASS; wrapper SHA-256 matched.
+- `gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 -Dorg.gradle.jvmargs=-Xmx1536m -Pkotlin.compiler.execution.strategy=in-process` - 2026-08-12 final - PASS; 163 tests in 36 suites, zero failures/errors/skips; Lint zero errors and 10 advisories; APK assembled.
+- `git diff --check 0eb15b2` and UI scroll API scan - 2026-08-12 final - PASS; zero whitespace errors and zero scroll API matches.
+- Pixel 9a `5A121JEBF08094` - 2026-08-12 - exact APK `adb install -r` PASS; 0.10.0 to 0.12.0; cold launch/process/focused fatal-ANR check PASS; Capture/Chop/Beat dumps zero scrollable nodes; four retained project hashes unchanged through install and launch.
+- Final two-pass review - 2026-08-12 - local parent Standards and Spec notes under `work/state-truth-production-dock-{standards,spec}-review.md`; zero unresolved hard/P0/P1 findings. Returned child completion metadata omitted the effective model, so no runtime-verified Luna claim is made.
 
 ## Risks and rollback
 
@@ -93,9 +105,12 @@ The main functional risk is a pending-source command that never clears under que
 
 ## Remaining device validation
 
-- Exact-final APK install on an exclusively owned Android target.
 - Physical Pixel touch/audio confirmation for STARTING cancellation, first Chop, assigned-PAD audition, and no duplicate audio.
 - ALL STOP while a 16-step pattern is active, followed by at least two bars without re-trigger.
 - Source replacement/reset/project open while transport is active, followed by no sound until explicit Play.
 - Portrait 360 x 640 and 412 x 820, landscape 800 x 320, font scale 1.0/1.3, and TalkBack traversal.
 - Subjective scratch, loop, drum, vocal, and live Key/Tone/Level behavior after dock integration.
+
+## Outcome and retrospective
+
+The bounded slice is complete. Source state now has one visible truth model, destructive project transitions do not pretend an applied voice is already silent, stage navigation is side-effect-limited, every Beat mode retains Add and Scratch, and ALL STOP includes the transport boundary. The exact local APK was installed on the physical Pixel without changing any retained project archive. The remaining work is experiential audio/accessibility coverage and public release governance, not an unfinished code path in this plan.
