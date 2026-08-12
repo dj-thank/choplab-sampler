@@ -6,6 +6,7 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.stepKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,26 +52,40 @@ class GuidedWorkflowTest {
     }
 
     @Test
-    fun chopSessionUsesOnePrimaryActionAndDerivesPadBehaviorFromPlayback() {
-        val ready = chopSessionPresentation(sourcePlaying = false, assignedPadCount = 0)
+    fun chopSessionUsesAudioThreadTruthForAllFourSourcePhases() {
+        val ready = chopSessionPresentation(sourcePhase = SourceUiPhase.STOPPED, assignedPadCount = 0)
         assertFalse(ready.captureMode)
+        assertTrue(ready.primaryEnabled)
         assertEquals(
             "チョップ開始\nSTART CHOP",
             ready.primaryActionLabel,
         )
         assertEquals(
-            "「チョップ開始」→ 曲が流れたら空PADを叩く",
+            "「チョップ開始」→ 音が鳴ったら空PADを叩く",
             ready.guidance,
         )
 
-        val firstCapture = chopSessionPresentation(sourcePlaying = true, assignedPadCount = 0)
-        assertTrue(firstCapture.captureMode)
-        assertEquals("元曲を止める\nSTOP SOURCE", firstCapture.primaryActionLabel)
-        assertEquals("空PADを叩くたび、現在位置でチョップ", firstCapture.guidance)
+        val starting = chopSessionPresentation(SourceUiPhase.STARTING, assignedPadCount = 0)
+        assertFalse(starting.captureMode)
+        assertTrue(starting.primaryEnabled)
+        assertEquals("再生準備中\nTAP TO CANCEL", starting.primaryActionLabel)
+        assertEquals("再生を準備中。音が鳴るまで空PADは選択のみ", starting.guidance)
 
-        val continuing = chopSessionPresentation(sourcePlaying = true, assignedPadCount = 1)
+        val firstCapture = chopSessionPresentation(SourceUiPhase.PLAYING, assignedPadCount = 0)
+        assertTrue(firstCapture.captureMode)
+        assertTrue(firstCapture.primaryEnabled)
+        assertEquals("元曲を止める\nSTOP SOURCE", firstCapture.primaryActionLabel)
+        assertEquals("空PADを叩くと、その瞬間からチョップ", firstCapture.guidance)
+
+        val continuing = chopSessionPresentation(SourceUiPhase.PLAYING, assignedPadCount = 1)
         assertTrue(continuing.captureMode)
         assertEquals("空PAD＝追加／音ありPAD＝試聴・長押し微調整", continuing.guidance)
+
+        val stopping = chopSessionPresentation(SourceUiPhase.STOPPING, assignedPadCount = 1)
+        assertFalse(stopping.captureMode)
+        assertFalse(stopping.primaryEnabled)
+        assertEquals("停止中\nPLEASE WAIT", stopping.primaryActionLabel)
+        assertEquals("停止処理中。割当済みPADは上書きされません", stopping.guidance)
     }
 
     @Test
@@ -91,6 +106,30 @@ class GuidedWorkflowTest {
         assertTrue(workflowStageKeepsSourcePlayback(WorkflowStage.CHOP))
         assertFalse(workflowStageKeepsSourcePlayback(WorkflowStage.BEAT))
         assertFalse(workflowStageKeepsSourcePlayback(WorkflowStage.FINISH))
+    }
+
+    @Test
+    fun stageTabsNavigateWithoutStartingSourceOrChangingTheSelectedBank() {
+        assertEquals(
+            emptySet<WorkflowNavigationAction>(),
+            workflowNavigationActions(WorkflowStage.BEAT, WorkflowStage.CHOP),
+        )
+        assertEquals(
+            setOf(
+                WorkflowNavigationAction.STOP_SOURCE,
+                WorkflowNavigationAction.ENSURE_PLAYABLE_PAD,
+            ),
+            workflowNavigationActions(WorkflowStage.CHOP, WorkflowStage.BEAT),
+        )
+        assertEquals(
+            StartChopPolicy(
+                enabled = true,
+                prepareMelodyDestination = true,
+                startSource = true,
+            ),
+            startChopPolicy(SourceUiPhase.STOPPED),
+        )
+        assertFalse(startChopPolicy(SourceUiPhase.STOPPING).enabled)
     }
 
     @Test

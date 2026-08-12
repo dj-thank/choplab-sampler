@@ -5,6 +5,7 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.bankRoleFor
 
 enum class WorkflowStage(
@@ -35,6 +36,49 @@ fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
 fun workflowStageKeepsSourcePlayback(stage: WorkflowStage): Boolean =
     stage == WorkflowStage.CHOP
 
+enum class WorkflowNavigationAction {
+    STOP_SOURCE,
+    ENSURE_PLAYABLE_PAD,
+}
+
+fun workflowNavigationActions(
+    current: WorkflowStage,
+    target: WorkflowStage,
+): Set<WorkflowNavigationAction> {
+    if (current == target) return emptySet()
+    return buildSet {
+        if (!workflowStageKeepsSourcePlayback(target)) add(WorkflowNavigationAction.STOP_SOURCE)
+        if (target == WorkflowStage.BEAT) add(WorkflowNavigationAction.ENSURE_PLAYABLE_PAD)
+    }
+}
+
+data class StartChopPolicy(
+    val enabled: Boolean,
+    val prepareMelodyDestination: Boolean,
+    val startSource: Boolean,
+)
+
+fun startChopPolicy(sourcePhase: SourceUiPhase): StartChopPolicy = StartChopPolicy(
+    enabled = sourcePhase != SourceUiPhase.STOPPING,
+    prepareMelodyDestination = sourcePhase != SourceUiPhase.STOPPING,
+    startSource = sourcePhase == SourceUiPhase.STOPPED,
+)
+
+enum class ProductionDockAction(val label: String) {
+    QUICK("クイック\nQUICK"),
+    STEPS("並べる詳細\nSTEPS"),
+    ADD("音を足す\nADD"),
+    SCRATCH("スクラッチ\nSCRATCH"),
+}
+
+fun beatProductionDockActions(@Suppress("UNUSED_PARAMETER") stepsVisible: Boolean): List<ProductionDockAction> =
+    listOf(
+        ProductionDockAction.QUICK,
+        ProductionDockAction.STEPS,
+        ProductionDockAction.ADD,
+        ProductionDockAction.SCRATCH,
+    )
+
 fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
     if (usesLargeTextDeckMode(fontScale)) 7f else 8f
 
@@ -62,29 +106,51 @@ fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
 data class ChopSessionPresentation(
     val captureMode: Boolean,
     val primaryActionLabel: String,
+    val primaryEnabled: Boolean,
     val guidance: String,
 )
 
 fun chopSessionPresentation(
-    sourcePlaying: Boolean,
+    sourcePhase: SourceUiPhase,
     assignedPadCount: Int,
-): ChopSessionPresentation = when {
-    !sourcePlaying -> ChopSessionPresentation(
+): ChopSessionPresentation = when (sourcePhase) {
+    SourceUiPhase.STOPPED -> ChopSessionPresentation(
         captureMode = false,
         primaryActionLabel = "チョップ開始\nSTART CHOP",
-        guidance = "「チョップ開始」→ 曲が流れたら空PADを叩く",
+        primaryEnabled = true,
+        guidance = "「チョップ開始」→ 音が鳴ったら空PADを叩く",
     )
-    assignedPadCount <= 0 -> ChopSessionPresentation(
+    SourceUiPhase.STARTING -> ChopSessionPresentation(
+        captureMode = false,
+        primaryActionLabel = "再生準備中\nTAP TO CANCEL",
+        primaryEnabled = true,
+        guidance = "再生を準備中。音が鳴るまで空PADは選択のみ",
+    )
+    SourceUiPhase.PLAYING -> ChopSessionPresentation(
         captureMode = true,
         primaryActionLabel = "元曲を止める\nSTOP SOURCE",
-        guidance = "空PADを叩くたび、現在位置でチョップ",
+        primaryEnabled = true,
+        guidance = if (assignedPadCount <= 0) {
+            "空PADを叩くと、その瞬間からチョップ"
+        } else {
+            "空PAD＝追加／音ありPAD＝試聴・長押し微調整"
+        },
     )
-    else -> ChopSessionPresentation(
-        captureMode = true,
-        primaryActionLabel = "元曲を止める\nSTOP SOURCE",
-        guidance = "空PAD＝追加／音ありPAD＝試聴・長押し微調整",
+    SourceUiPhase.STOPPING -> ChopSessionPresentation(
+        captureMode = false,
+        primaryActionLabel = "停止中\nPLEASE WAIT",
+        primaryEnabled = false,
+        guidance = "停止処理中。割当済みPADは上書きされません",
     )
 }
+
+fun chopSessionPresentation(
+    sourcePlaying: Boolean,
+    assignedPadCount: Int,
+): ChopSessionPresentation = chopSessionPresentation(
+    sourcePhase = if (sourcePlaying) SourceUiPhase.PLAYING else SourceUiPhase.STOPPED,
+    assignedPadCount = assignedPadCount,
+)
 
 fun bankSwitchLabel(bankIndex: Int, selected: Boolean, compact: Boolean): String {
     val role = bankRoleFor(bankIndex)

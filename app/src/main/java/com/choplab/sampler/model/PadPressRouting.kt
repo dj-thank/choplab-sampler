@@ -29,10 +29,49 @@ enum class SourcePlaybackToggleAction {
     STOP,
 }
 
+enum class SourceUiPhase {
+    STOPPED,
+    STARTING,
+    PLAYING,
+    STOPPING,
+}
+
 data class SourcePlaybackRequestFeedback(
     val sourcePlaying: Boolean,
     val statusMessage: String,
 )
+
+fun sourceUiPhase(
+    appliedPlaying: Boolean,
+    pendingCommand: PendingSourceCommand,
+): SourceUiPhase = when {
+    pendingCommand == PendingSourceCommand.START && !appliedPlaying -> SourceUiPhase.STARTING
+    pendingCommand == PendingSourceCommand.STOP && appliedPlaying -> SourceUiPhase.STOPPING
+    appliedPlaying -> SourceUiPhase.PLAYING
+    else -> SourceUiPhase.STOPPED
+}
+
+fun SamplerUiState.sourceUiPhase(): SourceUiPhase = sourceUiPhase(
+    appliedPlaying = sourcePlaying,
+    pendingCommand = pendingSourceCommand,
+)
+
+fun reconcilePendingSourceCommand(
+    pendingCommand: PendingSourceCommand,
+    appliedPlaying: Boolean,
+): PendingSourceCommand = when (pendingCommand) {
+    PendingSourceCommand.START -> if (appliedPlaying) {
+        PendingSourceCommand.NONE
+    } else {
+        PendingSourceCommand.START
+    }
+    PendingSourceCommand.STOP -> if (appliedPlaying) {
+        PendingSourceCommand.STOP
+    } else {
+        PendingSourceCommand.NONE
+    }
+    PendingSourceCommand.NONE -> PendingSourceCommand.NONE
+}
 
 fun resolvePadPressAction(
     sourcePlaying: Boolean,
@@ -109,6 +148,10 @@ fun sourcePlaybackAppliedStatusMessage(
         "サンプリング中 — 「ここだ」で空PADを叩いてください"
     previouslyApplied && !nowApplied && currentMessage.startsWith("停止を準備中") ->
         "停止中 — PADでチョップを演奏できます"
+    previouslyApplied && !nowApplied && (
+        currentMessage.startsWith("すべての再生音を停止") ||
+            currentMessage.startsWith("再生音を全停止")
+        ) -> currentMessage
     previouslyApplied && !nowApplied ->
         "曲の再生が終わりました — PADでチョップを演奏できます"
     else -> currentMessage

@@ -26,6 +26,9 @@ data class DeckLayoutMetrics(
     val controlHeightDp: Int,
     val waveformHeightDp: Int,
 ) {
+    val productionDockHeightDp: Int
+        get() = controlHeightDp
+
     val showStatusStrip: Boolean
         get() = orientation != DeckOrientation.LANDSCAPE || density != DeckDensity.COMPACT
 
@@ -33,6 +36,9 @@ data class DeckLayoutMetrics(
         get() = headerHeightDp + modeBarHeightDp +
             (if (showStatusStrip) statusHeightDp else 0) +
             gapDp * (if (showStatusStrip) 3 else 2)
+
+    fun workspaceHeightAfterProductionDock(totalHeightDp: Int): Int =
+        totalHeightDp - fixedChromeHeightDp - productionDockHeightDp
 }
 
 fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {

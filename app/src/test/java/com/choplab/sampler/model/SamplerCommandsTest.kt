@@ -7,6 +7,36 @@ import org.junit.Test
 
 class SamplerCommandsTest {
     @Test
+    fun globalStopClearsPlaybackUiButKeepsAudioThreadSourceTruthAndRecordings() {
+        val state = SamplerUiState(
+            sourcePlaying = true,
+            pendingSourceCommand = PendingSourceCommand.NONE,
+            transportPlaying = true,
+            recordArmed = true,
+            currentStep = 7,
+            loopingPadIndex = 3,
+            loopPlayheadFrame = 90,
+            scratchingPadIndex = 4,
+            scratchPlayheadFrame = 120,
+            sourceScratchActive = true,
+            microphoneRecording = true,
+        )
+
+        val stopped = stopAllPlaybackState(state)
+
+        assertEquals(true, stopped.sourcePlaying)
+        assertEquals(PendingSourceCommand.STOP, stopped.pendingSourceCommand)
+        assertEquals(false, stopped.transportPlaying)
+        assertEquals(false, stopped.recordArmed)
+        assertEquals(-1, stopped.currentStep)
+        assertEquals(null, stopped.loopingPadIndex)
+        assertEquals(null, stopped.scratchingPadIndex)
+        assertEquals(false, stopped.sourceScratchActive)
+        assertEquals(true, stopped.microphoneRecording)
+        assertTrue(stopped.statusMessage.contains("録音は継続中"))
+    }
+
+    @Test
     fun sliceAssignmentUsesNextEmptyPadInsteadOfOverwritingExistingAudio() {
         val original = PcmAudio(name = "original", samples = ShortArray(800), sampleRate = 48_000)
         val incoming = PcmAudio(name = "incoming", samples = ShortArray(2_000), sampleRate = 48_000)

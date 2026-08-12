@@ -29,7 +29,7 @@ Focused-region comparison was not separated into additional crops because the co
 No actionable P0, P1, or P2 findings remain.
 
 - Fonts and typography: the implementation uses the existing Otohiroi monospace hierarchy with Japanese fallback, bold Japanese primary labels, and small English technical captions. The generated target uses a more editorial proportional Japanese face, but preserving the original HTML type language is intentional. No core label wraps beyond two lines or becomes unreachable at the tested viewport.
-- Spacing and layout rhythm: all five stages, waveform, 4 × 4 PAD grid, 2 × 8 steps, selected-PAD controls, and status remain in one fixed viewport. The post-fix PAD row is at least about 51dp high on the tested regular portrait layout. The generated target groups some controls into larger hardware panels; the implementation uses the existing cream deck and tighter mobile spacing to preserve the original HTML and real four-bank workflow.
+- Spacing and layout rhythm: all four production stages, waveform, 4 × 4 PAD grid, 2 × 8 steps, selected-PAD controls, and status remain in one fixed viewport. The post-fix PAD row is at least about 51dp high on the tested regular portrait layout. The generated target groups some controls into larger hardware panels; the implementation uses the existing cream deck and tighter mobile spacing to preserve the original HTML and real four-bank workflow.
 - Colors and visual tokens: cream, charcoal, orange, and green consistently match the canonical original HTML. The darker generated shell is treated as workflow/quality direction, not the final palette. Orange remains the active/sampling/selected color and green remains waveform/value/guidance color.
 - Image quality and asset fidelity: the implementation has no stretched or low-resolution visible assets; controls and waveform are native Compose rendering. Generated icons and decorative hardware textures were not copied because the original HTML visual language and repository rule against distinctive MPC trade dress are canonical.
 - Copy and content: Japanese-first labels explain the task while small English captions preserve professional vocabulary. The fixed coach says `光るマスで音が鳴ります。まず 1・5・9・13 を押そう`; source playback changes its readout to `ここだと思ったらPADを押すと、その瞬間が入ります`. Status details intentionally ellipsize rather than expand or scroll.
@@ -39,7 +39,7 @@ No actionable P0, P1, or P2 findings remain.
 ## Intentional differences
 
 - The cream Otohiroi shell from the original HTML is final; the dark generated shell is not copied.
-- The running MVP has four banks × 16 PADs and uses timestamps instead of invented instrument names.
+- The running MVP has four banks × 32 PADs, shown as fixed 01–16 and 17–32 pages, and uses timestamps instead of invented instrument names.
 - Song, stems, stereo, and arbitrary-length export are not implied. `完成` accurately offers the implemented four-bar WAV export.
 - System status/navigation bars are present in Android evidence but absent from the generated mock.
 

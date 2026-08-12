@@ -6,6 +6,34 @@ import org.junit.Test
 class PadPressRoutingTest {
 
     @Test
+    fun pendingCommandsExposeStartingAndStoppingWithoutFakingAppliedPlayback() {
+        assertEquals(
+            SourceUiPhase.STOPPED,
+            sourceUiPhase(appliedPlaying = false, PendingSourceCommand.NONE),
+        )
+        assertEquals(
+            SourceUiPhase.STARTING,
+            sourceUiPhase(appliedPlaying = false, PendingSourceCommand.START),
+        )
+        assertEquals(
+            SourceUiPhase.PLAYING,
+            sourceUiPhase(appliedPlaying = true, PendingSourceCommand.NONE),
+        )
+        assertEquals(
+            SourceUiPhase.STOPPING,
+            sourceUiPhase(appliedPlaying = true, PendingSourceCommand.STOP),
+        )
+        assertEquals(
+            PendingSourceCommand.NONE,
+            reconcilePendingSourceCommand(PendingSourceCommand.START, appliedPlaying = true),
+        )
+        assertEquals(
+            PendingSourceCommand.NONE,
+            reconcilePendingSourceCommand(PendingSourceCommand.STOP, appliedPlaying = false),
+        )
+    }
+
+    @Test
     fun completedSourceRestartsFromBeginning() {
         assertEquals(0, sourcePlaybackStartFrame(requestedFrame = 999, frameCount = 1_000))
         assertEquals(0, sourcePlaybackStartFrame(requestedFrame = 1_000, frameCount = 1_000))
@@ -107,6 +135,14 @@ class PadPressRoutingTest {
                 currentMessage = "再生中",
             ),
         )
+        assertEquals(
+            "すべての再生音を停止しました",
+            sourcePlaybackAppliedStatusMessage(
+                previouslyApplied = true,
+                nowApplied = false,
+                currentMessage = "すべての再生音を停止しました",
+            ),
+        )
     }
 
     @Test
@@ -127,6 +163,19 @@ class PadPressRoutingTest {
             PadPressAction.CAPTURE_CHOP,
             resolvePadPressAction(
                 sourcePlaying = true,
+                padAssigned = false,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+            ),
+        )
+    }
+
+    @Test
+    fun pendingStartNeverRoutesAnEmptyPadToLiveChop() {
+        assertEquals(SourceUiPhase.STARTING, sourceUiPhase(false, PendingSourceCommand.START))
+        assertEquals(
+            PadPressAction.SELECT_ONLY,
+            resolvePadPressAction(
+                sourcePlaying = false,
                 padAssigned = false,
                 surfaceMode = PadSurfaceMode.CAPTURE,
             ),

@@ -13,6 +13,8 @@ class DeckLayoutPolicyTest {
         assertEquals(DeckDensity.COMPACT, metrics.density)
         assertTrue(metrics.fixedChromeHeightDp < 160)
         assertTrue(640 - metrics.fixedChromeHeightDp >= 480)
+        assertEquals(metrics.controlHeightDp, metrics.productionDockHeightDp)
+        assertTrue(metrics.workspaceHeightAfterProductionDock(640) >= 440)
     }
 
     @Test
@@ -23,6 +25,7 @@ class DeckLayoutPolicyTest {
         assertEquals(DeckDensity.REGULAR, metrics.density)
         assertTrue(metrics.controlHeightDp >= 44)
         assertTrue(820 - metrics.fixedChromeHeightDp >= 650)
+        assertTrue(metrics.workspaceHeightAfterProductionDock(820) >= 600)
     }
 
     @Test
@@ -39,6 +42,7 @@ class DeckLayoutPolicyTest {
         assertEquals(3, metrics.gapDp)
         assertTrue(metrics.waveformHeightDp <= 128)
         assertTrue(320 - metrics.fixedChromeHeightDp >= 230)
+        assertTrue(metrics.workspaceHeightAfterProductionDock(320) >= 190)
     }
 
     @Test

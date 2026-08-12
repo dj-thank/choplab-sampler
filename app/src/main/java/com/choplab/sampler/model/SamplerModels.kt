@@ -55,6 +55,13 @@ enum class PadContentKind {
     VOCAL,
 }
 
+/** Runtime-only source command intent. Project archives intentionally do not persist it. */
+enum class PendingSourceCommand {
+    NONE,
+    START,
+    STOP,
+}
+
 data class PcmAudio(
     val id: Long = System.nanoTime(),
     val name: String,
@@ -122,6 +129,7 @@ data class SamplerUiState(
     val vocalOverdubRecording: Boolean = false,
     val systemAudioRecording: Boolean = false,
     val sourcePlaying: Boolean = false,
+    val pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
     val sourcePlayheadFrame: Int = 0,
     val loopingPadIndex: Int? = null,
     val loopPlayheadFrame: Int = -1,

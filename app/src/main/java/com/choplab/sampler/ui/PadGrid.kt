@@ -49,6 +49,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.bankRoleFor
 import kotlin.math.abs
 import kotlin.math.max
@@ -65,6 +66,7 @@ fun PadGrid(
     onLongPress: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
     captureMode: Boolean = false,
+    sourcePhase: SourceUiPhase = SourceUiPhase.STOPPED,
     gap: Dp = 6.dp,
     columns: Int = 4,
 ) {
@@ -102,6 +104,7 @@ fun PadGrid(
                             keyLabel = PAD_KEYS[indexInGrid].toString(),
                             selected = pad.globalIndex == selectedPad,
                             captureMode = captureMode,
+                            sourcePhase = sourcePhase,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
                             onSelect = { onSelect(pad.globalIndex) },
@@ -121,6 +124,7 @@ private fun PerformancePad(
     keyLabel: String,
     selected: Boolean,
     captureMode: Boolean,
+    sourcePhase: SourceUiPhase,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
     onSelect: () -> Unit,
@@ -142,7 +146,7 @@ private fun PerformancePad(
         pad.isAssigned -> Color(0xFFF1DFAD)
         else -> Color(0xFF91825C)
     }
-    val description = padAccessibilityDescription(pad, captureMode)
+    val description = padAccessibilityDescription(pad, captureMode, sourcePhase)
 
     BoxWithConstraints(
         modifier = modifier
@@ -153,7 +157,7 @@ private fun PerformancePad(
                 color = if (selected) DeckLamp else Color.Black,
                 shape = shape,
             )
-            .pointerInput(pad.globalIndex, pad.isAssigned, captureMode) {
+            .pointerInput(pad.globalIndex, pad.isAssigned, captureMode, sourcePhase) {
                 detectTapGestures(
                     onLongPress = {
                         if (pad.isAssigned) {
@@ -258,11 +262,16 @@ private fun PerformancePad(
 internal fun padAccessibilityDescription(
     pad: PadModel,
     captureMode: Boolean,
+    sourcePhase: SourceUiPhase = SourceUiPhase.STOPPED,
 ): String = buildString {
     append("PAD %02d".format(pad.indexInBank + 1))
     append(if (pad.isAssigned) " 割り当て済み" else " 空")
     if (pad.isAssigned) {
         append("。タップで試聴。長押しで微調整")
+    } else if (sourcePhase == SourceUiPhase.STARTING) {
+        append("。再生準備中。音が鳴るまで選択のみ")
+    } else if (sourcePhase == SourceUiPhase.STOPPING) {
+        append("。停止処理中。選択のみ")
     } else if (captureMode) {
         append("。現在位置をチョップ")
     }

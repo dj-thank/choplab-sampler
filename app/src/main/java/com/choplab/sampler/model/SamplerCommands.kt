@@ -27,6 +27,32 @@ fun replaceSourceAudio(
     statusMessage = "${audio.name} を新しいプロジェクトとして読み込みました — A メロディーへチョップします",
 )
 
+fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
+    val recordingContinues = state.microphoneRecording ||
+        state.systemAudioRecording ||
+        state.vocalOverdubRecording
+    return state.copy(
+        pendingSourceCommand = if (state.sourcePlaying) {
+            PendingSourceCommand.STOP
+        } else {
+            PendingSourceCommand.NONE
+        },
+        transportPlaying = false,
+        recordArmed = false,
+        currentStep = -1,
+        loopingPadIndex = null,
+        loopPlayheadFrame = -1,
+        scratchingPadIndex = null,
+        scratchPlayheadFrame = -1,
+        sourceScratchActive = false,
+        statusMessage = if (recordingContinues) {
+            "再生音を全停止しました（録音は継続中）"
+        } else {
+            "すべての再生音を停止しました"
+        },
+    )
+}
+
 enum class PadTrimBoundary {
     START,
     END,

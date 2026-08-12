@@ -2,6 +2,7 @@ package com.choplab.sampler.ui
 
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.SourceUiPhase
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -19,6 +20,18 @@ class PadGridAccessibilityTest {
         assertEquals(
             "PAD 02 空。現在位置をチョップ",
             padAccessibilityDescription(emptyPad, captureMode = true),
+        )
+    }
+
+    @Test
+    fun pendingStartExplainsThatAnEmptyPadOnlyChangesSelection() {
+        assertEquals(
+            "PAD 02 空。再生準備中。音が鳴るまで選択のみ",
+            padAccessibilityDescription(
+                pad = PadModel(1),
+                captureMode = false,
+                sourcePhase = SourceUiPhase.STARTING,
+            ),
         )
     }
 }
