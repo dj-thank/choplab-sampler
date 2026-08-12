@@ -14,9 +14,7 @@ import org.junit.Test
 
 class GuidedWorkflowTest {
     @Test
-    fun chopSwitchLabelsExposeModeBankPageAndCurrentPad() {
-        assertEquals("① 空PADへ切る\nCHOP MODE", liveChopModeLabel(armed = true))
-        assertEquals("② 音ありPADを確認\nPLAY MODE", liveChopModeLabel(armed = false))
+    fun chopSwitchLabelsExposeBankPageAndCurrentPad() {
         assertEquals("● A メロディー\nMELODY", bankSwitchLabel(0, selected = true, compact = false))
         assertEquals("B\nDRUMS", bankSwitchLabel(1, selected = false, compact = true))
         assertEquals(
@@ -53,18 +51,26 @@ class GuidedWorkflowTest {
     }
 
     @Test
-    fun chopCoachExplainsWaveformCaptureAuditionAndTrimAtTheRightMoment() {
+    fun chopSessionUsesOnePrimaryActionAndDerivesPadBehaviorFromPlayback() {
+        val ready = chopSessionPresentation(sourcePlaying = false, assignedPadCount = 0)
+        assertFalse(ready.captureMode)
         assertEquals(
-            "波形タップ＝そこから再生 → 空PAD＝チョップ",
-            chopQuickGuidance(assignedPadCount = 0),
+            "チョップ開始\nSTART CHOP",
+            ready.primaryActionLabel,
         )
-        val assignedGuidance = chopQuickGuidance(assignedPadCount = 1)
         assertEquals(
-            "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ",
-            assignedGuidance,
+            "「チョップ開始」→ 曲が流れたら空PADを叩く",
+            ready.guidance,
         )
-        assertTrue(assignedGuidance.contains("空PAD"))
-        assertTrue(assignedGuidance.contains("音ありPAD"))
+
+        val firstCapture = chopSessionPresentation(sourcePlaying = true, assignedPadCount = 0)
+        assertTrue(firstCapture.captureMode)
+        assertEquals("元曲を止める\nSTOP SOURCE", firstCapture.primaryActionLabel)
+        assertEquals("空PADを叩くたび、現在位置でチョップ", firstCapture.guidance)
+
+        val continuing = chopSessionPresentation(sourcePlaying = true, assignedPadCount = 1)
+        assertTrue(continuing.captureMode)
+        assertEquals("空PAD＝追加／音ありPAD＝試聴・長押し微調整", continuing.guidance)
     }
 
     @Test

@@ -59,15 +59,32 @@ fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
         state.pads.any(PadModel::isAssigned) ||
         state.activeSteps.isNotEmpty()
 
-fun chopQuickGuidance(assignedPadCount: Int): String =
-    if (assignedPadCount <= 0) {
-        "波形タップ＝そこから再生 → 空PAD＝チョップ"
-    } else {
-        "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ"
-    }
+data class ChopSessionPresentation(
+    val captureMode: Boolean,
+    val primaryActionLabel: String,
+    val guidance: String,
+)
 
-fun liveChopModeLabel(armed: Boolean): String =
-    if (armed) "① 空PADへ切る\nCHOP MODE" else "② 音ありPADを確認\nPLAY MODE"
+fun chopSessionPresentation(
+    sourcePlaying: Boolean,
+    assignedPadCount: Int,
+): ChopSessionPresentation = when {
+    !sourcePlaying -> ChopSessionPresentation(
+        captureMode = false,
+        primaryActionLabel = "チョップ開始\nSTART CHOP",
+        guidance = "「チョップ開始」→ 曲が流れたら空PADを叩く",
+    )
+    assignedPadCount <= 0 -> ChopSessionPresentation(
+        captureMode = true,
+        primaryActionLabel = "元曲を止める\nSTOP SOURCE",
+        guidance = "空PADを叩くたび、現在位置でチョップ",
+    )
+    else -> ChopSessionPresentation(
+        captureMode = true,
+        primaryActionLabel = "元曲を止める\nSTOP SOURCE",
+        guidance = "空PAD＝追加／音ありPAD＝試聴・長押し微調整",
+    )
+}
 
 fun bankSwitchLabel(bankIndex: Int, selected: Boolean, compact: Boolean): String {
     val role = bankRoleFor(bankIndex)

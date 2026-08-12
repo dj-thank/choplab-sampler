@@ -83,7 +83,6 @@ import com.choplab.sampler.model.padTrimNudgeFrames
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
-import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.visiblePads
 import kotlin.math.max
@@ -313,12 +312,9 @@ private fun ChopStageWorkspace(
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
     viewModel: SamplerViewModel,
 ) {
-    var liveChopArmed by rememberSaveable { mutableStateOf(true) }
     PerformanceWorkspace(
         state = state,
         metrics = metrics,
-        liveChopArmed = liveChopArmed,
-        onToggleLiveChop = { liveChopArmed = !liveChopArmed },
         onImportAudio = onImportAudio,
         onOpenDetails = onOpenDetails,
         onOpenTrim = onOpenTrim,
@@ -332,8 +328,6 @@ private fun ChopStageWorkspace(
 private fun PerformanceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
-    liveChopArmed: Boolean,
-    onToggleLiveChop: () -> Unit,
     onImportAudio: () -> Unit,
     onOpenDetails: () -> Unit,
     onOpenTrim: (Int) -> Unit,
@@ -342,14 +336,15 @@ private fun PerformanceWorkspace(
     viewModel: SamplerViewModel,
 ) {
     val gap = metrics.gapDp.dp
-    val captureMode = liveChopArmed && state.sourcePlaying
+    val presentation = chopSessionPresentation(
+        sourcePlaying = state.sourcePlaying,
+        assignedPadCount = state.pads.count(PadModel::isAssigned),
+    )
     if (performanceWorkspaceLayout(metrics) == PerformanceWorkspaceLayout.SPLIT_PAD_GRID) {
         LandscapePerformanceWorkspace(
             state = state,
             metrics = metrics,
-            captureMode = captureMode,
-            liveChopArmed = liveChopArmed,
-            onToggleLiveChop = onToggleLiveChop,
+            presentation = presentation,
             onImportAudio = onImportAudio,
             onOpenDetails = onOpenDetails,
             onOpenTrim = onOpenTrim,
@@ -363,21 +358,12 @@ private fun PerformanceWorkspace(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(34.dp),
-            horizontalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            BeginnerCoachBar(
-                text = chopQuickGuidance(state.pads.count(PadModel::isAssigned)),
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-            NewSourceActionButton(
-                state = state,
-                label = "新しい制作\nNEW PROJECT",
-                onConfirm = onImportAudio,
-                modifier = Modifier.width(104.dp).fillMaxHeight(),
-            )
-        }
+        ChopCoachRow(
+            state = state,
+            presentation = presentation,
+            gap = gap,
+            onImportAudio = onImportAudio,
+        )
         SourceEditorWaveform(
             state = state,
             viewModel = viewModel,
@@ -387,46 +373,13 @@ private fun PerformanceWorkspace(
                 .fillMaxWidth()
                 .height(if (metrics.density == DeckDensity.COMPACT) 58.dp else 78.dp),
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
-            horizontalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            MachineButton(
-                label = "曲を頭から再生\nPLAY FROM START",
-                onClick = viewModel::restartSourcePlayback,
-                enabled = state.currentAudio != null,
-                active = state.sourcePlaying,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "高さ -\nKEY",
-                onClick = { viewModel.setMasterPitch(state.masterPitchSemitones - 1f) },
-                enabled = state.currentAudio != null,
-                modifier = Modifier.width(48.dp).fillMaxHeight(),
-                compact = true,
-            )
-            ValueDisplay(
-                label = "TONE",
-                value = signedValue(state.masterPitchSemitones),
-                modifier = Modifier.width(52.dp).fillMaxHeight(),
-            )
-            MachineButton(
-                label = "高さ +\nKEY",
-                onClick = { viewModel.setMasterPitch(state.masterPitchSemitones + 1f) },
-                enabled = state.currentAudio != null,
-                modifier = Modifier.width(48.dp).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = liveChopModeLabel(liveChopArmed),
-                onClick = onToggleLiveChop,
-                enabled = state.currentAudio != null,
-                active = liveChopArmed,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-        }
+        ChopSourceControlRow(
+            state = state,
+            presentation = presentation,
+            height = metrics.controlHeightDp.dp,
+            gap = gap,
+            viewModel = viewModel,
+        )
         BankStrip(
             selectedBank = state.selectedBank,
             height = metrics.controlHeightDp.dp,
@@ -440,47 +393,22 @@ private fun PerformanceWorkspace(
         PadGrid(
             pads = state.visiblePads(),
             selectedPad = state.selectedPad,
-            captureMode = captureMode,
-            onTrigger = if (captureMode) viewModel::capturePad else viewModel::triggerPad,
+            captureMode = presentation.captureMode,
+            onTrigger = viewModel::capturePad,
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
             gap = gap,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         )
-        MachineButton(
-            label = "選択PADの音を整える\nPAD EDIT",
-            onClick = onOpenDetails,
-            enabled = state.selectedPadModel().isAssigned,
-            modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
-            compact = true,
+        ChopNextActionRow(
+            state = state,
+            height = metrics.controlHeightDp.dp,
+            gap = gap,
+            onOpenDetails = onOpenDetails,
+            onContinueToBeat = onContinueToBeat,
+            onOpenLayerStudio = onOpenLayerStudio,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
-            horizontalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            MachineButton(
-                label = "ビートへ\nLOOP・並べる",
-                onClick = onContinueToBeat,
-                enabled = state.pads.any { it.isAssigned },
-                active = state.pads.any { it.isAssigned },
-                modifier = Modifier.weight(1.15f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "ドラム・声を足す\nADD",
-                onClick = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "スクラッチ\nSCRATCH",
-                onClick = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
-                enabled = state.currentAudio != null,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-        }
     }
 }
 
@@ -488,9 +416,7 @@ private fun PerformanceWorkspace(
 private fun LandscapePerformanceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
-    captureMode: Boolean,
-    liveChopArmed: Boolean,
-    onToggleLiveChop: () -> Unit,
+    presentation: ChopSessionPresentation,
     onImportAudio: () -> Unit,
     onOpenDetails: () -> Unit,
     onOpenTrim: (Int) -> Unit,
@@ -507,21 +433,12 @@ private fun LandscapePerformanceWorkspace(
             modifier = Modifier.weight(1f).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(34.dp),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                BeginnerCoachBar(
-                    text = chopQuickGuidance(state.pads.count(PadModel::isAssigned)),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-                NewSourceActionButton(
-                    state = state,
-                    label = "新しい制作\nNEW PROJECT",
-                    onConfirm = onImportAudio,
-                    modifier = Modifier.width(104.dp).fillMaxHeight(),
-                )
-            }
+            ChopCoachRow(
+                state = state,
+                presentation = presentation,
+                gap = gap,
+                onImportAudio = onImportAudio,
+            )
             SourceEditorWaveform(
                 state = state,
                 viewModel = viewModel,
@@ -529,46 +446,13 @@ private fun LandscapePerformanceWorkspace(
                 waveformTapOverride = viewModel::playSourceFrom,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                MachineButton(
-                    label = "曲を頭から再生\nPLAY FROM START",
-                    onClick = viewModel::restartSourcePlayback,
-                    enabled = state.currentAudio != null,
-                    active = state.sourcePlaying,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = "高さ -\nKEY",
-                    onClick = { viewModel.setMasterPitch(state.masterPitchSemitones - 1f) },
-                    enabled = state.currentAudio != null,
-                    modifier = Modifier.width(48.dp).fillMaxHeight(),
-                    compact = true,
-                )
-                ValueDisplay(
-                    label = "TONE",
-                    value = signedValue(state.masterPitchSemitones),
-                    modifier = Modifier.width(52.dp).fillMaxHeight(),
-                )
-                MachineButton(
-                    label = "高さ +\nKEY",
-                    onClick = { viewModel.setMasterPitch(state.masterPitchSemitones + 1f) },
-                    enabled = state.currentAudio != null,
-                    modifier = Modifier.width(48.dp).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = liveChopModeLabel(liveChopArmed),
-                    onClick = onToggleLiveChop,
-                    enabled = state.currentAudio != null,
-                    active = liveChopArmed,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
+            ChopSourceControlRow(
+                state = state,
+                presentation = presentation,
+                height = metrics.controlHeightDp.dp,
+                gap = gap,
+                viewModel = viewModel,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
                 horizontalArrangement = Arrangement.spacedBy(gap),
@@ -586,50 +470,136 @@ private fun LandscapePerformanceWorkspace(
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().height(metrics.controlHeightDp.dp),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                MachineButton(
-                    label = "選択音を整える\nPAD EDIT",
-                    onClick = onOpenDetails,
-                    enabled = state.selectedPadModel().isAssigned,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = "ビートへ\nLOOP・並べる",
-                    onClick = onContinueToBeat,
-                    enabled = state.pads.any(PadModel::isAssigned),
-                    active = state.pads.any(PadModel::isAssigned),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = "ドラム・声\nADD",
-                    onClick = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = "スクラッチ\nSCRATCH",
-                    onClick = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
-                    enabled = state.currentAudio != null,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
+            ChopNextActionRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                gap = gap,
+                onOpenDetails = onOpenDetails,
+                onContinueToBeat = onContinueToBeat,
+                onOpenLayerStudio = onOpenLayerStudio,
+            )
         }
         PadGrid(
             pads = state.visiblePads(),
             selectedPad = state.selectedPad,
-            captureMode = captureMode,
-            onTrigger = if (captureMode) viewModel::capturePad else viewModel::triggerPad,
+            captureMode = presentation.captureMode,
+            onTrigger = viewModel::capturePad,
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
             gap = gap,
             modifier = Modifier.fillMaxHeight().aspectRatio(1f),
+        )
+    }
+}
+
+@Composable
+private fun ChopCoachRow(
+    state: SamplerUiState,
+    presentation: ChopSessionPresentation,
+    gap: Dp,
+    onImportAudio: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(34.dp),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        BeginnerCoachBar(
+            text = presentation.guidance,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+        NewSourceActionButton(
+            state = state,
+            label = "新しい制作\nNEW PROJECT",
+            onConfirm = onImportAudio,
+            modifier = Modifier.width(104.dp).fillMaxHeight(),
+        )
+    }
+}
+
+@Composable
+private fun ChopSourceControlRow(
+    state: SamplerUiState,
+    presentation: ChopSessionPresentation,
+    height: Dp,
+    gap: Dp,
+    viewModel: SamplerViewModel,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        MachineButton(
+            label = presentation.primaryActionLabel,
+            onClick = viewModel::toggleChopPlayback,
+            enabled = state.currentAudio != null,
+            active = presentation.captureMode,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            compact = true,
+        )
+        MachineButton(
+            label = "高さ -\nKEY",
+            onClick = { viewModel.setMasterPitch(state.masterPitchSemitones - 1f) },
+            enabled = state.currentAudio != null,
+            modifier = Modifier.width(48.dp).fillMaxHeight(),
+            compact = true,
+        )
+        ValueDisplay(
+            label = "KEY",
+            value = signedValue(state.masterPitchSemitones),
+            modifier = Modifier.width(52.dp).fillMaxHeight(),
+        )
+        MachineButton(
+            label = "高さ +\nKEY",
+            onClick = { viewModel.setMasterPitch(state.masterPitchSemitones + 1f) },
+            enabled = state.currentAudio != null,
+            modifier = Modifier.width(48.dp).fillMaxHeight(),
+            compact = true,
+        )
+    }
+}
+
+@Composable
+private fun ChopNextActionRow(
+    state: SamplerUiState,
+    height: Dp,
+    gap: Dp,
+    onOpenDetails: () -> Unit,
+    onContinueToBeat: () -> Unit,
+    onOpenLayerStudio: (LayerStudioPage) -> Unit,
+) {
+    val hasAssignedPad = state.pads.any(PadModel::isAssigned)
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        MachineButton(
+            label = "ビートへ\nLOOP・並べる",
+            onClick = onContinueToBeat,
+            enabled = hasAssignedPad,
+            active = hasAssignedPad,
+            modifier = Modifier.weight(1.15f).fillMaxHeight(),
+            compact = true,
+        )
+        MachineButton(
+            label = "微調整\nEDIT",
+            onClick = onOpenDetails,
+            enabled = state.selectedPadModel().isAssigned,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            compact = true,
+        )
+        MachineButton(
+            label = "ドラム・声\nADD",
+            onClick = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            compact = true,
+        )
+        MachineButton(
+            label = "スクラッチ\nSCRATCH",
+            onClick = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+            enabled = state.currentAudio != null,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            compact = true,
         )
     }
 }
@@ -922,7 +892,7 @@ private fun CaptureNextRow(
             )
         }
         MachineButton(
-            label = "チョップへ\n頭から再生してPADで切る",
+            label = "チョップ開始\n曲を頭から流す",
             onClick = onContinue,
             enabled = audioReady,
             active = audioReady,
@@ -3065,79 +3035,6 @@ private fun FinishWorkspace(
 }
 
 @Composable
-private fun SourceWorkspace(
-    state: SamplerUiState,
-    metrics: DeckLayoutMetrics,
-    viewModel: SamplerViewModel,
-) {
-    val gap = metrics.gapDp.dp
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            SourceEditorWaveform(
-                state = state,
-                viewModel = viewModel,
-                modifier = Modifier
-                    .weight(1.2f)
-                    .fillMaxHeight(),
-            )
-            SourceControlDeck(
-                state = state,
-                metrics = metrics,
-                viewModel = viewModel,
-                modifier = Modifier
-                    .weight(0.8f)
-                    .fillMaxHeight(),
-            )
-        }
-    } else {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            SourceReadout(state = state, height = 24.dp)
-            SourceEditorWaveform(
-                state = state,
-                viewModel = viewModel,
-                modifier = Modifier.weight(1f),
-            )
-            SourceEditRows(
-                state = state,
-                metrics = metrics,
-                viewModel = viewModel,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SourceControlDeck(
-    state: SamplerUiState,
-    metrics: DeckLayoutMetrics,
-    viewModel: SamplerViewModel,
-    modifier: Modifier,
-) {
-    val gap = metrics.gapDp.dp
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(gap),
-    ) {
-        if (metrics.density != DeckDensity.COMPACT) {
-            SourceReadout(state = state, height = 28.dp)
-        }
-        SourceEditRows(
-            state = state,
-            metrics = metrics,
-            viewModel = viewModel,
-            modifier = Modifier.weight(1f),
-            weighted = true,
-        )
-    }
-}
-
-@Composable
 private fun SourceEditorWaveform(
     state: SamplerUiState,
     viewModel: SamplerViewModel,
@@ -3186,119 +3083,6 @@ private fun SourceEditorWaveform(
             )
         }
     }
-}
-
-@Composable
-private fun SourceEditRows(
-    state: SamplerUiState,
-    metrics: DeckLayoutMetrics,
-    viewModel: SamplerViewModel,
-    modifier: Modifier = Modifier,
-    weighted: Boolean = false,
-) {
-    val gap = metrics.gapDp.dp
-    val audioEnabled = state.currentAudio != null
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(gap),
-    ) {
-        SourceToolRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (weighted) Modifier.weight(1f)
-                    else Modifier.height(metrics.controlHeightDp.dp),
-                ),
-        ) {
-            MachineButton("選んだ音を聴く\nPREVIEW", viewModel::previewCurrentSelection, Modifier.weight(1f).fillMaxHeight(), audioEnabled, compact = true)
-            MachineButton("手で切る\nMANUAL", viewModel::toggleManualChop, Modifier.weight(1f).fillMaxHeight(), audioEnabled, state.manualChopEnabled, compact = true)
-            MachineButton("範囲を戻す\nRESET", viewModel::resetRange, Modifier.weight(1f).fillMaxHeight(), audioEnabled, compact = true)
-        }
-        SourceToolRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (weighted) Modifier.weight(1f)
-                    else Modifier.height(metrics.controlHeightDp.dp),
-                ),
-        ) {
-            listOf(4, 8, 16).forEach { count ->
-                MachineButton(
-                    label = "$count 分割\n$count SLICE",
-                    onClick = { viewModel.autoChopEqual(count) },
-                    enabled = audioEnabled,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
-            MachineButton(
-                label = "音を自動検出\nTRANSIENT",
-                onClick = viewModel::autoChopTransient,
-                enabled = audioEnabled,
-                modifier = Modifier.weight(1.2f).fillMaxHeight(),
-                compact = true,
-            )
-        }
-        SourceToolRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (weighted) Modifier.weight(1f)
-                    else Modifier.height(metrics.controlHeightDp.dp),
-                ),
-        ) {
-            MachineButton("選択をPADへ\nASSIGN", viewModel::assignCurrentSelectionToPad, Modifier.weight(1f).fillMaxHeight(), audioEnabled, compact = true)
-            MachineButton("全部PADへ\nASSIGN ALL", viewModel::assignAllSlicesToPads, Modifier.weight(1f).fillMaxHeight(), audioEnabled, compact = true)
-            MachineButton(
-                label = if (state.autoNextPad) "次のPADへ ON\nAUTO NEXT" else "次のPADへ OFF\nAUTO NEXT",
-                onClick = viewModel::toggleAutoNext,
-                enabled = audioEnabled,
-                active = state.autoNextPad,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-        }
-        SourceToolRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (weighted) Modifier.weight(1f)
-                    else Modifier.height(metrics.controlHeightDp.dp),
-                ),
-        ) {
-            ValueDisplay(
-                label = "分割数",
-                value = state.sliceRanges().size.toString(),
-                modifier = Modifier.weight(0.7f).fillMaxHeight(),
-            )
-            MachineButton(
-                label = "境界を1つ消す\nREMOVE",
-                onClick = viewModel::removeBoundaryForActiveSlice,
-                enabled = state.sliceMarkers.isNotEmpty(),
-                modifier = Modifier.weight(1.15f).fillMaxHeight(),
-                compact = true,
-            )
-            ConfirmActionButton(
-                label = "境界を全部消す\nCLEAR",
-                confirmLabel = "もう一度で削除",
-                onConfirm = viewModel::clearSliceMarkers,
-                enabled = state.sliceMarkers.isNotEmpty(),
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SourceToolRow(
-    modifier: Modifier,
-    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        content = content,
-    )
 }
 
 @Composable

@@ -958,6 +958,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleChopPlayback() {
+        val state = mutableUiState.value
+        when (sourcePlaybackToggleAction(state.sourcePlaying, sourceStartPending)) {
+            SourcePlaybackToggleAction.START -> restartSourcePlayback()
+            SourcePlaybackToggleAction.STOP -> stopSourceForWorkspaceChange()
+        }
+    }
+
     fun restartSourcePlayback() {
         val state = mutableUiState.value
         val audio = state.currentAudio ?: run {
