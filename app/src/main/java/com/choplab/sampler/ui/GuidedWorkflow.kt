@@ -64,6 +64,22 @@ fun startChopPolicy(sourcePhase: SourceUiPhase): StartChopPolicy = StartChopPoli
     startSource = sourcePhase == SourceUiPhase.STOPPED,
 )
 
+fun captureSourceStatusLabel(
+    sourcePhase: SourceUiPhase,
+    isLoading: Boolean,
+    audioLoaded: Boolean,
+): String = when {
+    sourcePhase == SourceUiPhase.STARTING -> "STARTING"
+    sourcePhase == SourceUiPhase.PLAYING -> "SAMPLING"
+    sourcePhase == SourceUiPhase.STOPPING -> "STOPPING"
+    isLoading -> "LOADING"
+    audioLoaded -> "READY"
+    else -> "NO SOURCE"
+}
+
+fun emptySourceWaveformLabel(isLoading: Boolean): String =
+    if (isLoading) "音声を読込中\nPLEASE WAIT" else "NO SOURCE\nLOAD OR RECORD AUDIO"
+
 fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
     if (usesLargeTextDeckMode(fontScale)) 7f else 8f
 

@@ -257,4 +257,21 @@ class GuidedWorkflowTest {
             beatLoopButtonLabel(looping = true, fontScale = 1.3f),
         )
     }
+
+    @Test
+    fun sourcePresentationNeverClaimsNoSourceWhileProjectRecoveryIsRunning() {
+        assertEquals(
+            "LOADING",
+            captureSourceStatusLabel(
+                sourcePhase = SourceUiPhase.STOPPED,
+                isLoading = true,
+                audioLoaded = false,
+            ),
+        )
+        assertEquals("音声を読込中\nPLEASE WAIT", emptySourceWaveformLabel(isLoading = true))
+        assertEquals("NO SOURCE", captureSourceStatusLabel(SourceUiPhase.STOPPED, false, false))
+        assertEquals("READY", captureSourceStatusLabel(SourceUiPhase.STOPPED, false, true))
+        assertEquals("STARTING", captureSourceStatusLabel(SourceUiPhase.STARTING, true, true))
+        assertEquals("NO SOURCE\nLOAD OR RECORD AUDIO", emptySourceWaveformLabel(isLoading = false))
+    }
 }

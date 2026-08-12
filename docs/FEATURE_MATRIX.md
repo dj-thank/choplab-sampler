@@ -20,7 +20,7 @@
 | チョップ済みビート音声全体を連続ループ | 🧪 local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。実機音質確認待ち |
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
-| PAD→ループ／並べる→足す／擦る導線 | ✅ device/emulator | BeatのQuick／Steps双方に固定`QUICK / STEPS / ADD / SCRATCH` Dock。4レーン×16step、BANK別音色レール、選択音ループも同じ固定画面へ整理 |
+| PAD→ループ／並べる→足す／擦る導線 | ✅ device/emulator | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。BeatのQuick／Steps双方に固定`QUICK / STEPS / ADD / SCRATCH`。4レーン×16step、BANK別音色レール、選択音ループも同じ固定画面へ整理 |
 | 上級操作の段階表示 | 🧪 emulator/local | KEY/TONE/LEVELは通常BEAT画面から直操作し、再生中の選択音へカーソルを戻さず即時反映。16手動step、BPM/Swing等は`細かく調整`へ整理 |
 | ビート画面の実波形・再生位置 | ✅ device | 選択sliceのPCM波形、ビートループ位置、16-step playhead、A〜Dの4レーン発音マーカーを固定表示 |
 | BANKを替えて音を重ねる | ✅ emulator | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、全128 PADを演奏・配置 |
@@ -45,6 +45,7 @@
 | 再生表示と実音声の同期 | 🧪 local/device UI | `STOPPED / STARTING / PLAYING / STOPPING`を音声スレッド適用値と保留命令から導出。差替え・リセット・読込も停止確認前にSTOPPEDを表示せず、Undoは保留命令を復元しない |
 | 全再生停止 | 🧪 local/device UI | `ALL STOP`がsource、PAD voice、loop、scratchの境界を先に発行してからtransportを停止。UIのstep/loop/scratchも同時に解除し、録音中データは明示的に継続 |
 | Autosave/recovery | ✅ device/local | 900ms debounce、検証済みpending、同期排他、revision逆転拒否、三世代保持。手動上書き前にもアプリ内安全コピーを作成 |
+| 起動時autosave復元の状態表示 | ✅ device/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は取込を無効化して`LOADING / 音声を読込中 / PLEASE WAIT`を表示し、falseな`NO SOURCE`を出さない |
 | Undo / Redo | ✅ MVP | PAD、slice、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesce |
 | MIDI | — | 未実装 |
 | Independent time-stretch | — | 未実装 |

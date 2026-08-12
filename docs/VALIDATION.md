@@ -2,6 +2,22 @@
 
 作成日: 2026-07-15
 
+## 2026-08-13 v0.12.0 Production Dock contract and autosave recovery truth
+
+- focused TDD RED/GREEN: Capture/Chop/Beat Dock order and enabled/active/confirmation state; autosave recovery begin/empty/failure reducers; Capture status and empty-waveform loading copy
+- final offline validation: PASS; Gradle Wrapper SHA-256 matched
+- final Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1` BUILD SUCCESSFUL
+- unit tests: 168 tests / 37 suites; failures 0, errors 0, skipped 0
+- Android Lint: errors 0, warnings/advisories 7
+- `git diff --check`: PASS; UI source scroll API matches: 0
+- local APK: `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`; 31,613,938 bytes; SHA-256 `93C96CDC39D70A85BB6B264CA732D93510634EDF7AFD652EF93B2433FF6000CB`
+- metadata: package `com.choplab.sampler`; versionCode 19 / versionName 0.12.0; minSdk 29 / targetSdk 36; APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- physical Pixel 9a `5A121JEBF08094`, Android 17 / API 37 / arm64-v8a: exact data-preserving `adb install -r` PASS; host, installed-base, and phone Download APK size/hash match
+- device UI: startup shows `LOADING / 音声を読込中 / PLEASE WAIT` instead of false `NO SOURCE`; retained source then restores; Capture/Chop/Beat each have 0 scrollable nodes; Chop has BEAT/PAD EDIT/ADD/SCRATCH and Beat has QUICK/STEPS/ADD/SCRATCH; focused fatal/ANR matches 0
+- retained data: four project archive sizes and hashes unchanged before install, after install, and after startup recovery/navigation
+- evidence: `work/pixel9a-v0120-dock-contract/final-exact-loading.{png,xml}`, `final-exact-capture.{png,xml}`, `final-exact-chop.{png,xml}`, `final-exact-beat.{png,xml}`, `installed-base-final.apk`
+- boundaries: no subjective audio, duplicate-audio listening, TalkBack/large-font/landscape matrix, public release, or Human GO claim
+
 ## 2026-08-12 v0.12.0 state-truth playback and Production Dock candidate
 
 - GPT Pro full-file review: one privacy-scanned bundle contained all 188 Git-tracked files and 193 total packet entries; accepted transcript SHA-256 `D27FFE3765E23A3CE7E05A138F387BD8874B5AD260C9441462EBFBB78CE7C52E`

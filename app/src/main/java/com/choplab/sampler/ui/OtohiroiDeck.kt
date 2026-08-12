@@ -583,18 +583,12 @@ private fun ChopNextActionRow(
         height = height,
         gap = gap,
         items = chopProductionDockItems(state),
-        onIntent = { intent ->
-            when (intent) {
-                ProductionDockIntent.OPEN_BEAT -> onContinueToBeat()
-                ProductionDockIntent.OPEN_PAD_EDIT -> onOpenDetails()
-                ProductionDockIntent.OPEN_ADD -> onOpenLayerStudio(LayerStudioPage.DRUMS)
-                ProductionDockIntent.OPEN_SCRATCH -> onOpenLayerStudio(LayerStudioPage.SCRATCH)
-                ProductionDockIntent.RESET_ALL,
-                ProductionDockIntent.START_CHOP,
-                ProductionDockIntent.SHOW_QUICK,
-                ProductionDockIntent.SHOW_STEPS -> error("Unsupported Chop dock intent: $intent")
-            }
-        },
+        handlers = mapOf(
+            ProductionDockIntent.OPEN_BEAT to onContinueToBeat,
+            ProductionDockIntent.OPEN_PAD_EDIT to onOpenDetails,
+            ProductionDockIntent.OPEN_ADD to { onOpenLayerStudio(LayerStudioPage.DRUMS) },
+            ProductionDockIntent.OPEN_SCRATCH to { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+        ),
     )
 }
 
@@ -603,26 +597,27 @@ private fun ProductionDock(
     items: List<ProductionDockItem>,
     height: Dp,
     gap: Dp,
-    onIntent: (ProductionDockIntent) -> Unit,
+    handlers: Map<ProductionDockIntent, () -> Unit>,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
         items.forEach { item ->
+            val onClick = handlers.getValue(item.intent)
             val modifier = Modifier.weight(item.weight).fillMaxHeight()
             if (item.confirmLabel != null) {
                 ConfirmActionButton(
                     label = item.label,
                     confirmLabel = item.confirmLabel,
-                    onConfirm = { onIntent(item.intent) },
+                    onConfirm = onClick,
                     enabled = item.enabled,
                     modifier = modifier,
                 )
             } else {
                 MachineButton(
                     label = item.label,
-                    onClick = { onIntent(item.intent) },
+                    onClick = onClick,
                     enabled = item.enabled,
                     active = item.active,
                     modifier = modifier,
@@ -840,6 +835,7 @@ private fun CaptureWorkspace(
             ) {
                 SourceWaveform(
                     audio = audio,
+                    isLoading = state.isLoading,
                     pads = state.visiblePads(),
                     playheadFrame = state.sourcePlayheadFrame,
                     sampling = state.sourcePlaying,
@@ -890,6 +886,7 @@ private fun CaptureWorkspace(
             SourceReadout(state = state, height = 24.dp)
             SourceWaveform(
                 audio = audio,
+                isLoading = state.isLoading,
                 pads = state.visiblePads(),
                 playheadFrame = state.sourcePlayheadFrame,
                 sampling = state.sourcePlaying,
@@ -923,18 +920,10 @@ private fun CaptureNextRow(
         height = height,
         gap = 5.dp,
         items = captureProductionDockItems(state),
-        onIntent = { intent ->
-            when (intent) {
-                ProductionDockIntent.RESET_ALL -> onReset()
-                ProductionDockIntent.START_CHOP -> onContinue()
-                ProductionDockIntent.OPEN_BEAT,
-                ProductionDockIntent.OPEN_PAD_EDIT,
-                ProductionDockIntent.OPEN_ADD,
-                ProductionDockIntent.OPEN_SCRATCH,
-                ProductionDockIntent.SHOW_QUICK,
-                ProductionDockIntent.SHOW_STEPS -> error("Unsupported Capture dock intent: $intent")
-            }
-        },
+        handlers = mapOf(
+            ProductionDockIntent.RESET_ALL to onReset,
+            ProductionDockIntent.START_CHOP to onContinue,
+        ),
     )
 }
 
@@ -1013,13 +1002,11 @@ private fun SourceReadout(state: SamplerUiState, height: Dp) {
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(
-            text = when {
-                sourcePhase == SourceUiPhase.STARTING -> "STARTING"
-                sourcePhase == SourceUiPhase.PLAYING -> "SAMPLING"
-                sourcePhase == SourceUiPhase.STOPPING -> "STOPPING"
-                audio != null -> "READY"
-                else -> "NO SOURCE"
-            },
+            text = captureSourceStatusLabel(
+                sourcePhase = sourcePhase,
+                isLoading = state.isLoading,
+                audioLoaded = audio != null,
+            ),
             color = if (sourcePhase != SourceUiPhase.STOPPED) DeckLamp else DeckGreen,
             fontFamily = DeckFont,
             fontWeight = FontWeight.Black,
@@ -2246,18 +2233,12 @@ private fun BeatProductionDock(
         items = beatProductionDockItems(stepsVisible),
         height = height,
         gap = 4.dp,
-        onIntent = { intent ->
-            when (intent) {
-                ProductionDockIntent.SHOW_QUICK -> onStepsVisibleChange(false)
-                ProductionDockIntent.SHOW_STEPS -> onStepsVisibleChange(true)
-                ProductionDockIntent.OPEN_ADD -> onOpenAdd()
-                ProductionDockIntent.OPEN_SCRATCH -> onOpenScratch()
-                ProductionDockIntent.RESET_ALL,
-                ProductionDockIntent.START_CHOP,
-                ProductionDockIntent.OPEN_BEAT,
-                ProductionDockIntent.OPEN_PAD_EDIT -> error("Unsupported Beat dock intent: $intent")
-            }
-        },
+        handlers = mapOf(
+            ProductionDockIntent.SHOW_QUICK to { onStepsVisibleChange(false) },
+            ProductionDockIntent.SHOW_STEPS to { onStepsVisibleChange(true) },
+            ProductionDockIntent.OPEN_ADD to onOpenAdd,
+            ProductionDockIntent.OPEN_SCRATCH to onOpenScratch,
+        ),
     )
 }
 
@@ -3077,7 +3058,7 @@ private fun SourceEditorWaveform(
         if (audio == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "NO SOURCE\nLOAD OR RECORD AUDIO",
+                    emptySourceWaveformLabel(state.isLoading),
                     color = Color(0xFF766B50),
                     fontFamily = DeckFont,
                     fontWeight = FontWeight.Bold,
@@ -3481,6 +3462,7 @@ private fun deckSliderColors() = SliderDefaults.colors(
 @Composable
 private fun SourceWaveform(
     audio: PcmAudio?,
+    isLoading: Boolean,
     pads: List<PadModel>,
     playheadFrame: Int,
     sampling: Boolean,
@@ -3559,11 +3541,12 @@ private fun SourceWaveform(
         }
         if (audio == null) {
             Text(
-                "NO SOURCE",
+                emptySourceWaveformLabel(isLoading),
                 color = Color(0xFF766B50),
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
                 fontSize = 11.sp,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.align(Alignment.Center),
             )
         }

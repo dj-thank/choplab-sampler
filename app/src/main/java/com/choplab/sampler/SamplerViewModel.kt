@@ -40,11 +40,14 @@ import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
+import com.choplab.sampler.model.beginAutosaveRecovery
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.clearPadSteps
+import com.choplab.sampler.model.completeAutosaveRecoveryWithoutProject
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.defaultMelodyChopPad
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
+import com.choplab.sampler.model.failAutosaveRecovery
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.pendingSourceCommandAfterPlaybackRetarget
@@ -105,7 +108,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val microphoneSourceCapture = SourceCaptureOperation(projectOperations)
     private val systemSourceCapture = SourceCaptureOperation(projectOperations)
     private val vocalCapture = SourceCaptureOperation(projectOperations)
-    private val mutableUiState = MutableStateFlow(SamplerUiState())
+    private val mutableUiState = MutableStateFlow(beginAutosaveRecovery())
     val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
 
     init {
@@ -1646,11 +1649,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     if (restored != null) {
                         editHistory.reset()
                         applyProjectState(restored, "前回の自動保存を復元しました")
+                    } else {
+                        mutableUiState.update(::completeAutosaveRecoveryWithoutProject)
                     }
                 }.onFailure { throwable ->
-                    mutableUiState.update {
-                        it.copy(statusMessage = throwable.message ?: "前回の自動保存を復元できませんでした")
-                    }
+                    mutableUiState.update { failAutosaveRecovery(it, throwable.message) }
                 }
             }
         }
