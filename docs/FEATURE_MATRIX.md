@@ -45,7 +45,7 @@
 | 再生表示と実音声の同期 | 🧪 local/device UI | `STOPPED / STARTING / PLAYING / STOPPING`を音声スレッド適用値と保留命令から導出。差替え・リセット・読込も停止確認前にSTOPPEDを表示せず、Undoは保留命令を復元しない |
 | 全再生停止 | 🧪 local/device UI | `ALL STOP`がsource、PAD voice、loop、scratchの境界を先に発行してからtransportを停止。UIのstep/loop/scratchも同時に解除し、録音中データは明示的に継続 |
 | Autosave/recovery | ✅ device/local | 900ms debounce、検証済みpending、同期排他、revision逆転拒否、三世代保持。手動上書き前にもアプリ内安全コピーを作成 |
-| 起動時autosave復元の状態表示 | ✅ device/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は取込を無効化して`LOADING / 音声を読込中 / PLEASE WAIT`を表示し、falseな`NO SOURCE`を出さない |
+| 起動時autosave復元の状態表示 | ✅ device/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は新規取込を無効化し、既に録音中ならSTOPだけを維持。`LOADING / 音声を読込中 / PLEASE WAIT`を表示してfalseな`NO SOURCE`を出さない |
 | Undo / Redo | ✅ MVP | PAD、slice、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesce |
 | MIDI | — | 未実装 |
 | Independent time-stretch | — | 未実装 |

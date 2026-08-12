@@ -18,7 +18,7 @@ Capture、Chop、Beat の下端操作を、同じ表示・有効状態・選択�
 2. `ProductionDockIntent` と immutable な `ProductionDockItem`、工程別 policy を追加する。
 3. 共通 renderer は item list と handler map だけを受け取り、工程別 Composable からラベル・enabled・active と重複 `when` を除く。
 4. 起動時 autosave の開始・空結果・失敗・成功で `isLoading` が実際の復元状態と一致する pure reducer を追加する。
-5. 復元中は取込を無効化し、status、波形、status strip を `LOADING / 音声を読込中 / PLEASE WAIT` に統一する。
+5. 復元中は新規取込を無効化し、既に録音中ならSTOPだけを維持する。status、波形、status strip は `LOADING / 音声を読込中 / PLEASE WAIT` に統一する。
 6. focused test、full unit、Lint、assemble、offline validation、no-scroll scan、diff review、接続済み実機確認を行う。
 
 ## Acceptance
@@ -42,6 +42,7 @@ Capture、Chop、Beat の下端操作を、同じ表示・有効状態・選択�
 - [x] 2026-08-13 — APK `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`、31,615,690 bytes、SHA-256 `B0CF6B6DFE21FF24B5AC5BD457E6EEE637B75BFDB4EA438044CB84A5A07B1C29`。package `com.choplab.sampler`、versionCode 19 / versionName 0.12.0、minSdk 29 / targetSdk 36、APK Signature Scheme v2。
 - [x] 2026-08-13 — Pixel 9a Android 17/API 37へ exact APKを `adb install -r`。端末Download／installed base／hostのサイズ・SHA-256一致。起動途中の `LOADING / 音声を読込中 / PLEASE WAIT`、FILE/MIC REC/DEVICE REC親ボタンの`enabled=false`、復元後のCapture/Chop/Beat、各0 scrollable node、Chop/Beat Dock全項目、focused fatal/ANR 0を観測。
 - [x] 2026-08-13 — 実機の4 project archiveはinstall前、install直後、復元・工程移動後でサイズとSHA-256不変。
+- [x] 2026-08-13 — local parent Standards／Spec二段階レビュー。Dock固有の解消範囲と録音STOP例外を文書へ限定し、残るmaterial finding 0。
 
 ## Discoveries
 
