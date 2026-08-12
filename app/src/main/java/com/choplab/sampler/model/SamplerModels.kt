@@ -125,9 +125,7 @@ data class SamplerUiState(
     val transportPlaying: Boolean = false,
     val recordArmed: Boolean = false,
     val currentStep: Int = -1,
-    val microphoneRecording: Boolean = false,
-    val vocalOverdubRecording: Boolean = false,
-    val systemAudioRecording: Boolean = false,
+    val recordingSession: RecordingSession = RecordingSession.Idle,
     val sourcePlaying: Boolean = false,
     val pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
     val sourcePlayheadFrame: Int = 0,
@@ -140,7 +138,16 @@ data class SamplerUiState(
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
-)
+) {
+    val microphoneRecording: Boolean
+        get() = recordingSession.isActiveKind(RecordingKind.SOURCE_MICROPHONE)
+
+    val systemAudioRecording: Boolean
+        get() = recordingSession.isActiveKind(RecordingKind.SOURCE_SYSTEM_AUDIO)
+
+    val vocalOverdubRecording: Boolean
+        get() = recordingSession.isActiveKind(RecordingKind.VOCAL_OVERDUB)
+}
 
 fun SamplerUiState.visiblePads(): List<PadModel> {
     val bankStart = selectedBank * SamplerConfig.PADS_PER_BANK

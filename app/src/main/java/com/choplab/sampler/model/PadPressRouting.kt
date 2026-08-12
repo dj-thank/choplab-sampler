@@ -9,6 +9,8 @@ enum class PadPressAction {
     CAPTURE_CHOP,
     PLAY_ASSIGNED,
     SELECT_ONLY,
+    BLOCKED_DURING_RECORDING,
+    BLOCKED_DURING_SOURCE_TRANSITION,
 }
 
 enum class PerformancePadPressAction {
@@ -96,10 +98,19 @@ fun resolvePadPressAction(
     sourcePlaying: Boolean,
     padAssigned: Boolean,
     surfaceMode: PadSurfaceMode,
-): PadPressAction = when {
-    sourcePlaying && !padAssigned && surfaceMode == PadSurfaceMode.CAPTURE -> PadPressAction.CAPTURE_CHOP
-    padAssigned -> PadPressAction.PLAY_ASSIGNED
-    else -> PadPressAction.SELECT_ONLY
+    pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
+    recordingSession: RecordingSession = RecordingSession.Idle,
+): PadPressAction {
+    val sourcePhase = sourceUiPhase(sourcePlaying, pendingSourceCommand)
+    return when {
+        recordingSession.isActive -> PadPressAction.BLOCKED_DURING_RECORDING
+        sourcePhase == SourceUiPhase.STARTING || sourcePhase == SourceUiPhase.STOPPING ->
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION
+        sourcePhase == SourceUiPhase.PLAYING && surfaceMode == PadSurfaceMode.CAPTURE ->
+            PadPressAction.CAPTURE_CHOP
+        padAssigned -> PadPressAction.PLAY_ASSIGNED
+        else -> PadPressAction.SELECT_ONLY
+    }
 }
 
 fun resolvePerformancePadPressAction(

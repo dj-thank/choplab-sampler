@@ -3,9 +3,13 @@ package com.choplab.sampler.ui
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
+import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
+import com.choplab.sampler.model.activePhaseFor
 import com.choplab.sampler.model.bankRoleFor
 
 enum class WorkflowStage(
@@ -86,11 +90,88 @@ data class CaptureInputPolicy(
     val systemAudioEnabled: Boolean,
 )
 
-fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy = CaptureInputPolicy(
-    fileEnabled = !state.isLoading && !state.microphoneRecording && !state.systemAudioRecording,
-    microphoneEnabled = state.microphoneRecording || (!state.isLoading && !state.systemAudioRecording),
-    systemAudioEnabled = state.systemAudioRecording || (!state.isLoading && !state.microphoneRecording),
+fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy {
+    val session = state.recordingSession
+    val microphonePhase = session.activePhaseFor(RecordingKind.SOURCE_MICROPHONE)
+    val systemAudioPhase = session.activePhaseFor(RecordingKind.SOURCE_SYSTEM_AUDIO)
+    return CaptureInputPolicy(
+        fileEnabled = !state.isLoading && session == RecordingSession.Idle,
+        microphoneEnabled = microphonePhase?.let { it != RecordingPhase.STOPPING }
+            ?: (!state.isLoading && session == RecordingSession.Idle),
+        systemAudioEnabled = systemAudioPhase?.let { it != RecordingPhase.STOPPING }
+            ?: (!state.isLoading && session == RecordingSession.Idle),
+    )
+}
+
+fun externalDocumentActionsEnabled(state: SamplerUiState): Boolean =
+    !state.isLoading && state.recordingSession == RecordingSession.Idle
+
+data class RecordingControlPresentation(
+    val label: String,
+    val enabled: Boolean,
+    val active: Boolean,
 )
+
+fun recordingControlPresentation(
+    session: RecordingSession,
+    kind: RecordingKind,
+    idleLabel: String,
+    stopLabel: String,
+): RecordingControlPresentation {
+    val active = session as? RecordingSession.Active
+        ?: return RecordingControlPresentation(idleLabel, enabled = true, active = false)
+    if (active.kind != kind) {
+        return RecordingControlPresentation("別の録音中\nWAIT", enabled = false, active = false)
+    }
+    return if (active.phase == RecordingPhase.STOPPING) {
+        RecordingControlPresentation("停止・保存中\nPLEASE WAIT", enabled = false, active = true)
+    } else {
+        RecordingControlPresentation(stopLabel, enabled = true, active = true)
+    }
+}
+
+data class RecordingHeaderPresentation(
+    val statusLabel: String,
+    val stopLabel: String,
+    val stopEnabled: Boolean,
+    val accessibilityLabel: String,
+)
+
+fun recordingHeaderPresentation(session: RecordingSession): RecordingHeaderPresentation? {
+    val active = session as? RecordingSession.Active ?: return null
+    val kindLabel = when (active.kind) {
+        RecordingKind.SOURCE_MICROPHONE -> "MIC"
+        RecordingKind.SOURCE_SYSTEM_AUDIO -> "DEVICE"
+        RecordingKind.VOCAL_OVERDUB -> "VOICE"
+    }
+    val phaseLabel = when (active.phase) {
+        RecordingPhase.STARTING -> "START"
+        RecordingPhase.RECORDING -> "REC"
+        RecordingPhase.STOPPING -> "STOPPING"
+    }
+    val accessibilityKind = when (active.kind) {
+        RecordingKind.SOURCE_MICROPHONE -> "マイク素材"
+        RecordingKind.SOURCE_SYSTEM_AUDIO -> "端末音声"
+        RecordingKind.VOCAL_OVERDUB -> "ボーカル"
+    }
+    val accessibilityPhase = when (active.phase) {
+        RecordingPhase.STARTING -> "録音を準備中"
+        RecordingPhase.RECORDING -> "録音中"
+        RecordingPhase.STOPPING -> "録音を停止して保存中"
+    }
+    val stopLabel = when {
+        active.phase == RecordingPhase.STOPPING -> "停止・保存中\nPLEASE WAIT"
+        active.kind == RecordingKind.SOURCE_MICROPHONE -> "録音を停止\nMIC STOP"
+        active.kind == RecordingKind.SOURCE_SYSTEM_AUDIO -> "端末を停止\nDEVICE STOP"
+        else -> "声を保存\nVOICE STOP"
+    }
+    return RecordingHeaderPresentation(
+        statusLabel = "$kindLabel  $phaseLabel",
+        stopLabel = stopLabel,
+        stopEnabled = active.phase != RecordingPhase.STOPPING,
+        accessibilityLabel = "$accessibilityKind${if (active.phase == RecordingPhase.RECORDING) "を" else "の"}$accessibilityPhase",
+    )
+}
 
 fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
     if (usesLargeTextDeckMode(fontScale)) 7f else 8f

@@ -7,6 +7,44 @@ import org.junit.Test
 
 class SamplerCommandsTest {
     @Test
+    fun liveChopOverwritesA01WithTheCurrentSourceInsteadOfKeepingTheOldFile() {
+        val oldAudio = PcmAudio(name = "old-a01.wav", samples = ShortArray(800), sampleRate = 48_000)
+        val currentAudio = PcmAudio(name = "new-source.wav", samples = ShortArray(2_000), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) {
+                PadModel(index, audio = oldAudio, startFrame = 0, endFrame = 800)
+            } else {
+                PadModel(index)
+            }
+        }
+        val state = SamplerUiState(
+            currentAudio = currentAudio,
+            rangeStartFrame = 0,
+            rangeEndFrame = currentAudio.frameCount,
+            selectedBank = 0,
+            selectedPad = 0,
+            pads = pads,
+            activeSteps = setOf(stepKey(0, 4)),
+            loopingPadIndex = 0,
+            loopPlayheadFrame = 120,
+            scratchingPadIndex = 0,
+            scratchPlayheadFrame = 140,
+        )
+
+        val result = assignLiveChopToPad(state, padIndex = 0, startFrame = 500)
+
+        assertEquals(listOf(0), result.changedPads.map(PadModel::globalIndex))
+        assertSame(currentAudio, result.state.pads[0].audio)
+        assertEquals(500, result.state.pads[0].startFrame)
+        assertTrue(result.state.statusMessage.contains("上書き"))
+        assertEquals(setOf(stepKey(0, 4)), result.state.activeSteps)
+        assertEquals(null, result.state.loopingPadIndex)
+        assertEquals(-1, result.state.loopPlayheadFrame)
+        assertEquals(null, result.state.scratchingPadIndex)
+        assertEquals(-1, result.state.scratchPlayheadFrame)
+    }
+
+    @Test
     fun sourceReplacementKeepsAppliedPlaybackTruthUntilStopIsObserved() {
         val previousAudio = PcmAudio(name = "previous", samples = ShortArray(800), sampleRate = 48_000)
         val replacementAudio = PcmAudio(name = "replacement", samples = ShortArray(1_200), sampleRate = 48_000)
@@ -51,7 +89,10 @@ class SamplerCommandsTest {
             scratchingPadIndex = 4,
             scratchPlayheadFrame = 120,
             sourceScratchActive = true,
-            microphoneRecording = true,
+            recordingSession = RecordingSession.Active(
+                RecordingKind.SOURCE_MICROPHONE,
+                RecordingPhase.RECORDING,
+            ),
         )
 
         val stopped = stopAllPlaybackState(state)
@@ -91,30 +132,6 @@ class SamplerCommandsTest {
         assertSame(original, result.state.pads[0].audio)
         assertSame(incoming, result.state.pads[1].audio)
         assertEquals(listOf(1), result.changedPads.map(PadModel::globalIndex))
-    }
-
-    @Test
-    fun liveChopRefusesToReplaceAnAssignedPad() {
-        val original = PcmAudio(name = "original", samples = ShortArray(800), sampleRate = 48_000)
-        val incoming = PcmAudio(name = "incoming", samples = ShortArray(2_000), sampleRate = 48_000)
-        val pads = List(SamplerConfig.PAD_COUNT) { index ->
-            if (index == 0) PadModel(index, audio = original, startFrame = 0, endFrame = 800)
-            else PadModel(index)
-        }
-        val state = SamplerUiState(
-            currentAudio = incoming,
-            rangeStartFrame = 0,
-            rangeEndFrame = 2_000,
-            pads = pads,
-            selectedBank = 0,
-            selectedPad = 0,
-        )
-
-        val result = assignLiveChopToPad(state, padIndex = 0, startFrame = 200)
-
-        assertTrue(result.changedPads.isEmpty())
-        assertSame(original, result.state.pads[0].audio)
-        assertTrue(result.state.statusMessage.contains("上書きしません"))
     }
 
     @Test

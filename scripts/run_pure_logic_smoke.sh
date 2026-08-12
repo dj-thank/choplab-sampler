@@ -7,6 +7,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 kotlinc \
+  "$ROOT/app/src/main/java/com/choplab/sampler/model/RecordingSession.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/model/SamplerModels.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/model/ProjectModels.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/model/SamplerCommands.kt" \

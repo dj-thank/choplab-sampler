@@ -43,9 +43,7 @@ fun preserveAppliedSourceTruthWhileStopping(
 )
 
 fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
-    val recordingContinues = state.microphoneRecording ||
-        state.systemAudioRecording ||
-        state.vocalOverdubRecording
+    val recordingContinues = state.recordingSession.isActive
     return state.copy(
         pendingSourceCommand = pendingSourceCommandAfterStopRequest(state.sourcePlaying),
         transportPlaying = false,
@@ -297,12 +295,7 @@ fun assignLiveChopToPad(
     if (padIndex !in bankStart until bankEndExclusive) {
         return PadAssignmentResult(state, emptyList())
     }
-    if (state.pads[padIndex].isAssigned) {
-        return PadAssignmentResult(
-            state.copy(statusMessage = "PAD ${state.pads[padIndex].indexInBank + 1}には音があります。上書きしません"),
-            emptyList(),
-        )
-    }
+    val overwriting = state.pads[padIndex].isAssigned
 
     val selectionEnd = state.rangeEndFrame
         .takeIf { it in 1..audio.frameCount }
@@ -344,7 +337,15 @@ fun assignLiveChopToPad(
             selectedBank = bank,
             selectedPad = padIndex,
             sliceMarkers = markers,
-            statusMessage = "PAD ${padIndex - bankStart + 1} に ${formatLiveChopTime(safeStart, audio.sampleRate)} を刻みました",
+            loopingPadIndex = state.loopingPadIndex?.takeUnless { it == padIndex },
+            loopPlayheadFrame = if (state.loopingPadIndex == padIndex) -1 else state.loopPlayheadFrame,
+            scratchingPadIndex = state.scratchingPadIndex?.takeUnless { it == padIndex },
+            scratchPlayheadFrame = if (state.scratchingPadIndex == padIndex) -1 else state.scratchPlayheadFrame,
+            statusMessage = if (overwriting) {
+                "PAD ${padIndex - bankStart + 1} を現在の素材 ${formatLiveChopTime(safeStart, audio.sampleRate)} で上書きしました"
+            } else {
+                "PAD ${padIndex - bankStart + 1} に ${formatLiveChopTime(safeStart, audio.sampleRate)} を刻みました"
+            },
         ),
         changedPads = livePadIndices.map(mutablePads::get),
     )

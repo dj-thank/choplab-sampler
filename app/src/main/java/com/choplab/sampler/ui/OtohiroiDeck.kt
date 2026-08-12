@@ -70,16 +70,21 @@ import com.choplab.sampler.model.PadTrimPrecision
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.RepeatGrid
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
+import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activeSliceRange
+import com.choplab.sampler.model.activePhaseFor
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.padTrimNudgeFrames
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
@@ -195,6 +200,7 @@ fun OtohiroiDeck(
                         stage = stage,
                         height = metrics.headerHeightDp.dp,
                         onStopAll = viewModel::stopAllSounds,
+                        onStopRecording = viewModel::stopActiveRecording,
                     )
                     WorkflowStrip(
                         selected = stage,
@@ -523,6 +529,7 @@ private fun ChopCoachRow(
             state = state,
             label = "素材を入れ替える\nREPLACE SOURCE",
             onConfirm = onImportAudio,
+            enabled = externalDocumentActionsEnabled(state),
             modifier = Modifier.width(104.dp).fillMaxHeight(),
         )
     }
@@ -634,10 +641,12 @@ private fun MachineHeader(
     stage: WorkflowStage,
     height: Dp,
     onStopAll: () -> Unit,
+    onStopRecording: () -> Unit,
 ) {
     val fontScale = LocalDensity.current.fontScale
     val playbackActive = state.hasPlaybackActivity()
     val recordingActive = state.hasRecordingActivity()
+    val recording = recordingHeaderPresentation(state.recordingSession)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -650,6 +659,7 @@ private fun MachineHeader(
         StatusLamp(
             active = playbackActive || recordingActive,
             alert = recordingActive,
+            contentLabel = recording?.accessibilityLabel,
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -673,17 +683,18 @@ private fun MachineHeader(
         }
         val bankRole = bankRoleFor(state.selectedBank)
         Text(
-            "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
-            color = DeckGreen,
+            recording?.statusLabel ?: "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
+            color = if (recording != null) DeckLamp else DeckGreen,
             fontFamily = DeckFont,
             fontWeight = FontWeight.Bold,
             fontSize = 9.sp,
             maxLines = 1,
         )
         MachineButton(
-            label = "音を全停止\nALL STOP",
-            onClick = onStopAll,
-            active = playbackActive,
+            label = recording?.stopLabel ?: "音を全停止\nALL STOP",
+            onClick = if (recording != null) onStopRecording else onStopAll,
+            enabled = recording?.stopEnabled ?: true,
+            active = recording != null || playbackActive,
             modifier = Modifier
                 .width(82.dp)
                 .fillMaxHeight(),
@@ -700,10 +711,14 @@ private fun SamplerUiState.hasPlaybackActivity(): Boolean =
         sourceScratchActive
 
 private fun SamplerUiState.hasRecordingActivity(): Boolean =
-    microphoneRecording || systemAudioRecording || vocalOverdubRecording
+    recordingSession.isActive
 
 @Composable
-private fun StatusLamp(active: Boolean, alert: Boolean) {
+private fun StatusLamp(
+    active: Boolean,
+    alert: Boolean,
+    contentLabel: String? = null,
+) {
     Box(
         modifier = Modifier
             .size(10.dp)
@@ -716,7 +731,9 @@ private fun StatusLamp(active: Boolean, alert: Boolean) {
                 shape = CircleShape,
             )
             .border(1.dp, Color.Black, CircleShape)
-            .semantics { contentDescription = if (active || alert) "動作中" else "停止中" },
+            .semantics {
+                contentDescription = contentLabel ?: if (active || alert) "動作中" else "停止中"
+            },
     )
 }
 
@@ -936,6 +953,18 @@ private fun CaptureChoicePanel(
     modifier: Modifier = Modifier,
 ) {
     val inputPolicy = captureInputPolicy(state)
+    val microphoneControl = recordingControlPresentation(
+        session = state.recordingSession,
+        kind = RecordingKind.SOURCE_MICROPHONE,
+        idleLabel = "マイク録音\nMIC REC",
+        stopLabel = "録音を止める\nMIC STOP",
+    )
+    val systemAudioControl = recordingControlPresentation(
+        session = state.recordingSession,
+        kind = RecordingKind.SOURCE_SYSTEM_AUDIO,
+        idleLabel = "端末を録音\nDEVICE REC",
+        stopLabel = "録音を止める\nDEVICE STOP",
+    )
     MachinePanel(modifier = modifier) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -970,18 +999,18 @@ private fun CaptureChoicePanel(
                 )
                 NewSourceActionButton(
                     state = state,
-                    label = if (state.microphoneRecording) "録音を止める\nMIC STOP" else "マイク録音\nMIC REC",
+                    label = microphoneControl.label,
                     onConfirm = onToggleMicrophoneRecording,
-                    enabled = inputPolicy.microphoneEnabled,
-                    active = state.microphoneRecording,
+                    enabled = inputPolicy.microphoneEnabled && microphoneControl.enabled,
+                    active = microphoneControl.active,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 NewSourceActionButton(
                     state = state,
-                    label = if (state.systemAudioRecording) "録音を止める\nDEVICE STOP" else "端末を録音\nDEVICE REC",
+                    label = systemAudioControl.label,
                     onConfirm = onToggleSystemAudioRecording,
-                    enabled = inputPolicy.systemAudioEnabled,
-                    active = state.systemAudioRecording,
+                    enabled = inputPolicy.systemAudioEnabled && systemAudioControl.enabled,
+                    active = systemAudioControl.active,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
@@ -2254,6 +2283,11 @@ private fun LayerStudio(
     var pageName by rememberSaveable(initialPage.name) { mutableStateOf(initialPage.name) }
     var kitId by rememberSaveable { mutableStateOf(state.selectedDrumKitId) }
     val page = LayerStudioPage.entries.firstOrNull { it.name == pageName } ?: LayerStudioPage.SOUNDS
+    val activeRecording = state.recordingSession as? RecordingSession.Active
+    val modalRecording = recordingHeaderPresentation(state.recordingSession)
+        ?.takeUnless {
+            activeRecording?.kind == RecordingKind.VOCAL_OVERDUB && page == LayerStudioPage.VOICE
+        }
 
     Dialog(
         onDismissRequest = {
@@ -2310,6 +2344,16 @@ private fun LayerStudio(
                                 fontWeight = FontWeight.Black,
                                 fontSize = 13.sp,
                                 maxLines = 1,
+                            )
+                        }
+                        if (modalRecording != null) {
+                            MachineButton(
+                                label = modalRecording.stopLabel,
+                                onClick = viewModel::stopActiveRecording,
+                                enabled = modalRecording.stopEnabled,
+                                active = true,
+                                modifier = Modifier.width(100.dp).fillMaxHeight(),
+                                compact = true,
                             )
                         }
                         MachineButton(
@@ -2588,6 +2632,14 @@ private fun VocalStudio(
 ) {
     val takeCount = state.pads.count { it.isAssigned && it.contentKind == com.choplab.sampler.model.PadContentKind.VOCAL }
     val loopReady = state.pads.any { it.isAssigned && it.playMode == PadPlayMode.LOOP }
+    val vocalPhase = state.recordingSession.activePhaseFor(RecordingKind.VOCAL_OVERDUB)
+    val vocalControl = recordingControlPresentation(
+        session = state.recordingSession,
+        kind = RecordingKind.VOCAL_OVERDUB,
+        idleLabel = "声を重ねる\nVOICE REC",
+        stopLabel = "声を保存\nVOICE STOP",
+    )
+    val vocalButtonEnabled = vocalControl.enabled && (vocalControl.active || loopReady)
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2618,30 +2670,44 @@ private fun VocalStudio(
             )
             ValueDisplay(
                 label = "3 VOICE REC",
-                value = if (state.vocalOverdubRecording) "録音中" else "押して録音",
+                value = when (vocalPhase) {
+                    RecordingPhase.STARTING -> "準備中"
+                    RecordingPhase.RECORDING -> "録音中"
+                    RecordingPhase.STOPPING -> "保存中"
+                    null -> if (state.recordingSession == RecordingSession.Idle) "押して録音" else "別の録音中"
+                },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
         Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Surface(
-                color = if (state.vocalOverdubRecording) Color(0xFFB92B24) else DeckInk,
+                color = if (vocalControl.active) Color(0xFFB92B24) else DeckInk,
                 contentColor = Color.White,
                 shape = CircleShape,
                 modifier = Modifier
                     .size(156.dp)
-                    .alpha(if (loopReady || state.vocalOverdubRecording) 1f else 0.42f)
-                    .border(5.dp, if (state.vocalOverdubRecording) DeckLamp else DeckPanelDark, CircleShape)
+                    .alpha(if (vocalButtonEnabled || vocalControl.active) 1f else 0.42f)
+                    .border(5.dp, if (vocalControl.active) DeckLamp else DeckPanelDark, CircleShape)
                     .clickable(
-                        enabled = loopReady || state.vocalOverdubRecording,
+                        enabled = vocalButtonEnabled,
                         role = Role.Button,
                         onClick = onToggleRecording,
                     )
-                    .semantics { contentDescription = if (state.vocalOverdubRecording) "声の録音を停止" else "声の録音を開始" },
+                    .semantics {
+                        contentDescription = when {
+                            vocalPhase == RecordingPhase.STOPPING -> "声の録音を停止して保存中"
+                            vocalControl.active -> "声の録音を停止して保存"
+                            state.recordingSession.isActive -> "別の録音中"
+                            else -> "声の録音を開始"
+                        }
+                    },
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         when {
-                            state.vocalOverdubRecording -> "STOP\nテイクを保存"
+                            vocalPhase == RecordingPhase.STOPPING -> "保存中\nPLEASE WAIT"
+                            vocalControl.active -> "STOP\nテイクを保存"
+                            state.recordingSession.isActive -> "WAIT\n別の録音中"
                             loopReady -> "REC\n声を重ねる"
                             else -> "WAIT\n先にビートをループ"
                         },
@@ -2959,7 +3025,7 @@ private fun FinishWorkspace(
             MachineButton(
                 label = "WAVを書き出す\nEXPORT 4 BARS",
                 onClick = onExportBeat,
-                enabled = ready && !state.isLoading,
+                enabled = ready && externalDocumentActionsEnabled(state),
                 active = ready,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
@@ -2970,14 +3036,14 @@ private fun FinishWorkspace(
                 MachineButton(
                     label = "制作を保存\nSAVE PROJECT",
                     onClick = onSaveProject,
-                    enabled = !state.isLoading,
+                    enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
                 MachineButton(
                     label = "制作を開く\nOPEN PROJECT",
                     onClick = onOpenProject,
-                    enabled = !state.isLoading,
+                    enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )

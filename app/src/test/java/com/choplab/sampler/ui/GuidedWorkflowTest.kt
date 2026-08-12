@@ -4,6 +4,9 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
+import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
@@ -287,19 +290,121 @@ class GuidedWorkflowTest {
         assertTrue(idle.microphoneEnabled)
         assertTrue(idle.systemAudioEnabled)
 
-        val microphoneRecording = captureInputPolicy(SamplerUiState(microphoneRecording = true))
+        val microphoneRecording = captureInputPolicy(
+            SamplerUiState(
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
+        )
         assertFalse(microphoneRecording.fileEnabled)
         assertTrue(microphoneRecording.microphoneEnabled)
         assertFalse(microphoneRecording.systemAudioEnabled)
 
         val loadingWhileMicrophoneRecording = captureInputPolicy(
-            SamplerUiState(isLoading = true, microphoneRecording = true),
+            SamplerUiState(
+                isLoading = true,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
         )
         assertTrue(loadingWhileMicrophoneRecording.microphoneEnabled)
 
         val loadingWhileSystemAudioRecording = captureInputPolicy(
-            SamplerUiState(isLoading = true, systemAudioRecording = true),
+            SamplerUiState(
+                isLoading = true,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_SYSTEM_AUDIO,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
         )
         assertTrue(loadingWhileSystemAudioRecording.systemAudioEnabled)
+    }
+
+    @Test
+    fun recordingControlsExposeOneOwnerAndDisableEveryCompetingEntrance() {
+        val microphoneStarting = RecordingSession.Active(
+            RecordingKind.SOURCE_MICROPHONE,
+            RecordingPhase.STARTING,
+        )
+        val microphoneControl = recordingControlPresentation(
+            session = microphoneStarting,
+            kind = RecordingKind.SOURCE_MICROPHONE,
+            idleLabel = "マイク録音\nMIC REC",
+            stopLabel = "録音を止める\nMIC STOP",
+        )
+        val competingSystemControl = recordingControlPresentation(
+            session = microphoneStarting,
+            kind = RecordingKind.SOURCE_SYSTEM_AUDIO,
+            idleLabel = "端末を録音\nDEVICE REC",
+            stopLabel = "録音を止める\nDEVICE STOP",
+        )
+
+        assertEquals("録音を止める\nMIC STOP", microphoneControl.label)
+        assertTrue(microphoneControl.enabled)
+        assertTrue(microphoneControl.active)
+        assertEquals("別の録音中\nWAIT", competingSystemControl.label)
+        assertFalse(competingSystemControl.enabled)
+        assertFalse(competingSystemControl.active)
+
+        val stopping = recordingControlPresentation(
+            session = microphoneStarting.copy(phase = RecordingPhase.STOPPING),
+            kind = RecordingKind.SOURCE_MICROPHONE,
+            idleLabel = "マイク録音\nMIC REC",
+            stopLabel = "録音を止める\nMIC STOP",
+        )
+        assertEquals("停止・保存中\nPLEASE WAIT", stopping.label)
+        assertFalse(stopping.enabled)
+        assertTrue(stopping.active)
+    }
+
+    @Test
+    fun machineHeaderAlwaysNamesAndStopsTheActiveRecordingSession() {
+        val microphone = recordingHeaderPresentation(
+            RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING),
+        )
+        assertEquals("MIC  REC", microphone?.statusLabel)
+        assertEquals("録音を停止\nMIC STOP", microphone?.stopLabel)
+        assertTrue(microphone?.stopEnabled == true)
+        assertEquals("マイク素材を録音中", microphone?.accessibilityLabel)
+
+        val vocalStopping = recordingHeaderPresentation(
+            RecordingSession.Active(RecordingKind.VOCAL_OVERDUB, RecordingPhase.STOPPING),
+        )
+        assertEquals("VOICE  STOPPING", vocalStopping?.statusLabel)
+        assertEquals("停止・保存中\nPLEASE WAIT", vocalStopping?.stopLabel)
+        assertFalse(vocalStopping?.stopEnabled == true)
+
+        assertEquals(null, recordingHeaderPresentation(RecordingSession.Idle))
+    }
+
+    @Test
+    fun externalPickersStayClosedUntilRecordingAndSavingHaveFinished() {
+        assertTrue(externalDocumentActionsEnabled(SamplerUiState()))
+        assertFalse(externalDocumentActionsEnabled(SamplerUiState(isLoading = true)))
+        assertFalse(
+            externalDocumentActionsEnabled(
+                SamplerUiState(
+                    recordingSession = RecordingSession.Active(
+                        RecordingKind.SOURCE_MICROPHONE,
+                        RecordingPhase.RECORDING,
+                    ),
+                ),
+            ),
+        )
+        assertFalse(
+            externalDocumentActionsEnabled(
+                SamplerUiState(
+                    recordingSession = RecordingSession.Active(
+                        RecordingKind.VOCAL_OVERDUB,
+                        RecordingPhase.STOPPING,
+                    ),
+                ),
+            ),
+        )
     }
 }

@@ -178,26 +178,64 @@ class PadPressRoutingTest {
     }
 
     @Test
-    fun pendingStartNeverRoutesAnEmptyPadToLiveChop() {
+    fun sourceTransitionsBlockPadsInsteadOfPreviewingOrOverwriting() {
         assertEquals(SourceUiPhase.STARTING, sourceUiPhase(false, PendingSourceCommand.START))
         assertEquals(
-            PadPressAction.SELECT_ONLY,
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION,
             resolvePadPressAction(
                 sourcePlaying = false,
                 padAssigned = false,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+                pendingSourceCommand = PendingSourceCommand.START,
+            ),
+        )
+        assertEquals(
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION,
+            resolvePadPressAction(
+                sourcePlaying = true,
+                padAssigned = true,
+                surfaceMode = PadSurfaceMode.PERFORMANCE,
+                pendingSourceCommand = PendingSourceCommand.STOP,
+            ),
+        )
+    }
+
+    @Test
+    fun assignedCapturePadIsOverwrittenByTheCurrentPlayingSource() {
+        assertEquals(
+            PadPressAction.CAPTURE_CHOP,
+            resolvePadPressAction(
+                sourcePlaying = true,
+                padAssigned = true,
                 surfaceMode = PadSurfaceMode.CAPTURE,
             ),
         )
     }
 
     @Test
-    fun assignedCapturePadPlaysExistingChopInsteadOfOverwritingIt() {
+    fun activeRecordingBlocksPadPlaybackInsteadOfContaminatingTheTake() {
         assertEquals(
-            PadPressAction.PLAY_ASSIGNED,
+            PadPressAction.BLOCKED_DURING_RECORDING,
             resolvePadPressAction(
-                sourcePlaying = true,
+                sourcePlaying = false,
                 padAssigned = true,
                 surfaceMode = PadSurfaceMode.CAPTURE,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
+        )
+        assertEquals(
+            PadPressAction.BLOCKED_DURING_RECORDING,
+            resolvePadPressAction(
+                sourcePlaying = false,
+                padAssigned = true,
+                surfaceMode = PadSurfaceMode.PERFORMANCE,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
             ),
         )
     }
