@@ -10,12 +10,12 @@
 - unit tests: 169 tests / 37 suites; failures 0, errors 0, skipped 0
 - Android Lint: errors 0, warnings/advisories 7
 - `git diff --check`: PASS; UI source scroll API matches: 0
-- local APK: `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`; 31,615,662 bytes; SHA-256 `8417FC1DC81F01442BFA7E6D0D3AB9EC4FC3F4379705B9F41B95A5927B696C38`
+- local APK: `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`; 31,615,690 bytes; SHA-256 `B0CF6B6DFE21FF24B5AC5BD457E6EEE637B75BFDB4EA438044CB84A5A07B1C29`
 - metadata: package `com.choplab.sampler`; versionCode 19 / versionName 0.12.0; minSdk 29 / targetSdk 36; APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
 - physical Pixel 9a `5A121JEBF08094`, Android 17 / API 37 / arm64-v8a: exact data-preserving `adb install -r` PASS; host, installed-base, and phone Download APK size/hash match
 - device UI: startup shows `LOADING / 音声を読込中 / PLEASE WAIT` instead of false `NO SOURCE`; FILE/MIC REC/DEVICE REC parent buttons are all `enabled=false` during recovery; retained source then restores; Capture/Chop/Beat each have 0 scrollable nodes; Chop has BEAT/PAD EDIT/ADD/SCRATCH and Beat has QUICK/STEPS/ADD/SCRATCH; focused fatal/ANR matches 0
 - retained data: four project archive sizes and hashes unchanged before install, after install, and after startup recovery/navigation
-- evidence: `work/pixel9a-v0120-dock-contract/final3-loading.{png,xml}`, `final3-restored.png`, `final3-chop.xml`, `final3-beat.xml`, `installed-base-final3.apk`
+- evidence: `work/pixel9a-v0120-dock-contract/final4-loading.{png,xml}`, `final4-capture.png`, `final4-restored.xml`, `final4-chop.{png,xml}`, `final4-beat.{png,xml}`, `installed-base-final4.apk`
 - boundaries: no subjective audio, duplicate-audio listening, TalkBack/large-font/landscape matrix, public release, or Human GO claim
 
 ## 2026-08-12 v0.12.0 state-truth playback and Production Dock candidate

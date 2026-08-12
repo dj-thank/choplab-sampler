@@ -291,5 +291,15 @@ class GuidedWorkflowTest {
         assertFalse(microphoneRecording.fileEnabled)
         assertTrue(microphoneRecording.microphoneEnabled)
         assertFalse(microphoneRecording.systemAudioEnabled)
+
+        val loadingWhileMicrophoneRecording = captureInputPolicy(
+            SamplerUiState(isLoading = true, microphoneRecording = true),
+        )
+        assertTrue(loadingWhileMicrophoneRecording.microphoneEnabled)
+
+        val loadingWhileSystemAudioRecording = captureInputPolicy(
+            SamplerUiState(isLoading = true, systemAudioRecording = true),
+        )
+        assertTrue(loadingWhileSystemAudioRecording.systemAudioEnabled)
     }
 }

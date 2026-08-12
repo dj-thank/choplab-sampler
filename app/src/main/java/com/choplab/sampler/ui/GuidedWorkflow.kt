@@ -88,8 +88,8 @@ data class CaptureInputPolicy(
 
 fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy = CaptureInputPolicy(
     fileEnabled = !state.isLoading && !state.microphoneRecording && !state.systemAudioRecording,
-    microphoneEnabled = !state.isLoading && !state.systemAudioRecording,
-    systemAudioEnabled = !state.isLoading && !state.microphoneRecording,
+    microphoneEnabled = state.microphoneRecording || (!state.isLoading && !state.systemAudioRecording),
+    systemAudioEnabled = state.systemAudioRecording || (!state.isLoading && !state.microphoneRecording),
 )
 
 fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
