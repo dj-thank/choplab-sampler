@@ -20,6 +20,8 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.pow
 
+internal const val PREVIEW_PAD_INDEX = -1
+
 /**
  * Low-latency streaming sampler and sample-accurate 16-step sequencer.
  *
@@ -168,7 +170,12 @@ class SamplerEngine(
     }
 
     override fun startPadLoop(globalIndex: Int) {
-        enqueue(EngineCommand.StartPadLoop(globalIndex))
+        enqueuePrepared {
+            EngineCommand.StartPadLoop(
+                padIndex = globalIndex,
+                sourceStopGeneration = sourcePlaybackState.issueStop(),
+            )
+        }
     }
 
     override fun stopPad(globalIndex: Int) {
@@ -228,7 +235,7 @@ class SamplerEngine(
         enqueue(
             EngineCommand.Preview(
                 PadSnapshot(
-                    padIndex = -1,
+                    padIndex = PREVIEW_PAD_INDEX,
                     audio = audio,
                     startFrame = startFrame.coerceIn(0, audio.frameCount - 1),
                     endFrame = endFrame.coerceIn(1, audio.frameCount),
@@ -458,16 +465,18 @@ class SamplerEngine(
                     if (pad != null) startVoice(pad)
                 }
                 is EngineCommand.StartPadLoop -> {
+                    if (
+                        retireSourceVoiceForLoopStart(
+                            sourcePlaybackState = sourcePlaybackState,
+                            sourceVoice = sourceVoice,
+                            stopGeneration = command.sourceStopGeneration,
+                        )
+                    ) {
+                        sourceVoiceGeneration = 0L
+                    }
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad?.playMode == PadPlayMode.LOOP) {
-                        // A sound-rail audition may still be active. The loop replaces that
-                        // voice instead of stacking a second copy of the same audio.
-                        var voiceIndex = 0
-                        while (voiceIndex < voices.size) {
-                            val voice = voices[voiceIndex]
-                            if (voice.active && voice.padIndex == command.padIndex) voice.deactivate()
-                            voiceIndex++
-                        }
+                        retireConflictingVoicesForLoopStart(voices, command.padIndex)
                         currentLoopPadValue.set(command.padIndex)
                         currentLoopFrameValue.set(if (pad.reverse) pad.endFrame - 1 else pad.startFrame)
                         startVoice(pad)
@@ -534,10 +543,20 @@ class SamplerEngine(
 
     private fun enqueue(command: EngineCommand): Boolean {
         val accepted = commands.offer(command)
+        reportCommandAdmission(accepted)
+        return accepted
+    }
+
+    private fun enqueuePrepared(commandFactory: () -> EngineCommand): Boolean {
+        val accepted = commands.offerPrepared(commandFactory)
+        reportCommandAdmission(accepted)
+        return accepted
+    }
+
+    private fun reportCommandAdmission(accepted: Boolean) {
         if (!accepted && commandOverflowReported.compareAndSet(false, true)) {
             onError("操作が集中しています。停止操作を優先し、一部の連続入力を省略しました")
         }
-        return accepted
     }
 
     private fun applyStopAllVoices(sourceGeneration: Long) {
@@ -667,7 +686,10 @@ class SamplerEngine(
         data class SetPad(val pad: PadSnapshot) : EngineCommand
         data class ClearPad(val padIndex: Int) : EngineCommand
         data class Trigger(val padIndex: Int) : EngineCommand
-        data class StartPadLoop(val padIndex: Int) : EngineCommand
+        data class StartPadLoop(
+            val padIndex: Int,
+            val sourceStopGeneration: Long,
+        ) : EngineCommand
         data class StopPad(val padIndex: Int) : EngineCommand
         data class BeginScratch(val padIndex: Int, val voice: ScratchVoice) : EngineCommand
         data object EndScratch : EngineCommand
@@ -921,4 +943,36 @@ class SamplerEngine(
         const val SOURCE_SCRATCH_PAD_INDEX = -3
         const val SCRATCH_SMOOTHING = 0.025
     }
+}
+
+/**
+ * A loop replaces only accidental audition voices. Other PAD voices are intentional layers.
+ * This runs on the audio thread and must stay allocation-free.
+ */
+internal fun retireConflictingVoicesForLoopStart(
+    voices: Array<SamplerEngine.Voice>,
+    loopPadIndex: Int,
+) {
+    var voiceIndex = 0
+    while (voiceIndex < voices.size) {
+        val voice = voices[voiceIndex]
+        if (
+            voice.active &&
+            (voice.padIndex == loopPadIndex || voice.padIndex == PREVIEW_PAD_INDEX)
+        ) {
+            voice.deactivate()
+        }
+        voiceIndex++
+    }
+}
+
+/** Applies the source stop generation at the same audio-thread boundary as loop start. */
+internal fun retireSourceVoiceForLoopStart(
+    sourcePlaybackState: SourcePlaybackState,
+    sourceVoice: SamplerEngine.Voice,
+    stopGeneration: Long,
+): Boolean {
+    if (!sourcePlaybackState.applyStopBoundary(stopGeneration)) return false
+    sourceVoice.deactivate()
+    return true
 }

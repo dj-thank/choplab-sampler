@@ -14,6 +14,32 @@ import org.junit.Test
 
 class GuidedWorkflowTest {
     @Test
+    fun chopSwitchLabelsExposeModeBankPageAndCurrentPad() {
+        assertEquals("① 空PADへ切る\nCHOP MODE", liveChopModeLabel(armed = true))
+        assertEquals("② 音ありPADを確認\nPLAY MODE", liveChopModeLabel(armed = false))
+        assertEquals("● A メロディー\nMELODY", bankSwitchLabel(0, selected = true, compact = false))
+        assertEquals("B\nDRUMS", bankSwitchLabel(1, selected = false, compact = true))
+        assertEquals(
+            "● PAD 01–16\n選択 A-04 / 3音",
+            padPageSwitchLabel(
+                pageIndex = 0,
+                selected = true,
+                assignedCount = 3,
+                selectedPadLabel = "A-04",
+            ),
+        )
+        assertEquals(
+            "PAD 17–32\n切替 / 空",
+            padPageSwitchLabel(
+                pageIndex = 1,
+                selected = false,
+                assignedCount = 0,
+                selectedPadLabel = "A-04",
+            ),
+        )
+    }
+
+    @Test
     fun newSourceRequiresConfirmationOnlyWhenTheCurrentProjectHasMaterialWork() {
         val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
         val assignedPads = List(SamplerConfig.PAD_COUNT) { index ->

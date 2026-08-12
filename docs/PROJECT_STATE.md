@@ -2,6 +2,22 @@
 
 Last prepared: 2026-08-12
 
+## Precision trim and exclusive loop-start local evidence — 2026-08-12
+
+The current `v0.11.3` development branch improves the beginner Chop path without adding scrolling:
+
+- long-pressing an assigned PAD opens a larger waveform editor with visible time readout and centered zoom up to 256x;
+- START and END can be nudged by exactly one frame, approximately 1 ms, or approximately 10 ms, with the existing start-inclusive/end-exclusive clamps;
+- `編集前へ戻す / REVERT` restores both boundaries captured when the editor opened, and the restore remains part of the existing Undo history;
+- Chop mode now explicitly distinguishes `空PADへ切る / CHOP MODE` from `音ありPADを確認 / PLAY MODE`;
+- BANK and page controls expose the active A/B/C/D role, selected PAD, 01–16 versus 17–32 range, and assigned-sound count without relying on color alone;
+- starting one PAD beat loop now retires imported-source playback, anonymous waveform preview, and same-PAD audition at the audio-thread boundary, while preserving intentional other-PAD/drum/vocal layers;
+- loop start reserves bounded mailbox capacity before issuing its source-stop generation, so rejected commands cannot mutate source state or revive stale generations.
+
+Focused regressions were observed RED before implementation and GREEN afterward. Final local gate: configured offline validation PASS; 153 unit tests with zero failures/errors/skips; Android Lint PASS with zero errors and 7 platform/toolchain advisories; debug assemble PASS; `git diff --check` PASS; UI scroll API scan zero matches. The final local APK is `outputs/ChopLab-v0.11.3-precision-trim-local-debug.apk`, 31,627,306 bytes, SHA-256 `4E255B329D4A8A85194F79B1E106B91D215C3CBFF4FFEB92DEDF1624970CE1A9`. Two independent Luna reviews found no P0/P1 issue. The mailbox-generation finding and its first rollback attempt were both replaced by reservation-before-side-effect admission tests; final audio re-review found no P0–P3 issue, and the trim/UI review found no P0–P3 issue.
+
+Focused pre-final-candidate observation on `emulator-5588` confirmed data-preserving install, cold launch as `versionCode=18` / `versionName=0.11.3`, visible no-scroll Chop and precision-trim screens, assigned-PAD long-press navigation, and zero focused AndroidRuntime fatal signal. The final readout-color and queue-generation corrections were rebuilt locally but not reinstalled because a concurrently running Neefo task took foreground ownership of the same emulator. This is therefore not an exact-final-artifact or exclusive full-audio DEVICE_PASS. Physical Pixel installation, subjective duplicate-audio listening, TalkBack, landscape interaction, sustained command-pressure/realtime stress, production publication, and `HUMAN_GO` remain unverified.
+
 ## v0.11.3 clear Chop actions and accessibility candidate — 2026-08-12
 
 最初の音をチョップした後も、固定TIPが `空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ` と実際の分岐を明示する。従来は一度割り当てると「PAD＝試聴」だけになり、別の空PADへ続けて追加できることが画面から消えていた。操作や画面構成は増やさず、既存の波形、A/B/C/D BANK、正方形PAD、Beat、Add、Scratchを同じ固定コンソールに維持した。

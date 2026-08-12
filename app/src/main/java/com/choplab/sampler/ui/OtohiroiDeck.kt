@@ -66,6 +66,8 @@ import com.choplab.sampler.SamplerViewModel
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PadTrimPrecision
+import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerConfig
@@ -77,6 +79,7 @@ import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.padTrimNudgeFrames
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
@@ -84,6 +87,7 @@ import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.visiblePads
 import kotlin.math.max
+import kotlin.math.abs
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -415,7 +419,7 @@ private fun PerformanceWorkspace(
                 compact = true,
             )
             MachineButton(
-                label = if (liveChopArmed) "チョップ ON\n空PADを叩く" else "PADを鳴らす\nPLAY PADS",
+                label = liveChopModeLabel(liveChopArmed),
                 onClick = onToggleLiveChop,
                 enabled = state.currentAudio != null,
                 active = liveChopArmed,
@@ -557,7 +561,7 @@ private fun LandscapePerformanceWorkspace(
                     compact = true,
                 )
                 MachineButton(
-                    label = if (liveChopArmed) "チョップ ON\n空PADを叩く" else "PADを鳴らす\nPLAY PADS",
+                    label = liveChopModeLabel(liveChopArmed),
                     onClick = onToggleLiveChop,
                     enabled = state.currentAudio != null,
                     active = liveChopArmed,
@@ -1272,7 +1276,7 @@ private fun PadWorkspace(
                 onRelease = viewModel::releasePad,
                 onSelect = viewModel::selectPad,
                 gap = gap,
-                modifier = Modifier.weight(1.15f),
+                modifier = Modifier.weight(if (page == PadEditorPage.TRIM) 0.72f else 1.15f),
             )
             PadEditor(
                 state = state,
@@ -1282,7 +1286,7 @@ private fun PadWorkspace(
                 viewModel = viewModel,
                 controlHeight = metrics.controlHeightDp.dp,
                 gap = gap,
-                modifier = Modifier.weight(0.85f),
+                modifier = Modifier.weight(if (page == PadEditorPage.TRIM) 1.28f else 0.85f),
             )
         }
     }
@@ -1373,6 +1377,33 @@ private fun PadTrimEditor(
         }
         return
     }
+    val entryStartFrame = rememberSaveable(pad.globalIndex, audio.id) { pad.startFrame }
+    val entryEndFrame = rememberSaveable(pad.globalIndex, audio.id) { pad.endFrame }
+    val entrySnapshot = remember(
+        pad.globalIndex,
+        audio.id,
+        entryStartFrame,
+        entryEndFrame,
+    ) {
+        PadTrimSnapshot(
+            padIndex = pad.globalIndex,
+            audioId = audio.id,
+            startFrame = entryStartFrame,
+            endFrame = entryEndFrame,
+        )
+    }
+    var precisionName by rememberSaveable(pad.globalIndex, audio.id) {
+        mutableStateOf(PadTrimPrecision.MILLISECOND.name)
+    }
+    val precision = PadTrimPrecision.entries.firstOrNull { it.name == precisionName }
+        ?: PadTrimPrecision.MILLISECOND
+    val nudgeFrames = padTrimNudgeFrames(audio.sampleRate, precision)
+    val nudgeLabel = when (precision) {
+        PadTrimPrecision.FRAME -> "1 FRAME"
+        PadTrimPrecision.MILLISECOND -> "1 ms"
+        PadTrimPrecision.TEN_MILLISECONDS -> "10 ms"
+    }
+    val canRestore = pad.startFrame != entrySnapshot.startFrame || pad.endFrame != entrySnapshot.endFrame
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1388,43 +1419,90 @@ private fun PadTrimEditor(
                 onRangeStartChange = viewModel::setSelectedPadStartFrame,
                 onRangeEndChange = viewModel::setSelectedPadEndFrame,
                 onSliceMarkerChange = { _, _ -> },
-                onWaveformTap = {},
+                onWaveformTap = { frame ->
+                    if (abs(frame - pad.startFrame) <= abs(frame - pad.endFrame)) {
+                        viewModel.setSelectedPadStartFrame(frame)
+                    } else {
+                        viewModel.setSelectedPadEndFrame(frame)
+                    }
+                },
                 fillCanvas = true,
                 showViewportControls = false,
-                showTimeReadout = false,
+                compactViewportControls = true,
+                showTimeReadout = true,
                 showInteractionHint = false,
+                maximumZoom = 256f,
+                zoomFocusFrame = pad.startFrame + (pad.endFrame - pad.startFrame) / 2,
+                readoutColor = Color(0xFFE8DDBF),
                 modifier = Modifier.fillMaxSize(),
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().weight(0.8f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().height(32.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            MachineSlider(
-                label = "左ダイヤル  START ↔",
-                value = pad.startFrame.toFloat(),
-                valueRange = 0f..(pad.endFrame - 2).coerceAtLeast(0).toFloat(),
-                valueLabel = formatDeckTime(pad.startFrame, audio.sampleRate),
-                enabled = true,
-                onValueChange = { viewModel.setSelectedPadStartFrame(it.toInt()) },
-                modifier = Modifier.weight(1f),
+            PadTrimPrecision.entries.forEach { option ->
+                val label = when (option) {
+                    PadTrimPrecision.FRAME -> "1 FRAME"
+                    PadTrimPrecision.MILLISECOND -> "1 ms"
+                    PadTrimPrecision.TEN_MILLISECONDS -> "10 ms"
+                }
+                MachineButton(
+                    label = label,
+                    onClick = { precisionName = option.name },
+                    active = precision == option,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            MachineButton(
+                label = "開始 −\n$nudgeLabel",
+                onClick = { viewModel.setSelectedPadStartFrame(pad.startFrame - nudgeFrames) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
             )
-            MachineSlider(
-                label = "右ダイヤル  END ↔",
-                value = pad.endFrame.toFloat(),
-                valueRange = (pad.startFrame + 2).coerceAtMost(audio.frameCount).toFloat()..audio.frameCount.toFloat(),
-                valueLabel = formatDeckTime(pad.endFrame, audio.sampleRate),
-                enabled = true,
-                onValueChange = { viewModel.setSelectedPadEndFrame(it.toInt()) },
-                modifier = Modifier.weight(1f),
+            MachineButton(
+                label = "開始 ＋\n$nudgeLabel",
+                onClick = { viewModel.setSelectedPadStartFrame(pad.startFrame + nudgeFrames) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "終了 −\n$nudgeLabel",
+                onClick = { viewModel.setSelectedPadEndFrame(pad.endFrame - nudgeFrames) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "終了 ＋\n$nudgeLabel",
+                onClick = { viewModel.setSelectedPadEndFrame(pad.endFrame + nudgeFrames) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
             )
         }
-        MachineButton(
-            label = "調整したPADを聴く\nPREVIEW",
-            onClick = { viewModel.triggerPad(pad.globalIndex) },
+        Row(
             modifier = Modifier.fillMaxWidth().height(44.dp),
-            compact = true,
-        )
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MachineButton(
+                label = "調整したPADを聴く\nPREVIEW",
+                onClick = { viewModel.triggerPad(pad.globalIndex) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "編集前へ戻す\nREVERT",
+                onClick = { viewModel.restoreSelectedPadTrim(entrySnapshot) },
+                enabled = canRestore,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
     }
 }
 
@@ -3238,18 +3316,12 @@ private fun BankStrip(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         repeat(SamplerConfig.BANK_COUNT) { bank ->
-            val role = bankRoleFor(bank)
             MachineButton(
-                label = if (compactLabels) {
-                    "${role.letter}\n${when (bank) {
-                        0 -> "MELODY"
-                        1 -> "DRUMS"
-                        2 -> "SHOTS"
-                        else -> "VOICE"
-                    }}"
-                } else {
-                    "${role.letter} ${role.japaneseLabel}\n${role.englishLabel}"
-                },
+                label = bankSwitchLabel(
+                    bankIndex = bank,
+                    selected = selectedBank == bank,
+                    compact = compactLabels,
+                ),
                 onClick = { onSelectBank(bank) },
                 active = selectedBank == bank,
                 modifier = Modifier
@@ -3269,17 +3341,24 @@ private fun PadPageStrip(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().height(height),
+        modifier = modifier.fillMaxWidth().height(maxOf(height, 34.dp)),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         repeat(SamplerConfig.PAD_PAGES_PER_BANK) { page ->
-            val first = page * SamplerConfig.PAD_PAGE_SIZE + 1
-            val last = first + SamplerConfig.PAD_PAGE_SIZE - 1
             val assigned = state.assignedPadCountOnPage(page)
+            val selected = state.selectedPadPage() == page
+            val selectedPad = state.selectedPadModel()
+            val selectedPadLabel = "${bankRoleFor(selectedPad.bankIndex).letter}-%02d"
+                .format(selectedPad.indexInBank + 1)
             MachineButton(
-                label = "PAD %02d–%02d  %s".format(first, last, if (assigned == 0) "空" else "${assigned}音"),
+                label = padPageSwitchLabel(
+                    pageIndex = page,
+                    selected = selected,
+                    assignedCount = assigned,
+                    selectedPadLabel = selectedPadLabel,
+                ),
                 onClick = { onSelectPage(page) },
-                active = state.selectedPadPage() == page,
+                active = selected,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
             )

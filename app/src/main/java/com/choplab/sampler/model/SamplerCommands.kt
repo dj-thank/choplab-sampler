@@ -32,6 +32,49 @@ enum class PadTrimBoundary {
     END,
 }
 
+enum class PadTrimPrecision {
+    FRAME,
+    MILLISECOND,
+    TEN_MILLISECONDS,
+}
+
+data class PadTrimSnapshot(
+    val padIndex: Int,
+    val audioId: Long?,
+    val startFrame: Int,
+    val endFrame: Int,
+)
+
+fun padTrimNudgeFrames(sampleRate: Int, precision: PadTrimPrecision): Int {
+    val safeSampleRate = sampleRate.coerceAtLeast(1)
+    return when (precision) {
+        PadTrimPrecision.FRAME -> 1
+        PadTrimPrecision.MILLISECOND -> ((safeSampleRate + 500) / 1_000).coerceAtLeast(1)
+        PadTrimPrecision.TEN_MILLISECONDS -> ((safeSampleRate + 50) / 100).coerceAtLeast(1)
+    }
+}
+
+fun capturePadTrimSnapshot(pad: PadModel): PadTrimSnapshot = PadTrimSnapshot(
+    padIndex = pad.globalIndex,
+    audioId = pad.audio?.id,
+    startFrame = pad.startFrame,
+    endFrame = pad.endFrame,
+)
+
+fun restorePadTrimSnapshot(pad: PadModel, snapshot: PadTrimSnapshot): PadModel {
+    val audio = pad.audio ?: return pad
+    if (
+        pad.globalIndex != snapshot.padIndex ||
+        audio.id != snapshot.audioId ||
+        audio.frameCount < 2
+    ) {
+        return pad
+    }
+    val startFrame = snapshot.startFrame.coerceIn(0, audio.frameCount - 2)
+    val endFrame = snapshot.endFrame.coerceIn(startFrame + 2, audio.frameCount)
+    return pad.copy(startFrame = startFrame, endFrame = endFrame)
+}
+
 fun trimPadBoundary(
     pad: PadModel,
     boundary: PadTrimBoundary,

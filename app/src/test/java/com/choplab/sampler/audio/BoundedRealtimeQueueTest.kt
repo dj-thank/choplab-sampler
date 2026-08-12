@@ -36,6 +36,41 @@ class BoundedRealtimeQueueTest {
     }
 
     @Test
+    fun preparedMailboxCommandDoesNotRunItsSideEffectWhenCapacityIsFull() {
+        val mailbox = RealtimeCommandMailbox<String, Int>(capacity = 1)
+        val sourceState = SourcePlaybackState()
+        val playingGeneration = sourceState.issuePlay()
+        assertTrue(mailbox.offer("occupied"))
+
+        val accepted = mailbox.offerPrepared {
+            sourceState.issueStop()
+            "loop"
+        }
+
+        assertFalse(accepted)
+        assertTrue(sourceState.isCurrent(playingGeneration))
+    }
+
+    @Test
+    fun preparedMailboxCommandRunsOnceAfterCapacityIsReserved() {
+        val mailbox = RealtimeCommandMailbox<String, Int>(capacity = 1)
+        val sourceState = SourcePlaybackState()
+        val playingGeneration = sourceState.issuePlay()
+        var preparationCount = 0
+
+        val accepted = mailbox.offerPrepared {
+            preparationCount++
+            sourceState.issueStop()
+            "loop"
+        }
+
+        assertTrue(accepted)
+        assertEquals(1, preparationCount)
+        assertFalse(sourceState.isCurrent(playingGeneration))
+        assertEquals("loop", mailbox.pollEntry()?.value)
+    }
+
+    @Test
     fun urgentStopInvalidatesOlderCommandsButKeepsCommandsIssuedAfterIt() {
         val mailbox = RealtimeCommandMailbox<String, Int>(capacity = 4)
         assertTrue(mailbox.offer("old"))

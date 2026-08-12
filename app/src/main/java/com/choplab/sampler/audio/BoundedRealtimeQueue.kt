@@ -18,17 +18,24 @@ internal class BoundedRealtimeQueue<T>(capacity: Int) {
         get() = reservedSlots.get()
 
     fun offer(value: T): Boolean {
+        return offerPrepared { value }
+    }
+
+    /** Reserves capacity before running producer-side command preparation. */
+    fun offerPrepared(valueFactory: () -> T): Boolean {
         while (true) {
             val current = reservedSlots.get()
             if (current >= capacity) return false
             if (reservedSlots.compareAndSet(current, current + 1)) break
         }
-        return if (queue.offer(value)) {
-            true
-        } else {
+        val value = try {
+            valueFactory()
+        } catch (throwable: Throwable) {
             reservedSlots.decrementAndGet()
-            false
+            throw throwable
         }
+        queue.add(value)
+        return true
     }
 
     fun poll(): T? {

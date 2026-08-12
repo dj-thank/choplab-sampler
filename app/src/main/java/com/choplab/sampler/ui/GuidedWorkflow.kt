@@ -3,7 +3,9 @@ package com.choplab.sampler.ui
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.bankRoleFor
 
 enum class WorkflowStage(
     val label: String,
@@ -63,6 +65,33 @@ fun chopQuickGuidance(assignedPadCount: Int): String =
     } else {
         "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ"
     }
+
+fun liveChopModeLabel(armed: Boolean): String =
+    if (armed) "① 空PADへ切る\nCHOP MODE" else "② 音ありPADを確認\nPLAY MODE"
+
+fun bankSwitchLabel(bankIndex: Int, selected: Boolean, compact: Boolean): String {
+    val role = bankRoleFor(bankIndex)
+    val marker = if (selected) "● " else ""
+    return if (compact) {
+        "$marker${role.letter}\n${role.englishLabel}"
+    } else {
+        "$marker${role.letter} ${role.japaneseLabel}\n${role.englishLabel}"
+    }
+}
+
+fun padPageSwitchLabel(
+    pageIndex: Int,
+    selected: Boolean,
+    assignedCount: Int,
+    selectedPadLabel: String,
+): String {
+    val first = pageIndex * SamplerConfig.PAD_PAGE_SIZE + 1
+    val last = first + SamplerConfig.PAD_PAGE_SIZE - 1
+    val occupancy = if (assignedCount <= 0) "空" else "${assignedCount}音"
+    val marker = if (selected) "● " else ""
+    val detail = if (selected) "選択 $selectedPadLabel / $occupancy" else "切替 / $occupancy"
+    return "$marker${"PAD %02d–%02d".format(first, last)}\n$detail"
+}
 
 fun pitchDirectionLabel(value: Float): String = when {
     value < -0.49f -> "低い"

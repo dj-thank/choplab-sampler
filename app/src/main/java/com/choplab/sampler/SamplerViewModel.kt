@@ -25,6 +25,7 @@ import com.choplab.sampler.model.PerformancePadPressAction
 import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimBoundary
+import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectOperationEpoch
 import com.choplab.sampler.model.RepeatGrid
@@ -48,6 +49,7 @@ import com.choplab.sampler.model.recordPadStep
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.replaceSourceAudio
 import com.choplab.sampler.model.resetProjectState
+import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.resolvePadPressAction
 import com.choplab.sampler.model.resolvePerformancePadPressAction
 import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
@@ -1102,6 +1104,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         trimPadBoundary(it, PadTrimBoundary.END, frame - it.endFrame)
     }
 
+    fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelectedPad {
+        restorePadTrimSnapshot(it, snapshot)
+    }
+
     fun toggleSelectedPadReverse() = updateSelectedPad {
         it.copy(reverse = !it.reverse)
     }
@@ -1167,6 +1173,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         changedPads.forEach(engine::updatePad)
         syncPattern()
+        sourceStartPending = false
         engine.startPadLoop(globalIndex)
         state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
             .forEach { engine.triggerPad(it.globalIndex) }

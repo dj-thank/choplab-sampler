@@ -74,6 +74,9 @@ fun WaveformEditor(
     compactViewportControls: Boolean = false,
     showTimeReadout: Boolean = true,
     showInteractionHint: Boolean = true,
+    maximumZoom: Float = 32f,
+    zoomFocusFrame: Int? = null,
+    readoutColor: Color? = null,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
@@ -92,6 +95,7 @@ fun WaveformEditor(
     val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
     val activeSliceColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.23f)
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val resolvedReadoutColor = readoutColor ?: MaterialTheme.colorScheme.onSurface
 
     Column(modifier = modifier) {
         Box(
@@ -233,26 +237,29 @@ fun WaveformEditor(
                     .padding(top = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(formatTime(visibleStart, audio.sampleRate), fontSize = 11.sp)
+                Text(formatTime(visibleStart, audio.sampleRate), color = resolvedReadoutColor, fontSize = 11.sp)
                 Text(
                     "選択 ${formatTime(rangeStartFrame, audio.sampleRate)} – ${formatTime(rangeEndFrame, audio.sampleRate)}",
+                    color = resolvedReadoutColor,
                     fontSize = 11.sp,
                 )
-                Text(formatTime(visibleEnd, audio.sampleRate), fontSize = 11.sp)
+                Text(formatTime(visibleEnd, audio.sampleRate), color = resolvedReadoutColor, fontSize = 11.sp)
             }
         }
 
         if (showViewportControls) {
-            Text("ズーム ${"%.1f".format(zoom)}×", fontSize = 12.sp)
+            Text("ズーム ${"%.1f".format(zoom)}×", color = resolvedReadoutColor, fontSize = 12.sp)
             Slider(
                 value = zoom,
                 onValueChange = {
-                    zoom = it.coerceIn(1f, 32f)
-                    if (zoom <= 1.01f) scroll = 0f
+                    val nextZoom = it.coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                    val focusFrame = zoomFocusFrame ?: visibleStart + visibleFrames / 2
+                    scroll = centeredViewportScroll(focusFrame, totalFrames, nextZoom)
+                    zoom = nextZoom
                 },
-                valueRange = 1f..32f,
+                valueRange = 1f..maximumZoom.coerceAtLeast(1f),
             )
-            Text("表示位置", fontSize = 12.sp)
+            Text("表示位置", color = resolvedReadoutColor, fontSize = 12.sp)
             Slider(
                 value = scroll,
                 onValueChange = { scroll = it.coerceIn(0f, 1f) },
@@ -271,8 +278,10 @@ fun WaveformEditor(
                     description = "波形を縮小",
                     enabled = zoom > 1.01f,
                     onClick = {
-                        zoom = (zoom / 2f).coerceIn(1f, 32f)
-                        if (zoom <= 1.01f) scroll = 0f
+                        val nextZoom = (zoom / 2f).coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                        val focusFrame = zoomFocusFrame ?: visibleStart + visibleFrames / 2
+                        scroll = centeredViewportScroll(focusFrame, totalFrames, nextZoom)
+                        zoom = nextZoom
                     },
                     modifier = Modifier.weight(1f),
                 )
@@ -292,8 +301,13 @@ fun WaveformEditor(
                 ViewportControlButton(
                     label = "ZOOM +",
                     description = "波形を拡大",
-                    enabled = zoom < 31.99f,
-                    onClick = { zoom = (zoom * 2f).coerceIn(1f, 32f) },
+                    enabled = zoom < maximumZoom.coerceAtLeast(1f) - 0.01f,
+                    onClick = {
+                        val nextZoom = (zoom * 2f).coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                        val focusFrame = zoomFocusFrame ?: visibleStart + visibleFrames / 2
+                        scroll = centeredViewportScroll(focusFrame, totalFrames, nextZoom)
+                        zoom = nextZoom
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 ViewportControlButton(
@@ -313,6 +327,17 @@ fun WaveformEditor(
             }
         }
     }
+}
+
+internal fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): Float {
+    val safeTotalFrames = totalFrames.coerceAtLeast(1)
+    val safeZoom = zoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
+    val visibleFrames = (safeTotalFrames / safeZoom).roundToInt().coerceIn(1, safeTotalFrames)
+    val maximumVisibleStart = safeTotalFrames - visibleFrames
+    if (maximumVisibleStart <= 0) return 0f
+    val centeredStart = (frame.coerceIn(0, safeTotalFrames - 1) - visibleFrames / 2)
+        .coerceIn(0, maximumVisibleStart)
+    return centeredStart.toFloat() / maximumVisibleStart
 }
 
 @Composable

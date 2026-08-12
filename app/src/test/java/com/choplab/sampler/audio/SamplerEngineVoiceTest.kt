@@ -10,6 +10,80 @@ import org.junit.Test
 
 class SamplerEngineVoiceTest {
     @Test
+    fun loopStartRetiresPreviewAndTargetAuditionButKeepsOtherLayers() {
+        val audio = PcmAudio(
+            name = "loop.wav",
+            samples = ShortArray(128) { 8_000 },
+            sampleRate = 48_000,
+        )
+        fun activeVoice(padIndex: Int) = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot(
+                padIndex = padIndex,
+                audio = audio,
+                startFrame = 0,
+                endFrame = audio.frameCount,
+                pitchSemitones = 0f,
+                tone = 1f,
+                gain = 1f,
+                reverse = false,
+                playMode = PadPlayMode.ONE_SHOT,
+                chokeGroup = 0,
+            ),
+            outputSampleRate = 48_000,
+        )
+        val preview = activeVoice(-1)
+        val targetAudition = activeVoice(4)
+        val intentionalOtherLayer = activeVoice(33)
+
+        retireConflictingVoicesForLoopStart(
+            voices = arrayOf(preview, targetAudition, intentionalOtherLayer),
+            loopPadIndex = 4,
+        )
+
+        assertFalse(preview.active)
+        assertFalse(targetAudition.active)
+        assertTrue(intentionalOtherLayer.active)
+    }
+
+    @Test
+    fun loopStartBoundaryStopsTheImportedSourceVoice() {
+        val audio = PcmAudio(
+            name = "source.wav",
+            samples = ShortArray(128) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val sourceState = SourcePlaybackState()
+        val playingGeneration = sourceState.issuePlay()
+        assertTrue(sourceState.applyPlay(playingGeneration))
+        val sourceVoice = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot(
+                padIndex = -2,
+                audio = audio,
+                startFrame = 0,
+                endFrame = audio.frameCount,
+                pitchSemitones = 0f,
+                tone = 1f,
+                gain = 1f,
+                reverse = false,
+                playMode = PadPlayMode.ONE_SHOT,
+                chokeGroup = 0,
+            ),
+            outputSampleRate = 48_000,
+        )
+        val loopStartGeneration = sourceState.issueStop()
+
+        val stopped = retireSourceVoiceForLoopStart(
+            sourcePlaybackState = sourceState,
+            sourceVoice = sourceVoice,
+            stopGeneration = loopStartGeneration,
+        )
+
+        assertTrue(stopped)
+        assertFalse(sourceVoice.active)
+        assertFalse(sourceState.isPlaying)
+    }
+
+    @Test
     fun runningLoopAppliesLivePitchToneAndLevelWithoutRestartingItsCursor() {
         val audio = PcmAudio(
             name = "loop.wav",
