@@ -935,6 +935,7 @@ private fun CaptureChoicePanel(
     onToggleSystemAudioRecording: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val inputPolicy = captureInputPolicy(state)
     MachinePanel(modifier = modifier) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -964,14 +965,14 @@ private fun CaptureChoicePanel(
                     state = state,
                     label = "曲を読込\nFILE",
                     onConfirm = onImportAudio,
-                    enabled = !state.isLoading && !state.microphoneRecording && !state.systemAudioRecording,
+                    enabled = inputPolicy.fileEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 NewSourceActionButton(
                     state = state,
                     label = if (state.microphoneRecording) "録音を止める\nMIC STOP" else "マイク録音\nMIC REC",
                     onConfirm = onToggleMicrophoneRecording,
-                    enabled = !state.systemAudioRecording,
+                    enabled = inputPolicy.microphoneEnabled,
                     active = state.microphoneRecording,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -979,7 +980,7 @@ private fun CaptureChoicePanel(
                     state = state,
                     label = if (state.systemAudioRecording) "録音を止める\nDEVICE STOP" else "端末を録音\nDEVICE REC",
                     onConfirm = onToggleSystemAudioRecording,
-                    enabled = !state.microphoneRecording,
+                    enabled = inputPolicy.systemAudioEnabled,
                     active = state.systemAudioRecording,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )

@@ -274,4 +274,22 @@ class GuidedWorkflowTest {
         assertEquals("STARTING", captureSourceStatusLabel(SourceUiPhase.STARTING, true, true))
         assertEquals("NO SOURCE\nLOAD OR RECORD AUDIO", emptySourceWaveformLabel(isLoading = false))
     }
+
+    @Test
+    fun allCaptureEntrancesAreDisabledDuringProjectRecovery() {
+        val loading = captureInputPolicy(SamplerUiState(isLoading = true))
+        assertFalse(loading.fileEnabled)
+        assertFalse(loading.microphoneEnabled)
+        assertFalse(loading.systemAudioEnabled)
+
+        val idle = captureInputPolicy(SamplerUiState())
+        assertTrue(idle.fileEnabled)
+        assertTrue(idle.microphoneEnabled)
+        assertTrue(idle.systemAudioEnabled)
+
+        val microphoneRecording = captureInputPolicy(SamplerUiState(microphoneRecording = true))
+        assertFalse(microphoneRecording.fileEnabled)
+        assertTrue(microphoneRecording.microphoneEnabled)
+        assertFalse(microphoneRecording.systemAudioEnabled)
+    }
 }

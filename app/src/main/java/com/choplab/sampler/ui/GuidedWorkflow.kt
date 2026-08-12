@@ -80,6 +80,18 @@ fun captureSourceStatusLabel(
 fun emptySourceWaveformLabel(isLoading: Boolean): String =
     if (isLoading) "音声を読込中\nPLEASE WAIT" else "NO SOURCE\nLOAD OR RECORD AUDIO"
 
+data class CaptureInputPolicy(
+    val fileEnabled: Boolean,
+    val microphoneEnabled: Boolean,
+    val systemAudioEnabled: Boolean,
+)
+
+fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy = CaptureInputPolicy(
+    fileEnabled = !state.isLoading && !state.microphoneRecording && !state.systemAudioRecording,
+    microphoneEnabled = !state.isLoading && !state.systemAudioRecording,
+    systemAudioEnabled = !state.isLoading && !state.microphoneRecording,
+)
+
 fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
     if (usesLargeTextDeckMode(fontScale)) 7f else 8f
 

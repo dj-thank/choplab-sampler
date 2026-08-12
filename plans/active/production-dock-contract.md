@@ -37,10 +37,10 @@ Capture、Chop、Beat の下端操作を、同じ表示・有効状態・選択�
 - [x] 2026-08-13 — `scripts/validate_project.sh` と既存 `:app:testDebugUnitTest` baseline PASS。
 - [x] 2026-08-13 — Dock契約と復元状態／表示の focused tests を未実装参照で RED、実装後 GREEN。
 - [x] 2026-08-13 — `ProductionDockPolicy`、共通 handler renderer、autosave recovery reducer と truthful loading UI を実装。
-- [x] 2026-08-13 — final `scripts/validate_project.sh` PASS。Gradle `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1` BUILD SUCCESSFUL。168 tests / 37 suites、failures/errors/skips 0、Lint errors 0 / warnings 7。
+- [x] 2026-08-13 — final `scripts/validate_project.sh` PASS。Gradle `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1` BUILD SUCCESSFUL。169 tests / 37 suites、failures/errors/skips 0、Lint errors 0 / warnings 7。
 - [x] 2026-08-13 — `git diff --check` PASS、UI scroll API scan 0 matches。
-- [x] 2026-08-13 — APK `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`、31,613,938 bytes、SHA-256 `93C96CDC39D70A85BB6B264CA732D93510634EDF7AFD652EF93B2433FF6000CB`。package `com.choplab.sampler`、versionCode 19 / versionName 0.12.0、minSdk 29 / targetSdk 36、APK Signature Scheme v2。
-- [x] 2026-08-13 — Pixel 9a Android 17/API 37へ exact APKを `adb install -r`。端末Download／installed base／hostのサイズ・SHA-256一致。起動途中の `LOADING / 音声を読込中 / PLEASE WAIT`、復元後のCapture/Chop/Beat、各0 scrollable node、Chop/Beat Dock全項目、focused fatal/ANR 0を観測。
+- [x] 2026-08-13 — APK `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`、31,615,662 bytes、SHA-256 `8417FC1DC81F01442BFA7E6D0D3AB9EC4FC3F4379705B9F41B95A5927B696C38`。package `com.choplab.sampler`、versionCode 19 / versionName 0.12.0、minSdk 29 / targetSdk 36、APK Signature Scheme v2。
+- [x] 2026-08-13 — Pixel 9a Android 17/API 37へ exact APKを `adb install -r`。端末Download／installed base／hostのサイズ・SHA-256一致。起動途中の `LOADING / 音声を読込中 / PLEASE WAIT`、FILE/MIC REC/DEVICE REC親ボタンの`enabled=false`、復元後のCapture/Chop/Beat、各0 scrollable node、Chop/Beat Dock全項目、focused fatal/ANR 0を観測。
 - [x] 2026-08-13 — 実機の4 project archiveはinstall前、install直後、復元・工程移動後でサイズとSHA-256不変。
 
 ## Discoveries
@@ -51,7 +51,7 @@ Capture、Chop、Beat の下端操作を、同じ表示・有効状態・選択�
 
 ## Evidence
 
-- 実機: `work/pixel9a-v0120-dock-contract/final-exact-loading.{png,xml}`、`final-exact-capture.{png,xml}`、`final-exact-chop.{png,xml}`、`final-exact-beat.{png,xml}`、`installed-base-final.apk`。
+- 実機: `work/pixel9a-v0120-dock-contract/final3-loading.{png,xml}`、`final3-restored.png`、`final3-chop.xml`、`final3-beat.xml`、`installed-base-final3.apk`。
 - 保存hash: autosave `f9f96c49…8b43`、pending `45b17581…334`、previous `ed01bba6…ed71`、previous2 `0946a0d7…c45`。
 
 ## Rollback
