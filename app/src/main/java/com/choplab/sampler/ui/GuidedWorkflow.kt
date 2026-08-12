@@ -64,21 +64,6 @@ fun startChopPolicy(sourcePhase: SourceUiPhase): StartChopPolicy = StartChopPoli
     startSource = sourcePhase == SourceUiPhase.STOPPED,
 )
 
-enum class ProductionDockAction(val label: String) {
-    QUICK("クイック\nQUICK"),
-    STEPS("並べる詳細\nSTEPS"),
-    ADD("音を足す\nADD"),
-    SCRATCH("スクラッチ\nSCRATCH"),
-}
-
-fun beatProductionDockActions(): List<ProductionDockAction> =
-    listOf(
-        ProductionDockAction.QUICK,
-        ProductionDockAction.STEPS,
-        ProductionDockAction.ADD,
-        ProductionDockAction.SCRATCH,
-    )
-
 fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
     if (usesLargeTextDeckMode(fontScale)) 7f else 8f
 

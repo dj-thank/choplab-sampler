@@ -579,71 +579,52 @@ private fun ChopNextActionRow(
     onContinueToBeat: () -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
 ) {
-    val hasAssignedPad = state.pads.any(PadModel::isAssigned)
     ProductionDock(
         height = height,
         gap = gap,
-        buttons = listOf(
-            ProductionDockButton(
-                label = "ビートへ\nBEAT",
-                onClick = onContinueToBeat,
-                enabled = hasAssignedPad,
-                active = hasAssignedPad,
-                weight = 1.15f,
-            ),
-            ProductionDockButton(
-                label = "微調整\nPAD EDIT",
-                onClick = onOpenDetails,
-                enabled = state.selectedPadModel().isAssigned,
-            ),
-            ProductionDockButton(
-                label = "音を足す\nADD",
-                onClick = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
-            ),
-            ProductionDockButton(
-                label = "スクラッチ\nSCRATCH",
-                onClick = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
-                enabled = state.currentAudio != null || state.selectedPadModel().isAssigned,
-            ),
-        ),
+        items = chopProductionDockItems(state),
+        onIntent = { intent ->
+            when (intent) {
+                ProductionDockIntent.OPEN_BEAT -> onContinueToBeat()
+                ProductionDockIntent.OPEN_PAD_EDIT -> onOpenDetails()
+                ProductionDockIntent.OPEN_ADD -> onOpenLayerStudio(LayerStudioPage.DRUMS)
+                ProductionDockIntent.OPEN_SCRATCH -> onOpenLayerStudio(LayerStudioPage.SCRATCH)
+                ProductionDockIntent.RESET_ALL,
+                ProductionDockIntent.START_CHOP,
+                ProductionDockIntent.SHOW_QUICK,
+                ProductionDockIntent.SHOW_STEPS -> error("Unsupported Chop dock intent: $intent")
+            }
+        },
     )
 }
 
-private data class ProductionDockButton(
-    val label: String,
-    val onClick: () -> Unit,
-    val enabled: Boolean = true,
-    val active: Boolean? = null,
-    val weight: Float = 1f,
-    val confirmLabel: String? = null,
-)
-
 @Composable
 private fun ProductionDock(
-    buttons: List<ProductionDockButton>,
+    items: List<ProductionDockItem>,
     height: Dp,
     gap: Dp,
+    onIntent: (ProductionDockIntent) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
-        buttons.forEach { button ->
-            val modifier = Modifier.weight(button.weight).fillMaxHeight()
-            if (button.confirmLabel != null) {
+        items.forEach { item ->
+            val modifier = Modifier.weight(item.weight).fillMaxHeight()
+            if (item.confirmLabel != null) {
                 ConfirmActionButton(
-                    label = button.label,
-                    confirmLabel = button.confirmLabel,
-                    onConfirm = button.onClick,
-                    enabled = button.enabled,
+                    label = item.label,
+                    confirmLabel = item.confirmLabel,
+                    onConfirm = { onIntent(item.intent) },
+                    enabled = item.enabled,
                     modifier = modifier,
                 )
             } else {
                 MachineButton(
-                    label = button.label,
-                    onClick = button.onClick,
-                    enabled = button.enabled,
-                    active = button.active,
+                    label = item.label,
+                    onClick = { onIntent(item.intent) },
+                    enabled = item.enabled,
+                    active = item.active,
                     modifier = modifier,
                     compact = true,
                 )
@@ -885,8 +866,7 @@ private fun CaptureWorkspace(
                     onPitchChange = viewModel::setMasterPitch,
                 )
                 CaptureNextRow(
-                    audioReady = audio != null,
-                    sourcePhase = state.sourceUiPhase(),
+                    state = state,
                     height = metrics.productionDockHeightDp.dp,
                     onContinue = onContinue,
                     onReset = viewModel::resetProject,
@@ -923,8 +903,7 @@ private fun CaptureWorkspace(
                 onPitchChange = viewModel::setMasterPitch,
             )
             CaptureNextRow(
-                audioReady = audio != null,
-                sourcePhase = state.sourceUiPhase(),
+                state = state,
                 height = metrics.productionDockHeightDp.dp,
                 onContinue = onContinue,
                 onReset = viewModel::resetProject,
@@ -935,41 +914,26 @@ private fun CaptureWorkspace(
 
 @Composable
 private fun CaptureNextRow(
-    audioReady: Boolean,
-    sourcePhase: SourceUiPhase,
+    state: SamplerUiState,
     height: Dp,
     onContinue: () -> Unit,
     onReset: () -> Unit,
 ) {
-    val startLabel = when (sourcePhase) {
-        SourceUiPhase.STOPPED -> "チョップ開始\nSTART CHOP"
-        SourceUiPhase.STARTING,
-        SourceUiPhase.PLAYING -> "チョップへ\nOPEN CHOP"
-        SourceUiPhase.STOPPING -> "停止中\nPLEASE WAIT"
-    }
     ProductionDock(
         height = height,
         gap = 5.dp,
-        buttons = buildList {
-            if (audioReady) {
-                add(
-                    ProductionDockButton(
-                        label = "全部消して入れ直す\nRESET ALL",
-                        onClick = onReset,
-                        weight = 0.9f,
-                        confirmLabel = "もう一度で完全リセット",
-                    ),
-                )
+        items = captureProductionDockItems(state),
+        onIntent = { intent ->
+            when (intent) {
+                ProductionDockIntent.RESET_ALL -> onReset()
+                ProductionDockIntent.START_CHOP -> onContinue()
+                ProductionDockIntent.OPEN_BEAT,
+                ProductionDockIntent.OPEN_PAD_EDIT,
+                ProductionDockIntent.OPEN_ADD,
+                ProductionDockIntent.OPEN_SCRATCH,
+                ProductionDockIntent.SHOW_QUICK,
+                ProductionDockIntent.SHOW_STEPS -> error("Unsupported Capture dock intent: $intent")
             }
-            add(
-                ProductionDockButton(
-                    label = startLabel,
-                    onClick = onContinue,
-                    enabled = audioReady && sourcePhase != SourceUiPhase.STOPPING,
-                    active = audioReady && sourcePhase != SourceUiPhase.STOPPING,
-                    weight = 1.4f,
-                ),
-            )
         },
     )
 }
@@ -2278,29 +2242,23 @@ private fun BeatProductionDock(
     onOpenScratch: () -> Unit,
     onStepsVisibleChange: (Boolean) -> Unit,
 ) {
-    val buttons = beatProductionDockActions().map { action ->
-        when (action) {
-            ProductionDockAction.QUICK -> ProductionDockButton(
-                label = action.label,
-                onClick = { onStepsVisibleChange(false) },
-                active = !stepsVisible,
-            )
-            ProductionDockAction.STEPS -> ProductionDockButton(
-                label = action.label,
-                onClick = { onStepsVisibleChange(true) },
-                active = stepsVisible,
-            )
-            ProductionDockAction.ADD -> ProductionDockButton(
-                label = action.label,
-                onClick = onOpenAdd,
-            )
-            ProductionDockAction.SCRATCH -> ProductionDockButton(
-                label = action.label,
-                onClick = onOpenScratch,
-            )
-        }
-    }
-    ProductionDock(buttons = buttons, height = height, gap = 4.dp)
+    ProductionDock(
+        items = beatProductionDockItems(stepsVisible),
+        height = height,
+        gap = 4.dp,
+        onIntent = { intent ->
+            when (intent) {
+                ProductionDockIntent.SHOW_QUICK -> onStepsVisibleChange(false)
+                ProductionDockIntent.SHOW_STEPS -> onStepsVisibleChange(true)
+                ProductionDockIntent.OPEN_ADD -> onOpenAdd()
+                ProductionDockIntent.OPEN_SCRATCH -> onOpenScratch()
+                ProductionDockIntent.RESET_ALL,
+                ProductionDockIntent.START_CHOP,
+                ProductionDockIntent.OPEN_BEAT,
+                ProductionDockIntent.OPEN_PAD_EDIT -> error("Unsupported Beat dock intent: $intent")
+            }
+        },
+    )
 }
 
 @Composable
