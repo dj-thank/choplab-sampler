@@ -52,7 +52,6 @@ import com.choplab.sampler.model.canRequestStop
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.completeAutosaveRecoveryWithoutProject
 import com.choplab.sampler.model.drumKitApplyDecision
-import com.choplab.sampler.model.defaultMelodyChopPad
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.endRecordingSession
 import com.choplab.sampler.model.failAutosaveRecovery
@@ -65,6 +64,7 @@ import com.choplab.sampler.model.pendingSourceCommandAfterPlaybackRetarget
 import com.choplab.sampler.model.pendingSourceCommandAfterStartRequest
 import com.choplab.sampler.model.pendingSourceCommandAfterStopRequest
 import com.choplab.sampler.model.preserveAppliedSourceTruthWhileStopping
+import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.playbackRequestAllowedDuringRecording
 import com.choplab.sampler.model.recordPadStep
 import com.choplab.sampler.model.reconcilePendingSourceCommand
@@ -182,13 +182,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private enum class VocalFailureCleanupOwner {
+        RECORDER_CALLBACK,
+        STOP_OPERATION,
+    }
+
     private fun finishVocalRecordingFailure(
         message: String,
-        stopOperationOwnsCleanup: Boolean,
+        cleanupOwner: VocalFailureCleanupOwner,
     ) {
         var loopToStop: Int? = null
         mutableUiState.update { state ->
-            val finished = if (stopOperationOwnsCleanup) {
+            val finished = if (cleanupOwner == VocalFailureCleanupOwner.STOP_OPERATION) {
                 endRecordingSession(state, RecordingKind.VOCAL_OVERDUB)
             } else {
                 failRecordingSession(state, RecordingKind.VOCAL_OVERDUB)
@@ -389,7 +394,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 projectOperations.completeIfCurrent(operation) {
                     finishVocalRecordingFailure(
                         message = message,
-                        stopOperationOwnsCleanup = false,
+                        cleanupOwner = VocalFailureCleanupOwner.RECORDER_CALLBACK,
                     )
                 }
             }
@@ -444,7 +449,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         projectOperations.completeIfCurrent(operation) {
                             finishVocalRecordingFailure(
                                 message = throwable.message ?: "録音した声を読み込めませんでした",
-                                stopOperationOwnsCleanup = true,
+                                cleanupOwner = VocalFailureCleanupOwner.STOP_OPERATION,
                             )
                         }
                     }
@@ -452,7 +457,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 projectOperations.completeIfCurrent(operation) {
                     finishVocalRecordingFailure(
                         message = throwable.message ?: "声の録音を停止できません",
-                        stopOperationOwnsCleanup = true,
+                        cleanupOwner = VocalFailureCleanupOwner.STOP_OPERATION,
                     )
                 }
             }
@@ -1068,18 +1073,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun prepareDefaultChopDestination() {
-        mutableUiState.update { state ->
-            val nextEmpty = defaultMelodyChopPad(state.pads)
-            state.copy(
-                selectedBank = 0,
-                selectedPad = nextEmpty ?: (state.selectedPad % SamplerConfig.PADS_PER_BANK),
-                statusMessage = if (nextEmpty == null) {
-                    "BANK Aは満杯です。上書きするPADを選ぶか、不要なPADを消してください"
-                } else {
-                    state.statusMessage
-                },
-            )
-        }
+        mutableUiState.update(::prepareDefaultMelodyChopDestination)
     }
 
     fun capturePad(globalIndex: Int) {

@@ -173,6 +173,15 @@ fun defaultMelodyChopPad(pads: List<PadModel>): Int? {
         ?.globalIndex
 }
 
+fun prepareDefaultMelodyChopDestination(state: SamplerUiState): SamplerUiState {
+    val nextEmpty = defaultMelodyChopPad(state.pads)
+    return if (nextEmpty == null) {
+        state.copy(statusMessage = "BANK Aは満杯です。上書きするPADを選ぶか、不要なPADを消してください")
+    } else {
+        state.copy(selectedBank = 0, selectedPad = nextEmpty)
+    }
+}
+
 fun SamplerUiState.selectedPadModel(): PadModel = pads[selectedPad]
 
 fun SamplerUiState.sliceRanges(): List<SliceRange> {

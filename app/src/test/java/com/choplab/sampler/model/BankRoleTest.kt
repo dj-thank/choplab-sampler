@@ -40,6 +40,19 @@ class BankRoleTest {
         }
 
         assertNull(defaultMelodyChopPad(pads))
+
+        val selectedDrum = SamplerUiState(
+            selectedBank = SamplerConfig.DRUM_BANK_INDEX,
+            selectedPad = SamplerConfig.PADS_PER_BANK,
+            pads = pads,
+        )
+        val prepared = prepareDefaultMelodyChopDestination(selectedDrum)
+        assertEquals(selectedDrum.selectedBank, prepared.selectedBank)
+        assertEquals(selectedDrum.selectedPad, prepared.selectedPad)
+        assertEquals(
+            "BANK Aは満杯です。上書きするPADを選ぶか、不要なPADを消してください",
+            prepared.statusMessage,
+        )
     }
 
     @Test

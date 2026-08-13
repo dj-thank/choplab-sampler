@@ -437,15 +437,10 @@ private fun SliceMarkerHandle(
             )
             .semantics {
                 contentDescription = "チョップ$markerNumber の位置"
-                customActions = listOf(
-                    CustomAccessibilityAction("少し前へ") {
-                        onFrameChange(frame - accessibilityNudgeFrames)
-                        true
-                    },
-                    CustomAccessibilityAction("少し後へ") {
-                        onFrameChange(frame + accessibilityNudgeFrames)
-                        true
-                    },
+                customActions = waveformNudgeActions(
+                    frame = frame,
+                    nudgeFrames = accessibilityNudgeFrames,
+                    onFrameChange = onFrameChange,
                 )
             },
         contentAlignment = Alignment.TopCenter,
@@ -507,15 +502,10 @@ private fun SelectionHandle(
             )
             .semantics {
                 contentDescription = if (label == "S") "選択開始ハンドル" else "選択終了ハンドル"
-                customActions = listOf(
-                    CustomAccessibilityAction("少し前へ") {
-                        onFrameChange(frame - accessibilityNudgeFrames)
-                        true
-                    },
-                    CustomAccessibilityAction("少し後へ") {
-                        onFrameChange(frame + accessibilityNudgeFrames)
-                        true
-                    },
+                customActions = waveformNudgeActions(
+                    frame = frame,
+                    nudgeFrames = accessibilityNudgeFrames,
+                    onFrameChange = onFrameChange,
                 )
             },
         contentAlignment = Alignment.TopCenter,
@@ -536,6 +526,21 @@ private fun SelectionHandle(
         )
     }
 }
+
+private fun waveformNudgeActions(
+    frame: Int,
+    nudgeFrames: Int,
+    onFrameChange: (Int) -> Unit,
+): List<CustomAccessibilityAction> = listOf(
+    CustomAccessibilityAction("少し前へ") {
+        onFrameChange(frame - nudgeFrames)
+        true
+    },
+    CustomAccessibilityAction("少し後へ") {
+        onFrameChange(frame + nudgeFrames)
+        true
+    },
+)
 
 private fun DrawScope.drawFrameRegion(
     startFrame: Int,
