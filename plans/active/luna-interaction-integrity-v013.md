@@ -63,7 +63,7 @@ ChopLab の現在の固定コンソール UI を維持したまま、初心者�
 - [x] 2026-08-14 — Milestones 1-3 implementation and targeted tests.
 - [x] 2026-08-14 — Full local gate and independent Luna/code review.
 - [ ] 2026-08-14 — Pixel data-preserving install and evidence.
-- [ ] 2026-08-14 — Commit, push, CI, public v0.13.0 preview release, and public readback.
+- [x] 2026-08-14 — Commit, push, CI, public v0.13.0 preview release, and public readback.
 
 ## Discoveries
 
@@ -95,6 +95,8 @@ ChopLab の現在の固定コンソール UI を維持したまま、初心者�
 - Exact local APK: 30,804,939 bytes; SHA-256 `3438CCD65D3C84BAEA47B9385B1EF465ED9A2E517C155D7A7E0C93E4D6FFB56B`; versionCode 20 / versionName 0.13.0.
 - Emulator result: exact APK installed in place on `emulator-5588`; installed-base hash matched; three retained archives remained byte-identical; cold launch PASS; 0 scrollable nodes; 0 package exit-info crash/ANR reasons.
 - Physical Pixel result: pending because serial `5A121JEBF08094` is not currently enumerated.
+- Provider/public result: branch, PR, tag, and release runs `31724970140`, `31724972880`, `31725302532`, and `31725302549` PASS; annotated tag peels to `61f1044610ee172785d87478659862fb4f342be3`.
+- Public artifact: 30,804,939 bytes; SHA-256 `B25E018C8743D9EC7459FDDF5698F008E41D34D7FB34336961865B34F867C86A`; GitHub digest, sidecar, authenticated and anonymous downloads match; repository/Release/APK return HTTP 200.
 
 ## Risks and rollback
 

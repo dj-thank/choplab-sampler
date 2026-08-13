@@ -18,7 +18,12 @@
 - emulator `emulator-5588`, Android 16/API 36: exact data-preserving `adb install -r` PASS; pulled installed-base size/hash equals host APK; cold-launch `MainActivity` PASS; package exit-info crash/ANR reasons 0
 - emulator retained archives unchanged before install, after install, and after launch: 10,529-byte autosave `06689B6194D18E3808E7CBB9533F8B9D4A13D0093676B39DA89046362E5B1128`; 23,614-byte previous `5D81576BDB43F0ABD549947B38C050698A8610EDF932288DD8225E1AA3471BF8`; 23,594-byte previous2 `2E0111AD2F586344A23071A69D1455605B573A98851C60B43CD32821E51B2D0B`
 - emulator UI: Chop hierarchy 175 package nodes, scrollable nodes 0; A Melody PAD 01-16 all visibly empty; evidence `work/v013-emulator/v013.{png,xml}` and `installed-base.apk`
-- current boundary: physical Pixel 9a `5A121JEBF08094` absent from ADB, so physical `DEVICE_PASS`, touch/audio/TalkBack, exact Pixel Download copy, public GitHub release, and `HUMAN_GO` remain pending
+- provider runs: branch push `31724970140`, PR `31724972880`, tag verification `31725302532`, and release `31725302549` all PASS for exact commit `61f1044610ee172785d87478659862fb4f342be3`
+- annotated tag `v0.13.0-preview.1` peels to exact commit; public prerelease `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.13.0-preview.1`
+- public APK: 30,804,939 bytes; SHA-256 `B25E018C8743D9EC7459FDDF5698F008E41D34D7FB34336961865B34F867C86A`; GitHub digest, checksum sidecar, authenticated reverse download, and anonymous reverse download all match
+- public metadata: package `com.choplab.sampler`; versionCode 20 / versionName 0.13.0; targetSdk 36; APK Signature Scheme v2; CI debug certificate SHA-256 `5B499749A2C9392A90DB2C099E6EAD00D49D90A89DC1B9A36577959EED411182`
+- anonymous HTTP: public repository 200, Release page 200, direct APK 200; scoped `PUBLIC_PASS` established
+- current boundary: physical Pixel 9a `5A121JEBF08094` absent from ADB/mDNS/Windows USB inventory, so physical `DEVICE_PASS`, touch/audio/TalkBack, exact Pixel Download copy, and `HUMAN_GO` remain pending; CI and local debug certificates differ, so no data-destructive public APK replacement was attempted
 
 ## 2026-08-13 v0.12.0 Production Dock contract and autosave recovery truth
 
