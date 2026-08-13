@@ -60,8 +60,8 @@ ChopLab の現在の固定コンソール UI を維持したまま、初心者�
 - [x] 2026-08-14 — Repository, branch, dirty state, Luna runtime, and baseline reports verified.
 - [x] 2026-08-14 — Twenty diverse Luna review packets completed and checked against source.
 - [x] 2026-08-14 — Adopt/reject synthesis completed; false findings about REC-arm loss, pending autosave priority, and scratch smoother duration rejected.
-- [ ] 2026-08-14 — Milestones 1-3 implementation and targeted tests.
-- [ ] 2026-08-14 — Full local gate and independent Luna/code review.
+- [x] 2026-08-14 — Milestones 1-3 implementation and targeted tests.
+- [x] 2026-08-14 — Full local gate and independent Luna/code review.
 - [ ] 2026-08-14 — Pixel data-preserving install and evidence.
 - [ ] 2026-08-14 — Commit, push, CI, public v0.13.0 preview release, and public readback.
 
@@ -82,13 +82,19 @@ ChopLab の現在の固定コンソール UI を維持したまま、初心者�
 - 2026-08-14 — Use a fixed indexed latest-wins mailbox for PAD snapshots so stale audio cannot survive bounded queue rejection.
 - 2026-08-14 — Preserve empty-sequence PLAY as valid professional behavior, but make REC auto-start and explain an empty pattern instead of blocking playback.
 - 2026-08-14 — Defer audio-focus/background-mic policy and stable public signing to explicit future work; neither can be truthfully completed by UI-only changes.
+- 2026-08-14 — Adopt the Spec review correction for a full Bank A: destination preparation is a pure no-op on bank and PAD selection until the user explicitly chooses an overwrite or clears a PAD.
+- 2026-08-14 — Keep repository-local Luna concurrency at 20 because the user explicitly requested an approximately 20-way review fan-out; do not treat it as a product runtime setting.
 
 ## Validation log
 
 - Command: `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 --no-watch-fs`
 - Date/environment: 2026-08-14, Windows, repository-bundled Android SDK/JDK configuration.
 - Baseline result: report-backed 179/179 tests, lint 0 errors/10 warnings, APK generated; direct process result not retained due 120-second caller timeout.
-- Final result: pending.
+- Final result: BUILD SUCCESSFUL, direct exit 0; 194 tests in 42 suites, failures/errors/skips 0; Lint errors 0/advisories 10; assemble PASS.
+- Additional local result: configured `scripts/validate_project.sh` PASS; `git diff --check` PASS; UI scroll API scan 0.
+- Exact local APK: 30,804,939 bytes; SHA-256 `3438CCD65D3C84BAEA47B9385B1EF465ED9A2E517C155D7A7E0C93E4D6FFB56B`; versionCode 20 / versionName 0.13.0.
+- Emulator result: exact APK installed in place on `emulator-5588`; installed-base hash matched; three retained archives remained byte-identical; cold launch PASS; 0 scrollable nodes; 0 package exit-info crash/ANR reasons.
+- Physical Pixel result: pending because serial `5A121JEBF08094` is not currently enumerated.
 
 ## Risks and rollback
 

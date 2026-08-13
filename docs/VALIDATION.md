@@ -2,6 +2,24 @@
 
 作成日: 2026-07-15
 
+## 2026-08-14 v0.13.0 Luna interaction integrity candidate
+
+- review fan-out: 20 independent `gpt-5.6-luna` medium/default packets, followed by fixed-point Standards/Spec passes and one final independent verifier; every accepted child runtime was verified; final verifier found no P0-P2 blocker
+- review-driven correction: the first full-Bank-A change still selected A01 when another bank was active; final policy keeps bank/selection unchanged and requires explicit overwrite/clear; focused regression passes
+- implemented contracts: completed-tap-only destructive Chop, long-press trim safety, A-only empty destination, REC auto-start plus deterministic first hit, truthful stage availability, project/source reconciliation, operation-specific permission copy, fixed indexed PAD mailbox, out-of-band transport Stop All, STOPPING-safe recorder failures, failed-vocal loop cleanup, revision-safe analysis, event-rate-independent Scratch, target-correct PAD range, cached waveform envelopes, bounded readouts, and TalkBack waveform actions
+- open-source boundary: original deterministic built-in drum synthesis only; no downloaded artist-named kits; `PRIVACY.md`, `NOTICE`, issue templates, README links, and feature/evidence matrix added
+- final Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL, direct exit 0
+- unit tests: 194 tests / 42 suites; failures 0, errors 0, skipped 0
+- Android Lint: errors 0, warnings/advisories 10; assemble PASS
+- configured `scripts/validate_project.sh`: PASS; pure Kotlin smoke PASS; four Android XML files parsed; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`
+- `git diff --check`: PASS; UI source scroll API matches: 0
+- local APK: `outputs/ChopLab-v0.13.0-luna-interaction-integrity-local-debug.apk`; 30,804,939 bytes; SHA-256 `3438CCD65D3C84BAEA47B9385B1EF465ED9A2E517C155D7A7E0C93E4D6FFB56B`
+- metadata: package `com.choplab.sampler`; versionCode 20 / versionName 0.13.0; minSdk 29 / targetSdk 36; APK Signature Scheme v2; local debug certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- emulator `emulator-5588`, Android 16/API 36: exact data-preserving `adb install -r` PASS; pulled installed-base size/hash equals host APK; cold-launch `MainActivity` PASS; package exit-info crash/ANR reasons 0
+- emulator retained archives unchanged before install, after install, and after launch: 10,529-byte autosave `06689B6194D18E3808E7CBB9533F8B9D4A13D0093676B39DA89046362E5B1128`; 23,614-byte previous `5D81576BDB43F0ABD549947B38C050698A8610EDF932288DD8225E1AA3471BF8`; 23,594-byte previous2 `2E0111AD2F586344A23071A69D1455605B573A98851C60B43CD32821E51B2D0B`
+- emulator UI: Chop hierarchy 175 package nodes, scrollable nodes 0; A Melody PAD 01-16 all visibly empty; evidence `work/v013-emulator/v013.{png,xml}` and `installed-base.apk`
+- current boundary: physical Pixel 9a `5A121JEBF08094` absent from ADB, so physical `DEVICE_PASS`, touch/audio/TalkBack, exact Pixel Download copy, public GitHub release, and `HUMAN_GO` remain pending
+
 ## 2026-08-13 v0.12.0 Production Dock contract and autosave recovery truth
 
 - focused TDD RED/GREEN: Capture/Chop/Beat Dock order and enabled/active/confirmation state; autosave recovery begin/empty/failure reducers; Capture status and empty-waveform loading copy
