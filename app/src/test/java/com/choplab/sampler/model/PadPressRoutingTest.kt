@@ -281,4 +281,12 @@ class PadPressRoutingTest {
             resolvePerformancePadPressAction(drum, recordArmed = false, transportPlaying = true),
         )
     }
+
+    @Test
+    fun immediateHitAfterRecordStartsLandsOnTheFirstStep() {
+        assertEquals(0, liveRecordingStep(-1))
+        assertEquals(0, liveRecordingStep(0))
+        assertEquals(15, liveRecordingStep(15))
+        assertEquals(0, liveRecordingStep(16))
+    }
 }

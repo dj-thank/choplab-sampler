@@ -54,7 +54,10 @@ class AudioDecoder(private val context: Context) {
             var outputSampleRate = inputFormat.intOrDefault(MediaFormat.KEY_SAMPLE_RATE, 48_000)
             var outputChannels = inputFormat.intOrDefault(MediaFormat.KEY_CHANNEL_COUNT, 1)
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
-            val output = Pcm16ArrayBuilder(initialCapacity = estimateInitialCapacity(durationUs, outputSampleRate))
+            val output = Pcm16ArrayBuilder(
+                initialCapacity = estimateInitialCapacity(durationUs, outputSampleRate),
+                maximumSize = MAX_MONO_FRAMES,
+            )
             val info = MediaCodec.BufferInfo()
             var inputEnded = false
             var outputEnded = false
@@ -126,9 +129,6 @@ class AudioDecoder(private val context: Context) {
                                     channelCount = outputChannels,
                                     destination = output,
                                 )
-                                if (output.size > MAX_MONO_FRAMES) {
-                                    error("展開後の音声が大きすぎます。短い範囲に切った音声を使用してください")
-                                }
                             }
                             outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                             decoder.releaseOutputBuffer(outputIndex, false)
@@ -255,28 +255,41 @@ class AudioDecoder(private val context: Context) {
     private fun MediaFormat.intOrDefault(key: String, defaultValue: Int): Int =
         if (containsKey(key)) getInteger(key) else defaultValue
 
-    private class Pcm16ArrayBuilder(initialCapacity: Int) {
-        private var values = ShortArray(initialCapacity.coerceAtLeast(16))
-        var size: Int = 0
-            private set
-
-        fun append(value: Float) {
-            if (size == values.size) values = values.copyOf(values.size * 2)
-            val normalized = value.coerceIn(-1f, 1f)
-            values[size++] = when {
-                normalized <= -1f -> Short.MIN_VALUE
-                normalized >= 1f -> Short.MAX_VALUE
-                else -> (normalized * Short.MAX_VALUE).roundToInt().toShort()
-            }
-        }
-
-        fun toArray(): ShortArray = values.copyOf(size)
-    }
-
     private companion object {
         const val CODEC_TIMEOUT_US = 10_000L
         const val MAX_IDLE_POLLS = 500
         const val MAX_DURATION_US = 10L * 60L * 1_000_000L
         const val MAX_MONO_FRAMES = 30_000_000
     }
+}
+
+internal class Pcm16ArrayBuilder(
+    initialCapacity: Int,
+    private val maximumSize: Int,
+) {
+    init {
+        require(maximumSize > 0) { "maximumSize must be positive" }
+    }
+
+    private var values = ShortArray(initialCapacity.coerceIn(1, maximumSize))
+    var size: Int = 0
+        private set
+
+    fun append(value: Float) {
+        if (size >= maximumSize) {
+            error("展開後の音声が大きすぎます。短い範囲に切った音声を使用してください")
+        }
+        if (size == values.size) {
+            val nextSize = minOf(maximumSize, values.size.toLong().times(2L).toInt())
+            values = values.copyOf(nextSize)
+        }
+        val normalized = value.coerceIn(-1f, 1f)
+        values[size++] = when {
+            normalized <= -1f -> Short.MIN_VALUE
+            normalized >= 1f -> Short.MAX_VALUE
+            else -> (normalized * Short.MAX_VALUE).roundToInt().toShort()
+        }
+    }
+
+    fun toArray(): ShortArray = values.copyOf(size)
 }

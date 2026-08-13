@@ -1,6 +1,7 @@
 package com.choplab.sampler.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class BankRoleTest {
@@ -25,6 +26,20 @@ class BankRoleTest {
         }
 
         assertEquals(16, defaultMelodyChopPad(pads))
+    }
+
+    @Test
+    fun fullMelodyBankHasNoImplicitA01OverwriteTarget() {
+        val audio = PcmAudio(name = "used", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index < SamplerConfig.PADS_PER_BANK) {
+                PadModel(index, audio = audio, startFrame = 0, endFrame = 2)
+            } else {
+                PadModel(index)
+            }
+        }
+
+        assertNull(defaultMelodyChopPad(pads))
     }
 
     @Test

@@ -107,4 +107,28 @@ class RecordingSessionPolicyTest {
 
         assertEquals(stopping.recordingSession, lateServiceObservation.recordingSession)
     }
+
+    @Test
+    fun lateWorkerFailureCannotFinishAStopOwnedByAnotherCoroutine() {
+        val recording = SamplerUiState(
+            recordingSession = RecordingSession.Active(
+                RecordingKind.SOURCE_MICROPHONE,
+                RecordingPhase.RECORDING,
+            ),
+        )
+        val stopping = stopRecordingSession(recording, RecordingKind.SOURCE_MICROPHONE)
+
+        assertEquals(
+            RecordingSession.Idle,
+            failRecordingSession(recording, RecordingKind.SOURCE_MICROPHONE).recordingSession,
+        )
+        assertEquals(
+            stopping.recordingSession,
+            failRecordingSession(stopping, RecordingKind.SOURCE_MICROPHONE).recordingSession,
+        )
+        assertEquals(
+            stopping.recordingSession,
+            failRecordingSession(stopping, RecordingKind.VOCAL_OVERDUB).recordingSession,
+        )
+    }
 }

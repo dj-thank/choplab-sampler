@@ -19,6 +19,8 @@ Android 10以降で動くモバイル・サンプラー **おとひろい（Chop
 
 リリースAPKは現時点ではGitHub Actionsのデバッグ署名による開発プレビューです。端末によっては、別のビルドへ更新する前に既存版のアンインストールが必要です。アンインストール前に「完成」から`.choplab`制作ファイルを書き出してください。個人データを扱う前に、コードと権限要求を確認してください。
 
+録音、保存、権限、端末内データの扱いは[`PRIVACY.md`](PRIVACY.md)、内蔵ドラム音と第三者表示は[`NOTICE`](NOTICE)に記載しています。内蔵5キットはダウンロード音源ではなく、このリポジトリのコードが生成するオリジナルの決定論的PCMです。
+
 ## 現在の範囲
 
 このリポジトリは、次の二層を明確に分けています。
@@ -162,7 +164,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## ライセンス
 
-アプリ固有コードはMIT Licenseです。依存ライブラリ、Gradle Wrapper、Oboeなどは各ライセンスに従います。AKAI、AKAI Professional、MPCは各権利者の商標です。
+アプリ固有コードは[`MIT License`](LICENSE)です。依存ライブラリ、Gradle Wrapper、Oboeなどは各ライセンスに従います。追加表示は[`NOTICE`](NOTICE)を参照してください。AKAI、AKAI Professional、MPCは各権利者の商標です。
 
 ## コントリビューション
 

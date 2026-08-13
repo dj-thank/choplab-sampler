@@ -39,11 +39,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
@@ -88,6 +92,14 @@ fun WaveformEditor(
     val visibleStart = (maximumVisibleStart * scroll).roundToInt().coerceIn(0, maximumVisibleStart)
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
     val widthPx = canvasSize.width.toFloat().coerceAtLeast(1f)
+    val waveformEnvelope = remember(audio.id, visibleStart, visibleEnd, canvasSize.width) {
+        buildWaveformEnvelope(
+            samples = audio.samples,
+            visibleStart = visibleStart,
+            visibleEnd = visibleEnd,
+            pixelWidth = canvasSize.width,
+        )
+    }
 
     val waveformColor = MaterialTheme.colorScheme.primary
     val zeroLineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
@@ -124,6 +136,13 @@ fun WaveformEditor(
                                 .coerceIn(0, totalFrames - 1)
                             onWaveformTap(frame)
                         }
+                    }
+                    .semantics {
+                        contentDescription = if (manualChopEnabled) {
+                            "音声波形。タップした位置にチョップを追加"
+                        } else {
+                            "音声波形。タップした位置へ移動"
+                        }
                     },
             ) {
                 drawRect(backgroundColor)
@@ -151,10 +170,8 @@ fun WaveformEditor(
                     )
                 }
 
-                drawWaveform(
-                    samples = audio.samples,
-                    visibleStart = visibleStart,
-                    visibleEnd = visibleEnd,
+                drawWaveformEnvelope(
+                    envelope = waveformEnvelope,
                     color = waveformColor,
                 )
 
@@ -242,6 +259,12 @@ fun WaveformEditor(
                     "選択 ${formatTime(rangeStartFrame, audio.sampleRate)} – ${formatTime(rangeEndFrame, audio.sampleRate)}",
                     color = resolvedReadoutColor,
                     fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp),
                 )
                 Text(formatTime(visibleEnd, audio.sampleRate), color = resolvedReadoutColor, fontSize = 11.sp)
             }
@@ -397,6 +420,7 @@ private fun SliceMarkerHandle(
         val frameDelta = (accumulatedDragPx / canvasWidthPx * visibleFrames).roundToInt()
         onFrameChange(dragOriginFrame + frameDelta)
     }
+    val accessibilityNudgeFrames = (visibleFrames / 100).coerceAtLeast(1)
 
     Box(
         modifier = Modifier
@@ -410,7 +434,20 @@ private fun SliceMarkerHandle(
                     dragOriginFrame = frame
                     accumulatedDragPx = 0f
                 },
-            ),
+            )
+            .semantics {
+                contentDescription = "チョップ$markerNumber の位置"
+                customActions = listOf(
+                    CustomAccessibilityAction("少し前へ") {
+                        onFrameChange(frame - accessibilityNudgeFrames)
+                        true
+                    },
+                    CustomAccessibilityAction("少し後へ") {
+                        onFrameChange(frame + accessibilityNudgeFrames)
+                        true
+                    },
+                )
+            },
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
@@ -453,6 +490,7 @@ private fun SelectionHandle(
         val frameDelta = (accumulatedDragPx / canvasWidthPx * visibleFrames).roundToInt()
         onFrameChange(dragOriginFrame + frameDelta)
     }
+    val accessibilityNudgeFrames = (visibleFrames / 100).coerceAtLeast(1)
 
     Box(
         modifier = Modifier
@@ -466,7 +504,20 @@ private fun SelectionHandle(
                     dragOriginFrame = frame
                     accumulatedDragPx = 0f
                 },
-            ),
+            )
+            .semantics {
+                contentDescription = if (label == "S") "選択開始ハンドル" else "選択終了ハンドル"
+                customActions = listOf(
+                    CustomAccessibilityAction("少し前へ") {
+                        onFrameChange(frame - accessibilityNudgeFrames)
+                        true
+                    },
+                    CustomAccessibilityAction("少し後へ") {
+                        onFrameChange(frame + accessibilityNudgeFrames)
+                        true
+                    },
+                )
+            },
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
@@ -498,22 +549,32 @@ private fun DrawScope.drawFrameRegion(
     if (right > left) drawRect(color, topLeft = Offset(left, 0f), size = androidx.compose.ui.geometry.Size(right - left, size.height))
 }
 
-private fun DrawScope.drawWaveform(
+internal data class WaveformEnvelope(
+    val minimums: FloatArray,
+    val maximums: FloatArray,
+    val pixelStep: Int,
+)
+
+internal fun buildWaveformEnvelope(
     samples: ShortArray,
     visibleStart: Int,
     visibleEnd: Int,
-    color: Color,
-) {
-    if (samples.isEmpty() || visibleEnd <= visibleStart) return
-    val pixelWidth = size.width.roundToInt().coerceAtLeast(1)
+    pixelWidth: Int,
+    pixelStep: Int = 2,
+): WaveformEnvelope {
+    if (samples.isEmpty() || visibleEnd <= visibleStart || pixelWidth <= 0) {
+        return WaveformEnvelope(FloatArray(0), FloatArray(0), pixelStep.coerceAtLeast(1))
+    }
+    val safePixelStep = pixelStep.coerceAtLeast(1)
+    val bucketCount = (pixelWidth + safePixelStep - 1) / safePixelStep
+    val minimums = FloatArray(bucketCount)
+    val maximums = FloatArray(bucketCount)
     val frameSpan = visibleEnd - visibleStart
-    val centerY = size.height / 2f
-    val amplitude = size.height * 0.46f
-
-    var x = 0
-    while (x < pixelWidth) {
+    var bucket = 0
+    while (bucket < bucketCount) {
+        val x = bucket * safePixelStep
         val frameFrom = visibleStart + (frameSpan.toLong() * x / pixelWidth).toInt()
-        val nextX = (x + 2).coerceAtMost(pixelWidth)
+        val nextX = (x + safePixelStep).coerceAtMost(pixelWidth)
         val frameTo = visibleStart + (frameSpan.toLong() * nextX / pixelWidth).toInt()
         val safeFrom = frameFrom.coerceIn(0, samples.lastIndex)
         val safeTo = frameTo.coerceIn(safeFrom + 1, samples.size)
@@ -528,14 +589,30 @@ private fun DrawScope.drawWaveform(
             if (value > maximum) maximum = value
             frame += sampleStep
         }
+        minimums[bucket] = minimum
+        maximums[bucket] = maximum
+        bucket++
+    }
+    return WaveformEnvelope(minimums, maximums, safePixelStep)
+}
 
+private fun DrawScope.drawWaveformEnvelope(
+    envelope: WaveformEnvelope,
+    color: Color,
+) {
+    if (envelope.minimums.isEmpty()) return
+    val centerY = size.height / 2f
+    val amplitude = size.height * 0.46f
+    var bucket = 0
+    while (bucket < envelope.minimums.size) {
+        val x = bucket * envelope.pixelStep
         drawLine(
             color = color,
-            start = Offset(x.toFloat(), centerY - maximum * amplitude),
-            end = Offset(x.toFloat(), centerY - minimum * amplitude),
+            start = Offset(x.toFloat(), centerY - envelope.maximums[bucket] * amplitude),
+            end = Offset(x.toFloat(), centerY - envelope.minimums[bucket] * amplitude),
             strokeWidth = 1.5f,
         )
-        x += 2
+        bucket++
     }
 }
 

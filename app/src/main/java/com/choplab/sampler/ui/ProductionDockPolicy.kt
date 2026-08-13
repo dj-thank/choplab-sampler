@@ -42,7 +42,7 @@ fun captureProductionDockItems(state: SamplerUiState): List<ProductionDockItem> 
             add(
                 ProductionDockItem(
                     intent = ProductionDockIntent.RESET_ALL,
-                    label = "全部消して入れ直す\nRESET ALL",
+                    label = "プロジェクトをリセット\nRESET ALL",
                     weight = 0.9f,
                     confirmLabel = "もう一度で完全リセット",
                 ),

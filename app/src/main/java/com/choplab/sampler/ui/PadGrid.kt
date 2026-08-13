@@ -147,6 +147,11 @@ private fun PerformancePad(
         else -> Color(0xFF91825C)
     }
     val description = padAccessibilityDescription(pad, captureMode, sourcePhase)
+    val deferDestructiveCapture = shouldDeferDestructiveCaptureUntilTap(
+        assigned = pad.isAssigned,
+        captureMode = captureMode,
+        sourcePhase = sourcePhase,
+    )
 
     BoxWithConstraints(
         modifier = modifier
@@ -159,6 +164,9 @@ private fun PerformancePad(
             )
             .pointerInput(pad.globalIndex, pad.isAssigned, captureMode, sourcePhase) {
                 detectTapGestures(
+                    onTap = {
+                        if (deferDestructiveCapture) onTrigger()
+                    },
                     onLongPress = {
                         if (pad.isAssigned) {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -170,7 +178,9 @@ private fun PerformancePad(
                         pressed = true
                         try {
                             onSelect()
-                            if (captureMode || pad.isAssigned) onTrigger()
+                            if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
+                                onTrigger()
+                            }
                             tryAwaitRelease()
                         } finally {
                             if (pad.isAssigned) onRelease()
@@ -266,7 +276,9 @@ internal fun padAccessibilityDescription(
 ): String = buildString {
     append("PAD %02d".format(pad.indexInBank + 1))
     append(if (pad.isAssigned) " 割り当て済み" else " 空")
-    if (pad.isAssigned) {
+    if (pad.isAssigned && captureMode && sourcePhase == SourceUiPhase.PLAYING) {
+        append("。タップで現在位置を上書き。長押しで微調整")
+    } else if (pad.isAssigned) {
         append("。タップで試聴。長押しで微調整")
     } else if (sourcePhase == SourceUiPhase.STARTING) {
         append("。再生準備中。音が鳴るまで選択のみ")
@@ -276,6 +288,12 @@ internal fun padAccessibilityDescription(
         append("。現在位置をチョップ")
     }
 }
+
+internal fun shouldDeferDestructiveCaptureUntilTap(
+    assigned: Boolean,
+    captureMode: Boolean,
+    sourcePhase: SourceUiPhase,
+): Boolean = assigned && captureMode && sourcePhase == SourceUiPhase.PLAYING
 
 private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
     val audio = pad.audio ?: return FloatArray(0)

@@ -4,6 +4,8 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SourceUiPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PadGridAccessibilityTest {
@@ -31,6 +33,46 @@ class PadGridAccessibilityTest {
                 pad = PadModel(1),
                 captureMode = false,
                 sourcePhase = SourceUiPhase.STARTING,
+            ),
+        )
+    }
+
+    @Test
+    fun destructiveAssignedCaptureWaitsForCompletedTapSoLongPressCanOnlyEdit() {
+        assertTrue(
+            shouldDeferDestructiveCaptureUntilTap(
+                assigned = true,
+                captureMode = true,
+                sourcePhase = SourceUiPhase.PLAYING,
+            ),
+        )
+        assertFalse(
+            shouldDeferDestructiveCaptureUntilTap(
+                assigned = false,
+                captureMode = true,
+                sourcePhase = SourceUiPhase.PLAYING,
+            ),
+        )
+        assertFalse(
+            shouldDeferDestructiveCaptureUntilTap(
+                assigned = true,
+                captureMode = false,
+                sourcePhase = SourceUiPhase.PLAYING,
+            ),
+        )
+    }
+
+    @Test
+    fun assignedCaptureExplainsThatTapOverwritesOnlyWhileSourceIsPlaying() {
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val assignedPad = PadModel(0, audio, 0, 50)
+
+        assertEquals(
+            "PAD 01 割り当て済み。タップで現在位置を上書き。長押しで微調整",
+            padAccessibilityDescription(
+                assignedPad,
+                captureMode = true,
+                sourcePhase = SourceUiPhase.PLAYING,
             ),
         )
     }

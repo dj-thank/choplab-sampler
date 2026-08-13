@@ -1,0 +1,26 @@
+ChopLab notices
+Copyright (c) 2026 ChopLab contributors
+
+Built-in drum kits
+-------------------
+
+The DUSTY JAZZ, BOOM BAP, VINYL SOUL, LO-FI TAPE, and CLEAN STUDIO kits are
+original deterministic PCM synthesis implemented in
+app/src/main/java/com/choplab/sampler/audio/BuiltInDrumKits.kt. They do not
+contain copied or downloaded third-party drum recordings. The implementation
+and generated sounds are distributed with ChopLab under the MIT License.
+
+Third-party software
+--------------------
+
+AndroidX, Jetpack Compose, Kotlin, Gradle, and other build/runtime dependencies
+remain subject to their respective licenses. Dependency coordinates are listed
+in app/build.gradle.kts and the Gradle version catalog/build configuration.
+
+Trademarks
+----------
+
+AKAI, AKAI Professional, and MPC are trademarks of their respective owners.
+ChopLab is an independent open-source project and is not affiliated with or
+endorsed by those owners. No third-party product logo, firmware, project format,
+or trade dress is included.

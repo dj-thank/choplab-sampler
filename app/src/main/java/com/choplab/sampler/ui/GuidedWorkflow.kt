@@ -37,6 +37,16 @@ fun restoreWorkflowStage(savedName: String?): WorkflowStage =
 fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
     if (hasAudio) WorkflowStage.CHOP else WorkflowStage.CAPTURE
 
+fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean = when (stage) {
+    WorkflowStage.CAPTURE -> true
+    WorkflowStage.CHOP -> state.currentAudio != null
+    WorkflowStage.BEAT -> state.pads.any(PadModel::isAssigned)
+    WorkflowStage.FINISH -> state.currentAudio != null || state.pads.any(PadModel::isAssigned)
+}
+
+fun reconcileWorkflowStage(stage: WorkflowStage, state: SamplerUiState): WorkflowStage =
+    if (workflowStageEnabled(stage, state)) stage else initialWorkflowStage(state.currentAudio != null)
+
 fun workflowStageKeepsSourcePlayback(stage: WorkflowStage): Boolean =
     stage == WorkflowStage.CHOP
 
@@ -162,7 +172,7 @@ fun recordingHeaderPresentation(session: RecordingSession): RecordingHeaderPrese
     val stopLabel = when {
         active.phase == RecordingPhase.STOPPING -> "停止・保存中\nPLEASE WAIT"
         active.kind == RecordingKind.SOURCE_MICROPHONE -> "録音を停止\nMIC STOP"
-        active.kind == RecordingKind.SOURCE_SYSTEM_AUDIO -> "端末を停止\nDEVICE STOP"
+        active.kind == RecordingKind.SOURCE_SYSTEM_AUDIO -> "録音を停止\nDEVICE STOP"
         else -> "声を保存\nVOICE STOP"
     }
     return RecordingHeaderPresentation(
@@ -227,7 +237,7 @@ fun chopSessionPresentation(
         guidance = if (assignedPadCount <= 0) {
             "空PADを叩くと、その瞬間からチョップ"
         } else {
-            "空PAD＝追加／音ありPAD＝試聴・長押し微調整"
+            "空PAD＝追加／音ありPAD＝タップ上書き・長押し微調整"
         },
     )
     SourceUiPhase.STOPPING -> ChopSessionPresentation(

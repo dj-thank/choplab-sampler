@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: セキュリティ上の問題
+    url: https://github.com/dj-thank/choplab-sampler/security/advisories/new
+    about: 公開 Issue に詳細を書かず、非公開で報告してください。

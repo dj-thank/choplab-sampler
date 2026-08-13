@@ -82,7 +82,7 @@ class GuidedWorkflowTest {
 
         val continuing = chopSessionPresentation(SourceUiPhase.PLAYING, assignedPadCount = 1)
         assertTrue(continuing.captureMode)
-        assertEquals("空PAD＝追加／音ありPAD＝試聴・長押し微調整", continuing.guidance)
+        assertEquals("空PAD＝追加／音ありPAD＝タップ上書き・長押し微調整", continuing.guidance)
 
         val stopping = chopSessionPresentation(SourceUiPhase.STOPPING, assignedPadCount = 1)
         assertFalse(stopping.captureMode)
@@ -146,6 +146,32 @@ class GuidedWorkflowTest {
     fun newProjectsStartAtCaptureAndLoadedProjectsStartAtPlay() {
         assertEquals(WorkflowStage.CAPTURE, initialWorkflowStage(hasAudio = false))
         assertEquals(WorkflowStage.CHOP, initialWorkflowStage(hasAudio = true))
+    }
+
+    @Test
+    fun unavailableStagesStayDisabledUntilTheirRequiredMaterialExists() {
+        val empty = SamplerUiState()
+        assertTrue(workflowStageEnabled(WorkflowStage.CAPTURE, empty))
+        assertFalse(workflowStageEnabled(WorkflowStage.CHOP, empty))
+        assertFalse(workflowStageEnabled(WorkflowStage.BEAT, empty))
+        assertFalse(workflowStageEnabled(WorkflowStage.FINISH, empty))
+
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val loaded = empty.copy(currentAudio = audio)
+        assertTrue(workflowStageEnabled(WorkflowStage.CHOP, loaded))
+        assertFalse(workflowStageEnabled(WorkflowStage.BEAT, loaded))
+        assertTrue(workflowStageEnabled(WorkflowStage.FINISH, loaded))
+
+        val pads = loaded.pads.toMutableList().also {
+            it[0] = PadModel(0, audio, 0, 50)
+        }
+        assertTrue(workflowStageEnabled(WorkflowStage.BEAT, loaded.copy(pads = pads)))
+        assertEquals(WorkflowStage.CAPTURE, reconcileWorkflowStage(WorkflowStage.BEAT, empty))
+        assertEquals(WorkflowStage.CHOP, reconcileWorkflowStage(WorkflowStage.BEAT, loaded))
+        assertEquals(
+            WorkflowStage.BEAT,
+            reconcileWorkflowStage(WorkflowStage.BEAT, loaded.copy(pads = pads)),
+        )
     }
 
     @Test

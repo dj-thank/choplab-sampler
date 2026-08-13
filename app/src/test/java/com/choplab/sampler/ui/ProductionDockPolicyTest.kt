@@ -27,6 +27,7 @@ class ProductionDockPolicyTest {
             ready.map { it.intent },
         )
         assertEquals("もう一度で完全リセット", ready.first().confirmLabel)
+        assertEquals("プロジェクトをリセット\nRESET ALL", ready.first().label)
         assertEquals("チョップ開始\nSTART CHOP", ready.last().label)
         assertTrue(ready.last().enabled)
         assertTrue(ready.last().active == true)

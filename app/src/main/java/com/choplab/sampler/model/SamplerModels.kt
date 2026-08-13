@@ -166,12 +166,11 @@ fun SamplerUiState.assignedPadCountOnPage(pageIndex: Int): Int {
     return pads.subList(start, start + SamplerConfig.PAD_PAGE_SIZE).count(PadModel::isAssigned)
 }
 
-fun defaultMelodyChopPad(pads: List<PadModel>): Int {
+fun defaultMelodyChopPad(pads: List<PadModel>): Int? {
     require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
     return pads.take(SamplerConfig.PADS_PER_BANK)
         .firstOrNull { !it.isAssigned }
         ?.globalIndex
-        ?: 0
 }
 
 fun SamplerUiState.selectedPadModel(): PadModel = pads[selectedPad]
@@ -209,6 +208,16 @@ fun SamplerUiState.sourceScratchRange(): SliceRange? {
     val end = rangeEndFrame.coerceIn(start + 1, audio.frameCount)
     return SliceRange(start, end).takeIf { it.length > 1 }
 }
+
+fun transientAnalysisStillCurrent(
+    snapshot: SamplerUiState,
+    snapshotRevision: Long,
+    current: SamplerUiState,
+    currentRevision: Long,
+): Boolean = snapshotRevision == currentRevision &&
+    snapshot.currentAudio?.id == current.currentAudio?.id &&
+    snapshot.rangeStartFrame == current.rangeStartFrame &&
+    snapshot.rangeEndFrame == current.rangeEndFrame
 
 fun SamplerUiState.selectSourceRangeForScratch(): SamplerUiState = copy(
     activeSliceIndex = null,

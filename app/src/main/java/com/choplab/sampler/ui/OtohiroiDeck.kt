@@ -33,6 +33,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -64,6 +66,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.choplab.sampler.SamplerViewModel
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.audio.scratchProgress
+import com.choplab.sampler.audio.scratchSpeedFromGesture
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimPrecision
@@ -154,15 +158,24 @@ fun OtohiroiDeck(
     onSaveProject: () -> Unit,
     viewModel: SamplerViewModel,
 ) {
-    var stageName by rememberSaveable {
+    var stageName by rememberSaveable(state.currentAudio?.id) {
         mutableStateOf(initialWorkflowStage(state.currentAudio != null).name)
     }
-    var padPageName by rememberSaveable { mutableStateOf(PadEditorPage.PARAM.name) }
-    var showPadDetails by rememberSaveable { mutableStateOf(false) }
-    var layerStudioPageName by rememberSaveable { mutableStateOf<String?>(null) }
+    var padPageName by rememberSaveable(state.currentAudio?.id) { mutableStateOf(PadEditorPage.PARAM.name) }
+    var showPadDetails by rememberSaveable(state.currentAudio?.id) { mutableStateOf(false) }
+    var layerStudioPageName by rememberSaveable(state.currentAudio?.id) { mutableStateOf<String?>(null) }
     val stage = restoreWorkflowStage(stageName)
     val padPage = PadEditorPage.entries.firstOrNull { it.name == padPageName } ?: PadEditorPage.PARAM
     val layerStudioPage = LayerStudioPage.entries.firstOrNull { it.name == layerStudioPageName }
+
+    LaunchedEffect(stageName, state.currentAudio?.id, state.pads.any(PadModel::isAssigned)) {
+        val reconciled = reconcileWorkflowStage(stage, state)
+        if (reconciled != stage) {
+            stageName = reconciled.name
+            showPadDetails = false
+            layerStudioPageName = null
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -203,6 +216,7 @@ fun OtohiroiDeck(
                         onStopRecording = viewModel::stopActiveRecording,
                     )
                     WorkflowStrip(
+                        state = state,
                         selected = stage,
                         height = metrics.modeBarHeightDp.dp,
                         compact = metrics.density == DeckDensity.COMPACT,
@@ -739,6 +753,7 @@ private fun StatusLamp(
 
 @Composable
 private fun WorkflowStrip(
+    state: SamplerUiState,
     selected: WorkflowStage,
     height: Dp,
     compact: Boolean,
@@ -751,11 +766,13 @@ private fun WorkflowStrip(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         WorkflowStage.entries.forEachIndexed { index, stage ->
+            val enabled = workflowStageEnabled(stage, state)
             WorkflowStageButton(
                 number = index + 1,
                 stage = stage,
                 selected = selected == stage,
                 compact = compact,
+                enabled = enabled,
                 onClick = { onSelect(stage) },
                 modifier = Modifier
                     .weight(1f)
@@ -771,6 +788,7 @@ private fun WorkflowStageButton(
     stage: WorkflowStage,
     selected: Boolean,
     compact: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -787,8 +805,10 @@ private fun WorkflowStageButton(
         shape = RoundedCornerShape(6.dp),
         shadowElevation = if (pressed) 0.dp else 2.dp,
         modifier = modifier
+            .alpha(if (enabled) 1f else 0.38f)
             .border(1.5.dp, DeckInk, RoundedCornerShape(6.dp))
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Tab,
@@ -798,6 +818,7 @@ private fun WorkflowStageButton(
                 role = Role.Tab
                 contentDescription = "工程$number ${stage.label} ${stage.caption}"
                 this.selected = selected
+                if (!enabled) disabled()
             },
     ) {
         Column(
@@ -2281,7 +2302,9 @@ private fun LayerStudio(
     viewModel: SamplerViewModel,
 ) {
     var pageName by rememberSaveable(initialPage.name) { mutableStateOf(initialPage.name) }
-    var kitId by rememberSaveable { mutableStateOf(state.selectedDrumKitId) }
+    var kitId by rememberSaveable(state.selectedDrumKitId, state.currentAudio?.id) {
+        mutableStateOf(state.selectedDrumKitId)
+    }
     val page = LayerStudioPage.entries.firstOrNull { it.name == pageName } ?: LayerStudioPage.SOUNDS
     val activeRecording = state.recordingSession as? RecordingSession.Active
     val modalRecording = recordingHeaderPresentation(state.recordingSession)
@@ -2740,12 +2763,20 @@ private fun ScratchStudio(
     val selectedPad = state.selectedPadModel()
     val selectedPadAudio = selectedPad.audio
     val scratchActive = state.sourceScratchActive || state.scratchingPadIndex != null
-    val frame = state.scratchPlayheadFrame.takeIf { it >= 0 } ?: state.loopPlayheadFrame
-    val progress = if (range != null && frame >= range.startFrame) {
-        (frame - range.startFrame).toFloat() / range.length.coerceAtLeast(1)
+    val dialRange = if (target == ScratchTarget.PAD && selectedPad.isAssigned) {
+        SliceRange(selectedPad.startFrame, selectedPad.endFrame)
     } else {
-        0f
-    }.coerceIn(0f, 1f)
+        range
+    }
+    val dialFrame = when {
+        target == ScratchTarget.PAD && state.scratchingPadIndex == selectedPad.globalIndex ->
+            state.scratchPlayheadFrame
+        target == ScratchTarget.PAD && state.loopingPadIndex == selectedPad.globalIndex ->
+            state.loopPlayheadFrame
+        target == ScratchTarget.SOURCE && state.sourceScratchActive -> state.scratchPlayheadFrame
+        else -> dialRange?.startFrame ?: -1
+    }
+    val progress = dialRange?.let { scratchProgress(dialFrame, it.startFrame, it.endFrame) } ?: 0f
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -2810,16 +2841,36 @@ private fun ScratchStudio(
                     .size(180.dp)
                     .border(5.dp, if (scratchActive) DeckLamp else DeckInk, CircleShape)
                     .pointerInput(audio?.id, range, target, sensitivity, state.selectedPad) {
+                        var lastEventTimeMillis = 0L
                         detectDragGestures(
                             onDragStart = {
+                                lastEventTimeMillis = 0L
                                 if (target == ScratchTarget.SOURCE) viewModel.beginSourceScratch()
                                 else viewModel.beginScratch()
                             },
-                            onDragEnd = { viewModel.endScratch() },
-                            onDragCancel = { viewModel.endScratch() },
+                            onDragEnd = {
+                                lastEventTimeMillis = 0L
+                                viewModel.endScratch()
+                            },
+                            onDragCancel = {
+                                lastEventTimeMillis = 0L
+                                viewModel.endScratch()
+                            },
                             onDrag = { change, dragAmount ->
                                 change.consume()
-                                viewModel.updateScratchSpeed(dragAmount.x / sensitivity.divisor)
+                                val elapsedMillis = if (lastEventTimeMillis == 0L) {
+                                    17L
+                                } else {
+                                    change.uptimeMillis - lastEventTimeMillis
+                                }
+                                lastEventTimeMillis = change.uptimeMillis
+                                viewModel.updateScratchSpeed(
+                                    scratchSpeedFromGesture(
+                                        deltaPixels = dragAmount.x,
+                                        elapsedMillis = elapsedMillis,
+                                        sensitivityDivisor = sensitivity.divisor,
+                                    ),
+                                )
                             },
                         )
                     }

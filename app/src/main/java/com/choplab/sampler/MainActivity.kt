@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val samplerViewModel: SamplerViewModel = viewModel()
                 val state by samplerViewModel.uiState.collectAsStateWithLifecycle()
-                var pendingAction by remember { mutableStateOf(PendingPermissionAction.NONE) }
+                var pendingAction by rememberSaveable { mutableStateOf(PendingPermissionAction.NONE) }
 
                 val importLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
@@ -122,7 +123,7 @@ class MainActivity : ComponentActivity() {
                             PendingPermissionAction.NONE -> Unit
                         }
                     } else {
-                        samplerViewModel.setStatus("録音機能にはマイク権限が必要です")
+                        samplerViewModel.setStatus(recordPermissionDeniedMessage(pendingAction))
                     }
                     pendingAction = PendingPermissionAction.NONE
                 }
@@ -188,9 +189,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class PendingPermissionAction {
+internal enum class PendingPermissionAction {
     NONE,
     MICROPHONE,
     VOCAL,
     SYSTEM_AUDIO,
+}
+
+internal fun recordPermissionDeniedMessage(action: PendingPermissionAction): String = when (action) {
+    PendingPermissionAction.MICROPHONE -> "マイク素材を録音するにはマイク権限が必要です"
+    PendingPermissionAction.VOCAL -> "ビートに声を重ねるにはマイク権限が必要です"
+    PendingPermissionAction.SYSTEM_AUDIO -> "端末音声を録音するにはマイク権限が必要です"
+    PendingPermissionAction.NONE -> "録音するにはマイク権限が必要です"
 }

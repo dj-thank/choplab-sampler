@@ -124,6 +124,10 @@ fun resolvePerformancePadPressAction(
     else -> PerformancePadPressAction.TRIGGER_ONLY
 }
 
+/** The audio thread can still report -1 immediately after transport start. */
+fun liveRecordingStep(currentStep: Int): Int =
+    currentStep.takeIf { it in 0 until SamplerConfig.STEP_COUNT } ?: 0
+
 fun sourcePlaybackStartFrame(requestedFrame: Int, frameCount: Int): Int {
     if (frameCount <= 1) return 0
     return requestedFrame.takeIf { it in 0 until frameCount - 1 } ?: 0

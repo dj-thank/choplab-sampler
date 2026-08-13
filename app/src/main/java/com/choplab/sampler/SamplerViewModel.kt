@@ -56,6 +56,7 @@ import com.choplab.sampler.model.defaultMelodyChopPad
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.endRecordingSession
 import com.choplab.sampler.model.failAutosaveRecovery
+import com.choplab.sampler.model.failRecordingSession
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nextVocalPadIndex
@@ -73,6 +74,7 @@ import com.choplab.sampler.model.replaceSourceAudio
 import com.choplab.sampler.model.resetProjectState
 import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.resolvePadPressAction
+import com.choplab.sampler.model.liveRecordingStep
 import com.choplab.sampler.model.resolvePerformancePadPressAction
 import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
 import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
@@ -91,6 +93,7 @@ import com.choplab.sampler.model.stopRecordingSession
 import com.choplab.sampler.model.shouldContinueSourcePlayback
 import com.choplab.sampler.model.trimPadBoundary
 import com.choplab.sampler.model.togglePadStep
+import com.choplab.sampler.model.transientAnalysisStillCurrent
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
 import kotlinx.coroutines.Dispatchers
@@ -163,6 +166,45 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             RecordingKind.SOURCE_SYSTEM_AUDIO -> "端末音声録音"
             RecordingKind.VOCAL_OVERDUB -> "ボーカル録音"
         }
+    }
+
+    private fun applyRecorderFailure(
+        kind: RecordingKind,
+        message: String,
+    ) {
+        mutableUiState.update { state ->
+            val failed = failRecordingSession(state, kind)
+            if (failed.recordingSession == state.recordingSession) {
+                state
+            } else {
+                failed.copy(statusMessage = message)
+            }
+        }
+    }
+
+    private fun finishVocalRecordingFailure(
+        message: String,
+        stopOperationOwnsCleanup: Boolean,
+    ) {
+        var loopToStop: Int? = null
+        mutableUiState.update { state ->
+            val finished = if (stopOperationOwnsCleanup) {
+                endRecordingSession(state, RecordingKind.VOCAL_OVERDUB)
+            } else {
+                failRecordingSession(state, RecordingKind.VOCAL_OVERDUB)
+            }
+            if (finished.recordingSession == state.recordingSession) {
+                state
+            } else {
+                loopToStop = state.loopingPadIndex
+                finished.copy(
+                    loopingPadIndex = null,
+                    loopPlayheadFrame = -1,
+                    statusMessage = message,
+                )
+            }
+        }
+        loopToStop?.let(engine::stopPad)
     }
 
     private fun observeSystemAudioRecording(state: SamplerUiState): SamplerUiState {
@@ -268,10 +310,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val result = microphoneRecorder.start(file) { message ->
             viewModelScope.launch {
                 projectOperations.completeIfCurrent(operation) {
-                    mutableUiState.update {
-                        endRecordingSession(it, RecordingKind.SOURCE_MICROPHONE)
-                            .copy(statusMessage = message)
-                    }
+                    applyRecorderFailure(RecordingKind.SOURCE_MICROPHONE, message)
                 }
             }
         }
@@ -286,11 +325,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }.onFailure { throwable ->
             microphoneSourceCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
-                mutableUiState.update {
-                    endRecordingSession(it, RecordingKind.SOURCE_MICROPHONE).copy(
-                        statusMessage = throwable.message ?: "マイク録音を開始できません",
-                    )
-                }
+                applyRecorderFailure(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    throwable.message ?: "マイク録音を開始できません",
+                )
             }
         }
     }
@@ -349,10 +387,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         microphoneRecorder.start(file) { message ->
             viewModelScope.launch {
                 projectOperations.completeIfCurrent(operation) {
-                    mutableUiState.update {
-                        endRecordingSession(it, RecordingKind.VOCAL_OVERDUB)
-                            .copy(statusMessage = message)
-                    }
+                    finishVocalRecordingFailure(
+                        message = message,
+                        stopOperationOwnsCleanup = false,
+                    )
                 }
             }
         }.onSuccess {
@@ -371,11 +409,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }.onFailure { throwable ->
             vocalCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
-                mutableUiState.update {
-                    endRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
-                        statusMessage = throwable.message ?: "声の録音を開始できません",
-                    )
-                }
+                applyRecorderFailure(
+                    RecordingKind.VOCAL_OVERDUB,
+                    throwable.message ?: "声の録音を開始できません",
+                )
             }
         }
     }
@@ -405,20 +442,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     }
                     .onFailure { throwable ->
                         projectOperations.completeIfCurrent(operation) {
-                            mutableUiState.update {
-                                endRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
-                                    statusMessage = throwable.message ?: "録音した声を読み込めませんでした",
-                                )
-                            }
+                            finishVocalRecordingFailure(
+                                message = throwable.message ?: "録音した声を読み込めませんでした",
+                                stopOperationOwnsCleanup = true,
+                            )
                         }
                     }
             }.onFailure { throwable ->
                 projectOperations.completeIfCurrent(operation) {
-                    mutableUiState.update {
-                        endRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
-                            statusMessage = throwable.message ?: "声の録音を停止できません",
-                        )
-                    }
+                    finishVocalRecordingFailure(
+                        message = throwable.message ?: "声の録音を停止できません",
+                        stopOperationOwnsCleanup = true,
+                    )
                 }
             }
         }
@@ -599,11 +634,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }.onFailure { throwable ->
             systemSourceCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
-                mutableUiState.update {
-                    endRecordingSession(it, RecordingKind.SOURCE_SYSTEM_AUDIO).copy(
-                        statusMessage = throwable.message ?: "端末音声録音サービスを開始できませんでした",
-                    )
-                }
+                applyRecorderFailure(
+                    RecordingKind.SOURCE_SYSTEM_AUDIO,
+                    throwable.message ?: "端末音声録音サービスを開始できませんでした",
+                )
             }
         }
     }
@@ -855,6 +889,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun autoChopTransient() {
         val snapshot = mutableUiState.value
+        val revisionAtStart = projectRevision
         val audio = snapshot.currentAudio ?: return
         viewModelScope.launch(Dispatchers.Default) {
             withContext(Dispatchers.Main) {
@@ -880,10 +915,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 .sorted()
             withContext(Dispatchers.Main) {
                 val current = mutableUiState.value
-                if (
-                    current.currentAudio?.id != audio.id ||
-                    current.rangeStartFrame != snapshot.rangeStartFrame ||
-                    current.rangeEndFrame != snapshot.rangeEndFrame
+                if (!transientAnalysisStillCurrent(
+                        snapshot = snapshot,
+                        snapshotRevision = revisionAtStart,
+                        current = current,
+                        currentRevision = projectRevision,
+                    )
                 ) {
                     mutableUiState.update { state ->
                         state.copy(
@@ -1032,9 +1069,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun prepareDefaultChopDestination() {
         mutableUiState.update { state ->
+            val nextEmpty = defaultMelodyChopPad(state.pads)
             state.copy(
                 selectedBank = 0,
-                selectedPad = defaultMelodyChopPad(state.pads),
+                selectedPad = nextEmpty ?: (state.selectedPad % SamplerConfig.PADS_PER_BANK),
+                statusMessage = if (nextEmpty == null) {
+                    "BANK Aは満杯です。上書きするPADを選ぶか、不要なPADを消してください"
+                } else {
+                    state.statusMessage
+                },
             )
         }
     }
@@ -1091,15 +1134,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             PerformancePadPressAction.TRIGGER_ONLY -> engine.triggerPad(globalIndex)
             PerformancePadPressAction.TRIGGER_AND_RECORD_STEP -> {
                 engine.triggerPad(globalIndex)
-                val step = engine.currentStep
-                if (step in 0 until SamplerConfig.STEP_COUNT) {
-                    commitEdit { current ->
-                        val currentPad = current.pads.getOrNull(globalIndex) ?: return@commitEdit current
-                        val updated = current.activeSteps.recordPadStep(currentPad, step)
-                        current.copy(activeSteps = updated)
-                    }
-                    syncPattern()
+                val step = liveRecordingStep(engine.currentStep)
+                commitEdit { current ->
+                    val currentPad = current.pads.getOrNull(globalIndex) ?: return@commitEdit current
+                    val updated = current.activeSteps.recordPadStep(currentPad, step)
+                    current.copy(activeSteps = updated)
                 }
+                syncPattern()
             }
         }
     }
@@ -1552,7 +1593,34 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleRecordArm() {
-        mutableUiState.update { it.copy(recordArmed = !it.recordArmed) }
+        val state = mutableUiState.value
+        if (state.recordArmed) {
+            mutableUiState.update {
+                it.copy(recordArmed = false, statusMessage = "RECを解除しました")
+            }
+            return
+        }
+        if (blockPlaybackStartDuringRecording()) return
+        if (!state.transportPlaying) {
+            stopCompetingPlayback()
+            syncPattern()
+            engine.startTransport()
+            mutableUiState.update {
+                it.copy(
+                    transportPlaying = true,
+                    recordArmed = true,
+                    pendingSourceCommand = pendingSourceCommandAfterStopRequest(it.sourcePlaying),
+                    statusMessage = "REC待機中 — PADを叩くと現在のステップへ記録します",
+                )
+            }
+        } else {
+            mutableUiState.update {
+                it.copy(
+                    recordArmed = true,
+                    statusMessage = "REC待機中 — PADを叩くと現在のステップへ記録します",
+                )
+            }
+        }
     }
 
     fun clearSelectedPadPattern() {

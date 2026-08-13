@@ -13,6 +13,7 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.stepKey
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReferenceArray
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp
@@ -37,8 +38,10 @@ class SamplerEngine(
     private val commandOverflowReported = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
     private val lifecycleLock = Any()
+    private val padUpdateLock = Any()
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
-    private val controlPadKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
+    private val controlPadKit = AtomicReferenceArray<PadSnapshot?>(SamplerConfig.PAD_COUNT)
+    private val pendingPadUpdates = LatestIndexedMailbox<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val voices = Array(MAX_POLYPHONY) { Voice() }
     private val sourceVoice = Voice()
     private var sourceVoiceGeneration = 0L
@@ -50,13 +53,12 @@ class SamplerEngine(
     private var pattern: Array<IntArray> = Array(SamplerConfig.STEP_COUNT) { IntArray(0) }
     private var bpm = 92f
     private var swing = 54f
-    private var transportRunning = false
+    private val transportState = TransportRuntimeState()
     private var nextPatternStep = 0
     private var framesUntilNextStep = 0.0
 
-    private val currentStepValue = AtomicInteger(-1)
     override val currentStep: Int
-        get() = currentStepValue.get()
+        get() = transportState.currentStep
     private val currentSourceFrameValue = AtomicInteger(-1)
     override val currentSourceFrame: Int
         get() = currentSourceFrameValue.get()
@@ -151,13 +153,11 @@ class SamplerEngine(
     }
 
     override fun updatePad(pad: PadModel) {
-        if (pad.isAssigned) {
-            val snapshot = PadSnapshot.from(pad)
-            controlPadKit[pad.globalIndex] = snapshot
-            enqueue(EngineCommand.SetPad(snapshot))
-        } else {
-            controlPadKit[pad.globalIndex] = null
-            enqueue(EngineCommand.ClearPad(pad.globalIndex))
+        if (pad.globalIndex !in 0 until SamplerConfig.PAD_COUNT) return
+        val snapshot = pad.takeIf(PadModel::isAssigned)?.let(PadSnapshot::from)
+        synchronized(padUpdateLock) {
+            controlPadKit.set(pad.globalIndex, snapshot)
+            pendingPadUpdates.publish(pad.globalIndex, snapshot)
         }
     }
 
@@ -183,7 +183,8 @@ class SamplerEngine(
     }
 
     override fun beginScratch(globalIndex: Int, startFrame: Int) {
-        val pad = controlPadKit.getOrNull(globalIndex) ?: return
+        if (globalIndex !in 0 until SamplerConfig.PAD_COUNT) return
+        val pad = controlPadKit.get(globalIndex) ?: return
         scratchSpeedBits.set(0f.toBits())
         enqueue(
             EngineCommand.BeginScratch(
@@ -348,7 +349,7 @@ class SamplerEngine(
                 val scratchTargetSpeed = normalizeScratchSpeed(Float.fromBits(scratchSpeedBits.get()))
 
                 for (frame in 0 until blockFrames) {
-                    if (transportRunning) processTransportFrame()
+                    if (transportState.running) processTransportFrame()
 
                     var monoMix = 0f
                     if (sourceVoice.active) {
@@ -434,6 +435,7 @@ class SamplerEngine(
 
     private fun drainCommands() {
         applyPendingStopAllVoices()
+        applyPendingPadUpdates()
 
         var inspectedCommands = 0
         while (inspectedCommands < MAX_COMMANDS_PER_BLOCK) {
@@ -442,29 +444,13 @@ class SamplerEngine(
             applyPendingStopAllVoices()
             if (!commands.shouldProcess(entry)) continue
             when (val command = entry.value) {
-                is EngineCommand.SetPad -> {
-                    padKit[command.pad.padIndex] = command.pad
-                    var voiceIndex = 0
-                    while (voiceIndex < voices.size) {
-                        val voice = voices[voiceIndex]
-                        if (voice.active) voice.updateLiveParameters(command.pad, outputSampleRate)
-                        voiceIndex++
-                    }
-                }
-                is EngineCommand.ClearPad -> {
-                    padKit[command.padIndex] = null
-                    var voiceIndex = 0
-                    while (voiceIndex < voices.size) {
-                        val voice = voices[voiceIndex]
-                        if (voice.active && voice.padIndex == command.padIndex) voice.deactivate()
-                        voiceIndex++
-                    }
-                }
                 is EngineCommand.Trigger -> {
+                    applyPendingPadUpdates()
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad != null) startVoice(pad)
                 }
                 is EngineCommand.StartPadLoop -> {
+                    applyPendingPadUpdates()
                     if (
                         retireSourceVoiceForLoopStart(
                             sourcePlaybackState = sourcePlaybackState,
@@ -523,13 +509,12 @@ class SamplerEngine(
                     swing = command.swing
                 }
                 EngineCommand.StartTransport -> {
-                    transportRunning = true
+                    transportState.start()
                     nextPatternStep = 0
                     framesUntilNextStep = 0.0
                 }
                 EngineCommand.StopTransport -> {
-                    transportRunning = false
-                    currentStepValue.set(-1)
+                    transportState.stop()
                 }
             }
         }
@@ -539,6 +524,35 @@ class SamplerEngine(
     private fun applyPendingStopAllVoices() {
         val stop = commands.takeLatestStop()
         if (stop != null) applyStopAllVoices(stop.payload)
+    }
+
+    private fun applyPendingPadUpdates() {
+        var wordIndex = 0
+        while (wordIndex < pendingPadUpdates.wordCount) {
+            var dirty = pendingPadUpdates.takeDirtyWord(wordIndex)
+            while (dirty != 0L) {
+                val bitIndex = java.lang.Long.numberOfTrailingZeros(dirty)
+                val padIndex = wordIndex * Long.SIZE_BITS + bitIndex
+                val update = pendingPadUpdates.take(padIndex)
+                if (update != null) applyPadUpdate(padIndex, update.value)
+                dirty = dirty and (dirty - 1L)
+            }
+            wordIndex++
+        }
+    }
+
+    private fun applyPadUpdate(padIndex: Int, pad: PadSnapshot?) {
+        padKit[padIndex] = pad
+        var voiceIndex = 0
+        while (voiceIndex < voices.size) {
+            val voice = voices[voiceIndex]
+            if (voice.active && pad == null && voice.padIndex == padIndex) {
+                voice.deactivate()
+            } else if (voice.active && pad != null) {
+                voice.updateLiveParameters(pad, outputSampleRate)
+            }
+            voiceIndex++
+        }
     }
 
     private fun enqueue(command: EngineCommand): Boolean {
@@ -574,6 +588,7 @@ class SamplerEngine(
         scratchVoice = null
         currentScratchPadValue.set(-1)
         currentScratchFrameValue.set(-1)
+        transportState.stop()
     }
 
     private fun clearPlaybackVoices() {
@@ -585,11 +600,11 @@ class SamplerEngine(
         sourceVoice.deactivate()
         sourceVoiceGeneration = 0L
         scratchVoice = null
-        transportRunning = false
+        transportState.stop()
     }
 
     private fun resetPublishedPlaybackState() {
-        currentStepValue.set(-1)
+        transportState.stop()
         currentSourceFrameValue.set(-1)
         sourcePlaybackState.forceStopped()
         currentLoopPadValue.set(-1)
@@ -601,7 +616,7 @@ class SamplerEngine(
     private fun processTransportFrame() {
         if (framesUntilNextStep <= 0.0) {
             val stepToPlay = nextPatternStep
-            currentStepValue.set(stepToPlay)
+            transportState.publishStep(stepToPlay)
             val stepPads = pattern[stepToPlay]
             var stepPadIndex = 0
             while (stepPadIndex < stepPads.size) {
@@ -683,8 +698,6 @@ class SamplerEngine(
     }
 
     private sealed interface EngineCommand {
-        data class SetPad(val pad: PadSnapshot) : EngineCommand
-        data class ClearPad(val padIndex: Int) : EngineCommand
         data class Trigger(val padIndex: Int) : EngineCommand
         data class StartPadLoop(
             val padIndex: Int,

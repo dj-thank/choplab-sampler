@@ -98,3 +98,19 @@ fun endRecordingSession(state: SamplerUiState, kind: RecordingKind): SamplerUiSt
             state
         }
     }
+
+/**
+ * Applies an asynchronous recorder failure unless a user-requested stop already owns cleanup.
+ * A late worker callback must not make STOPPING look idle before the stop coroutine finishes.
+ */
+fun failRecordingSession(state: SamplerUiState, kind: RecordingKind): SamplerUiState =
+    when (val session = state.recordingSession) {
+        RecordingSession.Idle -> state
+        is RecordingSession.Active -> if (
+            session.kind == kind && session.phase != RecordingPhase.STOPPING
+        ) {
+            state.copy(recordingSession = RecordingSession.Idle)
+        } else {
+            state
+        }
+    }
