@@ -100,8 +100,8 @@ The coordinator owns only whether a playback session is active. It does not know
 - [x] 2026-08-14 11:02 +09:00 — Milestone 1 completed through repeated RED/GREEN slices: focus denial, focus lifecycle, interruption idempotence, recording policy, and close behavior.
 - [x] 2026-08-14 11:06 +09:00 — Android focus/noisy adapter, every playback entry gate, activity `onStop`, recording transitions, and teardown integration compiled and passed focused tests.
 - [x] 2026-08-14 11:19 +09:00 — Full unit tests, lint, debug/release assembly, APK identity, and dedicated API 36 emulator lifecycle checks passed. Physical route/focus tests remain separate.
-- [x] 2026-08-14 11:51 +09:00 — Independent Standards/Spec reviews and final parent verification completed; unknown focus changes now fail closed, playback retargets prove coordinator ownership, and repository state/evidence docs are updated. Child effective-model metadata was unavailable, so no runtime-verified Luna claim is made.
-- [ ] Commit/push/CI/release evidence.
+- [x] 2026-08-14 11:35 +09:00 — Independent Standards/Spec reviews and final parent verification completed; unknown focus changes now fail closed, playback retargets prove coordinator ownership, and repository state/evidence docs are updated. Child effective-model metadata was unavailable, so no runtime-verified Luna claim is made.
+- [x] 2026-08-14 11:44 +09:00 — Reviewed commits `52a62ed` and `903c698` pushed; branch/PR/tag/release workflows passed; public APK and checksum were reverse-downloaded and verified anonymously.
 - [ ] Pixel 9a data-preserving install and physical interaction checks.
 
 ## Discoveries
@@ -122,7 +122,7 @@ The coordinator owns only whether a playback session is active. It does not know
 - 2026-08-14 10:51 +09:00 — Chose no automatic resume after focus gain. A deliberate user action is safer and prevents stale beat/source combinations from returning.
 - 2026-08-14 10:51 +09:00 — Chose to retain playback focus during internal primary-mode transitions and release it at explicit session boundaries, avoiding focus churn between source, chop, loop, scratch, and transport.
 - 2026-08-14 11:04 +09:00 — Changed the planned noisy receiver from non-exported to exported after checking current Android guidance and the platform protected-broadcast list. The action remains exact-match checked in `onReceive`.
-- 2026-08-14 11:51 +09:00 — Reserved versionCode 21 / versionName 0.13.1 and a new preview tag instead of mutating the already-public v0.13.0 artifact.
+- 2026-08-14 11:35 +09:00 — Reserved versionCode 21 / versionName 0.13.1 and a new preview tag instead of mutating the already-public v0.13.0 artifact.
 
 ## Validation log
 
@@ -160,6 +160,11 @@ The coordinator owns only whether a playback session is active. It does not know
 - Date/environment: 2026-08-14, dedicated tracked Android 16/API 36 emulator; shared `emulator-5588` remained untouched.
 - Result: PASS. Home emptied the live focus stack and surfaced the background-stop message; configuration recreation retained focus; ALL STOP released it. Protected noisy-route broadcast injection was not treated as physical route evidence.
 - Important output or artifact path: ignored `work/playback-interruption-final-*.xml` captures and terminal focus-stack evidence.
+
+- Command: push exact `903c698c2fdc443027a8190aa31985253ff3050a`, create annotated `v0.13.1-preview.1`, monitor GitHub Actions, reverse-download Release assets, inspect APK, and repeat an anonymous HTTP download.
+- Date/environment: 2026-08-14, public `dj-thank/choplab-sampler` repository.
+- Result: PASS. Branch run `31764219592`, PR run `31764223167`, tag run `31764417666`, and Release run `31764417670` succeeded. Tag object `b11eaa13be6c7e4d8bc7cbfcf805dc8ab25dc436` peels to the exact commit. Public APK digest, sidecar, authenticated hash, and anonymous hash all equal `5EE5183C2CA6574E964CC4A6AE44B4BE72813A691843345D9FA78B5ADE6598D6`; repository, Release, and asset returned anonymous HTTP 200.
+- Important output or artifact path: `outputs/ChopLab-v0.13.1-preview.1-debug.apk`, `outputs/ChopLab-v0.13.1-preview.1-debug.apk.sha256`, and `work/public-v0131/` readback evidence.
 
 ## Risks and rollback
 

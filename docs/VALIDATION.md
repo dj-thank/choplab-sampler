@@ -19,7 +19,13 @@
 - dedicated tracked emulator `emulator-5590`, Android 16/API 36: exact data-preserving `adb install -r` PASS; installed package reports versionCode 21 / versionName 0.13.1
 - runtime focus: one `USAGE_MEDIA` / `CONTENT_TYPE_MUSIC` GAIN entry with `PAUSES_ON_DUCKABLE_LOSS`; Home emptied the live stack and return status reported the background stop; portrait/landscape recreation retained focus; `ALL STOP` emptied it
 - automation boundary: shell injection of protected `ACTION_AUDIO_BECOMING_NOISY` is rejected by Android, so actual wired/Bluetooth route loss remains physical-device evidence
-- current boundary: Pixel 9a `5A121JEBF08094` absent; physical retained-data install, route/focus contention, actual microphone/system capture, subjective audio, public-provider artifact, and `HUMAN_GO` remain unclaimed
+- provider runs for exact `903c698c2fdc443027a8190aa31985253ff3050a`: branch push `31764219592`, PR `31764223167`, tag verification `31764417666`, and Release `31764417670` all PASS
+- annotated tag object `b11eaa13be6c7e4d8bc7cbfcf805dc8ab25dc436` peels locally and remotely to the exact commit; public non-draft prerelease: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.13.1-preview.1`
+- public APK: `outputs/ChopLab-v0.13.1-preview.1-debug.apk`; 30,821,319 bytes; SHA-256 `5EE5183C2CA6574E964CC4A6AE44B4BE72813A691843345D9FA78B5ADE6598D6`; GitHub asset digest, sidecar, authenticated reverse download, and anonymous reverse download all match
+- public metadata: package `com.choplab.sampler`; versionCode 21 / versionName 0.13.1; targetSdk 36; APK Signature Scheme v2; CI debug certificate SHA-256 `A04BC943A7F0C31ABC619839CDE0B28B2165700DE2F57D501F5B9DA0D0F9A2E2`
+- anonymous HTTP: repository 200, Release page 200, direct APK 200; scoped `PUBLIC_PASS` established
+- prepared device runner: `work/install-v0131-pixel9a.ps1`; syntax PASS; local/public hash and certificate preflight PASS; SHA-256 `B33B47EA2D9026FDF7C4FAA72184439B89CE7777644BE99117E23B8AF37FF721`; stopped truthfully at `Pixel 9a 5A121JEBF08094 is not attached`
+- current boundary: physical retained-data install, route/focus contention, actual microphone/system capture, subjective audio, and `HUMAN_GO` remain unclaimed; local and public debug certificates differ, so the public APK is copied to Downloads but not installed over retained data
 
 ## 2026-08-14 v0.13.0 Luna interaction integrity candidate
 
