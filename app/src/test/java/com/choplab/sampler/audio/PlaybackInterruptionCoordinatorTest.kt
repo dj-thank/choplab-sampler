@@ -6,6 +6,7 @@ import com.choplab.sampler.model.RecordingPhase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackInterruptionCoordinatorTest {
@@ -102,6 +103,20 @@ class PlaybackInterruptionCoordinatorTest {
         coordinator.beginPlayback()
 
         assertEquals(1, focus.requestCount)
+    }
+
+    @Test
+    fun playbackRetargetRequiresAnActiveFocusedSession() {
+        val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
+        val coordinator = PlaybackInterruptionCoordinator(focus)
+
+        assertFalse(coordinator.canRetargetPlayback())
+        coordinator.beginPlayback()
+        assertTrue(coordinator.canRetargetPlayback())
+
+        coordinator.interrupt(PlaybackInterruption.AUDIO_FOCUS_LOSS, RecordingSession.Idle)
+
+        assertFalse(coordinator.canRetargetPlayback())
     }
 
     @Test

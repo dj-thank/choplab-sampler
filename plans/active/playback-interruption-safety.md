@@ -6,7 +6,7 @@ ChopLab must never leave stale sampler audio playing after the app moves to the 
 
 System-audio capture is a deliberate exception: moving ChopLab to the background is required to capture another app, so that recording continues while ChopLab playback stops. Microphone and vocal-overdub recording stop gracefully on interruption because continuing those sessions without an audible reference is unsafe.
 
-## Current state
+## Starting state
 
 - Authority checkout: `C:\Users\rambo\Documents\ChatGPT\pad\work\codex-workspace\ChopLab-Codex-Workspace`
 - Branch and starting commit: `agent/gpt-pro-ui-integration` at `717ba2e193044d9b8b67c2d0421b90b67cba6d18`.
@@ -38,6 +38,7 @@ System-audio capture is a deliberate exception: moving ChopLab to the background
 - `PlaybackFocusAdapter.requestPlaybackFocus(): Boolean`
 - `PlaybackFocusAdapter.abandonPlaybackFocus()` and `close()`
 - `PlaybackInterruptionCoordinator.beginPlayback(): PlaybackStartDecision`
+- `PlaybackInterruptionCoordinator.canRetargetPlayback(): Boolean`
 - `PlaybackInterruptionCoordinator.endPlaybackSession()`
 - `PlaybackInterruptionCoordinator.interrupt(event, recordingSession): PlaybackInterruptionPlan?`
 - `PlaybackInterruptionCoordinator.close()`
@@ -66,7 +67,7 @@ The coordinator owns only whether a playback session is active. It does not know
 - Files/interfaces expected to change: `AndroidPlaybackFocusAdapter.kt`, Android manifest only if required (expected not required), focused adapter-policy tests where Android-free seams exist.
 - Implementation steps: create application-context adapter, map focus events, register/unregister receiver, compile against API 36 while retaining API 29 compatibility.
 - Tests/checks: Kotlin/JVM tests for pure mapping plus Android compilation/lint.
-- Acceptance evidence: receiver is non-exported on API 33+, unregister is idempotent, all focus losses route to one callback, gain routes nowhere.
+- Acceptance evidence: the protected system broadcast receiver is visible to system senders, unregister is idempotent, all non-gain focus callbacks route to one interruption, and gain routes nowhere.
 
 ### Milestone 3: Integrate every playback and recording transition
 
@@ -99,7 +100,8 @@ The coordinator owns only whether a playback session is active. It does not know
 - [x] 2026-08-14 11:02 +09:00 — Milestone 1 completed through repeated RED/GREEN slices: focus denial, focus lifecycle, interruption idempotence, recording policy, and close behavior.
 - [x] 2026-08-14 11:06 +09:00 — Android focus/noisy adapter, every playback entry gate, activity `onStop`, recording transitions, and teardown integration compiled and passed focused tests.
 - [x] 2026-08-14 11:19 +09:00 — Full unit tests, lint, debug/release assembly, APK identity, and dedicated API 36 emulator lifecycle checks passed. Physical route/focus tests remain separate.
-- [ ] Independent review, docs, commit/push/CI/release evidence.
+- [x] 2026-08-14 11:51 +09:00 — Independent Standards/Spec reviews and final parent verification completed; unknown focus changes now fail closed, playback retargets prove coordinator ownership, and repository state/evidence docs are updated. Child effective-model metadata was unavailable, so no runtime-verified Luna claim is made.
+- [ ] Commit/push/CI/release evidence.
 - [ ] Pixel 9a data-preserving install and physical interaction checks.
 
 ## Discoveries
@@ -108,6 +110,7 @@ The coordinator owns only whether a playback session is active. It does not know
 - System-audio capture intentionally needs app background operation. A blanket recorder stop in `onStop()` would break a primary feature.
 - Existing `RecordingSession` phases provide the idempotence signal needed to avoid duplicate stop operations; a `STOPPING` session must not be stopped again.
 - Playback pitch/seek retargets call `playSource` while playback is already applied. They must preserve the existing focus session rather than request a new one on every slider movement.
+- Review exposed that UI playback state alone was not sufficient proof for a retarget. `canRetargetPlayback()` now requires the coordinator's active focus session as a second invariant.
 - Current Android broadcast guidance requires `RECEIVER_EXPORTED` for broadcasts from the system or other apps. `ACTION_AUDIO_BECOMING_NOISY` is a platform protected broadcast, so an exported context receiver receives the system signal without allowing ordinary apps to spoof it. Sources: `https://developer.android.com/develop/background-work/background-tasks/broadcasts` and `https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-qpr2-release/core/res/AndroidManifest.xml`.
 - `dumpsys audio` includes historical focus request events after the live focus stack. Runtime checks must parse only the current `Audio Focus stack entries` section; a broad package-name search gives false positives.
 - `adb shell am start -n ...` created a second `MainActivity` during the first lifecycle probe. Launcher-style resume via `monkey -p ... -c android.intent.category.LAUNCHER 1` reused the existing task and produced valid `onStop` evidence.
@@ -119,6 +122,7 @@ The coordinator owns only whether a playback session is active. It does not know
 - 2026-08-14 10:51 +09:00 — Chose no automatic resume after focus gain. A deliberate user action is safer and prevents stale beat/source combinations from returning.
 - 2026-08-14 10:51 +09:00 — Chose to retain playback focus during internal primary-mode transitions and release it at explicit session boundaries, avoiding focus churn between source, chop, loop, scratch, and transport.
 - 2026-08-14 11:04 +09:00 — Changed the planned noisy receiver from non-exported to exported after checking current Android guidance and the platform protected-broadcast list. The action remains exact-match checked in `onReceive`.
+- 2026-08-14 11:51 +09:00 — Reserved versionCode 21 / versionName 0.13.1 and a new preview tag instead of mutating the already-public v0.13.0 artifact.
 
 ## Validation log
 
@@ -146,6 +150,16 @@ The coordinator owns only whether a playback session is active. It does not know
 - Date/environment: 2026-08-14, dedicated tracked API 36 `sdk_gphone64_x86_64` emulator on port 5590. Shared Neefo emulator 5588 was not touched.
 - Result: PASS. Debug APK SHA-256 `2FAE75700B31D17D07A3969379A22F52B986E5ED8BE3075FE39627704B8A3317`, package `com.choplab.sampler`, version `0.13.0`/20, debug signer SHA-256 `c0be467a0f8010bed6f2687d1fdd138498e99b0401722c487459aeedc453d587`. Playback acquired `USAGE_MEDIA`/`CONTENT_TYPE_MUSIC` focus; Home changed UI status to `バックグラウンド移行のため再生を停止しました` and left the live focus stack empty; rotation retained focus before, during, and after configuration recreation; ALL STOP emptied the stack.
 - Important output or artifact path: ignored runtime captures under `work/playback-interruption-*.xml`, `work/background-result.xml`, and `work/rotation-result.xml`.
+
+- Command: post-review `scripts/validate_project.sh` and `./gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --no-daemon`
+- Date/environment: 2026-08-14, Windows/JDK 17/Android SDK 36, versionCode 21 / versionName 0.13.1.
+- Result: PASS; 207 tests in 44 suites, zero failures/errors/skips; Lint 0 errors / 11 advisories; both APK variants assembled.
+- Important output or artifact path: `outputs/ChopLab-v0.13.1-playback-interruption-safety-local-debug.apk`, 30,821,319 bytes, SHA-256 `9A11118395AEC68AF6A739416514135FAEFF562302EB541573A49CF48A038668`.
+
+- Command: exact v0.13.1 APK install plus Home/return, rotation, and ALL STOP focus probes on `emulator-5590`.
+- Date/environment: 2026-08-14, dedicated tracked Android 16/API 36 emulator; shared `emulator-5588` remained untouched.
+- Result: PASS. Home emptied the live focus stack and surfaced the background-stop message; configuration recreation retained focus; ALL STOP released it. Protected noisy-route broadcast injection was not treated as physical route evidence.
+- Important output or artifact path: ignored `work/playback-interruption-final-*.xml` captures and terminal focus-stack evidence.
 
 ## Risks and rollback
 

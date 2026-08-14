@@ -45,6 +45,9 @@ class PlaybackInterruptionCoordinator(
         return PlaybackStartDecision.READY
     }
 
+    /** Retargeting may reuse playback only while this coordinator still owns the session. */
+    fun canRetargetPlayback(): Boolean = !closed && playbackSessionActive
+
     fun endPlaybackSession() {
         if (!playbackSessionActive) return
 

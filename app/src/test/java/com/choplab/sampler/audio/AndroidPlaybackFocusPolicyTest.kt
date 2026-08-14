@@ -19,6 +19,11 @@ class AndroidPlaybackFocusPolicyTest {
             )
         }
 
+        assertEquals(
+            PlaybackInterruption.AUDIO_FOCUS_LOSS,
+            playbackInterruptionForAudioFocusChange(Int.MIN_VALUE),
+        )
+
         assertNull(playbackInterruptionForAudioFocusChange(AudioManager.AUDIOFOCUS_GAIN))
     }
 }

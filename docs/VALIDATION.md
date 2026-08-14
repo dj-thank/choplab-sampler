@@ -2,6 +2,25 @@
 
 作成日: 2026-07-15
 
+## 2026-08-14 v0.13.1 playback interruption safety candidate
+
+- architecture: pure `PlaybackInterruptionCoordinator` owns focus-session state and interruption/recording policy; `AndroidPlaybackFocusAdapter` owns only `AudioManager` and the protected noisy-output receiver; no UI or persistence schema change
+- behavior: every audible start is focus-gated; focus loss/transient/duck, Home, and output-route loss stop once; gain never auto-resumes; source seek/KEY retarget requires active coordinator ownership; rotation is exempt from background interruption
+- recording policy: microphone and vocal sessions request graceful stop; Android Playback Capture continues in background while app playback stops
+- independent review: Standards and Spec passes plus final parent-side verification; corrected missing state docs, unknown non-gain focus handling, and unproven retarget ownership; no scope-creep or additional clear behavior defect found. Effective child model metadata was not exposed, so no runtime-verified Luna claim is made for this milestone
+- focused TDD: missing retarget ownership API was observed RED at Kotlin test compilation; unknown focus mapping and coordinator ownership are GREEN after the smallest production change
+- configured `scripts/validate_project.sh`: PASS; pure Kotlin smoke PASS; four Android XML files parsed; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`
+- final Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --no-daemon` BUILD SUCCESSFUL
+- unit tests: 207 tests / 44 suites; failures 0, errors 0, skipped 0
+- Android Lint: errors 0, warnings/advisories 11; debug and unsigned release APK assembly PASS
+- local APK: `outputs/ChopLab-v0.13.1-playback-interruption-safety-local-debug.apk`; 30,821,319 bytes; SHA-256 `9A11118395AEC68AF6A739416514135FAEFF562302EB541573A49CF48A038668`
+- metadata: package `com.choplab.sampler`; versionCode 21 / versionName 0.13.1; minSdk 29 / targetSdk 36; APK Signature Scheme v2; local debug certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- unsigned release APK: 23,603,385 bytes; SHA-256 `41C318EEE607EF28391A9BE38751F2D82D9B4B3934AEFC7F42E1702F9343A4D9`
+- dedicated tracked emulator `emulator-5590`, Android 16/API 36: exact data-preserving `adb install -r` PASS; installed package reports versionCode 21 / versionName 0.13.1
+- runtime focus: one `USAGE_MEDIA` / `CONTENT_TYPE_MUSIC` GAIN entry with `PAUSES_ON_DUCKABLE_LOSS`; Home emptied the live stack and return status reported the background stop; portrait/landscape recreation retained focus; `ALL STOP` emptied it
+- automation boundary: shell injection of protected `ACTION_AUDIO_BECOMING_NOISY` is rejected by Android, so actual wired/Bluetooth route loss remains physical-device evidence
+- current boundary: Pixel 9a `5A121JEBF08094` absent; physical retained-data install, route/focus contention, actual microphone/system capture, subjective audio, public-provider artifact, and `HUMAN_GO` remain unclaimed
+
 ## 2026-08-14 v0.13.0 Luna interaction integrity candidate
 
 - review fan-out: 20 independent `gpt-5.6-luna` medium/default packets, followed by fixed-point Standards/Spec passes and one final independent verifier; every accepted child runtime was verified; final verifier found no P0-P2 blocker

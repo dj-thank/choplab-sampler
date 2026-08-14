@@ -82,9 +82,6 @@ class AndroidPlaybackFocusAdapter(
 internal fun playbackInterruptionForAudioFocusChange(
     focusChange: Int,
 ): PlaybackInterruption? = when (focusChange) {
-    AudioManager.AUDIOFOCUS_LOSS,
-    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
-    -> PlaybackInterruption.AUDIO_FOCUS_LOSS
-    else -> null
+    AudioManager.AUDIOFOCUS_GAIN -> null
+    else -> PlaybackInterruption.AUDIO_FOCUS_LOSS
 }

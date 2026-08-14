@@ -269,6 +269,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun canRetargetActiveSource(state: SamplerUiState): Boolean =
+        playbackInterruptionCoordinator.canRetargetPlayback() &&
+            !state.recordingSession.isActive &&
+            shouldContinueSourcePlayback(
+                appliedPlaying = state.sourcePlaying,
+                pendingCommand = state.pendingSourceCommand,
+            )
+
     fun handlePlaybackInterruption(interruption: PlaybackInterruption) {
         val plan = playbackInterruptionCoordinator.interrupt(
             event = interruption,
@@ -1347,10 +1355,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
         val safe = frame.coerceIn(0, audio.frameCount - 1)
-        val shouldContinuePlayback = !state.recordingSession.isActive && shouldContinueSourcePlayback(
-            appliedPlaying = state.sourcePlaying,
-            pendingCommand = state.pendingSourceCommand,
-        )
+        val shouldContinuePlayback = canRetargetActiveSource(state)
         if (shouldContinuePlayback) {
             engine.playSource(audio, safe, state.masterPitchSemitones)
         }
@@ -1371,10 +1376,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val state = mutableUiState.value
         val audio = state.currentAudio
         val frame = engine.currentSourceFrame.takeIf { it >= 0 } ?: state.sourcePlayheadFrame
-        val shouldContinuePlayback = !state.recordingSession.isActive && shouldContinueSourcePlayback(
-            appliedPlaying = state.sourcePlaying,
-            pendingCommand = state.pendingSourceCommand,
-        )
+        val shouldContinuePlayback = canRetargetActiveSource(state)
         if (shouldContinuePlayback && audio != null) {
             engine.playSource(audio, frame.coerceIn(0, audio.frameCount - 1), pitch)
         }
