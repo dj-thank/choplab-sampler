@@ -7,12 +7,16 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.choplab.sampler.audio.AudioDecoder
+import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.CaptureEventBus
 import com.choplab.sampler.audio.MicrophoneRecorder
 import com.choplab.sampler.audio.PlaybackCaptureService
 import com.choplab.sampler.audio.PlaybackCaptureState
 import com.choplab.sampler.audio.PatternRenderer
+import com.choplab.sampler.audio.PlaybackInterruption
+import com.choplab.sampler.audio.PlaybackInterruptionCoordinator
+import com.choplab.sampler.audio.PlaybackStartDecision
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
 import com.choplab.sampler.audio.TransientDetector
@@ -111,11 +115,19 @@ import java.io.File
 import kotlin.math.pow
 
 class SamplerViewModel(application: Application) : AndroidViewModel(application) {
+    private val mutableUiState = MutableStateFlow(beginAutosaveRecovery())
+    val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
     private val decoder = AudioDecoder(application)
     private val microphoneRecorder = MicrophoneRecorder()
     private val engine: SamplerPlaybackEngine = SamplerEngine(application) { message ->
         viewModelScope.launch { setStatus(message) }
     }
+    private val playbackFocusAdapter = AndroidPlaybackFocusAdapter(application) { interruption ->
+        handlePlaybackInterruption(interruption)
+    }
+    private val playbackInterruptionCoordinator = PlaybackInterruptionCoordinator(
+        focusAdapter = playbackFocusAdapter,
+    )
     private val editHistory = EditHistory(maxEntries = MAX_HISTORY_ENTRIES)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private var autosaveJob: Job? = null
@@ -126,8 +138,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val systemSourceCapture = SourceCaptureOperation(projectOperations)
     private val vocalCapture = SourceCaptureOperation(projectOperations)
     private var discardNextSystemCaptureResult = false
-    private val mutableUiState = MutableStateFlow(beginAutosaveRecovery())
-    val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
 
     init {
         engine.start()
@@ -154,6 +164,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             stopCompetingPlayback()
         } else {
             current
+        }
+        if (policy.stopAllPlaybackBeforeStart) {
+            playbackInterruptionCoordinator.endPlaybackSession()
         }
         mutableUiState.value = beginRecordingSession(safeState, kind).copy(statusMessage = message)
         return policy
@@ -209,7 +222,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
         }
-        loopToStop?.let(engine::stopPad)
+        loopToStop?.let { loopPad ->
+            engine.stopPad(loopPad)
+            playbackInterruptionCoordinator.endPlaybackSession()
+        }
     }
 
     private fun observeSystemAudioRecording(state: SamplerUiState): SamplerUiState {
@@ -235,11 +251,38 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun blockPlaybackStartDuringRecording(): Boolean {
+    private fun preparePlaybackStart(allowDuringRecording: Boolean = false): Boolean {
         val session = mutableUiState.value.recordingSession
-        if (playbackRequestAllowedDuringRecording(session, startsPlayback = true)) return false
-        setStatus("${recordingKindLabel(session)}中です。STOPしてから音を鳴らしてください")
-        return true
+        if (
+            !allowDuringRecording &&
+            !playbackRequestAllowedDuringRecording(session, startsPlayback = true)
+        ) {
+            setStatus("${recordingKindLabel(session)}中です。STOPしてから音を鳴らしてください")
+            return false
+        }
+        return when (playbackInterruptionCoordinator.beginPlayback()) {
+            PlaybackStartDecision.READY -> true
+            PlaybackStartDecision.FOCUS_DENIED -> {
+                setStatus("他のアプリが音声を使用中です。停止してからもう一度お試しください")
+                false
+            }
+        }
+    }
+
+    fun handlePlaybackInterruption(interruption: PlaybackInterruption) {
+        val plan = playbackInterruptionCoordinator.interrupt(
+            event = interruption,
+            recordingSession = mutableUiState.value.recordingSession,
+        ) ?: return
+
+        if (plan.stopPlayback) {
+            engine.stopAllPlayback()
+            mutableUiState.update(::stopAllPlaybackState)
+        }
+        if (plan.requestRecordingStop) {
+            stopActiveRecording()
+        }
+        mutableUiState.update { it.copy(statusMessage = plan.statusMessage) }
     }
 
     private fun stopCompetingPlayback(): SamplerUiState {
@@ -272,6 +315,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     projectOperations.completeIfCurrent(operation) {
                         val previous = mutableUiState.value
                         engine.stopAllPlayback()
+                        playbackInterruptionCoordinator.endPlaybackSession()
                         editHistory.reset()
                         val replaced = preserveAppliedSourceTruthWhileStopping(
                             previousState = previous,
@@ -400,15 +444,22 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
         }.onSuccess {
             projectOperations.completeIfCurrent(operation) {
-                if (recordingPolicy.allowBeatLoopDuringRecording) {
-                    engine.startPadLoop(loopPadIndex)
-                }
-                mutableUiState.update {
-                    observeRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
-                        loopingPadIndex = loopPadIndex,
-                        loopPlayheadFrame = loopPad.startFrame,
-                        statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
-                    )
+                val beatLoopReady = !recordingPolicy.allowBeatLoopDuringRecording ||
+                    preparePlaybackStart(allowDuringRecording = true)
+                if (!beatLoopReady) {
+                    stopVocalOverdubRecording()
+                    setStatus("他のアプリが音声を使用中のため、ボーカル録音を停止します")
+                } else {
+                    if (recordingPolicy.allowBeatLoopDuringRecording) {
+                        engine.startPadLoop(loopPadIndex)
+                    }
+                    mutableUiState.update {
+                        observeRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
+                            loopingPadIndex = loopPadIndex,
+                            loopPlayheadFrame = loopPad.startFrame,
+                            statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
+                        )
+                    }
                 }
             }
         }.onFailure { throwable ->
@@ -532,7 +583,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun beginScratch() {
-        if (blockPlaybackStartDuringRecording()) return
         val state = mutableUiState.value
         val padIndex = state.selectedPad.takeIf { state.pads.getOrNull(it)?.isAssigned == true }
             ?: state.loopingPadIndex
@@ -543,6 +593,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("スクラッチするビートPADを選んでください")
             return
         }
+        if (!preparePlaybackStart()) return
         stopCompetingPlayback()
         val startFrame = state.loopPlayheadFrame.takeIf { it in pad.startFrame until pad.endFrame }
             ?: pad.startFrame
@@ -560,7 +611,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun beginSourceScratch() {
-        if (blockPlaybackStartDuringRecording()) return
         val state = mutableUiState.value
         val audio = state.currentAudio
         val range = state.sourceScratchRange()
@@ -568,6 +618,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
             return
         }
+        if (!preparePlaybackStart()) return
         stopCompetingPlayback()
         engine.beginSourceScratch(audio, range.startFrame, range.endFrame)
         mutableUiState.update { current ->
@@ -604,6 +655,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         scratchIdleJob?.cancel()
         scratchIdleJob = null
         engine.endScratch()
+        playbackInterruptionCoordinator.endPlaybackSession()
         mutableUiState.update {
             it.copy(
                 scratchingPadIndex = null,
@@ -740,6 +792,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         autosaveJob?.cancel()
         engine.stopAllPlayback()
+        playbackInterruptionCoordinator.endPlaybackSession()
         runCatching { microphoneRecorder.stop() }
         runCatching {
             val application = getApplication<Application>()
@@ -953,11 +1006,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun previewCurrentSelection() {
-        if (blockPlaybackStartDuringRecording()) return
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
         val range = state.activeSliceRange()
             ?: SliceRange(state.rangeStartFrame, state.rangeEndFrame)
+        if (!preparePlaybackStart()) return
         stopCompetingPlayback()
         engine.preview(audio, range.startFrame, range.endFrame)
         setStatus("選択した範囲を試聴中です")
@@ -1125,8 +1178,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
         ) {
             PerformancePadPressAction.TOGGLE_LOOP -> toggleBeatLoop(globalIndex)
-            PerformancePadPressAction.TRIGGER_ONLY -> engine.triggerPad(globalIndex)
+            PerformancePadPressAction.TRIGGER_ONLY -> {
+                if (!preparePlaybackStart()) return
+                engine.triggerPad(globalIndex)
+            }
             PerformancePadPressAction.TRIGGER_AND_RECORD_STEP -> {
+                if (!preparePlaybackStart()) return
                 engine.triggerPad(globalIndex)
                 val step = liveRecordingStep(engine.currentStep)
                 commitEdit { current ->
@@ -1150,6 +1207,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (!shouldStop) return
 
         engine.stopSource()
+        playbackInterruptionCoordinator.endPlaybackSession()
         mutableUiState.update { current ->
             val feedback = sourcePlaybackRequestFeedback(
                 appliedPlaying = current.sourcePlaying,
@@ -1177,6 +1235,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         ) {
             SourcePlaybackToggleAction.STOP -> {
                 engine.stopSource()
+                playbackInterruptionCoordinator.endPlaybackSession()
                 mutableUiState.update { current ->
                     val feedback = sourcePlaybackRequestFeedback(
                         appliedPlaying = current.sourcePlaying,
@@ -1190,7 +1249,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
                 return
             }
-            SourcePlaybackToggleAction.START -> if (blockPlaybackStartDuringRecording()) return
+            SourcePlaybackToggleAction.START -> if (!preparePlaybackStart()) return
         }
 
         stopCompetingPlayback()
@@ -1226,7 +1285,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun restartSourcePlayback() {
-        if (blockPlaybackStartDuringRecording()) return
         val state = mutableUiState.value
         if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
             setStatus("停止処理中です。音が止まってから再生してください")
@@ -1236,6 +1294,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("先に曲を読み込んでください")
             return
         }
+        if (!preparePlaybackStart()) return
         stopCompetingPlayback()
         engine.playSource(audio, 0, state.masterPitchSemitones)
         mutableUiState.update { current ->
@@ -1255,7 +1314,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun playSourceFrom(frame: Int) {
-        if (blockPlaybackStartDuringRecording()) return
         val state = mutableUiState.value
         if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
             setStatus("停止処理中です。音が止まってから位置を選んでください")
@@ -1266,6 +1324,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val safe = frame.coerceIn(0, audio.frameCount - 1)
+        if (!preparePlaybackStart()) return
         stopCompetingPlayback()
         engine.playSource(audio, safe, state.masterPitchSemitones)
         mutableUiState.update { current ->
@@ -1450,6 +1509,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             engine.stopPad(globalIndex)
             state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
                 .forEach { engine.stopPad(it.globalIndex) }
+            playbackInterruptionCoordinator.endPlaybackSession()
             mutableUiState.update {
                 it.copy(
                     loopingPadIndex = null,
@@ -1459,7 +1519,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
             return
         }
-        if (blockPlaybackStartDuringRecording()) return
+        if (!preparePlaybackStart()) return
 
         stopCompetingPlayback()
         var loopPad = pad
@@ -1569,9 +1629,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val playing = mutableUiState.value.transportPlaying
         if (playing) {
             engine.stopTransport()
+            playbackInterruptionCoordinator.endPlaybackSession()
             mutableUiState.update { it.copy(transportPlaying = false, currentStep = -1) }
         } else {
-            if (blockPlaybackStartDuringRecording()) return
+            if (!preparePlaybackStart()) return
             val recordArmed = mutableUiState.value.recordArmed
             stopCompetingPlayback()
             syncPattern()
@@ -1594,7 +1655,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
             return
         }
-        if (blockPlaybackStartDuringRecording()) return
+        if (!preparePlaybackStart()) return
         if (!state.transportPlaying) {
             stopCompetingPlayback()
             syncPattern()
@@ -1657,6 +1718,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun stopAllSounds() {
         engine.stopAllPlayback()
+        playbackInterruptionCoordinator.endPlaybackSession()
         mutableUiState.update(::stopAllPlaybackState)
     }
 
@@ -1860,6 +1922,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private fun applyProjectState(restored: SamplerUiState, message: String) {
         val previous = mutableUiState.value
         engine.stopAllPlayback()
+        playbackInterruptionCoordinator.endPlaybackSession()
         val restoredRuntimeState = restored.copy(
             isLoading = false,
             statusMessage = message,
@@ -1945,6 +2008,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             setStatus("別の録音セッションが動作中のため端末音声録音を停止しました")
                         } else if (snapshot.isLoading && snapshot.recordingSession == RecordingSession.Idle) {
                             engine.stopAllPlayback()
+                            playbackInterruptionCoordinator.endPlaybackSession()
                             mutableUiState.update {
                                 observeSystemAudioRecording(
                                     stopAllPlaybackState(it),
@@ -2123,6 +2187,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))
         }
+        playbackInterruptionCoordinator.close()
         engine.shutdown()
         super.onCleared()
     }

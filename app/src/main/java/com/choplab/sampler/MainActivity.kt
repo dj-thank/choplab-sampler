@@ -10,6 +10,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,17 +20,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.choplab.sampler.audio.PlaybackInterruption
 import com.choplab.sampler.ui.SamplerScreen
 import com.choplab.sampler.ui.theme.ChopLabTheme
 
 class MainActivity : ComponentActivity() {
+    private val samplerViewModel: SamplerViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             ChopLabTheme {
                 val context = LocalContext.current
-                val samplerViewModel: SamplerViewModel = viewModel()
                 val state by samplerViewModel.uiState.collectAsStateWithLifecycle()
                 var pendingAction by rememberSaveable { mutableStateOf(PendingPermissionAction.NONE) }
 
@@ -187,7 +189,18 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStop() {
+        if (shouldInterruptPlaybackOnActivityStop(isChangingConfigurations)) {
+            samplerViewModel.handlePlaybackInterruption(PlaybackInterruption.APP_BACKGROUND)
+        }
+        super.onStop()
+    }
 }
+
+internal fun shouldInterruptPlaybackOnActivityStop(
+    isChangingConfigurations: Boolean,
+): Boolean = !isChangingConfigurations
 
 internal enum class PendingPermissionAction {
     NONE,
