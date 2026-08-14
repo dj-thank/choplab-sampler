@@ -2,6 +2,16 @@
 
 Last prepared: 2026-08-14
 
+## Post-v0.13.1 local playback teardown ordering maintenance — 2026-08-14
+
+The playback interruption owner now enforces one safety sequence: enqueue engine-wide silence before abandoning Android playback focus. The same implementation is used by Android interruption callbacks and active-session ViewModel teardown, while explicit in-app stops retain their existing engine-stop-then-focus-release order. `SamplerViewModel` receives a truthful `PlaybackInterruptionOutcome`, projects stopped UI state, and no longer sends a duplicate engine stop after the coordinator has already done so. UI, project schema, project bytes, audio assets, permissions, and version metadata are unchanged.
+
+Three focused RED/GREEN slices established interruption order, active close order, and the stopped-outcome contract. A fixed-point review from `830936774d67f15e44fafc244cfc4fc1548ef3ae` then concentrated duplicated teardown logic and added regression coverage proving repeated interruption silences once while a recording-only interruption does not silence playback. Review execution was a local parent Standards/Spec two-pass because the child surface did not expose effective runtime-model metadata; no substitute child-model claim is made.
+
+Final local gate: configured `scripts/validate_project.sh` PASS; `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --no-daemon --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL; 210 tests in 44 suites with zero failures/errors/skips; Android Lint 11 warnings and no errors. Local debug APK: `app/build/outputs/apk/debug/app-debug.apk`, 31,046,270 bytes, SHA-256 `507181B5AA3ED958EAF45004189964723DCBE58D27823B4E1456EC6156426172`. Local unsigned release APK: `app/build/outputs/apk/release/app-release-unsigned.apk`, 23,603,385 bytes, SHA-256 `B0DD9596A33876AD851998D3B7ED2F78EFC9A3A6A5671C0448B7C0551E9F4F21`.
+
+This is `LOCAL_PASS` only. No Pixel, emulator, ADB, provider, GitHub, tag, Release, or public-artifact operation was performed for this maintenance checkpoint. Prior public v0.13.1 evidence below remains historical evidence for its tagged bytes and must not be attributed to this local change.
+
 ## v0.13.1 playback interruption safety candidate — 2026-08-14
 
 Playback now has one explicit Android interruption owner without adding another UI surface. Every audible source, preview, PAD, Beat loop, transport, vocal-monitor, and scratch start acquires or reuses one media/music audio-focus session before touching the engine. Home/background, permanent or transient focus loss, duck requests, and wired/Bluetooth output loss stop playback once and release focus; focus gain never auto-resumes stale audio. Source seek and live KEY retargets may restart the source only while the coordinator still owns the active focus session.

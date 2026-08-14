@@ -40,16 +40,18 @@ System-audio capture is a deliberate exception: moving ChopLab to the background
 - `PlaybackInterruptionCoordinator.beginPlayback(): PlaybackStartDecision`
 - `PlaybackInterruptionCoordinator.canRetargetPlayback(): Boolean`
 - `PlaybackInterruptionCoordinator.endPlaybackSession()`
-- `PlaybackInterruptionCoordinator.interrupt(event, recordingSession): PlaybackInterruptionPlan?`
+- `PlaybackInterruptionCoordinator.interrupt(event, recordingSession): PlaybackInterruptionOutcome?`
 - `PlaybackInterruptionCoordinator.close()`
 
-The coordinator owns only whether a playback session is active. It does not know the engine, UI state, Android APIs, or recorder implementations. An interruption plan describes observable work: stop all playback, optionally request recording stop, and show a Japanese status message. Returning `null` means the same interruption has already been handled and no duplicate work is needed.
+The coordinator owns whether a playback session is active and the safety ordering that silences it before focus release. It knows only the small `PlaybackSilencer` and `PlaybackFocusAdapter` interfaces, not the engine, UI state, Android API, or recorder implementations. An interruption outcome reports whether playback was already stopped, whether the caller must request recorder teardown, and the Japanese status message. Returning `null` means the same interruption has already been handled and no duplicate work is needed.
 
 `app/src/main/java/com/choplab/sampler/audio/AndroidPlaybackFocusAdapter.kt` is the Android boundary. It uses media/music `AudioAttributes`, requests `AUDIOFOCUS_GAIN`, maps every non-gain focus change to an interruption callback, registers the protected system broadcast `AudioManager.ACTION_AUDIO_BECOMING_NOISY` with a context receiver visible to system senders, and never automatically resumes.
 
-`SamplerViewModel` constructs and closes both objects, replaces its recording-only playback guard with a single playback-start gate, and translates interruption plans into existing `engine.stopAllPlayback()`, `stopAllPlaybackState`, and `stopActiveRecording()` operations. Playback-mode transitions may stop competing engine voices while retaining focus; explicit all-stop, project replacement/reset, recording start, interruption, and teardown release focus.
+`SamplerViewModel` constructs and closes both objects, replaces its recording-only playback guard with a single playback-start gate, and projects interruption outcomes through `stopAllPlaybackState` and `stopActiveRecording()`. It does not stop the engine a second time after an interruption. Playback-mode transitions may stop competing engine voices while retaining focus; explicit all-stop, project replacement/reset, and recording start silence the engine before ending their focus session.
 
 `MainActivity` owns no audio policy. It holds its existing `SamplerViewModel` as an activity property and calls `handlePlaybackInterruption(APP_BACKGROUND)` from `onStop()` only when `isChangingConfigurations` is false.
+
+The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the coordinator. Android interruption and active-session `close()` must silence the engine before abandoning playback focus. The returned interruption outcome reports that playback was already stopped, leaving `SamplerViewModel` responsible only for projecting UI state and requesting recorder teardown. Explicit in-app stops retain their existing order: the caller silences the engine, then calls `endPlaybackSession()`.
 
 ## Milestones
 
@@ -93,6 +95,13 @@ The coordinator owns only whether a playback session is active. It does not know
 - Tests/checks: clean tracked diff, exact commit/tree, CI checks, GitHub asset hash if released.
 - Acceptance evidence: review findings resolved or explicitly accepted; commit and artifact provenance are exact; public state is not claimed before provider readback.
 
+### Milestone 6: Enforce silence before focus release
+- Scope: local-only post-release correction to interruption and teardown ordering; no version, UI, schema, device, or provider change.
+- Files/interfaces expected to change: `PlaybackInterruptionCoordinator.kt`, `SamplerViewModel.kt`, `PlaybackInterruptionCoordinatorTest.kt`, this plan, and observed-state documentation.
+- Implementation steps: add a failing public-interface order test; inject the smallest playback-silencing adapter; return an outcome that says playback is already stopped; remove duplicate caller-side engine stop; cover active-session close ordering.
+- Tests/checks: focused coordinator test, full unit suite, Lint, debug/release assembly, repository validation, static call-site scan, and final code review.
+- Acceptance evidence: every interruption records `silence -> abandon focus`; repeated interruption performs teardown once; recording-only interruption does not silence; active close records `silence -> abandon focus -> close`; all local gates pass.
+
 ## Progress
 
 - [x] 2026-08-14 10:45 +09:00 — Four fresh-context Luna architecture candidates reviewed the current tree; the playback-interruption boundary ranked highest for user impact, cohesion, and offline testability.
@@ -102,6 +111,9 @@ The coordinator owns only whether a playback session is active. It does not know
 - [x] 2026-08-14 11:19 +09:00 — Full unit tests, lint, debug/release assembly, APK identity, and dedicated API 36 emulator lifecycle checks passed. Physical route/focus tests remain separate.
 - [x] 2026-08-14 11:35 +09:00 — Independent Standards/Spec reviews and final parent verification completed; unknown focus changes now fail closed, playback retargets prove coordinator ownership, and repository state/evidence docs are updated. Child effective-model metadata was unavailable, so no runtime-verified Luna claim is made.
 - [x] 2026-08-14 11:44 +09:00 — Reviewed commits `52a62ed` and `903c698` pushed; branch/PR/tag/release workflows passed; public APK and checksum were reverse-downloaded and verified anonymously.
+- [x] 2026-08-14 12:23 +09:00 — Milestone 6 started from clean tracked HEAD `830936774d67f15e44fafc244cfc4fc1548ef3ae`; existing untracked `outputs/` and `work/` remain preserved. Focused baseline test and configured offline validation pass. First RED is observed: the order test fails compilation because the required `playbackSilencer` seam and `PlaybackSilencer` interface do not yet exist.
+- [x] 2026-08-14 20:27 +09:00 — Three RED/GREEN slices pass at the coordinator seam. Fixed-point local parent review found two Standards issues (duplicated teardown ordering and stale plan/outcome naming) plus two Spec coverage gaps (repeated silence count and recording-only no-silence); all four were corrected.
+- [x] 2026-08-14 20:36 +09:00 — Milestone 6 completed locally. Post-review focused tests, 210-test full suite, Lint, debug/release assembly, repository validation, static seam scan, docs, and final Standards/Spec review pass. No device, provider, or public operation was performed.
 - [ ] Pixel 9a data-preserving install and physical interaction checks.
 
 ## Discoveries
@@ -114,6 +126,8 @@ The coordinator owns only whether a playback session is active. It does not know
 - Current Android broadcast guidance requires `RECEIVER_EXPORTED` for broadcasts from the system or other apps. `ACTION_AUDIO_BECOMING_NOISY` is a platform protected broadcast, so an exported context receiver receives the system signal without allowing ordinary apps to spoof it. Sources: `https://developer.android.com/develop/background-work/background-tasks/broadcasts` and `https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-qpr2-release/core/res/AndroidManifest.xml`.
 - `dumpsys audio` includes historical focus request events after the live focus stack. Runtime checks must parse only the current `Audio Focus stack entries` section; a broad package-name search gives false positives.
 - `adb shell am start -n ...` created a second `MainActivity` during the first lifecycle probe. Launcher-style resume via `monkey -p ... -c android.intent.category.LAUNCHER 1` reused the existing task and produced valid `onStop` evidence.
+- A post-release architecture audit found an ordering defect in `interrupt()`: it abandoned playback focus before `SamplerViewModel` executed `engine.stopAllPlayback()`. Existing explicit stop paths silence first, so the callback path did not share the same safety invariant.
+- Calling `bash` from this PowerShell session resolves to an unavailable WSL relay. Repository shell scripts run correctly through `C:\Program Files\Git\bin\bash.exe`; the initial WSL launch failure is environment-only evidence, not a project failure.
 
 ## Decision log
 
@@ -123,6 +137,9 @@ The coordinator owns only whether a playback session is active. It does not know
 - 2026-08-14 10:51 +09:00 — Chose to retain playback focus during internal primary-mode transitions and release it at explicit session boundaries, avoiding focus churn between source, chop, loop, scratch, and transport.
 - 2026-08-14 11:04 +09:00 — Changed the planned noisy receiver from non-exported to exported after checking current Android guidance and the platform protected-broadcast list. The action remains exact-match checked in `onReceive`.
 - 2026-08-14 11:35 +09:00 — Reserved versionCode 21 / versionName 0.13.1 and a new preview tag instead of mutating the already-public v0.13.0 artifact.
+- 2026-08-14 12:23 +09:00 — Rejected a broad Primary playback coordinator for this maintenance slice because its interface would expose heterogeneous engine commands, UI projection, and recording exceptions. Selected the smaller silence-ordering seam because it fixes observed behavior with high locality and rollback safety.
+- 2026-08-14 12:23 +09:00 — Fixed the TDD seam at the public `PlaybackInterruptionCoordinator.interrupt()/close()` interface with recording adapters for the two external resources: playback silence and Android focus. No private ViewModel method is a test seam.
+- 2026-08-14 20:27 +09:00 — Renamed the return type to `PlaybackInterruptionOutcome` and concentrated the safety sequence in `silenceAndEndPlaybackSession()`. This keeps the interface truthful and prevents `close()` and `interrupt()` from drifting apart.
 
 ## Validation log
 
@@ -165,6 +182,41 @@ The coordinator owns only whether a playback session is active. It does not know
 - Date/environment: 2026-08-14, public `dj-thank/choplab-sampler` repository.
 - Result: PASS. Branch run `31764219592`, PR run `31764223167`, tag run `31764417666`, and Release run `31764417670` succeeded. Tag object `b11eaa13be6c7e4d8bc7cbfcf805dc8ab25dc436` peels to the exact commit. Public APK digest, sidecar, authenticated hash, and anonymous hash all equal `5EE5183C2CA6574E964CC4A6AE44B4BE72813A691843345D9FA78B5ADE6598D6`; repository, Release, and asset returned anonymous HTTP 200.
 - Important output or artifact path: `outputs/ChopLab-v0.13.1-preview.1-debug.apk`, `outputs/ChopLab-v0.13.1-preview.1-debug.apk.sha256`, and `work/public-v0131/` readback evidence.
+
+- Command: `C:\Program Files\Git\bin\bash.exe scripts/validate_project.sh` with JDK 17, SDK, ADB, and Kotlin compiler paths supplied to the process
+- Date/environment: 2026-08-14 12:20 +09:00, Windows PowerShell, maintenance starting HEAD `8309367`.
+- Result: PASS; pure Kotlin smoke, four Android XML parses, and Gradle Wrapper SHA-256 all passed.
+- Important output or artifact path: terminal evidence for this run; no tracked artifact.
+
+- Command: `.\gradlew.bat :app:testDebugUnitTest --tests 'com.choplab.sampler.audio.PlaybackInterruptionCoordinatorTest' --no-daemon`
+- Date/environment: 2026-08-14 12:21 +09:00, Windows/JDK 17/Android SDK 36.
+- Result: PASS baseline before Milestone 6 changes.
+- Important output or artifact path: `app/build/reports/tests/testDebugUnitTest/index.html`.
+
+- Command: same focused Gradle test after adding `interruptionSilencesPlaybackBeforeReleasingFocus`
+- Date/environment: 2026-08-14 12:27 +09:00, Windows/JDK 17/Android SDK 36.
+- Result: expected RED; unit-test Kotlin compilation reports `No parameter with name 'playbackSilencer' found` and `Unresolved reference 'PlaybackSilencer'`.
+- Important output or artifact path: terminal evidence for the RED cycle.
+
+- Command: three focused RED/GREEN cycles through `PlaybackInterruptionCoordinatorTest`
+- Date/environment: 2026-08-14 12:27–12:35 +09:00, Windows/JDK 17/Android SDK 36.
+- Result: RED 1 missing silencer seam; GREEN 1 interruption order; RED 2 close-order assertion; GREEN 2 active close order; RED 3 unresolved `playbackStopped`; GREEN 3 truthful stopped outcome. Post-review focused rerun also passed with `BUILD SUCCESSFUL`.
+- Important output or artifact path: `app/build/reports/tests/testDebugUnitTest/index.html` and terminal evidence.
+
+- Command: fixed-point review of `git diff 830936774d67f15e44fafc244cfc4fc1548ef3ae` against `AGENTS.md`, `docs/DEFINITION_OF_DONE.md`, and Milestone 6
+- Date/environment: 2026-08-14 20:20–20:36 +09:00, local parent two-pass; no substitute child model used because child effective-model metadata was unavailable.
+- Result: initial Standards 2 / Spec 2 findings corrected. Final Standards 0 / Spec 0 unresolved findings. The final pass verified one teardown implementation, truthful outcome naming/docs, one repeated silence, zero recording-only silence, and no caller-side duplicate engine stop.
+- Important output or artifact path: tracked code/tests/docs and terminal diff/static-scan evidence.
+
+- Command: `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --no-daemon --console=plain --max-workers=1 --no-watch-fs`
+- Date/environment: 2026-08-14 20:28 +09:00, Windows/JDK 17/Android SDK 36.
+- Result: BUILD SUCCESSFUL in 4m25s; 210 tests in 44 suites, zero failures/errors/skips; Android Lint 11 warnings and no errors; debug and unsigned release APKs assembled.
+- Important output or artifact path: `app/build/reports/tests/testDebugUnitTest/index.html`, `app/build/reports/lint-results-debug.html`, `app/build/outputs/apk/debug/app-debug.apk` (31,046,270 bytes, SHA-256 `507181B5AA3ED958EAF45004189964723DCBE58D27823B4E1456EC6156426172`), and `app/build/outputs/apk/release/app-release-unsigned.apk` (23,603,385 bytes, SHA-256 `B0DD9596A33876AD851998D3B7ED2F78EFC9A3A6A5671C0448B7C0551E9F4F21`).
+
+- Command: configured `C:\Program Files\Git\bin\bash.exe scripts/validate_project.sh`, `git diff --check 8309367`, and focused static seam scans
+- Date/environment: 2026-08-14 20:34 +09:00, Windows local checkout.
+- Result: PASS; pure Kotlin smoke, four Android XML parses, wrapper SHA-256, whitespace check, constructor wiring, outcome naming, teardown locality, and required regression-test presence all verified.
+- Important output or artifact path: terminal evidence; no new copied artifact.
 
 ## Risks and rollback
 

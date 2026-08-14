@@ -16,6 +16,7 @@ import com.choplab.sampler.audio.PlaybackCaptureState
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.PlaybackInterruption
 import com.choplab.sampler.audio.PlaybackInterruptionCoordinator
+import com.choplab.sampler.audio.PlaybackSilencer
 import com.choplab.sampler.audio.PlaybackStartDecision
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
@@ -127,6 +128,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
     private val playbackInterruptionCoordinator = PlaybackInterruptionCoordinator(
         focusAdapter = playbackFocusAdapter,
+        playbackSilencer = PlaybackSilencer(engine::stopAllPlayback),
     )
     private val editHistory = EditHistory(maxEntries = MAX_HISTORY_ENTRIES)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
@@ -278,19 +280,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
 
     fun handlePlaybackInterruption(interruption: PlaybackInterruption) {
-        val plan = playbackInterruptionCoordinator.interrupt(
+        val outcome = playbackInterruptionCoordinator.interrupt(
             event = interruption,
             recordingSession = mutableUiState.value.recordingSession,
         ) ?: return
 
-        if (plan.stopPlayback) {
-            engine.stopAllPlayback()
+        if (outcome.playbackStopped) {
             mutableUiState.update(::stopAllPlaybackState)
         }
-        if (plan.requestRecordingStop) {
+        if (outcome.requestRecordingStop) {
             stopActiveRecording()
         }
-        mutableUiState.update { it.copy(statusMessage = plan.statusMessage) }
+        mutableUiState.update { it.copy(statusMessage = outcome.statusMessage) }
     }
 
     private fun stopCompetingPlayback(): SamplerUiState {

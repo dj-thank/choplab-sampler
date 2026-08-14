@@ -11,8 +11,57 @@ import org.junit.Test
 
 class PlaybackInterruptionCoordinatorTest {
     @Test
-    fun focusDenialBlocksPlaybackStart() {
+    fun interruptionSilencesPlaybackBeforeReleasingFocus() {
+        val events = mutableListOf<String>()
         val coordinator = PlaybackInterruptionCoordinator(
+            focusAdapter = EventRecordingPlaybackFocusAdapter(events),
+            playbackSilencer = PlaybackSilencer { events += "silence" },
+        )
+        coordinator.beginPlayback()
+        events.clear()
+
+        coordinator.interrupt(
+            event = PlaybackInterruption.AUDIO_FOCUS_LOSS,
+            recordingSession = RecordingSession.Idle,
+        )
+
+        assertEquals(listOf("silence", "abandon-focus"), events)
+    }
+
+    @Test
+    fun closeSilencesActivePlaybackBeforeReleasingResources() {
+        val events = mutableListOf<String>()
+        val coordinator = PlaybackInterruptionCoordinator(
+            focusAdapter = EventRecordingPlaybackFocusAdapter(events),
+            playbackSilencer = PlaybackSilencer { events += "silence" },
+        )
+        coordinator.beginPlayback()
+        events.clear()
+
+        coordinator.close()
+        coordinator.close()
+
+        assertEquals(listOf("silence", "abandon-focus", "close-focus"), events)
+    }
+
+    @Test
+    fun interruptionOutcomeReportsThatPlaybackWasStopped() {
+        val coordinator = coordinator(
+            focusAdapter = ControllablePlaybackFocusAdapter(grantFocus = true),
+        )
+        coordinator.beginPlayback()
+
+        val outcome = coordinator.interrupt(
+            event = PlaybackInterruption.APP_BACKGROUND,
+            recordingSession = RecordingSession.Idle,
+        )
+
+        assertTrue(requireNotNull(outcome).playbackStopped)
+    }
+
+    @Test
+    fun focusDenialBlocksPlaybackStart() {
+        val coordinator = coordinator(
             focusAdapter = ControllablePlaybackFocusAdapter(grantFocus = false),
         )
 
@@ -24,32 +73,34 @@ class PlaybackInterruptionCoordinatorTest {
     @Test
     fun appBackgroundStopsAnActivePlaybackSession() {
         val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
-        val coordinator = PlaybackInterruptionCoordinator(focus)
+        val coordinator = coordinator(focus)
         assertEquals(PlaybackStartDecision.READY, coordinator.beginPlayback())
 
-        val plan = coordinator.interrupt(
+        val outcome = coordinator.interrupt(
             event = PlaybackInterruption.APP_BACKGROUND,
             recordingSession = RecordingSession.Idle,
         )
 
         assertEquals(
-            PlaybackInterruptionPlan(
-                stopPlayback = true,
+            PlaybackInterruptionOutcome(
+                playbackStopped = true,
                 requestRecordingStop = false,
                 statusMessage = "バックグラウンド移行のため再生を停止しました",
             ),
-            plan,
+            outcome,
         )
         assertFalse(focus.ownsFocus)
     }
 
     @Test
     fun appBackgroundRequestsGracefulMicrophoneStopWithoutPlayback() {
-        val coordinator = PlaybackInterruptionCoordinator(
+        var silenceCount = 0
+        val coordinator = coordinator(
             focusAdapter = ControllablePlaybackFocusAdapter(grantFocus = true),
+            playbackSilencer = PlaybackSilencer { silenceCount++ },
         )
 
-        val plan = coordinator.interrupt(
+        val outcome = coordinator.interrupt(
             event = PlaybackInterruption.APP_BACKGROUND,
             recordingSession = RecordingSession.Active(
                 kind = RecordingKind.SOURCE_MICROPHONE,
@@ -58,19 +109,20 @@ class PlaybackInterruptionCoordinatorTest {
         )
 
         assertEquals(
-            PlaybackInterruptionPlan(
-                stopPlayback = false,
+            PlaybackInterruptionOutcome(
+                playbackStopped = false,
                 requestRecordingStop = true,
                 statusMessage = "バックグラウンド移行のためマイク素材録音を停止します",
             ),
-            plan,
+            outcome,
         )
+        assertEquals(0, silenceCount)
     }
 
     @Test
     fun explicitPlaybackEndReleasesFocusAndAllowsANewSession() {
         val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
-        val coordinator = PlaybackInterruptionCoordinator(focus)
+        val coordinator = coordinator(focus)
         assertEquals(PlaybackStartDecision.READY, coordinator.beginPlayback())
 
         coordinator.endPlaybackSession()
@@ -83,7 +135,7 @@ class PlaybackInterruptionCoordinatorTest {
     @Test
     fun closeReleasesAnActiveSessionAndClosesTheBoundaryOnce() {
         val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
-        val coordinator = PlaybackInterruptionCoordinator(focus)
+        val coordinator = coordinator(focus)
         coordinator.beginPlayback()
 
         coordinator.close()
@@ -97,7 +149,7 @@ class PlaybackInterruptionCoordinatorTest {
     @Test
     fun layeredPlaybackReusesOneFocusSession() {
         val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
-        val coordinator = PlaybackInterruptionCoordinator(focus)
+        val coordinator = coordinator(focus)
 
         coordinator.beginPlayback()
         coordinator.beginPlayback()
@@ -108,7 +160,7 @@ class PlaybackInterruptionCoordinatorTest {
     @Test
     fun playbackRetargetRequiresAnActiveFocusedSession() {
         val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
-        val coordinator = PlaybackInterruptionCoordinator(focus)
+        val coordinator = coordinator(focus)
 
         assertFalse(coordinator.canRetargetPlayback())
         coordinator.beginPlayback()
@@ -122,27 +174,32 @@ class PlaybackInterruptionCoordinatorTest {
     @Test
     fun repeatedInterruptionDoesNotRepeatPlaybackTeardown() {
         val focus = ControllablePlaybackFocusAdapter(grantFocus = true)
-        val coordinator = PlaybackInterruptionCoordinator(focus)
+        var silenceCount = 0
+        val coordinator = coordinator(
+            focusAdapter = focus,
+            playbackSilencer = PlaybackSilencer { silenceCount++ },
+        )
         coordinator.beginPlayback()
 
         coordinator.interrupt(PlaybackInterruption.AUDIO_FOCUS_LOSS, RecordingSession.Idle)
-        val repeatedPlan = coordinator.interrupt(
+        val repeatedOutcome = coordinator.interrupt(
             PlaybackInterruption.OUTPUT_BECOMING_NOISY,
             RecordingSession.Idle,
         )
 
-        assertNull(repeatedPlan)
+        assertNull(repeatedOutcome)
+        assertEquals(1, silenceCount)
         assertEquals(1, focus.abandonCount)
     }
 
     @Test
     fun backgroundPreservesSystemAudioCaptureWhileStoppingPlayback() {
-        val coordinator = PlaybackInterruptionCoordinator(
+        val coordinator = coordinator(
             focusAdapter = ControllablePlaybackFocusAdapter(grantFocus = true),
         )
         coordinator.beginPlayback()
 
-        val plan = coordinator.interrupt(
+        val outcome = coordinator.interrupt(
             event = PlaybackInterruption.APP_BACKGROUND,
             recordingSession = RecordingSession.Active(
                 kind = RecordingKind.SOURCE_SYSTEM_AUDIO,
@@ -151,22 +208,22 @@ class PlaybackInterruptionCoordinatorTest {
         )
 
         assertEquals(
-            PlaybackInterruptionPlan(
-                stopPlayback = true,
+            PlaybackInterruptionOutcome(
+                playbackStopped = true,
                 requestRecordingStop = false,
                 statusMessage = "バックグラウンド移行のため再生を停止しました。端末音声録音は継続します",
             ),
-            plan,
+            outcome,
         )
     }
 
     @Test
     fun stoppingRecordingDoesNotRequestAnotherStop() {
-        val coordinator = PlaybackInterruptionCoordinator(
+        val coordinator = coordinator(
             focusAdapter = ControllablePlaybackFocusAdapter(grantFocus = true),
         )
 
-        val plan = coordinator.interrupt(
+        val outcome = coordinator.interrupt(
             event = PlaybackInterruption.AUDIO_FOCUS_LOSS,
             recordingSession = RecordingSession.Active(
                 kind = RecordingKind.VOCAL_OVERDUB,
@@ -174,17 +231,17 @@ class PlaybackInterruptionCoordinatorTest {
             ),
         )
 
-        assertNull(plan)
+        assertNull(outcome)
     }
 
     @Test
     fun noisyOutputStopsPlaybackAndVocalRecordingTogether() {
-        val coordinator = PlaybackInterruptionCoordinator(
+        val coordinator = coordinator(
             focusAdapter = ControllablePlaybackFocusAdapter(grantFocus = true),
         )
         coordinator.beginPlayback()
 
-        val plan = coordinator.interrupt(
+        val outcome = coordinator.interrupt(
             event = PlaybackInterruption.OUTPUT_BECOMING_NOISY,
             recordingSession = RecordingSession.Active(
                 kind = RecordingKind.VOCAL_OVERDUB,
@@ -193,13 +250,35 @@ class PlaybackInterruptionCoordinatorTest {
         )
 
         assertEquals(
-            PlaybackInterruptionPlan(
-                stopPlayback = true,
+            PlaybackInterruptionOutcome(
+                playbackStopped = true,
                 requestRecordingStop = true,
                 statusMessage = "音声出力が切り替わったため再生とボーカル録音を停止します",
             ),
-            plan,
+            outcome,
         )
+    }
+
+    private fun coordinator(
+        focusAdapter: PlaybackFocusAdapter,
+        playbackSilencer: PlaybackSilencer = PlaybackSilencer {},
+    ): PlaybackInterruptionCoordinator = PlaybackInterruptionCoordinator(
+        focusAdapter = focusAdapter,
+        playbackSilencer = playbackSilencer,
+    )
+}
+
+private class EventRecordingPlaybackFocusAdapter(
+    private val events: MutableList<String>,
+) : PlaybackFocusAdapter {
+    override fun requestPlaybackFocus(): Boolean = true
+
+    override fun abandonPlaybackFocus() {
+        events += "abandon-focus"
+    }
+
+    override fun close() {
+        events += "close-focus"
     }
 }
 

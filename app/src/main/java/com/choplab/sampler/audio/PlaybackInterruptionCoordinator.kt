@@ -13,6 +13,11 @@ interface PlaybackFocusAdapter {
     fun close()
 }
 
+/** Audible playback is silenced through this boundary before focus is released. */
+fun interface PlaybackSilencer {
+    fun stopAllPlayback()
+}
+
 enum class PlaybackStartDecision {
     READY,
     FOCUS_DENIED,
@@ -24,14 +29,15 @@ enum class PlaybackInterruption {
     OUTPUT_BECOMING_NOISY,
 }
 
-data class PlaybackInterruptionPlan(
-    val stopPlayback: Boolean,
+data class PlaybackInterruptionOutcome(
+    val playbackStopped: Boolean,
     val requestRecordingStop: Boolean,
     val statusMessage: String,
 )
 
 class PlaybackInterruptionCoordinator(
     private val focusAdapter: PlaybackFocusAdapter,
+    private val playbackSilencer: PlaybackSilencer,
 ) {
     private var playbackSessionActive = false
     private var closed = false
@@ -58,7 +64,7 @@ class PlaybackInterruptionCoordinator(
     fun close() {
         if (closed) return
 
-        endPlaybackSession()
+        silenceAndEndPlaybackSession()
         closed = true
         focusAdapter.close()
     }
@@ -66,28 +72,35 @@ class PlaybackInterruptionCoordinator(
     fun interrupt(
         event: PlaybackInterruption,
         recordingSession: RecordingSession,
-    ): PlaybackInterruptionPlan? {
+    ): PlaybackInterruptionOutcome? {
         if (closed) return null
-        val stopPlayback = playbackSessionActive
+        val playbackStopped = playbackSessionActive
         val activeRecording = recordingSession as? RecordingSession.Active
         val requestRecordingStop = activeRecording != null &&
             activeRecording.phase != RecordingPhase.STOPPING &&
             activeRecording.kind != RecordingKind.SOURCE_SYSTEM_AUDIO
-        if (!stopPlayback && !requestRecordingStop) return null
+        if (!playbackStopped && !requestRecordingStop) return null
 
-        if (stopPlayback) {
-            playbackSessionActive = false
-            focusAdapter.abandonPlaybackFocus()
+        if (playbackStopped) {
+            silenceAndEndPlaybackSession()
         }
-        return PlaybackInterruptionPlan(
-            stopPlayback = stopPlayback,
+        return PlaybackInterruptionOutcome(
+            playbackStopped = playbackStopped,
             requestRecordingStop = requestRecordingStop,
             statusMessage = event.statusMessage(
-                stopPlayback = stopPlayback,
+                stopPlayback = playbackStopped,
                 activeRecording = activeRecording,
                 requestRecordingStop = requestRecordingStop,
             ),
         )
+    }
+
+    private fun silenceAndEndPlaybackSession() {
+        if (!playbackSessionActive) return
+
+        playbackSilencer.stopAllPlayback()
+        playbackSessionActive = false
+        focusAdapter.abandonPlaybackFocus()
     }
 }
 
