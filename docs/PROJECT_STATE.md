@@ -1,6 +1,14 @@
 # Project state
 
-Last prepared: 2026-08-14
+Last prepared: 2026-08-15
+
+## Post-v0.13.1 Pixel 9a retained-data install — 2026-08-15
+
+Exact local maintenance commit `0bdf31c7701612c6c147b6ab9c19b00144bbf714` / tree `75993d0c89d126c926d087858f48dbfe1ae95e1b` is now installed on physical Pixel 9a `5A121JEBF08094` (Android 17/API 37) without uninstalling or clearing app data. The installed package advanced from `0.12.0`/19 to `0.13.1`/21 using `adb install -r`. The pulled installed APK exactly matches `outputs/ChopLab-v0.13.1-0bdf31c-local-debug.apk`: 31,046,270 bytes, SHA-256 `507181B5AA3ED958EAF45004189964723DCBE58D27823B4E1456EC6156426172`, with the same local debug certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587` verified before installation.
+
+All four existing project archives were exported as binary backups before installation. Their exact paths, byte lengths, and SHA-256 values remained identical before install, after install, and after cold launch. The launch returned `Status: ok`, left `MainActivity` top-resumed with a live process, showed zero recent fatal/ANR lines and zero historical crash/ANR exits, and produced a 176-node hierarchy with zero scrollable nodes. Visual review showed the canonical fixed Chop screen, restored source waveform/status, and A01-A16 as `EMPTY`. The current local APK and the public v0.13.1 preview were copied to unique phone Download paths without replacing existing files; the public APK remains download-only because its CI certificate differs from the installed/local certificate.
+
+This establishes scoped `DEVICE_PASS` for exact APK identity, retained-data update, project-archive preservation, cold launch, process survival, and fixed no-scroll UI capture. It does not establish physical playback-interruption behavior, route-loss handling, focus contention, recording behavior, subjective no-double-audio listening, scratch feel, audio quality, or `HUMAN_GO`. Machine-readable evidence is under `work/pixel9a-0bdf31c-install-20260815-123455/`; the user-facing receipt is `outputs/ChopLab-v0.13.1-0bdf31c-Pixel9a-install-receipt.md`.
 
 ## Post-v0.13.1 local playback teardown ordering maintenance — 2026-08-14
 

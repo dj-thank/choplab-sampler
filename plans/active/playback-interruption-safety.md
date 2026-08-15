@@ -114,7 +114,8 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 - [x] 2026-08-14 12:23 +09:00 — Milestone 6 started from clean tracked HEAD `830936774d67f15e44fafc244cfc4fc1548ef3ae`; existing untracked `outputs/` and `work/` remain preserved. Focused baseline test and configured offline validation pass. First RED is observed: the order test fails compilation because the required `playbackSilencer` seam and `PlaybackSilencer` interface do not yet exist.
 - [x] 2026-08-14 20:27 +09:00 — Three RED/GREEN slices pass at the coordinator seam. Fixed-point local parent review found two Standards issues (duplicated teardown ordering and stale plan/outcome naming) plus two Spec coverage gaps (repeated silence count and recording-only no-silence); all four were corrected.
 - [x] 2026-08-14 20:36 +09:00 — Milestone 6 completed locally. Post-review focused tests, 210-test full suite, Lint, debug/release assembly, repository validation, static seam scan, docs, and final Standards/Spec review pass. No device, provider, or public operation was performed.
-- [ ] Pixel 9a data-preserving install and physical interaction checks.
+- [x] 2026-08-15 12:38 +09:00 — Exact `0bdf31c` local APK installed in place on Pixel 9a with matching-certificate preflight, four verified project backups, exact before/after/after-launch archive equality, installed-byte identity, cold launch, process/crash checks, and fixed no-scroll UI capture. No uninstall, data clear, existing Download overwrite, provider, or public operation was performed.
+- [ ] Pixel 9a physical audio interruption, recording, no-double-audio listening, scratch-feel, and human-quality checks.
 
 ## Discoveries
 
@@ -218,6 +219,11 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 - Result: PASS; pure Kotlin smoke, four Android XML parses, wrapper SHA-256, whitespace check, constructor wiring, outcome naming, teardown locality, and required regression-test presence all verified.
 - Important output or artifact path: terminal evidence; no new copied artifact.
 
+- Command: `work/install-0bdf31c-pixel9a.ps1` preflight followed by its data-preserving `adb install -r` path; launch wrapper quoting was corrected after the install had completed, and launch/final checks were then completed directly without reinstalling.
+- Date/environment: 2026-08-15 12:34-12:38 +09:00, Pixel 9a `5A121JEBF08094`, Android 17/API 37, exact repository HEAD `0bdf31c7701612c6c147b6ab9c19b00144bbf714`.
+- Result: scoped DEVICE PASS. Package advanced from `0.12.0`/19 to `0.13.1`/21; pulled installed APK equals the 31,046,270-byte target at SHA-256 `507181B5AA3ED958EAF45004189964723DCBE58D27823B4E1456EC6156426172`. Four project archives retained exact path/bytes/SHA-256 before install, after install, and after cold launch. MainActivity became top-resumed, recent and historical crash/ANR counts were zero, and the 176-node captured UI had zero scrollable nodes. Physical audio behavior was not exercised.
+- Important output or artifact path: `work/pixel9a-0bdf31c-install-20260815-123455/receipt.json`, binary project backups in the same evidence directory, and `outputs/ChopLab-v0.13.1-0bdf31c-Pixel9a-install-receipt.md`.
+
 ## Risks and rollback
 
 - Risk: missing a direct engine start path leaves an ungated playback command. Mitigation: static search all `SamplerPlaybackEngine` audible methods after integration and classify each site.
@@ -229,11 +235,11 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 
 ## Remaining device validation
 
-- Pixel 9a serial `5A121JEBF08094`: install with `adb install -r` only after package/version/certificate and artifact SHA checks.
-- Confirm existing app data/projects remain after install.
-- Confirm source, pad, loop, scratch, and transport stop on Home/background and do not auto-resume.
-- Confirm rotating the device does not stop playback solely because of configuration change.
-- Confirm wired/Bluetooth route loss stops playback without speaker blast.
-- Confirm transient/permanent audio focus loss from another media app or call stops playback once.
-- Confirm system-audio recording continues while switching to the source app, while mic and vocal recording stop safely on interruption.
-- Confirm no doubled playback after returning to ChopLab and deliberately restarting.
+- [x] Pixel 9a serial `5A121JEBF08094`: package/version/certificate and artifact SHA preflight, followed by `adb install -r` without uninstall or data clear.
+- [x] Existing project archives retained exact path, bytes, and SHA-256 before install, after install, and after launch; four verified binary backups were also exported.
+- [ ] Confirm source, pad, loop, scratch, and transport stop on Home/background and do not auto-resume.
+- [ ] Confirm rotating the device does not stop playback solely because of configuration change.
+- [ ] Confirm wired/Bluetooth route loss stops playback without speaker blast.
+- [ ] Confirm transient/permanent audio focus loss from another media app or call stops playback once.
+- [ ] Confirm system-audio recording continues while switching to the source app, while mic and vocal recording stop safely on interruption.
+- [ ] Confirm no doubled playback after returning to ChopLab and deliberately restarting.
