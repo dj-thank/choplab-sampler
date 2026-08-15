@@ -20,6 +20,7 @@ import com.choplab.sampler.audio.PlaybackSilencer
 import com.choplab.sampler.audio.PlaybackStartDecision
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
+import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.model.EditHistory
 import com.choplab.sampler.model.DrumKitApplyDecision
@@ -52,6 +53,7 @@ import com.choplab.sampler.model.assignRangesToPads
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.beginAutosaveRecovery
 import com.choplab.sampler.model.beginRecordingSession
+import com.choplab.sampler.model.beginSourceReplacement
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.canRequestStop
 import com.choplab.sampler.model.clearPadSteps
@@ -68,6 +70,7 @@ import com.choplab.sampler.model.observeRecordingSession
 import com.choplab.sampler.model.pendingSourceCommandAfterPlaybackRetarget
 import com.choplab.sampler.model.pendingSourceCommandAfterStartRequest
 import com.choplab.sampler.model.pendingSourceCommandAfterStopRequest
+import com.choplab.sampler.model.playbackRequestBlockedByProjectOperation
 import com.choplab.sampler.model.preserveAppliedSourceTruthWhileStopping
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.playbackRequestAllowedDuringRecording
@@ -254,7 +257,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun preparePlaybackStart(allowDuringRecording: Boolean = false): Boolean {
-        val session = mutableUiState.value.recordingSession
+        val state = mutableUiState.value
+        if (playbackRequestBlockedByProjectOperation(state)) {
+            setStatus("読み込みが終わるまで音の操作を待ってください")
+            return false
+        }
+        val session = state.recordingSession
         if (
             !allowDuringRecording &&
             !playbackRequestAllowedDuringRecording(session, startsPlayback = true)
@@ -316,15 +324,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     ) {
         viewModelScope.launch {
             if (!projectOperations.isCurrent(operation)) return@launch
-            mutableUiState.update {
-                it.copy(isLoading = true, statusMessage = "音声を解析しています…")
-            }
+            engine.stopAllPlayback()
+            playbackInterruptionCoordinator.endPlaybackSession()
+            mutableUiState.update(::beginSourceReplacement)
             runCatching { decoder.decode(uri) }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
                         val previous = mutableUiState.value
-                        engine.stopAllPlayback()
-                        playbackInterruptionCoordinator.endPlaybackSession()
                         editHistory.reset()
                         val replaced = preserveAppliedSourceTruthWhileStopping(
                             previousState = previous,
@@ -655,7 +661,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         engine.updateScratchSpeed(speed)
         scratchIdleJob?.cancel()
         scratchIdleJob = viewModelScope.launch {
-            delay(SCRATCH_IDLE_TIMEOUT_MS)
+            delay(SCRATCH_GESTURE_IDLE_TIMEOUT_MS)
             engine.updateScratchSpeed(0f)
         }
     }
@@ -2181,7 +2187,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         const val AUTOSAVE_DELAY_MS = 900L
         const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
         const val LIVE_CHOP_LATENCY_SECONDS = 0.06
-        const val SCRATCH_IDLE_TIMEOUT_MS = 42L
     }
 
     override fun onCleared() {

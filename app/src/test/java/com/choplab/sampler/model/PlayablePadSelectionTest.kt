@@ -108,7 +108,7 @@ class PlayablePadSelectionTest {
     }
 
     @Test
-    fun emptyBankKeepsCurrentPlayableSelection() {
+    fun emptyBankCanBeSelectedBeforeLoadingItsSounds() {
         val state = SamplerUiState(
             selectedBank = 0,
             selectedPad = 3,
@@ -117,9 +117,10 @@ class PlayablePadSelectionTest {
 
         val result = selectPlayableBank(state, bankIndex = 1)
 
-        assertEquals(0, result.selectedBank)
-        assertEquals(3, result.selectedPad)
+        assertEquals(1, result.selectedBank)
+        assertEquals(35, result.selectedPad)
         assertTrue(result.statusMessage.contains("BANK B ドラムには音がありません"))
+        assertTrue(result.statusMessage.contains("ドラムキット"))
     }
 
     @Test

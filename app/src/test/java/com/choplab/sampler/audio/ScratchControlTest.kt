@@ -1,6 +1,7 @@
 package com.choplab.sampler.audio
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,6 +40,12 @@ class ScratchControlTest {
         )
 
         assertEquals(sixtyHertz, oneTwentyHertz, 0.001f)
+    }
+
+    @Test
+    fun normalTouchEventGapDoesNotStopAnActiveScratchGesture() {
+        assertFalse(scratchGestureIsIdle(elapsedMillis = 80L))
+        assertTrue(scratchGestureIsIdle(elapsedMillis = 120L))
     }
 
     @Test

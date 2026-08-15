@@ -2,6 +2,16 @@
 
 Last prepared: 2026-08-15
 
+## Post-v0.13.1 drum/loop/source interaction maintenance — 2026-08-15
+
+Four user-reported interaction failures are corrected in the local candidate. BANK B can now be selected while empty and points directly to the built-in drum-kit choice instead of silently refusing the tap. In the Beat workspace, tapping a sound rail selects the PAD without auditioning it, so pressing Loop starts one selected loop rather than overlapping an automatic preview; Sample Layer and Scratch retain their intentional audition behavior. Starting source replacement immediately silences the current engine session and blocks new playback until decoding finishes, preventing old A01-style or source audio from continuing under the loading state. Scratch gesture ownership now tolerates ordinary event spacing with a 120 ms idle boundary instead of the former 42 ms cutoff.
+
+These policies were established through five RED/GREEN regression slices, then reviewed against the user flow and repository standards. Review found and corrected two cross-surface issues: preview removal is scoped only to Beat, and source replacement owns one early stop boundary rather than stopping again after decode. The review was a local parent Standards/Spec two-pass because the child surface did not expose effective runtime-model metadata; no substitute child-model claim is made.
+
+Final local gate: configured `scripts/validate_project.sh` PASS; `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --offline --no-daemon --console=plain --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL; 213 tests in 44 suites with zero failures/errors/skips; Android Lint 12 warnings and no errors. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`, 31,707,538 bytes, SHA-256 `5D9EC3A4F86CD0EE36B636E8E9A7C182AE7B64A18A98E6B82F86E02A647C8AAB`. Unsigned release APK: `app/build/outputs/apk/release/app-release-unsigned.apk`, 23,603,385 bytes, SHA-256 `E862905F40A5D934FDB8A0E76302347C488EAB4B6334056E3D223C184F3E70F8`.
+
+This checkpoint is `LOCAL_PASS` only. Pixel 9a is reserved by the Sanpo device lane, so no ADB, install, input, emulator, provider, GitHub, tag, Release, or public-artifact operation was performed. Physical confirmation of BANK B selection, loading-time silence, selection-to-loop single playback, and continuous scratch feel remains pending after the device reservation is released.
+
 ## Post-v0.13.1 Pixel 9a retained-data install — 2026-08-15
 
 Exact local maintenance commit `0bdf31c7701612c6c147b6ab9c19b00144bbf714` / tree `75993d0c89d126c926d087858f48dbfe1ae95e1b` is now installed on physical Pixel 9a `5A121JEBF08094` (Android 17/API 37) without uninstalling or clearing app data. The installed package advanced from `0.12.0`/19 to `0.13.1`/21 using `adb install -r`. The pulled installed APK exactly matches `outputs/ChopLab-v0.13.1-0bdf31c-local-debug.apk`: 31,046,270 bytes, SHA-256 `507181B5AA3ED958EAF45004189964723DCBE58D27823B4E1456EC6156426172`, with the same local debug certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587` verified before installation.

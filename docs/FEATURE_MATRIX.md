@@ -6,9 +6,9 @@
 | 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示 |
 | 正方形PAD | ✅ device/emulator | 4×4 / 8×2とも親領域へ収まる最大正方形を中央配置。Pixel 9a portraitとv0.11 portrait/landscape emulatorで確認 |
-| 内蔵ドラムキット | ✅ device | オリジナル合成5キット×16音。常にBANK B（ドラム）へ適用し、既存音がある場合は二度押し確認。starter beat付き |
+| 内蔵ドラムキット | ✅ device/local | オリジナル合成5キット×16音。空のBANK Bも直接選択でき、キット選択へ案内。常にBANK B（ドラム）へ適用し、既存音がある場合は二度押し確認。starter beat付き |
 | ビートへ声を重ねる | 🧪 local | loop再始動に合わせて録音し、BANK Dへ最大32テイク。project schema 5とWAV exportに含む。実環境の声は未録音 |
-| DJスクラッチ | 🧪 local/emulator UI | 元曲の波形で選んだsliceまたはS/E範囲、または選択PAD自身の範囲を左右dragで正逆再生し、離すと停止。drag速度はイベント頻度に依存しないpx/sへ正規化。range/DSPはhost test、固定UIはemulator確認 |
+| DJスクラッチ | 🧪 local/emulator UI | 元曲の波形で選んだsliceまたはS/E範囲、または選択PAD自身の範囲を左右dragで正逆再生し、離すと停止。drag速度はイベント頻度に依存しないpx/sへ正規化し、通常のgesture event間隔を42msで誤終了しない120ms idle policyをhost test。固定UIはemulator確認、実機の連続操作感は未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。Pixel 9a v0.10とv0.11 emulatorで固定表示を確認 |
 | スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのChopは波形＋右4×4 PADの左右分割、Beatはcompact操作列。UI sourceにscroll APIなし |
@@ -23,7 +23,7 @@
 | PAD→ループ／並べる→足す／擦る導線 | ✅ device/emulator | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。BeatのQuick／Steps双方に固定`QUICK / STEPS / ADD / SCRATCH`。4レーン×16step、BANK別音色レール、選択音ループも同じ固定画面へ整理 |
 | 上級操作の段階表示 | 🧪 emulator/local | KEY/TONE/LEVELは通常BEAT画面から直操作し、再生中の選択音へカーソルを戻さず即時反映。16手動step、BPM/Swing等は`細かく調整`へ整理 |
 | ビート画面の実波形・再生位置 | ✅ device | 選択sliceのPCM波形、ビートループ位置、16-step playhead、A〜Dの4レーン発音マーカーを固定表示 |
-| BANKを替えて音を重ねる | ✅ emulator | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、全128 PADを演奏・配置 |
+| BANKを替えて音を重ねる | ✅ emulator/local | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、空BANKも選択可能。全128 PADを演奏・配置 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
 | トーンを変える | ✅ local | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider。再生中のloopへ即時反映するhost regressionあり |
 | 長すぎる音声の箇所選択 | ✅ | 最大10分、zoom/scroll/S/E handles |
@@ -37,14 +37,14 @@
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。PAD差替え/clearは128固定slotのlatest-wins mailboxでqueue飽和時の旧A01残留を防止。32 PAD voice＋source voiceを事前確保し通常render pathのVoice生成を除去 |
 | マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
 | 録音セッションと誤再生防止 | ✅ emulator/local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中のPAD/source/transport/scratch/preview開始、競合録音、外部pickerを遮断し、全工程headerとLayer Studioに対応STOPを表示。遅いworker errorはSTOPPINGをIdleへ戻さず、失敗したVocal monitor loopは停止・表示解除 |
-| 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。sourceのSTARTING/STOPPING中は全PADを遮断し、適用済みplaybackだけをチョップ可能にする。通常PADによる意図的なドラム等の重ね演奏は維持 |
+| 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |
 | Android再生割り込み安全性 | ✅ emulator/local | 全audible startをmedia/music audio focusで統一。Home、focus loss/transient/duck、出力切替ではengine silenceをfocus解放より先に一箇所で強制し、反復割り込みは一度だけ停止、録音のみの割り込みは再生へ触れない。gainでは自動再開しない。回転は再生継続、source seek/KEY retargetはfocus所有中のみ。端末音声録音はbackgroundで継続し、MIC/VOICEは安全停止。実機route-loss／通話競合は未確認 |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
 | Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは32-PAD page対応schema 5/WAVで保存し、schema 1–4（旧4×16配置を含む）を移行読込 |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
 | Project save/load | ✅ MVP | `.choplab`手動保存/読込、共有PCM16 WAV、schema migration、path traversal/過大manifest/malformed WAV拒否 |
-| 新しい音源への安全な切替 | 🧪 local/emulator | 既存制作がある場合は二度押し確認。成功時だけ別プロジェクトとしてA01を含む全PAD・step・loop・scratch・履歴を消去し、失敗／キャンセル／古い非同期完了は現制作へ触れない。録音停止後のdecode完了までは録音STOPPINGとして表示 |
+| 新しい音源への安全な切替 | 🧪 local/emulator | 既存制作がある場合は二度押し確認。読込開始時点で現在の再生を停止し、decode中の新規再生を遮断。成功時だけ別プロジェクトとしてA01を含む全PAD・step・loop・scratch・履歴を消去し、失敗／キャンセル／古い非同期完了は現制作へ触れない。録音停止後のdecode完了までは録音STOPPINGとして表示 |
 | 再生表示と実音声の同期 | 🧪 local/device UI | `STOPPED / STARTING / PLAYING / STOPPING`を音声スレッド適用値と保留命令から導出。差替え・リセット・読込も停止確認前にSTOPPEDを表示せず、Undoは保留命令を復元しない |
 | 全再生停止 | 🧪 local/device UI | `ALL STOP`がsource、PAD voice、loop、scratchの境界を先に発行してからtransportを停止。UIのstep/loop/scratchも同時に解除し、録音中データは明示的に継続 |
 | Autosave/recovery | ✅ device/local | 900ms debounce、検証済みpending、同期排他、revision逆転拒否、三世代保持。手動上書き前にもアプリ内安全コピーを作成 |

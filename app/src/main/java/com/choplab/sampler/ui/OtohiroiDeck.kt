@@ -1750,7 +1750,6 @@ private fun SequenceWorkspace(
                         pads = state.visiblePads(),
                         selectedPad = state.selectedPad,
                         onSelectPad = viewModel::selectPlayablePad,
-                        onPreviewPad = viewModel::triggerPad,
                         modifier = Modifier.weight(1f),
                     )
                     SelectedPadQuickEditor(
@@ -1822,7 +1821,6 @@ private fun SequenceWorkspace(
                     pads = state.visiblePads(),
                     selectedPad = state.selectedPad,
                     onSelectPad = viewModel::selectPlayablePad,
-                    onPreviewPad = viewModel::triggerPad,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(if (metrics.density == DeckDensity.COMPACT) 58.dp else 68.dp),

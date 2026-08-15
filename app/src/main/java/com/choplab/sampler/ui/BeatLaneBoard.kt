@@ -51,6 +51,19 @@ internal fun beatLanePadDescription(
     return "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD $padInBank$emptyLabel"
 }
 
+internal fun beatSoundRailPadDescription(
+    pad: PadModel,
+    previewsOnSelection: Boolean,
+): String {
+    val role = bankRoleFor(pad.bankIndex)
+    val action = when {
+        !pad.isAssigned -> "空"
+        previewsOnSelection -> "試聴"
+        else -> "選択"
+    }
+    return "${role.japaneseLabel} PAD ${pad.indexInBank + 1} $action"
+}
+
 internal fun laneStepAccessibilityLabel(
     state: LaneStepState,
     enabled: Boolean = true,
@@ -233,7 +246,7 @@ fun BeatSoundRail(
     pads: List<PadModel>,
     selectedPad: Int,
     onSelectPad: (Int) -> Unit,
-    onPreviewPad: (Int) -> Unit,
+    onPreviewPad: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     require(pads.size == SamplerConfig.PAD_PAGE_SIZE)
@@ -249,7 +262,6 @@ fun BeatSoundRail(
                 repeat(8) { column ->
                     val pad = pads[row * 8 + column]
                     val selected = pad.globalIndex == selectedPad
-                    val role = bankRoleFor(pad.bankIndex)
                     val label = when {
                         !pad.isAssigned -> "%02d  EMPTY".format(pad.indexInBank + 1)
                         else -> "%02d  %s".format(
@@ -268,10 +280,13 @@ fun BeatSoundRail(
                             .border(if (selected) 2.dp else 1.dp, DeckInk, RoundedCornerShape(4.dp))
                             .clickable(role = Role.Button) {
                                 onSelectPad(pad.globalIndex)
-                                if (pad.isAssigned) onPreviewPad(pad.globalIndex)
+                                if (pad.isAssigned) onPreviewPad?.invoke(pad.globalIndex)
                             }
                             .semantics {
-                                contentDescription = "${role.japaneseLabel} PAD ${pad.indexInBank + 1} ${if (pad.isAssigned) "試聴" else "空"}"
+                                contentDescription = beatSoundRailPadDescription(
+                                    pad = pad,
+                                    previewsOnSelection = onPreviewPad != null,
+                                )
                                 this.selected = selected
                             }
                             .padding(horizontal = 3.dp),

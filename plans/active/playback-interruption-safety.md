@@ -102,6 +102,14 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 - Tests/checks: focused coordinator test, full unit suite, Lint, debug/release assembly, repository validation, static call-site scan, and final code review.
 - Acceptance evidence: every interruption records `silence -> abandon focus`; repeated interruption performs teardown once; recording-only interruption does not silence; active close records `silence -> abandon focus -> close`; all local gates pass.
 
+### Milestone 7: Restore selectable drums and single-owner interactive playback
+
+- Scope: local-only correction for empty BANK B selection, loading-time stale audio, Beat selection-to-loop overlap, and scratch gesture timeout; no schema, asset, version, device, provider, or public change.
+- Files/interfaces expected to change: `SamplerCommands.kt`, `SamplerViewModel.kt`, `ScratchControl.kt`, `BeatLaneBoard.kt`, `OtohiroiDeck.kt`, their focused host tests, this plan, and observed-state documentation.
+- Implementation steps: allow empty bank selection with role guidance; silence once at source-replacement start and block starts while loading; make Beat rail selection-only while preserving explicit preview surfaces; define and test a shared scratch idle policy.
+- Tests/checks: focused RED/GREEN host tests, full unit suite, Lint, debug/release assembly, repository validation, fixed-point Standards/Spec review, and whitespace/static diff review.
+- Acceptance evidence: empty BANK B selects and exposes drum-kit guidance; loading begins silent and rejects playback; selecting a Beat PAD then Loop creates no preview overlap; ordinary 80 ms scratch events remain active while 120 ms is idle; all local gates pass.
+
 ## Progress
 
 - [x] 2026-08-14 10:45 +09:00 — Four fresh-context Luna architecture candidates reviewed the current tree; the playback-interruption boundary ranked highest for user impact, cohesion, and offline testability.
@@ -115,6 +123,9 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 - [x] 2026-08-14 20:27 +09:00 — Three RED/GREEN slices pass at the coordinator seam. Fixed-point local parent review found two Standards issues (duplicated teardown ordering and stale plan/outcome naming) plus two Spec coverage gaps (repeated silence count and recording-only no-silence); all four were corrected.
 - [x] 2026-08-14 20:36 +09:00 — Milestone 6 completed locally. Post-review focused tests, 210-test full suite, Lint, debug/release assembly, repository validation, static seam scan, docs, and final Standards/Spec review pass. No device, provider, or public operation was performed.
 - [x] 2026-08-15 12:38 +09:00 — Exact `0bdf31c` local APK installed in place on Pixel 9a with matching-certificate preflight, four verified project backups, exact before/after/after-launch archive equality, installed-byte identity, cold launch, process/crash checks, and fixed no-scroll UI capture. No uninstall, data clear, existing Download overwrite, provider, or public operation was performed.
+- [x] 2026-08-15 — Milestone 7 reproduced empty-bank refusal, loading-time stale playback, Beat rail auto-preview, and over-eager scratch idle behavior through five focused RED/GREEN slices. Built-in drum assets and project schema were unchanged.
+- [x] 2026-08-15 — Fixed-point local parent Standards/Spec review corrected preview scope and duplicate source-replacement stop ownership. Final code review found no unresolved local blocker; effective child-model metadata was unavailable, so no runtime-verified Luna claim is made.
+- [x] 2026-08-15 — Milestone 7 full local gate passed: configured repository validation, 213 tests in 44 suites, Lint 0 errors / 12 warnings, and debug/release assembly. Pixel remained reserved by Sanpo; no device, provider, or public operation was performed.
 - [ ] Pixel 9a physical audio interruption, recording, no-double-audio listening, scratch-feel, and human-quality checks.
 
 ## Discoveries
@@ -224,6 +235,16 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 - Result: scoped DEVICE PASS. Package advanced from `0.12.0`/19 to `0.13.1`/21; pulled installed APK equals the 31,046,270-byte target at SHA-256 `507181B5AA3ED958EAF45004189964723DCBE58D27823B4E1456EC6156426172`. Four project archives retained exact path/bytes/SHA-256 before install, after install, and after cold launch. MainActivity became top-resumed, recent and historical crash/ANR counts were zero, and the 176-node captured UI had zero scrollable nodes. Physical audio behavior was not exercised.
 - Important output or artifact path: `work/pixel9a-0bdf31c-install-20260815-123455/receipt.json`, binary project backups in the same evidence directory, and `outputs/ChopLab-v0.13.1-0bdf31c-Pixel9a-install-receipt.md`.
 
+- Command: five focused RED/GREEN host-test slices for playable-bank selection, source replacement, Beat rail accessibility/preview policy, and scratch idle timing.
+- Date/environment: 2026-08-15, Windows/JDK 17/Android SDK 36, starting HEAD `d1afa480f90c30460347b19888fc5a1cd4335302`.
+- Result: expected RED observed before each production seam; all focused tests GREEN after implementation and review corrections.
+- Important output or artifact path: `PlayablePadSelectionTest`, `SourceReplacementTest`, `BeatLaneAccessibilityTest`, and `ScratchControlTest` in the tracked host-test suite.
+
+- Command: `C:\Program Files\Git\bin\bash.exe scripts/validate_project.sh` and `.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --offline --no-daemon --console=plain --max-workers=1 --no-watch-fs`.
+- Date/environment: 2026-08-15, Windows/JDK 17/Android SDK 36, Milestone 7 reviewed working tree.
+- Result: PASS / BUILD SUCCESSFUL in 1m46s; 213 tests in 44 suites with zero failures/errors/skips; Android Lint 12 warnings and no errors; both APK variants assembled.
+- Important output or artifact path: `app/build/outputs/apk/debug/app-debug.apk` (31,707,538 bytes, SHA-256 `5D9EC3A4F86CD0EE36B636E8E9A7C182AE7B64A18A98E6B82F86E02A647C8AAB`) and `app/build/outputs/apk/release/app-release-unsigned.apk` (23,603,385 bytes, SHA-256 `E862905F40A5D934FDB8A0E76302347C488EAB4B6334056E3D223C184F3E70F8`).
+
 ## Risks and rollback
 
 - Risk: missing a direct engine start path leaves an ungated playback command. Mitigation: static search all `SamplerPlaybackEngine` audible methods after integration and classify each site.
@@ -243,3 +264,7 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 - [ ] Confirm transient/permanent audio focus loss from another media app or call stops playback once.
 - [ ] Confirm system-audio recording continues while switching to the source app, while mic and vocal recording stop safely on interruption.
 - [ ] Confirm no doubled playback after returning to ChopLab and deliberately restarting.
+- [ ] Confirm empty BANK B selects immediately and all built-in drum-kit choices remain reachable.
+- [ ] Confirm replacing a source silences old source/PAD audio throughout loading and does not revive old A01 assignments after success.
+- [ ] Confirm selecting a Beat PAD then pressing Loop produces one audible loop with no preview overlap.
+- [ ] Confirm continuous source/PAD scratch remains active through normal finger event spacing and stops promptly on release.

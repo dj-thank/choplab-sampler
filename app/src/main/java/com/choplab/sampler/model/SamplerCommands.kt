@@ -67,6 +67,14 @@ fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
     )
 }
 
+fun beginSourceReplacement(state: SamplerUiState): SamplerUiState =
+    stopAllPlaybackState(state).copy(
+        isLoading = true,
+        statusMessage = "音声を解析しています…",
+    )
+
+fun playbackRequestBlockedByProjectOperation(state: SamplerUiState): Boolean = state.isLoading
+
 enum class PadTrimBoundary {
     START,
     END,
@@ -172,7 +180,13 @@ fun selectPlayableBank(state: SamplerUiState, bankIndex: Int): SamplerUiState {
     val target = bankPads[preferredOffset].takeIf(PadModel::isAssigned)
         ?: bankPads.firstOrNull(PadModel::isAssigned)
         ?: return state.copy(
-            statusMessage = "BANK ${role.letter} ${role.japaneseLabel}には音がありません。先にチョップか重ねるで音を入れてください",
+            selectedBank = bankIndex,
+            selectedPad = bankStart + preferredOffset,
+            statusMessage = if (bankIndex == SamplerConfig.DRUM_BANK_INDEX) {
+                "BANK ${role.letter} ${role.japaneseLabel}には音がありません。ドラムキットを選んでください"
+            } else {
+                "BANK ${role.letter} ${role.japaneseLabel}には音がありません。先にチョップか重ねるで音を入れてください"
+            },
         )
     return state.copy(
         selectedBank = bankIndex,

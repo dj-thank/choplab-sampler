@@ -1,5 +1,10 @@
 package com.choplab.sampler.audio
 
+internal const val SCRATCH_GESTURE_IDLE_TIMEOUT_MS = 120L
+
+fun scratchGestureIsIdle(elapsedMillis: Long): Boolean =
+    elapsedMillis.coerceAtLeast(0L) >= SCRATCH_GESTURE_IDLE_TIMEOUT_MS
+
 fun normalizeScratchSpeed(speed: Float): Float =
     if (speed.isFinite()) speed.coerceIn(-4f, 4f) else 0f
 
