@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -3543,7 +3544,17 @@ private fun SourceWaveform(
     onSeek: (Int) -> Unit,
     modifier: Modifier,
 ) {
-    val peaks = remember(audio?.id) { audio?.let(::buildDeckPeaks) }
+    val visibleAudio = audio.takeUnless { isLoading }
+    var zoom by remember(visibleAudio?.id) { mutableFloatStateOf(1f) }
+    var scroll by remember(visibleAudio?.id) { mutableFloatStateOf(0f) }
+    val totalFrames = visibleAudio?.frameCount ?: 1
+    val visibleFrames = (totalFrames / zoom).roundToInt().coerceIn(1, totalFrames)
+    val maxStart = (totalFrames - visibleFrames).coerceAtLeast(0)
+    val visibleStart = (maxStart * scroll).roundToInt().coerceIn(0, maxStart)
+    val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
+    val peaks = remember(visibleAudio?.id, visibleStart, visibleEnd) {
+        visibleAudio?.let { buildDeckPeaks(it, visibleStart, visibleEnd) }
+    }
     Box(
         modifier = modifier
             .clip(PanelShape)
@@ -3553,16 +3564,29 @@ private fun SourceWaveform(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(audio?.id) {
-                    detectTapGestures { offset ->
-                        val source = audio ?: return@detectTapGestures
-                        val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                        onSeek((fraction * source.frameCount).toInt().coerceIn(0, source.frameCount - 1))
-                    }
+                .pointerInput(visibleAudio?.id, visibleStart, visibleFrames) {
+                    detectTapGestures(
+                        onDoubleTap = { offset ->
+                            val source = visibleAudio ?: return@detectTapGestures
+                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                            val frame = visibleStart + (visibleFrames * fraction).toInt()
+                            val nextZoom = (zoom * 2f).coerceIn(1f, 64f)
+                            val nextVisible = (source.frameCount / nextZoom).roundToInt().coerceAtLeast(1)
+                            val nextMax = (source.frameCount - nextVisible).coerceAtLeast(0)
+                            scroll = if (nextMax == 0) 0f else
+                                ((frame - nextVisible / 2).coerceIn(0, nextMax)).toFloat() / nextMax
+                            zoom = nextZoom
+                        },
+                        onTap = { offset ->
+                        val source = visibleAudio ?: return@detectTapGestures
+                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                            onSeek((visibleStart + visibleFrames * fraction).toInt().coerceIn(0, source.frameCount - 1))
+                        },
+                    )
                 }
                 .semantics { contentDescription = "ソース波形。タップで再生位置を移動" },
         ) {
-            val source = audio ?: return@Canvas
+            val source = visibleAudio ?: return@Canvas
             val values = peaks ?: return@Canvas
             val center = size.height / 2f
             val amplitude = size.height * 0.43f
@@ -3584,7 +3608,8 @@ private fun SourceWaveform(
             pads.filter { it.isAssigned && it.audio?.id == source.id }
                 .sortedBy(PadModel::startFrame)
                 .forEach { pad ->
-                    val x = pad.startFrame.toFloat() / source.frameCount.coerceAtLeast(1) * size.width
+                    if (pad.startFrame !in visibleStart..visibleEnd) return@forEach
+                    val x = (pad.startFrame - visibleStart).toFloat() / visibleFrames.coerceAtLeast(1) * size.width
                     drawLine(
                         DeckLamp,
                         androidx.compose.ui.geometry.Offset(x, 12.dp.toPx()),
@@ -3604,8 +3629,8 @@ private fun SourceWaveform(
                     )
                 }
 
-            val headX = playheadFrame.coerceIn(0, source.frameCount).toFloat() /
-                source.frameCount.coerceAtLeast(1) * size.width
+            val headX = (playheadFrame - visibleStart).coerceIn(0, visibleFrames).toFloat() /
+                visibleFrames.coerceAtLeast(1) * size.width
             drawLine(
                 color = if (sampling) Color(0xFFFFF0D0) else Color(0xFFA89A78),
                 start = androidx.compose.ui.geometry.Offset(headX, 0f),
@@ -3613,7 +3638,7 @@ private fun SourceWaveform(
                 strokeWidth = 2.dp.toPx(),
             )
         }
-        if (audio == null) {
+        if (visibleAudio == null) {
             Text(
                 emptySourceWaveformLabel(isLoading),
                 color = Color(0xFF766B50),
@@ -3627,13 +3652,15 @@ private fun SourceWaveform(
     }
 }
 
-private fun buildDeckPeaks(audio: PcmAudio): List<Pair<Float, Float>> {
+private fun buildDeckPeaks(audio: PcmAudio, visibleStart: Int = 0, visibleEnd: Int = audio.frameCount): List<Pair<Float, Float>> {
     val width = 640
     if (audio.samples.isEmpty()) return emptyList()
-    val framesPerBucket = max(1, audio.samples.size / width)
+    val start = visibleStart.coerceIn(0, audio.frameCount - 1)
+    val end = visibleEnd.coerceIn(start + 1, audio.frameCount)
+    val framesPerBucket = max(1, (end - start) / width)
     return List(width) { bucket ->
-        val from = (bucket * framesPerBucket).coerceAtMost(audio.samples.lastIndex)
-        val to = ((bucket + 1) * framesPerBucket).coerceAtMost(audio.samples.size)
+        val from = (start + bucket * framesPerBucket).coerceAtMost(audio.samples.lastIndex)
+        val to = (start + (bucket + 1) * framesPerBucket).coerceAtMost(end)
         val stride = max(1, (to - from) / 48)
         var minimum = 0f
         var maximum = 0f
