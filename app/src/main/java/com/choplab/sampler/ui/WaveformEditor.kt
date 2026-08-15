@@ -128,14 +128,26 @@ fun WaveformEditor(
                         visibleFrames,
                         canvasSize,
                     ) {
-                        detectTapGestures { offset ->
-                            if (canvasSize.width <= 0) return@detectTapGestures
-                            val fraction = (offset.x / canvasSize.width).coerceIn(0f, 1f)
-                            val frame = (visibleStart + visibleFrames * fraction)
-                                .roundToInt()
-                                .coerceIn(0, totalFrames - 1)
-                            onWaveformTap(frame)
-                        }
+                        detectTapGestures(
+                            onDoubleTap = { offset ->
+                                if (canvasSize.width <= 0) return@detectTapGestures
+                                val fraction = (offset.x / canvasSize.width).coerceIn(0f, 1f)
+                                val frame = (visibleStart + visibleFrames * fraction)
+                                    .roundToInt()
+                                    .coerceIn(0, totalFrames - 1)
+                                val nextZoom = (zoom * 2f).coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                                scroll = centeredViewportScroll(frame, totalFrames, nextZoom)
+                                zoom = nextZoom
+                            },
+                            onTap = { offset ->
+                                if (canvasSize.width <= 0) return@detectTapGestures
+                                val fraction = (offset.x / canvasSize.width).coerceIn(0f, 1f)
+                                val frame = (visibleStart + visibleFrames * fraction)
+                                    .roundToInt()
+                                    .coerceIn(0, totalFrames - 1)
+                                onWaveformTap(frame)
+                            },
+                        )
                     }
                     .semantics {
                         contentDescription = if (manualChopEnabled) {

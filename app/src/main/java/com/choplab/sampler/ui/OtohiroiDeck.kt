@@ -3129,7 +3129,7 @@ private fun SourceEditorWaveform(
 ) {
     val audio = state.currentAudio
     MachinePanel(modifier = modifier) {
-        if (audio == null) {
+        if (audio == null || state.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     emptySourceWaveformLabel(state.isLoading),
