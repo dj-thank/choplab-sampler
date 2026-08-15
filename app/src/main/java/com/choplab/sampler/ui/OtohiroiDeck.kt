@@ -1447,17 +1447,6 @@ private fun PadTrimEditor(
             endFrame = entryEndFrame,
         )
     }
-    var precisionName by rememberSaveable(pad.globalIndex, audio.id) {
-        mutableStateOf(PadTrimPrecision.MILLISECOND.name)
-    }
-    val precision = PadTrimPrecision.entries.firstOrNull { it.name == precisionName }
-        ?: PadTrimPrecision.MILLISECOND
-    val nudgeFrames = padTrimNudgeFrames(audio.sampleRate, precision)
-    val nudgeLabel = when (precision) {
-        PadTrimPrecision.FRAME -> "1 FRAME"
-        PadTrimPrecision.MILLISECOND -> "1 ms"
-        PadTrimPrecision.TEN_MILLISECONDS -> "10 ms"
-    }
     val canRestore = pad.startFrame != entrySnapshot.startFrame || pad.endFrame != entrySnapshot.endFrame
     Column(
         modifier = modifier.fillMaxSize(),
@@ -1493,60 +1482,12 @@ private fun PadTrimEditor(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().height(32.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            PadTrimPrecision.entries.forEach { option ->
-                val label = when (option) {
-                    PadTrimPrecision.FRAME -> "1 FRAME"
-                    PadTrimPrecision.MILLISECOND -> "1 ms"
-                    PadTrimPrecision.TEN_MILLISECONDS -> "10 ms"
-                }
-                MachineButton(
-                    label = label,
-                    onClick = { precisionName = option.name },
-                    active = precision == option,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().height(44.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            MachineButton(
-                label = "開始 −\n$nudgeLabel",
-                onClick = { viewModel.setSelectedPadStartFrame(pad.startFrame - nudgeFrames) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "開始 ＋\n$nudgeLabel",
-                onClick = { viewModel.setSelectedPadStartFrame(pad.startFrame + nudgeFrames) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "終了 −\n$nudgeLabel",
-                onClick = { viewModel.setSelectedPadEndFrame(pad.endFrame - nudgeFrames) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "終了 ＋\n$nudgeLabel",
-                onClick = { viewModel.setSelectedPadEndFrame(pad.endFrame + nudgeFrames) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-        }
-        Row(
             modifier = Modifier.fillMaxWidth().height(44.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             MachineButton(
                 label = "調整したPADを聴く\nPREVIEW",
-                onClick = { viewModel.triggerPad(pad.globalIndex) },
+                onClick = { viewModel.previewPad(pad.globalIndex) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
             )
@@ -1554,6 +1495,23 @@ private fun PadTrimEditor(
                 label = "編集前へ戻す\nREVERT",
                 onClick = { viewModel.restoreSelectedPadTrim(entrySnapshot) },
                 enabled = canRestore,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().height(40.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MachineButton(
+                label = "元曲を再生/停止\nSOURCE",
+                onClick = viewModel::toggleSourcePlayback,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "すべて停止\nSTOP ALL",
+                onClick = viewModel::stopAllSounds,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
             )

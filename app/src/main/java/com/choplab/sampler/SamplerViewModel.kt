@@ -1152,6 +1152,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         handlePadPress(globalIndex, PadSurfaceMode.PERFORMANCE)
     }
 
+    /** Preview is a single-voice audition: retriggering never stacks two previews. */
+    fun previewPad(globalIndex: Int) {
+        val pad = mutableUiState.value.pads.getOrNull(globalIndex) ?: return
+        if (!pad.isAssigned) return
+        engine.stopAllPlayback()
+        if (!preparePlaybackStart()) return
+        engine.triggerPad(globalIndex)
+    }
+
     private fun handlePadPress(globalIndex: Int, surfaceMode: PadSurfaceMode) {
         val state = mutableUiState.value
         val pad = state.pads.getOrNull(globalIndex) ?: return
