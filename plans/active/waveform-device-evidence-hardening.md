@@ -67,8 +67,8 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - `:app:testDebugUnitTest --tests com.choplab.sampler.ui.WaveformViewportPolicyTest.accessibilityActionsReportWhetherTheViewportActuallyChanged` — RED then GREEN.
 - `:app:testDebugUnitTest --tests com.choplab.sampler.ui.WaveformViewportPolicyTest.overviewGeometryRepresentsWholeAndZoomedViewports` — compile RED then GREEN.
 - `:app:compileDebugAndroidTestKotlin` — PASS for deterministic fixture.
-- `scripts/collect-device-evidence.ps1 -InstallAndTest -Serial 5A121JEBF08094` — authoritative exact run `20260816-185024-61a02ec3`; strict serial/device, package/version/signer, app/test readback, autosave preservation, instrumentation, bounded logcat, and pre/post phone-state restoration PASS.
-- Pixel instrumentation — `OK (3 tests)` in `4.536 s`; app/readback SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`; test/readback SHA-256 `DD6C98DE009CE3F98730713E23393E9842EE16AC0B9A58D2A098F190CFD1E376`.
+- `scripts/collect-device-evidence.ps1 -InstallAndTest -Serial 5A121JEBF08094` — authoritative exact run `20260816-185953-b3579f05`; strict serial/device, package/version/signer, app/test readback, autosave preservation, instrumentation, bounded logcat, failure-path cleanup, and pre/post phone-state restoration PASS.
+- Pixel instrumentation — `OK (3 tests)` in `5.138 s`; app/readback SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`; test/readback SHA-256 `DE97432A1C1278E7661FD656DFCC054CFABA6A4BCC6D9DECF44B810564F83EC8`.
 
 ## Risks and rollback
 

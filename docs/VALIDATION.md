@@ -11,7 +11,7 @@
 - recording boundary: existing pure recording-session and interruption coordinator tests cover mutual exclusion without activating a real microphone; physical recording quality/contention remains unclaimed
 - evidence: `scripts/collect-device-evidence.ps1` records clean source identity, Gradle logs, APK identities/signers, signer preflight, autosave before/after, `install -r`, base.apk readback, instrumentation output, package dumps, timestamp-bounded logcat, and final launcher/volume/rotation/project state under one manifest
 - gates remain split: `LOCAL_PASS` / `INSTRUMENTATION_PASS` / physical observation / spoken TalkBack / `HUMAN_GO`
-- authoritative exact run: `work/device-evidence/20260816-185024-61a02ec3/manifest.json`; clean HEAD `61a02ec3b2ad06ed1b7fdd074f70248741af6dbb`, app/readback SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`, test/readback SHA-256 `DD6C98DE009CE3F98730713E23393E9842EE16AC0B9A58D2A098F190CFD1E376`, deterministic Pixel instrumentation `OK (3 tests)` in `4.536 s`, autosave preservation and phone-state restoration machine-gated, bounded app fatal/ANR 0
+- authoritative exact run: `work/device-evidence/20260816-185953-b3579f05/manifest.json`; clean HEAD `b3579f0592738ccf2e95f10d1f0bba42cc343578`, app/readback SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`, test/readback SHA-256 `DE97432A1C1278E7661FD656DFCC054CFABA6A4BCC6D9DECF44B810564F83EC8`, deterministic Pixel instrumentation `OK (3 tests)` in `5.138 s`, lower/upper marker endpoints, autosave preservation, and phone-state restoration machine-gated, bounded app fatal/ANR 0
 
 ## 2026-08-14 v0.13.1 playback interruption safety candidate
 

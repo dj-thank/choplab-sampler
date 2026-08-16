@@ -106,7 +106,7 @@ or claim spoken TalkBack output. They establish `INSTRUMENTATION_PASS` for Compo
 contracts. Spoken TalkBack focus order, physical one-hand comfort, and subjective audio remain separate checks;
 full `DEVICE_PASS` and `HUMAN_GO` remain withheld.
 
-## Authoritative fail-closed rerun
+## Historical fail-closed rerun (superseded by the final run below)
 
 The authoritative manifest is `work/device-evidence/20260816-185024-61a02ec3/manifest.json`.
 It was collected from clean HEAD `61a02ec3b2ad06ed1b7fdd074f70248741af6dbb` on exact serial
@@ -131,3 +131,22 @@ It was collected from clean HEAD `61a02ec3b2ad06ed1b7fdd074f70248741af6dbb` on e
 This promotes the deterministic contracts and exact deployment chain to `INSTRUMENTATION_PASS`, not full
 `DEVICE_PASS`. Actual TalkBack speech/focus traversal, real microphone recording/contention, subjective
 one-hand comfort, and audio quality remain explicitly unclaimed and require separate human-supervised evidence.
+
+## Final authoritative fail-closed rerun
+
+- Manifest: `work/device-evidence/20260816-185953-b3579f05/manifest.json`
+- Clean app source HEAD: `b3579f0592738ccf2e95f10d1f0bba42cc343578`
+- App output: `outputs/ChopLab-v0.13.1-b3579f0-waveform-evidence-debug.apk`, SHA-256
+  `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`
+- Test output: `outputs/ChopLab-v0.13.1-b3579f0-waveform-evidence-androidTest.apk`, SHA-256
+  `DE97432A1C1278E7661FD656DFCC054CFABA6A4BCC6D9DECF44B810564F83EC8`
+- Exact serial/device, app package/version, app/test hashes and signers, `install -r`, both readbacks,
+  autosave preservation, and final state restoration all passed fail-closed checks.
+- Instrumentation: `OK (3 tests)` in `5.138 s`; both lower and upper chop-marker endpoints are covered.
+- App-scoped fatal/ANR matches: `0`.
+- Before/final: Nexus Launcher, media volume `14`, automatic rotation `1`; ChopLab force-stopped and
+  the Pixel explicitly returned to Sanporoid with no uninstall, clear-data, or microphone recording.
+
+The same gate boundary applies: `LOCAL_PASS` and `INSTRUMENTATION_PASS` are established. Full
+`DEVICE_PASS` and `HUMAN_GO` remain withheld pending actual TalkBack speech/focus traversal, real microphone
+contention, and subjective one-hand/audio evaluation.
