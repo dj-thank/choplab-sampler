@@ -47,6 +47,9 @@ fun playbackRequestAllowedDuringRecording(
     startsPlayback: Boolean,
 ): Boolean = session == RecordingSession.Idle || !startsPlayback
 
+fun editingRequestAllowedDuringRecording(session: RecordingSession): Boolean =
+    session == RecordingSession.Idle
+
 fun RecordingSession.withPhase(phase: RecordingPhase): RecordingSession = when (this) {
     RecordingSession.Idle -> this
     is RecordingSession.Active -> copy(phase = phase)

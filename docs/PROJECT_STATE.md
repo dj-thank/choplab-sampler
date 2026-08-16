@@ -1,5 +1,9 @@
 # Project state
 
+## Playback UI truth and recording edit ownership — 2026-08-16
+
+PAD preview now uses the same engine-and-state stop boundary as other primary playback transitions, so source, transport, loop, scratch, and pending-source UI cannot remain falsely active after the engine is silenced. Project mutations, Undo, and Redo are rejected while any MIC/DEVICE/VOICE recording phase owns the session; Undo/Redo buttons expose the same disabled state. A pure recording-policy matrix covers every kind and STARTING/RECORDING/STOPPING phase. This is LOCAL state-contract evidence.
+
 ## Archive zero-progress read hardening — 2026-08-16
 
 The project reader now rejects an `InputStream` that returns zero bytes for a positive-length read. Both bounded manifest reads and legacy raw-PCM reads share this fail-closed progress contract, eliminating an attacker-controlled infinite loop while preserving schema 1–5 behavior. A deterministic zero-progress stream test and the complete archive compatibility suite pass locally.

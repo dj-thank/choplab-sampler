@@ -3066,14 +3066,14 @@ private fun FinishWorkspace(
                 MachineButton(
                     label = "1つ戻す\nUNDO",
                     onClick = viewModel::undoEdit,
-                    enabled = state.canUndo && !state.isLoading,
+                    enabled = state.canUndo && !state.isLoading && !state.recordingSession.isActive,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
                 MachineButton(
                     label = "やり直す\nREDO",
                     onClick = viewModel::redoEdit,
-                    enabled = state.canRedo && !state.isLoading,
+                    enabled = state.canRedo && !state.isLoading && !state.recordingSession.isActive,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )

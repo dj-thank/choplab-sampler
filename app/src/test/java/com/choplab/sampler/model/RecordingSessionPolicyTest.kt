@@ -7,6 +7,18 @@ import org.junit.Test
 
 class RecordingSessionPolicyTest {
     @Test
+    fun projectEditsAreAllowedOnlyWhenNoRecordingOwnsTheSession() {
+        assertTrue(editingRequestAllowedDuringRecording(RecordingSession.Idle))
+        RecordingKind.entries.forEach { kind ->
+            RecordingPhase.entries.forEach { phase ->
+                assertFalse(
+                    editingRequestAllowedDuringRecording(RecordingSession.Active(kind, phase)),
+                )
+            }
+        }
+    }
+
+    @Test
     fun recordingTruthHasExactlyOneKindAndPhase() {
         val microphone = RecordingSession.Active(
             kind = RecordingKind.SOURCE_MICROPHONE,

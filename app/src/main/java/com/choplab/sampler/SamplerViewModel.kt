@@ -62,6 +62,7 @@ import com.choplab.sampler.model.completeAutosaveRecoveryWithoutProject
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.endRecordingSession
+import com.choplab.sampler.model.editingRequestAllowedDuringRecording
 import com.choplab.sampler.model.failAutosaveRecovery
 import com.choplab.sampler.model.failRecordingSession
 import com.choplab.sampler.model.hasAudiblePatternContent
@@ -1174,7 +1175,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     fun previewPad(globalIndex: Int) {
         val pad = mutableUiState.value.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) return
-        engine.stopAllPlayback()
+        stopCompetingPlayback()
         if (!preparePlaybackStart()) return
         engine.triggerPad(globalIndex)
     }
@@ -1891,6 +1892,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun undoEdit() {
+        if (rejectEditWhileRecording()) return
         val restored = editHistory.undo(mutableUiState.value) ?: run {
             setStatus("戻せる操作はありません")
             return
@@ -1901,6 +1903,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun redoEdit() {
+        if (rejectEditWhileRecording()) return
         val restored = editHistory.redo(mutableUiState.value) ?: run {
             setStatus("やり直せる操作はありません")
             return
@@ -1918,6 +1921,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         mergeKey: String? = null,
         transform: (SamplerUiState) -> SamplerUiState,
     ) {
+        if (rejectEditWhileRecording()) return
         val before = mutableUiState.value
         val after = transform(before)
         if (after == before) return
@@ -1935,6 +1939,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         )
         projectRevision++
         scheduleAutosave()
+    }
+
+    private fun rejectEditWhileRecording(): Boolean {
+        val session = mutableUiState.value.recordingSession
+        if (editingRequestAllowedDuringRecording(session)) return false
+        setStatus("${recordingKindLabel(session)}をSTOPしてから編集してください")
+        return true
     }
 
     private fun SamplerUiState.hasSameEditableContent(other: SamplerUiState): Boolean =
