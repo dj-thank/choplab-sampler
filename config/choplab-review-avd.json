@@ -14,5 +14,11 @@
   "locale": "ja-JP",
   "fontScales": [1.0, 1.3, 2.0],
   "orientation": "portrait",
+  "emulator": {
+    "port": 5592,
+    "memoryMb": 4096,
+    "disabledFeatures": ["BluetoothEmulation"]
+  },
+  "avdHomeEnvironmentVariable": "CHOPLAB_AVD_HOME",
   "ownership": "ChopLab-only; never reuse or mutate another project's AVD"
 }

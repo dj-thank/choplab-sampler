@@ -55,7 +55,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Android official `testing-setup` guidance applied: UI Automator 2.4.0 and Compose ATF added. A historical API 36 AVD receipt passed four waveform tests; the current candidate is virtual-device `BLOCKED` until the missing Google Play image is repaired and the suite is rerun.
 - [x] 2026-08-16 — Second Luna adversarial panel added an explicit accessibility click action whose label matches the waveform tap instruction, and hardened the evidence runner to use deterministic Gradle limits, a fixed androidTest APK path, and signer-first retained-data upgrades.
 - [x] 2026-08-16 — Follow-up adversarial review raised compact portrait targets, font scaling, and the scratch platter's missing semantic actions; 48 dp portrait rows, non-shrinking `sp`, and state-aware start/stop/left/right scratch actions are covered by focused LOCAL tests.
-- [x] 2026-08-17 — Added a read-only preflight plus pinned ChopLab-only API 36 Google Play AVD manifest. The required image is absent, so current virtual execution remains explicitly BLOCKED with no existing AVD mutation.
+- [x] 2026-08-17 — Installed the pinned Google Play API 36 image, created an isolated ChopLab-only AVD, and added idempotent provision/start/emulator-only matrix scripts. Baseline portrait 1.0/1.3/2.0, landscape, and three-run stability checks pass after disabling unstable headless Bluetooth emulation; the final source-bound automation commit rerun remains the receipt boundary.
 - [x] 2026-08-17 — Parent fixed-point review expanded remaining phone portrait page, PAD edit, stepper, Layer Studio, scratch selector, and compact waveform controls to 48 dp. The dense 16-step lane remains a documented responsive-layout follow-up rather than a false 48 dp claim.
 
 ## Discoveries
@@ -92,7 +92,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
   touch-exploration, media-volume, rotation, foreground, and autosave readbacks were restored and recorded.
 
 - Gesture injection can still vary with Compose runtime; fixed in-memory geometry reduces but does not eliminate platform timing risk.
-- The configured `medium_phone` AVD points at a missing Google Play image while the installed API 36 image is Google APIs, and `avdmanager` cannot recreate the dedicated review AVD because that image lacks `devices.xml`. Virtual DEVICE execution is therefore blocked until the SDK image is repaired; LOCAL build and androidTest compilation do not substitute for that run.
+- The dedicated Google Play API 36 image and isolated `medium_phone` AVD are now provisioned. Headless startup initially reproduced Bluetooth-process/framework instability; the pinned 4096 MiB launch with `-feature -BluetoothEmulation` removed that failure across three consecutive waveform runs. This is emulator-infrastructure evidence, not physical Bluetooth or audio-route evidence.
 - Evidence collection refuses dirty tracked state and signer mismatch. It never contains uninstall or clear-data operations.
 - Rollback is the parent of the final logical commit; archive schema and project bytes are unchanged.
 

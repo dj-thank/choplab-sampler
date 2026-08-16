@@ -17,7 +17,7 @@ Never promote a result across these boundaries. In particular, a Compose semanti
 Run the complete local gate from the repository root with JDK 17 and the configured Android SDK:
 
 ```powershell
-.\gradlew.bat clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+.\gradlew.bat clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --max-workers=1 --no-watch-fs
 ```
 
 Run the deterministic waveform suite on one explicitly selected emulator or device. Do not use Gradle's all-connected-device task when a retained-data Pixel is also attached:
@@ -34,6 +34,19 @@ adb -s <serial> shell am instrument -w -r `
 
 ## Virtual device policy
 
-Use the ChopLab-only configuration in `config/choplab-review-avd.json` for repeatable framework-node regression. Run `scripts/check-choplab-review-avd.ps1` first; a BLOCKED result must not be repaired by mutating an existing or another project's AVD. Accessibility Test Devices are intentionally not used for TalkBack because their reduced system image omits or disables Settings/SystemUI components. AVD results remain separate from physical Pixel and HUMAN_GO evidence.
+Use the ChopLab-only configuration in `config/choplab-review-avd.json` for repeatable framework-node regression. Set `CHOPLAB_AVD_HOME` to an isolated directory, then use the repository scripts:
 
-Primary references are recorded in `work/ANDROID_ACCESSIBILITY_AUTOMATION_RESEARCH_2026-08-16.md`.
+```powershell
+$env:CHOPLAB_AVD_HOME = 'F:\CodexData\ChopLab\avd' # local example; never commit a machine path
+.\scripts\check-choplab-review-avd.ps1
+.\scripts\provision-choplab-review-avd.ps1 -InstallMissingImage
+.\scripts\start-choplab-review-avd.ps1
+.\scripts\write-build-provenance.ps1 -OutputPath work\build-provenance.json
+.\scripts\run-choplab-review-avd-tests.ps1 -Serial emulator-5592 -BuildProvenancePath work\build-provenance.json
+```
+
+Provisioning creates only the pinned AVD and refuses to replace an incomplete or mismatched existing AVD. Starting uses the tracked-process registry, 4096 MiB, no snapshots, and disables emulator Bluetooth emulation because the Google Play API 36 image reproducibly produced Bluetooth/startup crashes in the headless review configuration. The runner rejects every non-emulator serial, so it cannot fall through to a connected Pixel. It also requires a tracked-clean HEAD/tree and a matching build-provenance JSON before installation. It runs the four-test deterministic waveform suite at portrait font scales 1.0/1.3/2.0 and landscape 1.0, parses the instrumentation summary fail closed, checks fatal/ANR logs, restores and reads back font/rotation settings, and force-stops ChopLab.
+
+Accessibility Test Devices are intentionally not used for TalkBack because their reduced system image omits or disables Settings/SystemUI components. AVD results remain separate from physical Pixel and HUMAN_GO evidence.
+
+Primary references and fixed reference-repository revisions are recorded in `docs/research/android-audio-accessibility-reference-review-2026-08-17.md`.
