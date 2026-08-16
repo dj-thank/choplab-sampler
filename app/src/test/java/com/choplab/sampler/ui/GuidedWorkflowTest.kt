@@ -266,8 +266,10 @@ class GuidedWorkflowTest {
         assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 1f))
         assertTrue(machineHeaderShowsCaption(fontScale = 1f))
 
-        assertEquals(7f, compactMachineButtonFontSizeSp(fontScale = 1.3f))
-        assertEquals(8f, compactMachineButtonLineHeightSp(fontScale = 1.3f))
+        assertEquals(8f, compactMachineButtonFontSizeSp(fontScale = 1.3f))
+        assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 1.3f))
+        assertEquals(8f, compactMachineButtonFontSizeSp(fontScale = 2f))
+        assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 2f))
         assertFalse(machineHeaderShowsCaption(fontScale = 1.3f))
     }
 

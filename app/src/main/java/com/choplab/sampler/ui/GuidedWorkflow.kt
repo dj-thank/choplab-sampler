@@ -183,11 +183,9 @@ fun recordingHeaderPresentation(session: RecordingSession): RecordingHeaderPrese
     )
 }
 
-fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
-    if (usesLargeTextDeckMode(fontScale)) 7f else 8f
+fun compactMachineButtonFontSizeSp(@Suppress("UNUSED_PARAMETER") fontScale: Float): Float = 8f
 
-fun compactMachineButtonLineHeightSp(fontScale: Float): Float =
-    if (usesLargeTextDeckMode(fontScale)) 8f else 9f
+fun compactMachineButtonLineHeightSp(@Suppress("UNUSED_PARAMETER") fontScale: Float): Float = 9f
 
 fun machineHeaderShowsCaption(fontScale: Float): Boolean =
     !usesLargeTextDeckMode(fontScale)

@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
@@ -149,6 +150,40 @@ private enum class ScratchSensitivity(val label: String, val divisor: Float) {
     NORMAL("標準\nNORMAL", 7f),
     WIDE("大きい\nWIDE", 4f),
 }
+
+internal fun scratchAccessibilityActions(
+    available: Boolean,
+    active: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+): List<CustomAccessibilityAction> = listOf(
+    CustomAccessibilityAction("スクラッチ開始") {
+        if (!available || active) false else {
+            onStart()
+            true
+        }
+    },
+    CustomAccessibilityAction("スクラッチ停止") {
+        if (!available || !active) false else {
+            onStop()
+            true
+        }
+    },
+    CustomAccessibilityAction("左へ擦る") {
+        if (!available || !active) false else {
+            onPrevious()
+            true
+        }
+    },
+    CustomAccessibilityAction("右へ擦る") {
+        if (!available || !active) false else {
+            onNext()
+            true
+        }
+    },
+)
 
 @Composable
 fun OtohiroiDeck(
@@ -2737,6 +2772,11 @@ private fun ScratchStudio(
         else -> dialRange?.startFrame ?: -1
     }
     val progress = dialRange?.let { scratchProgress(dialFrame, it.startFrame, it.endFrame) } ?: 0f
+    val scratchAvailable = if (target == ScratchTarget.SOURCE) {
+        audio != null && range != null
+    } else {
+        selectedPad.isAssigned
+    }
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -2835,7 +2875,19 @@ private fun ScratchStudio(
                         )
                     }
                     .semantics {
-                        contentDescription = "スクラッチ円盤。左右へドラッグ"
+                        contentDescription = "スクラッチ円盤。左右へドラッグ、またはカスタム操作"
+                        stateDescription = if (scratchActive) "スクラッチ中" else "停止中"
+                        customActions = scratchAccessibilityActions(
+                            available = scratchAvailable,
+                            active = scratchActive,
+                            onStart = {
+                                if (target == ScratchTarget.SOURCE) viewModel.beginSourceScratch()
+                                else viewModel.beginScratch()
+                            },
+                            onStop = viewModel::endScratch,
+                            onPrevious = { viewModel.updateScratchSpeed(-1f) },
+                            onNext = { viewModel.updateScratchSpeed(1f) },
+                        )
                     },
             ) {
                 Canvas(Modifier.fillMaxSize().padding(13.dp)) {

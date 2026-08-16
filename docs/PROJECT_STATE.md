@@ -1,5 +1,9 @@
 # Project state
 
+## Compact portrait and scratch accessibility — 2026-08-16
+
+The phone-first portrait layout now keeps header, mode, and primary control rows at a 48 dp minimum on 360 dp-class widths. Large Android font scales no longer cause compact machine-button typography to shrink from its normal `sp` value. The scratch platter now publishes a stopped/active state plus explicit start, stop, left, and right accessibility actions with fail-closed no-op behavior when audio is unavailable or the action does not match the current state. Focused JVM policy tests and androidTest compilation pass. This is LOCAL semantics/layout evidence; TalkBack wording, physical one-hand comfort, and audible scratch feel remain HUMAN/DEVICE boundaries.
+
 ## Playback UI truth and recording edit ownership — 2026-08-16
 
 PAD preview now uses the same engine-and-state stop boundary as other primary playback transitions, so source, transport, loop, scratch, and pending-source UI cannot remain falsely active after the engine is silenced. Project mutations, Undo, and Redo are rejected while any MIC/DEVICE/VOICE recording phase owns the session; Undo/Redo buttons expose the same disabled state. A pure recording-policy matrix covers every kind and STARTING/RECORDING/STOPPING phase. This is LOCAL state-contract evidence.
