@@ -11,6 +11,20 @@ internal data class WaveformViewport(
     val visibleFrames: Int,
 )
 
+internal fun resolveWaveformViewport(
+    totalFrames: Int,
+    zoom: Float,
+    scroll: Float,
+): WaveformViewport {
+    val safeTotal = totalFrames.coerceAtLeast(1)
+    val safeZoom = zoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
+    val visibleFrames = (safeTotal / safeZoom).roundToInt().coerceIn(1, safeTotal)
+    val maximumStart = (safeTotal - visibleFrames).coerceAtLeast(0)
+    val safeScroll = if (maximumStart == 0) 0f else scroll.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+    val visibleStart = (maximumStart * safeScroll).roundToInt().coerceIn(0, maximumStart)
+    return WaveformViewport(safeTotal, safeZoom, safeScroll, visibleStart, visibleFrames)
+}
+
 internal fun waveformFrameAtX(
     x: Float,
     width: Float,

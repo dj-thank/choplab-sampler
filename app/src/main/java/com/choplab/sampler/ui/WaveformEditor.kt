@@ -87,10 +87,10 @@ fun WaveformEditor(
     var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
     var scroll by remember(audio.id) { mutableFloatStateOf(0f) }
 
-    val totalFrames = audio.frameCount.coerceAtLeast(1)
-    val visibleFrames = (totalFrames / zoom).roundToInt().coerceIn(1, totalFrames)
-    val maximumVisibleStart = (totalFrames - visibleFrames).coerceAtLeast(0)
-    val visibleStart = (maximumVisibleStart * scroll).roundToInt().coerceIn(0, maximumVisibleStart)
+    val viewport = resolveWaveformViewport(audio.frameCount, zoom, scroll)
+    val totalFrames = viewport.totalFrames
+    val visibleFrames = viewport.visibleFrames
+    val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
     val widthPx = canvasSize.width.toFloat().coerceAtLeast(1f)
     val waveformEnvelope = remember(audio.id, visibleStart, visibleEnd, canvasSize.width) {

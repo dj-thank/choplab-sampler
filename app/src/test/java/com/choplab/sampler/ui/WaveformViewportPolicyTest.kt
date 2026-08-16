@@ -6,6 +6,20 @@ import org.junit.Test
 
 class WaveformViewportPolicyTest {
     @Test
+    fun viewportStateNormalizesInvalidZoomAndScrollIntoTheWholeSource() {
+        val viewport = resolveWaveformViewport(
+            totalFrames = 1_000,
+            zoom = Float.NaN,
+            scroll = Float.POSITIVE_INFINITY,
+        )
+
+        assertEquals(1f, viewport.zoom)
+        assertEquals(0f, viewport.scroll)
+        assertEquals(0, viewport.visibleStart)
+        assertEquals(1_000, viewport.visibleFrames)
+    }
+
+    @Test
     fun tapMapsToVisibleFrameAndClampsAtBothEdges() {
         assertEquals(100, waveformFrameAtX(x = -50f, width = 200f, visibleStart = 100, visibleFrames = 400, totalFrames = 1_000))
         assertEquals(100, waveformFrameAtX(x = 0f, width = 200f, visibleStart = 100, visibleFrames = 400, totalFrames = 1_000))

@@ -3549,13 +3549,21 @@ private fun SourceWaveform(
     val visibleAudio = audio.takeUnless { isLoading }
     var zoom by remember(visibleAudio?.id) { mutableFloatStateOf(1f) }
     var scroll by remember(visibleAudio?.id) { mutableFloatStateOf(0f) }
-    val totalFrames = visibleAudio?.frameCount ?: 1
-    val visibleFrames = (totalFrames / zoom).roundToInt().coerceIn(1, totalFrames)
-    val maxStart = (totalFrames - visibleFrames).coerceAtLeast(0)
-    val visibleStart = (maxStart * scroll).roundToInt().coerceIn(0, maxStart)
+    val viewport = resolveWaveformViewport(visibleAudio?.frameCount ?: 1, zoom, scroll)
+    val totalFrames = viewport.totalFrames
+    val visibleFrames = viewport.visibleFrames
+    val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
-    val peaks = remember(visibleAudio?.id, visibleStart, visibleEnd) {
-        visibleAudio?.let { buildDeckPeaks(it, visibleStart, visibleEnd) }
+    val envelope = remember(visibleAudio?.id, visibleStart, visibleEnd) {
+        visibleAudio?.let {
+            buildWaveformEnvelope(
+                samples = it.samples,
+                visibleStart = visibleStart,
+                visibleEnd = visibleEnd,
+                pixelWidth = 640,
+                pixelStep = 1,
+            )
+        }
     }
     Box(
         modifier = modifier
@@ -3609,15 +3617,15 @@ private fun SourceWaveform(
                 },
         ) {
             val source = visibleAudio ?: return@Canvas
-            val values = peaks ?: return@Canvas
+            val values = envelope ?: return@Canvas
             val center = size.height / 2f
             val amplitude = size.height * 0.43f
-            values.forEachIndexed { index, peak ->
-                val x = index.toFloat() / max(1, values.lastIndex) * size.width
+            values.minimums.indices.forEach { index ->
+                val x = index.toFloat() / max(1, values.minimums.lastIndex) * size.width
                 drawLine(
                     color = DeckGreen,
-                    start = androidx.compose.ui.geometry.Offset(x, center - peak.second * amplitude),
-                    end = androidx.compose.ui.geometry.Offset(x, center - peak.first * amplitude),
+                    start = androidx.compose.ui.geometry.Offset(x, center - values.maximums[index] * amplitude),
+                    end = androidx.compose.ui.geometry.Offset(x, center - values.minimums[index] * amplitude),
                     strokeWidth = 1.2f,
                 )
             }
@@ -3679,29 +3687,6 @@ private fun SourceWaveform(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-    }
-}
-
-private fun buildDeckPeaks(audio: PcmAudio, visibleStart: Int = 0, visibleEnd: Int = audio.frameCount): List<Pair<Float, Float>> {
-    val width = 640
-    if (audio.samples.isEmpty()) return emptyList()
-    val start = visibleStart.coerceIn(0, audio.frameCount - 1)
-    val end = visibleEnd.coerceIn(start + 1, audio.frameCount)
-    val framesPerBucket = max(1, (end - start) / width)
-    return List(width) { bucket ->
-        val from = (start + bucket * framesPerBucket).coerceAtMost(audio.samples.lastIndex)
-        val to = (start + (bucket + 1) * framesPerBucket).coerceAtMost(end)
-        val stride = max(1, (to - from) / 48)
-        var minimum = 0f
-        var maximum = 0f
-        var frame = from
-        while (frame < to) {
-            val value = audio.samples[frame] / 32_768f
-            if (value < minimum) minimum = value
-            if (value > maximum) maximum = value
-            frame += stride
-        }
-        minimum to maximum
     }
 }
 
