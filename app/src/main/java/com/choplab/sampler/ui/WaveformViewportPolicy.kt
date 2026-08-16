@@ -25,6 +25,16 @@ internal fun resolveWaveformViewport(
     return WaveformViewport(safeTotal, safeZoom, safeScroll, visibleStart, visibleFrames)
 }
 
+internal fun waveformViewportStateDescription(viewport: WaveformViewport): String {
+    val visibleEndInclusive = (viewport.visibleStart + viewport.visibleFrames - 1)
+        .coerceIn(viewport.visibleStart, viewport.totalFrames - 1)
+    return if (viewport.visibleStart == 0 && viewport.visibleFrames == viewport.totalFrames) {
+        "全体表示。0から${visibleEndInclusive}フレーム"
+    } else {
+        "拡大表示。${viewport.visibleStart}から${visibleEndInclusive}フレーム。全体${viewport.totalFrames}フレーム"
+    }
+}
+
 internal fun waveformFrameAtX(
     x: Float,
     width: Float,

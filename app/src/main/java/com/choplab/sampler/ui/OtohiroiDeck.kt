@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -3602,6 +3603,7 @@ private fun SourceWaveform(
                 }
                 .semantics {
                     contentDescription = "ソース波形。タップで再生位置を移動。2本指で拡大と左右移動"
+                    stateDescription = waveformViewportStateDescription(viewport)
                     customActions = waveformViewportAccessibilityActions(
                         onPrevious = {
                             scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll

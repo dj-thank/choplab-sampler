@@ -20,6 +20,18 @@ class WaveformViewportPolicyTest {
     }
 
     @Test
+    fun viewportDescriptionDistinguishesWholeSourceFromZoomedRange() {
+        assertEquals(
+            "全体表示。0から999フレーム",
+            waveformViewportStateDescription(resolveWaveformViewport(1_000, 1f, 0f)),
+        )
+        assertEquals(
+            "拡大表示。250から749フレーム。全体1000フレーム",
+            waveformViewportStateDescription(resolveWaveformViewport(1_000, 2f, 0.5f)),
+        )
+    }
+
+    @Test
     fun tapMapsToVisibleFrameAndClampsAtBothEdges() {
         assertEquals(100, waveformFrameAtX(x = -50f, width = 200f, visibleStart = 100, visibleFrames = 400, totalFrames = 1_000))
         assertEquals(100, waveformFrameAtX(x = 0f, width = 200f, visibleStart = 100, visibleFrames = 400, totalFrames = 1_000))
