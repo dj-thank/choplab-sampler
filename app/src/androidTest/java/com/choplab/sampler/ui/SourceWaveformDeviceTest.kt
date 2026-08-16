@@ -117,16 +117,21 @@ class SourceWaveformDeviceTest {
         val waveformBounds = waveformNode().fetchSemanticsNode().boundsInRoot
         val start = handleNode("選択開始ハンドル")
         val end = handleNode("選択終了ハンドル")
+        val marker = handleNode("チョップ1 の位置")
 
-        listOf(start, end).forEach { handle ->
+        listOf(start, end, marker).forEach { handle ->
             val bounds = handle.fetchSemanticsNode().boundsInRoot
             assertTrue(bounds.left >= waveformBounds.left)
             assertTrue(bounds.right <= waveformBounds.right)
+            assertTrue(bounds.top >= waveformBounds.top)
+            assertTrue(bounds.bottom <= waveformBounds.bottom)
         }
         assertFalse(start.invokeCustomAction("少し前へ"))
         assertFalse(end.invokeCustomAction("少し後へ"))
+        assertFalse(marker.invokeCustomAction("少し前へ"))
         start.assertExactlyReversibleNudge("少し後へ", "少し前へ")
         end.assertExactlyReversibleNudge("少し前へ", "少し後へ")
+        marker.assertExactlyReversibleNudge("少し後へ", "少し前へ")
     }
 
     private fun setDeterministicWaveform(

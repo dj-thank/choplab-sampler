@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $adb = Join-Path $AndroidSdk "platform-tools\adb.exe"
 $apksigner = Join-Path $AndroidSdk "build-tools\35.0.0\apksigner.bat"
+$apkanalyzer = Join-Path $AndroidSdk "cmdline-tools\latest\bin\apkanalyzer.bat"
 $env:JAVA_HOME = $JavaHome
 $env:ANDROID_HOME = $AndroidSdk
 $env:ANDROID_SDK_ROOT = $AndroidSdk
@@ -38,6 +39,27 @@ function Get-ApkSignerSha256 {
     $line = $certificate | Select-String "Signer #1 certificate SHA-256 digest:" | Select-Object -First 1
     if (-not $line) { throw "No SHA-256 signer found for $ApkPath" }
     return ($line.Line -split ":", 2)[1].Trim().ToUpperInvariant()
+}
+
+function Get-ApkManifestValue {
+    param(
+        [Parameter(Mandatory)] [string]$ApkPath,
+        [Parameter(Mandatory)] [string]$Property
+    )
+    $value = & $apkanalyzer manifest $Property $ApkPath 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "apkanalyzer failed for $Property in $ApkPath" }
+    return (($value | Select-Object -First 1).ToString().Trim())
+}
+
+function Get-PackageDumpValue {
+    param(
+        [Parameter(Mandatory)] [string[]]$Dump,
+        [Parameter(Mandatory)] [string]$Pattern,
+        [Parameter(Mandatory)] [string]$Name
+    )
+    $match = [regex]::Match(($Dump -join "`n"), $Pattern)
+    if (-not $match.Success) { throw "Could not parse $Name from package dump" }
+    return $match.Groups[1].Value
 }
 
 Push-Location $repoRoot
@@ -81,14 +103,40 @@ try {
     $testHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $testArtifact).Hash
     $appSigner = Get-ApkSignerSha256 $appArtifact
     $testSigner = Get-ApkSignerSha256 $testArtifact
+    $appPackage = Get-ApkManifestValue $appArtifact "application-id"
+    $appVersionName = Get-ApkManifestValue $appArtifact "version-name"
+    $appVersionCode = Get-ApkManifestValue $appArtifact "version-code"
+    $testPackage = Get-ApkManifestValue $testArtifact "application-id"
+    if ($appPackage -ne "com.choplab.sampler" -or $testPackage -ne "com.choplab.sampler.test") {
+        throw "Unexpected APK package identity: app=$appPackage test=$testPackage"
+    }
     $deviceEvidence = $null
 
     if ($InstallAndTest) {
         if (-not $Serial) { throw "-Serial is required with -InstallAndTest" }
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "get-state") -LogPath (Join-Path $runDirectory "adb-state.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("devices", "-l") -LogPath (Join-Path $runDirectory "adb-devices.txt") | Out-Null
+        $adbState = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "get-state") -LogPath (Join-Path $runDirectory "adb-state.txt")
+        if ((($adbState | Select-Object -First 1).Trim()) -ne "device") {
+            throw "ADB target $Serial is not in device state"
+        }
+        $adbDevices = Invoke-NativeChecked -FilePath $adb -ArgumentList @("devices", "-l") -LogPath (Join-Path $runDirectory "adb-devices.txt")
+        $matchingDevice = $adbDevices | Where-Object { $_ -match "^$([regex]::Escape($Serial))\s+device(?:\s|$)" }
+        if (@($matchingDevice).Count -ne 1) { throw "Serial $Serial is not listed exactly once in device state" }
         $logcatStart = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "date", "+%s") -LogPath (Join-Path $runDirectory "logcat-start.txt")
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "package-before.txt") | Out-Null
+        $activityBefore = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "activity", "activities") -LogPath (Join-Path $runDirectory "activity-before.txt")
+        $rotationBefore = ((Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "get", "system", "accelerometer_rotation") -LogPath (Join-Path $runDirectory "rotation-before.txt") | Select-Object -First 1).Trim())
+        $volumeBeforeOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "cmd", "media_session", "volume", "--stream", "3", "--get") -LogPath (Join-Path $runDirectory "volume-before.txt")
+        $volumeMatch = [regex]::Match(($volumeBeforeOutput -join "`n"), "volume is\s+(\d+)")
+        if (-not $volumeMatch.Success) { throw "Could not parse media volume before the run" }
+        $volumeBefore = $volumeMatch.Groups[1].Value
+        $foregroundMatch = [regex]::Match(($activityBefore -join "`n"), "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)")
+        $foregroundBefore = if ($foregroundMatch.Success) { $foregroundMatch.Groups[1].Value } else { "UNKNOWN" }
+
+        $packageBefore = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", $appPackage) -LogPath (Join-Path $runDirectory "package-before.txt")
+        $installedVersionNameBefore = Get-PackageDumpValue $packageBefore "versionName=([^\s]+)" "installed versionName before"
+        $installedVersionCodeBefore = Get-PackageDumpValue $packageBefore "versionCode=(\d+)" "installed versionCode before"
+        if ($installedVersionNameBefore -ne $appVersionName -or $installedVersionCodeBefore -ne $appVersionCode) {
+            throw "Installed package version differs from candidate before install"
+        }
         $packagePathOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "pm", "path", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "pm-path-before.txt")
         $packagePath = (($packagePathOutput | Select-Object -First 1) -replace "^package:", "").Trim()
         $preinstalledApk = Join-Path $runDirectory "preinstalled-base.apk"
@@ -103,9 +151,14 @@ try {
             "files/projects/autosave.previous.choplab",
             "files/projects/autosave.previous2.choplab"
         )
-        Invoke-NativeChecked -FilePath $adb -ArgumentList (@("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "sha256sum") + $autosaveFiles) -LogPath (Join-Path $runDirectory "autosave-before.txt") | Out-Null
+        $autosaveBefore = Invoke-NativeChecked -FilePath $adb -ArgumentList (@("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "sha256sum") + $autosaveFiles) -LogPath (Join-Path $runDirectory "autosave-before.txt")
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "install", "-r", $appArtifact) -LogPath (Join-Path $runDirectory "install.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList (@("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "sha256sum") + $autosaveFiles) -LogPath (Join-Path $runDirectory "autosave-after.txt") | Out-Null
+        $autosaveAfter = Invoke-NativeChecked -FilePath $adb -ArgumentList (@("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "sha256sum") + $autosaveFiles) -LogPath (Join-Path $runDirectory "autosave-after.txt")
+        $normalizedBefore = ($autosaveBefore | ForEach-Object { $_.ToString().Trim() }) -join "`n"
+        $normalizedAfter = ($autosaveAfter | ForEach-Object { $_.ToString().Trim() }) -join "`n"
+        if ($normalizedBefore -ne $normalizedAfter) {
+            throw "Autosave hashes changed across installation. See autosave-before.txt and autosave-after.txt"
+        }
 
         $installedPathOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "pm", "path", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "pm-path-after.txt")
         $installedPath = (($installedPathOutput | Select-Object -First 1) -replace "^package:", "").Trim()
@@ -120,26 +173,71 @@ try {
         if ($instrumentationText -match "FAILURES!!!" -or $instrumentationText -notmatch "OK \([0-9]+ tests?\)") {
             throw "Instrumentation did not report an all-green result. See instrumentation.txt"
         }
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "package-after.txt") | Out-Null
+        $packageAfter = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", $appPackage) -LogPath (Join-Path $runDirectory "package-after.txt")
+        $installedVersionNameAfter = Get-PackageDumpValue $packageAfter "versionName=([^\s]+)" "installed versionName after"
+        $installedVersionCodeAfter = Get-PackageDumpValue $packageAfter "versionCode=(\d+)" "installed versionCode after"
+        if ($installedVersionNameAfter -ne $appVersionName -or $installedVersionCodeAfter -ne $appVersionCode) {
+            throw "Installed package version differs from candidate after install"
+        }
+        $testPathOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "pm", "path", $testPackage) -LogPath (Join-Path $runDirectory "pm-path-test.txt")
+        $testInstalledPath = (($testPathOutput | Select-Object -First 1) -replace "^package:", "").Trim()
+        $installedTestApk = Join-Path $runDirectory "installed-test-base.apk"
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "pull", $testInstalledPath, $installedTestApk) -LogPath (Join-Path $runDirectory "pull-test.txt") | Out-Null
+        $installedTestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installedTestApk).Hash
+        $installedTestSigner = Get-ApkSignerSha256 $installedTestApk
+        if ($installedTestHash -ne $testHash -or $installedTestSigner -ne $testSigner) {
+            throw "Installed test APK identity mismatch"
+        }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "logcat", "-d", "-v", "threadtime", "-T", (($logcatStart | Select-Object -First 1).Trim())) -LogPath (Join-Path $runDirectory "logcat-window.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "force-stop", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "force-stop.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "input", "keyevent", "3") -LogPath (Join-Path $runDirectory "home.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "activity", "activities") -LogPath (Join-Path $runDirectory "activity-final.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "audio") -LogPath (Join-Path $runDirectory "audio-final.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "get", "system", "accelerometer_rotation") -LogPath (Join-Path $runDirectory "rotation-final.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "put", "system", "accelerometer_rotation", $rotationBefore) -LogPath (Join-Path $runDirectory "rotation-restore.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "cmd", "media_session", "volume", "--stream", "3", "--set", $volumeBefore) -LogPath (Join-Path $runDirectory "volume-restore.txt") | Out-Null
+        if ($foregroundBefore -eq "UNKNOWN" -or $foregroundBefore -match "launcher") {
+            Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "input", "keyevent", "3") -LogPath (Join-Path $runDirectory "foreground-restore.txt") | Out-Null
+        } else {
+            Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "start", "-n", $foregroundBefore) -LogPath (Join-Path $runDirectory "foreground-restore.txt") | Out-Null
+        }
+        $activityFinal = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "activity", "activities") -LogPath (Join-Path $runDirectory "activity-final.txt")
+        $volumeFinalOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "cmd", "media_session", "volume", "--stream", "3", "--get") -LogPath (Join-Path $runDirectory "volume-final.txt")
+        $rotationFinal = ((Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "get", "system", "accelerometer_rotation") -LogPath (Join-Path $runDirectory "rotation-final.txt") | Select-Object -First 1).Trim())
+        $volumeFinalMatch = [regex]::Match(($volumeFinalOutput -join "`n"), "volume is\s+(\d+)")
+        $foregroundFinalMatch = [regex]::Match(($activityFinal -join "`n"), "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)")
+        $volumeFinal = if ($volumeFinalMatch.Success) { $volumeFinalMatch.Groups[1].Value } else { "UNKNOWN" }
+        $foregroundFinal = if ($foregroundFinalMatch.Success) { $foregroundFinalMatch.Groups[1].Value } else { "UNKNOWN" }
+        $foregroundRestored = $foregroundBefore -eq "UNKNOWN" -or $foregroundFinal -eq $foregroundBefore -or
+            ($foregroundBefore -match "launcher" -and $foregroundFinal -match "launcher")
+        if ($rotationFinal -ne $rotationBefore -or $volumeFinal -ne $volumeBefore -or -not $foregroundRestored) {
+            throw "Device state restoration mismatch. See before/final evidence files"
+        }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "ls", "files/projects") -LogPath (Join-Path $runDirectory "projects-final.txt") | Out-Null
         $deviceEvidence = [ordered]@{
             serial = $Serial
             installed_base_sha256 = $installedHash
+            installed_test_sha256 = $installedTestHash
             signer_sha256 = $installedSigner
+            package = $appPackage
+            version_name = $installedVersionNameAfter
+            version_code = $installedVersionCodeAfter
+            test_package = $testPackage
             install_log = "install.txt"
             instrumentation_log = "instrumentation.txt"
             autosave_before = "autosave-before.txt"
             autosave_after = "autosave-after.txt"
+            autosave_preservation_pass = $true
+            foreground_before = $foregroundBefore
+            rotation_before = $rotationBefore
+            volume_before = [int]$volumeBefore
+            foreground_restore_log = "foreground-restore.txt"
+            rotation_restore_log = "rotation-restore.txt"
+            volume_restore_log = "volume-restore.txt"
+            foreground_final = $foregroundFinal
+            rotation_final = $rotationFinal
+            volume_final = [int]$volumeFinal
+            state_restoration_pass = $true
             logcat_start = "logcat-start.txt"
             logcat_window = "logcat-window.txt"
             final_activity = "activity-final.txt"
-            final_audio = "audio-final.txt"
+            final_volume = "volume-final.txt"
             final_rotation = "rotation-final.txt"
             final_projects = "projects-final.txt"
         }
@@ -165,12 +263,16 @@ try {
             size = (Get-Item -LiteralPath $appArtifact).Length
             sha256 = $appHash
             signer_sha256 = $appSigner
+            package = $appPackage
+            version_name = $appVersionName
+            version_code = $appVersionCode
         }
         test_apk = [ordered]@{
             file = "app-debug-androidTest.apk"
             size = (Get-Item -LiteralPath $testArtifact).Length
             sha256 = $testHash
             signer_sha256 = $testSigner
+            package = $testPackage
         }
         device = $deviceEvidence
         gate = if ($InstallAndTest) { "INSTRUMENTATION_EVIDENCE_COLLECTED" } else { "LOCAL_ARTIFACT_EVIDENCE_COLLECTED" }

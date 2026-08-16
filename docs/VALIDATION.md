@@ -11,6 +11,7 @@
 - recording boundary: existing pure recording-session and interruption coordinator tests cover mutual exclusion without activating a real microphone; physical recording quality/contention remains unclaimed
 - evidence: `scripts/collect-device-evidence.ps1` records clean source identity, Gradle logs, APK identities/signers, signer preflight, autosave before/after, `install -r`, base.apk readback, instrumentation output, package dumps, timestamp-bounded logcat, and final launcher/volume/rotation/project state under one manifest
 - gates remain split: `LOCAL_PASS` / `INSTRUMENTATION_PASS` / physical observation / spoken TalkBack / `HUMAN_GO`
+- authoritative exact run: `work/device-evidence/20260816-184328-d01a299a/manifest.json`; clean HEAD `d01a299a5af46ed5a582822f7855efcf88560513`, app/readback SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`, deterministic Pixel instrumentation `OK (3 tests)` in `4.793 s`, autosave diff 0, bounded app fatal/ANR 0
 
 ## 2026-08-14 v0.13.1 playback interruption safety candidate
 

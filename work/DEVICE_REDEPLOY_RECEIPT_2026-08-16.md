@@ -41,7 +41,7 @@ Interactive E2E stopped without further input when a different app became foregr
 waveform gestures and handles, TalkBack traversal, STOP/BACK/UNDO/REDO recovery, playback ownership,
 and relaunch remain `DEVICE_UNVERIFIED`; this receipt does not promote them to `DEVICE_PASS`.
 
-## Final accessible-waveform device run
+## Historical accessible-waveform device run (superseded by the authoritative rerun below)
 
 - Source baseline: `ebdce0e8d1a8294f0b03a9ddd4c3e2dec6c5720a`; final commit is the commit containing this section.
 - Production APK: `outputs/ChopLab-v0.13.1-waveform-accessibility-final-debug.apk`
@@ -79,3 +79,29 @@ No project file was overwritten or deleted outside the app.
 the run did not prove an actual spoken TalkBack focus traversal/order with the accessibility service enabled, and
 real microphone recording/recording-playback contention was intentionally not initiated. Subjective one-hand feel
 and audio quality remain `HUMAN_GO` work. `PROVIDER_PASS`, `PUBLIC_PASS`, and `HUMAN_GO` are not claimed.
+
+## Adversarial-review remediation rerun
+
+The authoritative rerun is `work/device-evidence/20260816-184328-d01a299a/manifest.json`.
+Unlike the earlier narrative-only receipt, this run binds one clean Git object to the build, APKs, device,
+installation, readback, test output, data checks, log window, and final phone state.
+
+- Git HEAD: `d01a299a5af46ed5a582822f7855efcf88560513`
+- Git tree: `75436e679237005f852dc2abc479a23946557eca`
+- Tracked worktree at build: clean
+- App APK: `outputs/ChopLab-v0.13.1-d01a299-waveform-evidence-debug.apk`
+- App APK size/SHA-256: `31,749,939` / `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`
+- Test APK: `outputs/ChopLab-v0.13.1-d01a299-waveform-evidence-androidTest.apk`
+- Test APK size/SHA-256: `2,409,761` / `F0A7F98DC1149F839C74E621FF18A9B699885D966113D727120FD299AACECCEB`
+- App/test/installed signer SHA-256: `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- Install: serial-fixed data-preserving `adb install -r`, `Success`
+- Installed `base.apk` readback SHA-256: exact app-APK match (`89E876...383FD5`)
+- Autosave before/after: all three lines byte-identical; no pending archive in the final project listing
+- Instrumentation: deterministic in-memory fixture, `OK (3 tests)`, `4.793 s`
+- App-scoped fatal/ANR matches in the timestamp-bounded run window: `0`
+- Final phone state: ChopLab force-stopped, Nexus Launcher top-resumed, media volume `14`, automatic rotation `1`
+
+The deterministic tests do not open `MainActivity`, read autosave, import user audio, record microphone input,
+or claim spoken TalkBack output. They establish `INSTRUMENTATION_PASS` for Compose gesture/semantics/geometry
+contracts. Spoken TalkBack focus order, physical one-hand comfort, and subjective audio remain separate checks;
+full `DEVICE_PASS` and `HUMAN_GO` remain withheld.
