@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "avdName": "choplab_review_api36_play",
+  "apiLevel": 36,
+  "systemImageId": "system-images;android-36;google_apis_playstore;x86_64",
+  "systemImageRelativePath": "system-images\\android-36\\google_apis_playstore\\x86_64",
+  "abi": "x86_64",
+  "deviceProfile": "medium_phone",
+  "resolution": {
+    "width": 1080,
+    "height": 2400,
+    "densityDpi": 420
+  },
+  "locale": "ja-JP",
+  "fontScales": [1.0, 1.3, 2.0],
+  "orientation": "portrait",
+  "ownership": "ChopLab-only; never reuse or mutate another project's AVD"
+}

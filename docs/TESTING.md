@@ -34,6 +34,6 @@ adb -s <serial> shell am instrument -w -r `
 
 ## Virtual device policy
 
-Use the dedicated normal API 36 Google Play AVD for repeatable framework-node regression. Do not reuse another project's AVD. Accessibility Test Devices are intentionally not used for TalkBack because their reduced system image omits or disables Settings/SystemUI components. AVD results remain separate from physical Pixel and HUMAN_GO evidence.
+Use the ChopLab-only configuration in `config/choplab-review-avd.json` for repeatable framework-node regression. Run `scripts/check-choplab-review-avd.ps1` first; a BLOCKED result must not be repaired by mutating an existing or another project's AVD. Accessibility Test Devices are intentionally not used for TalkBack because their reduced system image omits or disables Settings/SystemUI components. AVD results remain separate from physical Pixel and HUMAN_GO evidence.
 
 Primary references are recorded in `work/ANDROID_ACCESSIBILITY_AUTOMATION_RESEARCH_2026-08-16.md`.

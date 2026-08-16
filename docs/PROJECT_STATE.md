@@ -1,5 +1,9 @@
 # Project state
 
+## Reproducible API 36 review AVD preflight — 2026-08-17
+
+`config/choplab-review-avd.json` pins a ChopLab-only Google Play API 36 x86_64 AVD name, medium-phone profile, 1080×2400/420 dpi portrait display, Japanese locale, and 1.0/1.3/2.0 font-scale matrix. `scripts/check-choplab-review-avd.ps1` performs a read-only fail-closed preflight and never creates, repairs, launches, or mutates an AVD. On this machine the required `system-images;android-36;google_apis_playstore;x86_64` package is absent while `avdmanager` is present, so the result is `BLOCKED`, exit code 2, with `mutationPerformed=false`. The existing Google APIs AVDs were not used or changed. No current COMPOSE_INSTRUMENTATION, FRAMEWORK_NODE, or AVD run is claimed.
+
 ## Archive fuzz, audio oracles, and realtime filter cost — 2026-08-17
 
 Archive validation now has an independent literal schema-1 fixture, a deterministic 256-input malformed corpus, a 1,000-small-entry rejection case, and a declared-PCM expansion case above the 512 MiB project budget. ZIP inflation is bounded by the manifest's audio-count/frame-count contract, the absolute PCM budget, and exact WAV/raw entry sizes; a ratio-only rejection is intentionally avoided because a legitimate silent WAV is also extremely compressible. Schema 1–5 compatibility remains covered.

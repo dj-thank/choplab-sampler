@@ -55,6 +55,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Android official `testing-setup` guidance applied: UI Automator 2.4.0 and Compose ATF added. A historical API 36 AVD receipt passed four waveform tests; the current candidate is virtual-device `BLOCKED` until the missing Google Play image is repaired and the suite is rerun.
 - [x] 2026-08-16 — Second Luna adversarial panel added an explicit accessibility click action whose label matches the waveform tap instruction, and hardened the evidence runner to use deterministic Gradle limits, a fixed androidTest APK path, and signer-first retained-data upgrades.
 - [x] 2026-08-16 — Follow-up adversarial review raised compact portrait targets, font scaling, and the scratch platter's missing semantic actions; 48 dp portrait rows, non-shrinking `sp`, and state-aware start/stop/left/right scratch actions are covered by focused LOCAL tests.
+- [x] 2026-08-17 — Added a read-only preflight plus pinned ChopLab-only API 36 Google Play AVD manifest. The required image is absent, so current virtual execution remains explicitly BLOCKED with no existing AVD mutation.
 
 ## Discoveries
 
