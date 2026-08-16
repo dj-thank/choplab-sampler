@@ -161,6 +161,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 
 ## Decision log
 
+- 2026-08-16 — Preserve PROJ-004's bounded autosave recovery generations and replace the misleading `完全リセット` copy with `NEW PROJECT / 現在の制作状態を空にする`. Secure deletion is not claimed and no user data is deleted by this milestone.
 - 2026-08-09 19:10 JST — 完成 Bundle は provenance/reference、Codex Workspace は唯一の active repository とする。二重実装を避けるため。
 - 2026-08-09 19:10 JST — ユーザーの「全部」と master prompt を製品 scope、PRODUCT_REQUIREMENTS と既存 public interfaces を TDD seams の合意根拠とする。
 - 2026-08-09 19:10 JST — JDK/SDK が既存 machine scope にない場合、global install ではなく `work/tools` 以下の portable toolchain を優先する。作業境界外の変更を避けるため。

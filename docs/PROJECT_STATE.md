@@ -1,5 +1,9 @@
 # Project state
 
+## New-project wording and recovery disclosure — 2026-08-16
+
+The former `RESET ALL / 完全リセット` copy overstated what the recoverable autosave design does: starting fresh empties the current production state, while up to three verified app-private generations remain available for corruption recovery under PROJ-004. The action is now named `NEW PROJECT / 新しい制作を始める`, its second press says exactly that the production state will be emptied, and the privacy policy discloses the bounded recovery retention. No autosave, project, or exported user file is deleted by this wording correction. This is a LOCAL specification-truth fix, not a secure-erasure claim.
+
 ## Compact portrait and scratch accessibility — 2026-08-16
 
 The phone-first portrait layout now keeps header, mode, and primary control rows at a 48 dp minimum on 360 dp-class widths. Large Android font scales no longer cause compact machine-button typography to shrink from its normal `sp` value. The scratch platter now publishes a stopped/active state plus explicit start, stop, left, and right accessibility actions with fail-closed no-op behavior when audio is unavailable or the action does not match the current state. Focused JVM policy tests and androidTest compilation pass. This is LOCAL semantics/layout evidence; TalkBack wording, physical one-hand comfort, and audible scratch feel remain HUMAN/DEVICE boundaries.
