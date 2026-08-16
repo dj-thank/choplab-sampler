@@ -1,5 +1,9 @@
 # Project state
 
+## Source-bound build provenance — 2026-08-17
+
+Windows verification now performs a clean deterministic app/unit/lint/androidTest build and then emits a fail-closed JSON receipt that binds a tracked-clean Git HEAD/tree to fresh app/test APK mtimes, SHA-256 values, package/version, signer SHA-256, JAVA_HOME, SDK root, and the selected installed build-tools version. It rejects stale APKs predating the commit and rejects app/test signer mismatch. The shell verifier now uses the same clean Gradle limits and prints HEAD/tree; the richer signed receipt remains the Windows path used for this checkpoint. No receipt is valid until rerun after the final commit.
+
 ## Reproducible API 36 review AVD preflight — 2026-08-17
 
 `config/choplab-review-avd.json` pins a ChopLab-only Google Play API 36 x86_64 AVD name, medium-phone profile, 1080×2400/420 dpi portrait display, Japanese locale, and 1.0/1.3/2.0 font-scale matrix. `scripts/check-choplab-review-avd.ps1` performs a read-only fail-closed preflight and never creates, repairs, launches, or mutates an AVD. On this machine the required `system-images;android-36;google_apis_playstore;x86_64` package is absent while `avdmanager` is present, so the result is `BLOCKED`, exit code 2, with `mutationPerformed=false`. The existing Google APIs AVDs were not used or changed. No current COMPOSE_INSTRUMENTATION, FRAMEWORK_NODE, or AVD run is claimed.

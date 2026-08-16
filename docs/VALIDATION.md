@@ -2,6 +2,8 @@
 
 作成日: 2026-07-15
 
+現在HEADへ結合したWindows検証は、tracked-clean checkoutとプロジェクト用JDK/SDKを設定して `scripts/verify.ps1` を実行する。clean unit/lint/app/androidTest build後に `outputs/build-provenance-<HEAD>.json` を作成し、source HEAD/tree、fresh APK bytes、package/version、signerを一つのreceiptへ固定する。現在HEADのreceiptがない既存 `app/build` APKは、hashだけで最新成果物として扱わない。
+
 ## 2026-08-16 waveform evidence hardening
 
 - test isolation: `SourceWaveformDeviceTest` renders deterministic in-memory PCM and no longer reads/writes Pixel autosave or requires a pre-existing chop marker

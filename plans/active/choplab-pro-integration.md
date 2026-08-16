@@ -161,6 +161,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 
 ## Decision log
 
+- 2026-08-17 — Bind final app/test APK evidence to a tracked-clean source HEAD/tree with a fail-closed JSON receipt, fresh artifact mtime guard, package/version, SHA-256, and matching signer; never promote a pre-existing `app/build` artifact by hash alone.
 - 2026-08-17 — Treat absolute manifest-bound decompressed PCM bytes and exact entry lengths as the ZIP-bomb boundary instead of rejecting compression ratio alone, because valid silent PCM is highly compressible. Add deterministic malformed/archive and independent PCM-render oracles, and move realtime filter coefficient calculation out of the per-sample loop.
 - 2026-08-16 — Preserve PROJ-004's bounded autosave recovery generations and replace the misleading `完全リセット` copy with `NEW PROJECT / 現在の制作状態を空にする`. Secure deletion is not claimed and no user data is deleted by this milestone.
 - 2026-08-09 19:10 JST — 完成 Bundle は provenance/reference、Codex Workspace は唯一の active repository とする。二重実装を避けるため。
