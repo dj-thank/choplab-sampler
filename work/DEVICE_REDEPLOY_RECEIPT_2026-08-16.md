@@ -183,3 +183,31 @@ TalkBack focus-path evidence, and bounded microphone/playback exclusion are esta
 is still withheld because actual spoken focus order/custom-action dispatch and every real recording versus
 preview/loop transition were not directly proven. Subjective one-hand feel and audio quality remain
 `HUMAN_GO`; provider/public gates are not claimed.
+
+## User-authorized unattended continuation
+
+The user explicitly confirmed that the phone was not being operated and authorized continued ChopLab input.
+The preflight found X foreground, but the explicit authorization allowed ChopLab to take ownership. Before
+input, the same three autosave hashes, media volume `0`, automatic rotation `1`, and disabled accessibility
+settings were re-read.
+
+- Real TalkBack was re-enabled. ADB one-finger swipe was rejected as a TalkBack-navigation proof because it
+  was delivered to the app as a handle drag. The app was backgrounded before autosave changed; after relaunch,
+  all three archive hashes still matched the baseline exactly.
+- Hardware-style TAB produced real green focus rings, including S, but it traverses Android keyboard-focus
+  order rather than proving TalkBack reading order. Official default/enhanced keyboard modifier shortcuts
+  sent through the ADB virtual keyboard were not accepted reliably as TalkBack navigation. Actual spoken
+  S/E/marker order and service-dispatched custom actions therefore remain unclaimed.
+- With selected-source loop visibly active, starting microphone capture replaced the playback owner and the
+  UI entered `MIC REC`; after BACK cancellation and relaunch, the global state was stopped.
+- With source preview visibly active (`STOP SOURCE`), starting microphone capture likewise replaced the
+  preview owner and entered `MIC REC`.
+- In both cases media output was suppressed, the microphone content was not pulled or reported, BACK cancelled
+  the pending capture, and all three autosave hashes remained byte-identical to the baseline.
+- Final state: exact serial `device`, Nexus Launcher foreground, ChopLab force-stopped, media volume `0`,
+  rotation `1`, TalkBack service `null`, accessibility enabled `0`, touch exploration `null`, saved
+  accessibility volume verified as `9` while active, and zero app-scoped fatal/ANR matches.
+
+The real audio-owner matrix now covers recording versus source playback, selected-source loop, and source
+preview in both the blocked and takeover directions exercised above. Full `DEVICE_PASS` remains withheld only
+for the actual spoken TalkBack traversal/custom-action path and other explicitly subjective `HUMAN_GO` items.

@@ -365,3 +365,10 @@ not prove complete spoken focus order or service-dispatched custom actions. A bo
 rejected source playback and BACK cancelled without changing any of the three autosave hashes. These results
 are `DEVICE_DEPLOY_PASS`, retained-data PASS, and bounded objective device evidence, not full `DEVICE_PASS` or
 subjective `HUMAN_GO`.
+
+The user-authorized unattended continuation additionally verified real selected-source loop and source-preview
+ownership before microphone capture. Starting `MIC REC` replaced each prior audio owner; BACK cancelled the
+capture, the relaunch state was stopped, and all three autosave hashes remained equal to the baseline. ADB
+virtual-keyboard and gesture input could not reliably dispatch TalkBack next/custom-action commands, so actual
+spoken S/E/marker traversal remains outside `DEVICE_PASS` rather than being inferred from focus rings or
+Compose semantics.

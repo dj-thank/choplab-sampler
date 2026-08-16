@@ -50,6 +50,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Full local gate and exact-device evidence rerun; final run is regenerated after the safe-return evidence addition.
 - [x] 2026-08-16 — Clustered handle fix deployed from clean `6943b5e`; exact app/test readbacks, retained autosaves, and three deterministic device tests passed.
 - [x] 2026-08-16 — Real TalkBack exposed S/E/chop-1/chop-2 and focused the formerly occluded cluster; real microphone ownership rejected source playback and BACK cancelled without autosave mutation.
+- [x] 2026-08-16 — User-authorized continuation proved selected-loop/source-preview to microphone ownership takeover; both captures were cancelled and baseline autosave hashes retained.
 
 ## Discoveries
 
@@ -91,5 +92,5 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 
 - If full `DEVICE_PASS` is required, verify spoken S-to-E-to-marker traversal and invoke previous/next/reset
   through the running TalkBack service rather than Compose callbacks.
-- Verify every real recording-vs-preview/loop transition without retaining capture content.
+- Real selected-loop/source-preview to microphone transitions were verified without retaining capture content.
 - Real microphone quality, physical one-hand comfort, and subjective audio remain `HUMAN_GO` checks.
