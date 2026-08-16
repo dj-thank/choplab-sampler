@@ -141,6 +141,7 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - [x] 2026-08-10 — Milestone 4のMVP persistence sliceとして、schema 2/WAV `.choplab`、schema 1 migration、manual save/open、900ms debounce autosave、fsync後の二世代/pending復旧、最大40操作Undo/Redoを固定5工程UIへ接続。
 - [x] 2026-08-10 — archive round-trip、共有audio identity、migration/newer-schema rejection、path traversal、過大manifest、malformed/truncated WAV、二世代/pending fallback、history bounds/coalescingをpublic seamのJUnitで固定。
 - [x] 2026-08-16 — autosave各世代へarchive SHA-256結合revisionを追加し、store再生成後の古い/equal revision拒否と、corrupt primary時にstale pendingより新しいbackupを選ぶ復旧順をJVM契約で固定。旧metadataなしarchiveの読込互換は維持。
+- [x] 2026-08-16 — manifest/legacy PCMの正長readが0 byte進捗を返す異常InputStreamを共通境界で拒否し、archive parserの無限ループを決定的JVMテストで防止。schema 1–5互換suiteは維持。
 - [ ] 2026-08-09 19:24 JST — Android SDK license の authorized acceptance 待ち。Platform 36 / Build Tools 36.0.0 は未導入。
 - [ ] 2026-08-09 19:10 JST — Milestone 1 portable toolchain と baseline build を確立中。
 

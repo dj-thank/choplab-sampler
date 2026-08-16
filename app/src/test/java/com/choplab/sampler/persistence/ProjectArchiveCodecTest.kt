@@ -23,6 +23,19 @@ import org.junit.Test
 
 class ProjectArchiveCodecTest {
     @Test
+    fun boundedArchiveReadsRejectAnInputStreamThatMakesNoProgress() {
+        val zeroProgress = object : ByteArrayInputStream(byteArrayOf(1)) {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                return if (length > 0) 0 else super.read(buffer, offset, length)
+            }
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            zeroProgress.readWithProgress(ByteArray(8), 0, 8)
+        }
+    }
+
+    @Test
     fun archiveUsesSchemaFiveForPagedRoleBanks() {
         val manifest = unzip(archiveFor(SamplerUiState()))
             .single { (name, _) -> name == "project.txt" }

@@ -18,6 +18,13 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+internal fun InputStream.readWithProgress(buffer: ByteArray, offset: Int, length: Int): Int {
+    require(length > 0) { "読み込みサイズが不正です" }
+    val count = read(buffer, offset, length)
+    require(count != 0) { "プロジェクト入力からデータを読み込めません" }
+    return count
+}
+
 /**
  * Bounded, versioned `.choplab` archive for the currently implemented sampler state.
  *
@@ -442,7 +449,7 @@ object ProjectArchiveCodec {
             val wantedBytes = minOf(buffer.size, (frameCount - sampleIndex) * Short.SIZE_BYTES)
             var received = 0
             while (received < wantedBytes) {
-                val count = read(buffer, received, wantedBytes - received)
+                val count = readWithProgress(buffer, received, wantedBytes - received)
                 require(count >= 0) { "音声データが途中で終わっています" }
                 received += count
             }
@@ -462,7 +469,7 @@ object ProjectArchiveCodec {
         val buffer = ByteArray(8 * 1024)
         var total = 0
         while (true) {
-            val count = read(buffer)
+            val count = readWithProgress(buffer, 0, buffer.size)
             if (count < 0) break
             total += count
             require(total <= limit) { "project.txtが大きすぎます" }

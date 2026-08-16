@@ -1,5 +1,9 @@
 # Project state
 
+## Archive zero-progress read hardening — 2026-08-16
+
+The project reader now rejects an `InputStream` that returns zero bytes for a positive-length read. Both bounded manifest reads and legacy raw-PCM reads share this fail-closed progress contract, eliminating an attacker-controlled infinite loop while preserving schema 1–5 behavior. A deterministic zero-progress stream test and the complete archive compatibility suite pass locally.
+
 ## App-owned capture privacy cleanup — 2026-08-16
 
 Microphone, vocal, and system-capture WAVs now pass through one allowlisted app-cache owner. Successful decode, decode failure, operation invalidation, recorder start failure, reset discard, and ViewModel teardown delete the exact owned temporary file. Startup performs an IO-thread sweep only for ChopLab-named capture WAVs older than 24 hours. SAF imports, exported WAVs, project archives, and unrelated cache files are outside this deletion boundary. Deterministic filesystem tests cover success/failure cleanup and reject similarly located but non-owned names. This is LOCAL privacy evidence; Android process-death timing remains DEVICE-only.
