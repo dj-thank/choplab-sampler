@@ -48,6 +48,8 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Viewport no-op action RED reproduced and Boolean action contract implemented.
 - [x] 2026-08-16 — Deterministic Compose fixture and overview geometry added; focused JVM and Kotlin compilation pass.
 - [x] 2026-08-16 — Full local gate and exact-device evidence rerun; final run is regenerated after the safe-return evidence addition.
+- [x] 2026-08-16 — Clustered handle fix deployed from clean `6943b5e`; exact app/test readbacks, retained autosaves, and three deterministic device tests passed.
+- [x] 2026-08-16 — Real TalkBack exposed S/E/chop-1/chop-2 and focused the formerly occluded cluster; real microphone ownership rejected source playback and BACK cancelled without autosave mutation.
 
 ## Discoveries
 
@@ -77,7 +79,9 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - Actual service/touch-exploration focus found a production-only overlap: markers at the source start could fully occlude the S accessibility node.
 - The local candidate preserves the full-height visual line while placing each marker's 48 dp draggable/semantics target in rotating top/center/bottom lanes and giving S, E, and numbered markers deterministic traversal indices.
 - A near-start `1/2` marker fixture checks distinct bounds and reversible actions for both markers. Clean full build passed.
-- Pixel USB disconnected before the corrected APK could be installed and before microphone capture began. Accessibility service was restored to disabled and ChopLab was force-stopped; the accessibility stream still reported `1` instead of its saved `9`, so device restoration and all remaining DEVICE work must resume before promotion.
+- The corrected APK was installed and read back exactly. The accessibility stream was restored to `9` while
+  TalkBack was active; Android exposes inactive stream alias `1` after TalkBack is disabled. Service, enabled,
+  touch-exploration, media-volume, rotation, foreground, and autosave readbacks were restored and recorded.
 
 - Gesture injection can still vary with Compose runtime; fixed in-memory geometry reduces but does not eliminate platform timing risk.
 - Evidence collection refuses dirty tracked state and signer mismatch. It never contains uninstall or clear-data operations.
@@ -85,6 +89,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 
 ## Remaining device validation
 
-- Run deterministic instrumentation on Pixel 9a from the exact committed build.
-- Capture raw accessibility hierarchy and manually verify TalkBack focus order/spoken Japanese if the user authorizes service-state changes.
+- If full `DEVICE_PASS` is required, verify spoken S-to-E-to-marker traversal and invoke previous/next/reset
+  through the running TalkBack service rather than Compose callbacks.
+- Verify every real recording-vs-preview/loop transition without retaining capture content.
 - Real microphone quality, physical one-hand comfort, and subjective audio remain `HUMAN_GO` checks.

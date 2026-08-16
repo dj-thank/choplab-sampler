@@ -353,3 +353,15 @@ Gradle distributionは`gradle-wrapper.properties`で次のSHA-256へ固定して
 8. Gate releaseとchoke group
 9. 長時間PAD連打時のunderrun/thermal behavior
 10. 4-bar WAVのduration、tempo、swing、pitch、reverse
+
+## 2026-08-16 Pixel 9a waveform/accessibility continuation
+
+Clean HEAD `6943b5e` passed `clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+:app:assembleDebugAndroidTest`. The fail-closed exact-device run is bound by
+`work/device-evidence/20260816-195805-6943b5ea/manifest.json`: app/test APK identity and signer, both installed
+readbacks, `adb install -r`, three autosave hashes, `OK (3 tests)`, fatal/ANR scan, and phone-state restoration
+passed. Real TalkBack exposed and focused the corrected clustered-handle region, but synthetic ADB swipe could
+not prove complete spoken focus order or service-dispatched custom actions. A bounded real microphone capture
+rejected source playback and BACK cancelled without changing any of the three autosave hashes. These results
+are `DEVICE_DEPLOY_PASS`, retained-data PASS, and bounded objective device evidence, not full `DEVICE_PASS` or
+subjective `HUMAN_GO`.

@@ -150,3 +150,36 @@ one-hand comfort, and audio quality remain explicitly unclaimed and require sepa
 The same gate boundary applies: `LOCAL_PASS` and `INSTRUMENTATION_PASS` are established. Full
 `DEVICE_PASS` and `HUMAN_GO` remain withheld pending actual TalkBack speech/focus traversal, real microphone
 contention, and subjective one-hand/audio evaluation.
+
+## Final clustered-handle deployment and bounded physical continuation
+
+- Authoritative manifest: `work/device-evidence/20260816-195805-6943b5ea/manifest.json`
+- Clean app source HEAD/tree: `6943b5ea92bbf9bbe2a2da51c27cc2bb4d2f059b` /
+  `d03b3bcab270571021a709a7086d4e309b0af7dc`
+- App APK SHA-256: `9A3997B78D309A2B53C78A6B0DB2970D02E08DC656314B8F91F0A2F8BF1C9162`
+- Android-test APK SHA-256: `B9FFDE5C7923DE807DB696127BB11569978A6F23DDA86F82BC8E90B91C5DA4D0`
+- App/test signer SHA-256: `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- Exact serial/device, package/version, signer, serial-fixed `adb install -r`, both installed-base readbacks,
+  three autosave hashes, timestamp-bounded fatal/ANR scan, and final phone state passed the fail-closed runner.
+- Instrumentation: `OK (3 tests)` in `5.276 s`. The deterministic fixture covers true two-pointer pinch/pan,
+  viewport reset/custom actions, 48 dp S/E and clustered marker targets, reversible actions, and lower/upper
+  marker endpoint behavior without reading or mutating the user's project.
+- With the real TalkBack service and touch exploration enabled, the corrected installed app exposed S, E,
+  chop-1, and chop-2 concurrently in the Android accessibility hierarchy. A real green accessibility-focus
+  ring was observed over the clustered S/marker region, closing the earlier production-only S-occlusion bug.
+  ADB-generated swipe input was not consistently interpreted as TalkBack next-item navigation, so spoken
+  S-to-E-to-marker traversal and service-dispatched custom actions remain unclaimed.
+- A real microphone capture was started with media volume `0` and no external transfer. While capture owned
+  audio, `PLAY SONG` was rejected with the status `マイク素材録音中です。STOPしてから音を鳴らしてください`.
+  Android BACK returned safely to Launcher and cancelled the pending capture. After relaunch, all three
+  autosave hashes were byte-identical to their pre-capture values, so no test recording entered project state.
+- Final readback: ChopLab force-stopped, Nexus Launcher top-resumed, TalkBack service `null`, accessibility
+  enabled `0`, touch exploration `null`, media volume `0`, automatic rotation `1`, and zero app-scoped
+  fatal/ANR matches. The accessibility stream was verified at the saved value `9` while TalkBack was active;
+  Android reports its inactive alias value `1` after the service is disabled.
+
+`LOCAL_PASS`, exact `DEVICE_DEPLOY_PASS`, retained-data PASS, deterministic `INSTRUMENTATION_PASS`, actual
+TalkBack focus-path evidence, and bounded microphone/playback exclusion are established. Full `DEVICE_PASS`
+is still withheld because actual spoken focus order/custom-action dispatch and every real recording versus
+preview/loop transition were not directly proven. Subjective one-hand feel and audio quality remain
+`HUMAN_GO`; provider/public gates are not claimed.
