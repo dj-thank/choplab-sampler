@@ -3606,14 +3606,20 @@ private fun SourceWaveform(
                     stateDescription = waveformViewportStateDescription(viewport)
                     customActions = waveformViewportAccessibilityActions(
                         onPrevious = {
+                            val previousScroll = scroll
                             scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll
+                            scroll != previousScroll
                         },
                         onNext = {
+                            val previousScroll = scroll
                             scroll = panWaveformViewport(totalFrames, zoom, scroll, 0.5f).scroll
+                            scroll != previousScroll
                         },
                         onReset = {
+                            val changed = zoom != 1f || scroll != 0f
                             zoom = 1f
                             scroll = 0f
+                            changed
                         },
                     )
                 },

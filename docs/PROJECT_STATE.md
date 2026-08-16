@@ -1,5 +1,13 @@
 # Project state
 
+## Waveform device-evidence hardening — 2026-08-16
+
+The waveform instrumentation no longer opens `MainActivity` or consumes the user's restored project. It renders a fixed 1,000-frame in-memory PCM fixture directly through `WaveformEditor`, with deterministic S/E and chop-marker positions. Tests distinguish Compose accessibility semantics callbacks from a running TalkBack service, check no-op action results, true two-pointer pinch/pan, 48 dp width and height, canvas clipping, endpoint handles, and exact reversible nudges. Overview drawing now uses a host-tested pure geometry contract.
+
+`scripts/collect-device-evidence.ps1` binds one clean Git HEAD/tree to Gradle output, app/test APK hashes and signers, exact serial, installed signer preflight, autosave before/after, data-preserving `adb install -r`, installed-base readback, instrumentation stdout, package dumps, and bounded logcat under one run ID. It contains no uninstall or clear-data path and aborts before installation on signer mismatch.
+
+This milestone can establish `LOCAL_PASS` and, after an exact-device run, `INSTRUMENTATION_PASS` plus scoped install/readback/data-retention evidence. It does not by itself establish spoken TalkBack output or focus order, real microphone contention, subjective one-hand comfort, audio quality, full `DEVICE_PASS`, or `HUMAN_GO`.
+
 Last prepared: 2026-08-15
 
 ## Post-v0.13.1 drum/loop/source interaction maintenance — 2026-08-15

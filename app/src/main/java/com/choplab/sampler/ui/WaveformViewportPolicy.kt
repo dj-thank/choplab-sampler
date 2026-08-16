@@ -25,6 +25,7 @@ internal fun resolveWaveformViewport(
     return WaveformViewport(safeTotal, safeZoom, safeScroll, visibleStart, visibleFrames)
 }
 
+/** Speaks the first and inclusive last displayed frame IDs; model ranges remain end-exclusive. */
 internal fun waveformViewportStateDescription(viewport: WaveformViewport): String {
     val visibleEndInclusive = (viewport.visibleStart + viewport.visibleFrames - 1)
         .coerceIn(viewport.visibleStart, viewport.totalFrames - 1)

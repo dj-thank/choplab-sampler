@@ -2,6 +2,16 @@
 
 作成日: 2026-07-15
 
+## 2026-08-16 waveform evidence hardening
+
+- test isolation: `SourceWaveformDeviceTest` renders deterministic in-memory PCM and no longer reads/writes Pixel autosave or requires a pre-existing chop marker
+- semantics boundary: tests prove Compose state descriptions and custom-action callbacks; they do not claim a running TalkBack service, spoken output, or focus traversal
+- geometry: host tests cover whole/zoomed/invalid overview geometry; device tests cover true two-pointer pinch/pan and S/E/chop target width, height, clipping, endpoints, and exact reversible nudge
+- accessibility behavior: viewport and handle actions report `false` when clamped/no-op instead of announcing a false success
+- recording boundary: existing pure recording-session and interruption coordinator tests cover mutual exclusion without activating a real microphone; physical recording quality/contention remains unclaimed
+- evidence: `scripts/collect-device-evidence.ps1` records clean source identity, Gradle logs, APK identities/signers, signer preflight, autosave before/after, `install -r`, base.apk readback, instrumentation output, package dumps, and logcat under one manifest
+- gates remain split: `LOCAL_PASS` / `INSTRUMENTATION_PASS` / physical observation / spoken TalkBack / `HUMAN_GO`
+
 ## 2026-08-14 v0.13.1 playback interruption safety candidate
 
 - architecture: pure `PlaybackInterruptionCoordinator` owns focus-session state and interruption/recording policy; `AndroidPlaybackFocusAdapter` owns only `AudioManager` and the protected noisy-output receiver; no UI or persistence schema change

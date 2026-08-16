@@ -1,15 +1,25 @@
 package com.choplab.sampler.ui
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.choplab.sampler.MainActivity
+import com.choplab.sampler.model.PcmAudio
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -20,20 +30,17 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SourceWaveformDeviceTest {
     @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
+    val composeRule = createComposeRule()
 
     @Test
-    fun twoFingerPinchPanAndTalkBackResetExposeViewportChanges() {
-        val waveform = composeRule.onNode(
-            hasContentDescription("音声波形", substring = true),
-            useUnmergedTree = true,
-        )
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            runCatching { waveform.fetchSemanticsNode() }.isSuccess
-        }
+    fun deterministicTwoPointerGesturesAndAccessibilityActionsChangeTheViewport() {
+        setDeterministicWaveform()
+        val waveform = waveformNode()
 
-        val initial = waveform.viewportDescription()
-        assertNotNull("TalkBack should announce the waveform viewport", initial)
+        val wholeSource = waveform.viewportDescription()
+        assertEquals("全体表示。0から999フレーム", wholeSource)
+        assertFalse(waveform.invokeCustomAction("前の範囲を表示"))
+        assertFalse(waveform.invokeCustomAction("全体表示に戻す"))
 
         waveform.performTouchInput {
             pinch(
@@ -46,112 +53,153 @@ class SourceWaveformDeviceTest {
         }
         composeRule.waitForIdle()
         val zoomed = waveform.viewportDescription()
-        assertNotEquals("A true two-pointer pinch should change the viewport", initial, zoomed)
+        assertTrue(zoomed?.startsWith("拡大表示。") == true)
 
         waveform.performTouchInput {
-            val left = center - Offset(width * 0.18f, 0f)
-            val right = center + Offset(width * 0.18f, 0f)
+            val left = center - Offset(width * 0.20f, 0f)
+            val right = center + Offset(width * 0.20f, 0f)
             down(0, left)
             down(1, right)
-            moveTo(0, left + Offset(width * 0.20f, 0f), 250)
-            moveTo(1, right + Offset(width * 0.20f, 0f), 250)
+            moveTo(0, left + Offset(width * 0.15f, 0f), 250)
+            moveTo(1, right + Offset(width * 0.15f, 0f), 250)
             up(0)
             up(1)
         }
         composeRule.waitForIdle()
         val panned = waveform.viewportDescription()
-        assertNotEquals("A true two-pointer pan should move the viewport", zoomed, panned)
+        assertNotEquals("Two-pointer pan should move the viewport", zoomed, panned)
 
-        val customActions = waveform.fetchSemanticsNode().config
-            .getOrNull(SemanticsActions.CustomActions)
-            .orEmpty()
-        val previousAction = customActions.firstOrNull { it.label == "前の範囲を表示" }
-        val nextAction = customActions.firstOrNull { it.label == "次の範囲を表示" }
-        val resetAction = customActions.firstOrNull { it.label == "全体表示に戻す" }
-        assertNotNull("TalkBack previous-range action should be exposed", previousAction)
-        assertNotNull("TalkBack next-range action should be exposed", nextAction)
-        assertNotNull("TalkBack reset action should be exposed", resetAction)
-
-        assertTrue("TalkBack previous-range action should succeed", previousAction!!.action())
+        assertTrue(waveform.invokeCustomAction("前の範囲を表示"))
         composeRule.waitForIdle()
         val previous = waveform.viewportDescription()
-        assertNotEquals("Previous range should move the viewport", panned, previous)
+        assertNotEquals(panned, previous)
 
-        assertTrue("TalkBack next-range action should succeed", nextAction!!.action())
+        assertTrue(waveform.invokeCustomAction("次の範囲を表示"))
         composeRule.waitForIdle()
-        val next = waveform.viewportDescription()
-        assertNotEquals("Next range should move the viewport", previous, next)
+        assertNotEquals(previous, waveform.viewportDescription())
 
-        assertTrue("TalkBack reset action should succeed", resetAction!!.action())
+        assertTrue(waveform.invokeCustomAction("全体表示に戻す"))
         composeRule.waitForIdle()
-        val reset = waveform.viewportDescription()
-        assertTrue("Reset should announce the whole source", reset?.contains("全体表示") == true)
+        assertEquals(wholeSource, waveform.viewportDescription())
+        assertFalse(waveform.invokeCustomAction("全体表示に戻す"))
     }
 
     @Test
-    fun selectionAndChopHandlesExpose48DpTargetsAndReversibleTalkBackNudges() {
-        val start = composeRule.onNode(
-            hasContentDescription("選択開始ハンドル"),
-            useUnmergedTree = true,
+    fun deterministicHandlesExposeUnclipped48DpTargetsAndExactlyReversibleActions() {
+        setDeterministicWaveform()
+        val waveformBounds = waveformNode().fetchSemanticsNode().boundsInRoot
+        val handles = listOf(
+            handleNode("選択開始ハンドル"),
+            handleNode("選択終了ハンドル"),
+            handleNode("チョップ1 の位置"),
         )
-        val end = composeRule.onNode(
-            hasContentDescription("選択終了ハンドル"),
-            useUnmergedTree = true,
-        )
-        val chop = composeRule.onNode(
-            hasContentDescription("チョップ1 の位置"),
-            useUnmergedTree = true,
-        )
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            listOf(start, end, chop).all { runCatching { it.fetchSemanticsNode() }.isSuccess }
+        val minimumTargetPx = 48f * composeRule.density.density
+
+        handles.forEach { handle ->
+            val bounds = handle.fetchSemanticsNode().boundsInRoot
+            assertTrue("Handle width should be at least 48 dp", bounds.width >= minimumTargetPx - 1f)
+            assertTrue("Handle height should be at least 48 dp", bounds.height >= minimumTargetPx - 1f)
+            assertTrue("Handle should remain inside the waveform horizontally", bounds.left >= waveformBounds.left)
+            assertTrue("Handle should remain inside the waveform horizontally", bounds.right <= waveformBounds.right)
+            assertTrue("Handle should remain inside the waveform vertically", bounds.top >= waveformBounds.top)
+            assertTrue("Handle should remain inside the waveform vertically", bounds.bottom <= waveformBounds.bottom)
         }
 
-        val minimumTargetPx = 48f * composeRule.activity.resources.displayMetrics.density
-        listOf(start, end, chop).forEach { handle ->
-            assertTrue(
-                "Each waveform handle should expose at least a 48 dp touch target",
-                handle.fetchSemanticsNode().boundsInRoot.width >= minimumTargetPx - 1f,
-            )
-        }
-
-        start.assertReversibleNudge(forwardLabel = "少し後へ", reverseLabel = "少し前へ")
-        end.assertReversibleNudge(forwardLabel = "少し前へ", reverseLabel = "少し後へ")
-        chop.assertReversibleNudge(forwardLabel = "少し後へ", reverseLabel = "少し前へ")
+        handles[0].assertExactlyReversibleNudge("少し後へ", "少し前へ")
+        handles[1].assertExactlyReversibleNudge("少し前へ", "少し後へ")
+        handles[2].assertExactlyReversibleNudge("少し後へ", "少し前へ")
     }
 
-    private fun androidx.compose.ui.test.SemanticsNodeInteraction.viewportDescription(): String? =
+    @Test
+    fun endpointHandlesStayFullyTouchableAndRejectOutOfRangeActions() {
+        setDeterministicWaveform(startFrame = 0, endFrame = 1_000, markerFrame = 1)
+        val waveformBounds = waveformNode().fetchSemanticsNode().boundsInRoot
+        val start = handleNode("選択開始ハンドル")
+        val end = handleNode("選択終了ハンドル")
+
+        listOf(start, end).forEach { handle ->
+            val bounds = handle.fetchSemanticsNode().boundsInRoot
+            assertTrue(bounds.left >= waveformBounds.left)
+            assertTrue(bounds.right <= waveformBounds.right)
+        }
+        assertFalse(start.invokeCustomAction("少し前へ"))
+        assertFalse(end.invokeCustomAction("少し後へ"))
+        start.assertExactlyReversibleNudge("少し後へ", "少し前へ")
+        end.assertExactlyReversibleNudge("少し前へ", "少し後へ")
+    }
+
+    private fun setDeterministicWaveform(
+        startFrame: Int = 100,
+        endFrame: Int = 900,
+        markerFrame: Int = 500,
+    ) {
+        val fixture = PcmAudio(
+            id = 1L,
+            name = "device-test.wav",
+            samples = ShortArray(1_000) { index -> ((index % 100) * 300 - 15_000).toShort() },
+            sampleRate = 1_000,
+        )
+        composeRule.setContent {
+            var start by remember { mutableIntStateOf(startFrame) }
+            var end by remember { mutableIntStateOf(endFrame) }
+            val markers = remember { mutableStateListOf(markerFrame) }
+            MaterialTheme {
+                WaveformEditor(
+                    audio = fixture,
+                    rangeStartFrame = start,
+                    rangeEndFrame = end,
+                    sliceMarkers = markers,
+                    activeSlice = null,
+                    manualChopEnabled = true,
+                    onRangeStartChange = { start = it.coerceIn(0, end - 1) },
+                    onRangeEndChange = { end = it.coerceIn(start + 1, fixture.frameCount) },
+                    onSliceMarkerChange = { index, frame -> markers[index] = frame.coerceIn(1, fixture.frameCount - 1) },
+                    onWaveformTap = {},
+                    canvasHeight = 220.dp,
+                    showViewportControls = false,
+                    showTimeReadout = false,
+                    showInteractionHint = false,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun waveformNode(): SemanticsNodeInteraction = composeRule.onNode(
+        hasContentDescription("音声波形", substring = true),
+        useUnmergedTree = true,
+    )
+
+    private fun handleNode(description: String): SemanticsNodeInteraction = composeRule.onNode(
+        hasContentDescription(description),
+        useUnmergedTree = true,
+    )
+
+    private fun SemanticsNodeInteraction.viewportDescription(): String? =
         fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription)
 
-    private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertReversibleNudge(
+    private fun SemanticsNodeInteraction.assertExactlyReversibleNudge(
         forwardLabel: String,
         reverseLabel: String,
     ) {
-        val initial = handlePositionDescription()
-        assertNotNull("TalkBack should announce the handle position", initial)
-        assertTrue("$forwardLabel should succeed", invokeCustomAction(forwardLabel))
+        val initial = requireNotNull(handlePositionDescription())
+        assertTrue("$forwardLabel should change the handle", invokeCustomAction(forwardLabel))
         composeRule.waitForIdle()
-        val moved = handlePositionDescription()
-        assertNotEquals("$forwardLabel should move the handle", initial, moved)
-        assertTrue("$reverseLabel should succeed", invokeCustomAction(reverseLabel))
+        assertNotEquals(initial, handlePositionDescription())
+        assertTrue("$reverseLabel should change the handle", invokeCustomAction(reverseLabel))
         composeRule.waitForIdle()
-        val restored = handlePositionDescription()
-        val initialFrame = initial!!.substringBefore("フレーム").toInt()
-        val restoredFrame = restored!!.substringBefore("フレーム").toInt()
-        assertTrue(
-            "The reverse action should restore the handle: initial=$initial moved=$moved restored=$restored",
-            kotlin.math.abs(restoredFrame - initialFrame) <= 100,
-        )
+        assertEquals(initial, handlePositionDescription())
     }
 
-    private fun androidx.compose.ui.test.SemanticsNodeInteraction.handlePositionDescription(): String? =
+    private fun SemanticsNodeInteraction.handlePositionDescription(): String? =
         fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription)
 
-    private fun androidx.compose.ui.test.SemanticsNodeInteraction.invokeCustomAction(label: String): Boolean {
+    private fun SemanticsNodeInteraction.invokeCustomAction(label: String): Boolean {
         val action = fetchSemanticsNode().config
             .getOrNull(SemanticsActions.CustomActions)
             .orEmpty()
             .firstOrNull { it.label == label }
-        assertNotNull("TalkBack action $label should be exposed", action)
+        assertNotNull("Accessibility action $label should be exposed", action)
         return action!!.action()
     }
 }

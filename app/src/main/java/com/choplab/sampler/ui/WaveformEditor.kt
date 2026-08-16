@@ -184,14 +184,20 @@ fun WaveformEditor(
                         stateDescription = waveformViewportStateDescription(viewport)
                         customActions = waveformViewportAccessibilityActions(
                             onPrevious = {
+                                val previousScroll = scroll
                                 scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll
+                                scroll != previousScroll
                             },
                             onNext = {
+                                val previousScroll = scroll
                                 scroll = panWaveformViewport(totalFrames, zoom, scroll, 0.5f).scroll
+                                scroll != previousScroll
                             },
                             onReset = {
+                                val changed = zoom != 1f || scroll != 0f
                                 zoom = 1f
                                 scroll = 0f
+                                changed
                             },
                         )
                     },
@@ -265,6 +271,8 @@ fun WaveformEditor(
                 visibleStart = visibleStart,
                 visibleFrames = visibleFrames,
                 canvasWidthPx = widthPx,
+                minimumFrame = 0,
+                maximumFrame = (rangeEndFrame - 1).coerceAtLeast(0),
                 color = MaterialTheme.colorScheme.secondary,
                 onFrameChange = onRangeStartChange,
             )
@@ -274,6 +282,8 @@ fun WaveformEditor(
                 visibleStart = visibleStart,
                 visibleFrames = visibleFrames,
                 canvasWidthPx = widthPx,
+                minimumFrame = (rangeStartFrame + 1).coerceAtMost(totalFrames),
+                maximumFrame = totalFrames,
                 color = MaterialTheme.colorScheme.tertiary,
                 onFrameChange = onRangeEndChange,
             )
@@ -285,6 +295,8 @@ fun WaveformEditor(
                     visibleStart = visibleStart,
                     visibleFrames = visibleFrames,
                     canvasWidthPx = widthPx,
+                    minimumFrame = 1,
+                    maximumFrame = (totalFrames - 1).coerceAtLeast(1),
                     color = markerColor,
                     onFrameChange = { changedFrame -> onSliceMarkerChange(index, changedFrame) },
                 )
@@ -423,22 +435,13 @@ internal fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): 
 }
 
 internal fun waveformViewportAccessibilityActions(
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onReset: () -> Unit,
+    onPrevious: () -> Boolean,
+    onNext: () -> Boolean,
+    onReset: () -> Boolean,
 ): List<CustomAccessibilityAction> = listOf(
-    CustomAccessibilityAction("前の範囲を表示") {
-        onPrevious()
-        true
-    },
-    CustomAccessibilityAction("次の範囲を表示") {
-        onNext()
-        true
-    },
-    CustomAccessibilityAction("全体表示に戻す") {
-        onReset()
-        true
-    },
+    CustomAccessibilityAction("前の範囲を表示", onPrevious),
+    CustomAccessibilityAction("次の範囲を表示", onNext),
+    CustomAccessibilityAction("全体表示に戻す", onReset),
 )
 
 @Composable
@@ -482,6 +485,8 @@ private fun SliceMarkerHandle(
     visibleStart: Int,
     visibleFrames: Int,
     canvasWidthPx: Float,
+    minimumFrame: Int,
+    maximumFrame: Int,
     color: Color,
     onFrameChange: (Int) -> Unit,
 ) {
@@ -521,6 +526,8 @@ private fun SliceMarkerHandle(
                 customActions = waveformNudgeActions(
                     frame = frame,
                     nudgeFrames = accessibilityNudgeFrames,
+                    minimumFrame = minimumFrame,
+                    maximumFrame = maximumFrame,
                     onFrameChange = onFrameChange,
                 )
             },
@@ -553,6 +560,8 @@ private fun SelectionHandle(
     visibleStart: Int,
     visibleFrames: Int,
     canvasWidthPx: Float,
+    minimumFrame: Int,
+    maximumFrame: Int,
     color: Color,
     onFrameChange: (Int) -> Unit,
 ) {
@@ -592,6 +601,8 @@ private fun SelectionHandle(
                 customActions = waveformNudgeActions(
                     frame = frame,
                     nudgeFrames = accessibilityNudgeFrames,
+                    minimumFrame = minimumFrame,
+                    maximumFrame = maximumFrame,
                     onFrameChange = onFrameChange,
                 )
             },
@@ -620,15 +631,23 @@ private fun SelectionHandle(
 private fun waveformNudgeActions(
     frame: Int,
     nudgeFrames: Int,
+    minimumFrame: Int,
+    maximumFrame: Int,
     onFrameChange: (Int) -> Unit,
 ): List<CustomAccessibilityAction> = listOf(
     CustomAccessibilityAction("少し前へ") {
-        onFrameChange(frame - nudgeFrames)
-        true
+        val target = (frame - nudgeFrames).coerceIn(minimumFrame, maximumFrame)
+        if (target == frame) false else {
+            onFrameChange(target)
+            true
+        }
     },
     CustomAccessibilityAction("少し後へ") {
-        onFrameChange(frame + nudgeFrames)
-        true
+        val target = (frame + nudgeFrames).coerceIn(minimumFrame, maximumFrame)
+        if (target == frame) false else {
+            onFrameChange(target)
+            true
+        }
     },
 )
 
@@ -718,7 +737,6 @@ internal fun DrawScope.drawViewportOverview(
     trackColor: Color,
     viewportColor: Color,
 ) {
-    val safeTotal = totalFrames.coerceAtLeast(1)
     val height = 4.dp.toPx().coerceAtMost(size.height)
     val top = size.height - height
     drawRect(
@@ -726,13 +744,33 @@ internal fun DrawScope.drawViewportOverview(
         topLeft = Offset(0f, top),
         size = androidx.compose.ui.geometry.Size(size.width, height),
     )
-    val left = visibleStart.coerceIn(0, safeTotal).toFloat() / safeTotal * size.width
-    val right = (visibleStart + visibleFrames).coerceIn(0, safeTotal).toFloat() / safeTotal * size.width
+    val geometry = waveformOverviewGeometry(visibleStart, visibleFrames, totalFrames, size.width)
     drawRect(
         color = viewportColor,
-        topLeft = Offset(left, top),
-        size = androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(1f), height),
+        topLeft = Offset(geometry.left, top),
+        size = androidx.compose.ui.geometry.Size((geometry.right - geometry.left).coerceAtLeast(1f), height),
     )
+}
+
+internal data class WaveformOverviewGeometry(
+    val left: Float,
+    val right: Float,
+)
+
+internal fun waveformOverviewGeometry(
+    visibleStart: Int,
+    visibleFrames: Int,
+    totalFrames: Int,
+    width: Float,
+): WaveformOverviewGeometry {
+    val safeWidth = width.takeIf(Float::isFinite)?.coerceAtLeast(0f) ?: 0f
+    if (safeWidth == 0f || totalFrames <= 0) return WaveformOverviewGeometry(0f, 0f)
+    val safeTotal = totalFrames.coerceAtLeast(1)
+    val left = visibleStart.coerceIn(0, safeTotal).toFloat() / safeTotal * safeWidth
+    val right = (visibleStart.toLong() + visibleFrames.coerceAtLeast(0))
+        .coerceIn(0L, safeTotal.toLong())
+        .toFloat() / safeTotal * safeWidth
+    return WaveformOverviewGeometry(left = left, right = right.coerceAtLeast(left))
 }
 
 private fun frameToX(frame: Int, visibleStart: Int, visibleFrames: Int, width: Float): Float =

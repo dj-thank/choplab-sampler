@@ -1,10 +1,24 @@
 package com.choplab.sampler.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WaveformViewportPolicyTest {
+    @Test
+    fun accessibilityActionsReportWhetherTheViewportActuallyChanged() {
+        val actions = waveformViewportAccessibilityActions(
+            onPrevious = { false },
+            onNext = { true },
+            onReset = { false },
+        )
+
+        assertFalse(actions.single { it.label == "前の範囲を表示" }.action())
+        assertTrue(actions.single { it.label == "次の範囲を表示" }.action())
+        assertFalse(actions.single { it.label == "全体表示に戻す" }.action())
+    }
+
     @Test
     fun viewportStateNormalizesInvalidZoomAndScrollIntoTheWholeSource() {
         val viewport = resolveWaveformViewport(
@@ -103,5 +117,21 @@ class WaveformViewportPolicyTest {
         assertEquals(0.5833f, middle.scroll, 0.001f)
         assertEquals(0f, first.scroll, 0.0001f)
         assertEquals(1f, last.scroll, 0.0001f)
+    }
+
+    @Test
+    fun overviewGeometryRepresentsWholeAndZoomedViewports() {
+        assertEquals(
+            WaveformOverviewGeometry(left = 0f, right = 200f),
+            waveformOverviewGeometry(visibleStart = 0, visibleFrames = 1_000, totalFrames = 1_000, width = 200f),
+        )
+        assertEquals(
+            WaveformOverviewGeometry(left = 50f, right = 150f),
+            waveformOverviewGeometry(visibleStart = 250, visibleFrames = 500, totalFrames = 1_000, width = 200f),
+        )
+        assertEquals(
+            WaveformOverviewGeometry(left = 0f, right = 0f),
+            waveformOverviewGeometry(visibleStart = -10, visibleFrames = 100, totalFrames = 0, width = Float.NaN),
+        )
     }
 }
