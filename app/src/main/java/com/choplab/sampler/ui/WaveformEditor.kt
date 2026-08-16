@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -120,7 +121,8 @@ fun WaveformEditor(
                 .clip(RoundedCornerShape(12.dp))
                 .background(backgroundColor)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                .onSizeChanged { canvasSize = it },
+                .onSizeChanged { canvasSize = it }
+                .semantics { isTraversalGroup = true },
         ) {
             Canvas(
                 modifier = Modifier
@@ -499,6 +501,9 @@ private fun BoxScope.SliceMarkerHandle(
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
     val handleLeftPx = (x - handleWidthPx / 2f)
         .coerceIn(0f, (canvasWidthPx - handleWidthPx).coerceAtLeast(0f))
+    val laneRepeat = (markerNumber - 1) / 3
+    val laneNudgePx = with(density) { laneRepeat.dp.toPx() }
+    val touchNudgePx = if (handleLeftPx <= canvasWidthPx / 2f) laneNudgePx else -laneNudgePx
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
     var accumulatedDragPx by remember { mutableFloatStateOf(0f) }
@@ -536,6 +541,7 @@ private fun BoxScope.SliceMarkerHandle(
         Box(
             modifier = Modifier
                 .align(sliceMarkerTouchAlignment(markerNumber))
+                .offset { IntOffset(touchNudgePx.roundToInt(), 0) }
                 .width(48.dp)
                 .height(48.dp)
                 .draggable(
