@@ -70,19 +70,18 @@ function Restore-DeviceStateBestEffort {
         [Parameter(Mandatory)] [string]$Rotation,
         [Parameter(Mandatory)] [string]$Volume
     )
-    (& $adb -s $TargetSerial shell am force-stop com.choplab.sampler 2>&1) |
-        Set-Content -LiteralPath (Join-Path $TargetDirectory "force-stop.txt") -Encoding utf8
-    (& $adb -s $TargetSerial shell settings put system accelerometer_rotation $Rotation 2>&1) |
-        Set-Content -LiteralPath (Join-Path $TargetDirectory "rotation-restore.txt") -Encoding utf8
-    (& $adb -s $TargetSerial shell cmd media_session volume --stream 3 --set $Volume 2>&1) |
-        Set-Content -LiteralPath (Join-Path $TargetDirectory "volume-restore.txt") -Encoding utf8
+    $forceStopOutput = & $adb -s $TargetSerial shell am force-stop com.choplab.sampler 2>&1
+    Set-Content -LiteralPath (Join-Path $TargetDirectory "force-stop.txt") -Value $forceStopOutput -Encoding utf8
+    $rotationOutput = & $adb -s $TargetSerial shell settings put system accelerometer_rotation $Rotation 2>&1
+    Set-Content -LiteralPath (Join-Path $TargetDirectory "rotation-restore.txt") -Value $rotationOutput -Encoding utf8
+    $volumeOutput = & $adb -s $TargetSerial shell cmd media_session volume --stream 3 --set $Volume 2>&1
+    Set-Content -LiteralPath (Join-Path $TargetDirectory "volume-restore.txt") -Value $volumeOutput -Encoding utf8
     if ($Foreground -match "launcher") {
-        (& $adb -s $TargetSerial shell input keyevent 3 2>&1) |
-            Set-Content -LiteralPath (Join-Path $TargetDirectory "foreground-restore.txt") -Encoding utf8
+        $foregroundOutput = & $adb -s $TargetSerial shell input keyevent 3 2>&1
     } else {
-        (& $adb -s $TargetSerial shell am start -n $Foreground 2>&1) |
-            Set-Content -LiteralPath (Join-Path $TargetDirectory "foreground-restore.txt") -Encoding utf8
+        $foregroundOutput = & $adb -s $TargetSerial shell am start -n $Foreground 2>&1
     }
+    Set-Content -LiteralPath (Join-Path $TargetDirectory "foreground-restore.txt") -Value $foregroundOutput -Encoding utf8
 }
 
 $restoreRequired = $false
@@ -229,7 +228,9 @@ try {
         $testPackageDump = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", $testPackage) -LogPath (Join-Path $runDirectory "package-test.txt")
         $installedTestVersionName = Get-PackageDumpValue $testPackageDump "versionName=([^\s]+)" "installed test versionName"
         $installedTestVersionCode = Get-PackageDumpValue $testPackageDump "versionCode=(\d+)" "installed test versionCode"
-        if ($installedTestVersionName -ne $testVersionName -or $installedTestVersionCode -ne $testVersionCode) {
+        $expectedTestVersionName = if ($testVersionName -eq "UNKNOWN") { "null" } else { $testVersionName }
+        $expectedTestVersionCode = if ($testVersionCode -eq "UNKNOWN") { "0" } else { $testVersionCode }
+        if ($installedTestVersionName -ne $expectedTestVersionName -or $installedTestVersionCode -ne $expectedTestVersionCode) {
             throw "Installed test package version differs from candidate"
         }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "logcat", "-d", "-v", "threadtime", "-T", (($logcatStart | Select-Object -First 1).Trim())) -LogPath (Join-Path $runDirectory "logcat-window.txt") | Out-Null
