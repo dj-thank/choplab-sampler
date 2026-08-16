@@ -38,6 +38,7 @@ class SamplerEngine(
     private val commandOverflowReported = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
     private val lifecycleLock = Any()
+    private val runtimeCommandAdmission = RuntimeCommandAdmission(lifecycleLock, running::get)
     private val padUpdateLock = Any()
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val controlPadKit = AtomicReferenceArray<PadSnapshot?>(SamplerConfig.PAD_COUNT)
@@ -556,14 +557,22 @@ class SamplerEngine(
     }
 
     private fun enqueue(command: EngineCommand): Boolean {
-        val accepted = commands.offer(command)
-        reportCommandAdmission(accepted)
+        var attempted = false
+        val accepted = runtimeCommandAdmission.offer {
+            attempted = true
+            commands.offer(command)
+        }
+        if (attempted) reportCommandAdmission(accepted)
         return accepted
     }
 
     private fun enqueuePrepared(commandFactory: () -> EngineCommand): Boolean {
-        val accepted = commands.offerPrepared(commandFactory)
-        reportCommandAdmission(accepted)
+        var attempted = false
+        val accepted = runtimeCommandAdmission.offer {
+            attempted = true
+            commands.offerPrepared(commandFactory)
+        }
+        if (attempted) reportCommandAdmission(accepted)
         return accepted
     }
 

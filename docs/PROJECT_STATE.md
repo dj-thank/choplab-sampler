@@ -1,5 +1,9 @@
 # Project state
 
+## Runtime command lifecycle hardening — 2026-08-16
+
+`SamplerEngine` command admission is now serialized with the same lifecycle boundary used by `start()` and `shutdown()`. Runtime commands admitted before shutdown are cleared by shutdown; commands racing after the stopped state are rejected and cannot remain in the mailbox for a later restart. Deterministic JVM regressions cover both the stopped/restarted sequence and concurrent producer/shutdown ordering. This is LOCAL concurrency evidence only; physical output latency, sustained command pressure, and audible behavior remain DEVICE/HUMAN boundaries.
+
 ## Virtual microphone lifecycle hardening — 2026-08-16
 
 `MicrophoneRecorder` now exposes an internal recorder-input seam so its public `start(file)` / `stop()` contract can be exercised without a physical microphone. A deterministic latch-driven regression proves that a stop requested while recorder initialization is blocked publishes the stopped state, prevents a late worker from calling `startRecording()`, and releases the newly created input. Focused RED/GREEN and the full JVM/lint/app/androidTest build gate passed. This is LOCAL lifecycle evidence only; it does not claim physical microphone timing or audio quality.
