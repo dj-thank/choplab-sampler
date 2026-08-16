@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
@@ -131,13 +132,16 @@ fun WaveformEditor(
                         detectTapGestures(
                             onDoubleTap = { offset ->
                                 if (canvasSize.width <= 0) return@detectTapGestures
-                                val fraction = (offset.x / canvasSize.width).coerceIn(0f, 1f)
-                                val frame = (visibleStart + visibleFrames * fraction)
-                                    .roundToInt()
-                                    .coerceIn(0, totalFrames - 1)
-                                val nextZoom = (zoom * 2f).coerceIn(1f, maximumZoom.coerceAtLeast(1f))
-                                scroll = centeredViewportScroll(frame, totalFrames, nextZoom)
-                                zoom = nextZoom
+                                val frame = waveformFrameAtX(
+                                    offset.x,
+                                    canvasSize.width.toFloat(),
+                                    visibleStart,
+                                    visibleFrames,
+                                    totalFrames,
+                                )
+                                val next = zoomViewportAtFocus(frame, totalFrames, zoom, 2f, maximumZoom)
+                                scroll = next.scroll
+                                zoom = next.zoom
                             },
                             onTap = { offset ->
                                 if (canvasSize.width <= 0) return@detectTapGestures
@@ -148,6 +152,21 @@ fun WaveformEditor(
                                 onWaveformTap(frame)
                             },
                         )
+                    }
+                    .pointerInput(audio.id, visibleStart, visibleFrames) {
+                        detectTransformGestures { centroid, _, zoomChange, _ ->
+                            if (canvasSize.width <= 0 || zoomChange == 1f) return@detectTransformGestures
+                            val focusFrame = waveformFrameAtX(
+                                centroid.x,
+                                canvasSize.width.toFloat(),
+                                visibleStart,
+                                visibleFrames,
+                                totalFrames,
+                            )
+                            val next = zoomViewportAtFocus(focusFrame, totalFrames, zoom, zoomChange, maximumZoom)
+                            scroll = next.scroll
+                            zoom = next.zoom
+                        }
                     }
                     .semantics {
                         contentDescription = if (manualChopEnabled) {

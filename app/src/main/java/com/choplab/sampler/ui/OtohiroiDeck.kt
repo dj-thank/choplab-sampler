@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -3568,21 +3569,26 @@ private fun SourceWaveform(
                     detectTapGestures(
                         onDoubleTap = { offset ->
                             val source = visibleAudio ?: return@detectTapGestures
-                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                            val frame = visibleStart + (visibleFrames * fraction).toInt()
-                            val nextZoom = (zoom * 2f).coerceIn(1f, 64f)
-                            val nextVisible = (source.frameCount / nextZoom).roundToInt().coerceAtLeast(1)
-                            val nextMax = (source.frameCount - nextVisible).coerceAtLeast(0)
-                            scroll = if (nextMax == 0) 0f else
-                                ((frame - nextVisible / 2).coerceIn(0, nextMax)).toFloat() / nextMax
-                            zoom = nextZoom
+                            val frame = waveformFrameAtX(offset.x, size.width.toFloat(), visibleStart, visibleFrames, source.frameCount)
+                            val next = zoomViewportAtFocus(frame, source.frameCount, zoom, 2f, 64f)
+                            scroll = next.scroll
+                            zoom = next.zoom
                         },
                         onTap = { offset ->
-                        val source = visibleAudio ?: return@detectTapGestures
-                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                            onSeek((visibleStart + visibleFrames * fraction).toInt().coerceIn(0, source.frameCount - 1))
+                            val source = visibleAudio ?: return@detectTapGestures
+                            onSeek(waveformFrameAtX(offset.x, size.width.toFloat(), visibleStart, visibleFrames, source.frameCount))
                         },
                     )
+                }
+                .pointerInput(visibleAudio?.id, visibleStart, visibleFrames) {
+                    detectTransformGestures { centroid, _, zoomChange, _ ->
+                        if (size.width <= 0 || zoomChange == 1f) return@detectTransformGestures
+                        val total = visibleAudio?.frameCount ?: 1
+                        val focusFrame = waveformFrameAtX(centroid.x, size.width.toFloat(), visibleStart, visibleFrames, total)
+                        val next = zoomViewportAtFocus(focusFrame, total, zoom, zoomChange, 64f)
+                        scroll = next.scroll
+                        zoom = next.zoom
+                    }
                 }
                 .semantics { contentDescription = "ソース波形。タップで再生位置を移動" },
         ) {
