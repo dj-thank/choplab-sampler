@@ -23,6 +23,14 @@ import kotlin.math.pow
 
 internal const val PREVIEW_PAD_INDEX = -1
 
+internal fun toneFilterAlpha(tone: Float, outputSampleRate: Int): Float {
+    val safeTone = if (tone.isFinite()) tone.coerceIn(0f, 1f) else 1f
+    if (safeTone >= 0.995f) return 1f
+    val safeSampleRate = outputSampleRate.coerceIn(8_000, 192_000)
+    val cutoffHz = 80.0 * 225.0.pow(safeTone.toDouble())
+    return (1.0 - exp(-2.0 * PI * cutoffHz / safeSampleRate)).toFloat().coerceIn(0f, 1f)
+}
+
 /**
  * Low-latency streaming sampler and sample-accurate 16-step sequencer.
  *
@@ -781,6 +789,7 @@ class SamplerEngine(
         private var reverse = false
         private var gain = 0f
         private var tone = 1f
+        private var filterAlpha = 1f
         private var sourceStep = 1.0
         private val cursor = VoicePlaybackCursor(
             startFrame = 0,
@@ -823,6 +832,7 @@ class SamplerEngine(
             reverse = pad.reverse
             gain = pad.gain
             tone = pad.tone
+            filterAlpha = toneFilterAlpha(pad.tone, outputSampleRate)
             sourceStep = sourceStepFor(pad, outputSampleRate)
             cursor.reset(startFrame, endFrame, reverse, playMode)
             filterState = 0f
@@ -844,6 +854,7 @@ class SamplerEngine(
             reverse = false
             gain = 0f
             tone = 1f
+            filterAlpha = 1f
             sourceStep = 1.0
             filterState = 0f
             releaseFramesRemaining = -1
@@ -854,6 +865,7 @@ class SamplerEngine(
             if (!active || pad.padIndex != padIndex || pad.audio.id != audioId) return
             sourceStep = sourceStepFor(pad, outputSampleRate)
             tone = pad.tone
+            filterAlpha = toneFilterAlpha(pad.tone, outputSampleRate)
             gain = pad.gain
         }
 
@@ -866,7 +878,7 @@ class SamplerEngine(
             }
         }
 
-        fun render(outputSampleRate: Int): Float {
+        fun render(@Suppress("UNUSED_PARAMETER") outputSampleRate: Int): Float {
             if (!active || finished) return 0f
             val position = cursor.position
 
@@ -893,12 +905,11 @@ class SamplerEngine(
                 framesToEnd / CLICK_FADE_SOURCE_FRAMES,
             ).coerceAtLeast(0.0).toFloat()
 
-            val filtered = if (tone >= 0.995f) {
+            val filtered = if (filterAlpha >= 1f) {
+                filterState = raw
                 raw
             } else {
-                val cutoffHz = 80.0 * 225.0.pow(tone.toDouble())
-                val alpha = (1.0 - exp(-2.0 * PI * cutoffHz / outputSampleRate)).toFloat()
-                filterState += alpha * (raw - filterState)
+                filterState += filterAlpha * (raw - filterState)
                 filterState
             }
 

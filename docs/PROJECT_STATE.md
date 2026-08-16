@@ -1,5 +1,11 @@
 # Project state
 
+## Archive fuzz, audio oracles, and realtime filter cost — 2026-08-17
+
+Archive validation now has an independent literal schema-1 fixture, a deterministic 256-input malformed corpus, a 1,000-small-entry rejection case, and a declared-PCM expansion case above the 512 MiB project budget. ZIP inflation is bounded by the manifest's audio-count/frame-count contract, the absolute PCM budget, and exact WAV/raw entry sizes; a ratio-only rejection is intentionally avoided because a legitimate silent WAV is also extremely compressible. Schema 1–5 compatibility remains covered.
+
+Transient tests now require markers near four known onset frames and cover silence, short input, slice limits, and minimum-distance clustering. Pattern rendering now has independent PCM observations for vocal duration, continuous loops, straight versus swung event frames, reverse, pitch, gain, and tone instead of relying only on non-zero output and length. `SamplerEngine.Voice` precomputes its low-pass coefficient at start/live-control updates rather than running `pow`/`exp` per sample; bypass continuously tracks the current sample so re-enabling the filter does not resume stale state. These are LOCAL deterministic and cost-structure claims, not physical xrun, latency, or audio-quality evidence.
+
 ## New-project wording and recovery disclosure — 2026-08-16
 
 The former `RESET ALL / 完全リセット` copy overstated what the recoverable autosave design does: starting fresh empties the current production state, while up to three verified app-private generations remain available for corruption recovery under PROJ-004. The action is now named `NEW PROJECT / 新しい制作を始める`, its second press says exactly that the production state will be emptied, and the privacy policy discloses the bounded recovery retention. No autosave, project, or exported user file is deleted by this wording correction. This is a LOCAL specification-truth fix, not a secure-erasure claim.

@@ -10,6 +10,16 @@ import org.junit.Test
 
 class SamplerEngineVoiceTest {
     @Test
+    fun toneFilterCoefficientIsBoundedAndComputedAtTheControlBoundary() {
+        assertEquals(1f, toneFilterAlpha(tone = 1f, outputSampleRate = 48_000), 0f)
+        val dark = toneFilterAlpha(tone = 0.15f, outputSampleRate = 48_000)
+        val medium = toneFilterAlpha(tone = 0.65f, outputSampleRate = 48_000)
+        assertTrue(dark in 0f..1f)
+        assertTrue(medium in 0f..1f)
+        assertTrue(medium > dark)
+    }
+
+    @Test
     fun loopStartRetiresPreviewAndTargetAuditionButKeepsOtherLayers() {
         val audio = PcmAudio(
             name = "loop.wav",
@@ -169,5 +179,36 @@ class SamplerEngineVoiceTest {
         assertTrue(voice.active)
         assertEquals(17, voice.padIndex)
         assertEquals(39, voice.currentFrame)
+    }
+
+    @Test
+    fun pooledVoiceResetsFilterStateAndBypassTracksTheCurrentSample() {
+        val audio = PcmAudio(
+            name = "filter-step.wav",
+            samples = ShortArray(256) { frame -> if (frame < 96) 8_000 else 24_000 },
+            sampleRate = 48_000,
+        )
+        val darkPad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = 0,
+            endFrame = audio.frameCount,
+            tone = 0.2f,
+            playMode = PadPlayMode.LOOP,
+        )
+        val brightPad = darkPad.copy(tone = 1f)
+        val voice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(darkPad), 48_000)
+
+        val firstPass = FloatArray(80) { voice.render(48_000) }
+        voice.start(SamplerEngine.PadSnapshot.from(darkPad), 48_000)
+        val secondPass = FloatArray(80) { voice.render(48_000) }
+        assertTrue(firstPass.contentEquals(secondPass))
+
+        repeat(120) { voice.render(48_000) }
+        voice.updateLiveParameters(SamplerEngine.PadSnapshot.from(brightPad), 48_000)
+        val bypassed = voice.render(48_000)
+        voice.updateLiveParameters(SamplerEngine.PadSnapshot.from(darkPad), 48_000)
+        val resumedFilter = voice.render(48_000)
+        assertTrue(kotlin.math.abs(resumedFilter - bypassed) < 0.05f)
     }
 }
