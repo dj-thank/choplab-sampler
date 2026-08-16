@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -46,6 +47,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -479,7 +481,7 @@ private fun ViewportControlButton(
 }
 
 @Composable
-private fun SliceMarkerHandle(
+private fun BoxScope.SliceMarkerHandle(
     markerNumber: Int,
     frame: Int,
     visibleStart: Int,
@@ -511,26 +513,7 @@ private fun SliceMarkerHandle(
         modifier = Modifier
             .offset { IntOffset(handleLeftPx.roundToInt(), 0) }
             .width(48.dp)
-            .fillMaxHeight()
-            .draggable(
-                state = dragState,
-                orientation = Orientation.Horizontal,
-                onDragStarted = {
-                    dragOriginFrame = frame
-                    accumulatedDragPx = 0f
-                },
-            )
-            .semantics {
-                contentDescription = "チョップ$markerNumber の位置"
-                stateDescription = "${frame.coerceAtLeast(0)}フレーム"
-                customActions = waveformNudgeActions(
-                    frame = frame,
-                    nudgeFrames = accessibilityNudgeFrames,
-                    minimumFrame = minimumFrame,
-                    maximumFrame = maximumFrame,
-                    onFrameChange = onFrameChange,
-                )
-            },
+            .fillMaxHeight(),
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
@@ -549,6 +532,32 @@ private fun SliceMarkerHandle(
                 .background(color, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
                 .padding(horizontal = 5.dp, vertical = 1.dp),
             fontSize = 9.sp,
+        )
+        Box(
+            modifier = Modifier
+                .align(sliceMarkerTouchAlignment(markerNumber))
+                .width(48.dp)
+                .height(48.dp)
+                .draggable(
+                    state = dragState,
+                    orientation = Orientation.Horizontal,
+                    onDragStarted = {
+                        dragOriginFrame = frame
+                        accumulatedDragPx = 0f
+                    },
+                )
+                .semantics {
+                    contentDescription = "チョップ$markerNumber の位置"
+                    stateDescription = "${frame.coerceAtLeast(0)}フレーム"
+                    traversalIndex = 2f + markerNumber
+                    customActions = waveformNudgeActions(
+                        frame = frame,
+                        nudgeFrames = accessibilityNudgeFrames,
+                        minimumFrame = minimumFrame,
+                        maximumFrame = maximumFrame,
+                        onFrameChange = onFrameChange,
+                    )
+                },
         )
     }
 }
@@ -598,6 +607,7 @@ private fun SelectionHandle(
             .semantics {
                 contentDescription = if (label == "S") "選択開始ハンドル" else "選択終了ハンドル"
                 stateDescription = "${frame.coerceAtLeast(0)}フレーム"
+                traversalIndex = if (label == "S") 0f else 1f
                 customActions = waveformNudgeActions(
                     frame = frame,
                     nudgeFrames = accessibilityNudgeFrames,
@@ -626,6 +636,12 @@ private fun SelectionHandle(
             fontSize = 10.sp,
         )
     }
+}
+
+private fun sliceMarkerTouchAlignment(markerNumber: Int): Alignment = when (markerNumber % 3) {
+    1 -> Alignment.BottomCenter
+    2 -> Alignment.Center
+    else -> Alignment.TopCenter
 }
 
 private fun waveformNudgeActions(

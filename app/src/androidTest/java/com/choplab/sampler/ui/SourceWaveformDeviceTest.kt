@@ -113,20 +113,33 @@ class SourceWaveformDeviceTest {
 
     @Test
     fun endpointHandlesStayFullyTouchableAndRejectOutOfRangeActions() {
-        setDeterministicWaveform(startFrame = 0, endFrame = 1_000, markerFrame = 1, secondMarkerFrame = 999)
+        setDeterministicWaveform(
+            startFrame = 0,
+            endFrame = 1_000,
+            markerFrame = 1,
+            secondMarkerFrame = 2,
+            thirdMarkerFrame = 999,
+        )
         val waveformBounds = waveformNode().fetchSemanticsNode().boundsInRoot
         val start = handleNode("選択開始ハンドル")
         val end = handleNode("選択終了ハンドル")
         val marker = handleNode("チョップ1 の位置")
-        val upperMarker = handleNode("チョップ2 の位置")
+        val adjacentMarker = handleNode("チョップ2 の位置")
+        val upperMarker = handleNode("チョップ3 の位置")
 
-        listOf(start, end, marker, upperMarker).forEach { handle ->
+        listOf(start, end, marker, adjacentMarker, upperMarker).forEach { handle ->
             val bounds = handle.fetchSemanticsNode().boundsInRoot
             assertTrue(bounds.left >= waveformBounds.left)
             assertTrue(bounds.right <= waveformBounds.right)
             assertTrue(bounds.top >= waveformBounds.top)
             assertTrue(bounds.bottom <= waveformBounds.bottom)
         }
+        val markerBounds = marker.fetchSemanticsNode().boundsInRoot
+        val adjacentMarkerBounds = adjacentMarker.fetchSemanticsNode().boundsInRoot
+        assertFalse(
+            "Adjacent marker TalkBack targets must not have identical bounds",
+            markerBounds == adjacentMarkerBounds,
+        )
         assertFalse(start.invokeCustomAction("少し前へ"))
         assertFalse(end.invokeCustomAction("少し後へ"))
         assertFalse(marker.invokeCustomAction("少し前へ"))
@@ -134,6 +147,7 @@ class SourceWaveformDeviceTest {
         start.assertExactlyReversibleNudge("少し後へ", "少し前へ")
         end.assertExactlyReversibleNudge("少し前へ", "少し後へ")
         marker.assertExactlyReversibleNudge("少し後へ", "少し前へ")
+        adjacentMarker.assertExactlyReversibleNudge("少し後へ", "少し前へ")
         upperMarker.assertExactlyReversibleNudge("少し前へ", "少し後へ")
     }
 
@@ -142,6 +156,7 @@ class SourceWaveformDeviceTest {
         endFrame: Int = 900,
         markerFrame: Int = 500,
         secondMarkerFrame: Int? = null,
+        thirdMarkerFrame: Int? = null,
     ) {
         val fixture = PcmAudio(
             id = 1L,
@@ -156,6 +171,7 @@ class SourceWaveformDeviceTest {
                 mutableStateListOf<Int>().apply {
                     add(markerFrame)
                     secondMarkerFrame?.let(::add)
+                    thirdMarkerFrame?.let(::add)
                 }
             }
             MaterialTheme {

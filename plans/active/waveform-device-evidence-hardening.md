@@ -72,6 +72,13 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 
 ## Risks and rollback
 
+### 2026-08-16 actual TalkBack continuation
+
+- Actual service/touch-exploration focus found a production-only overlap: markers at the source start could fully occlude the S accessibility node.
+- The local candidate preserves the full-height visual line while placing each marker's 48 dp draggable/semantics target in rotating top/center/bottom lanes and giving S, E, and numbered markers deterministic traversal indices.
+- A near-start `1/2` marker fixture checks distinct bounds and reversible actions for both markers. Clean full build passed.
+- Pixel USB disconnected before the corrected APK could be installed and before microphone capture began. Accessibility service was restored to disabled and ChopLab was force-stopped; the accessibility stream still reported `1` instead of its saved `9`, so device restoration and all remaining DEVICE work must resume before promotion.
+
 - Gesture injection can still vary with Compose runtime; fixed in-memory geometry reduces but does not eliminate platform timing risk.
 - Evidence collection refuses dirty tracked state and signer mismatch. It never contains uninstall or clear-data operations.
 - Rollback is the parent of the final logical commit; archive schema and project bytes are unchanged.

@@ -27,7 +27,7 @@
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
 | トーンを変える | ✅ local | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider。再生中のloopへ即時反映するhost regressionあり |
 | 長すぎる音声の箇所選択 | ✅ | 最大10分、zoom/scroll/S/E handles |
-| 波形viewportのアクセシビリティ | 🧪 instrumentation/device | autosave非依存の固定PCM fixtureで2本指pinch/pan、前/次/reset semantics、overview geometry、S/E/chopの48dp幅・高さ・端点clamp・可逆nudgeを検証。Compose callbackの実行であり、TalkBack実サービスの発話・focus順は未確認 |
+| 波形viewportのアクセシビリティ | 🧪 instrumentation/device partial | autosave非依存の固定PCM fixtureで2本指pinch/pan、前/次/reset semantics、overview geometry、S/E/chopの48dp幅・高さ・端点clamp・可逆nudgeを検証。実TalkBack serviceとtouch explorationで波形focus・next traversalを確認した際、近接markerがSをtreeから遮蔽する問題を発見し、marker操作層を3段へ分離するLOCAL候補を追加。USB切断により修正版の実TalkBack発話・全focus順は再確認待ち |
 | プロ用のようにチョップ | ✅ MVP | 手動、自動、境界drag、zero-crossing snap。高度なspectral editor等は次段階 |
 | 選択後に次の対象へ遷移 | ✅ | AUTO NEXTでPAD + active slice前進 |
 | ハードウェア系サンプラーの操作感 | ✅ device | 4工程、正方形PAD、役割色、波形、KEY/TONE/LEVEL、触覚、二段階clearを独自UIで再構成。連打感と触覚の最終評価はHuman判断 |
