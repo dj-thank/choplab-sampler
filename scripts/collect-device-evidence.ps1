@@ -113,19 +113,21 @@ try {
         ":app:lintDebug",
         ":app:assembleDebug",
         ":app:assembleDebugAndroidTest",
-        "--no-daemon"
+        "--no-daemon",
+        "--max-workers=1",
+        "--no-watch-fs"
     )
     Invoke-NativeChecked -FilePath (Join-Path $repoRoot "gradlew.bat") -ArgumentList $buildArgs -LogPath (Join-Path $runDirectory "gradle.log") | Out-Null
 
     $appSource = Join-Path $repoRoot "app\build\outputs\apk\debug\app-debug.apk"
-    $testSource = Get-ChildItem -LiteralPath (Join-Path $repoRoot "app\build\outputs\apk\androidTest\debug") -Filter "*.apk" |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-    if (-not $testSource) { throw "Android test APK not found" }
+    $testSource = Join-Path $repoRoot "app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk"
+    if (-not (Test-Path -LiteralPath $testSource -PathType Leaf)) {
+        throw "Expected Android test APK not found: $testSource"
+    }
     $appArtifact = Join-Path $runDirectory "app-debug.apk"
     $testArtifact = Join-Path $runDirectory "app-debug-androidTest.apk"
     Copy-Item -LiteralPath $appSource -Destination $appArtifact
-    Copy-Item -LiteralPath $testSource.FullName -Destination $testArtifact
+    Copy-Item -LiteralPath $testSource -Destination $testArtifact
 
     $appHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $appArtifact).Hash
     $testHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $testArtifact).Hash
@@ -171,9 +173,6 @@ try {
         $packageBefore = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", $appPackage) -LogPath (Join-Path $runDirectory "package-before.txt")
         $installedVersionNameBefore = Get-PackageDumpValue $packageBefore "versionName=([^\s]+)" "installed versionName before"
         $installedVersionCodeBefore = Get-PackageDumpValue $packageBefore "versionCode=(\d+)" "installed versionCode before"
-        if ($installedVersionNameBefore -ne $appVersionName -or $installedVersionCodeBefore -ne $appVersionCode) {
-            throw "Installed package version differs from candidate before install"
-        }
         $packagePathOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "pm", "path", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "pm-path-before.txt")
         $packagePath = (($packagePathOutput | Select-Object -First 1) -replace "^package:", "").Trim()
         $preinstalledApk = Join-Path $runDirectory "preinstalled-base.apk"

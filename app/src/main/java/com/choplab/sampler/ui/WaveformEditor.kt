@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -186,6 +187,20 @@ fun WaveformEditor(
                             "音声波形。タップした位置へ移動"
                         }
                         stateDescription = waveformViewportStateDescription(viewport)
+                        role = Role.Button
+                        onClick(
+                            label = if (manualChopEnabled) {
+                                "表示範囲の中央にチョップを追加"
+                            } else {
+                                "表示範囲の中央へ移動"
+                            },
+                        ) {
+                            val centerFrame = (visibleStart + visibleFrames / 2f)
+                                .roundToInt()
+                                .coerceIn(0, totalFrames - 1)
+                            onWaveformTap(centerFrame)
+                            true
+                        }
                         customActions = waveformViewportAccessibilityActions(
                             onPrevious = {
                                 val previousScroll = scroll

@@ -42,6 +42,13 @@ class SourceWaveformDeviceTest {
         setDeterministicWaveform()
         val waveform = waveformNode()
 
+        val clickAction = waveform.fetchSemanticsNode().config.getOrNull(SemanticsActions.OnClick)
+        assertNotNull("The waveform instruction must expose an accessibility click action", clickAction)
+        assertTrue(
+            "The waveform accessibility click action should succeed",
+            clickAction!!.action?.invoke() == true,
+        )
+
         val wholeSource = waveform.viewportDescription()
         assertEquals("全体表示。0から999フレーム", wholeSource)
         assertFalse(waveform.invokeCustomAction("前の範囲を表示"))

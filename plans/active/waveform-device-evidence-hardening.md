@@ -53,6 +53,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Real TalkBack exposed S/E/chop-1/chop-2 and focused the formerly occluded cluster; real microphone ownership rejected source playback and BACK cancelled without autosave mutation.
 - [x] 2026-08-16 — User-authorized continuation proved selected-loop/source-preview to microphone ownership takeover; both captures were cancelled and baseline autosave hashes retained.
 - [x] 2026-08-16 — Android official `testing-setup` guidance applied: UI Automator 2.4.0 and Compose ATF added; a dedicated normal API 36 Google Play AVD passed the four-test waveform suite, including framework depth-first tree order, advertised focus actions, and custom-action dispatch.
+- [x] 2026-08-16 — Second Luna adversarial panel added an explicit accessibility click action whose label matches the waveform tap instruction, and hardened the evidence runner to use deterministic Gradle limits, a fixed androidTest APK path, and signer-first retained-data upgrades.
 
 ## Discoveries
 
@@ -88,6 +89,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
   touch-exploration, media-volume, rotation, foreground, and autosave readbacks were restored and recorded.
 
 - Gesture injection can still vary with Compose runtime; fixed in-memory geometry reduces but does not eliminate platform timing risk.
+- The configured `medium_phone` AVD points at a missing Google Play image while the installed API 36 image is Google APIs, and `avdmanager` cannot recreate the dedicated review AVD because that image lacks `devices.xml`. Virtual DEVICE execution is therefore blocked until the SDK image is repaired; LOCAL build and androidTest compilation do not substitute for that run.
 - Evidence collection refuses dirty tracked state and signer mismatch. It never contains uninstall or clear-data operations.
 - Rollback is the parent of the final logical commit; archive schema and project bytes are unchanged.
 
