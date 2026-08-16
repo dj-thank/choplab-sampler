@@ -112,6 +112,8 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 
 ## Progress
 
+- [x] 2026-08-16 — Added a fake recorder-input seam and a deterministic initialization-race test so `stop()` cannot be lost while the platform recorder is being created; full local build gate passed.
+
 - [x] 2026-08-14 10:45 +09:00 — Four fresh-context Luna architecture candidates reviewed the current tree; the playback-interruption boundary ranked highest for user impact, cohesion, and offline testability.
 - [x] 2026-08-14 10:51 +09:00 — Required repository guidance, TDD test/mocking guidance, and baseline validation were read and verified.
 - [x] 2026-08-14 11:02 +09:00 — Milestone 1 completed through repeated RED/GREEN slices: focus denial, focus lifecycle, interruption idempotence, recording policy, and close behavior.

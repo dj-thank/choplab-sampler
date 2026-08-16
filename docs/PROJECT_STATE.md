@@ -1,5 +1,9 @@
 # Project state
 
+## Virtual microphone lifecycle hardening — 2026-08-16
+
+`MicrophoneRecorder` now exposes an internal recorder-input seam so its public `start(file)` / `stop()` contract can be exercised without a physical microphone. A deterministic latch-driven regression proves that a stop requested while recorder initialization is blocked publishes the stopped state, prevents a late worker from calling `startRecording()`, and releases the newly created input. Focused RED/GREEN and the full JVM/lint/app/androidTest build gate passed. This is LOCAL lifecycle evidence only; it does not claim physical microphone timing or audio quality.
+
 ## Final Pixel 9a waveform evidence — 2026-08-16 22:06 JST
 
 Clean commit `233297e39f404bb8e0080110c3d29a528dd8c615` was rebuilt and installed in place on Pixel 9a `5A121JEBF08094` with no uninstall or data clear. The app and installed-base SHA-256 both equal `9A3997B78D309A2B53C78A6B0DB2970D02E08DC656314B8F91F0A2F8BF1C9162`; the test APK and installed test-base both equal `BE2588A01083D16F14CA01B6A3BAEAB086D5D0A03A36FE10238B5E05A4456DCE`; package/version is `com.choplab.sampler` `0.13.1 (21)` and both use signer `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`. Pixel instrumentation passed all four deterministic waveform tests in 7.484 seconds. The three autosave generations were byte-identical before install, after install, after actual TalkBack operation, and after a 929 ms cold relaunch. The bounded fatal/ANR query returned zero matches.
