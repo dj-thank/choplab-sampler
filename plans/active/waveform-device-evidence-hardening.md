@@ -47,7 +47,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Luna adversarial review identified fixture, TalkBack-claim, action-boundary, overview, 48 dp, and provenance gaps.
 - [x] 2026-08-16 — Viewport no-op action RED reproduced and Boolean action contract implemented.
 - [x] 2026-08-16 — Deterministic Compose fixture and overview geometry added; focused JVM and Kotlin compilation pass.
-- [ ] 2026-08-16 — Full local gate and exact-device evidence rerun.
+- [x] 2026-08-16 — Full local gate and exact-device evidence rerun; final run is regenerated after the safe-return evidence addition.
 
 ## Discoveries
 

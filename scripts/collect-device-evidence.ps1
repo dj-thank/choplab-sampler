@@ -87,6 +87,7 @@ try {
         if (-not $Serial) { throw "-Serial is required with -InstallAndTest" }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "get-state") -LogPath (Join-Path $runDirectory "adb-state.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("devices", "-l") -LogPath (Join-Path $runDirectory "adb-devices.txt") | Out-Null
+        $logcatStart = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "date", "+%m-%d %H:%M:%S.000") -LogPath (Join-Path $runDirectory "logcat-start.txt")
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "package-before.txt") | Out-Null
         $packagePathOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "pm", "path", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "pm-path-before.txt")
         $packagePath = (($packagePathOutput | Select-Object -First 1) -replace "^package:", "").Trim()
@@ -120,7 +121,13 @@ try {
             throw "Instrumentation did not report an all-green result. See instrumentation.txt"
         }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "package-after.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "logcat", "-d", "-v", "threadtime", "-t", "2000") -LogPath (Join-Path $runDirectory "logcat-tail.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "logcat", "-d", "-v", "threadtime", "-T", (($logcatStart | Select-Object -First 1).Trim())) -LogPath (Join-Path $runDirectory "logcat-window.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "force-stop", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "force-stop.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "input", "keyevent", "3") -LogPath (Join-Path $runDirectory "home.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "activity", "activities") -LogPath (Join-Path $runDirectory "activity-final.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "audio") -LogPath (Join-Path $runDirectory "audio-final.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "get", "system", "accelerometer_rotation") -LogPath (Join-Path $runDirectory "rotation-final.txt") | Out-Null
+        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "ls", "files/projects") -LogPath (Join-Path $runDirectory "projects-final.txt") | Out-Null
         $deviceEvidence = [ordered]@{
             serial = $Serial
             installed_base_sha256 = $installedHash
@@ -129,6 +136,12 @@ try {
             instrumentation_log = "instrumentation.txt"
             autosave_before = "autosave-before.txt"
             autosave_after = "autosave-after.txt"
+            logcat_start = "logcat-start.txt"
+            logcat_window = "logcat-window.txt"
+            final_activity = "activity-final.txt"
+            final_audio = "audio-final.txt"
+            final_rotation = "rotation-final.txt"
+            final_projects = "projects-final.txt"
         }
     }
 

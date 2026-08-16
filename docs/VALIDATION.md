@@ -9,7 +9,7 @@
 - geometry: host tests cover whole/zoomed/invalid overview geometry; device tests cover true two-pointer pinch/pan and S/E/chop target width, height, clipping, endpoints, and exact reversible nudge
 - accessibility behavior: viewport and handle actions report `false` when clamped/no-op instead of announcing a false success
 - recording boundary: existing pure recording-session and interruption coordinator tests cover mutual exclusion without activating a real microphone; physical recording quality/contention remains unclaimed
-- evidence: `scripts/collect-device-evidence.ps1` records clean source identity, Gradle logs, APK identities/signers, signer preflight, autosave before/after, `install -r`, base.apk readback, instrumentation output, package dumps, and logcat under one manifest
+- evidence: `scripts/collect-device-evidence.ps1` records clean source identity, Gradle logs, APK identities/signers, signer preflight, autosave before/after, `install -r`, base.apk readback, instrumentation output, package dumps, timestamp-bounded logcat, and final launcher/volume/rotation/project state under one manifest
 - gates remain split: `LOCAL_PASS` / `INSTRUMENTATION_PASS` / physical observation / spoken TalkBack / `HUMAN_GO`
 
 ## 2026-08-14 v0.13.1 playback interruption safety candidate
