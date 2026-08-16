@@ -56,6 +56,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Second Luna adversarial panel added an explicit accessibility click action whose label matches the waveform tap instruction, and hardened the evidence runner to use deterministic Gradle limits, a fixed androidTest APK path, and signer-first retained-data upgrades.
 - [x] 2026-08-16 — Follow-up adversarial review raised compact portrait targets, font scaling, and the scratch platter's missing semantic actions; 48 dp portrait rows, non-shrinking `sp`, and state-aware start/stop/left/right scratch actions are covered by focused LOCAL tests.
 - [x] 2026-08-17 — Added a read-only preflight plus pinned ChopLab-only API 36 Google Play AVD manifest. The required image is absent, so current virtual execution remains explicitly BLOCKED with no existing AVD mutation.
+- [x] 2026-08-17 — Parent fixed-point review expanded remaining phone portrait page, PAD edit, stepper, Layer Studio, scratch selector, and compact waveform controls to 48 dp. The dense 16-step lane remains a documented responsive-layout follow-up rather than a false 48 dp claim.
 
 ## Discoveries
 

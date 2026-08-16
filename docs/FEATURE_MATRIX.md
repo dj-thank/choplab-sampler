@@ -11,7 +11,7 @@
 | DJスクラッチ | 🧪 local/emulator UI | 元曲の波形で選んだsliceまたはS/E範囲、または選択PAD自身の範囲を左右dragで正逆再生し、離すと停止。drag速度はイベント頻度に依存しないpx/sへ正規化し、通常のgesture event間隔を42msで誤終了しない120ms idle policyをhost test。円盤はTalkBack向け開始・停止・左右操作と状態説明を公開。固定UIはemulator確認、実機の連続操作感と読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。Pixel 9a v0.10とv0.11 emulatorで固定表示を確認 |
-| スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのChopは波形＋右4×4 PADの左右分割、Beatはcompact操作列。360dp級portraitの主要header/mode/controlは48dp以上で、文字拡大時もcompact文字のsp値を縮めない。UI sourceにscroll APIなし |
+| スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのChopは波形＋右4×4 PADの左右分割、Beatはcompact操作列。360dp級portraitのheader/mode/control/page/PAD編集/stepper/Layer/Scratch/波形compact操作は48dp以上で、文字拡大時もcompact文字のsp値を縮めない。16-step全セルの48dp化はresponsive再設計待ち。UI sourceにscroll APIなし |
 | 曲を流しながらPADで刻む | 🧪 local/emulator | source再生中のCapture PADは空／割当済みにかかわらず現在位置を刻む。割当済みA01は旧音を鳴らさず現在素材へ上書きし、旧loop/scratch実行参照も解除 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
