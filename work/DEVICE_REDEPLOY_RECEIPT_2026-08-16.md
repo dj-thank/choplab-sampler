@@ -211,3 +211,16 @@ settings were re-read.
 The real audio-owner matrix now covers recording versus source playback, selected-source loop, and source
 preview in both the blocked and takeover directions exercised above. Full `DEVICE_PASS` remains withheld only
 for the actual spoken TalkBack traversal/custom-action path and other explicitly subjective `HUMAN_GO` items.
+
+## Final authoritative physical run — `20260816-220355-233297e3`
+
+- Clean source: `233297e39f404bb8e0080110c3d29a528dd8c615`, tree `47ce4e4bc2d1fc534b0175cfbbd9618ec714f199`.
+- App APK and installed base: 30,855,284 bytes, SHA-256 `9A3997B78D309A2B53C78A6B0DB2970D02E08DC656314B8F91F0A2F8BF1C9162`.
+- Test APK and installed test base: 10,589,229 bytes, SHA-256 `BE2588A01083D16F14CA01B6A3BAEAB086D5D0A03A36FE10238B5E05A4456DCE`.
+- Package/version/signer: `com.choplab.sampler` `0.13.1 (21)`; signer `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+- Data-preserving `adb install -r`, both installed-base readbacks, autosave three-generation preservation, and `OK (4 tests)` in `7.484 s` all PASS.
+- Real TalkBack plus touch exploration accepted a next-item gesture and visibly focused the corrected S/clustered-marker region. The framework tree exposed S, E, chop 1, and chop 2. Screenshots and dumps are stored with the manifest. Exact TTS text, full spoken order, and TalkBack's local custom-action menu remain `HUMAN_GO`, not an automated PASS.
+- Cold relaunch PASS in `929 ms`; all three autosave hashes still matched the pre-install baseline; app-scoped fatal/ANR matches `0`.
+- Safe return PASS: ChopLab force-stopped; X restored foreground; services `null`; accessibility `0`; touch exploration `null`; accessibility volume `1`; media volume `0`; rotation `1`.
+
+The objective device gate is complete for install identity, retained data, deterministic waveform gestures/geometry/actions, framework accessibility nodes, real TalkBack focus-path reachability, bounded audio-owner contention, relaunch, and crash/ANR absence. Spoken wording/order, subjective one-hand comfort, and subjective audio quality remain `HUMAN_GO`; no provider/public claim is made.
