@@ -113,13 +113,14 @@ class SourceWaveformDeviceTest {
 
     @Test
     fun endpointHandlesStayFullyTouchableAndRejectOutOfRangeActions() {
-        setDeterministicWaveform(startFrame = 0, endFrame = 1_000, markerFrame = 1)
+        setDeterministicWaveform(startFrame = 0, endFrame = 1_000, markerFrame = 1, secondMarkerFrame = 999)
         val waveformBounds = waveformNode().fetchSemanticsNode().boundsInRoot
         val start = handleNode("選択開始ハンドル")
         val end = handleNode("選択終了ハンドル")
         val marker = handleNode("チョップ1 の位置")
+        val upperMarker = handleNode("チョップ2 の位置")
 
-        listOf(start, end, marker).forEach { handle ->
+        listOf(start, end, marker, upperMarker).forEach { handle ->
             val bounds = handle.fetchSemanticsNode().boundsInRoot
             assertTrue(bounds.left >= waveformBounds.left)
             assertTrue(bounds.right <= waveformBounds.right)
@@ -129,15 +130,18 @@ class SourceWaveformDeviceTest {
         assertFalse(start.invokeCustomAction("少し前へ"))
         assertFalse(end.invokeCustomAction("少し後へ"))
         assertFalse(marker.invokeCustomAction("少し前へ"))
+        assertFalse(upperMarker.invokeCustomAction("少し後へ"))
         start.assertExactlyReversibleNudge("少し後へ", "少し前へ")
         end.assertExactlyReversibleNudge("少し前へ", "少し後へ")
         marker.assertExactlyReversibleNudge("少し後へ", "少し前へ")
+        upperMarker.assertExactlyReversibleNudge("少し前へ", "少し後へ")
     }
 
     private fun setDeterministicWaveform(
         startFrame: Int = 100,
         endFrame: Int = 900,
         markerFrame: Int = 500,
+        secondMarkerFrame: Int? = null,
     ) {
         val fixture = PcmAudio(
             id = 1L,
@@ -148,7 +152,12 @@ class SourceWaveformDeviceTest {
         composeRule.setContent {
             var start by remember { mutableIntStateOf(startFrame) }
             var end by remember { mutableIntStateOf(endFrame) }
-            val markers = remember { mutableStateListOf(markerFrame) }
+            val markers = remember {
+                mutableStateListOf<Int>().apply {
+                    add(markerFrame)
+                    secondMarkerFrame?.let(::add)
+                }
+            }
             MaterialTheme {
                 WaveformEditor(
                     audio = fixture,

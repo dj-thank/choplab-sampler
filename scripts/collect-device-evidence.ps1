@@ -62,6 +62,35 @@ function Get-PackageDumpValue {
     return $match.Groups[1].Value
 }
 
+function Restore-DeviceStateBestEffort {
+    param(
+        [Parameter(Mandatory)] [string]$TargetSerial,
+        [Parameter(Mandatory)] [string]$TargetDirectory,
+        [Parameter(Mandatory)] [string]$Foreground,
+        [Parameter(Mandatory)] [string]$Rotation,
+        [Parameter(Mandatory)] [string]$Volume
+    )
+    (& $adb -s $TargetSerial shell am force-stop com.choplab.sampler 2>&1) |
+        Set-Content -LiteralPath (Join-Path $TargetDirectory "force-stop.txt") -Encoding utf8
+    (& $adb -s $TargetSerial shell settings put system accelerometer_rotation $Rotation 2>&1) |
+        Set-Content -LiteralPath (Join-Path $TargetDirectory "rotation-restore.txt") -Encoding utf8
+    (& $adb -s $TargetSerial shell cmd media_session volume --stream 3 --set $Volume 2>&1) |
+        Set-Content -LiteralPath (Join-Path $TargetDirectory "volume-restore.txt") -Encoding utf8
+    if ($Foreground -match "launcher") {
+        (& $adb -s $TargetSerial shell input keyevent 3 2>&1) |
+            Set-Content -LiteralPath (Join-Path $TargetDirectory "foreground-restore.txt") -Encoding utf8
+    } else {
+        (& $adb -s $TargetSerial shell am start -n $Foreground 2>&1) |
+            Set-Content -LiteralPath (Join-Path $TargetDirectory "foreground-restore.txt") -Encoding utf8
+    }
+}
+
+$restoreRequired = $false
+$restoreSerial = $null
+$restoreDirectory = $null
+$restoreForeground = $null
+$restoreRotation = $null
+$restoreVolume = $null
 Push-Location $repoRoot
 try {
     $head = (& git rev-parse HEAD).Trim()
@@ -107,6 +136,8 @@ try {
     $appVersionName = Get-ApkManifestValue $appArtifact "version-name"
     $appVersionCode = Get-ApkManifestValue $appArtifact "version-code"
     $testPackage = Get-ApkManifestValue $testArtifact "application-id"
+    $testVersionName = Get-ApkManifestValue $testArtifact "version-name"
+    $testVersionCode = Get-ApkManifestValue $testArtifact "version-code"
     if ($appPackage -ne "com.choplab.sampler" -or $testPackage -ne "com.choplab.sampler.test") {
         throw "Unexpected APK package identity: app=$appPackage test=$testPackage"
     }
@@ -129,7 +160,14 @@ try {
         if (-not $volumeMatch.Success) { throw "Could not parse media volume before the run" }
         $volumeBefore = $volumeMatch.Groups[1].Value
         $foregroundMatch = [regex]::Match(($activityBefore -join "`n"), "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)")
-        $foregroundBefore = if ($foregroundMatch.Success) { $foregroundMatch.Groups[1].Value } else { "UNKNOWN" }
+        if (-not $foregroundMatch.Success) { throw "Could not parse foreground activity before the run" }
+        $foregroundBefore = $foregroundMatch.Groups[1].Value
+        $restoreRequired = $true
+        $restoreSerial = $Serial
+        $restoreDirectory = $runDirectory
+        $restoreForeground = $foregroundBefore
+        $restoreRotation = $rotationBefore
+        $restoreVolume = $volumeBefore
 
         $packageBefore = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", $appPackage) -LogPath (Join-Path $runDirectory "package-before.txt")
         $installedVersionNameBefore = Get-PackageDumpValue $packageBefore "versionName=([^\s]+)" "installed versionName before"
@@ -188,11 +226,17 @@ try {
         if ($installedTestHash -ne $testHash -or $installedTestSigner -ne $testSigner) {
             throw "Installed test APK identity mismatch"
         }
+        $testPackageDump = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", $testPackage) -LogPath (Join-Path $runDirectory "package-test.txt")
+        $installedTestVersionName = Get-PackageDumpValue $testPackageDump "versionName=([^\s]+)" "installed test versionName"
+        $installedTestVersionCode = Get-PackageDumpValue $testPackageDump "versionCode=(\d+)" "installed test versionCode"
+        if ($installedTestVersionName -ne $testVersionName -or $installedTestVersionCode -ne $testVersionCode) {
+            throw "Installed test package version differs from candidate"
+        }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "logcat", "-d", "-v", "threadtime", "-T", (($logcatStart | Select-Object -First 1).Trim())) -LogPath (Join-Path $runDirectory "logcat-window.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "force-stop", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "force-stop.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "put", "system", "accelerometer_rotation", $rotationBefore) -LogPath (Join-Path $runDirectory "rotation-restore.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "cmd", "media_session", "volume", "--stream", "3", "--set", $volumeBefore) -LogPath (Join-Path $runDirectory "volume-restore.txt") | Out-Null
-        if ($foregroundBefore -eq "UNKNOWN" -or $foregroundBefore -match "launcher") {
+        if ($foregroundBefore -match "launcher") {
             Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "input", "keyevent", "3") -LogPath (Join-Path $runDirectory "foreground-restore.txt") | Out-Null
         } else {
             Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "start", "-n", $foregroundBefore) -LogPath (Join-Path $runDirectory "foreground-restore.txt") | Out-Null
@@ -204,11 +248,12 @@ try {
         $foregroundFinalMatch = [regex]::Match(($activityFinal -join "`n"), "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)")
         $volumeFinal = if ($volumeFinalMatch.Success) { $volumeFinalMatch.Groups[1].Value } else { "UNKNOWN" }
         $foregroundFinal = if ($foregroundFinalMatch.Success) { $foregroundFinalMatch.Groups[1].Value } else { "UNKNOWN" }
-        $foregroundRestored = $foregroundBefore -eq "UNKNOWN" -or $foregroundFinal -eq $foregroundBefore -or
+        $foregroundRestored = $foregroundFinal -eq $foregroundBefore -or
             ($foregroundBefore -match "launcher" -and $foregroundFinal -match "launcher")
         if ($rotationFinal -ne $rotationBefore -or $volumeFinal -ne $volumeBefore -or -not $foregroundRestored) {
             throw "Device state restoration mismatch. See before/final evidence files"
         }
+        $restoreRequired = $false
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "run-as", "com.choplab.sampler", "ls", "files/projects") -LogPath (Join-Path $runDirectory "projects-final.txt") | Out-Null
         $deviceEvidence = [ordered]@{
             serial = $Serial
@@ -219,6 +264,8 @@ try {
             version_name = $installedVersionNameAfter
             version_code = $installedVersionCodeAfter
             test_package = $testPackage
+            test_version_name = $installedTestVersionName
+            test_version_code = $installedTestVersionCode
             install_log = "install.txt"
             instrumentation_log = "instrumentation.txt"
             autosave_before = "autosave-before.txt"
@@ -273,6 +320,8 @@ try {
             sha256 = $testHash
             signer_sha256 = $testSigner
             package = $testPackage
+            version_name = $testVersionName
+            version_code = $testVersionCode
         }
         device = $deviceEvidence
         gate = if ($InstallAndTest) { "INSTRUMENTATION_EVIDENCE_COLLECTED" } else { "LOCAL_ARTIFACT_EVIDENCE_COLLECTED" }
@@ -280,5 +329,9 @@ try {
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $runDirectory "manifest.json") -Encoding utf8
     Write-Output $runDirectory
 } finally {
+    if ($restoreRequired -and $restoreSerial -and $restoreDirectory) {
+        Restore-DeviceStateBestEffort -TargetSerial $restoreSerial -TargetDirectory $restoreDirectory `
+            -Foreground $restoreForeground -Rotation $restoreRotation -Volume $restoreVolume
+    }
     Pop-Location
 }
