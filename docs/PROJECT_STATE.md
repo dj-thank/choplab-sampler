@@ -1,5 +1,9 @@
 # Project state
 
+## Autosave revision and recovery ordering hardening — 2026-08-16
+
+Each autosave generation now has a synced revision record bound to the archive SHA-256. `AtomicProjectStore` re-reads verified on-disk revisions before every save, rejects older or conflicting equal revisions even after store/process recreation, rotates archive/metadata pairs together, and chooses the highest verified revision during recovery instead of allowing a stale pending file to outrank a newer backup. Legacy archives without revision metadata remain readable using the established generation priority. This is LOCAL persistence evidence; crash-at-every-filesystem-instruction fault injection and storage-device durability remain outside the current proof.
+
 ## Runtime command lifecycle hardening — 2026-08-16
 
 `SamplerEngine` command admission is now serialized with the same lifecycle boundary used by `start()` and `shutdown()`. Runtime commands admitted before shutdown are cleared by shutdown; commands racing after the stopped state are rejected and cannot remain in the mailbox for a later restart. Deterministic JVM regressions cover both the stopped/restarted sequence and concurrent producer/shutdown ordering. This is LOCAL concurrency evidence only; physical output latency, sustained command pressure, and audible behavior remain DEVICE/HUMAN boundaries.
