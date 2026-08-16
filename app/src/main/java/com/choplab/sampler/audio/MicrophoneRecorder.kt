@@ -47,6 +47,7 @@ class MicrophoneRecorder internal constructor(
     @Volatile private var worker: Thread? = null
     @Volatile private var outputFile: File? = null
     @Volatile private var failureMessage: String? = null
+    @Volatile private var deleteOutputWhenStopped = false
     @Volatile private var stopRequested = false
     @Volatile private var startupFinished = CountDownLatch(0)
 
@@ -67,6 +68,7 @@ class MicrophoneRecorder internal constructor(
         }
 
         failureMessage = null
+        deleteOutputWhenStopped = false
         outputFile = file
         file.parentFile?.mkdirs()
 
@@ -108,12 +110,14 @@ class MicrophoneRecorder internal constructor(
                     }
                 } catch (throwable: Throwable) {
                     failureMessage = throwable.message ?: "マイク録音中にエラーが発生しました"
+                    deleteOutputWhenStopped = true
                     onFailure(failureMessage!!)
                 } finally {
                     running.set(false)
                     runCatching { recorder.stop() }
                     runCatching { recorder.release() }
                     audioRecord = null
+                    if (deleteOutputWhenStopped) runCatching { file.delete() }
                     if (worker === Thread.currentThread()) worker = null
                 }
             }, "ChopLab-Microphone")
@@ -122,9 +126,11 @@ class MicrophoneRecorder internal constructor(
             }
         }.onFailure { throwable ->
             running.set(false)
+            deleteOutputWhenStopped = true
             runCatching { audioRecord?.release() }
             audioRecord = null
             failureMessage = throwable.message
+            runCatching { file.delete() }
         }.also {
             startupFinished.countDown()
         }
@@ -151,16 +157,19 @@ class MicrophoneRecorder internal constructor(
 
         runCatching { audioRecord?.stop() }
         if (!awaitRecorderWorker(activeWorker, timeoutMillis = 2_000L)) {
+            deleteOutputWhenStopped = true
             return Result.failure(IllegalStateException("マイク録音の停止に時間がかかっています"))
         }
         if (worker === activeWorker) worker = null
 
         val file = outputFile
         return if (failureMessage != null) {
+            runCatching { file?.delete() }
             Result.failure(IllegalStateException(failureMessage))
         } else if (file != null && file.exists() && file.length() > 44L) {
             Result.success(file)
         } else {
+            runCatching { file?.delete() }
             Result.failure(IllegalStateException("録音された音声がありません"))
         }
     }

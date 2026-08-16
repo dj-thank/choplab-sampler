@@ -50,10 +50,10 @@ class PlaybackCaptureService : Service() {
     @SuppressLint("MissingPermission")
     private fun startCapture(intent: Intent) {
         val generation = lifecycle.beginStart() ?: return
-        val outputDirectory = File(cacheDir, "captures").apply { mkdirs() }
+        val captureTempFiles = CaptureTempFileStore(File(cacheDir, "captures"))
         val session = CaptureSession(
             generation = generation,
-            outputFile = File(outputDirectory, "system_${System.currentTimeMillis()}.wav"),
+            outputFile = captureTempFiles.create("system"),
         )
         synchronized(sessionLock) { currentSession = session }
 

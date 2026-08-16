@@ -10,6 +10,7 @@ import com.choplab.sampler.audio.AudioDecoder
 import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.CaptureEventBus
+import com.choplab.sampler.audio.CaptureTempFileStore
 import com.choplab.sampler.audio.MicrophoneRecorder
 import com.choplab.sampler.audio.PlaybackCaptureService
 import com.choplab.sampler.audio.PlaybackCaptureState
@@ -135,6 +136,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     )
     private val editHistory = EditHistory(maxEntries = MAX_HISTORY_ENTRIES)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
+    private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
     private var autosaveJob: Job? = null
     private var scratchIdleJob: Job? = null
     private var projectRevision = 0L
@@ -145,6 +147,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private var discardNextSystemCaptureResult = false
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            captureTempFiles.cleanupStale(
+                nowMillis = System.currentTimeMillis(),
+                maxAgeMillis = STALE_CAPTURE_MAX_AGE_MS,
+            )
+        }
         engine.start()
         observePlaybackCapture()
         pollTransportStep()
@@ -321,41 +329,46 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         uri: Uri,
         operation: Long,
         completedRecordingKind: RecordingKind? = null,
+        ownedCaptureFile: File? = null,
     ) {
         viewModelScope.launch {
-            if (!projectOperations.isCurrent(operation)) return@launch
-            engine.stopAllPlayback()
-            playbackInterruptionCoordinator.endPlaybackSession()
-            mutableUiState.update(::beginSourceReplacement)
-            runCatching { decoder.decode(uri) }
-                .onSuccess { audio ->
-                    projectOperations.completeIfCurrent(operation) {
-                        val previous = mutableUiState.value
-                        editHistory.reset()
-                        val replaced = preserveAppliedSourceTruthWhileStopping(
-                            previousState = previous,
-                            replacementState = replaceSourceAudio(previous, audio),
-                        )
-                        mutableUiState.value = replaced
-                        engine.updateAllPads(replaced.pads)
-                        syncPattern()
-                        projectRevision++
-                        scheduleAutosave()
-                    }
-                }
-                .onFailure { throwable ->
-                    projectOperations.completeIfCurrent(operation) {
-                        mutableUiState.update {
-                            val completed = completedRecordingKind
-                                ?.let { kind -> endRecordingSession(it, kind) }
-                                ?: it
-                            completed.copy(
-                                isLoading = false,
-                                statusMessage = throwable.message ?: "音声を読み込めませんでした",
+            try {
+                if (!projectOperations.isCurrent(operation)) return@launch
+                engine.stopAllPlayback()
+                playbackInterruptionCoordinator.endPlaybackSession()
+                mutableUiState.update(::beginSourceReplacement)
+                runCatching { decoder.decode(uri) }
+                    .onSuccess { audio ->
+                        projectOperations.completeIfCurrent(operation) {
+                            val previous = mutableUiState.value
+                            editHistory.reset()
+                            val replaced = preserveAppliedSourceTruthWhileStopping(
+                                previousState = previous,
+                                replacementState = replaceSourceAudio(previous, audio),
                             )
+                            mutableUiState.value = replaced
+                            engine.updateAllPads(replaced.pads)
+                            syncPattern()
+                            projectRevision++
+                            scheduleAutosave()
                         }
                     }
-                }
+                    .onFailure { throwable ->
+                        projectOperations.completeIfCurrent(operation) {
+                            mutableUiState.update {
+                                val completed = completedRecordingKind
+                                    ?.let { kind -> endRecordingSession(it, kind) }
+                                    ?: it
+                                completed.copy(
+                                    isLoading = false,
+                                    statusMessage = throwable.message ?: "音声を読み込めませんでした",
+                                )
+                            }
+                        }
+                    }
+            } finally {
+                ownedCaptureFile?.let(captureTempFiles::deleteOwned)
+            }
         }
     }
 
@@ -369,9 +382,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             "マイク素材録音を準備中です…",
         ) ?: return
         val operation = microphoneSourceCapture.begin()
-        val directory = File(getApplication<Application>().cacheDir, "captures").apply { mkdirs() }
-        val file = File(directory, "microphone_${System.currentTimeMillis()}.wav")
+        val file = captureTempFiles.create("microphone")
         val result = microphoneRecorder.start(file) { message ->
+            captureTempFiles.deleteOwned(file)
             viewModelScope.launch {
                 projectOperations.completeIfCurrent(operation) {
                     applyRecorderFailure(RecordingKind.SOURCE_MICROPHONE, message)
@@ -387,6 +400,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }.onFailure { throwable ->
+            captureTempFiles.deleteOwned(file)
             microphoneSourceCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
                 applyRecorderFailure(
@@ -415,6 +429,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     uri = Uri.fromFile(file),
                     operation = operation,
                     completedRecordingKind = RecordingKind.SOURCE_MICROPHONE,
+                    ownedCaptureFile = file,
                 )
             }.onFailure { throwable ->
                 projectOperations.completeIfCurrent(operation) {
@@ -446,9 +461,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             "ボーカル録音を準備中です…",
         ) ?: return
         val operation = vocalCapture.begin()
-        val directory = File(getApplication<Application>().cacheDir, "captures").apply { mkdirs() }
-        val file = File(directory, "vocal_${System.currentTimeMillis()}.wav")
+        val file = captureTempFiles.create("vocal")
         microphoneRecorder.start(file) { message ->
+            captureTempFiles.deleteOwned(file)
             viewModelScope.launch {
                 projectOperations.completeIfCurrent(operation) {
                     finishVocalRecordingFailure(
@@ -478,6 +493,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }.onFailure { throwable ->
+            captureTempFiles.deleteOwned(file)
             vocalCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
                 applyRecorderFailure(
@@ -502,7 +518,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val stopped = withContext(Dispatchers.IO) { microphoneRecorder.stop() }
             stopped.onSuccess { file ->
-                runCatching { decoder.decode(Uri.fromFile(file)) }
+                runCatching {
+                    captureTempFiles.consume(file) { decoder.decode(Uri.fromFile(file)) }
+                }
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
                             assignVocalTake(audio)
@@ -808,7 +826,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         autosaveJob?.cancel()
         engine.stopAllPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
-        runCatching { microphoneRecorder.stop() }
+        runCatching { microphoneRecorder.stop().onSuccess(captureTempFiles::deleteOwned) }
         runCatching {
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))
@@ -2060,6 +2078,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             uri = Uri.fromFile(captureState.file),
                             operation = operation,
                             completedRecordingKind = RecordingKind.SOURCE_SYSTEM_AUDIO,
+                            ownedCaptureFile = captureState.file,
                         )
                     }
                     is PlaybackCaptureState.Error -> {
@@ -2196,10 +2215,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         const val AUTOSAVE_DELAY_MS = 900L
         const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
         const val LIVE_CHOP_LATENCY_SECONDS = 0.06
+        const val STALE_CAPTURE_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
     }
 
     override fun onCleared() {
-        runCatching { microphoneRecorder.stop() }
+        runCatching { microphoneRecorder.stop().onSuccess(captureTempFiles::deleteOwned) }
         runCatching {
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))

@@ -1,5 +1,9 @@
 # Project state
 
+## App-owned capture privacy cleanup — 2026-08-16
+
+Microphone, vocal, and system-capture WAVs now pass through one allowlisted app-cache owner. Successful decode, decode failure, operation invalidation, recorder start failure, reset discard, and ViewModel teardown delete the exact owned temporary file. Startup performs an IO-thread sweep only for ChopLab-named capture WAVs older than 24 hours. SAF imports, exported WAVs, project archives, and unrelated cache files are outside this deletion boundary. Deterministic filesystem tests cover success/failure cleanup and reject similarly located but non-owned names. This is LOCAL privacy evidence; Android process-death timing remains DEVICE-only.
+
 ## Playback-capture teardown and queue-clear hardening — 2026-08-16
 
 System-audio capture now owns one generation-tagged session at a time. STOP during setup prevents the recorder from reaching `RECORDING`; STOP during a blocking read first requests `AudioRecord.stop()`, then releases the recorder after a bounded wait, and terminalizes the foreground service within a 1.5 s + 0.5 s local contract. A stopped/old worker cannot clear or publish over a newer generation. Deterministic fake/worker tests cover startup cancellation, generation isolation, and the stop/release fallback; physical `AudioRecord`/`MediaProjection` ordering remains DEVICE-only.

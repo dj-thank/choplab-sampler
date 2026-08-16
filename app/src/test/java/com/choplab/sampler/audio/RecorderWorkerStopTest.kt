@@ -52,6 +52,7 @@ class RecorderWorkerStopTest {
             assertFalse(recorder.isRecording)
             assertEquals(0, startCalls.get())
             assertEquals(1, releaseCalls.get())
+            assertFalse("cancelled startup must not retain its app-owned output", output.exists())
         } finally {
             allowCreation.countDown()
             startThread.join(1_000L)

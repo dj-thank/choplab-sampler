@@ -112,6 +112,7 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 
 ## Progress
 
+- [x] 2026-08-16 — Centralized app-owned capture WAV lifecycle: terminal decode/start/reset/teardown paths delete the exact allowlisted file, and a 24-hour startup sweep removes only stale ChopLab capture names; filesystem ownership tests are green.
 - [x] 2026-08-16 — Added generation-owned Playback Capture sessions and a bounded stop→release watchdog; deterministic tests cover startup STOP, old-generation isolation, and a blocking worker released within the 1.5 s + 0.5 s contract.
 - [x] 2026-08-16 — Added queue clear generations so an `offerPrepared` reserved before shutdown cannot enqueue afterwards or leak capacity; focused concurrent regression is green.
 - [x] 2026-08-16 — Added a fake recorder-input seam and a deterministic initialization-race test so `stop()` cannot be lost while the platform recorder is being created; full local build gate passed.
