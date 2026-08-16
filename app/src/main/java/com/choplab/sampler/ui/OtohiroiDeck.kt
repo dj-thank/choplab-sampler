@@ -454,7 +454,7 @@ private fun PerformanceWorkspace(
         )
         PadPageStrip(
             state = state,
-            height = if (metrics.density == DeckDensity.COMPACT) 25.dp else 29.dp,
+            height = metrics.controlHeightDp.dp,
             onSelectPage = viewModel::selectPadPage,
         )
         PadGrid(
@@ -571,7 +571,7 @@ private fun ChopCoachRow(
     onImportAudio: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(34.dp),
+        modifier = Modifier.fillMaxWidth().height(48.dp),
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
         BeginnerCoachBar(
@@ -1215,7 +1215,7 @@ private fun SelectedPadQuickEditor(
                 label = "KEY -",
                 onClick = { viewModel.setSelectedPadPitch(pad.pitchSemitones - 1f) },
                 enabled = pad.isAssigned,
-                modifier = Modifier.width(40.dp).fillMaxHeight(),
+                modifier = Modifier.width(48.dp).fillMaxHeight(),
                 compact = true,
             )
             ValueDisplay(
@@ -1227,7 +1227,7 @@ private fun SelectedPadQuickEditor(
                 label = "KEY +",
                 onClick = { viewModel.setSelectedPadPitch(pad.pitchSemitones + 1f) },
                 enabled = pad.isAssigned,
-                modifier = Modifier.width(40.dp).fillMaxHeight(),
+                modifier = Modifier.width(48.dp).fillMaxHeight(),
                 compact = true,
             )
             if (!expanded) {
@@ -1328,7 +1328,7 @@ private fun PadWorkspace(
                     height = metrics.controlHeightDp.dp,
                     onSelectBank = viewModel::selectBank,
                 )
-                PadPageStrip(state, 27.dp, viewModel::selectPadPage)
+                PadPageStrip(state, metrics.controlHeightDp.dp, viewModel::selectPadPage)
                 PadGrid(
                     pads = state.visiblePads(),
                     selectedPad = state.selectedPad,
@@ -1362,7 +1362,7 @@ private fun PadWorkspace(
                 height = metrics.controlHeightDp.dp,
                 onSelectBank = viewModel::selectBank,
             )
-            PadPageStrip(state, 27.dp, viewModel::selectPadPage)
+            PadPageStrip(state, metrics.controlHeightDp.dp, viewModel::selectPadPage)
             PadGrid(
                 pads = state.visiblePads(),
                 selectedPad = state.selectedPad,
@@ -1521,7 +1521,7 @@ private fun PadTrimEditor(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().height(44.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             MachineButton(
@@ -1539,7 +1539,7 @@ private fun PadTrimEditor(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().height(40.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             MachineButton(
@@ -1811,7 +1811,7 @@ private fun SequenceWorkspace(
                 )
                 PadPageStrip(
                     state = state,
-                    height = if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
+                    height = metrics.controlHeightDp.dp,
                     onSelectPage = viewModel::selectPlayablePadPage,
                 )
                 BeatSoundRail(
@@ -2385,7 +2385,7 @@ private fun LayerStudio(
                         )
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
                         horizontalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
                         LayerStudioPage.entries.forEach { candidate ->
@@ -2458,8 +2458,8 @@ private fun SampleLayerStudio(
             text = "メロディー・ドラム・SE・声を選び、好きな間隔で同じビートへ重ねます",
             modifier = Modifier.fillMaxWidth().height(30.dp),
         )
-        BankStrip(state.selectedBank, 44.dp, viewModel::selectPlayableBank)
-        PadPageStrip(state, 27.dp, viewModel::selectPlayablePadPage)
+        BankStrip(state.selectedBank, 48.dp, viewModel::selectPlayableBank)
+        PadPageStrip(state, 48.dp, viewModel::selectPlayablePadPage)
         BeatSoundRail(
             pads = state.visiblePads(),
             selectedPad = state.selectedPad,
@@ -2469,13 +2469,13 @@ private fun SampleLayerStudio(
         )
         SelectedPadQuickEditor(
             state = state,
-            height = 44.dp,
+            height = 48.dp,
             expanded = false,
             onOpenDetails = null,
             viewModel = viewModel,
         )
         Row(
-            modifier = Modifier.fillMaxWidth().height(46.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             PlacementPresetChoices.forEach { (grid, label) ->
@@ -2523,7 +2523,7 @@ private fun DrumKitStudio(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().height(46.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             ValueDisplay(
@@ -2787,7 +2787,7 @@ private fun ScratchStudio(
             modifier = Modifier.fillMaxWidth().height(32.dp),
         )
         Row(
-            modifier = Modifier.fillMaxWidth().height(42.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             ScratchTarget.entries.forEach { option ->
@@ -2810,7 +2810,7 @@ private fun ScratchStudio(
                 modifier = Modifier.fillMaxWidth().height(108.dp),
             )
         } else {
-            BankStrip(state.selectedBank, 38.dp, viewModel::selectPlayableBank)
+            BankStrip(state.selectedBank, 48.dp, viewModel::selectPlayableBank)
             BeatSoundRail(
                 pads = state.visiblePads(),
                 selectedPad = state.selectedPad,
@@ -2820,7 +2820,7 @@ private fun ScratchStudio(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().height(38.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             ScratchSensitivity.entries.forEach { option ->
@@ -3405,7 +3405,7 @@ private fun StepperControl(
             label = "-",
             onClick = onDecrease,
             enabled = enabled,
-            modifier = Modifier.width(40.dp).fillMaxHeight(),
+            modifier = Modifier.width(48.dp).fillMaxHeight(),
             compact = true,
         )
         ValueDisplay(
@@ -3417,7 +3417,7 @@ private fun StepperControl(
             label = "+",
             onClick = onIncrease,
             enabled = enabled,
-            modifier = Modifier.width(40.dp).fillMaxHeight(),
+            modifier = Modifier.width(48.dp).fillMaxHeight(),
             compact = true,
         )
     }

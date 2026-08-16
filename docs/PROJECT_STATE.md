@@ -20,7 +20,7 @@ The former `RESET ALL / 完全リセット` copy overstated what the recoverable
 
 ## Compact portrait and scratch accessibility — 2026-08-16
 
-The phone-first portrait layout now keeps header, mode, and primary control rows at a 48 dp minimum on 360 dp-class widths. Large Android font scales no longer cause compact machine-button typography to shrink from its normal `sp` value. The scratch platter now publishes a stopped/active state plus explicit start, stop, left, and right accessibility actions with fail-closed no-op behavior when audio is unavailable or the action does not match the current state. Focused JVM policy tests and androidTest compilation pass. This is LOCAL semantics/layout evidence; TalkBack wording, physical one-hand comfort, and audible scratch feel remain HUMAN/DEVICE boundaries.
+The phone-first portrait layout now keeps header, mode, primary control, page selector, PAD edit/stepper, Layer Studio, scratch selector, and compact waveform-control rows at a 48 dp minimum on 360 dp-class widths. Large Android font scales no longer cause compact machine-button typography to shrink from its normal `sp` value. The scratch platter now publishes a stopped/active state plus explicit start, stop, left, and right accessibility actions with fail-closed no-op behavior when audio is unavailable or the action does not match the current state. Focused JVM policy tests and androidTest compilation pass. This is LOCAL semantics/layout evidence; the dense 16-step lane needs a separate responsive editing design to make every cell 48 dp without breaking the no-scroll contract, and TalkBack wording, physical one-hand comfort, and audible scratch feel remain HUMAN/DEVICE boundaries.
 
 ## Playback UI truth and recording edit ownership — 2026-08-16
 

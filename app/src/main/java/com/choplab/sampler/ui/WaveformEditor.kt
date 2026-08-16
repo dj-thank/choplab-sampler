@@ -384,7 +384,7 @@ fun WaveformEditor(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp),
+                    .height(48.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 ViewportControlButton(
