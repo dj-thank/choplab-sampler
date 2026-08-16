@@ -80,7 +80,7 @@ the run did not prove an actual spoken TalkBack focus traversal/order with the a
 real microphone recording/recording-playback contention was intentionally not initiated. Subjective one-hand feel
 and audio quality remain `HUMAN_GO` work. `PROVIDER_PASS`, `PUBLIC_PASS`, and `HUMAN_GO` are not claimed.
 
-## Adversarial-review remediation rerun
+## Historical adversarial-review remediation run (superseded by the fail-closed rerun below)
 
 The authoritative rerun is `work/device-evidence/20260816-184328-d01a299a/manifest.json`.
 Unlike the earlier narrative-only receipt, this run binds one clean Git object to the build, APKs, device,
@@ -105,3 +105,29 @@ The deterministic tests do not open `MainActivity`, read autosave, import user a
 or claim spoken TalkBack output. They establish `INSTRUMENTATION_PASS` for Compose gesture/semantics/geometry
 contracts. Spoken TalkBack focus order, physical one-hand comfort, and subjective audio remain separate checks;
 full `DEVICE_PASS` and `HUMAN_GO` remain withheld.
+
+## Authoritative fail-closed rerun
+
+The authoritative manifest is `work/device-evidence/20260816-185024-61a02ec3/manifest.json`.
+It was collected from clean HEAD `61a02ec3b2ad06ed1b7fdd074f70248741af6dbb` on exact serial
+`5A121JEBF08094`, after Sanporoid explicitly released the Pixel.
+
+- App APK: `outputs/ChopLab-v0.13.1-61a02ec-waveform-evidence-debug.apk`, `31,749,939` bytes,
+  SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`
+- Android-test APK: `outputs/ChopLab-v0.13.1-61a02ec-waveform-evidence-androidTest.apk`, `2,409,901` bytes,
+  SHA-256 `DD6C98DE009CE3F98730713E23393E9842EE16AC0B9A58D2A098F190CFD1E376`
+- Candidate, installed app, and installed test identities were machine-checked: package
+  `com.choplab.sampler`, version `0.13.1 (21)`, test package `com.choplab.sampler.test`, signer
+  `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+- `adb install -r` returned `Success`; app and test `base.apk` readbacks matched their candidate hashes.
+- All three autosave hashes matched before/after; any mismatch now terminates the runner.
+- Instrumentation reported `OK (3 tests)` in `4.536 s`, including marker endpoint/clipping and
+  boundary no-op coverage in addition to true two-pointer injection and reversible actions.
+- The timestamp-bounded log window contained zero app-scoped fatal/ANR matches.
+- Phone state was snapshotted and restored: Launcher before/final, media volume `14` before/final,
+  automatic rotation `1` before/final. ChopLab was force-stopped and the Pixel was explicitly returned
+  to Sanporoid; uninstall and clear-data were never used.
+
+This promotes the deterministic contracts and exact deployment chain to `INSTRUMENTATION_PASS`, not full
+`DEVICE_PASS`. Actual TalkBack speech/focus traversal, real microphone recording/contention, subjective
+one-hand comfort, and audio quality remain explicitly unclaimed and require separate human-supervised evidence.
