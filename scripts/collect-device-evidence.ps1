@@ -87,7 +87,7 @@ try {
         if (-not $Serial) { throw "-Serial is required with -InstallAndTest" }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "get-state") -LogPath (Join-Path $runDirectory "adb-state.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("devices", "-l") -LogPath (Join-Path $runDirectory "adb-devices.txt") | Out-Null
-        $logcatStart = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "date", "+%m-%d %H:%M:%S.000") -LogPath (Join-Path $runDirectory "logcat-start.txt")
+        $logcatStart = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "date", "+%s") -LogPath (Join-Path $runDirectory "logcat-start.txt")
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "package-before.txt") | Out-Null
         $packagePathOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "pm", "path", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "pm-path-before.txt")
         $packagePath = (($packagePathOutput | Select-Object -First 1) -replace "^package:", "").Trim()
