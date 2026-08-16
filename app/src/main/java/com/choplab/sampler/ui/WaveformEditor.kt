@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -180,6 +181,7 @@ fun WaveformEditor(
                         } else {
                             "音声波形。タップした位置へ移動"
                         }
+                        stateDescription = waveformViewportStateDescription(viewport)
                         customActions = waveformViewportAccessibilityActions(
                             onPrevious = {
                                 scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll
@@ -488,6 +490,8 @@ private fun SliceMarkerHandle(
     val density = LocalDensity.current
     val handleWidthPx = with(density) { 48.dp.toPx() }
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
+    val handleLeftPx = (x - handleWidthPx / 2f)
+        .coerceIn(0f, (canvasWidthPx - handleWidthPx).coerceAtLeast(0f))
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
     var accumulatedDragPx by remember { mutableFloatStateOf(0f) }
@@ -500,7 +504,7 @@ private fun SliceMarkerHandle(
 
     Box(
         modifier = Modifier
-            .offset { IntOffset((x - handleWidthPx / 2f).roundToInt(), 0) }
+            .offset { IntOffset(handleLeftPx.roundToInt(), 0) }
             .width(48.dp)
             .fillMaxHeight()
             .draggable(
@@ -513,6 +517,7 @@ private fun SliceMarkerHandle(
             )
             .semantics {
                 contentDescription = "チョップ$markerNumber の位置"
+                stateDescription = "${frame.coerceAtLeast(0)}フレーム"
                 customActions = waveformNudgeActions(
                     frame = frame,
                     nudgeFrames = accessibilityNudgeFrames,
@@ -523,6 +528,9 @@ private fun SliceMarkerHandle(
     ) {
         Box(
             modifier = Modifier
+                .offset {
+                    IntOffset((x - handleLeftPx - handleWidthPx / 2f).roundToInt(), 0)
+                }
                 .width(2.dp)
                 .fillMaxHeight()
                 .background(color.copy(alpha = 0.82f)),
@@ -553,6 +561,8 @@ private fun SelectionHandle(
     val density = LocalDensity.current
     val handleWidthPx = with(density) { 48.dp.toPx() }
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
+    val handleLeftPx = (x - handleWidthPx / 2f)
+        .coerceIn(0f, (canvasWidthPx - handleWidthPx).coerceAtLeast(0f))
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
     var accumulatedDragPx by remember { mutableFloatStateOf(0f) }
@@ -565,7 +575,7 @@ private fun SelectionHandle(
 
     Box(
         modifier = Modifier
-            .offset { IntOffset((x - handleWidthPx / 2f).roundToInt(), 0) }
+            .offset { IntOffset(handleLeftPx.roundToInt(), 0) }
             .width(48.dp)
             .fillMaxHeight()
             .draggable(
@@ -578,6 +588,7 @@ private fun SelectionHandle(
             )
             .semantics {
                 contentDescription = if (label == "S") "選択開始ハンドル" else "選択終了ハンドル"
+                stateDescription = "${frame.coerceAtLeast(0)}フレーム"
                 customActions = waveformNudgeActions(
                     frame = frame,
                     nudgeFrames = accessibilityNudgeFrames,
@@ -588,6 +599,9 @@ private fun SelectionHandle(
     ) {
         Box(
             modifier = Modifier
+                .offset {
+                    IntOffset((x - handleLeftPx - handleWidthPx / 2f).roundToInt(), 0)
+                }
                 .width(3.dp)
                 .fillMaxHeight()
                 .background(color.copy(alpha = 0.92f)),

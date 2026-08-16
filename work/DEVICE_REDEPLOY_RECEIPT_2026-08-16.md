@@ -40,3 +40,42 @@ still require interactive human/device verification.
 Interactive E2E stopped without further input when a different app became foreground. Portrait/rotation,
 waveform gestures and handles, TalkBack traversal, STOP/BACK/UNDO/REDO recovery, playback ownership,
 and relaunch remain `DEVICE_UNVERIFIED`; this receipt does not promote them to `DEVICE_PASS`.
+
+## Final accessible-waveform device run
+
+- Source baseline: `ebdce0e8d1a8294f0b03a9ddd4c3e2dec6c5720a`; final commit is the commit containing this section.
+- Production APK: `outputs/ChopLab-v0.13.1-waveform-accessibility-final-debug.apk`
+- Production APK SHA-256 / installed `base.apk` readback: `2618F161128197DBD517E55E84BB9FF2DCB6BA591E01225A0254888F1E277FB1` (exact match)
+- Production APK size: `31,743,455` bytes
+- Package/version: `com.choplab.sampler` `0.13.1` (`21`)
+- Production and installed signer SHA-256: `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- Install method/result: serial-fixed `adb install -r`, `Success`; no uninstall or clear-data.
+- Final test APK: `outputs/ChopLab-v0.13.1-waveform-accessibility-final-v2-androidTest.apk`
+- Final test APK SHA-256: `AADDD7556633B185479B8D15207E6A79DC60A0EF672303581BB3F7400D5E7520`
+- Test APK signer SHA-256: `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+
+### Objective device results
+
+- PASS: portrait 1080x2424 main flow fit; all major controls were present without a required scroll. Rotation remained portrait-locked and automatic rotation was restored to `1`.
+- PASS: real two-pointer Compose injection changed the viewport for pinch and horizontal pan.
+- PASS: TalkBack semantics announced whole/zoomed viewport state; previous range, next range, and reset custom actions executed and changed/restored the state.
+- PASS: S, E, and chop-1 exposed at least 48 dp device bounds, frame state descriptions, and reversible nudge actions.
+- PASS: SAVE-screen UNDO and REDO both reported the expected restored/redone status; BACK and ALL STOP returned safely without a crash.
+- PASS: beat playback, selected-source loop, source sampling preview, and ALL STOP transitions were exercised at media volume 0. Starting beat playback while the selected-source loop was active stopped the prior owner.
+- PASS: force-stop/relaunch restored `MainActivity` in stopped state; no app-scoped fatal exception or ANR was found in the observation window.
+- PASS: the final instrumentation run completed `OK (2 tests)` in `22.495 s` on Pixel 9a serial `5A121JEBF08094`.
+
+### Data boundary
+
+Each production `adb install -r` preserved the three pre-install autosave hashes recorded above. The reversible
+E2E edit intentionally caused normal autosave-generation rotation, so the final three archive byte hashes are
+not claimed to equal the pre-E2E hashes. After the run, the temporary `autosave.pending.choplab` completed and
+disappeared; the current archive's `project.txt` was read on-device and its `steps` row was restored to empty.
+No project file was overwritten or deleted outside the app.
+
+### Final gate
+
+`LOCAL_PASS` and the objective device checks listed above are established. Full `DEVICE_PASS` remains withheld:
+the run did not prove an actual spoken TalkBack focus traversal/order with the accessibility service enabled, and
+real microphone recording/recording-playback contention was intentionally not initiated. Subjective one-hand feel
+and audio quality remain `HUMAN_GO` work. `PROVIDER_PASS`, `PUBLIC_PASS`, and `HUMAN_GO` are not claimed.
