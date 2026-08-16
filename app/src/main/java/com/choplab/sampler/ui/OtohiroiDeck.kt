@@ -53,6 +53,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -3581,16 +3582,31 @@ private fun SourceWaveform(
                     )
                 }
                 .pointerInput(visibleAudio?.id, visibleStart, visibleFrames) {
-                    detectTransformGestures { centroid, _, zoomChange, _ ->
-                        if (size.width <= 0 || zoomChange == 1f) return@detectTransformGestures
+                    detectTransformGestures { centroid, pan, zoomChange, _ ->
+                        if (size.width <= 0) return@detectTransformGestures
                         val total = visibleAudio?.frameCount ?: 1
                         val focusFrame = waveformFrameAtX(centroid.x, size.width.toFloat(), visibleStart, visibleFrames, total)
                         val next = zoomViewportAtFocus(focusFrame, total, zoom, zoomChange, 64f)
-                        scroll = next.scroll
-                        zoom = next.zoom
+                        val panned = panWaveformViewport(total, next.zoom, next.scroll, -pan.x / size.width)
+                        scroll = panned.scroll
+                        zoom = panned.zoom
                     }
                 }
-                .semantics { contentDescription = "ソース波形。タップで再生位置を移動" },
+                .semantics {
+                    contentDescription = "ソース波形。タップで再生位置を移動。2本指で拡大と左右移動"
+                    customActions = waveformViewportAccessibilityActions(
+                        onPrevious = {
+                            scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll
+                        },
+                        onNext = {
+                            scroll = panWaveformViewport(totalFrames, zoom, scroll, 0.5f).scroll
+                        },
+                        onReset = {
+                            zoom = 1f
+                            scroll = 0f
+                        },
+                    )
+                },
         ) {
             val source = visibleAudio ?: return@Canvas
             val values = peaks ?: return@Canvas
@@ -3605,6 +3621,14 @@ private fun SourceWaveform(
                     strokeWidth = 1.2f,
                 )
             }
+
+            drawViewportOverview(
+                visibleStart = visibleStart,
+                visibleFrames = visibleFrames,
+                totalFrames = source.frameCount,
+                trackColor = Color(0xFF3B3324),
+                viewportColor = DeckLamp,
+            )
 
             val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.rgb(26, 13, 0)

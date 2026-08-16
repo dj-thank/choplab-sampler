@@ -154,8 +154,8 @@ fun WaveformEditor(
                         )
                     }
                     .pointerInput(audio.id, visibleStart, visibleFrames) {
-                        detectTransformGestures { centroid, _, zoomChange, _ ->
-                            if (canvasSize.width <= 0 || zoomChange == 1f) return@detectTransformGestures
+                        detectTransformGestures { centroid, pan, zoomChange, _ ->
+                            if (canvasSize.width <= 0) return@detectTransformGestures
                             val focusFrame = waveformFrameAtX(
                                 centroid.x,
                                 canvasSize.width.toFloat(),
@@ -164,8 +164,14 @@ fun WaveformEditor(
                                 totalFrames,
                             )
                             val next = zoomViewportAtFocus(focusFrame, totalFrames, zoom, zoomChange, maximumZoom)
-                            scroll = next.scroll
-                            zoom = next.zoom
+                            val panned = panWaveformViewport(
+                                totalFrames = totalFrames,
+                                zoom = next.zoom,
+                                scroll = next.scroll,
+                                fraction = -pan.x / canvasSize.width,
+                            )
+                            scroll = panned.scroll
+                            zoom = panned.zoom
                         }
                     }
                     .semantics {
@@ -174,6 +180,18 @@ fun WaveformEditor(
                         } else {
                             "音声波形。タップした位置へ移動"
                         }
+                        customActions = waveformViewportAccessibilityActions(
+                            onPrevious = {
+                                scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll
+                            },
+                            onNext = {
+                                scroll = panWaveformViewport(totalFrames, zoom, scroll, 0.5f).scroll
+                            },
+                            onReset = {
+                                zoom = 1f
+                                scroll = 0f
+                            },
+                        )
                     },
             ) {
                 drawRect(backgroundColor)
@@ -204,6 +222,14 @@ fun WaveformEditor(
                 drawWaveformEnvelope(
                     envelope = waveformEnvelope,
                     color = waveformColor,
+                )
+
+                drawViewportOverview(
+                    visibleStart = visibleStart,
+                    visibleFrames = visibleFrames,
+                    totalFrames = totalFrames,
+                    trackColor = zeroLineColor,
+                    viewportColor = markerColor,
                 )
 
                 sliceMarkers.forEach { marker ->
@@ -394,6 +420,25 @@ internal fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): 
     return centeredStart.toFloat() / maximumVisibleStart
 }
 
+internal fun waveformViewportAccessibilityActions(
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onReset: () -> Unit,
+): List<CustomAccessibilityAction> = listOf(
+    CustomAccessibilityAction("前の範囲を表示") {
+        onPrevious()
+        true
+    },
+    CustomAccessibilityAction("次の範囲を表示") {
+        onNext()
+        true
+    },
+    CustomAccessibilityAction("全体表示に戻す") {
+        onReset()
+        true
+    },
+)
+
 @Composable
 private fun ViewportControlButton(
     label: String,
@@ -441,7 +486,7 @@ private fun SliceMarkerHandle(
     if (canvasWidthPx <= 1f) return
     val x = frameToX(frame, visibleStart, visibleFrames, canvasWidthPx)
     val density = LocalDensity.current
-    val handleWidthPx = with(density) { 22.dp.toPx() }
+    val handleWidthPx = with(density) { 48.dp.toPx() }
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
@@ -456,7 +501,7 @@ private fun SliceMarkerHandle(
     Box(
         modifier = Modifier
             .offset { IntOffset((x - handleWidthPx / 2f).roundToInt(), 0) }
-            .width(22.dp)
+            .width(48.dp)
             .fillMaxHeight()
             .draggable(
                 state = dragState,
@@ -506,7 +551,7 @@ private fun SelectionHandle(
     if (canvasWidthPx <= 1f) return
     val x = frameToX(frame, visibleStart, visibleFrames, canvasWidthPx)
     val density = LocalDensity.current
-    val handleWidthPx = with(density) { 26.dp.toPx() }
+    val handleWidthPx = with(density) { 48.dp.toPx() }
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
@@ -521,7 +566,7 @@ private fun SelectionHandle(
     Box(
         modifier = Modifier
             .offset { IntOffset((x - handleWidthPx / 2f).roundToInt(), 0) }
-            .width(26.dp)
+            .width(48.dp)
             .fillMaxHeight()
             .draggable(
                 state = dragState,
@@ -650,6 +695,30 @@ private fun DrawScope.drawWaveformEnvelope(
         )
         bucket++
     }
+}
+
+internal fun DrawScope.drawViewportOverview(
+    visibleStart: Int,
+    visibleFrames: Int,
+    totalFrames: Int,
+    trackColor: Color,
+    viewportColor: Color,
+) {
+    val safeTotal = totalFrames.coerceAtLeast(1)
+    val height = 4.dp.toPx().coerceAtMost(size.height)
+    val top = size.height - height
+    drawRect(
+        color = trackColor,
+        topLeft = Offset(0f, top),
+        size = androidx.compose.ui.geometry.Size(size.width, height),
+    )
+    val left = visibleStart.coerceIn(0, safeTotal).toFloat() / safeTotal * size.width
+    val right = (visibleStart + visibleFrames).coerceIn(0, safeTotal).toFloat() / safeTotal * size.width
+    drawRect(
+        color = viewportColor,
+        topLeft = Offset(left, top),
+        size = androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(1f), height),
+    )
 }
 
 private fun frameToX(frame: Int, visibleStart: Int, visibleFrames: Int, width: Float): Float =

@@ -40,4 +40,42 @@ class WaveformViewportPolicyTest {
         assertEquals(1, next.totalFrames)
         assertEquals(0, next.visibleStart)
     }
+
+    @Test
+    fun pinchOutStopsAtWholeSourceAndResetsScroll() {
+        val next = zoomViewportAtFocus(
+            frame = 800,
+            totalFrames = 1_000,
+            zoom = 8f,
+            zoomChange = 0.01f,
+            maximumZoom = 32f,
+        )
+        assertEquals(1f, next.zoom, 0.0001f)
+        assertEquals(1_000, next.visibleFrames)
+        assertEquals(0f, next.scroll, 0.0001f)
+    }
+
+    @Test
+    fun focusNearSourceEdgesNeverMovesViewportOutsideAudio() {
+        val first = zoomViewportAtFocus(0, 1_000, 1f, 4f, 32f)
+        val last = zoomViewportAtFocus(999, 1_000, 1f, 4f, 32f)
+        assertEquals(0, first.visibleStart)
+        assertEquals(750, last.visibleStart)
+    }
+
+    @Test
+    fun zeroWidthAndHalfPixelMappingHaveDeterministicResults() {
+        assertEquals(100, waveformFrameAtX(20f, 0f, 100, 400, 1_000))
+        assertEquals(101, waveformFrameAtX(0.5f, 200f, 100, 400, 1_000))
+    }
+
+    @Test
+    fun panMovesByVisibleFractionAndClampsAtEdges() {
+        val middle = panWaveformViewport(totalFrames = 1_000, zoom = 4f, scroll = 0.5f, fraction = 0.25f)
+        val first = panWaveformViewport(totalFrames = 1_000, zoom = 4f, scroll = 0.1f, fraction = -1f)
+        val last = panWaveformViewport(totalFrames = 1_000, zoom = 4f, scroll = 0.9f, fraction = 1f)
+        assertEquals(0.5833f, middle.scroll, 0.001f)
+        assertEquals(0f, first.scroll, 0.0001f)
+        assertEquals(1f, last.scroll, 0.0001f)
+    }
 }

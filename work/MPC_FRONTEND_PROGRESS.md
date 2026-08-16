@@ -7,7 +7,9 @@
 - 長押しからの単一音トリム編集を維持
 - 試聴の二重再生防止、元曲停止、全停止を実装済み
 - `WaveformViewportPolicy` の純関数境界と契約テストを追加
-- `:app:testDebugUnitTest` 216件、`:app:lintDebug`、`:app:assembleDebug` 成功
+- 左右パン、全体表示リセット、表示範囲ミニマップ、TalkBackの前/次操作、48dpハンドル領域を追加
+- `:app:testDebugUnitTest` 220件、`:app:lintDebug`、debug/release APK build 成功
+- Android 12+ cloud backup/device transferを含む全保存領域のバックアップ除外を明示
 - APK `outputs/ChopLab-v0.13.1-mpc-frontend-local-debug.apk` を生成（SHA-256: `6AFDBE56652C57174931BE1ABAF1D7C9D99E4E3CBEB0820FBD11AFA97D2A652D`）
 
 ## 次の完了単位
