@@ -2,8 +2,23 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
-if (Get-Command bash -ErrorAction SilentlyContinue) {
-    & bash .\scripts\validate_project.sh
+$TrackedStatus = @(& git status --porcelain=v1 --untracked-files=no)
+if ($LASTEXITCODE -ne 0) { throw "git status failed" }
+if ($TrackedStatus.Count -ne 0) {
+    throw "Tracked worktree must be clean before source-bound verification.`n$($TrackedStatus -join "`n")"
+}
+
+$GitBashCandidates = @(
+    'C:\Program Files\Git\bin\bash.exe',
+    'C:\Program Files\Git\usr\bin\bash.exe'
+)
+$Bash = $GitBashCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $Bash) {
+    $BashCommand = Get-Command bash -ErrorAction SilentlyContinue
+    if ($BashCommand) { $Bash = $BashCommand.Source }
+}
+if ($Bash) {
+    & $Bash .\scripts\validate_project.sh
     if ($LASTEXITCODE -ne 0) { throw "Offline validation failed" }
 } else {
     Write-Warning "bash is unavailable; skipping scripts/validate_project.sh. Use Git Bash or WSL for that check."
