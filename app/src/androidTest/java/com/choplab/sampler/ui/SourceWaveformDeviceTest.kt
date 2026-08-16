@@ -1,5 +1,6 @@
 package com.choplab.sampler.ui
 
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -13,10 +14,14 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
+import androidx.compose.ui.test.tryPerformAccessibilityChecks
+import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.choplab.sampler.model.PcmAudio
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -162,6 +167,72 @@ class SourceWaveformDeviceTest {
         upperMarker.assertExactlyReversibleNudge("少し前へ", "少し後へ")
     }
 
+    @Test
+    fun frameworkAccessibilityTreeExposesDepthFirstHandlesFocusActionsAndCustomActions() {
+        setDeterministicWaveform(
+            startFrame = 0,
+            endFrame = 1_000,
+            markerFrame = 1,
+            secondMarkerFrame = 2,
+            thirdMarkerFrame = 3,
+            fourthMarkerFrame = 4,
+            fifthMarkerFrame = 999,
+        )
+        composeRule.enableAccessibilityChecks()
+        composeRule.onRoot().tryPerformAccessibilityChecks()
+
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.waitForIdle(100, 5_000)
+        val root = requireNotNull(automation.rootInActiveWindow) {
+            "UiAutomation must expose the active accessibility window"
+        }
+        val orderedDescriptions = listOf(
+            "選択開始ハンドル",
+            "選択終了ハンドル",
+            "チョップ1 の位置",
+            "チョップ2 の位置",
+            "チョップ3 の位置",
+            "チョップ4 の位置",
+            "チョップ5 の位置",
+        )
+        val frameworkNodes = orderedDescriptions.map { description ->
+            requireNotNull(root.findNodeByContentDescription(description)) {
+                "$description must be present in the framework accessibility tree"
+            }
+        }
+
+        assertEquals(
+            "Framework depth-first tree order must follow S, E, then numbered chop markers",
+            orderedDescriptions,
+            root.depthFirstDescriptions().filter { it in orderedDescriptions },
+        )
+        frameworkNodes.forEachIndexed { index, node ->
+            assertTrue(
+                "${orderedDescriptions[index]} must expose accessibility focus to a service",
+                node.actionList.any { action ->
+                    action.id == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS
+                },
+            )
+        }
+
+        val firstMarker = frameworkNodes[2]
+        val initialState = firstMarker.stateDescription?.toString()
+        val laterAction = firstMarker.actionList.firstOrNull { it.label?.toString() == "少し後へ" }
+        assertNotNull("Framework node must expose the custom nudge action", laterAction)
+        assertTrue(firstMarker.performAction(laterAction!!.id))
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            automation.rootInActiveWindow
+                ?.findNodeByContentDescription("チョップ1 の位置")
+                ?.stateDescription
+                ?.toString() != initialState
+        }
+        val changedState = automation.rootInActiveWindow
+            ?.findNodeByContentDescription("チョップ1 の位置")
+            ?.stateDescription
+            ?.toString()
+        assertNotEquals(initialState, changedState)
+    }
+
     private fun setDeterministicWaveform(
         startFrame: Int = 100,
         endFrame: Int = 900,
@@ -247,5 +318,20 @@ class SourceWaveformDeviceTest {
             .firstOrNull { it.label == label }
         assertNotNull("Accessibility action $label should be exposed", action)
         return action!!.action()
+    }
+}
+
+private fun AccessibilityNodeInfo.findNodeByContentDescription(description: String): AccessibilityNodeInfo? {
+    if (contentDescription?.toString() == description) return this
+    repeat(childCount) { index ->
+        getChild(index)?.findNodeByContentDescription(description)?.let { return it }
+    }
+    return null
+}
+
+private fun AccessibilityNodeInfo.depthFirstDescriptions(): List<String> = buildList {
+    contentDescription?.toString()?.let(::add)
+    repeat(childCount) { index ->
+        getChild(index)?.let { addAll(it.depthFirstDescriptions()) }
     }
 }

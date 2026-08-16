@@ -21,6 +21,7 @@ Build a reliable Android 10+ mobile sampler that supports capture/import, wavefo
 ## Build and validation
 
 Use the smallest relevant checks during iteration, then run the full gate before declaring completion.
+The Android test layers, exact device commands, and evidence boundaries are documented in `docs/TESTING.md`.
 
 ```bash
 ./scripts/validate_project.sh

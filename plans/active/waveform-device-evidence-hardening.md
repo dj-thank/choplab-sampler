@@ -21,6 +21,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - `WaveformEditor` is the public Compose seam for gesture, viewport semantics, overview geometry, and handle targets.
 - `WaveformViewportPolicyTest` covers pure viewport/action/overview contracts.
 - `SourceWaveformDeviceTest` renders a deterministic `PcmAudio` fixture directly through Compose.
+- The same fixture is audited by Compose Accessibility Test Framework and inspected through `UiAutomation` / `AccessibilityNodeInfo`; `docs/TESTING.md` defines the test-layer claim boundaries.
 - `scripts/collect-device-evidence.ps1` captures source, build, APK, signer, device, install, autosave, readback, instrumentation, and log artifacts under one immutable run directory.
 
 ## Milestones
@@ -51,6 +52,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Clustered handle fix deployed from clean `6943b5e`; exact app/test readbacks, retained autosaves, and three deterministic device tests passed.
 - [x] 2026-08-16 — Real TalkBack exposed S/E/chop-1/chop-2 and focused the formerly occluded cluster; real microphone ownership rejected source playback and BACK cancelled without autosave mutation.
 - [x] 2026-08-16 — User-authorized continuation proved selected-loop/source-preview to microphone ownership takeover; both captures were cancelled and baseline autosave hashes retained.
+- [x] 2026-08-16 — Android official `testing-setup` guidance applied: UI Automator 2.4.0 and Compose ATF added; a dedicated normal API 36 Google Play AVD passed the four-test waveform suite, including framework depth-first tree order, advertised focus actions, and custom-action dispatch.
 
 ## Discoveries
 

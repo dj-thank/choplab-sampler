@@ -2,11 +2,13 @@
 
 ## Waveform device-evidence hardening — 2026-08-16
 
+The deterministic waveform instrumentation now adds two official Android accessibility layers: Compose Accessibility Test Framework checks and Android framework-node inspection through `UiAutomation` / `AccessibilityNodeInfo`. A dedicated normal API 36 Google Play AVD proves that S, E, and five clustered/endpoint chop handles are present in framework depth-first tree order, advertise accessibility-focus actions, and execute a custom nudge through the framework node so its state description changes. This does not claim that `UiAutomation` reproduced TalkBack's focus traversal. UI Automator 2.4.0 is pinned for device-level E2E support. The commands and evidence boundaries are documented in `docs/TESTING.md`.
+
 The waveform instrumentation no longer opens `MainActivity` or consumes the user's restored project. It renders a fixed 1,000-frame in-memory PCM fixture directly through `WaveformEditor`, with deterministic S/E and chop-marker positions. Tests distinguish Compose accessibility semantics callbacks from a running TalkBack service, check no-op action results, true two-pointer pinch/pan, 48 dp width and height, canvas clipping, endpoint handles, and exact reversible nudges. Overview drawing now uses a host-tested pure geometry contract.
 
 `scripts/collect-device-evidence.ps1` binds one clean Git HEAD/tree to Gradle output, app/test APK hashes and signers, exact serial, installed signer preflight, autosave before/after, data-preserving `adb install -r`, installed-base readback, instrumentation stdout, package dumps, and bounded logcat under one run ID. It contains no uninstall or clear-data path and aborts before installation on signer mismatch.
 
-This milestone can establish `LOCAL_PASS` and, after an exact-device run, `INSTRUMENTATION_PASS` plus scoped install/readback/data-retention evidence. It does not by itself establish spoken TalkBack output or focus order, real microphone contention, subjective one-hand comfort, audio quality, full `DEVICE_PASS`, or `HUMAN_GO`.
+This milestone can establish `LOCAL_PASS`, `COMPOSE_INSTRUMENTATION_PASS`, `FRAMEWORK_NODE_PASS` and, after an exact-device run, scoped install/readback/data-retention evidence. Framework order/action exposure does not by itself establish TalkBack's own spoken output, subjective one-hand comfort, audio quality, or `HUMAN_GO`.
 
 Last prepared: 2026-08-15
 
