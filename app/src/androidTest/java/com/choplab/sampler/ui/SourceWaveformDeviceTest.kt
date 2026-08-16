@@ -60,8 +60,9 @@ class SourceWaveformDeviceTest {
             val right = center + Offset(width * 0.20f, 0f)
             down(0, left)
             down(1, right)
-            moveTo(0, left + Offset(width * 0.15f, 0f), 250)
-            moveTo(1, right + Offset(width * 0.15f, 0f), 250)
+            updatePointerTo(0, left + Offset(width * 0.15f, 0f))
+            updatePointerTo(1, right + Offset(width * 0.15f, 0f))
+            move(250)
             up(0)
             up(1)
         }

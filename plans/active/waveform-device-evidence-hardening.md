@@ -53,6 +53,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 
 - Existing instrumentation passed only because Pixel autosave already contained source audio and chop markers.
 - Direct `CustomAccessibilityAction.action()` proves the Compose semantics callback, not spoken TalkBack or focus traversal.
+- The first deterministic device run exposed two real test-infrastructure defects: sequential pointer events cancelled pan movement, and `adb am instrument` returned a host exit code that did not reflect the reported JUnit failure. Pointer movement is now emitted as one event and the evidence runner parses the all-green summary fail closed.
 - The visual handle-line offset is relative to a `TopCenter` parent; the review claim of an unconditional 24 dp shift was rejected, but endpoint rendering still needs device evidence.
 
 ## Decision log

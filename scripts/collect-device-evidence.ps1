@@ -114,7 +114,11 @@ try {
         if ($installedHash -ne $appHash) { throw "Installed base APK hash mismatch: $installedHash != $appHash" }
 
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "install", "-r", $testArtifact) -LogPath (Join-Path $runDirectory "test-install.txt") | Out-Null
-        Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "instrument", "-w", "-r", "com.choplab.sampler.test/androidx.test.runner.AndroidJUnitRunner") -LogPath (Join-Path $runDirectory "instrumentation.txt") | Out-Null
+        $instrumentation = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "instrument", "-w", "-r", "com.choplab.sampler.test/androidx.test.runner.AndroidJUnitRunner") -LogPath (Join-Path $runDirectory "instrumentation.txt")
+        $instrumentationText = $instrumentation -join "`n"
+        if ($instrumentationText -match "FAILURES!!!" -or $instrumentationText -notmatch "OK \([0-9]+ tests?\)") {
+            throw "Instrumentation did not report an all-green result. See instrumentation.txt"
+        }
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "package", "com.choplab.sampler") -LogPath (Join-Path $runDirectory "package-after.txt") | Out-Null
         Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "logcat", "-d", "-v", "threadtime", "-t", "2000") -LogPath (Join-Path $runDirectory "logcat-tail.txt") | Out-Null
         $deviceEvidence = [ordered]@{
