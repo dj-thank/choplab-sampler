@@ -53,7 +53,7 @@ function Get-ApkManifestValue {
 
 function Get-PackageDumpValue {
     param(
-        [Parameter(Mandatory)] [string[]]$Dump,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string[]]$Dump,
         [Parameter(Mandatory)] [string]$Pattern,
         [Parameter(Mandatory)] [string]$Name
     )
