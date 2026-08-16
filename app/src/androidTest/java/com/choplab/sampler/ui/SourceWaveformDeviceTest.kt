@@ -39,15 +39,18 @@ class SourceWaveformDeviceTest {
 
     @Test
     fun deterministicTwoPointerGesturesAndAccessibilityActionsChangeTheViewport() {
-        setDeterministicWaveform()
+        var tappedFrame = -1
+        setDeterministicWaveform(onWaveformTap = { tappedFrame = it })
         val waveform = waveformNode()
 
         val clickAction = waveform.fetchSemanticsNode().config.getOrNull(SemanticsActions.OnClick)
         assertNotNull("The waveform instruction must expose an accessibility click action", clickAction)
+        assertEquals("表示範囲の中央にチョップを追加", clickAction!!.label)
         assertTrue(
             "The waveform accessibility click action should succeed",
-            clickAction!!.action?.invoke() == true,
+            clickAction.action?.invoke() == true,
         )
+        assertEquals("The accessibility click should target the visible center frame", 500, tappedFrame)
 
         val wholeSource = waveform.viewportDescription()
         assertEquals("全体表示。0から999フレーム", wholeSource)
@@ -248,6 +251,7 @@ class SourceWaveformDeviceTest {
         thirdMarkerFrame: Int? = null,
         fourthMarkerFrame: Int? = null,
         fifthMarkerFrame: Int? = null,
+        onWaveformTap: (Int) -> Unit = {},
     ) {
         val fixture = PcmAudio(
             id = 1L,
@@ -278,7 +282,7 @@ class SourceWaveformDeviceTest {
                     onRangeStartChange = { start = it.coerceIn(0, end - 1) },
                     onRangeEndChange = { end = it.coerceIn(start + 1, fixture.frameCount) },
                     onSliceMarkerChange = { index, frame -> markers[index] = frame.coerceIn(1, fixture.frameCount - 1) },
-                    onWaveformTap = {},
+                    onWaveformTap = onWaveformTap,
                     canvasHeight = 220.dp,
                     showViewportControls = false,
                     showTimeReadout = false,

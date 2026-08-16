@@ -114,6 +114,11 @@ fun WaveformEditor(
     val activeSliceColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.23f)
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
     val resolvedReadoutColor = readoutColor ?: MaterialTheme.colorScheme.onSurface
+    val accessibilityTapActionLabel = if (manualChopEnabled) {
+        "表示範囲の中央にチョップを追加"
+    } else {
+        "表示範囲の中央へ移動"
+    }
 
     Column(modifier = modifier) {
         Box(
@@ -182,18 +187,14 @@ fun WaveformEditor(
                     }
                     .semantics {
                         contentDescription = if (manualChopEnabled) {
-                            "音声波形。タップした位置にチョップを追加"
+                            "音声波形。タッチ操作はタップした位置にチョップを追加。アクセシビリティ操作は$accessibilityTapActionLabel"
                         } else {
-                            "音声波形。タップした位置へ移動"
+                            "音声波形。タッチ操作はタップした位置へ移動。アクセシビリティ操作は$accessibilityTapActionLabel"
                         }
                         stateDescription = waveformViewportStateDescription(viewport)
                         role = Role.Button
                         onClick(
-                            label = if (manualChopEnabled) {
-                                "表示範囲の中央にチョップを追加"
-                            } else {
-                                "表示範囲の中央へ移動"
-                            },
+                            label = accessibilityTapActionLabel,
                         ) {
                             val centerFrame = (visibleStart + visibleFrames / 2f)
                                 .roundToInt()

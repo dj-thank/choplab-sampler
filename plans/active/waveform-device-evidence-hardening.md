@@ -52,7 +52,7 @@ Commit `18e134e` added physical-Pixel observations and a Compose instrumentation
 - [x] 2026-08-16 — Clustered handle fix deployed from clean `6943b5e`; exact app/test readbacks, retained autosaves, and three deterministic device tests passed.
 - [x] 2026-08-16 — Real TalkBack exposed S/E/chop-1/chop-2 and focused the formerly occluded cluster; real microphone ownership rejected source playback and BACK cancelled without autosave mutation.
 - [x] 2026-08-16 — User-authorized continuation proved selected-loop/source-preview to microphone ownership takeover; both captures were cancelled and baseline autosave hashes retained.
-- [x] 2026-08-16 — Android official `testing-setup` guidance applied: UI Automator 2.4.0 and Compose ATF added; a dedicated normal API 36 Google Play AVD passed the four-test waveform suite, including framework depth-first tree order, advertised focus actions, and custom-action dispatch.
+- [x] 2026-08-16 — Android official `testing-setup` guidance applied: UI Automator 2.4.0 and Compose ATF added. A historical API 36 AVD receipt passed four waveform tests; the current candidate is virtual-device `BLOCKED` until the missing Google Play image is repaired and the suite is rerun.
 - [x] 2026-08-16 — Second Luna adversarial panel added an explicit accessibility click action whose label matches the waveform tap instruction, and hardened the evidence runner to use deterministic Gradle limits, a fixed androidTest APK path, and signer-first retained-data upgrades.
 
 ## Discoveries
