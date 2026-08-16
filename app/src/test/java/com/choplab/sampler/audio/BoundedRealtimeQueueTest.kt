@@ -1,5 +1,8 @@
 package com.choplab.sampler.audio
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -7,6 +10,39 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoundedRealtimeQueueTest {
+    @Test
+    fun clearDiscardsAnOfferThatWasReservedBeforeTheClearBoundary() {
+        val queue = BoundedRealtimeQueue<String>(capacity = 1)
+        val factoryEntered = CountDownLatch(1)
+        val releaseFactory = CountDownLatch(1)
+        val accepted = AtomicBoolean(true)
+        val producer = Thread {
+            accepted.set(
+                queue.offerPrepared {
+                    factoryEntered.countDown()
+                    releaseFactory.await()
+                    "stale"
+                },
+            )
+        }.apply { start() }
+
+        try {
+            assertTrue(factoryEntered.await(1, TimeUnit.SECONDS))
+            queue.clear()
+            releaseFactory.countDown()
+            producer.join(1_000L)
+
+            assertFalse(accepted.get())
+            assertEquals(0, queue.size)
+            assertNull(queue.poll())
+            assertTrue(queue.offer("fresh"))
+            assertEquals("fresh", queue.poll())
+        } finally {
+            releaseFactory.countDown()
+            producer.join(1_000L)
+        }
+    }
+
     @Test
     fun queueRejectsOverflowAndPreservesAcceptedCommandOrder() {
         val queue = BoundedRealtimeQueue<String>(capacity = 2)

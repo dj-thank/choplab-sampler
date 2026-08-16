@@ -1,5 +1,11 @@
 # Project state
 
+## Playback-capture teardown and queue-clear hardening — 2026-08-16
+
+System-audio capture now owns one generation-tagged session at a time. STOP during setup prevents the recorder from reaching `RECORDING`; STOP during a blocking read first requests `AudioRecord.stop()`, then releases the recorder after a bounded wait, and terminalizes the foreground service within a 1.5 s + 0.5 s local contract. A stopped/old worker cannot clear or publish over a newer generation. Deterministic fake/worker tests cover startup cancellation, generation isolation, and the stop/release fallback; physical `AudioRecord`/`MediaProjection` ordering remains DEVICE-only.
+
+The bounded realtime queue also tags reserved offers with a clear generation. An offer reserved before `clear()` but materialized afterwards is discarded and releases its capacity instead of surviving shutdown. The audio-thread poll remains lock-free. This is LOCAL concurrency evidence; sustained device command pressure and audible continuity remain DEVICE/HUMAN boundaries.
+
 ## Autosave revision and recovery ordering hardening — 2026-08-16
 
 Each autosave generation now has a synced revision record bound to the archive SHA-256. `AtomicProjectStore` re-reads verified on-disk revisions before every save, rejects older or conflicting equal revisions even after store/process recreation, rotates archive/metadata pairs together, and chooses the highest verified revision during recovery instead of allowing a stale pending file to outrank a newer backup. Legacy archives without revision metadata remain readable using the established generation priority. This is LOCAL persistence evidence; crash-at-every-filesystem-instruction fault injection and storage-device durability remain outside the current proof.

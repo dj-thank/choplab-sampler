@@ -112,6 +112,8 @@ The post-release maintenance seam adds a small `PlaybackSilencer` adapter to the
 
 ## Progress
 
+- [x] 2026-08-16 — Added generation-owned Playback Capture sessions and a bounded stop→release watchdog; deterministic tests cover startup STOP, old-generation isolation, and a blocking worker released within the 1.5 s + 0.5 s contract.
+- [x] 2026-08-16 — Added queue clear generations so an `offerPrepared` reserved before shutdown cannot enqueue afterwards or leak capacity; focused concurrent regression is green.
 - [x] 2026-08-16 — Added a fake recorder-input seam and a deterministic initialization-race test so `stop()` cannot be lost while the platform recorder is being created; full local build gate passed.
 - [x] 2026-08-16 — Serialized `SamplerEngine` runtime command admission with start/shutdown and added deterministic restart/concurrent-producer regressions so stopped-engine commands cannot leak into the next session.
 

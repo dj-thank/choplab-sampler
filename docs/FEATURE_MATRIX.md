@@ -35,9 +35,9 @@
 | Reverse | ✅ | PAD別 |
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。Beat Loopはチョップ範囲全体を連続再生し、直前の同一PAD試聴voiceを先に除去 |
 | Choke group | ✅ | 1–4 |
-| リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。PAD差替え/clearは128固定slotのlatest-wins mailboxでqueue飽和時の旧A01残留を防止。32 PAD voice＋source voiceを事前確保し通常render pathのVoice生成を除去 |
+| リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界により予約途中の古いcommandも次回起動へ残さない。PAD差替え/clearは128固定slotのlatest-wins mailboxでqueue飽和時の旧A01残留を防止。32 PAD voice＋source voiceを事前確保し通常render pathのVoice生成を除去 |
 | マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
-| 録音セッションと誤再生防止 | ✅ emulator/local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中のPAD/source/transport/scratch/preview開始、競合録音、外部pickerを遮断し、全工程headerとLayer Studioに対応STOPを表示。遅いworker errorはSTOPPINGをIdleへ戻さず、失敗したVocal monitor loopは停止・表示解除 |
+| 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。端末音声captureは世代付きsessionと2秒のstop/release境界を持ち、開始途中STOPと旧workerの新session破壊をLOCALで防止。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中の競合操作を遮断。現候補の実MediaProjection/AudioRecord再検証は未実施 |
 | 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |
 | Android再生割り込み安全性 | ✅ emulator/local | 全audible startをmedia/music audio focusで統一。Home、focus loss/transient/duck、出力切替ではengine silenceをfocus解放より先に一箇所で強制し、反復割り込みは一度だけ停止、録音のみの割り込みは再生へ触れない。gainでは自動再開しない。回転は再生継続、source seek/KEY retargetはfocus所有中のみ。端末音声録音はbackgroundで継続し、MIC/VOICEは安全停止。実機route-loss／通話競合は未確認 |
 | Swing | ✅ | 50–75% |
