@@ -1,5 +1,16 @@
 # 検証記録
 
+## 専用 API 36 review AVD — 2026-08-17
+
+- Source: clean `9177229de91f2560b93f381fffda26909eaf4d75`, tree `2fe15415cef8a7a2907ea71ac840996a0d847e0b`.
+- Local gate: 49 suites / 250 tests, failures 0, errors 0, skipped 0; lint errors 0, warnings 11; debug app and androidTest builds PASS.
+- App: `com.choplab.sampler` `0.13.1 (21)`, SHA-256 `6178E499E53502AD6ABA0C16F2FE057015F795A305144417E8220097E3167909`.
+- androidTest: SHA-256 `EE34FA4EEF5CBC48FFCB708207464E27B34C8205462D4CAFDED54D9F08C1FFE0`.
+- Both APKs use signer SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`.
+- Dedicated `emulator-5592`, API 36 Google Play, locale `ja-JP`: portrait font 1.0, 1.3, 2.0 and landscape font 1.0 each `OK (4 tests)`.
+- ChopLab fatal/ANR 0, emulator Bluetooth fatal 0, font/rotation readback restored, app force-stopped.
+- Gate: `LOCAL_PASS`, `COMPOSE_INSTRUMENTATION_PASS`, `FRAMEWORK_NODE_PASS`. Physical `DEVICE_PASS`, `PUBLIC`, and `HUMAN_GO` are not claimed by this run.
+
 作成日: 2026-07-15
 
 現在HEADへ結合したWindows検証は、tracked-clean checkoutとプロジェクト用JDK/SDKを設定して `scripts/verify.ps1` を実行する。clean unit/lint/app/androidTest build後に `outputs/build-provenance-<HEAD>.json` を作成し、source HEAD/tree、fresh APK bytes、package/version、signerを一つのreceiptへ固定する。現在HEADのreceiptがない既存 `app/build` APKは、hashだけで最新成果物として扱わない。
