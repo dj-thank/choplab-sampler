@@ -32,5 +32,9 @@ interface SamplerPlaybackEngine {
     fun startTransport()
     fun stopTransport()
     fun stopAllVoices()
+    fun stopAllPlayback() {
+        stopAllVoices()
+        stopTransport()
+    }
     fun shutdown()
 }

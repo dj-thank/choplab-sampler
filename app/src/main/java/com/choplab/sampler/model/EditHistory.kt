@@ -54,9 +54,9 @@ private fun SamplerUiState.historySnapshot(): SamplerUiState = copy(
     transportPlaying = false,
     recordArmed = false,
     currentStep = -1,
-    microphoneRecording = false,
-    systemAudioRecording = false,
+    recordingSession = RecordingSession.Idle,
     sourcePlaying = false,
+    pendingSourceCommand = PendingSourceCommand.NONE,
     canUndo = false,
     canRedo = false,
 )

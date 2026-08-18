@@ -27,9 +27,100 @@ fun replaceSourceAudio(
     statusMessage = "${audio.name} を新しいプロジェクトとして読み込みました — A メロディーへチョップします",
 )
 
+fun pendingSourceCommandAfterStopRequest(appliedPlaying: Boolean): PendingSourceCommand =
+    if (appliedPlaying) PendingSourceCommand.STOP else PendingSourceCommand.NONE
+
+/**
+ * Replaces project content without claiming that an already-applied source has stopped.
+ * The audio-thread poll owns the later transition from STOPPING to STOPPED.
+ */
+fun preserveAppliedSourceTruthWhileStopping(
+    previousState: SamplerUiState,
+    replacementState: SamplerUiState,
+): SamplerUiState = replacementState.copy(
+    sourcePlaying = previousState.sourcePlaying,
+    pendingSourceCommand = pendingSourceCommandAfterStopRequest(previousState.sourcePlaying),
+)
+
+fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
+    val recordingContinues = state.recordingSession.isActive
+    return state.copy(
+        pendingSourceCommand = pendingSourceCommandAfterStopRequest(state.sourcePlaying),
+        transportPlaying = false,
+        recordArmed = false,
+        currentStep = -1,
+        loopingPadIndex = null,
+        loopPlayheadFrame = -1,
+        scratchingPadIndex = null,
+        scratchPlayheadFrame = -1,
+        sourceScratchActive = false,
+        statusMessage = when {
+            state.sourcePlaying && recordingContinues ->
+                "再生音を全停止中（録音は継続中）"
+            state.sourcePlaying ->
+                "すべての再生音を停止しています"
+            recordingContinues ->
+                "再生音を全停止しました（録音は継続中）"
+            else ->
+                "すべての再生音を停止しました"
+        },
+    )
+}
+
+fun beginSourceReplacement(state: SamplerUiState): SamplerUiState =
+    stopAllPlaybackState(state).copy(
+        isLoading = true,
+        statusMessage = "音声を解析しています…",
+    )
+
+fun playbackRequestBlockedByProjectOperation(state: SamplerUiState): Boolean = state.isLoading
+
 enum class PadTrimBoundary {
     START,
     END,
+}
+
+enum class PadTrimPrecision {
+    FRAME,
+    MILLISECOND,
+    TEN_MILLISECONDS,
+}
+
+data class PadTrimSnapshot(
+    val padIndex: Int,
+    val audioId: Long?,
+    val startFrame: Int,
+    val endFrame: Int,
+)
+
+fun padTrimNudgeFrames(sampleRate: Int, precision: PadTrimPrecision): Int {
+    val safeSampleRate = sampleRate.coerceAtLeast(1)
+    return when (precision) {
+        PadTrimPrecision.FRAME -> 1
+        PadTrimPrecision.MILLISECOND -> ((safeSampleRate + 500) / 1_000).coerceAtLeast(1)
+        PadTrimPrecision.TEN_MILLISECONDS -> ((safeSampleRate + 50) / 100).coerceAtLeast(1)
+    }
+}
+
+fun capturePadTrimSnapshot(pad: PadModel): PadTrimSnapshot = PadTrimSnapshot(
+    padIndex = pad.globalIndex,
+    audioId = pad.audio?.id,
+    startFrame = pad.startFrame,
+    endFrame = pad.endFrame,
+)
+
+fun restorePadTrimSnapshot(pad: PadModel, snapshot: PadTrimSnapshot): PadModel {
+    val audio = pad.audio ?: return pad
+    if (
+        pad.globalIndex != snapshot.padIndex ||
+        audio.id != snapshot.audioId ||
+        audio.frameCount < 2
+    ) {
+        return pad
+    }
+    val startFrame = snapshot.startFrame.coerceIn(0, audio.frameCount - 2)
+    val endFrame = snapshot.endFrame.coerceIn(startFrame + 2, audio.frameCount)
+    return pad.copy(startFrame = startFrame, endFrame = endFrame)
 }
 
 fun trimPadBoundary(
@@ -89,7 +180,13 @@ fun selectPlayableBank(state: SamplerUiState, bankIndex: Int): SamplerUiState {
     val target = bankPads[preferredOffset].takeIf(PadModel::isAssigned)
         ?: bankPads.firstOrNull(PadModel::isAssigned)
         ?: return state.copy(
-            statusMessage = "BANK ${role.letter} ${role.japaneseLabel}には音がありません。先にチョップか重ねるで音を入れてください",
+            selectedBank = bankIndex,
+            selectedPad = bankStart + preferredOffset,
+            statusMessage = if (bankIndex == SamplerConfig.DRUM_BANK_INDEX) {
+                "BANK ${role.letter} ${role.japaneseLabel}には音がありません。ドラムキットを選んでください"
+            } else {
+                "BANK ${role.letter} ${role.japaneseLabel}には音がありません。先にチョップか重ねるで音を入れてください"
+            },
         )
     return state.copy(
         selectedBank = bankIndex,
@@ -212,12 +309,7 @@ fun assignLiveChopToPad(
     if (padIndex !in bankStart until bankEndExclusive) {
         return PadAssignmentResult(state, emptyList())
     }
-    if (state.pads[padIndex].isAssigned) {
-        return PadAssignmentResult(
-            state.copy(statusMessage = "PAD ${state.pads[padIndex].indexInBank + 1}には音があります。上書きしません"),
-            emptyList(),
-        )
-    }
+    val overwriting = state.pads[padIndex].isAssigned
 
     val selectionEnd = state.rangeEndFrame
         .takeIf { it in 1..audio.frameCount }
@@ -259,7 +351,15 @@ fun assignLiveChopToPad(
             selectedBank = bank,
             selectedPad = padIndex,
             sliceMarkers = markers,
-            statusMessage = "PAD ${padIndex - bankStart + 1} に ${formatLiveChopTime(safeStart, audio.sampleRate)} を刻みました",
+            loopingPadIndex = state.loopingPadIndex?.takeUnless { it == padIndex },
+            loopPlayheadFrame = if (state.loopingPadIndex == padIndex) -1 else state.loopPlayheadFrame,
+            scratchingPadIndex = state.scratchingPadIndex?.takeUnless { it == padIndex },
+            scratchPlayheadFrame = if (state.scratchingPadIndex == padIndex) -1 else state.scratchPlayheadFrame,
+            statusMessage = if (overwriting) {
+                "PAD ${padIndex - bankStart + 1} を現在の素材 ${formatLiveChopTime(safeStart, audio.sampleRate)} で上書きしました"
+            } else {
+                "PAD ${padIndex - bankStart + 1} に ${formatLiveChopTime(safeStart, audio.sampleRate)} を刻みました"
+            },
         ),
         changedPads = livePadIndices.map(mutablePads::get),
     )

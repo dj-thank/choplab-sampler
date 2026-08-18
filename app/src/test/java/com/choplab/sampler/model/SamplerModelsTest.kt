@@ -35,4 +35,26 @@ class SamplerModelsTest {
         assertEquals(16, stepKey(1, 0))
         assertEquals(63 * SamplerConfig.STEP_COUNT + 15, stepKey(63, 15))
     }
+
+    @Test
+    fun transientResultIsDiscardedAfterAnyProjectEditEvenWithTheSameRange() {
+        val audio = PcmAudio(42L, "same.wav", ShortArray(1_000), 48_000)
+        val snapshot = SamplerUiState(
+            currentAudio = audio,
+            rangeStartFrame = 100,
+            rangeEndFrame = 900,
+        )
+
+        assertEquals(true, transientAnalysisStillCurrent(snapshot, 7L, snapshot, 7L))
+        assertEquals(false, transientAnalysisStillCurrent(snapshot, 7L, snapshot, 8L))
+        assertEquals(
+            false,
+            transientAnalysisStillCurrent(
+                snapshot,
+                7L,
+                snapshot.copy(rangeStartFrame = 101),
+                7L,
+            ),
+        )
+    }
 }

@@ -40,6 +40,51 @@ class AtomicProjectStoreTest {
         }
     }
 
+    @Test
+    fun olderRevisionCannotReplaceNewerAutosaveAfterStoreRecreation() {
+        val directory = Files.createTempDirectory("choplab-autosave-recreated-revision-test").toFile()
+        try {
+            assertTrue(AtomicProjectStore(directory).save(SamplerUiState(bpm = 130f), revision = 2L))
+
+            assertFalse(AtomicProjectStore(directory).save(SamplerUiState(bpm = 90f), revision = 1L))
+
+            assertEquals(130f, AtomicProjectStore(directory).load()?.bpm)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun equalRevisionWithDifferentStateIsRejectedAfterStoreRecreation() {
+        val directory = Files.createTempDirectory("choplab-autosave-equal-revision-test").toFile()
+        try {
+            assertTrue(AtomicProjectStore(directory).save(SamplerUiState(bpm = 130f), revision = 2L))
+
+            assertFalse(AtomicProjectStore(directory).save(SamplerUiState(bpm = 90f), revision = 2L))
+
+            assertEquals(130f, AtomicProjectStore(directory).load()?.bpm)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun stalePendingGenerationCannotBeatNewerBackupWhenPrimaryIsCorrupt() {
+        val directory = Files.createTempDirectory("choplab-autosave-pending-order-test").toFile()
+        try {
+            val store = AtomicProjectStore(directory)
+            store.save(SamplerUiState(bpm = 90f), revision = 1L)
+            store.save(SamplerUiState(bpm = 100f), revision = 2L)
+            store.save(SamplerUiState(bpm = 110f), revision = 3L)
+            store.writePendingForTest(SamplerUiState(bpm = 80f), revision = 0L)
+            store.primaryFile.writeBytes(byteArrayOf(1, 2, 3))
+
+            assertEquals(100f, AtomicProjectStore(directory).load()?.bpm)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
 
     @Test
     fun twoCorruptNewestGenerationsStillRecoverTheLastGoodProject() {

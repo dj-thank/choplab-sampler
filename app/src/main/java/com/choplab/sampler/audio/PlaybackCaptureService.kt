@@ -28,11 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 class PlaybackCaptureService : Service() {
-    private val running = AtomicBoolean(false)
-    private var audioRecord: AudioRecord? = null
-    private var mediaProjection: MediaProjection? = null
-    private var projectionCallback: MediaProjection.Callback? = null
-    private var worker: Thread? = null
+    private val sessionLock = Any()
+    private val lifecycle = PlaybackCaptureLifecycle()
+    @Volatile private var currentSession: CaptureSession? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -51,7 +49,13 @@ class PlaybackCaptureService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startCapture(intent: Intent) {
-        if (!running.compareAndSet(false, true)) return
+        val generation = lifecycle.beginStart() ?: return
+        val captureTempFiles = CaptureTempFileStore(File(cacheDir, "captures"))
+        val session = CaptureSession(
+            generation = generation,
+            outputFile = captureTempFiles.create("system"),
+        )
+        synchronized(sessionLock) { currentSession = session }
 
         createNotificationChannel()
         startForeground(
@@ -63,25 +67,28 @@ class PlaybackCaptureService : Service() {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
         val resultData = intent.intentExtra(EXTRA_RESULT_DATA)
         if (resultCode != Activity.RESULT_OK || resultData == null) {
-            failAndStop("端末音声録音の許可情報がありません")
+            finishSession(session, CaptureOutcome.Error("端末音声録音の許可情報がありません"))
             return
         }
 
         try {
+            check(isCurrentAndRunning(session)) { "端末音声録音の開始はキャンセルされました" }
             val projectionManager = requireNotNull(
                 getSystemService(MediaProjectionManager::class.java),
             ) { "MediaProjectionManagerを取得できません" }
             val projection = projectionManager.getMediaProjection(resultCode, resultData)
                 ?: error("端末音声録音の許可を取得できません")
-            mediaProjection = projection
+            session.projection = projection
+            check(isCurrentAndRunning(session)) { "端末音声録音の開始はキャンセルされました" }
 
             val callback = object : MediaProjection.Callback() {
                 override fun onStop() {
-                    requestStop()
+                    requestStop(session)
                 }
             }
-            projectionCallback = callback
+            session.projectionCallback = callback
             projection.registerCallback(callback, Handler(Looper.getMainLooper()))
+            check(isCurrentAndRunning(session)) { "端末音声録音の開始はキャンセルされました" }
 
             val captureConfiguration = AudioPlaybackCaptureConfiguration.Builder(projection)
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
@@ -90,17 +97,16 @@ class PlaybackCaptureService : Service() {
                 .build()
 
             val (recorder, channels) = buildAudioRecord(captureConfiguration)
-            audioRecord = recorder
+            session.recorder = recorder
+            check(isCurrentAndRunning(session)) { "端末音声録音の開始はキャンセルされました" }
             recorder.startRecording()
             if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 error("端末音声の録音を開始できません")
             }
-
-            val outputDirectory = File(cacheDir, "captures").apply { mkdirs() }
-            val outputFile = File(outputDirectory, "system_${System.currentTimeMillis()}.wav")
+            check(lifecycle.markRecording(generation)) { "端末音声録音の開始はキャンセルされました" }
             CaptureEventBus.publish(PlaybackCaptureState.Recording)
 
-            worker = Thread({
+            val recordingWorker = Thread({
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
                 val minBuffer = AudioRecord.getMinBufferSize(
                     SAMPLE_RATE,
@@ -111,8 +117,8 @@ class PlaybackCaptureService : Service() {
                 var errorMessage: String? = null
 
                 try {
-                    WavFileWriter(outputFile, SAMPLE_RATE, channels).use { writer ->
-                        while (running.get()) {
+                    WavFileWriter(session.outputFile, SAMPLE_RATE, channels).use { writer ->
+                        while (session.running.get()) {
                             val read = recorder.read(
                                 buffer,
                                 0,
@@ -122,36 +128,27 @@ class PlaybackCaptureService : Service() {
                             when {
                                 read > 0 -> writer.writePcm16Bytes(buffer, read)
                                 read == AudioRecord.ERROR_DEAD_OBJECT -> error("端末音声との接続が切れました")
-                                read < 0 && running.get() -> error("端末音声の読み取りエラー: $read")
+                                read < 0 && session.running.get() -> error("端末音声の読み取りエラー: $read")
                             }
                         }
                     }
                 } catch (throwable: Throwable) {
                     errorMessage = throwable.message ?: "端末音声録音中にエラーが発生しました"
                 } finally {
-                    running.set(false)
-                    runCatching { recorder.stop() }
-                    runCatching { recorder.release() }
-                    audioRecord = null
-                    releaseProjection()
-
-                    val failure = errorMessage
-                    if (failure != null) {
-                        outputFile.delete()
-                        CaptureEventBus.publish(PlaybackCaptureState.Error(failure))
-                    } else if (outputFile.exists() && outputFile.length() > 44L) {
-                        CaptureEventBus.publish(PlaybackCaptureState.Completed(outputFile))
-                    } else {
-                        outputFile.delete()
-                        CaptureEventBus.publish(PlaybackCaptureState.Error("録音可能な端末音声がありませんでした"))
-                    }
-
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    session.running.set(false)
+                    val outcome = errorMessage?.let(CaptureOutcome::Error)
+                        ?: CaptureOutcome.Completed
+                    finishSession(session, outcome)
                 }
-            }, "ChopLab-PlaybackCapture").apply { start() }
+            }, "ChopLab-PlaybackCapture")
+            session.worker = recordingWorker
+            check(isCurrentAndRunning(session)) { "端末音声録音の開始はキャンセルされました" }
+            recordingWorker.start()
         } catch (throwable: Throwable) {
-            failAndStop(throwable.message ?: "端末音声録音を開始できません")
+            finishSession(
+                session,
+                CaptureOutcome.Error(throwable.message ?: "端末音声録音を開始できません"),
+            )
         }
     }
 
@@ -189,36 +186,92 @@ class PlaybackCaptureService : Service() {
     }
 
     private fun requestStop() {
-        if (!running.getAndSet(false)) {
-            if (worker == null) {
-                releaseProjection()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+        val session = currentSession
+        if (session == null) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
             return
         }
-        runCatching { audioRecord?.stop() }
+        requestStop(session)
     }
 
-    private fun failAndStop(message: String) {
-        running.set(false)
-        runCatching { audioRecord?.release() }
-        audioRecord = null
-        releaseProjection()
-        CaptureEventBus.publish(PlaybackCaptureState.Error(message))
+    private fun requestStop(session: CaptureSession) {
+        if (!lifecycle.requestStop(session.generation)) return
+        session.running.set(false)
+        Thread({
+            val stopped = stopCaptureWorkerBounded(
+                worker = session.worker,
+                stopInput = { session.recorder?.stop() },
+                releaseInput = { takeRecorder(session)?.release() },
+                stopTimeoutMillis = STOP_TIMEOUT_MILLIS,
+                releaseTimeoutMillis = RELEASE_TIMEOUT_MILLIS,
+            )
+            if (!stopped) {
+                finishSession(session, CaptureOutcome.Error("端末音声録音を時間内に停止できませんでした"))
+            } else if (session.worker == null) {
+                finishSession(session, CaptureOutcome.Error("端末音声録音の開始をキャンセルしました"))
+            }
+        }, "ChopLab-CaptureStop").apply { start() }
+    }
+
+    private fun isCurrentAndRunning(session: CaptureSession): Boolean =
+        synchronized(sessionLock) { currentSession === session && session.running.get() }
+
+    private fun finishSession(session: CaptureSession, outcome: CaptureOutcome) {
+        session.running.set(false)
+        val ownsLifecycle = lifecycle.finish(session.generation)
+        val ownsSession = synchronized(sessionLock) {
+            if (currentSession === session) {
+                currentSession = null
+                true
+            } else {
+                false
+            }
+        }
+        releaseSessionResources(session)
+        if (!ownsLifecycle || !ownsSession) {
+            runCatching { session.outputFile.delete() }
+            return
+        }
+
+        when (outcome) {
+            CaptureOutcome.Completed -> {
+                if (session.outputFile.exists() && session.outputFile.length() > 44L) {
+                    CaptureEventBus.publish(PlaybackCaptureState.Completed(session.outputFile))
+                } else {
+                    session.outputFile.delete()
+                    CaptureEventBus.publish(PlaybackCaptureState.Error("録音可能な端末音声がありませんでした"))
+                }
+            }
+            is CaptureOutcome.Error -> {
+                session.outputFile.delete()
+                CaptureEventBus.publish(PlaybackCaptureState.Error(outcome.message))
+            }
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun releaseProjection() {
-        val projection = mediaProjection
-        val callback = projectionCallback
+    private fun releaseSessionResources(session: CaptureSession) {
+        val recorder = takeRecorder(session)
+        runCatching { recorder?.stop() }
+        runCatching { recorder?.release() }
+
+        val (projection, callback) = synchronized(session) {
+            val ownedProjection = session.projection
+            val ownedCallback = session.projectionCallback
+            session.projectionCallback = null
+            session.projection = null
+            ownedProjection to ownedCallback
+        }
         if (projection != null && callback != null) {
             runCatching { projection.unregisterCallback(callback) }
         }
-        projectionCallback = null
-        mediaProjection = null
         runCatching { projection?.stop() }
+    }
+
+    private fun takeRecorder(session: CaptureSession): AudioRecord? = synchronized(session) {
+        session.recorder.also { session.recorder = null }
     }
 
     private fun buildNotification(): Notification {
@@ -282,6 +335,8 @@ class PlaybackCaptureService : Service() {
         private const val SAMPLE_RATE = 48_000
         private const val NOTIFICATION_CHANNEL = "playback_capture"
         private const val NOTIFICATION_ID = 42
+        private const val STOP_TIMEOUT_MILLIS = 1_500L
+        private const val RELEASE_TIMEOUT_MILLIS = 500L
 
         fun startIntent(context: Context, resultCode: Int, data: Intent): Intent =
             Intent(context, PlaybackCaptureService::class.java)
@@ -291,5 +346,21 @@ class PlaybackCaptureService : Service() {
 
         fun stopIntent(context: Context): Intent =
             Intent(context, PlaybackCaptureService::class.java).setAction(ACTION_STOP)
+    }
+
+    private class CaptureSession(
+        val generation: Long,
+        val outputFile: File,
+    ) {
+        val running = AtomicBoolean(true)
+        @Volatile var recorder: AudioRecord? = null
+        @Volatile var projection: MediaProjection? = null
+        @Volatile var projectionCallback: MediaProjection.Callback? = null
+        @Volatile var worker: Thread? = null
+    }
+
+    private sealed interface CaptureOutcome {
+        data object Completed : CaptureOutcome
+        data class Error(val message: String) : CaptureOutcome
     }
 }

@@ -6,6 +6,34 @@ import org.junit.Test
 class PadPressRoutingTest {
 
     @Test
+    fun pendingCommandsExposeStartingAndStoppingWithoutFakingAppliedPlayback() {
+        assertEquals(
+            SourceUiPhase.STOPPED,
+            sourceUiPhase(appliedPlaying = false, PendingSourceCommand.NONE),
+        )
+        assertEquals(
+            SourceUiPhase.STARTING,
+            sourceUiPhase(appliedPlaying = false, PendingSourceCommand.START),
+        )
+        assertEquals(
+            SourceUiPhase.PLAYING,
+            sourceUiPhase(appliedPlaying = true, PendingSourceCommand.NONE),
+        )
+        assertEquals(
+            SourceUiPhase.STOPPING,
+            sourceUiPhase(appliedPlaying = true, PendingSourceCommand.STOP),
+        )
+        assertEquals(
+            PendingSourceCommand.NONE,
+            reconcilePendingSourceCommand(PendingSourceCommand.START, appliedPlaying = true),
+        )
+        assertEquals(
+            PendingSourceCommand.NONE,
+            reconcilePendingSourceCommand(PendingSourceCommand.STOP, appliedPlaying = false),
+        )
+    }
+
+    @Test
     fun completedSourceRestartsFromBeginning() {
         assertEquals(0, sourcePlaybackStartFrame(requestedFrame = 999, frameCount = 1_000))
         assertEquals(0, sourcePlaybackStartFrame(requestedFrame = 1_000, frameCount = 1_000))
@@ -107,6 +135,22 @@ class PadPressRoutingTest {
                 currentMessage = "再生中",
             ),
         )
+        assertEquals(
+            "すべての再生音を停止しました",
+            sourcePlaybackAppliedStatusMessage(
+                previouslyApplied = true,
+                nowApplied = false,
+                currentMessage = "すべての再生音を停止しています",
+            ),
+        )
+        assertEquals(
+            "新しい素材を入れてください",
+            sourcePlaybackAppliedStatusMessage(
+                previouslyApplied = true,
+                nowApplied = false,
+                currentMessage = "新しい素材を入れてください",
+            ),
+        )
     }
 
     @Test
@@ -134,13 +178,64 @@ class PadPressRoutingTest {
     }
 
     @Test
-    fun assignedCapturePadPlaysExistingChopInsteadOfOverwritingIt() {
+    fun sourceTransitionsBlockPadsInsteadOfPreviewingOrOverwriting() {
+        assertEquals(SourceUiPhase.STARTING, sourceUiPhase(false, PendingSourceCommand.START))
         assertEquals(
-            PadPressAction.PLAY_ASSIGNED,
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION,
+            resolvePadPressAction(
+                sourcePlaying = false,
+                padAssigned = false,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+                pendingSourceCommand = PendingSourceCommand.START,
+            ),
+        )
+        assertEquals(
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION,
+            resolvePadPressAction(
+                sourcePlaying = true,
+                padAssigned = true,
+                surfaceMode = PadSurfaceMode.PERFORMANCE,
+                pendingSourceCommand = PendingSourceCommand.STOP,
+            ),
+        )
+    }
+
+    @Test
+    fun assignedCapturePadIsOverwrittenByTheCurrentPlayingSource() {
+        assertEquals(
+            PadPressAction.CAPTURE_CHOP,
             resolvePadPressAction(
                 sourcePlaying = true,
                 padAssigned = true,
                 surfaceMode = PadSurfaceMode.CAPTURE,
+            ),
+        )
+    }
+
+    @Test
+    fun activeRecordingBlocksPadPlaybackInsteadOfContaminatingTheTake() {
+        assertEquals(
+            PadPressAction.BLOCKED_DURING_RECORDING,
+            resolvePadPressAction(
+                sourcePlaying = false,
+                padAssigned = true,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
+        )
+        assertEquals(
+            PadPressAction.BLOCKED_DURING_RECORDING,
+            resolvePadPressAction(
+                sourcePlaying = false,
+                padAssigned = true,
+                surfaceMode = PadSurfaceMode.PERFORMANCE,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
             ),
         )
     }
@@ -185,5 +280,13 @@ class PadPressRoutingTest {
             PerformancePadPressAction.TRIGGER_ONLY,
             resolvePerformancePadPressAction(drum, recordArmed = false, transportPlaying = true),
         )
+    }
+
+    @Test
+    fun immediateHitAfterRecordStartsLandsOnTheFirstStep() {
+        assertEquals(0, liveRecordingStep(-1))
+        assertEquals(0, liveRecordingStep(0))
+        assertEquals(15, liveRecordingStep(15))
+        assertEquals(0, liveRecordingStep(16))
     }
 }

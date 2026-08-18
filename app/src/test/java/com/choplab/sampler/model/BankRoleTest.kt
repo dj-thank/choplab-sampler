@@ -1,6 +1,7 @@
 package com.choplab.sampler.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class BankRoleTest {
@@ -25,6 +26,33 @@ class BankRoleTest {
         }
 
         assertEquals(16, defaultMelodyChopPad(pads))
+    }
+
+    @Test
+    fun fullMelodyBankHasNoImplicitA01OverwriteTarget() {
+        val audio = PcmAudio(name = "used", samples = shortArrayOf(1, 2), sampleRate = 48_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index < SamplerConfig.PADS_PER_BANK) {
+                PadModel(index, audio = audio, startFrame = 0, endFrame = 2)
+            } else {
+                PadModel(index)
+            }
+        }
+
+        assertNull(defaultMelodyChopPad(pads))
+
+        val selectedDrum = SamplerUiState(
+            selectedBank = SamplerConfig.DRUM_BANK_INDEX,
+            selectedPad = SamplerConfig.PADS_PER_BANK,
+            pads = pads,
+        )
+        val prepared = prepareDefaultMelodyChopDestination(selectedDrum)
+        assertEquals(selectedDrum.selectedBank, prepared.selectedBank)
+        assertEquals(selectedDrum.selectedPad, prepared.selectedPad)
+        assertEquals(
+            "BANK Aは満杯です。上書きするPADを選ぶか、不要なPADを消してください",
+            prepared.statusMessage,
+        )
     }
 
     @Test

@@ -1,29 +1,39 @@
-# ChopLab — Android sampler
+# ChopLab — おとひろい sampler
 
 [![Android verification](https://github.com/dj-thank/choplab-sampler/actions/workflows/android.yml/badge.svg)](https://github.com/dj-thank/choplab-sampler/actions/workflows/android.yml)
+[![iOS verification](https://github.com/dj-thank/choplab-sampler/actions/workflows/ios.yml/badge.svg)](https://github.com/dj-thank/choplab-sampler/actions/workflows/ios.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Android 10以降で動くモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
+Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPと、次段階へ移行するためのステレオ対応ドメイン基盤を公開しています。GitHub Releasesには、タグから自動生成する開発プレビューAPKを添付します。
+現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたSimulator previewがあります。GitHub Releasesには、タグからAndroid APKとiOS Simulator app zipを同時に添付します。
 
 画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。縦横どちらでも画面スクロールを使わず、`入れる / チョップ / ビート / 保存` の固定4工程から取込、波形チョップ、PAD演奏、16-step制作、WAV書き出しへ直接移動できます。
 
-操作の中心となる16 PADと`ALL STOP`は制作画面で見失わない位置に保ちます。`チョップ`では波形タップで頭出しし、空PADで切り取り、音入りPADで試聴、長押しで開始・終了位置を微調整できます。`ビート`では`PADを選ぶ → 選択音をループ／並べる → 足す／擦る`の順を常時表示し、チョップ範囲の末尾から先頭へ戻る再生位置を実波形上で確認できます。4つ打ち・8分・16分はループとは別の`配置プリセット`として細かい調整に残し、別BANKのドラムを重ねられます。曲と選択中PADのKEY/TONE/LEVELは通常画面から直接変更できます。新しい音源への入れ替えや全消去は二度押し確認を挟み、押下、選択、再生、録音の状態を文字と色の両方で示します。
+操作の中心となる16 PADと`ALL STOP`は制作画面で見失わない位置に保ちます。録音中はヘッダーを録音種別ごとの`MIC / DEVICE / VOICE STOP`へ切り替え、準備・録音・停止保存を一つのセッションとして表示します。録音を汚すPAD、元曲、ループ、スクラッチ、トランスポートの追加再生と競合録音を遮断し、Layer Studio内にもSTOPを残します。元曲、範囲試聴、Beat loop、シーケンサー、scratchは切替前に競合音を止めるため、試聴後にループを始めても同じ音が二重になりません。通常PADはその後からドラム等を意図的に重ねられます。`チョップ`では波形タップで頭出しし、空PADで追加、音入りPADで現在素材へ上書き、長押しで開始・終了位置を微調整できます。`ビート`では`PADを選ぶ → 選択音をループ／並べる → 足す／擦る`の順を常時表示し、チョップ範囲の末尾から先頭へ戻る再生位置を実波形上で確認できます。4つ打ち・8分・16分はループとは別の`配置プリセット`として細かい調整に残し、別BANKのドラムを重ねられます。曲と選択中PADのKEY/TONE/LEVELは通常画面から直接変更できます。新しい音源への入れ替えや新しい制作の開始は二度押し確認を挟み、押下、選択、再生、録音の状態を文字と色の両方で示します。
 
 ## まず使う
 
-1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から最新の`ChopLab-*-debug.apk`をAndroid端末へダウンロードします。
-2. Androidの設定で、使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
+### Android
+
+1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から`ChopLab-*-debug.apk`と対応する`.sha256`をダウンロードします。
+2. SHA-256を確認してから、Androidの設定で使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
 3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
 
+### iOS
+
+Releaseの`ChopLab-*-ios-simulator.app.zip`は、Apple署名を使わない **iOS Simulator用プレビュー** です。macOSとXcodeがある環境で展開し、起動済みSimulatorへ `xcrun simctl install booted ChopLab.app` でインストールします。iPhone/iPadへ直接インストールできるIPAではありません。実機版には利用者自身のApple Developer team、provisioning profile、署名が必要です。
+
 リリースAPKは現時点ではGitHub Actionsのデバッグ署名による開発プレビューです。端末によっては、別のビルドへ更新する前に既存版のアンインストールが必要です。アンインストール前に「完成」から`.choplab`制作ファイルを書き出してください。個人データを扱う前に、コードと権限要求を確認してください。
+
+録音、保存、権限、端末内データの扱いは[`PRIVACY.md`](PRIVACY.md)、内蔵ドラム音と第三者表示は[`NOTICE`](NOTICE)に記載しています。内蔵5キットはダウンロード音源ではなく、このリポジトリのコードが生成するオリジナルの決定論的PCMです。ユーザー音源、認証情報、署名鍵、provisioning profileはソースにもReleaseにも含めません。
 
 ## 現在の範囲
 
 このリポジトリは、次の二層を明確に分けています。
 
 - `app/`: 現在のビルド基準線。AudioTrackベースのMVP実装です。
+- `ios/`: SwiftUI + AVFoundationのiOS 16向けプレビューMVP。音源取込、16 PAD、範囲編集、録音、停止を実装し、署名不要のSimulator previewとして検証します。
 - `reference/pro-v0.2/`: Oboe、保存、ステレオ、独立タイムストレッチ、ADSR、LFO、FX、MIDI、Song、ステム書き出しの未統合参照コードと設計資料です。
 
 `reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。Codexには、参照コードを盲目的にコピーさせず、MVPへ段階的に統合し、各段階でビルドとテストを通すよう指示しています。
@@ -94,6 +104,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\codex-run-master.ps1
 - Android NDK `29.0.14206865`
 - CMake `3.22.1`
 - Android Studio現行安定版
+- macOS + Xcode 15.4以上 + XcodeGen（iOS Simulator previewの生成と検証）
 - Codex CLIまたはChatGPTデスクトップアプリのCodex
 
 MVPの固定ツールチェーン:
@@ -134,6 +145,15 @@ APK:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+iOS Simulator preview:
+
+```bash
+xcodegen generate --spec project.yml
+bash scripts/build-ios-simulator.sh
+```
+
+GitHub Actionsは、両OSのテスト、public-surface scan、SHA-256作成を行い、`v*`タグでAndroid APKとiOS Simulator app zipを同じGitHub Releaseへ添付します。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
+
 ## Codex運用の基本
 
 1. 最初に`AGENTS.md`、`docs/PROJECT_STATE.md`、`docs/PRO_REFERENCE_GAPS.md`を読ませます。
@@ -162,7 +182,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## ライセンス
 
-アプリ固有コードはMIT Licenseです。依存ライブラリ、Gradle Wrapper、Oboeなどは各ライセンスに従います。AKAI、AKAI Professional、MPCは各権利者の商標です。
+アプリ固有コードは[`MIT License`](LICENSE)です。依存ライブラリ、Gradle Wrapper、Oboeなどは各ライセンスに従います。追加表示は[`NOTICE`](NOTICE)を参照してください。AKAI、AKAI Professional、MPCは各権利者の商標です。
 
 ## コントリビューション
 

@@ -8,6 +8,35 @@ import org.junit.Test
 
 class SourceReplacementTest {
     @Test
+    fun `starting source replacement silences old playback while decoding`() {
+        val oldAudio = PcmAudio(1L, "old.wav", ShortArray(2_000), 1_000)
+        val state = SamplerUiState(
+            currentAudio = oldAudio,
+            sourcePlaying = true,
+            transportPlaying = true,
+            recordArmed = true,
+            loopingPadIndex = 0,
+            loopPlayheadFrame = 120,
+            scratchingPadIndex = 0,
+            scratchPlayheadFrame = 140,
+            sourceScratchActive = true,
+        )
+
+        val loading = beginSourceReplacement(state)
+
+        assertSame(oldAudio, loading.currentAudio)
+        assertTrue(loading.isLoading)
+        assertEquals(PendingSourceCommand.STOP, loading.pendingSourceCommand)
+        assertEquals(false, loading.transportPlaying)
+        assertEquals(false, loading.recordArmed)
+        assertNull(loading.loopingPadIndex)
+        assertNull(loading.scratchingPadIndex)
+        assertEquals(false, loading.sourceScratchActive)
+        assertTrue(playbackRequestBlockedByProjectOperation(loading))
+        assertEquals("音声を解析しています…", loading.statusMessage)
+    }
+
+    @Test
     fun `new source starts a separate project without old pads or steps`() {
         val oldAudio = PcmAudio(1L, "old.wav", ShortArray(2_000), 1_000)
         val newAudio = PcmAudio(2L, "new.wav", ShortArray(4_000), 1_000)

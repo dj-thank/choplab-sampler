@@ -9,6 +9,8 @@ enum class PadPressAction {
     CAPTURE_CHOP,
     PLAY_ASSIGNED,
     SELECT_ONLY,
+    BLOCKED_DURING_RECORDING,
+    BLOCKED_DURING_SOURCE_TRANSITION,
 }
 
 enum class PerformancePadPressAction {
@@ -29,19 +31,86 @@ enum class SourcePlaybackToggleAction {
     STOP,
 }
 
+enum class SourceUiPhase {
+    STOPPED,
+    STARTING,
+    PLAYING,
+    STOPPING,
+}
+
 data class SourcePlaybackRequestFeedback(
     val sourcePlaying: Boolean,
     val statusMessage: String,
 )
 
+fun sourceUiPhase(
+    appliedPlaying: Boolean,
+    pendingCommand: PendingSourceCommand,
+): SourceUiPhase = when {
+    pendingCommand == PendingSourceCommand.START && !appliedPlaying -> SourceUiPhase.STARTING
+    pendingCommand == PendingSourceCommand.STOP && appliedPlaying -> SourceUiPhase.STOPPING
+    appliedPlaying -> SourceUiPhase.PLAYING
+    else -> SourceUiPhase.STOPPED
+}
+
+fun SamplerUiState.sourceUiPhase(): SourceUiPhase = sourceUiPhase(
+    appliedPlaying = sourcePlaying,
+    pendingCommand = pendingSourceCommand,
+)
+
+fun reconcilePendingSourceCommand(
+    pendingCommand: PendingSourceCommand,
+    appliedPlaying: Boolean,
+): PendingSourceCommand = when (pendingCommand) {
+    PendingSourceCommand.START -> if (appliedPlaying) {
+        PendingSourceCommand.NONE
+    } else {
+        PendingSourceCommand.START
+    }
+    PendingSourceCommand.STOP -> if (appliedPlaying) {
+        PendingSourceCommand.STOP
+    } else {
+        PendingSourceCommand.NONE
+    }
+    PendingSourceCommand.NONE -> PendingSourceCommand.NONE
+}
+
+fun pendingSourceCommandAfterStartRequest(appliedPlaying: Boolean): PendingSourceCommand =
+    if (appliedPlaying) PendingSourceCommand.NONE else PendingSourceCommand.START
+
+fun shouldContinueSourcePlayback(
+    appliedPlaying: Boolean,
+    pendingCommand: PendingSourceCommand,
+): Boolean = pendingCommand != PendingSourceCommand.STOP &&
+    (appliedPlaying || pendingCommand == PendingSourceCommand.START)
+
+fun pendingSourceCommandAfterPlaybackRetarget(
+    shouldContinuePlayback: Boolean,
+    appliedPlaying: Boolean,
+    currentPendingCommand: PendingSourceCommand,
+): PendingSourceCommand = if (shouldContinuePlayback && !appliedPlaying) {
+    PendingSourceCommand.START
+} else {
+    currentPendingCommand
+}
+
 fun resolvePadPressAction(
     sourcePlaying: Boolean,
     padAssigned: Boolean,
     surfaceMode: PadSurfaceMode,
-): PadPressAction = when {
-    sourcePlaying && !padAssigned && surfaceMode == PadSurfaceMode.CAPTURE -> PadPressAction.CAPTURE_CHOP
-    padAssigned -> PadPressAction.PLAY_ASSIGNED
-    else -> PadPressAction.SELECT_ONLY
+    pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
+    recordingSession: RecordingSession = RecordingSession.Idle,
+): PadPressAction {
+    val sourcePhase = sourceUiPhase(sourcePlaying, pendingSourceCommand)
+    return when {
+        recordingSession.isActive -> PadPressAction.BLOCKED_DURING_RECORDING
+        sourcePhase == SourceUiPhase.STARTING || sourcePhase == SourceUiPhase.STOPPING ->
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION
+        sourcePhase == SourceUiPhase.PLAYING && surfaceMode == PadSurfaceMode.CAPTURE ->
+            PadPressAction.CAPTURE_CHOP
+        padAssigned -> PadPressAction.PLAY_ASSIGNED
+        else -> PadPressAction.SELECT_ONLY
+    }
 }
 
 fun resolvePerformancePadPressAction(
@@ -54,6 +123,10 @@ fun resolvePerformancePadPressAction(
         PerformancePadPressAction.TRIGGER_AND_RECORD_STEP
     else -> PerformancePadPressAction.TRIGGER_ONLY
 }
+
+/** The audio thread can still report -1 immediately after transport start. */
+fun liveRecordingStep(currentStep: Int): Int =
+    currentStep.takeIf { it in 0 until SamplerConfig.STEP_COUNT } ?: 0
 
 fun sourcePlaybackStartFrame(requestedFrame: Int, frameCount: Int): Int {
     if (frameCount <= 1) return 0
@@ -109,7 +182,18 @@ fun sourcePlaybackAppliedStatusMessage(
         "サンプリング中 — 「ここだ」で空PADを叩いてください"
     previouslyApplied && !nowApplied && currentMessage.startsWith("停止を準備中") ->
         "停止中 — PADでチョップを演奏できます"
-    previouslyApplied && !nowApplied ->
+    previouslyApplied && !nowApplied && currentMessage == "すべての再生音を停止しています" ->
+        "すべての再生音を停止しました"
+    previouslyApplied && !nowApplied && currentMessage == "再生音を全停止中（録音は継続中）" ->
+        "再生音を全停止しました（録音は継続中）"
+    previouslyApplied && !nowApplied && (
+        currentMessage.startsWith("すべての再生音を停止") ||
+            currentMessage.startsWith("再生音を全停止")
+        ) -> currentMessage
+    previouslyApplied && !nowApplied && (
+        currentMessage.startsWith("サンプリング中") ||
+            currentMessage.startsWith("再生中")
+        ) ->
         "曲の再生が終わりました — PADでチョップを演奏できます"
     else -> currentMessage
 }

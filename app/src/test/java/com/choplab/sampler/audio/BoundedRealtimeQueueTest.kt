@@ -1,5 +1,8 @@
 package com.choplab.sampler.audio
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -7,6 +10,39 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoundedRealtimeQueueTest {
+    @Test
+    fun clearDiscardsAnOfferThatWasReservedBeforeTheClearBoundary() {
+        val queue = BoundedRealtimeQueue<String>(capacity = 1)
+        val factoryEntered = CountDownLatch(1)
+        val releaseFactory = CountDownLatch(1)
+        val accepted = AtomicBoolean(true)
+        val producer = Thread {
+            accepted.set(
+                queue.offerPrepared {
+                    factoryEntered.countDown()
+                    releaseFactory.await()
+                    "stale"
+                },
+            )
+        }.apply { start() }
+
+        try {
+            assertTrue(factoryEntered.await(1, TimeUnit.SECONDS))
+            queue.clear()
+            releaseFactory.countDown()
+            producer.join(1_000L)
+
+            assertFalse(accepted.get())
+            assertEquals(0, queue.size)
+            assertNull(queue.poll())
+            assertTrue(queue.offer("fresh"))
+            assertEquals("fresh", queue.poll())
+        } finally {
+            releaseFactory.countDown()
+            producer.join(1_000L)
+        }
+    }
+
     @Test
     fun queueRejectsOverflowAndPreservesAcceptedCommandOrder() {
         val queue = BoundedRealtimeQueue<String>(capacity = 2)
@@ -33,6 +69,41 @@ class BoundedRealtimeQueueTest {
         assertEquals(0, queue.size)
         assertTrue(queue.offer(3))
         assertEquals(3, queue.poll())
+    }
+
+    @Test
+    fun preparedMailboxCommandDoesNotRunItsSideEffectWhenCapacityIsFull() {
+        val mailbox = RealtimeCommandMailbox<String, Int>(capacity = 1)
+        val sourceState = SourcePlaybackState()
+        val playingGeneration = sourceState.issuePlay()
+        assertTrue(mailbox.offer("occupied"))
+
+        val accepted = mailbox.offerPrepared {
+            sourceState.issueStop()
+            "loop"
+        }
+
+        assertFalse(accepted)
+        assertTrue(sourceState.isCurrent(playingGeneration))
+    }
+
+    @Test
+    fun preparedMailboxCommandRunsOnceAfterCapacityIsReserved() {
+        val mailbox = RealtimeCommandMailbox<String, Int>(capacity = 1)
+        val sourceState = SourcePlaybackState()
+        val playingGeneration = sourceState.issuePlay()
+        var preparationCount = 0
+
+        val accepted = mailbox.offerPrepared {
+            preparationCount++
+            sourceState.issueStop()
+            "loop"
+        }
+
+        assertTrue(accepted)
+        assertEquals(1, preparationCount)
+        assertFalse(sourceState.isCurrent(playingGeneration))
+        assertEquals("loop", mailbox.pollEntry()?.value)
     }
 
     @Test

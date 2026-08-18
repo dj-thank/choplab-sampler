@@ -6,10 +6,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -39,11 +41,19 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
@@ -74,17 +84,28 @@ fun WaveformEditor(
     compactViewportControls: Boolean = false,
     showTimeReadout: Boolean = true,
     showInteractionHint: Boolean = true,
+    maximumZoom: Float = 32f,
+    zoomFocusFrame: Int? = null,
+    readoutColor: Color? = null,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
     var scroll by remember(audio.id) { mutableFloatStateOf(0f) }
 
-    val totalFrames = audio.frameCount.coerceAtLeast(1)
-    val visibleFrames = (totalFrames / zoom).roundToInt().coerceIn(1, totalFrames)
-    val maximumVisibleStart = (totalFrames - visibleFrames).coerceAtLeast(0)
-    val visibleStart = (maximumVisibleStart * scroll).roundToInt().coerceIn(0, maximumVisibleStart)
+    val viewport = resolveWaveformViewport(audio.frameCount, zoom, scroll)
+    val totalFrames = viewport.totalFrames
+    val visibleFrames = viewport.visibleFrames
+    val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
     val widthPx = canvasSize.width.toFloat().coerceAtLeast(1f)
+    val waveformEnvelope = remember(audio.id, visibleStart, visibleEnd, canvasSize.width) {
+        buildWaveformEnvelope(
+            samples = audio.samples,
+            visibleStart = visibleStart,
+            visibleEnd = visibleEnd,
+            pixelWidth = canvasSize.width,
+        )
+    }
 
     val waveformColor = MaterialTheme.colorScheme.primary
     val zeroLineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
@@ -92,6 +113,12 @@ fun WaveformEditor(
     val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)
     val activeSliceColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.23f)
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val resolvedReadoutColor = readoutColor ?: MaterialTheme.colorScheme.onSurface
+    val accessibilityTapActionLabel = if (manualChopEnabled) {
+        "表示範囲の中央にチョップを追加"
+    } else {
+        "表示範囲の中央へ移動"
+    }
 
     Column(modifier = modifier) {
         Box(
@@ -100,7 +127,8 @@ fun WaveformEditor(
                 .clip(RoundedCornerShape(12.dp))
                 .background(backgroundColor)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                .onSizeChanged { canvasSize = it },
+                .onSizeChanged { canvasSize = it }
+                .semantics { isTraversalGroup = true },
         ) {
             Canvas(
                 modifier = Modifier
@@ -112,14 +140,86 @@ fun WaveformEditor(
                         visibleFrames,
                         canvasSize,
                     ) {
-                        detectTapGestures { offset ->
-                            if (canvasSize.width <= 0) return@detectTapGestures
-                            val fraction = (offset.x / canvasSize.width).coerceIn(0f, 1f)
-                            val frame = (visibleStart + visibleFrames * fraction)
+                        detectTapGestures(
+                            onDoubleTap = { offset ->
+                                if (canvasSize.width <= 0) return@detectTapGestures
+                                val frame = waveformFrameAtX(
+                                    offset.x,
+                                    canvasSize.width.toFloat(),
+                                    visibleStart,
+                                    visibleFrames,
+                                    totalFrames,
+                                )
+                                val next = zoomViewportAtFocus(frame, totalFrames, zoom, 2f, maximumZoom)
+                                scroll = next.scroll
+                                zoom = next.zoom
+                            },
+                            onTap = { offset ->
+                                if (canvasSize.width <= 0) return@detectTapGestures
+                                val fraction = (offset.x / canvasSize.width).coerceIn(0f, 1f)
+                                val frame = (visibleStart + visibleFrames * fraction)
+                                    .roundToInt()
+                                    .coerceIn(0, totalFrames - 1)
+                                onWaveformTap(frame)
+                            },
+                        )
+                    }
+                    .pointerInput(audio.id, visibleStart, visibleFrames) {
+                        detectTransformGestures { centroid, pan, zoomChange, _ ->
+                            if (canvasSize.width <= 0) return@detectTransformGestures
+                            val focusFrame = waveformFrameAtX(
+                                centroid.x,
+                                canvasSize.width.toFloat(),
+                                visibleStart,
+                                visibleFrames,
+                                totalFrames,
+                            )
+                            val next = zoomViewportAtFocus(focusFrame, totalFrames, zoom, zoomChange, maximumZoom)
+                            val panned = panWaveformViewport(
+                                totalFrames = totalFrames,
+                                zoom = next.zoom,
+                                scroll = next.scroll,
+                                fraction = -pan.x / canvasSize.width,
+                            )
+                            scroll = panned.scroll
+                            zoom = panned.zoom
+                        }
+                    }
+                    .semantics {
+                        contentDescription = if (manualChopEnabled) {
+                            "音声波形。タッチ操作はタップした位置にチョップを追加。アクセシビリティ操作は$accessibilityTapActionLabel"
+                        } else {
+                            "音声波形。タッチ操作はタップした位置へ移動。アクセシビリティ操作は$accessibilityTapActionLabel"
+                        }
+                        stateDescription = waveformViewportStateDescription(viewport)
+                        role = Role.Button
+                        onClick(
+                            label = accessibilityTapActionLabel,
+                        ) {
+                            val centerFrame = (visibleStart + visibleFrames / 2f)
                                 .roundToInt()
                                 .coerceIn(0, totalFrames - 1)
-                            onWaveformTap(frame)
+                            onWaveformTap(centerFrame)
+                            true
                         }
+                        customActions = waveformViewportAccessibilityActions(
+                            onPrevious = {
+                                val previousScroll = scroll
+                                scroll = panWaveformViewport(totalFrames, zoom, scroll, -0.5f).scroll
+                                scroll != previousScroll
+                            },
+                            onNext = {
+                                val previousScroll = scroll
+                                scroll = panWaveformViewport(totalFrames, zoom, scroll, 0.5f).scroll
+                                scroll != previousScroll
+                            },
+                            onReset = {
+                                val changed = zoom != 1f || scroll != 0f
+                                zoom = 1f
+                                scroll = 0f
+                                changed
+                            },
+                        )
                     },
             ) {
                 drawRect(backgroundColor)
@@ -147,11 +247,17 @@ fun WaveformEditor(
                     )
                 }
 
-                drawWaveform(
-                    samples = audio.samples,
-                    visibleStart = visibleStart,
-                    visibleEnd = visibleEnd,
+                drawWaveformEnvelope(
+                    envelope = waveformEnvelope,
                     color = waveformColor,
+                )
+
+                drawViewportOverview(
+                    visibleStart = visibleStart,
+                    visibleFrames = visibleFrames,
+                    totalFrames = totalFrames,
+                    trackColor = zeroLineColor,
+                    viewportColor = markerColor,
                 )
 
                 sliceMarkers.forEach { marker ->
@@ -185,6 +291,8 @@ fun WaveformEditor(
                 visibleStart = visibleStart,
                 visibleFrames = visibleFrames,
                 canvasWidthPx = widthPx,
+                minimumFrame = 0,
+                maximumFrame = (rangeEndFrame - 1).coerceAtLeast(0),
                 color = MaterialTheme.colorScheme.secondary,
                 onFrameChange = onRangeStartChange,
             )
@@ -194,6 +302,8 @@ fun WaveformEditor(
                 visibleStart = visibleStart,
                 visibleFrames = visibleFrames,
                 canvasWidthPx = widthPx,
+                minimumFrame = (rangeStartFrame + 1).coerceAtMost(totalFrames),
+                maximumFrame = totalFrames,
                 color = MaterialTheme.colorScheme.tertiary,
                 onFrameChange = onRangeEndChange,
             )
@@ -205,6 +315,8 @@ fun WaveformEditor(
                     visibleStart = visibleStart,
                     visibleFrames = visibleFrames,
                     canvasWidthPx = widthPx,
+                    minimumFrame = 1,
+                    maximumFrame = (totalFrames - 1).coerceAtLeast(1),
                     color = markerColor,
                     onFrameChange = { changedFrame -> onSliceMarkerChange(index, changedFrame) },
                 )
@@ -233,26 +345,35 @@ fun WaveformEditor(
                     .padding(top = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(formatTime(visibleStart, audio.sampleRate), fontSize = 11.sp)
+                Text(formatTime(visibleStart, audio.sampleRate), color = resolvedReadoutColor, fontSize = 11.sp)
                 Text(
                     "選択 ${formatTime(rangeStartFrame, audio.sampleRate)} – ${formatTime(rangeEndFrame, audio.sampleRate)}",
+                    color = resolvedReadoutColor,
                     fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp),
                 )
-                Text(formatTime(visibleEnd, audio.sampleRate), fontSize = 11.sp)
+                Text(formatTime(visibleEnd, audio.sampleRate), color = resolvedReadoutColor, fontSize = 11.sp)
             }
         }
 
         if (showViewportControls) {
-            Text("ズーム ${"%.1f".format(zoom)}×", fontSize = 12.sp)
+            Text("ズーム ${"%.1f".format(zoom)}×", color = resolvedReadoutColor, fontSize = 12.sp)
             Slider(
                 value = zoom,
                 onValueChange = {
-                    zoom = it.coerceIn(1f, 32f)
-                    if (zoom <= 1.01f) scroll = 0f
+                    val nextZoom = it.coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                    val focusFrame = zoomFocusFrame ?: visibleStart + visibleFrames / 2
+                    scroll = centeredViewportScroll(focusFrame, totalFrames, nextZoom)
+                    zoom = nextZoom
                 },
-                valueRange = 1f..32f,
+                valueRange = 1f..maximumZoom.coerceAtLeast(1f),
             )
-            Text("表示位置", fontSize = 12.sp)
+            Text("表示位置", color = resolvedReadoutColor, fontSize = 12.sp)
             Slider(
                 value = scroll,
                 onValueChange = { scroll = it.coerceIn(0f, 1f) },
@@ -263,7 +384,7 @@ fun WaveformEditor(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp),
+                    .height(48.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 ViewportControlButton(
@@ -271,8 +392,10 @@ fun WaveformEditor(
                     description = "波形を縮小",
                     enabled = zoom > 1.01f,
                     onClick = {
-                        zoom = (zoom / 2f).coerceIn(1f, 32f)
-                        if (zoom <= 1.01f) scroll = 0f
+                        val nextZoom = (zoom / 2f).coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                        val focusFrame = zoomFocusFrame ?: visibleStart + visibleFrames / 2
+                        scroll = centeredViewportScroll(focusFrame, totalFrames, nextZoom)
+                        zoom = nextZoom
                     },
                     modifier = Modifier.weight(1f),
                 )
@@ -292,8 +415,13 @@ fun WaveformEditor(
                 ViewportControlButton(
                     label = "ZOOM +",
                     description = "波形を拡大",
-                    enabled = zoom < 31.99f,
-                    onClick = { zoom = (zoom * 2f).coerceIn(1f, 32f) },
+                    enabled = zoom < maximumZoom.coerceAtLeast(1f) - 0.01f,
+                    onClick = {
+                        val nextZoom = (zoom * 2f).coerceIn(1f, maximumZoom.coerceAtLeast(1f))
+                        val focusFrame = zoomFocusFrame ?: visibleStart + visibleFrames / 2
+                        scroll = centeredViewportScroll(focusFrame, totalFrames, nextZoom)
+                        zoom = nextZoom
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 ViewportControlButton(
@@ -314,6 +442,27 @@ fun WaveformEditor(
         }
     }
 }
+
+internal fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): Float {
+    val safeTotalFrames = totalFrames.coerceAtLeast(1)
+    val safeZoom = zoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
+    val visibleFrames = (safeTotalFrames / safeZoom).roundToInt().coerceIn(1, safeTotalFrames)
+    val maximumVisibleStart = safeTotalFrames - visibleFrames
+    if (maximumVisibleStart <= 0) return 0f
+    val centeredStart = (frame.coerceIn(0, safeTotalFrames - 1) - visibleFrames / 2)
+        .coerceIn(0, maximumVisibleStart)
+    return centeredStart.toFloat() / maximumVisibleStart
+}
+
+internal fun waveformViewportAccessibilityActions(
+    onPrevious: () -> Boolean,
+    onNext: () -> Boolean,
+    onReset: () -> Boolean,
+): List<CustomAccessibilityAction> = listOf(
+    CustomAccessibilityAction("前の範囲を表示", onPrevious),
+    CustomAccessibilityAction("次の範囲を表示", onNext),
+    CustomAccessibilityAction("全体表示に戻す", onReset),
+)
 
 @Composable
 private fun ViewportControlButton(
@@ -350,20 +499,27 @@ private fun ViewportControlButton(
 }
 
 @Composable
-private fun SliceMarkerHandle(
+private fun BoxScope.SliceMarkerHandle(
     markerNumber: Int,
     frame: Int,
     visibleStart: Int,
     visibleFrames: Int,
     canvasWidthPx: Float,
+    minimumFrame: Int,
+    maximumFrame: Int,
     color: Color,
     onFrameChange: (Int) -> Unit,
 ) {
     if (canvasWidthPx <= 1f) return
     val x = frameToX(frame, visibleStart, visibleFrames, canvasWidthPx)
     val density = LocalDensity.current
-    val handleWidthPx = with(density) { 22.dp.toPx() }
+    val handleWidthPx = with(density) { 48.dp.toPx() }
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
+    val handleLeftPx = (x - handleWidthPx / 2f)
+        .coerceIn(0f, (canvasWidthPx - handleWidthPx).coerceAtLeast(0f))
+    val laneRepeat = (markerNumber - 1) / 3
+    val laneNudgePx = with(density) { laneRepeat.dp.toPx() }
+    val touchNudgePx = if (handleLeftPx <= canvasWidthPx / 2f) laneNudgePx else -laneNudgePx
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
     var accumulatedDragPx by remember { mutableFloatStateOf(0f) }
@@ -372,24 +528,20 @@ private fun SliceMarkerHandle(
         val frameDelta = (accumulatedDragPx / canvasWidthPx * visibleFrames).roundToInt()
         onFrameChange(dragOriginFrame + frameDelta)
     }
+    val accessibilityNudgeFrames = (visibleFrames / 100).coerceAtLeast(1)
 
     Box(
         modifier = Modifier
-            .offset { IntOffset((x - handleWidthPx / 2f).roundToInt(), 0) }
-            .width(22.dp)
-            .fillMaxHeight()
-            .draggable(
-                state = dragState,
-                orientation = Orientation.Horizontal,
-                onDragStarted = {
-                    dragOriginFrame = frame
-                    accumulatedDragPx = 0f
-                },
-            ),
+            .offset { IntOffset(handleLeftPx.roundToInt(), 0) }
+            .width(48.dp)
+            .fillMaxHeight(),
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
             modifier = Modifier
+                .offset {
+                    IntOffset((x - handleLeftPx - handleWidthPx / 2f).roundToInt(), 0)
+                }
                 .width(2.dp)
                 .fillMaxHeight()
                 .background(color.copy(alpha = 0.82f)),
@@ -402,6 +554,33 @@ private fun SliceMarkerHandle(
                 .padding(horizontal = 5.dp, vertical = 1.dp),
             fontSize = 9.sp,
         )
+        Box(
+            modifier = Modifier
+                .align(sliceMarkerTouchAlignment(markerNumber))
+                .offset { IntOffset(touchNudgePx.roundToInt(), 0) }
+                .width(48.dp)
+                .height(48.dp)
+                .draggable(
+                    state = dragState,
+                    orientation = Orientation.Horizontal,
+                    onDragStarted = {
+                        dragOriginFrame = frame
+                        accumulatedDragPx = 0f
+                    },
+                )
+                .semantics {
+                    contentDescription = "チョップ$markerNumber の位置"
+                    stateDescription = "${frame.coerceAtLeast(0)}フレーム"
+                    traversalIndex = 2f + markerNumber
+                    customActions = waveformNudgeActions(
+                        frame = frame,
+                        nudgeFrames = accessibilityNudgeFrames,
+                        minimumFrame = minimumFrame,
+                        maximumFrame = maximumFrame,
+                        onFrameChange = onFrameChange,
+                    )
+                },
+        )
     }
 }
 
@@ -412,14 +591,18 @@ private fun SelectionHandle(
     visibleStart: Int,
     visibleFrames: Int,
     canvasWidthPx: Float,
+    minimumFrame: Int,
+    maximumFrame: Int,
     color: Color,
     onFrameChange: (Int) -> Unit,
 ) {
     if (canvasWidthPx <= 1f) return
     val x = frameToX(frame, visibleStart, visibleFrames, canvasWidthPx)
     val density = LocalDensity.current
-    val handleWidthPx = with(density) { 26.dp.toPx() }
+    val handleWidthPx = with(density) { 48.dp.toPx() }
     if (x < -handleWidthPx || x > canvasWidthPx + handleWidthPx) return
+    val handleLeftPx = (x - handleWidthPx / 2f)
+        .coerceIn(0f, (canvasWidthPx - handleWidthPx).coerceAtLeast(0f))
 
     var dragOriginFrame by remember { mutableIntStateOf(frame) }
     var accumulatedDragPx by remember { mutableFloatStateOf(0f) }
@@ -428,11 +611,12 @@ private fun SelectionHandle(
         val frameDelta = (accumulatedDragPx / canvasWidthPx * visibleFrames).roundToInt()
         onFrameChange(dragOriginFrame + frameDelta)
     }
+    val accessibilityNudgeFrames = (visibleFrames / 100).coerceAtLeast(1)
 
     Box(
         modifier = Modifier
-            .offset { IntOffset((x - handleWidthPx / 2f).roundToInt(), 0) }
-            .width(26.dp)
+            .offset { IntOffset(handleLeftPx.roundToInt(), 0) }
+            .width(48.dp)
             .fillMaxHeight()
             .draggable(
                 state = dragState,
@@ -441,11 +625,26 @@ private fun SelectionHandle(
                     dragOriginFrame = frame
                     accumulatedDragPx = 0f
                 },
-            ),
+            )
+            .semantics {
+                contentDescription = if (label == "S") "選択開始ハンドル" else "選択終了ハンドル"
+                stateDescription = "${frame.coerceAtLeast(0)}フレーム"
+                traversalIndex = if (label == "S") 0f else 1f
+                customActions = waveformNudgeActions(
+                    frame = frame,
+                    nudgeFrames = accessibilityNudgeFrames,
+                    minimumFrame = minimumFrame,
+                    maximumFrame = maximumFrame,
+                    onFrameChange = onFrameChange,
+                )
+            },
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
             modifier = Modifier
+                .offset {
+                    IntOffset((x - handleLeftPx - handleWidthPx / 2f).roundToInt(), 0)
+                }
                 .width(3.dp)
                 .fillMaxHeight()
                 .background(color.copy(alpha = 0.92f)),
@@ -461,6 +660,35 @@ private fun SelectionHandle(
     }
 }
 
+private fun sliceMarkerTouchAlignment(markerNumber: Int): Alignment = when (markerNumber % 3) {
+    1 -> Alignment.BottomCenter
+    2 -> Alignment.Center
+    else -> Alignment.TopCenter
+}
+
+private fun waveformNudgeActions(
+    frame: Int,
+    nudgeFrames: Int,
+    minimumFrame: Int,
+    maximumFrame: Int,
+    onFrameChange: (Int) -> Unit,
+): List<CustomAccessibilityAction> = listOf(
+    CustomAccessibilityAction("少し前へ") {
+        val target = (frame - nudgeFrames).coerceIn(minimumFrame, maximumFrame)
+        if (target == frame) false else {
+            onFrameChange(target)
+            true
+        }
+    },
+    CustomAccessibilityAction("少し後へ") {
+        val target = (frame + nudgeFrames).coerceIn(minimumFrame, maximumFrame)
+        if (target == frame) false else {
+            onFrameChange(target)
+            true
+        }
+    },
+)
+
 private fun DrawScope.drawFrameRegion(
     startFrame: Int,
     endFrame: Int,
@@ -473,22 +701,32 @@ private fun DrawScope.drawFrameRegion(
     if (right > left) drawRect(color, topLeft = Offset(left, 0f), size = androidx.compose.ui.geometry.Size(right - left, size.height))
 }
 
-private fun DrawScope.drawWaveform(
+internal data class WaveformEnvelope(
+    val minimums: FloatArray,
+    val maximums: FloatArray,
+    val pixelStep: Int,
+)
+
+internal fun buildWaveformEnvelope(
     samples: ShortArray,
     visibleStart: Int,
     visibleEnd: Int,
-    color: Color,
-) {
-    if (samples.isEmpty() || visibleEnd <= visibleStart) return
-    val pixelWidth = size.width.roundToInt().coerceAtLeast(1)
+    pixelWidth: Int,
+    pixelStep: Int = 2,
+): WaveformEnvelope {
+    if (samples.isEmpty() || visibleEnd <= visibleStart || pixelWidth <= 0) {
+        return WaveformEnvelope(FloatArray(0), FloatArray(0), pixelStep.coerceAtLeast(1))
+    }
+    val safePixelStep = pixelStep.coerceAtLeast(1)
+    val bucketCount = (pixelWidth + safePixelStep - 1) / safePixelStep
+    val minimums = FloatArray(bucketCount)
+    val maximums = FloatArray(bucketCount)
     val frameSpan = visibleEnd - visibleStart
-    val centerY = size.height / 2f
-    val amplitude = size.height * 0.46f
-
-    var x = 0
-    while (x < pixelWidth) {
+    var bucket = 0
+    while (bucket < bucketCount) {
+        val x = bucket * safePixelStep
         val frameFrom = visibleStart + (frameSpan.toLong() * x / pixelWidth).toInt()
-        val nextX = (x + 2).coerceAtMost(pixelWidth)
+        val nextX = (x + safePixelStep).coerceAtMost(pixelWidth)
         val frameTo = visibleStart + (frameSpan.toLong() * nextX / pixelWidth).toInt()
         val safeFrom = frameFrom.coerceIn(0, samples.lastIndex)
         val safeTo = frameTo.coerceIn(safeFrom + 1, samples.size)
@@ -503,15 +741,74 @@ private fun DrawScope.drawWaveform(
             if (value > maximum) maximum = value
             frame += sampleStep
         }
+        minimums[bucket] = minimum
+        maximums[bucket] = maximum
+        bucket++
+    }
+    return WaveformEnvelope(minimums, maximums, safePixelStep)
+}
 
+private fun DrawScope.drawWaveformEnvelope(
+    envelope: WaveformEnvelope,
+    color: Color,
+) {
+    if (envelope.minimums.isEmpty()) return
+    val centerY = size.height / 2f
+    val amplitude = size.height * 0.46f
+    var bucket = 0
+    while (bucket < envelope.minimums.size) {
+        val x = bucket * envelope.pixelStep
         drawLine(
             color = color,
-            start = Offset(x.toFloat(), centerY - maximum * amplitude),
-            end = Offset(x.toFloat(), centerY - minimum * amplitude),
+            start = Offset(x.toFloat(), centerY - envelope.maximums[bucket] * amplitude),
+            end = Offset(x.toFloat(), centerY - envelope.minimums[bucket] * amplitude),
             strokeWidth = 1.5f,
         )
-        x += 2
+        bucket++
     }
+}
+
+internal fun DrawScope.drawViewportOverview(
+    visibleStart: Int,
+    visibleFrames: Int,
+    totalFrames: Int,
+    trackColor: Color,
+    viewportColor: Color,
+) {
+    val height = 4.dp.toPx().coerceAtMost(size.height)
+    val top = size.height - height
+    drawRect(
+        color = trackColor,
+        topLeft = Offset(0f, top),
+        size = androidx.compose.ui.geometry.Size(size.width, height),
+    )
+    val geometry = waveformOverviewGeometry(visibleStart, visibleFrames, totalFrames, size.width)
+    drawRect(
+        color = viewportColor,
+        topLeft = Offset(geometry.left, top),
+        size = androidx.compose.ui.geometry.Size((geometry.right - geometry.left).coerceAtLeast(1f), height),
+    )
+}
+
+internal data class WaveformOverviewGeometry(
+    val left: Float,
+    val right: Float,
+)
+
+internal fun waveformOverviewGeometry(
+    visibleStart: Int,
+    visibleFrames: Int,
+    totalFrames: Int,
+    width: Float,
+): WaveformOverviewGeometry {
+    val safeWidth = width.takeIf(Float::isFinite)?.coerceAtLeast(0f) ?: 0f
+    if (safeWidth == 0f || totalFrames <= 0) return WaveformOverviewGeometry(0f, 0f)
+    val safeTotal = totalFrames.coerceAtLeast(1)
+    val left = visibleStart.coerceIn(0, safeTotal).toFloat() / safeTotal * safeWidth
+    val right = (visibleStart.toLong() + visibleFrames.coerceAtLeast(0))
+        .coerceIn(0L, safeTotal.toLong())
+        .toFloat() / safeTotal * safeWidth
+    return WaveformOverviewGeometry(left = left, right = right.coerceAtLeast(left))
 }
 
 private fun frameToX(frame: Int, visibleStart: Int, visibleFrames: Int, width: Float): Float =

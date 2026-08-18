@@ -55,6 +55,13 @@ enum class PadContentKind {
     VOCAL,
 }
 
+/** Runtime-only source command intent. Project archives intentionally do not persist it. */
+enum class PendingSourceCommand {
+    NONE,
+    START,
+    STOP,
+}
+
 data class PcmAudio(
     val id: Long = System.nanoTime(),
     val name: String,
@@ -118,10 +125,9 @@ data class SamplerUiState(
     val transportPlaying: Boolean = false,
     val recordArmed: Boolean = false,
     val currentStep: Int = -1,
-    val microphoneRecording: Boolean = false,
-    val vocalOverdubRecording: Boolean = false,
-    val systemAudioRecording: Boolean = false,
+    val recordingSession: RecordingSession = RecordingSession.Idle,
     val sourcePlaying: Boolean = false,
+    val pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
     val sourcePlayheadFrame: Int = 0,
     val loopingPadIndex: Int? = null,
     val loopPlayheadFrame: Int = -1,
@@ -132,7 +138,16 @@ data class SamplerUiState(
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
-)
+) {
+    val microphoneRecording: Boolean
+        get() = recordingSession.isActiveKind(RecordingKind.SOURCE_MICROPHONE)
+
+    val systemAudioRecording: Boolean
+        get() = recordingSession.isActiveKind(RecordingKind.SOURCE_SYSTEM_AUDIO)
+
+    val vocalOverdubRecording: Boolean
+        get() = recordingSession.isActiveKind(RecordingKind.VOCAL_OVERDUB)
+}
 
 fun SamplerUiState.visiblePads(): List<PadModel> {
     val bankStart = selectedBank * SamplerConfig.PADS_PER_BANK
@@ -151,12 +166,20 @@ fun SamplerUiState.assignedPadCountOnPage(pageIndex: Int): Int {
     return pads.subList(start, start + SamplerConfig.PAD_PAGE_SIZE).count(PadModel::isAssigned)
 }
 
-fun defaultMelodyChopPad(pads: List<PadModel>): Int {
+fun defaultMelodyChopPad(pads: List<PadModel>): Int? {
     require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} PADs" }
     return pads.take(SamplerConfig.PADS_PER_BANK)
         .firstOrNull { !it.isAssigned }
         ?.globalIndex
-        ?: 0
+}
+
+fun prepareDefaultMelodyChopDestination(state: SamplerUiState): SamplerUiState {
+    val nextEmpty = defaultMelodyChopPad(state.pads)
+    return if (nextEmpty == null) {
+        state.copy(statusMessage = "BANK Aは満杯です。上書きするPADを選ぶか、不要なPADを消してください")
+    } else {
+        state.copy(selectedBank = 0, selectedPad = nextEmpty)
+    }
 }
 
 fun SamplerUiState.selectedPadModel(): PadModel = pads[selectedPad]
@@ -194,6 +217,16 @@ fun SamplerUiState.sourceScratchRange(): SliceRange? {
     val end = rangeEndFrame.coerceIn(start + 1, audio.frameCount)
     return SliceRange(start, end).takeIf { it.length > 1 }
 }
+
+fun transientAnalysisStillCurrent(
+    snapshot: SamplerUiState,
+    snapshotRevision: Long,
+    current: SamplerUiState,
+    currentRevision: Long,
+): Boolean = snapshotRevision == currentRevision &&
+    snapshot.currentAudio?.id == current.currentAudio?.id &&
+    snapshot.rangeStartFrame == current.rangeStartFrame &&
+    snapshot.rangeEndFrame == current.rangeEndFrame
 
 fun SamplerUiState.selectSourceRangeForScratch(): SamplerUiState = copy(
     activeSliceIndex = null,

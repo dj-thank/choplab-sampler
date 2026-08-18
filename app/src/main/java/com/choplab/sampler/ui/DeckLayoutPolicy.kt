@@ -26,6 +26,9 @@ data class DeckLayoutMetrics(
     val controlHeightDp: Int,
     val waveformHeightDp: Int,
 ) {
+    val productionDockHeightDp: Int
+        get() = controlHeightDp
+
     val showStatusStrip: Boolean
         get() = orientation != DeckOrientation.LANDSCAPE || density != DeckDensity.COMPACT
 
@@ -33,6 +36,9 @@ data class DeckLayoutMetrics(
         get() = headerHeightDp + modeBarHeightDp +
             (if (showStatusStrip) statusHeightDp else 0) +
             gapDp * (if (showStatusStrip) 3 else 2)
+
+    fun workspaceHeightAfterProductionDock(totalHeightDp: Int): Int =
+        totalHeightDp - fixedChromeHeightDp - productionDockHeightDp
 }
 
 fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
@@ -51,15 +57,16 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
     }
 
     return if (compact) {
+        val primaryControlHeight = if (orientation == DeckOrientation.PORTRAIT) 48 else 40
         DeckLayoutMetrics(
             orientation = orientation,
             density = DeckDensity.COMPACT,
             contentPaddingDp = 6,
             gapDp = if (orientation == DeckOrientation.LANDSCAPE) 3 else 5,
-            headerHeightDp = 40,
-            modeBarHeightDp = 40,
+            headerHeightDp = primaryControlHeight,
+            modeBarHeightDp = primaryControlHeight,
             statusHeightDp = 28,
-            controlHeightDp = 40,
+            controlHeightDp = primaryControlHeight,
             waveformHeightDp = if (orientation == DeckOrientation.PORTRAIT) 104 else 128,
         )
     } else {
@@ -69,9 +76,9 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
             contentPaddingDp = 10,
             gapDp = 8,
             headerHeightDp = 48,
-            modeBarHeightDp = 46,
+            modeBarHeightDp = 48,
             statusHeightDp = 34,
-            controlHeightDp = 46,
+            controlHeightDp = 48,
             waveformHeightDp = if (orientation == DeckOrientation.PORTRAIT) 132 else 160,
         )
     }

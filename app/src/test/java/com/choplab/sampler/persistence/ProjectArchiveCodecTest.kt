@@ -10,6 +10,9 @@ import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.random.Random
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -22,6 +25,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProjectArchiveCodecTest {
+    @Test
+    fun boundedArchiveReadsRejectAnInputStreamThatMakesNoProgress() {
+        val zeroProgress = object : ByteArrayInputStream(byteArrayOf(1)) {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                return if (length > 0) 0 else super.read(buffer, offset, length)
+            }
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            zeroProgress.readWithProgress(ByteArray(8), 0, 8)
+        }
+    }
+
     @Test
     fun archiveUsesSchemaFiveForPagedRoleBanks() {
         val manifest = unzip(archiveFor(SamplerUiState()))
@@ -321,6 +337,93 @@ class ProjectArchiveCodecTest {
         assertThrows(IllegalArgumentException::class.java) {
             ProjectArchiveCodec.read(ByteArrayInputStream(oversized))
         }
+    }
+
+    @Test
+    fun independentSchemaOneGoldenArchiveLoadsWithoutUsingTheCurrentWriter() {
+        val samples = shortArrayOf(100, -200, 300, -400)
+        val rawPcm = ByteBuffer.allocate(samples.size * Short.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .also { buffer -> samples.forEach(buffer::putShort) }
+            .array()
+        val manifest = buildString {
+            appendLine("CHOPLAB_PROJECT\t1")
+            appendLine("audioCount\t1")
+            appendLine("audio\t0\t42\t48000\t4\tbGVnYWN5Lndhdg\taudio/0.pcm")
+            appendLine("state\t0\t4\t-1\t0\t0\t0\t1\t120.0\t50.0\t0\t0.0\t0")
+            appendLine("slices\t")
+            appendLine("steps\t")
+            appendLine("padCount\t64")
+            repeat(64) { index ->
+                val audioIndex = if (index == 0) 0 else -1
+                val endFrame = if (index == 0) 4 else 0
+                appendLine("pad\t$index\t$audioIndex\t0\t$endFrame\t0.0\t1.0\t1.0\t0\tONE_SHOT\t0")
+            }
+        }
+
+        val restored = ProjectArchiveCodec.read(
+            ByteArrayInputStream(
+                zip(
+                    listOf(
+                        "project.txt" to manifest.toByteArray(Charsets.UTF_8),
+                        "audio/0.pcm" to rawPcm,
+                    ),
+                ),
+            ),
+        )
+
+        assertArrayEquals(samples, restored.currentAudio?.samples)
+        assertEquals(42L, restored.currentAudio?.id)
+        assertEquals(48_000, restored.currentAudio?.sampleRate)
+        assertArrayEquals(samples, restored.pads[0].audio?.samples)
+    }
+
+    @Test
+    fun deterministicMalformedInputCorpusAlwaysFailsClosed() {
+        val random = Random(0x43484F50)
+        repeat(256) { seedIndex ->
+            val bytes = ByteArray(random.nextInt(0, 4_096)) { random.nextInt(0, 256).toByte() }
+            val result = runCatching { ProjectArchiveCodec.read(ByteArrayInputStream(bytes)) }
+            assertTrue("Malformed corpus item $seedIndex unexpectedly loaded", result.isFailure)
+        }
+    }
+
+    @Test
+    fun manyUnregisteredSmallEntriesAreRejectedAtTheFirstUnknownEntry() {
+        val entries = unzip(archiveFor(SamplerUiState())).toMutableList()
+        repeat(1_000) { index -> entries += "unknown/$index.bin" to byteArrayOf(index.toByte()) }
+
+        val failure = assertThrows(IllegalStateException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+        }
+
+        assertTrue(failure.message.orEmpty().contains("unknown/0.bin"))
+    }
+
+    @Test
+    fun declaredPcmExpansionBeyondProjectBudgetIsRejectedBeforeAnyAudioEntry() {
+        val manifest = buildString {
+            appendLine("CHOPLAB_PROJECT\t5")
+            appendLine("audioCount\t9")
+            repeat(9) { index ->
+                appendLine("audio\t$index\t${index + 1}\t48000\t30000000\tYQ\taudio/$index.wav")
+            }
+            appendLine("state\t0\t0\t-1\t0\t0\t0\t1\t120.0\t50.0\t0\t0.0\t-1\t")
+            appendLine("slices\t")
+            appendLine("steps\t")
+            appendLine("padCount\t128")
+            repeat(128) { index ->
+                appendLine("pad\t$index\t-1\t0\t0\t0.0\t1.0\t1.0\t0\tONE_SHOT\tSAMPLE\t0")
+            }
+        }
+
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(
+                ByteArrayInputStream(zip(listOf("project.txt" to manifest.toByteArray(Charsets.UTF_8)))),
+            )
+        }
+
+        assertTrue(failure.message.orEmpty().contains("音声データが大きすぎます"))
     }
 
     private fun archiveFor(state: SamplerUiState): ByteArray =

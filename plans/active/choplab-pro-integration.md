@@ -140,6 +140,8 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 - [x] 2026-08-09 — portable toolchain、Gradle caches、build/test output を `F:\CodexData\ChopLab` へ保全移設し、元の C: path を NTFS junction として維持。移設後の JDK/adb/Kotlin/Gradle/offline validation を再確認。
 - [x] 2026-08-10 — Milestone 4のMVP persistence sliceとして、schema 2/WAV `.choplab`、schema 1 migration、manual save/open、900ms debounce autosave、fsync後の二世代/pending復旧、最大40操作Undo/Redoを固定5工程UIへ接続。
 - [x] 2026-08-10 — archive round-trip、共有audio identity、migration/newer-schema rejection、path traversal、過大manifest、malformed/truncated WAV、二世代/pending fallback、history bounds/coalescingをpublic seamのJUnitで固定。
+- [x] 2026-08-16 — autosave各世代へarchive SHA-256結合revisionを追加し、store再生成後の古い/equal revision拒否と、corrupt primary時にstale pendingより新しいbackupを選ぶ復旧順をJVM契約で固定。旧metadataなしarchiveの読込互換は維持。
+- [x] 2026-08-16 — manifest/legacy PCMの正長readが0 byte進捗を返す異常InputStreamを共通境界で拒否し、archive parserの無限ループを決定的JVMテストで防止。schema 1–5互換suiteは維持。
 - [ ] 2026-08-09 19:24 JST — Android SDK license の authorized acceptance 待ち。Platform 36 / Build Tools 36.0.0 は未導入。
 - [ ] 2026-08-09 19:10 JST — Milestone 1 portable toolchain と baseline build を確立中。
 
@@ -159,6 +161,9 @@ Android 10 以降の実機で、許可された音声の取込・録音から、
 
 ## Decision log
 
+- 2026-08-17 — Bind final app/test APK evidence to a tracked-clean source HEAD/tree with a fail-closed JSON receipt, fresh artifact mtime guard, package/version, SHA-256, and matching signer; never promote a pre-existing `app/build` artifact by hash alone.
+- 2026-08-17 — Treat absolute manifest-bound decompressed PCM bytes and exact entry lengths as the ZIP-bomb boundary instead of rejecting compression ratio alone, because valid silent PCM is highly compressible. Add deterministic malformed/archive and independent PCM-render oracles, and move realtime filter coefficient calculation out of the per-sample loop.
+- 2026-08-16 — Preserve PROJ-004's bounded autosave recovery generations and replace the misleading `完全リセット` copy with `NEW PROJECT / 現在の制作状態を空にする`. Secure deletion is not claimed and no user data is deleted by this milestone.
 - 2026-08-09 19:10 JST — 完成 Bundle は provenance/reference、Codex Workspace は唯一の active repository とする。二重実装を避けるため。
 - 2026-08-09 19:10 JST — ユーザーの「全部」と master prompt を製品 scope、PRODUCT_REQUIREMENTS と既存 public interfaces を TDD seams の合意根拠とする。
 - 2026-08-09 19:10 JST — JDK/SDK が既存 machine scope にない場合、global install ではなく `work/tools` 以下の portable toolchain を優先する。作業境界外の変更を避けるため。

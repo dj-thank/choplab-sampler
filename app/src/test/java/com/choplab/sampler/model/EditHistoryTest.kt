@@ -71,4 +71,19 @@ class EditHistoryTest {
 
         assertFalse(requireNotNull(restored).manualChopEnabled)
     }
+
+    @Test
+    fun undoNeverRestoresRuntimeOnlySourceCommandIntent() {
+        val history = EditHistory(maxEntries = 40)
+        val pendingStart = SamplerUiState(
+            pendingSourceCommand = PendingSourceCommand.START,
+            bpm = 92f,
+        )
+        history.record(pendingStart)
+
+        val restored = requireNotNull(history.undo(SamplerUiState(bpm = 100f)))
+
+        assertFalse(restored.sourcePlaying)
+        assertEquals(PendingSourceCommand.NONE, restored.pendingSourceCommand)
+    }
 }

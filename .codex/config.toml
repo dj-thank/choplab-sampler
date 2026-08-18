@@ -13,7 +13,7 @@ project_root_markers = [".git", "settings.gradle.kts", "AGENTS.md"]
 network_access = true
 
 [agents]
-max_threads = 5
+max_threads = 20
 max_depth = 1
 job_max_runtime_seconds = 2400
 interrupt_message = true

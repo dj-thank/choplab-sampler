@@ -4,8 +4,12 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
+import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.stepKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,6 +17,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GuidedWorkflowTest {
+    @Test
+    fun chopSwitchLabelsExposeBankPageAndCurrentPad() {
+        assertEquals("● A メロディー\nMELODY", bankSwitchLabel(0, selected = true, compact = false))
+        assertEquals("B\nDRUMS", bankSwitchLabel(1, selected = false, compact = true))
+        assertEquals(
+            "● PAD 01–16\n選択 A-04 / 3音",
+            padPageSwitchLabel(
+                pageIndex = 0,
+                selected = true,
+                assignedCount = 3,
+                selectedPadLabel = "A-04",
+            ),
+        )
+        assertEquals(
+            "PAD 17–32\n切替 / 空",
+            padPageSwitchLabel(
+                pageIndex = 1,
+                selected = false,
+                assignedCount = 0,
+                selectedPadLabel = "A-04",
+            ),
+        )
+    }
+
     @Test
     fun newSourceRequiresConfirmationOnlyWhenTheCurrentProjectHasMaterialWork() {
         val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
@@ -27,18 +55,40 @@ class GuidedWorkflowTest {
     }
 
     @Test
-    fun chopCoachExplainsWaveformCaptureAuditionAndTrimAtTheRightMoment() {
+    fun chopSessionUsesAudioThreadTruthForAllFourSourcePhases() {
+        val ready = chopSessionPresentation(sourcePhase = SourceUiPhase.STOPPED, assignedPadCount = 0)
+        assertFalse(ready.captureMode)
+        assertTrue(ready.primaryEnabled)
         assertEquals(
-            "波形タップ＝そこから再生 → 空PAD＝チョップ",
-            chopQuickGuidance(assignedPadCount = 0),
+            "チョップ開始\nSTART CHOP",
+            ready.primaryActionLabel,
         )
-        val assignedGuidance = chopQuickGuidance(assignedPadCount = 1)
         assertEquals(
-            "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ",
-            assignedGuidance,
+            "「チョップ開始」→ 音が鳴ったら空PADを叩く",
+            ready.guidance,
         )
-        assertTrue(assignedGuidance.contains("空PAD"))
-        assertTrue(assignedGuidance.contains("音ありPAD"))
+
+        val starting = chopSessionPresentation(SourceUiPhase.STARTING, assignedPadCount = 0)
+        assertFalse(starting.captureMode)
+        assertTrue(starting.primaryEnabled)
+        assertEquals("再生準備中\nTAP TO CANCEL", starting.primaryActionLabel)
+        assertEquals("再生を準備中。音が鳴るまで空PADは選択のみ", starting.guidance)
+
+        val firstCapture = chopSessionPresentation(SourceUiPhase.PLAYING, assignedPadCount = 0)
+        assertTrue(firstCapture.captureMode)
+        assertTrue(firstCapture.primaryEnabled)
+        assertEquals("元曲を止める\nSTOP SOURCE", firstCapture.primaryActionLabel)
+        assertEquals("空PADを叩くと、その瞬間からチョップ", firstCapture.guidance)
+
+        val continuing = chopSessionPresentation(SourceUiPhase.PLAYING, assignedPadCount = 1)
+        assertTrue(continuing.captureMode)
+        assertEquals("空PAD＝追加／音ありPAD＝タップ上書き・長押し微調整", continuing.guidance)
+
+        val stopping = chopSessionPresentation(SourceUiPhase.STOPPING, assignedPadCount = 1)
+        assertFalse(stopping.captureMode)
+        assertFalse(stopping.primaryEnabled)
+        assertEquals("停止中\nPLEASE WAIT", stopping.primaryActionLabel)
+        assertEquals("停止処理中。割当済みPADは上書きされません", stopping.guidance)
     }
 
     @Test
@@ -62,6 +112,30 @@ class GuidedWorkflowTest {
     }
 
     @Test
+    fun stageTabsNavigateWithoutStartingSourceOrChangingTheSelectedBank() {
+        assertEquals(
+            emptySet<WorkflowNavigationAction>(),
+            workflowNavigationActions(WorkflowStage.BEAT, WorkflowStage.CHOP),
+        )
+        assertEquals(
+            setOf(
+                WorkflowNavigationAction.STOP_SOURCE,
+                WorkflowNavigationAction.ENSURE_PLAYABLE_PAD,
+            ),
+            workflowNavigationActions(WorkflowStage.CHOP, WorkflowStage.BEAT),
+        )
+        assertEquals(
+            StartChopPolicy(
+                enabled = true,
+                prepareMelodyDestination = true,
+                startSource = true,
+            ),
+            startChopPolicy(SourceUiPhase.STOPPED),
+        )
+        assertFalse(startChopPolicy(SourceUiPhase.STOPPING).enabled)
+    }
+
+    @Test
     fun restoredStageFallsBackInsteadOfCrashing() {
         assertEquals(WorkflowStage.CHOP, restoreWorkflowStage("PLAY"))
         assertEquals(WorkflowStage.CHOP, restoreWorkflowStage("not-a-stage"))
@@ -72,6 +146,32 @@ class GuidedWorkflowTest {
     fun newProjectsStartAtCaptureAndLoadedProjectsStartAtPlay() {
         assertEquals(WorkflowStage.CAPTURE, initialWorkflowStage(hasAudio = false))
         assertEquals(WorkflowStage.CHOP, initialWorkflowStage(hasAudio = true))
+    }
+
+    @Test
+    fun unavailableStagesStayDisabledUntilTheirRequiredMaterialExists() {
+        val empty = SamplerUiState()
+        assertTrue(workflowStageEnabled(WorkflowStage.CAPTURE, empty))
+        assertFalse(workflowStageEnabled(WorkflowStage.CHOP, empty))
+        assertFalse(workflowStageEnabled(WorkflowStage.BEAT, empty))
+        assertFalse(workflowStageEnabled(WorkflowStage.FINISH, empty))
+
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val loaded = empty.copy(currentAudio = audio)
+        assertTrue(workflowStageEnabled(WorkflowStage.CHOP, loaded))
+        assertFalse(workflowStageEnabled(WorkflowStage.BEAT, loaded))
+        assertTrue(workflowStageEnabled(WorkflowStage.FINISH, loaded))
+
+        val pads = loaded.pads.toMutableList().also {
+            it[0] = PadModel(0, audio, 0, 50)
+        }
+        assertTrue(workflowStageEnabled(WorkflowStage.BEAT, loaded.copy(pads = pads)))
+        assertEquals(WorkflowStage.CAPTURE, reconcileWorkflowStage(WorkflowStage.BEAT, empty))
+        assertEquals(WorkflowStage.CHOP, reconcileWorkflowStage(WorkflowStage.BEAT, loaded))
+        assertEquals(
+            WorkflowStage.BEAT,
+            reconcileWorkflowStage(WorkflowStage.BEAT, loaded.copy(pads = pads)),
+        )
     }
 
     @Test
@@ -166,8 +266,10 @@ class GuidedWorkflowTest {
         assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 1f))
         assertTrue(machineHeaderShowsCaption(fontScale = 1f))
 
-        assertEquals(7f, compactMachineButtonFontSizeSp(fontScale = 1.3f))
-        assertEquals(8f, compactMachineButtonLineHeightSp(fontScale = 1.3f))
+        assertEquals(8f, compactMachineButtonFontSizeSp(fontScale = 1.3f))
+        assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 1.3f))
+        assertEquals(8f, compactMachineButtonFontSizeSp(fontScale = 2f))
+        assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 2f))
         assertFalse(machineHeaderShowsCaption(fontScale = 1.3f))
     }
 
@@ -184,6 +286,153 @@ class GuidedWorkflowTest {
         assertEquals(
             "ループ停止",
             beatLoopButtonLabel(looping = true, fontScale = 1.3f),
+        )
+    }
+
+    @Test
+    fun sourcePresentationNeverClaimsNoSourceWhileProjectRecoveryIsRunning() {
+        assertEquals(
+            "LOADING",
+            captureSourceStatusLabel(
+                sourcePhase = SourceUiPhase.STOPPED,
+                isLoading = true,
+                audioLoaded = false,
+            ),
+        )
+        assertEquals("音声を読込中\nPLEASE WAIT", emptySourceWaveformLabel(isLoading = true))
+        assertEquals("NO SOURCE", captureSourceStatusLabel(SourceUiPhase.STOPPED, false, false))
+        assertEquals("READY", captureSourceStatusLabel(SourceUiPhase.STOPPED, false, true))
+        assertEquals("STARTING", captureSourceStatusLabel(SourceUiPhase.STARTING, true, true))
+        assertEquals("NO SOURCE\nLOAD OR RECORD AUDIO", emptySourceWaveformLabel(isLoading = false))
+    }
+
+    @Test
+    fun allCaptureEntrancesAreDisabledDuringProjectRecovery() {
+        val loading = captureInputPolicy(SamplerUiState(isLoading = true))
+        assertFalse(loading.fileEnabled)
+        assertFalse(loading.microphoneEnabled)
+        assertFalse(loading.systemAudioEnabled)
+
+        val idle = captureInputPolicy(SamplerUiState())
+        assertTrue(idle.fileEnabled)
+        assertTrue(idle.microphoneEnabled)
+        assertTrue(idle.systemAudioEnabled)
+
+        val microphoneRecording = captureInputPolicy(
+            SamplerUiState(
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
+        )
+        assertFalse(microphoneRecording.fileEnabled)
+        assertTrue(microphoneRecording.microphoneEnabled)
+        assertFalse(microphoneRecording.systemAudioEnabled)
+
+        val loadingWhileMicrophoneRecording = captureInputPolicy(
+            SamplerUiState(
+                isLoading = true,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_MICROPHONE,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
+        )
+        assertTrue(loadingWhileMicrophoneRecording.microphoneEnabled)
+
+        val loadingWhileSystemAudioRecording = captureInputPolicy(
+            SamplerUiState(
+                isLoading = true,
+                recordingSession = RecordingSession.Active(
+                    RecordingKind.SOURCE_SYSTEM_AUDIO,
+                    RecordingPhase.RECORDING,
+                ),
+            ),
+        )
+        assertTrue(loadingWhileSystemAudioRecording.systemAudioEnabled)
+    }
+
+    @Test
+    fun recordingControlsExposeOneOwnerAndDisableEveryCompetingEntrance() {
+        val microphoneStarting = RecordingSession.Active(
+            RecordingKind.SOURCE_MICROPHONE,
+            RecordingPhase.STARTING,
+        )
+        val microphoneControl = recordingControlPresentation(
+            session = microphoneStarting,
+            kind = RecordingKind.SOURCE_MICROPHONE,
+            idleLabel = "マイク録音\nMIC REC",
+            stopLabel = "録音を止める\nMIC STOP",
+        )
+        val competingSystemControl = recordingControlPresentation(
+            session = microphoneStarting,
+            kind = RecordingKind.SOURCE_SYSTEM_AUDIO,
+            idleLabel = "端末を録音\nDEVICE REC",
+            stopLabel = "録音を止める\nDEVICE STOP",
+        )
+
+        assertEquals("録音を止める\nMIC STOP", microphoneControl.label)
+        assertTrue(microphoneControl.enabled)
+        assertTrue(microphoneControl.active)
+        assertEquals("別の録音中\nWAIT", competingSystemControl.label)
+        assertFalse(competingSystemControl.enabled)
+        assertFalse(competingSystemControl.active)
+
+        val stopping = recordingControlPresentation(
+            session = microphoneStarting.copy(phase = RecordingPhase.STOPPING),
+            kind = RecordingKind.SOURCE_MICROPHONE,
+            idleLabel = "マイク録音\nMIC REC",
+            stopLabel = "録音を止める\nMIC STOP",
+        )
+        assertEquals("停止・保存中\nPLEASE WAIT", stopping.label)
+        assertFalse(stopping.enabled)
+        assertTrue(stopping.active)
+    }
+
+    @Test
+    fun machineHeaderAlwaysNamesAndStopsTheActiveRecordingSession() {
+        val microphone = recordingHeaderPresentation(
+            RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING),
+        )
+        assertEquals("MIC  REC", microphone?.statusLabel)
+        assertEquals("録音を停止\nMIC STOP", microphone?.stopLabel)
+        assertTrue(microphone?.stopEnabled == true)
+        assertEquals("マイク素材を録音中", microphone?.accessibilityLabel)
+
+        val vocalStopping = recordingHeaderPresentation(
+            RecordingSession.Active(RecordingKind.VOCAL_OVERDUB, RecordingPhase.STOPPING),
+        )
+        assertEquals("VOICE  STOPPING", vocalStopping?.statusLabel)
+        assertEquals("停止・保存中\nPLEASE WAIT", vocalStopping?.stopLabel)
+        assertFalse(vocalStopping?.stopEnabled == true)
+
+        assertEquals(null, recordingHeaderPresentation(RecordingSession.Idle))
+    }
+
+    @Test
+    fun externalPickersStayClosedUntilRecordingAndSavingHaveFinished() {
+        assertTrue(externalDocumentActionsEnabled(SamplerUiState()))
+        assertFalse(externalDocumentActionsEnabled(SamplerUiState(isLoading = true)))
+        assertFalse(
+            externalDocumentActionsEnabled(
+                SamplerUiState(
+                    recordingSession = RecordingSession.Active(
+                        RecordingKind.SOURCE_MICROPHONE,
+                        RecordingPhase.RECORDING,
+                    ),
+                ),
+            ),
+        )
+        assertFalse(
+            externalDocumentActionsEnabled(
+                SamplerUiState(
+                    recordingSession = RecordingSession.Active(
+                        RecordingKind.VOCAL_OVERDUB,
+                        RecordingPhase.STOPPING,
+                    ),
+                ),
+            ),
         )
     }
 }

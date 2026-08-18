@@ -27,6 +27,16 @@ internal class RealtimeCommandMailbox<T, S>(capacity: Int) {
         queue.offer(Entry(sequence = nextSequence.incrementAndGet(), value = value))
     }
 
+    /** Reserves a bounded slot before invoking producer-side state changes. */
+    fun offerPrepared(valueFactory: () -> T): Boolean = synchronized(producerOrderLock) {
+        queue.offerPrepared {
+            Entry(
+                sequence = nextSequence.incrementAndGet(),
+                value = valueFactory(),
+            )
+        }
+    }
+
     fun requestStop(payload: S) = synchronized(producerOrderLock) {
         pendingStop.set(
             StopRequest(

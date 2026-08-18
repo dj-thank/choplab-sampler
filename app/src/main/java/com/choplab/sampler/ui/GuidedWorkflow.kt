@@ -3,7 +3,14 @@ package com.choplab.sampler.ui
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
+import com.choplab.sampler.model.RecordingSession
+import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.SourceUiPhase
+import com.choplab.sampler.model.activePhaseFor
+import com.choplab.sampler.model.bankRoleFor
 
 enum class WorkflowStage(
     val label: String,
@@ -30,14 +37,155 @@ fun restoreWorkflowStage(savedName: String?): WorkflowStage =
 fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
     if (hasAudio) WorkflowStage.CHOP else WorkflowStage.CAPTURE
 
+fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean = when (stage) {
+    WorkflowStage.CAPTURE -> true
+    WorkflowStage.CHOP -> state.currentAudio != null
+    WorkflowStage.BEAT -> state.pads.any(PadModel::isAssigned)
+    WorkflowStage.FINISH -> state.currentAudio != null || state.pads.any(PadModel::isAssigned)
+}
+
+fun reconcileWorkflowStage(stage: WorkflowStage, state: SamplerUiState): WorkflowStage =
+    if (workflowStageEnabled(stage, state)) stage else initialWorkflowStage(state.currentAudio != null)
+
 fun workflowStageKeepsSourcePlayback(stage: WorkflowStage): Boolean =
     stage == WorkflowStage.CHOP
 
-fun compactMachineButtonFontSizeSp(fontScale: Float): Float =
-    if (usesLargeTextDeckMode(fontScale)) 7f else 8f
+enum class WorkflowNavigationAction {
+    STOP_SOURCE,
+    ENSURE_PLAYABLE_PAD,
+}
 
-fun compactMachineButtonLineHeightSp(fontScale: Float): Float =
-    if (usesLargeTextDeckMode(fontScale)) 8f else 9f
+fun workflowNavigationActions(
+    current: WorkflowStage,
+    target: WorkflowStage,
+): Set<WorkflowNavigationAction> {
+    if (current == target) return emptySet()
+    return buildSet {
+        if (!workflowStageKeepsSourcePlayback(target)) add(WorkflowNavigationAction.STOP_SOURCE)
+        if (target == WorkflowStage.BEAT) add(WorkflowNavigationAction.ENSURE_PLAYABLE_PAD)
+    }
+}
+
+data class StartChopPolicy(
+    val enabled: Boolean,
+    val prepareMelodyDestination: Boolean,
+    val startSource: Boolean,
+)
+
+fun startChopPolicy(sourcePhase: SourceUiPhase): StartChopPolicy = StartChopPolicy(
+    enabled = sourcePhase != SourceUiPhase.STOPPING,
+    prepareMelodyDestination = sourcePhase != SourceUiPhase.STOPPING,
+    startSource = sourcePhase == SourceUiPhase.STOPPED,
+)
+
+fun captureSourceStatusLabel(
+    sourcePhase: SourceUiPhase,
+    isLoading: Boolean,
+    audioLoaded: Boolean,
+): String = when {
+    sourcePhase == SourceUiPhase.STARTING -> "STARTING"
+    sourcePhase == SourceUiPhase.PLAYING -> "SAMPLING"
+    sourcePhase == SourceUiPhase.STOPPING -> "STOPPING"
+    isLoading -> "LOADING"
+    audioLoaded -> "READY"
+    else -> "NO SOURCE"
+}
+
+fun emptySourceWaveformLabel(isLoading: Boolean): String =
+    if (isLoading) "音声を読込中\nPLEASE WAIT" else "NO SOURCE\nLOAD OR RECORD AUDIO"
+
+data class CaptureInputPolicy(
+    val fileEnabled: Boolean,
+    val microphoneEnabled: Boolean,
+    val systemAudioEnabled: Boolean,
+)
+
+fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy {
+    val session = state.recordingSession
+    val microphonePhase = session.activePhaseFor(RecordingKind.SOURCE_MICROPHONE)
+    val systemAudioPhase = session.activePhaseFor(RecordingKind.SOURCE_SYSTEM_AUDIO)
+    return CaptureInputPolicy(
+        fileEnabled = !state.isLoading && session == RecordingSession.Idle,
+        microphoneEnabled = microphonePhase?.let { it != RecordingPhase.STOPPING }
+            ?: (!state.isLoading && session == RecordingSession.Idle),
+        systemAudioEnabled = systemAudioPhase?.let { it != RecordingPhase.STOPPING }
+            ?: (!state.isLoading && session == RecordingSession.Idle),
+    )
+}
+
+fun externalDocumentActionsEnabled(state: SamplerUiState): Boolean =
+    !state.isLoading && state.recordingSession == RecordingSession.Idle
+
+data class RecordingControlPresentation(
+    val label: String,
+    val enabled: Boolean,
+    val active: Boolean,
+)
+
+fun recordingControlPresentation(
+    session: RecordingSession,
+    kind: RecordingKind,
+    idleLabel: String,
+    stopLabel: String,
+): RecordingControlPresentation {
+    val active = session as? RecordingSession.Active
+        ?: return RecordingControlPresentation(idleLabel, enabled = true, active = false)
+    if (active.kind != kind) {
+        return RecordingControlPresentation("別の録音中\nWAIT", enabled = false, active = false)
+    }
+    return if (active.phase == RecordingPhase.STOPPING) {
+        RecordingControlPresentation("停止・保存中\nPLEASE WAIT", enabled = false, active = true)
+    } else {
+        RecordingControlPresentation(stopLabel, enabled = true, active = true)
+    }
+}
+
+data class RecordingHeaderPresentation(
+    val statusLabel: String,
+    val stopLabel: String,
+    val stopEnabled: Boolean,
+    val accessibilityLabel: String,
+)
+
+fun recordingHeaderPresentation(session: RecordingSession): RecordingHeaderPresentation? {
+    val active = session as? RecordingSession.Active ?: return null
+    val kindLabel = when (active.kind) {
+        RecordingKind.SOURCE_MICROPHONE -> "MIC"
+        RecordingKind.SOURCE_SYSTEM_AUDIO -> "DEVICE"
+        RecordingKind.VOCAL_OVERDUB -> "VOICE"
+    }
+    val phaseLabel = when (active.phase) {
+        RecordingPhase.STARTING -> "START"
+        RecordingPhase.RECORDING -> "REC"
+        RecordingPhase.STOPPING -> "STOPPING"
+    }
+    val accessibilityKind = when (active.kind) {
+        RecordingKind.SOURCE_MICROPHONE -> "マイク素材"
+        RecordingKind.SOURCE_SYSTEM_AUDIO -> "端末音声"
+        RecordingKind.VOCAL_OVERDUB -> "ボーカル"
+    }
+    val accessibilityPhase = when (active.phase) {
+        RecordingPhase.STARTING -> "録音を準備中"
+        RecordingPhase.RECORDING -> "録音中"
+        RecordingPhase.STOPPING -> "録音を停止して保存中"
+    }
+    val stopLabel = when {
+        active.phase == RecordingPhase.STOPPING -> "停止・保存中\nPLEASE WAIT"
+        active.kind == RecordingKind.SOURCE_MICROPHONE -> "録音を停止\nMIC STOP"
+        active.kind == RecordingKind.SOURCE_SYSTEM_AUDIO -> "録音を停止\nDEVICE STOP"
+        else -> "声を保存\nVOICE STOP"
+    }
+    return RecordingHeaderPresentation(
+        statusLabel = "$kindLabel  $phaseLabel",
+        stopLabel = stopLabel,
+        stopEnabled = active.phase != RecordingPhase.STOPPING,
+        accessibilityLabel = "$accessibilityKind${if (active.phase == RecordingPhase.RECORDING) "を" else "の"}$accessibilityPhase",
+    )
+}
+
+fun compactMachineButtonFontSizeSp(@Suppress("UNUSED_PARAMETER") fontScale: Float): Float = 8f
+
+fun compactMachineButtonLineHeightSp(@Suppress("UNUSED_PARAMETER") fontScale: Float): Float = 9f
 
 fun machineHeaderShowsCaption(fontScale: Float): Boolean =
     !usesLargeTextDeckMode(fontScale)
@@ -57,12 +205,78 @@ fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
         state.pads.any(PadModel::isAssigned) ||
         state.activeSteps.isNotEmpty()
 
-fun chopQuickGuidance(assignedPadCount: Int): String =
-    if (assignedPadCount <= 0) {
-        "波形タップ＝そこから再生 → 空PAD＝チョップ"
+data class ChopSessionPresentation(
+    val captureMode: Boolean,
+    val primaryActionLabel: String,
+    val primaryEnabled: Boolean,
+    val guidance: String,
+)
+
+fun chopSessionPresentation(
+    sourcePhase: SourceUiPhase,
+    assignedPadCount: Int,
+): ChopSessionPresentation = when (sourcePhase) {
+    SourceUiPhase.STOPPED -> ChopSessionPresentation(
+        captureMode = false,
+        primaryActionLabel = "チョップ開始\nSTART CHOP",
+        primaryEnabled = true,
+        guidance = "「チョップ開始」→ 音が鳴ったら空PADを叩く",
+    )
+    SourceUiPhase.STARTING -> ChopSessionPresentation(
+        captureMode = false,
+        primaryActionLabel = "再生準備中\nTAP TO CANCEL",
+        primaryEnabled = true,
+        guidance = "再生を準備中。音が鳴るまで空PADは選択のみ",
+    )
+    SourceUiPhase.PLAYING -> ChopSessionPresentation(
+        captureMode = true,
+        primaryActionLabel = "元曲を止める\nSTOP SOURCE",
+        primaryEnabled = true,
+        guidance = if (assignedPadCount <= 0) {
+            "空PADを叩くと、その瞬間からチョップ"
+        } else {
+            "空PAD＝追加／音ありPAD＝タップ上書き・長押し微調整"
+        },
+    )
+    SourceUiPhase.STOPPING -> ChopSessionPresentation(
+        captureMode = false,
+        primaryActionLabel = "停止中\nPLEASE WAIT",
+        primaryEnabled = false,
+        guidance = "停止処理中。割当済みPADは上書きされません",
+    )
+}
+
+fun chopSessionPresentation(
+    sourcePlaying: Boolean,
+    assignedPadCount: Int,
+): ChopSessionPresentation = chopSessionPresentation(
+    sourcePhase = if (sourcePlaying) SourceUiPhase.PLAYING else SourceUiPhase.STOPPED,
+    assignedPadCount = assignedPadCount,
+)
+
+fun bankSwitchLabel(bankIndex: Int, selected: Boolean, compact: Boolean): String {
+    val role = bankRoleFor(bankIndex)
+    val marker = if (selected) "● " else ""
+    return if (compact) {
+        "$marker${role.letter}\n${role.englishLabel}"
     } else {
-        "空PAD＝追加／音ありPAD＝試聴・長押し微調整 → ビートへ"
+        "$marker${role.letter} ${role.japaneseLabel}\n${role.englishLabel}"
     }
+}
+
+fun padPageSwitchLabel(
+    pageIndex: Int,
+    selected: Boolean,
+    assignedCount: Int,
+    selectedPadLabel: String,
+): String {
+    val first = pageIndex * SamplerConfig.PAD_PAGE_SIZE + 1
+    val last = first + SamplerConfig.PAD_PAGE_SIZE - 1
+    val occupancy = if (assignedCount <= 0) "空" else "${assignedCount}音"
+    val marker = if (selected) "● " else ""
+    val detail = if (selected) "選択 $selectedPadLabel / $occupancy" else "切替 / $occupancy"
+    return "$marker${"PAD %02d–%02d".format(first, last)}\n$detail"
+}
 
 fun pitchDirectionLabel(value: Float): String = when {
     value < -0.49f -> "低い"

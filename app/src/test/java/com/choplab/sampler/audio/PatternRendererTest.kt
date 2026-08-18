@@ -46,8 +46,10 @@ class PatternRendererTest {
             )
 
             assertTrue(summary.peak > 0f)
-            val pcm = file.readBytes().copyOfRange(44, 44 + vocal.size * Short.SIZE_BYTES)
-            assertTrue(pcm.any { it.toInt() != 0 })
+            val pcm = readPcm16(file)
+            assertTrue(pcm[60].toInt() in 7_500..9_000)
+            assertTrue(pcm.copyOfRange(100, 1_900).all { it == pcm[100] })
+            assertTrue(pcm.copyOfRange(vocal.size, pcm.size).all { it.toInt() == 0 })
         } finally {
             file.delete()
         }
@@ -85,12 +87,85 @@ class PatternRendererTest {
             )
 
             assertTrue(summary.peak > 0f)
-            val bytes = file.readBytes()
-            val finalQuarter = bytes.copyOfRange(44 + summary.frameCount * 3 / 2, bytes.size)
-            assertTrue(finalQuarter.any { it.toInt() != 0 })
+            val pcm = readPcm16(file)
+            listOf(64, summary.frameCount / 4, summary.frameCount / 2, summary.frameCount - 128).forEach { frame ->
+                assertWindowHasEnergy(pcm, frame)
+            }
         } finally {
             file.delete()
         }
+    }
+
+    @Test
+    fun eventFramesFollowStraightAndSwungSixteenthTiming() {
+        val sampleRate = 8_000
+        val hit = ShortArray(256) { 16_000 }
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = PcmAudio(name = "timing-hit", samples = hit, sampleRate = sampleRate),
+            startFrame = 0,
+            endFrame = hit.size,
+        )
+        val pads = List(SamplerConfig.PAD_COUNT) { if (it == 0) pad else PadModel(it) }
+        val active = setOf(stepKey(0, 0), stepKey(0, 1), stepKey(0, 4), stepKey(0, 8), stepKey(0, 12))
+
+        val straight = renderPcm(pads, active, sampleRate, swing = 50f)
+        val swung = renderPcm(pads, active, sampleRate, swing = 60f)
+
+        listOf(0, 1_000, 4_000, 8_000, 12_000).forEach { onset ->
+            assertWindowHasEnergy(straight, onset + 48)
+        }
+        listOf(0, 1_200, 4_000, 8_000, 12_000).forEach { onset ->
+            assertWindowHasEnergy(swung, onset + 48)
+        }
+        assertTrue(straight.copyOfRange(1_040, 1_160).any { kotlin.math.abs(it.toInt()) > 2_000 })
+        assertTrue(swung.copyOfRange(1_040, 1_160).all { kotlin.math.abs(it.toInt()) < 200 })
+    }
+
+    @Test
+    fun reversePitchGainAndToneChangeIndependentPcmObservations() {
+        val sampleRate = 8_000
+        val rising = ShortArray(512) { frame -> (2_000 + frame * 40).coerceAtMost(22_000).toShort() }
+        val alternating = ShortArray(512) { frame -> if (frame % 2 == 0) 20_000 else -20_000 }
+
+        fun render(
+            samples: ShortArray = rising,
+            reverse: Boolean = false,
+            pitch: Float = 0f,
+            gain: Float = 1f,
+            tone: Float = 1f,
+        ): ShortArray {
+            val pad = PadModel(
+                globalIndex = 0,
+                audio = PcmAudio(name = "parameter-fixture", samples = samples, sampleRate = sampleRate),
+                startFrame = 0,
+                endFrame = samples.size,
+                reverse = reverse,
+                pitchSemitones = pitch,
+                gain = gain,
+                tone = tone,
+            )
+            return renderPcm(
+                pads = List(SamplerConfig.PAD_COUNT) { if (it == 0) pad else PadModel(it) },
+                activeSteps = setOf(stepKey(0, 0)),
+                sampleRate = sampleRate,
+                swing = 50f,
+            )
+        }
+
+        val forward = render()
+        val reversed = render(reverse = true)
+        assertTrue(kotlin.math.abs(reversed[64].toInt()) > kotlin.math.abs(forward[64].toInt()) * 2)
+
+        val halfGain = render(gain = 0.5f)
+        assertTrue(kotlin.math.abs(forward[128].toInt()) > kotlin.math.abs(halfGain[128].toInt()))
+
+        val pitched = render(pitch = 12f)
+        assertTrue(lastEnergeticFrame(pitched) < lastEnergeticFrame(forward) - 150)
+
+        val bright = render(samples = alternating, tone = 1f)
+        val dark = render(samples = alternating, tone = 0.15f)
+        assertTrue(windowEnergy(bright, 64, 256) > windowEnergy(dark, 64, 256) * 4)
     }
 
     @Test
@@ -143,4 +218,50 @@ class PatternRendererTest {
         ByteBuffer.wrap(bytes, offset, Int.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)
             .int
+
+    private fun readPcm16(file: File): ShortArray {
+        val bytes = file.readBytes()
+        return ShortArray((bytes.size - 44) / Short.SIZE_BYTES) { index ->
+            ByteBuffer.wrap(bytes, 44 + index * Short.SIZE_BYTES, Short.SIZE_BYTES)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .short
+        }
+    }
+
+    private fun renderPcm(
+        pads: List<PadModel>,
+        activeSteps: Set<Int>,
+        sampleRate: Int,
+        swing: Float,
+    ): ShortArray {
+        val file = File.createTempFile("choplab-render-oracle", ".wav")
+        return try {
+            PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = pads,
+                activeSteps = activeSteps,
+                bpm = 120f,
+                swing = swing,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            readPcm16(file)
+        } finally {
+            file.delete()
+        }
+    }
+
+    private fun assertWindowHasEnergy(pcm: ShortArray, frame: Int) {
+        assertTrue(
+            "Expected rendered energy around frame $frame",
+            pcm.copyOfRange(frame, (frame + 32).coerceAtMost(pcm.size))
+                .any { kotlin.math.abs(it.toInt()) > 2_000 },
+        )
+    }
+
+    private fun lastEnergeticFrame(pcm: ShortArray): Int =
+        pcm.indexOfLast { kotlin.math.abs(it.toInt()) > 200 }
+
+    private fun windowEnergy(pcm: ShortArray, start: Int, end: Int): Long =
+        pcm.copyOfRange(start, end).sumOf { kotlin.math.abs(it.toInt()).toLong() }
 }

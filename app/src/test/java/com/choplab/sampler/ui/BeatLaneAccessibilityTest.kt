@@ -20,6 +20,33 @@ class BeatLaneAccessibilityTest {
     }
 
     @Test
+    fun `beat sound rail describes assigned pads as selection not automatic preview`() {
+        val audio = PcmAudio(name = "beat", samples = ShortArray(100), sampleRate = 48_000)
+
+        assertEquals(
+            "メロディー PAD 1 選択",
+            beatSoundRailPadDescription(
+                PadModel(0, audio, 0, 100),
+                previewsOnSelection = false,
+            ),
+        )
+        assertEquals(
+            "メロディー PAD 1 試聴",
+            beatSoundRailPadDescription(
+                PadModel(0, audio, 0, 100),
+                previewsOnSelection = true,
+            ),
+        )
+        assertEquals(
+            "ドラム PAD 1 空",
+            beatSoundRailPadDescription(
+                PadModel(SamplerConfig.PADS_PER_BANK),
+                previewsOnSelection = true,
+            ),
+        )
+    }
+
+    @Test
     fun `lane step states are announced in plain Japanese`() {
         assertEquals("選択音", laneStepAccessibilityLabel(LaneStepState.SELECTED_SOUND))
         assertEquals("別の音", laneStepAccessibilityLabel(LaneStepState.OTHER_SOUND))
