@@ -91,7 +91,9 @@ jobs:
       - name: Generate project and run iOS tests
         shell: bash
         run: |
-          xcodegen generate --spec ios/project.yml --project ios/ChopLab.xcodeproj
+          cd ios
+          xcodegen generate --spec project.yml
+          cd ..
           simulator_name="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $1; exit}' | xargs)"
           test -n "${simulator_name}"
           xcodebuild \

@@ -27,7 +27,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate project
-        run: xcodegen generate --spec ios/project.yml --project ios/ChopLab.xcodeproj
+        run: cd ios && xcodegen generate --spec project.yml
 
       - name: Run iOS Simulator tests
         shell: bash

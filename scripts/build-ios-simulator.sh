@@ -13,7 +13,9 @@ command -v xcodegen >/dev/null 2>&1 || {
 }
 
 cd "${ROOT_DIR}"
-xcodegen generate --spec ios/project.yml --project "${PROJECT}"
+cd "${ROOT_DIR}/ios"
+xcodegen generate --spec project.yml
+cd "${ROOT_DIR}"
 xcodebuild \
   -project "${PROJECT}" \
   -scheme ChopLab \

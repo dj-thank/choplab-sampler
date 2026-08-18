@@ -148,7 +148,7 @@ app/build/outputs/apk/debug/app-debug.apk
 iOS Simulator preview:
 
 ```bash
-xcodegen generate --spec ios/project.yml --project ios/ChopLab.xcodeproj
+xcodegen generate --spec project.yml
 bash scripts/build-ios-simulator.sh
 ```
 

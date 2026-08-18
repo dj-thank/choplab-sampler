@@ -14,7 +14,9 @@ The app is a native SwiftUI + AVFoundation implementation with:
 Install [XcodeGen](https://github.com/yonaskolb/XcodeGen), then run:
 
 ```bash
-xcodegen generate --spec ios/project.yml --project ios/ChopLab.xcodeproj
+cd ios
+xcodegen generate --spec project.yml
+cd ..
 xcodebuild -project ios/ChopLab.xcodeproj \
   -scheme ChopLab \
   -sdk iphonesimulator \
