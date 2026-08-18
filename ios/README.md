@@ -11,7 +11,7 @@ The app is a native SwiftUI + AVFoundation implementation with:
 
 ## Build locally on macOS
 
-Install [XcodeGen](https://github.com/yonaskolb/XcodeGen), then run:
+Install Xcode 15.4以上 and [XcodeGen](https://github.com/yonaskolb/XcodeGen), then run:
 
 ```bash
 cd ios

@@ -104,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\codex-run-master.ps1
 - Android NDK `29.0.14206865`
 - CMake `3.22.1`
 - Android Studio現行安定版
-- macOS + Xcode 16系 + XcodeGen（iOS Simulator previewの生成と検証）
+- macOS + Xcode 15.4以上 + XcodeGen（iOS Simulator previewの生成と検証）
 - Codex CLIまたはChatGPTデスクトップアプリのCodex
 
 MVPの固定ツールチェーン:
