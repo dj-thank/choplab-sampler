@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECTED_WRAPPER_SHA="497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7"
 
+python "$ROOT/scripts/check_public_surface.py"
 "$ROOT/scripts/run_pure_logic_smoke.sh"
 
 python - "$ROOT" <<'PY'

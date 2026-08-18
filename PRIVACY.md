@@ -1,8 +1,8 @@
 # ChopLab プライバシー方針
 
-最終更新: 2026-08-16
+最終更新: 2026-08-19
 
-ChopLab は、音声制作を端末内で行うオープンソース Android アプリです。現在のアプリはインターネット権限を要求せず、広告、アカウント、分析 SDK、クラッシュ送信、独自サーバーへの音声アップロードを実装していません。
+ChopLab は、音声制作を端末内で行うオープンソース Android / iOS アプリです。現在のアプリはインターネット権限や独自サーバーへの音声アップロードを実装していません。広告、アカウント、分析 SDK、クラッシュ送信も行いません。
 
 ## 扱うデータ
 
@@ -10,6 +10,7 @@ ChopLab は、音声制作を端末内で行うオープンソース Android ア
 - アプリ内の自動保存と一時録音はアプリ専用領域に保存されます。一時録音WAVは音声への変換が成功・失敗・取消のいずれで終了しても削除し、異常終了で残ったChopLab命名の一時録音だけを24時間後の起動時清掃対象にします。
 - WAV と `.choplab` プロジェクトは、Android のファイル選択画面でユーザーが指定した保存先にのみ書き出します。
 - アプリは Android バックアップを無効にしています。ユーザーが書き出したファイルは、選択した保存先の管理方法に従います。
+- iOSで選択した音声は、security-scoped file accessを使って読み取り、アプリ専用のApplication Support内へコピーしてから再生します。ユーザー音源はこのGitリポジトリやGitHub Releaseへ送信・同梱しません。
 
 ## 権限と目的
 
@@ -17,8 +18,13 @@ ChopLab は、音声制作を端末内で行うオープンソース Android ア
 - MediaProjection の画面共有同意: 端末音声録音を開始するたびに Android の確認画面を使います。録音元アプリが Playback Capture を許可した音声だけが対象です。
 - `FOREGROUND_SERVICE_MEDIA_PROJECTION`: 端末音声録音を、Android が管理するフォアグラウンドサービスとして実行するために使います。
 - `POST_NOTIFICATIONS`（Android 13 以降）: 端末音声録音中のサービス通知に使います。拒否してもアプリ内の停止操作は残ります。
+- iOSのマイク権限: iOS版で録音を開始したときだけ、録音素材を作る目的で要求します。拒否した場合は録音を開始しません。
 
 DRM、録音元アプリの制限、OS の権限を回避しません。録音・サンプリングする音源について必要な権利と利用条件を確認してください。
+
+## iOS previewの境界
+
+公開Releaseに含めるiOS artifactは署名なしのSimulator `.app.zip`だけです。Apple Developer certificate、provisioning profile、private signing key、App Store Connect credentialはソース、GitHub Actions artifact、Release asset、ログへ置きません。iPhone/iPadの実機配布には利用者自身の署名環境が必要です。
 
 ## 消去と持ち出し
 
