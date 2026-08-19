@@ -1,7 +1,12 @@
 package com.choplab.desktop
 
 import com.choplab.desktop.audio.JavaSoundWavPlayer
+import com.choplab.desktop.audio.DesktopPatternRenderer
+import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.stepKey
+import java.nio.file.Files
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,6 +66,25 @@ class DesktopSamplerControllerTest {
             assertEquals("音声を読み込むか録音してください", controller.state.value.statusMessage)
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun windowsRendererWritesTheFourBarWavUsingSharedPadState() {
+        val output = Files.createTempFile("choplab-render", ".wav").toFile()
+        try {
+            val samples = ShortArray(480) { index -> if (index % 32 < 16) 12_000 else -12_000 }
+            val audio = PcmAudio(name = "test", samples = samples, sampleRate = 48_000)
+            val pads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) PadModel(index, audio, 0, samples.size) else PadModel(index)
+            }
+
+            DesktopPatternRenderer.renderFourBars(output, pads, setOf(stepKey(0, 0)), 92f, 54f)
+
+            assertTrue(output.length() > 44L)
+            assertEquals('R'.code.toByte(), output.inputStream().use { it.read().toByte() })
+        } finally {
+            output.delete()
         }
     }
 }

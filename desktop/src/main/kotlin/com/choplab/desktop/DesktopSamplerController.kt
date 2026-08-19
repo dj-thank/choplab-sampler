@@ -1,10 +1,15 @@
 package com.choplab.desktop
 
 import com.choplab.desktop.audio.DesktopWavDecoder
+import com.choplab.desktop.audio.DesktopMicrophoneRecorder
+import com.choplab.desktop.audio.DesktopPatternRenderer
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadTrimSnapshot
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
+import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.assignLiveChopToPad
@@ -15,6 +20,12 @@ import com.choplab.sampler.model.selectPlayablePad
 import com.choplab.sampler.model.selectPlayablePadPage
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stopAllPlaybackState
+import com.choplab.sampler.model.beginRecordingSession
+import com.choplab.sampler.model.endRecordingSession
+import com.choplab.sampler.model.failRecordingSession
+import com.choplab.sampler.model.nextVocalPadIndex
+import com.choplab.sampler.model.observeRecordingSession
+import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.ui.SamplerDeckController
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.time.Instant
 
 /**
  * JVM shell for the shared deck. Audio/filesystem/permission work stays here;
@@ -29,6 +41,7 @@ import java.io.File
  */
 class DesktopSamplerController(
     private val player: JavaSoundWavPlayer,
+    private val microphone: DesktopMicrophoneRecorder = DesktopMicrophoneRecorder(),
 ) : SamplerDeckController, AutoCloseable {
     private val mutableState = MutableStateFlow(SamplerUiState())
     val state: StateFlow<SamplerUiState> = mutableState.asStateFlow()
@@ -43,12 +56,79 @@ class DesktopSamplerController(
         )
     }
 
-    fun toggleMicrophoneRecording() = setStatus("Windows録音アダプターを準備中です")
+    fun toggleMicrophoneRecording() = toggleRecording(RecordingKind.SOURCE_MICROPHONE)
     fun toggleSystemAudioRecording() = setStatus("Windows端末音声アダプターを準備中です")
-    fun toggleVocalRecording() = setStatus("Windowsボーカル録音アダプターを準備中です")
-    fun exportBeat() = setStatus("WAV書き出しアダプターを準備中です")
+    fun toggleVocalRecording() = toggleRecording(RecordingKind.VOCAL_OVERDUB)
+    fun exportBeat() = setStatus("保存先を選択してください")
+    fun exportBeat(outputFile: File) {
+        val state = mutableState.value
+        runCatching {
+            DesktopPatternRenderer.renderFourBars(outputFile, state.pads, state.activeSteps, state.bpm, state.swing)
+        }.onSuccess {
+            setStatus("${outputFile.name}を書き出しました")
+        }.onFailure {
+            setStatus("WAV書き出し失敗: ${it.message ?: it.javaClass.simpleName}")
+        }
+    }
     fun openProject() = setStatus("制作ファイルを選択してください")
     fun saveProject() = setStatus("制作保存アダプターを準備中です")
+
+    private fun toggleRecording(kind: RecordingKind) {
+        val active = mutableState.value.recordingSession as? RecordingSession.Active
+        if (active != null) {
+            if (active.kind == kind) stopRecording(kind) else setStatus("別の録音を停止してから操作してください")
+            return
+        }
+        val before = mutableState.value
+        if (!beginRecordingSession(before, kind).recordingSession.isActive) {
+            setStatus("録音を開始できません")
+            return
+        }
+        stopAllSounds()
+        val output = File(
+            File(System.getProperty("java.io.tmpdir"), "ChopLab/recordings"),
+            "capture-${Instant.now().toEpochMilli()}.wav",
+        )
+        mutableState.value = beginRecordingSession(mutableState.value, kind)
+        microphone.start(output).onSuccess {
+            mutableState.update { observeRecordingSession(it, kind).copy(statusMessage = "録音中です。停止ボタンで素材にします") }
+        }.onFailure { error ->
+            mutableState.update { failRecordingSession(it, kind).copy(statusMessage = "録音開始失敗: ${error.message ?: error.javaClass.simpleName}") }
+        }
+    }
+
+    private fun stopRecording(kind: RecordingKind) {
+        mutableState.update { it.copy(recordingSession = (it.recordingSession as? RecordingSession.Active)?.copy(phase = RecordingPhase.STOPPING) ?: it.recordingSession) }
+        microphone.stop().onSuccess { file ->
+            val audio = runCatching { DesktopWavDecoder.decode(file) }.getOrElse { failure ->
+                mutableState.update { state -> endRecordingSession(state, kind).copy(statusMessage = "録音読込失敗: ${failure.message ?: failure.javaClass.simpleName}") }
+                return@onSuccess
+            }
+            val current = mutableState.value
+            val next = if (kind == RecordingKind.VOCAL_OVERDUB) {
+                val target = current.pads.nextVocalPadIndex()
+                if (target == null) {
+                    current.copy(statusMessage = "VOICE BANKが満杯です", recordingSession = RecordingSession.Idle)
+                } else {
+                    current.copy(
+                        pads = current.pads.toMutableList().also { pads ->
+                            pads[target] = pads[target].copy(audio = audio, startFrame = 0, endFrame = audio.frameCount, contentKind = com.choplab.sampler.model.PadContentKind.VOCAL)
+                        },
+                        selectedBank = 3,
+                        selectedPad = target,
+                        statusMessage = "VOICE PAD ${target + 1}に録音しました",
+                        recordingSession = RecordingSession.Idle,
+                    )
+                }
+            } else {
+                current.copy(currentAudio = audio, rangeStartFrame = 0, rangeEndFrame = audio.frameCount, sourcePlayheadFrame = 0, statusMessage = "マイク録音を読み込みました。チョップで音を切ってください", recordingSession = RecordingSession.Idle)
+            }
+            mutableState.value = next
+            player.load(file)
+        }.onFailure { error ->
+            mutableState.update { endRecordingSession(it, kind).copy(statusMessage = "録音停止失敗: ${error.message ?: error.javaClass.simpleName}") }
+        }
+    }
 
     fun setStatus(message: String) = mutableState.update { it.copy(statusMessage = message) }
 
@@ -62,7 +142,14 @@ class DesktopSamplerController(
         mutableState.update(::stopAllPlaybackState)
     }
 
-    override fun stopActiveRecording() = setStatus("録音は停止しています")
+    override fun stopActiveRecording() {
+        val active = mutableState.value.recordingSession as? RecordingSession.Active
+        if (active == null) setStatus("録音は停止しています") else if (active.kind == RecordingKind.SOURCE_SYSTEM_AUDIO) {
+            setStatus("Windows端末音声録音は現在準備中です")
+        } else {
+            stopRecording(active.kind)
+        }
+    }
     override fun stopSourceForWorkspaceChange() = stopAllSounds()
     override fun ensurePlayablePadSelected() = mutableState.update { it.copy(selectedPad = it.pads.firstOrNull(PadModel::isAssigned)?.globalIndex ?: it.selectedPad) }
     override fun prepareDefaultChopDestination() = Unit
@@ -157,7 +244,10 @@ class DesktopSamplerController(
         mutableState.update { state -> state.copy(pads = state.pads.toMutableList().also { it[state.selectedPad] = transform(it[state.selectedPad]) }) }
     }
 
-    override fun close() = player.close()
+    override fun close() {
+        microphone.close()
+        player.close()
+    }
 }
 
 private fun com.choplab.sampler.model.PadPlayMode.next() = when (this) {

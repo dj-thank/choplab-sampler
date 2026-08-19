@@ -4,7 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` Compose Multiplatform が `:shared` の Android-origin deck UI/model を使用。4工程、波形、4×4 PAD、PAD editor、BANK A–D、BEAT 16-step、ローカルWAVのOPEN/PLAY/STOP、PAD割り当て。Windows録音/WASAPIレイテンシ・操作感は未確認 |
+| Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` Compose Multiplatform が `:shared` の Android-origin deck UI/model を使用。4工程、波形、4×4 PAD、PAD editor、BANK A–D、BEAT 16-step、ローカルWAVのOPEN/PLAY/STOP、マイク録音、4小節WAV書き出し、PAD割り当て。Windows端末音声WASAPIループバック・操作感は未確認 |
 | Spotify OAuth / 現在再生情報 | 🧪 local | Authorization Code with PKCE、`127.0.0.1` loopback callback、token交換、現在再生API request builder。実アカウント接続は未実施。tokenは試作中メモリ内のみ |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |

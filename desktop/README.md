@@ -9,7 +9,7 @@ This target is the local Windows EXE for ChopLab. It renders the Android-origin 
 ./gradlew.bat :desktop:run
 ```
 
-The desktop app intentionally supports WAV first. It does not capture Spotify audio, download Spotify Content, convert Spotify tracks to MP3, or expose Spotify audio bytes to the sampler.
+The desktop app supports user-selected WAV import and Windows microphone capture first. It does not capture Spotify audio, download Spotify Content, convert Spotify tracks to MP3, or expose Spotify audio bytes to the sampler.
 
 ## Spotify development login
 
@@ -22,7 +22,7 @@ $env:CHOPLAB_SPOTIFY_CLIENT_ID = 'your-public-client-id'
 ./gradlew.bat :desktop:run
 ```
 
-The application uses Authorization Code with PKCE and keeps the first-slice token in memory only. No client secret or token belongs in source control.
+The OAuth helper uses Authorization Code with PKCE and keeps the first-slice token in memory only. The current shared deck keeps that provider seam separate from local audio; no client secret or token belongs in source control.
 
 Spotify is deliberately a metadata/playback-control integration. The desktop app does not capture Spotify audio, download Spotify Content, stream-rip, record, extract, or convert Spotify tracks to MP3. Use a user-selected local WAV as the sampler source.
 
