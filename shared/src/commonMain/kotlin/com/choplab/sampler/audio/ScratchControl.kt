@@ -1,6 +1,6 @@
 package com.choplab.sampler.audio
 
-internal const val SCRATCH_GESTURE_IDLE_TIMEOUT_MS = 120L
+const val SCRATCH_GESTURE_IDLE_TIMEOUT_MS = 120L
 
 fun scratchGestureIsIdle(elapsedMillis: Long): Boolean =
     elapsedMillis.coerceAtLeast(0L) >= SCRATCH_GESTURE_IDLE_TIMEOUT_MS

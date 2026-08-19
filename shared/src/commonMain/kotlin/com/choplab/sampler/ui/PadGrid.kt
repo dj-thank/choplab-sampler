@@ -269,7 +269,7 @@ private fun PerformancePad(
     }
 }
 
-internal fun padAccessibilityDescription(
+fun padAccessibilityDescription(
     pad: PadModel,
     captureMode: Boolean,
     sourcePhase: SourceUiPhase = SourceUiPhase.STOPPED,
@@ -289,7 +289,7 @@ internal fun padAccessibilityDescription(
     }
 }
 
-internal fun shouldDeferDestructiveCaptureUntilTap(
+fun shouldDeferDestructiveCaptureUntilTap(
     assigned: Boolean,
     captureMode: Boolean,
     sourcePhase: SourceUiPhase,

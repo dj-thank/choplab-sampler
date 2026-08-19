@@ -3,7 +3,7 @@ package com.choplab.sampler.ui
 import kotlin.math.roundToInt
 
 /** Pure, shared viewport rules for the phone waveform surfaces. */
-internal data class WaveformViewport(
+data class WaveformViewport(
     val totalFrames: Int,
     val zoom: Float,
     val scroll: Float,
@@ -11,7 +11,7 @@ internal data class WaveformViewport(
     val visibleFrames: Int,
 )
 
-internal fun resolveWaveformViewport(
+fun resolveWaveformViewport(
     totalFrames: Int,
     zoom: Float,
     scroll: Float,
@@ -26,7 +26,7 @@ internal fun resolveWaveformViewport(
 }
 
 /** Speaks the first and inclusive last displayed frame IDs; model ranges remain end-exclusive. */
-internal fun waveformViewportStateDescription(viewport: WaveformViewport): String {
+fun waveformViewportStateDescription(viewport: WaveformViewport): String {
     val visibleEndInclusive = (viewport.visibleStart + viewport.visibleFrames - 1)
         .coerceIn(viewport.visibleStart, viewport.totalFrames - 1)
     return if (viewport.visibleStart == 0 && viewport.visibleFrames == viewport.totalFrames) {
@@ -36,7 +36,7 @@ internal fun waveformViewportStateDescription(viewport: WaveformViewport): Strin
     }
 }
 
-internal fun waveformFrameAtX(
+fun waveformFrameAtX(
     x: Float,
     width: Float,
     visibleStart: Int,
@@ -52,7 +52,7 @@ internal fun waveformFrameAtX(
         .coerceIn(0, safeTotal - 1)
 }
 
-internal fun zoomViewportAtFocus(
+fun zoomViewportAtFocus(
     frame: Int,
     totalFrames: Int,
     zoom: Float,
@@ -72,7 +72,7 @@ internal fun zoomViewportAtFocus(
     return WaveformViewport(safeTotal, nextZoom, scroll, centeredStart, visibleFrames)
 }
 
-internal fun panWaveformViewport(
+fun panWaveformViewport(
     totalFrames: Int,
     zoom: Float,
     scroll: Float,

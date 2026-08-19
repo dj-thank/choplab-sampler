@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `windows-desktop-ui-fidelity-20260819.md`。既存 Android ChopLab UIを正本として、Windows Desktop EXEの画面を同じ deck palette、5工程、source/chop、4×4 PAD、PAD editor、BANK、production dock、arrange step sequencerへ寄せる。Spotify Content の取得・録音・stream ripping・MP3化は対象外。target gate は `LOCAL_PASS` のみ。
+**進行中:** `windows-desktop-ui-fidelity-20260819.md`。既存 Android ChopLab UIを正本として、Windows Desktop EXEへ同じ Compose UI、4工程、文言、source/chop、4×4 PAD、PAD editor、BANK、production dock、beat step sequencerを共有移植する。Spotify Content の取得・録音・stream ripping・MP3化は対象外。target gate は `LOCAL_PASS` のみ。
 
 **完了済み:** `restart-playback-interruption-local-20260819.md`。`app/` の playback interruption local contract を focused local test と source inspection で再確認した。実装差分はなく、Pro 統合、Pixel 9a、device/provider/public 検証は開始していない。
 

@@ -1,6 +1,6 @@
 # ChopLab Windows Desktop prototype
 
-This target is the local Windows EXE proof for the ChopLab desktop direction. Its Swing surface follows the original Android おとひろい deck: the five-step workflow, source/chop waveform, 4 x 4 PAD surface, selected-PAD editor, BANK A–D dock, guided production actions, and the arrange-stage 16-step sequencer are kept in the same visual vocabulary.
+This target is the local Windows EXE for ChopLab. It renders the Android-origin おとひろい deck through Compose Multiplatform: the four-step workflow, exact source/chop/beat/save copy, 4 x 4 PAD surface, selected-PAD editor, BANK A–D dock, guided production actions, and 16-step sequencer are the same shared UI source.
 
 ## Run locally
 

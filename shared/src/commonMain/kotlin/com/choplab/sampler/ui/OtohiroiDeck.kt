@@ -1,6 +1,5 @@
 package com.choplab.sampler.ui
 
-import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,7 +46,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -62,6 +60,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -69,7 +70,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.choplab.sampler.SamplerViewModel
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.scratchProgress
 import com.choplab.sampler.audio.scratchSpeedFromGesture
@@ -151,7 +151,7 @@ private enum class ScratchSensitivity(val label: String, val divisor: Float) {
     WIDE("大きい\nWIDE", 4f),
 }
 
-internal fun scratchAccessibilityActions(
+fun scratchAccessibilityActions(
     available: Boolean,
     active: Boolean,
     onStart: () -> Unit,
@@ -195,7 +195,7 @@ fun OtohiroiDeck(
     onExportBeat: () -> Unit,
     onOpenProject: () -> Unit,
     onSaveProject: () -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     var stageName by rememberSaveable(state.currentAudio?.id) {
         mutableStateOf(initialWorkflowStage(state.currentAudio != null).name)
@@ -375,7 +375,7 @@ private fun ChopStageWorkspace(
     onOpenTrim: (Int) -> Unit,
     onContinueToBeat: () -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     PerformanceWorkspace(
         state = state,
@@ -398,7 +398,7 @@ private fun PerformanceWorkspace(
     onOpenTrim: (Int) -> Unit,
     onContinueToBeat: () -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     val sourcePhase = state.sourceUiPhase()
@@ -491,7 +491,7 @@ private fun LandscapePerformanceWorkspace(
     onOpenTrim: (Int) -> Unit,
     onContinueToBeat: () -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     Row(
@@ -594,7 +594,7 @@ private fun ChopSourceControlRow(
     presentation: ChopSessionPresentation,
     height: Dp,
     gap: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
@@ -897,7 +897,7 @@ private fun CaptureWorkspace(
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
     onContinue: () -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     val audio = state.currentAudio
@@ -1191,7 +1191,7 @@ private fun SelectedPadQuickEditor(
     height: Dp,
     expanded: Boolean,
     onOpenDetails: (() -> Unit)?,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val pad = state.selectedPadModel()
     Column(
@@ -1309,7 +1309,7 @@ private fun PadWorkspace(
     page: PadEditorPage,
     onPageChange: (PadEditorPage) -> Unit,
     onReturn: () -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     if (metrics.orientation == DeckOrientation.LANDSCAPE) {
@@ -1392,7 +1392,7 @@ private fun PadEditor(
     page: PadEditorPage,
     onPageChange: (PadEditorPage) -> Unit,
     onReturn: () -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     controlHeight: Dp,
     gap: Dp,
     modifier: Modifier,
@@ -1456,7 +1456,7 @@ private fun PadEditor(
 @Composable
 private fun PadTrimEditor(
     pad: PadModel,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     modifier: Modifier,
 ) {
     val audio = pad.audio
@@ -1561,7 +1561,7 @@ private fun PadTrimEditor(
 @Composable
 private fun ParameterEditor(
     pad: PadModel,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     modifier: Modifier,
 ) {
     Column(modifier = modifier) {
@@ -1598,7 +1598,7 @@ private fun ParameterEditor(
 @Composable
 private fun PlayModeEditor(
     pad: PadModel,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     controlHeight: Dp,
     gap: Dp,
     modifier: Modifier,
@@ -1672,7 +1672,7 @@ private fun SequenceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     var showFineControls by rememberSaveable { mutableStateOf(false) }
@@ -1950,7 +1950,7 @@ private fun SequenceControlDeck(
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
     showFineControls: Boolean,
     onShowFineControls: (Boolean) -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     modifier: Modifier,
 ) {
     val gap = metrics.gapDp.dp
@@ -2066,7 +2066,7 @@ private fun SequenceControlDeck(
 private fun LandscapeTempoRow(
     state: SamplerUiState,
     height: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
@@ -2092,7 +2092,7 @@ private fun LandscapeTempoRow(
 private fun LandscapeKeyRow(
     state: SamplerUiState,
     height: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val pad = state.selectedPadModel()
     Row(
@@ -2125,7 +2125,7 @@ private fun LandscapeKeyRow(
 private fun LandscapeToneLevelRow(
     state: SamplerUiState,
     height: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val pad = state.selectedPadModel()
     Row(
@@ -2153,7 +2153,7 @@ private fun LandscapeToneLevelRow(
 private fun BeatLoopControl(
     state: SamplerUiState,
     height: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val fontScale = LocalDensity.current.fontScale
     val pad = state.selectedPadModel()
@@ -2201,7 +2201,7 @@ private fun LandscapeBeatPlaybackRow(
     state: SamplerUiState,
     height: Dp,
     gap: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val fontScale = LocalDensity.current.fontScale
     val selectedPad = state.selectedPadModel()
@@ -2239,7 +2239,7 @@ private fun LandscapeBeatPlaybackRow(
 private fun PlacementPresetPicker(
     state: SamplerUiState,
     height: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val pad = state.selectedPadModel()
     val activeGrid = state.activeSteps
@@ -2294,7 +2294,7 @@ private fun LayerStudio(
     initialPage: LayerStudioPage,
     onDismiss: () -> Unit,
     onToggleVocalRecording: () -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     var pageName by rememberSaveable(initialPage.name) { mutableStateOf(initialPage.name) }
     var kitId by rememberSaveable(state.selectedDrumKitId, state.currentAudio?.id) {
@@ -2447,7 +2447,7 @@ private fun LayerStudio(
 @Composable
 private fun SampleLayerStudio(
     state: SamplerUiState,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -2745,7 +2745,7 @@ private fun VocalStudio(
 @Composable
 private fun ScratchStudio(
     state: SamplerUiState,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     modifier: Modifier = Modifier,
 ) {
     var targetName by rememberSaveable { mutableStateOf(ScratchTarget.SOURCE.name) }
@@ -2939,7 +2939,7 @@ private fun SequenceTransportRow(
     state: SamplerUiState,
     height: Dp,
     gap: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     Row(
         modifier = Modifier
@@ -2980,7 +2980,7 @@ private fun SequenceTransportRow(
 private fun TempoRow(
     state: SamplerUiState,
     height: Dp,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     Row(
         modifier = Modifier
@@ -3013,7 +3013,7 @@ private fun FinishWorkspace(
     onOpenProject: () -> Unit,
     onSaveProject: () -> Unit,
     onBackToArrange: () -> Unit,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     val assignedPads = state.pads.count(PadModel::isAssigned)
@@ -3177,7 +3177,7 @@ private fun FinishWorkspace(
 @Composable
 private fun SourceEditorWaveform(
     state: SamplerUiState,
-    viewModel: SamplerViewModel,
+    viewModel: SamplerDeckController,
     modifier: Modifier,
     condensed: Boolean = false,
     selectSliceOnly: Boolean = false,
@@ -3618,6 +3618,7 @@ private fun SourceWaveform(
             )
         }
     }
+    val markerTextMeasurer = rememberTextMeasurer()
     Box(
         modifier = modifier
             .clip(PanelShape)
@@ -3698,11 +3699,6 @@ private fun SourceWaveform(
                 viewportColor = DeckLamp,
             )
 
-            val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.rgb(26, 13, 0)
-                textSize = 9.sp.toPx()
-                typeface = android.graphics.Typeface.MONOSPACE
-            }
             pads.filter { it.isAssigned && it.audio?.id == source.id }
                 .sortedBy(PadModel::startFrame)
                 .forEach { pad ->
@@ -3719,11 +3715,16 @@ private fun SourceWaveform(
                         topLeft = androidx.compose.ui.geometry.Offset((x - 1.dp.toPx()).coerceAtLeast(0f), 0f),
                         size = androidx.compose.ui.geometry.Size(17.dp.toPx(), 12.dp.toPx()),
                     )
-                    drawContext.canvas.nativeCanvas.drawText(
-                        "%02d".format(pad.indexInBank + 1),
-                        x + 1.dp.toPx(),
-                        9.dp.toPx(),
-                        markerPaint,
+                    drawText(
+                        textMeasurer = markerTextMeasurer,
+                        text = "%02d".format(pad.indexInBank + 1),
+                        topLeft = Offset(x + 1.dp.toPx(), 0f),
+                        style = TextStyle(
+                            color = DeckInk,
+                            fontFamily = DeckFont,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                        ),
                     )
                 }
 

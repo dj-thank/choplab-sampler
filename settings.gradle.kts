@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "ChopLab"
 include(":app")
 include(":desktop")
+include(":shared")

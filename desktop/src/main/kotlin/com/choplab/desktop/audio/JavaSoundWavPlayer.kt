@@ -1,8 +1,12 @@
 package com.choplab.desktop.audio
 
+import com.choplab.sampler.model.PcmAudio
+import java.io.ByteArrayInputStream
 import java.io.File
+import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioFileFormat
 import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.Clip
 
 /** First desktop proof: user-selected PCM WAV playback through the JDK audio adapter. */
@@ -33,6 +37,27 @@ class JavaSoundWavPlayer : LocalAudioPlayer {
         activeClip.stop()
         activeClip.framePosition = 0
         activeClip.start()
+    }
+
+    fun playPcm(audio: PcmAudio, startFrame: Int = 0, endFrame: Int = audio.frameCount) {
+        val start = startFrame.coerceIn(0, (audio.frameCount - 1).coerceAtLeast(0))
+        val end = endFrame.coerceIn(start + 1, audio.frameCount)
+        val samples = audio.samples.copyOfRange(start, end)
+        val bytes = ByteArray(samples.size * 2)
+        samples.forEachIndexed { index, sample ->
+            bytes[index * 2] = (sample.toInt() and 0xFF).toByte()
+            bytes[index * 2 + 1] = (sample.toInt() shr 8).toByte()
+        }
+        val format = AudioFormat(audio.sampleRate.toFloat(), 16, 1, true, false)
+        val newClip = AudioSystem.getClip()
+        AudioSystem.getAudioInputStream(
+            format,
+            AudioInputStream(ByteArrayInputStream(bytes), format, samples.size.toLong()),
+        ).use { stream -> newClip.open(stream) }
+        clip?.close()
+        clip = newClip
+        loadedFile = null
+        newClip.start()
     }
 
     override fun stop() {

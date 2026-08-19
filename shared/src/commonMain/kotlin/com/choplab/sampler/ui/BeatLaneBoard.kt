@@ -40,7 +40,7 @@ import com.choplab.sampler.model.laneStepState
 private val BeatBoardShape = RoundedCornerShape(7.dp)
 private val BeatBoardFont = FontFamily.Monospace
 
-internal fun beatLanePadDescription(
+fun beatLanePadDescription(
     bankIndex: Int,
     padIndex: Int,
     playable: Boolean = true,
@@ -51,7 +51,7 @@ internal fun beatLanePadDescription(
     return "BANK ${bankRole.letter} ${bankRole.japaneseLabel} PAD $padInBank$emptyLabel"
 }
 
-internal fun beatSoundRailPadDescription(
+fun beatSoundRailPadDescription(
     pad: PadModel,
     previewsOnSelection: Boolean,
 ): String {
@@ -64,7 +64,7 @@ internal fun beatSoundRailPadDescription(
     return "${role.japaneseLabel} PAD ${pad.indexInBank + 1} $action"
 }
 
-internal fun laneStepAccessibilityLabel(
+fun laneStepAccessibilityLabel(
     state: LaneStepState,
     enabled: Boolean = true,
 ): String = if (!enabled) {
@@ -77,7 +77,7 @@ internal fun laneStepAccessibilityLabel(
     }
 }
 
-internal fun beatLaneTargetPad(
+fun beatLaneTargetPad(
     pads: List<PadModel>,
     bankIndex: Int,
     selectedPad: Int,

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "sourceOfTruth": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt",
+  "platforms": ["android", "windows", "ios"],
+  "workflow": [
+    {"id": "CAPTURE", "japanese": "入れる", "english": "CAPTURE", "description": "曲や声を読み込んで、素材を用意します"},
+    {"id": "CHOP", "japanese": "チョップ", "english": "CHOP", "description": "曲を頭から流し、空PADを叩いて切ります"},
+    {"id": "BEAT", "japanese": "ビート", "english": "BEAT", "description": "選んだ音をループするか16ステップに並べます"},
+    {"id": "FINISH", "japanese": "保存", "english": "SAVE", "description": "ビートを確認して、WAVやプロジェクトを保存します"}
+  ],
+  "root": {
+    "background": "#0F0D08",
+    "panel": "#EDE2C8",
+    "panelDark": "#D3C5A5",
+    "ink": "#211D13",
+    "lamp": "#FF7417",
+    "green": "#9FD46B",
+    "pad": "#262116",
+    "padAssigned": "#38301D",
+    "padLit": "#FFB25E",
+    "font": "monospace",
+    "consoleCornerDp": 13,
+    "panelCornerDp": 8
+  },
+  "regions": ["MachineHeader", "WorkflowStrip", "stageWorkspace", "ConsoleStatusStrip"],
+  "copyPolicy": "all user-visible strings and accessibility semantics must remain in shared UI source",
+  "scalePolicy": "resolveDeckLayout(widthDp,heightDp) is shared; only available window size changes"
+}

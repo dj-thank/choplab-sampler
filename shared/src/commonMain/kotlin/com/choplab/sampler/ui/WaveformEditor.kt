@@ -443,7 +443,7 @@ fun WaveformEditor(
     }
 }
 
-internal fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): Float {
+fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): Float {
     val safeTotalFrames = totalFrames.coerceAtLeast(1)
     val safeZoom = zoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
     val visibleFrames = (safeTotalFrames / safeZoom).roundToInt().coerceIn(1, safeTotalFrames)
@@ -454,7 +454,7 @@ internal fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): 
     return centeredStart.toFloat() / maximumVisibleStart
 }
 
-internal fun waveformViewportAccessibilityActions(
+fun waveformViewportAccessibilityActions(
     onPrevious: () -> Boolean,
     onNext: () -> Boolean,
     onReset: () -> Boolean,
@@ -701,13 +701,13 @@ private fun DrawScope.drawFrameRegion(
     if (right > left) drawRect(color, topLeft = Offset(left, 0f), size = androidx.compose.ui.geometry.Size(right - left, size.height))
 }
 
-internal data class WaveformEnvelope(
+data class WaveformEnvelope(
     val minimums: FloatArray,
     val maximums: FloatArray,
     val pixelStep: Int,
 )
 
-internal fun buildWaveformEnvelope(
+fun buildWaveformEnvelope(
     samples: ShortArray,
     visibleStart: Int,
     visibleEnd: Int,
@@ -768,7 +768,7 @@ private fun DrawScope.drawWaveformEnvelope(
     }
 }
 
-internal fun DrawScope.drawViewportOverview(
+fun DrawScope.drawViewportOverview(
     visibleStart: Int,
     visibleFrames: Int,
     totalFrames: Int,
@@ -790,12 +790,12 @@ internal fun DrawScope.drawViewportOverview(
     )
 }
 
-internal data class WaveformOverviewGeometry(
+data class WaveformOverviewGeometry(
     val left: Float,
     val right: Float,
 )
 
-internal fun waveformOverviewGeometry(
+fun waveformOverviewGeometry(
     visibleStart: Int,
     visibleFrames: Int,
     totalFrames: Int,
