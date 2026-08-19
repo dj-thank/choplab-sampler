@@ -42,6 +42,12 @@ The isolated branch `codex/choplab-desktop-exe` is the current implementation wo
 - Explicit follow-up: KEY/TONE/LEVEL currently preserve the PAD editor state and original UI vocabulary; they are not yet a completed desktop DSP implementation. Project save/open, native low-latency audio, signing/installer publication, Spotify account/device verification, and Human audio acceptance remain separate.
 - Gate ceiling: `LOCAL_PASS`. Windows device latency, Spotify account/device behavior, public distribution, code signing, and Human audio acceptance remain unverified.
 
+## Public Android / iOS preview release track — 2026-08-19
+
+The public-release worktree adds an iOS 16 SwiftUI + AVFoundation preview under `ios/` and a GitHub Actions macOS build that generates an unsigned Simulator app. The iOS slice covers local audio import, 16 PAD playback, normalized per-PAD ranges, recording, and `ALL STOP`; it intentionally does not claim signed-device or App Store delivery. Android `versionName` is `0.14.0` with version code `22`, and the release workflow packages both platforms with SHA-256 sidecars under the same `v*` GitHub Release. The public-surface scan rejects credential/signing/audio candidates before build and release.
+
+Local Windows evidence for this track: public-surface scan PASS over tracked and non-ignored candidates; Android `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:assembleDebug` PASS with the local SDK/JDK; the produced debug APK is not a release receipt until the final committed revision is rebuilt. Swift/Xcode and iOS Simulator execution are unavailable on this Windows host, so the GitHub macOS workflow is the required iOS build/test evidence. No public Release is current until the tag workflow has passed both build jobs and its downloaded assets have been read back.
+
 ## Source-bound build provenance — 2026-08-17
 
 Windows verification now performs a clean deterministic app/unit/lint/androidTest build and then emits a fail-closed JSON receipt that binds a tracked-clean Git HEAD/tree to fresh app/test APK mtimes, SHA-256 values, package/version, signer SHA-256, JAVA_HOME, SDK root, and the selected installed build-tools version. It rejects stale APKs predating the commit and rejects app/test signer mismatch. The shell verifier now uses the same clean Gradle limits and prints HEAD/tree; the richer signed receipt remains the Windows path used for this checkpoint. No receipt is valid until rerun after the final commit.

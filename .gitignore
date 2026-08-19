@@ -8,6 +8,7 @@
 /captures/
 .externalNativeBuild/
 .cxx/
+__pycache__/
 app/build/
 desktop/build/
 
@@ -26,9 +27,32 @@ compile_commands.json
 /work/desktop-quality-luna-project-ledger.json
 *.apk
 *.aab
+*.ipa
+*.xcarchive
 *.jks
 *.keystore
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.pfx
+*.cer
+*.crt
+*.pem
+*.private
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.aac
+*.caf
+*.aiff
+*.opus
 *.zip.tmp
+
+# Generated iOS project/build output
+/ios/ChopLab.xcodeproj/
+/ios/build/
 
 # Local environment
 .env
