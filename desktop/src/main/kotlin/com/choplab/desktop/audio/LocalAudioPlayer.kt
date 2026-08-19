@@ -4,6 +4,7 @@ import java.io.File
 
 interface LocalAudioPlayer : AutoCloseable {
     val loadedFile: File?
+    val isPlaying: Boolean
 
     fun load(file: File)
 

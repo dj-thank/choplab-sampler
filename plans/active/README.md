@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `windows-desktop-mvp-20260819.md`。現行 dirty checkout の tracked SSOT/documentation changes を専用枝へ cleanly import したうえで、既存 Android `:app` を保全し、Windows Desktop の local-audio prototype と Spotify PKCE metadata/control seam を追加する。Spotify Content の取得・録音・stream ripping・MP3化は対象外。target gate は `LOCAL_PASS` のみ。
+**進行中:** `windows-desktop-ui-fidelity-20260819.md`。既存 Android ChopLab UIを正本として、Windows Desktop EXEの画面を同じ deck palette、5工程、source/chop、4×4 PAD、PAD editor、BANK、production dock、arrange step sequencerへ寄せる。Spotify Content の取得・録音・stream ripping・MP3化は対象外。target gate は `LOCAL_PASS` のみ。
 
 **完了済み:** `restart-playback-interruption-local-20260819.md`。`app/` の playback interruption local contract を focused local test と source inspection で再確認した。実装差分はなく、Pro 統合、Pixel 9a、device/provider/public 検証は開始していない。
 
@@ -31,7 +31,8 @@
 - `v011-safety-coaching.md`
 - `waveform-device-evidence-hardening.md`
 - `restart-playback-interruption-local-20260819.md`（完了済み本文を保全）
-- `windows-desktop-mvp-20260819.md`（current selection）
+- `windows-desktop-mvp-20260819.md`（初期プロトタイプの本文を保全）
+- `windows-desktop-ui-fidelity-20260819.md`（現在の選択）
 
 ## Selection protocol
 

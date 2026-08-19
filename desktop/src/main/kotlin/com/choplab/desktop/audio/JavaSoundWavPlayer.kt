@@ -12,6 +12,9 @@ class JavaSoundWavPlayer : LocalAudioPlayer {
     override var loadedFile: File? = null
         private set
 
+    override val isPlaying: Boolean
+        get() = clip?.isRunning == true
+
     override fun load(file: File) {
         require(file.isFile) { "Audio file does not exist: ${file.path}" }
         require(AudioSystem.getAudioFileFormat(file).type == AudioFileFormat.Type.WAVE) {

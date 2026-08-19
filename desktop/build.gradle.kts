@@ -13,6 +13,8 @@ application {
     mainClass.set("com.choplab.desktop.DesktopAppKt")
 }
 
+val desktopVersion = providers.gradleProperty("desktopVersion").orElse("0.2.0")
+
 dependencies {
     testImplementation(kotlin("test"))
 }
@@ -40,5 +42,8 @@ tasks.register<Exec>("packageWindows") {
         "--main-class", application.mainClass.get(),
         "--dest", destinationDir.absolutePath,
         "--vendor", "ChopLab",
+        "--app-version", desktopVersion.get(),
+        "--description", "ChopLab original-style おとひろい desktop sampler",
+        "--copyright", "ChopLab contributors",
     )
 }

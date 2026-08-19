@@ -1,6 +1,6 @@
 # ChopLab Windows Desktop prototype
 
-This target is the first local Windows proof for the ChopLab desktop direction. It provides a 4 x 4 pad surface, local WAV loading/playback, and a Spotify OAuth/API seam for metadata and playback state.
+This target is the local Windows EXE proof for the ChopLab desktop direction. Its Swing surface follows the original Android おとひろい deck: the five-step workflow, source/chop waveform, 4 x 4 PAD surface, selected-PAD editor, BANK A–D dock, guided production actions, and the arrange-stage 16-step sequencer are kept in the same visual vocabulary.
 
 ## Run locally
 
@@ -24,6 +24,8 @@ $env:CHOPLAB_SPOTIFY_CLIENT_ID = 'your-public-client-id'
 
 The application uses Authorization Code with PKCE and keeps the first-slice token in memory only. No client secret or token belongs in source control.
 
+Spotify is deliberately a metadata/playback-control integration. The desktop app does not capture Spotify audio, download Spotify Content, stream-rip, record, extract, or convert Spotify tracks to MP3. Use a user-selected local WAV as the sampler source.
+
 ## Build the Windows app image
 
 ```powershell
@@ -31,3 +33,5 @@ The application uses Authorization Code with PKCE and keeps the first-slice toke
 ```
 
 The generated self-contained launcher is under `desktop/build/windows-app-image/ChopLab/ChopLab.exe`. This is an app-image containing a private Java runtime, not yet a signed installer or public release.
+
+The default desktop version is `0.2.0` and can be overridden for a controlled build with `-PdesktopVersion=0.2.1`. Every GitHub PR touching the desktop target runs the Windows test/package workflow and uploads the app-image plus an EXE SHA-256 receipt. Signing, installer publication, and GitHub Release creation remain separate authorized steps.

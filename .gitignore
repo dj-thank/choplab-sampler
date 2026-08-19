@@ -21,6 +21,9 @@ compile_commands.json
 # Codex/local execution artifacts
 /.codex-log/
 /codex-logs/
+/work/capture-window.ps1
+/work/click-window.ps1
+/work/desktop-quality-luna-project-ledger.json
 *.apk
 *.aab
 *.jks
