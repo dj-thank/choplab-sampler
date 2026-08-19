@@ -34,4 +34,4 @@ Spotify is deliberately a metadata/playback-control integration. The desktop app
 
 The generated self-contained launcher is under `desktop/build/windows-app-image/ChopLab/ChopLab.exe`. This is an app-image containing a private Java runtime, not yet a signed installer or public release.
 
-The default desktop version is `0.2.0` and can be overridden for a controlled build with `-PdesktopVersion=0.2.1`. Every GitHub PR touching the desktop target runs the Windows test/package workflow and uploads the app-image plus an EXE SHA-256 receipt. Signing, installer publication, and GitHub Release creation remain separate authorized steps.
+The default desktop version is `0.2.0` and can be overridden for a controlled build with `-PdesktopVersion=0.2.1`. Every GitHub PR touching the desktop target runs the Windows test/package workflow and uploads the app-image plus an EXE SHA-256 receipt. A `v*` GitHub Release also packages the Windows app-image beside the Android APK and iOS Simulator preview. Signing and installer publication remain separate authorized steps.

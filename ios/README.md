@@ -33,6 +33,6 @@ xcodebuild -project ios/ChopLab.xcodeproj \
   test
 ```
 
-The public preview workflow builds an unsigned iOS Simulator `.app` and publishes it as a zip with a SHA-256 file. It is not an installable signed iPhone/iPad IPA. A signed device build requires the user's Apple Developer team, provisioning profile, and signing credentials; those must never be committed or placed in public GitHub Actions logs.
+The public preview workflow builds an unsigned iOS Simulator `.app` and publishes it as a zip with a SHA-256 file. It is not an installable signed iPhone/iPad IPA. To run on a physical iPhone, generate the Xcode project on macOS, select the user's Apple Developer team in Signing & Capabilities, connect the device, and run the `ChopLab` scheme. A signed device build requires the user's Apple Developer team, provisioning profile, and signing credentials; those must never be committed or placed in public GitHub Actions logs.
 
 User audio is intentionally not part of the repository or release assets. Test the app with audio selected on the local device or Simulator only.
