@@ -46,6 +46,8 @@ jobs:
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
+            "emulator" \
+            "system-images;android-36;google_apis;x86_64" \
             "ndk;29.0.14206865" \
             "cmake;3.22.1"
 
@@ -57,6 +59,17 @@ jobs:
 
       - name: Unit tests, lint and APK
         run: ./gradlew --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+      - name: Instrumentation and accessibility tests on API 36 emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          script: ./gradlew --stacktrace :app:connectedDebugAndroidTest
 
       - name: Upload reports and APK
         if: always()
