@@ -1,5 +1,7 @@
 # Toolchain source record
 
+これは 2026-08-09 時点の toolchain 準備・出典記録です。インストール済み状態や最新の build/AVD 成否をこの古い記録だけから推定しないでください。最新の source/receipt と gate は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) および [`docs/VALIDATION.md`](VALIDATION.md) の current snapshot / dated entries を参照します。
+
 Checked on 2026-08-09. All portable tools were downloaded into the task workspace; no machine-wide installation was performed. To keep build/download churn off the system NVMe SSD, `C:\Users\rambo\Documents\ChatGPT\pad\work\tools` is now an NTFS junction to `F:\CodexData\ChopLab\tools` on the 4 TB HDD. Existing project-local paths remain valid.
 
 ## JDK 17

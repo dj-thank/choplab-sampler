@@ -6,17 +6,30 @@ Build a reliable Android 10+ mobile sampler that supports capture/import, wavefo
 
 ## Repository truth
 
-- `app/` is the only current build target. It is the AudioTrack-based MVP baseline.
+- `app/` remains the Android build target and AudioTrack-based MVP baseline.
+- `desktop/` is a bounded Windows/JVM prototype target; it is not Android feature parity and does not change the production-feature boundary below.
 - `reference/pro-v0.2/` contains incomplete design artifacts and partial source. It is not a verified or buildable implementation.
 - Never claim a Pro feature exists merely because it appears in a reference README or partial source file.
 - Preserve `reference/pro-v0.2/` as historical input. Implement production code under `app/`.
 
 ## First actions
 
-1. Read `docs/PROJECT_STATE.md`, `docs/PRO_REFERENCE_GAPS.md`, and `docs/DEFINITION_OF_DONE.md`.
-2. Run `./scripts/doctor.sh` and `./scripts/validate_project.sh`.
-3. For a complex feature or significant refactor, create and maintain an ExecPlan under `plans/active/` according to `.agent/PLANS.md`.
-4. Establish a clean Git checkpoint before invasive work.
+1. Read the `Current snapshot` section at the top of `docs/PROJECT_STATE.md`, then `docs/PRO_REFERENCE_GAPS.md`, `docs/DEFINITION_OF_DONE.md`, and `plans/active/README.md`.
+2. Run `./scripts/doctor.sh` and `./scripts/validate_project.sh` when the task is an implementation or validation task; a documentation-only restart audit must not be presented as a fresh build.
+3. For a complex feature or significant refactor, select exactly one plan from the registry and maintain an ExecPlan under `plans/active/` according to `.agent/PLANS.md`.
+4. Establish and record a Git checkpoint before invasive work. A tracked-clean checkout with untracked evidence is not a disposable clean tree: preserve the observed boundary and never use reset, clean, broad deletion, or force-checkout to manufacture cleanliness.
+
+## Context restart boundary
+
+When resuming after compaction, interruption, or a different task, use the parent PAD's `project-context-restart` workflow to inventory local rollout history and reconcile it with this repository. Rollout text, PAD summaries, and thread completion claims are historical leads; this file, the current snapshot at the top of `docs/PROJECT_STATE.md`, current Git state, and revision-bound receipts remain implementation truth. A documentation-only restart audit does not imply a fresh build, device, provider, public, or Human gate.
+
+## Current evidence and plan rules
+
+- `docs/PROJECT_STATE.md` is the current state SSOT; its top snapshot wins over older dated entries when the revision or gate differs.
+- `docs/FEATURE_MATRIX.md` describes implementation and test scope, not automatic gate promotion. A device, provider, public, or human claim must point to a revision-bound receipt with its observation time, scope, and negative path.
+- The evidence order is `LOCAL_PASS -> DEVICE_PASS -> PROVIDER_PASS -> PUBLIC_PASS -> HUMAN_GO`. Source-bound AVD/framework tests do not prove physical audio, route loss, TalkBack speech, subjective feel, or human acceptance.
+- `plans/active/README.md` is the plan registry. Existing plan files are retained historical context unless the registry marks one as the current selection; do not resume a plan from its filename alone.
+- `reference/pro-v0.2/` and bundle/archive copies are not current implementation roots. Production changes belong under `app/`.
 
 ## Build and validation
 

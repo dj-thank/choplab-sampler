@@ -9,6 +9,7 @@
 .externalNativeBuild/
 .cxx/
 app/build/
+desktop/build/
 
 # Native and IDE output
 /.kotlin/

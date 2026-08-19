@@ -1,5 +1,46 @@
 # Project state
 
+## Current snapshot — 2026-08-19
+
+This is the current restart snapshot. The dated sections below are a historical validation ledger; they remain useful as provenance, but they do not override this section when a revision or gate differs.
+
+- Observed at: `2026-08-19T02:40:04.8396920+09:00`.
+- Canonical root: `C:/Users/rambo/Documents/ChatGPT/pad/work/codex-workspace/ChopLab-Codex-Workspace`.
+- Branch: `agent/gpt-pro-ui-integration`.
+- HEAD: `6033d85b68c9b67f767a31b8878dbe4f4be3392c`.
+- HEAD tree: `39f8aa19e77b56acbd21c5bdde0f2aa911e6366f`.
+- Upstream relation: `git rev-list --left-right --count '@{u}...HEAD'` returned `0 49`; the checkout is 49 commits ahead of its upstream and 0 commits behind.
+- Git boundary: 5 tracked modifications (the documentation files being edited in this restart), 1,471 untracked paths (`git status --short` presents 169 `??` rows). This is operationally dirty because documentation edits, evidence, and artifacts must be preserved. Do not clean, reset, stage, delete, or force-checkout this boundary as part of a restart.
+- Current build target: `app/` AudioTrack MVP. `reference/pro-v0.2/` remains incomplete design/history material and is not a second buildable project.
+- Current restart check: `plans/active/restart-playback-interruption-local-20260819.md` ran the focused local policy suites with the portable JDK/SDK environment. Result at `2026-08-19T02:13:31.3948208+09:00`: `BUILD SUCCESSFUL`, 3 suites / 23 tests, failures 0, errors 0, skipped 0. The first no-environment attempt failed only at `SDK location not found`; no source change was made. This is `LOCAL_PASS` for the policy seam, not physical audio or any upper gate.
+
+### Revision-bound receipts found in the current filesystem
+
+The following receipts bind the exact current HEAD and tree and can therefore be treated as current local evidence for their recorded scope. They predate the uncommitted documentation edits above; they do not claim the current working-tree bytes are clean.
+
+- `work/device-evidence/20260817-012052-6033d85b/manifest.json`, captured at `2026-08-17T01:23:11.9810764+09:00`, records the clean-source Gradle command, APK/test APK bytes and signer, and an instrumentation evidence collection run.
+- `outputs/ChopLab-v0.13.1-6033d85-api36-review-provenance.json` binds the same HEAD/tree to the app and androidTest APK hashes.
+- `outputs/ChopLab-v0.13.1-6033d85-api36-review-avd-evidence.json` binds the same APK pair to the isolated API 36 AVD matrix; its declared gates are `COMPOSE_INSTRUMENTATION_PASS` and `FRAMEWORK_NODE_PASS`, with physical `DEVICE_PASS` and `HUMAN_GO` explicitly not claimed.
+
+The manifest also contains a Pixel serial and install/state observations. Those are scoped external observations made on 2026-08-17, not a fresh device run in the current context-cleanup task; keep them as historical/scoped device evidence and do not promote the PAD ceiling from `LOCAL_PASS`. Provider, public, and human gates were not re-observed.
+
+### Restart frontier
+
+The selected restart seam [`plans/active/restart-playback-interruption-local-20260819.md`](../plans/active/restart-playback-interruption-local-20260819.md) is complete with no implementation diff. The next implementation seam is intentionally unselected. When one is chosen, the owner is the root integrator; rollback is to the pre-change working tree without reset/clean; stop if it crosses into device/provider/public scope or requires the Sanpo-owned Pixel 9a. A feature plan under `plans/active/` is not current merely because the file exists; consult its registry before resuming one.
+
+The parent PAD's context-restart audit is recorded in [`PAD_HISTORY_RESTART_EXTRACT_20260819.md`](../../../../work/PAD_HISTORY_RESTART_EXTRACT_20260819.md). It is a historical-lead/current-snapshot reconciliation and skill extraction record only; it does not change app source or promote the current `LOCAL_PASS` ceiling.
+
+## Windows Desktop implementation slice — 2026-08-19
+
+The isolated branch `codex/choplab-desktop-exe` is the current implementation worktree for the user-requested PC direction. It imports the five tracked documentation changes and the current restart plan state from the dirty canonical checkout without resetting or cleaning that checkout.
+
+- Worktree: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-exe-20260819`.
+- Target: new `:desktop` Kotlin/JVM application; existing Android `:app` remains unchanged.
+- Local prototype: 4×4 PAD surface, local WAV open/play/stop, PAD assignment, JDK audio adapter.
+- Spotify prototype: Authorization Code with PKCE, loopback callback, token exchange, current-playback metadata request. Spotify audio bytes, stream ripping, recording, full-track download, and MP3 conversion are deliberately absent.
+- Local evidence: `:desktop:test` passed with 11 tests and `:desktop:packageWindows` passed on 2026-08-19. The resulting app-image launcher is `desktop/build/windows-app-image/ChopLab/ChopLab.exe` (449,024 bytes, SHA-256 `7F54213F5D17201BF4FA9CF05E7D5CB5AAD78AA3F76D1A0D6AD213CE4C56D49C`); it was started through the tracked-process wrapper and stopped by its exact PID after the smoke check.
+- Gate ceiling: `LOCAL_PASS`. Windows device latency, Spotify account/device behavior, public distribution, code signing, and Human audio acceptance remain unverified.
+
 ## Source-bound build provenance — 2026-08-17
 
 Windows verification now performs a clean deterministic app/unit/lint/androidTest build and then emits a fail-closed JSON receipt that binds a tracked-clean Git HEAD/tree to fresh app/test APK mtimes, SHA-256 values, package/version, signer SHA-256, JAVA_HOME, SDK root, and the selected installed build-tools version. It rejects stale APKs predating the commit and rejects app/test signer mismatch. The shell verifier now uses the same clean Gradle limits and prints HEAD/tree; the richer signed receipt remains the Windows path used for this checkpoint. No receipt is valid until rerun after the final commit.

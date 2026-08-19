@@ -1,7 +1,12 @@
 # 機能マトリクス
 
-| 要望 | 実装 | 備考 |
+この表は実装状態と確認層の要約であり、ゲートの昇格表ではありません。`device`、`emulator`、`historical` の記載は各行の備考にある範囲・revisionへ束縛されます。現在の checkout と gate は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` と [`docs/VALIDATION.md`](VALIDATION.md) を正本とし、過去の Pixel / provider / public receiptだけでは現在の `DEVICE_PASS` 以上を宣言しません。
+
+| 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Windows EXE版のPAD操作 | 🧪 local | `:desktop` Kotlin/JVM prototype。4×4 PAD、ローカルWAVのOPEN/PLAY/STOP、PAD割り当て。`desktop/build/windows-app-image/ChopLab/ChopLab.exe` を生成。Windows音声レイテンシ・操作感は未確認 |
+| Spotify OAuth / 現在再生情報 | 🧪 local | Authorization Code with PKCE、`127.0.0.1` loopback callback、token交換、現在再生API request builder。実アカウント接続は未実施。tokenは試作中メモリ内のみ |
+| Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示 |
