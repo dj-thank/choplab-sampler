@@ -1,9 +1,14 @@
 # 機能マトリクス
 
-| 要望 | 実装 | 備考 |
+この表は実装状態と確認層の要約であり、ゲートの昇格表ではありません。`device`、`emulator`、`historical` の記載は各行の備考にある範囲・revisionへ束縛されます。現在の checkout と gate は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` と [`docs/VALIDATION.md`](VALIDATION.md) を正本とし、過去の Pixel / provider / public receiptだけでは現在の `DEVICE_PASS` 以上を宣言しません。
+
+| 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` Kotlin/JVM の元 Android deck 踏襲 UI。5工程、波形、4×4 PAD、PAD editor、BANK A–D、arrange 16-step、ローカルWAVのOPEN/PLAY/STOP、PAD割り当て。`v*` Releaseへapp-image zipとEXE SHA-256を添付。Windows音声レイテンシ・操作感は未確認 |
+| Spotify OAuth / 現在再生情報 | 🧪 local | Authorization Code with PKCE、`127.0.0.1` loopback callback、token交換、現在再生API request builder。実アカウント接続は未実施。tokenは試作中メモリ内のみ |
+| Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
-| Android / iOS 公開配布 | 🧪 CI | `v*`タグでAndroid debug APKとiOS Simulator app zipを同一Releaseへ添付し、各SHA-256を生成。署名済みiOS実機IPAは未提供。 |
+| Windows / Android / iOS 公開preview | 🧪 CI / Release | `v*`タグでAndroid debug APK、iOS Simulator app zip、Windows app-image zipを同一Releaseへ添付し、各SHA-256を生成。署名済みiOS実機IPAは未提供。 |
 | 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |

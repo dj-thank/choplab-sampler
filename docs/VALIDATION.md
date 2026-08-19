@@ -1,5 +1,7 @@
 # 検証記録
 
+このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
+
 ## 専用 API 36 review AVD — 2026-08-17
 
 - Source: clean `9177229de91f2560b93f381fffda26909eaf4d75`, tree `2fe15415cef8a7a2907ea71ac840996a0d847e0b`.
@@ -11,7 +13,103 @@
 - ChopLab fatal/ANR 0, emulator Bluetooth fatal 0, font/rotation readback restored, app force-stopped.
 - Gate: `LOCAL_PASS`, `COMPOSE_INSTRUMENTATION_PASS`, `FRAMEWORK_NODE_PASS`. Physical `DEVICE_PASS`, `PUBLIC`, and `HUMAN_GO` are not claimed by this run.
 
-作成日: 2026-07-15
+初版作成日: 2026-07-15（以下は追記型の検証履歴）
+
+現在HEADへ結合したWindows検証は、tracked-clean checkoutとプロジェクト用JDK/SDKを設定して `scripts/verify.ps1` を実行する。clean unit/lint/app/androidTest build後に `outputs/build-provenance-<HEAD>.json` を作成し、source HEAD/tree、fresh APK bytes、package/version、signerを一つのreceiptへ固定する。現在HEADのreceiptがない既存 `app/build` APKは、hashだけで最新成果物として扱わない。
+
+## 2026-08-16 waveform evidence hardening
+
+- test isolation: `SourceWaveformDeviceTest` renders deterministic in-memory PCM and no longer reads/writes Pixel autosave or requires a pre-existing chop marker
+- semantics boundary: tests prove Compose state descriptions and custom-action callbacks; they do not claim a running TalkBack service, spoken output, or focus traversal
+- geometry: host tests cover whole/zoomed/invalid overview geometry; device tests cover true two-pointer pinch/pan and S/E/chop target width, height, clipping, endpoints, and exact reversible nudge
+- accessibility behavior: viewport and handle actions report `false` when clamped/no-op instead of announcing a false success
+- recording boundary: existing pure recording-session and interruption coordinator tests cover mutual exclusion without activating a real microphone; physical recording quality/contention remains unclaimed
+- evidence: `scripts/collect-device-evidence.ps1` records clean source identity, Gradle logs, APK identities/signers, signer preflight, autosave before/after, `install -r`, base.apk readback, instrumentation output, package dumps, timestamp-bounded logcat, and final launcher/volume/rotation/project state under one manifest
+- gates remain split: `LOCAL_PASS` / `INSTRUMENTATION_PASS` / physical observation / spoken TalkBack / `HUMAN_GO`
+- official Android test hardening: Compose Accessibility Test Framework plus `UiAutomation` / `AccessibilityNodeInfo` inspect the deterministic fixture through the Android framework tree; a dedicated normal API 36 Google Play AVD passed four tests including S/E/chop1-5 depth-first tree order, advertised focus actions, and framework custom-action state mutation. This is `FRAMEWORK_NODE_PASS`, not a claim about TalkBack focus traversal or TTS.
+- clean official-test gate: `clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL; 224 unit tests / 45 suites / zero failures, errors, or skips; clean app SHA-256 `9A3997B78D309A2B53C78A6B0DB2970D02E08DC656314B8F91F0A2F8BF1C9162` (30,855,284 bytes), final test SHA-256 `BE2588A01083D16F14CA01B6A3BAEAB086D5D0A03A36FE10238B5E05A4456DCE` (10,589,229 bytes), both signer SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`; the exact app/final-test APK pair reinstalled on `emulator-5562` and `SourceWaveformDeviceTest` returned `OK (4 tests)` in 9.335 s.
+- 2026-08-16 TalkBack continuation: the actual TalkBack service plus touch exploration produced visible accessibility-focus rings and exposed the corrected S/E/clustered-marker tree on Pixel. ADB touch and the virtual keyboard could not reliably dispatch TalkBack's own next/custom-action gesture path, so spoken labels and complete TalkBack traversal remain `HUMAN_GO`; they are not promoted from framework-node automation. Separate bounded real-microphone checks proved recording ownership against song playback, selected-source loop, and source preview without retaining or reporting microphone content.
+- final exact Pixel run: `work/device-evidence/20260816-220355-233297e3/manifest.json`; clean HEAD `233297e39f404bb8e0080110c3d29a528dd8c615`, app/readback SHA-256 `9A3997B78D309A2B53C78A6B0DB2970D02E08DC656314B8F91F0A2F8BF1C9162`, test/readback SHA-256 `BE2588A01083D16F14CA01B6A3BAEAB086D5D0A03A36FE10238B5E05A4456DCE`, Pixel instrumentation `OK (4 tests)` in `7.484 s`, autosave preservation and phone-state restoration PASS, 929 ms cold relaunch PASS, fatal/ANR 0. The real TalkBack service accepted a next-item gesture and visibly focused the formerly occluded S/marker cluster; TTS content and full service-dispatched custom-action order remain `HUMAN_GO`.
+- authoritative exact run: `work/device-evidence/20260816-185953-b3579f05/manifest.json`; clean HEAD `b3579f0592738ccf2e95f10d1f0bba42cc343578`, app/readback SHA-256 `89E876A071043A6115A3BBEB091E071BB24BA54CBC7C0C640412741202383FD5`, test/readback SHA-256 `DE97432A1C1278E7661FD656DFCC054CFABA6A4BCC6D9DECF44B810564F83EC8`, deterministic Pixel instrumentation `OK (3 tests)` in `5.138 s`, lower/upper marker endpoints, autosave preservation, and phone-state restoration machine-gated, bounded app fatal/ANR 0
+
+## 2026-08-14 v0.13.1 playback interruption safety candidate
+
+- architecture: pure `PlaybackInterruptionCoordinator` owns focus-session state and interruption/recording policy; `AndroidPlaybackFocusAdapter` owns only `AudioManager` and the protected noisy-output receiver; no UI or persistence schema change
+- behavior: every audible start is focus-gated; focus loss/transient/duck, Home, and output-route loss stop once; gain never auto-resumes; source seek/KEY retarget requires active coordinator ownership; rotation is exempt from background interruption
+- recording policy: microphone and vocal sessions request graceful stop; Android Playback Capture continues in background while app playback stops
+- independent review: Standards and Spec passes plus final parent-side verification; corrected missing state docs, unknown non-gain focus handling, and unproven retarget ownership; no scope-creep or additional clear behavior defect found. Effective child model metadata was not exposed, so no runtime-verified Luna claim is made for this milestone
+- focused TDD: missing retarget ownership API was observed RED at Kotlin test compilation; unknown focus mapping and coordinator ownership are GREEN after the smallest production change
+- configured `scripts/validate_project.sh`: PASS; pure Kotlin smoke PASS; four Android XML files parsed; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`
+- final Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --no-daemon` BUILD SUCCESSFUL
+- unit tests: 207 tests / 44 suites; failures 0, errors 0, skipped 0
+- Android Lint: errors 0, warnings/advisories 11; debug and unsigned release APK assembly PASS
+- local APK: `outputs/ChopLab-v0.13.1-playback-interruption-safety-local-debug.apk`; 30,821,319 bytes; SHA-256 `9A11118395AEC68AF6A739416514135FAEFF562302EB541573A49CF48A038668`
+- metadata: package `com.choplab.sampler`; versionCode 21 / versionName 0.13.1; minSdk 29 / targetSdk 36; APK Signature Scheme v2; local debug certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- unsigned release APK: 23,603,385 bytes; SHA-256 `41C318EEE607EF28391A9BE38751F2D82D9B4B3934AEFC7F42E1702F9343A4D9`
+- dedicated tracked emulator `emulator-5590`, Android 16/API 36: exact data-preserving `adb install -r` PASS; installed package reports versionCode 21 / versionName 0.13.1
+- runtime focus: one `USAGE_MEDIA` / `CONTENT_TYPE_MUSIC` GAIN entry with `PAUSES_ON_DUCKABLE_LOSS`; Home emptied the live stack and return status reported the background stop; portrait/landscape recreation retained focus; `ALL STOP` emptied it
+- automation boundary: shell injection of protected `ACTION_AUDIO_BECOMING_NOISY` is rejected by Android, so actual wired/Bluetooth route loss remains physical-device evidence
+- provider runs for exact `903c698c2fdc443027a8190aa31985253ff3050a`: branch push `31764219592`, PR `31764223167`, tag verification `31764417666`, and Release `31764417670` all PASS
+- annotated tag object `b11eaa13be6c7e4d8bc7cbfcf805dc8ab25dc436` peels locally and remotely to the exact commit; public non-draft prerelease: `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.13.1-preview.1`
+- public APK: `outputs/ChopLab-v0.13.1-preview.1-debug.apk`; 30,821,319 bytes; SHA-256 `5EE5183C2CA6574E964CC4A6AE44B4BE72813A691843345D9FA78B5ADE6598D6`; GitHub asset digest, sidecar, authenticated reverse download, and anonymous reverse download all match
+- public metadata: package `com.choplab.sampler`; versionCode 21 / versionName 0.13.1; targetSdk 36; APK Signature Scheme v2; CI debug certificate SHA-256 `A04BC943A7F0C31ABC619839CDE0B28B2165700DE2F57D501F5B9DA0D0F9A2E2`
+- anonymous HTTP: repository 200, Release page 200, direct APK 200; scoped `PUBLIC_PASS` established
+- prepared device runner: `work/install-v0131-pixel9a.ps1`; syntax PASS; local/public hash and certificate preflight PASS; SHA-256 `B33B47EA2D9026FDF7C4FAA72184439B89CE7777644BE99117E23B8AF37FF721`; stopped truthfully at `Pixel 9a 5A121JEBF08094 is not attached`
+- current boundary: physical retained-data install, route/focus contention, actual microphone/system capture, subjective audio, and `HUMAN_GO` remain unclaimed; local and public debug certificates differ, so the public APK is copied to Downloads but not installed over retained data
+
+## 2026-08-14 v0.13.0 Luna interaction integrity candidate
+
+- review fan-out: 20 independent `gpt-5.6-luna` medium/default packets, followed by fixed-point Standards/Spec passes and one final independent verifier; every accepted child runtime was verified; final verifier found no P0-P2 blocker
+- review-driven correction: the first full-Bank-A change still selected A01 when another bank was active; final policy keeps bank/selection unchanged and requires explicit overwrite/clear; focused regression passes
+- implemented contracts: completed-tap-only destructive Chop, long-press trim safety, A-only empty destination, REC auto-start plus deterministic first hit, truthful stage availability, project/source reconciliation, operation-specific permission copy, fixed indexed PAD mailbox, out-of-band transport Stop All, STOPPING-safe recorder failures, failed-vocal loop cleanup, revision-safe analysis, event-rate-independent Scratch, target-correct PAD range, cached waveform envelopes, bounded readouts, and TalkBack waveform actions
+- open-source boundary: original deterministic built-in drum synthesis only; no downloaded artist-named kits; `PRIVACY.md`, `NOTICE`, issue templates, README links, and feature/evidence matrix added
+- final Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL, direct exit 0
+- unit tests: 194 tests / 42 suites; failures 0, errors 0, skipped 0
+- Android Lint: errors 0, warnings/advisories 10; assemble PASS
+- configured `scripts/validate_project.sh`: PASS; pure Kotlin smoke PASS; four Android XML files parsed; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`
+- `git diff --check`: PASS; UI source scroll API matches: 0
+- local APK: `outputs/ChopLab-v0.13.0-luna-interaction-integrity-local-debug.apk`; 30,804,939 bytes; SHA-256 `3438CCD65D3C84BAEA47B9385B1EF465ED9A2E517C155D7A7E0C93E4D6FFB56B`
+- metadata: package `com.choplab.sampler`; versionCode 20 / versionName 0.13.0; minSdk 29 / targetSdk 36; APK Signature Scheme v2; local debug certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- emulator `emulator-5588`, Android 16/API 36: exact data-preserving `adb install -r` PASS; pulled installed-base size/hash equals host APK; cold-launch `MainActivity` PASS; package exit-info crash/ANR reasons 0
+- emulator retained archives unchanged before install, after install, and after launch: 10,529-byte autosave `06689B6194D18E3808E7CBB9533F8B9D4A13D0093676B39DA89046362E5B1128`; 23,614-byte previous `5D81576BDB43F0ABD549947B38C050698A8610EDF932288DD8225E1AA3471BF8`; 23,594-byte previous2 `2E0111AD2F586344A23071A69D1455605B573A98851C60B43CD32821E51B2D0B`
+- emulator UI: Chop hierarchy 175 package nodes, scrollable nodes 0; A Melody PAD 01-16 all visibly empty; evidence `work/v013-emulator/v013.{png,xml}` and `installed-base.apk`
+- provider runs: branch push `31724970140`, PR `31724972880`, tag verification `31725302532`, and release `31725302549` all PASS for exact commit `61f1044610ee172785d87478659862fb4f342be3`
+- annotated tag `v0.13.0-preview.1` peels to exact commit; public prerelease `https://github.com/dj-thank/choplab-sampler/releases/tag/v0.13.0-preview.1`
+- public APK: 30,804,939 bytes; SHA-256 `B25E018C8743D9EC7459FDDF5698F008E41D34D7FB34336961865B34F867C86A`; GitHub digest, checksum sidecar, authenticated reverse download, and anonymous reverse download all match
+- public metadata: package `com.choplab.sampler`; versionCode 20 / versionName 0.13.0; targetSdk 36; APK Signature Scheme v2; CI debug certificate SHA-256 `5B499749A2C9392A90DB2C099E6EAD00D49D90A89DC1B9A36577959EED411182`
+- anonymous HTTP: public repository 200, Release page 200, direct APK 200; scoped `PUBLIC_PASS` established
+- current boundary: physical Pixel 9a `5A121JEBF08094` absent from ADB/mDNS/Windows USB inventory, so physical `DEVICE_PASS`, touch/audio/TalkBack, exact Pixel Download copy, and `HUMAN_GO` remain pending; CI and local debug certificates differ, so no data-destructive public APK replacement was attempted
+
+## 2026-08-13 v0.12.0 Production Dock contract and autosave recovery truth
+
+- focused TDD RED/GREEN: Capture/Chop/Beat Dock order and enabled/active/confirmation state; autosave recovery begin/empty/failure reducers; Capture status and empty-waveform loading copy
+- final offline validation: PASS; Gradle Wrapper SHA-256 matched
+- final Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1` BUILD SUCCESSFUL
+- unit tests: 169 tests / 37 suites; failures 0, errors 0, skipped 0
+- Android Lint: errors 0, warnings/advisories 7
+- `git diff --check`: PASS; UI source scroll API matches: 0
+- local APK: `outputs/ChopLab-v0.12.0-production-dock-contract-local-debug.apk`; 31,615,690 bytes; SHA-256 `B0CF6B6DFE21FF24B5AC5BD457E6EEE637B75BFDB4EA438044CB84A5A07B1C29`
+- metadata: package `com.choplab.sampler`; versionCode 19 / versionName 0.12.0; minSdk 29 / targetSdk 36; APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- physical Pixel 9a `5A121JEBF08094`, Android 17 / API 37 / arm64-v8a: exact data-preserving `adb install -r` PASS; host, installed-base, and phone Download APK size/hash match
+- device UI: startup shows `LOADING / 音声を読込中 / PLEASE WAIT` instead of false `NO SOURCE`; FILE/MIC REC/DEVICE REC parent buttons are all `enabled=false` during recovery; retained source then restores; Capture/Chop/Beat each have 0 scrollable nodes; Chop has BEAT/PAD EDIT/ADD/SCRATCH and Beat has QUICK/STEPS/ADD/SCRATCH; focused fatal/ANR matches 0
+- retained data: four project archive sizes and hashes unchanged before install, after install, and after startup recovery/navigation
+- evidence: `work/pixel9a-v0120-dock-contract/final4-loading.{png,xml}`, `final4-capture.png`, `final4-restored.xml`, `final4-chop.{png,xml}`, `final4-beat.{png,xml}`, `installed-base-final4.apk`
+- boundaries: no subjective audio, duplicate-audio listening, TalkBack/large-font/landscape matrix, public release, or Human GO claim
+
+## 2026-08-12 v0.12.0 state-truth playback and Production Dock candidate
+
+- GPT Pro full-file review: one privacy-scanned bundle contained all 188 Git-tracked files and 193 total packet entries; accepted transcript SHA-256 `D27FFE3765E23A3CE7E05A138F387BD8874B5AD260C9441462EBFBB78CE7C52E`
+- focused TDD RED/GREEN: source phase/reconciliation, pending-start PAD accessibility, stage navigation, fixed Production Dock, Stop-All ordering/state/completion copy, source replacement/reset STOPPING truth, and runtime-only Undo intent
+- full host gate: 163 tests in 36 suites / failures 0 / errors 0 / skipped 0; Lint 0 errors / 10 warnings; assemble PASS
+- configured offline project validation PASS with constrained validation JVM; Gradle Wrapper SHA-256 matched; `git diff --check` PASS; UI scroll API scan zero matches
+- local APK: versionCode 19 / versionName 0.12.0; 31,592,862 bytes; SHA-256 `028737528EE6211DE8A9497216161FA870E4AAB8D4C193CE9C45AC26771A966F`
+- local APK metadata: package `com.choplab.sampler`, minSdk 29, targetSdk 36, APK Signature Scheme v2; certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`
+- physical Pixel 9a `5A121JEBF08094`, Android 17 / API 37 / arm64-v8a: installed exact APK with data-preserving `adb install -r`; upgraded 0.10.0 to 0.12.0; cold launch PASS; process alive; focused fatal/ANR matches 0
+- retained data checkpoint: four project archives preserved identical sizes and SHA-256 before install, after install, and after launch/navigation; no reset, playback, or project-destructive interaction was used
+- UI checkpoint: Capture, Chop, and Beat dumps each had zero scrollable nodes; Chop showed 4 x 4 square PADs and `BEAT / PAD EDIT / ADD / SCRATCH`; Beat showed `QUICK / STEPS / ADD / SCRATCH`
+- accepted exact-final runtime evidence: `work/pixel9a-v0120-exact-final/exact-final.{png,xml}`, `exact-final-chop.{png,xml}`, `exact-final-beat.{png,xml}`, and pulled `installed-base.apk`; installed-base SHA-256 matches the host and phone-Download APK
+- review execution: the live child route was declared Luna-pinned, but returned completion metadata omitted the effective model; final Standards and Spec passes were therefore independently rerun by the local parent. The first passes found stale docs, duplicated transition logic, replacement/reset truth loss, and Undo runtime-intent leakage; all actionable findings were fixed. No substitute child model was used
+- evidence boundary: scoped `DEVICE_PASS` covers exact install, launch, fixed UI, and data preservation only; physical audio duplication/latency/quality, TalkBack, landscape/font scale, public release, and `HUMAN_GO` remain unverified
 
 現在HEADへ結合したWindows検証は、tracked-clean checkoutとプロジェクト用JDK/SDKを設定して `scripts/verify.ps1` を実行する。clean unit/lint/app/androidTest build後に `outputs/build-provenance-<HEAD>.json` を作成し、source HEAD/tree、fresh APK bytes、package/version、signerを一つのreceiptへ固定する。現在HEADのreceiptがない既存 `app/build` APKは、hashだけで最新成果物として扱わない。
 

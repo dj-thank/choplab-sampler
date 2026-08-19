@@ -6,7 +6,7 @@
 
 Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたSimulator previewがあります。GitHub Releasesには、タグからAndroid APKとiOS Simulator app zipを同時に添付します。
+現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APK、iOS Simulator app zip、Windows app-image zipを同時に添付します。
 
 画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。縦横どちらでも画面スクロールを使わず、`入れる / チョップ / ビート / 保存` の固定4工程から取込、波形チョップ、PAD演奏、16-step制作、WAV書き出しへ直接移動できます。
 
@@ -16,7 +16,7 @@ Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー
 
 ### Android
 
-1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から`ChopLab-*-debug.apk`と対応する`.sha256`をダウンロードします。
+1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から、Androidの`debug.apk`、Windowsの`windows-app-image.zip`、またはiOSの`ios-simulator.app.zip`と対応するSHA-256をダウンロードします。
 2. SHA-256を確認してから、Androidの設定で使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
 3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
 
@@ -24,16 +24,23 @@ Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー
 
 Releaseの`ChopLab-*-ios-simulator.app.zip`は、Apple署名を使わない **iOS Simulator用プレビュー** です。macOSとXcodeがある環境で展開し、起動済みSimulatorへ `xcrun simctl install booted ChopLab.app` でインストールします。iPhone/iPadへ直接インストールできるIPAではありません。実機版には利用者自身のApple Developer team、provisioning profile、署名が必要です。
 
+実機iPhoneで試す場合は、macOS/Xcodeで`ios/project.yml`からプロジェクトを生成し、Apple Developer teamをXcodeのSigning & Capabilitiesへ設定して接続したiPhoneを実行先に選びます。署名鍵やprovisioning profileはリポジトリやGitHubへ置きません。
+
+### Windows
+
+Releaseの`ChopLab-*-windows-app-image.zip`を展開し、同梱された`ChopLab/ChopLab.exe`を起動します。これはJDK runtimeを含むapp-imageで、単体EXEだけを取り出して実行する配布形式ではありません。現在のRelease previewはコード署名済みinstallerではありません。
+
 リリースAPKは現時点ではGitHub Actionsのデバッグ署名による開発プレビューです。端末によっては、別のビルドへ更新する前に既存版のアンインストールが必要です。アンインストール前に「完成」から`.choplab`制作ファイルを書き出してください。個人データを扱う前に、コードと権限要求を確認してください。
 
 録音、保存、権限、端末内データの扱いは[`PRIVACY.md`](PRIVACY.md)、内蔵ドラム音と第三者表示は[`NOTICE`](NOTICE)に記載しています。内蔵5キットはダウンロード音源ではなく、このリポジトリのコードが生成するオリジナルの決定論的PCMです。ユーザー音源、認証情報、署名鍵、provisioning profileはソースにもReleaseにも含めません。
 
 ## 現在の範囲
 
-このリポジトリは、次の二層を明確に分けています。
+このリポジトリは、モバイル本体・デスクトッププレビュー・参照資料の境界を明確に分けています。
 
 - `app/`: 現在のビルド基準線。AudioTrackベースのMVP実装です。
 - `ios/`: SwiftUI + AVFoundationのiOS 16向けプレビューMVP。音源取込、16 PAD、範囲編集、録音、停止を実装し、署名不要のSimulator previewとして検証します。
+- `desktop/`: 元Androidデックの色・工程・PAD vocabularyを踏襲したWindows EXE previewです。ローカルWAV、Spotify PKCE metadata/control、arrange 16-stepまでを対象にし、署名済みinstallerやSpotify音声取込は対象外です。
 - `reference/pro-v0.2/`: Oboe、保存、ステレオ、独立タイムストレッチ、ADSR、LFO、FX、MIDI、Song、ステム書き出しの未統合参照コードと設計資料です。
 
 `reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。Codexには、参照コードを盲目的にコピーさせず、MVPへ段階的に統合し、各段階でビルドとテストを通すよう指示しています。
@@ -152,7 +159,7 @@ xcodegen generate --spec project.yml
 bash scripts/build-ios-simulator.sh
 ```
 
-GitHub Actionsは、両OSのテスト、public-surface scan、SHA-256作成を行い、`v*`タグでAndroid APKとiOS Simulator app zipを同じGitHub Releaseへ添付します。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
+GitHub Actionsは、Android、iOS Simulator、Windows app-imageのテスト、public-surface scan、SHA-256作成を行い、`v*`タグで三平台のpreview artifactを同じGitHub Releaseへ添付します。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
 
 ## Codex運用の基本
 

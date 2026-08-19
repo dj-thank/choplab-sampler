@@ -12,6 +12,8 @@ ChopLab は、音声制作を端末内で行うオープンソース Android / i
 - アプリは Android バックアップを無効にしています。ユーザーが書き出したファイルは、選択した保存先の管理方法に従います。
 - iOSで選択した音声は、security-scoped file accessを使って読み取り、アプリ専用のApplication Support内へコピーしてから再生します。ユーザー音源はこのGitリポジトリやGitHub Releaseへ送信・同梱しません。
 
+Windows desktop preview is separate from the mobile permission model. Its optional Spotify login sends OAuth requests and current-playback metadata/control requests to Spotify, keeps the first-slice token in memory, and does not upload local WAV files or expose Spotify audio bytes to the sampler.
+
 ## 権限と目的
 
 - `RECORD_AUDIO`: マイク素材、ボーカルテイク、および Android の端末音声キャプチャ開始に必要です。要求した操作を開始するときだけ許可を求めます。
