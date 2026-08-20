@@ -63,3 +63,11 @@ An original built-in Drum kit installed into BANK B for a truly new Production. 
 ## Scratch performance
 
 Direct, latency-bounded manipulation of the selected Chop from pointer-down through release. Motion has a small noise dead zone, signed speed and a visible playhead; stopping motion becomes silent, and release returns to the Beat loop or transport that was running before the gesture when that target is still valid.
+
+## Precision trim window
+
+A waveform viewport no wider than one second, centered as closely as source bounds allow around a long-pressed frame. Long-pressing in PAD trim moves the nearer Cut boundary to that frame and opens this window for fine editing without changing the referenced audio asset.
+
+## Cut boundary wheel
+
+The numeric, scrollable control for one start-inclusive or end-exclusive Cut boundary. START and END each show previous/current/next time values plus a dial position and use an explicit frame, one-millisecond, or ten-millisecond step while preserving the minimum valid Chop length.

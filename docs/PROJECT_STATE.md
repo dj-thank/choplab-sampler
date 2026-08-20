@@ -30,6 +30,21 @@ The selected restart seam [`plans/active/restart-playback-interruption-local-202
 
 The parent PAD's context-restart audit is recorded in [`PAD_HISTORY_RESTART_EXTRACT_20260819.md`](../../../../work/PAD_HISTORY_RESTART_EXTRACT_20260819.md). It is a historical-lead/current-snapshot reconciliation and skill extraction record only; it does not change app source or promote the current `LOCAL_PASS` ceiling.
 
+## Precision trim long-press and numeric wheels / v0.16.1 candidate — 2026-08-21
+
+The isolated branch `codex/choplab-precision-trim` is based on clean main `923d7bb711d399efdf7ea8726e9a72769f1d97a5` and leaves the dirty canonical checkout untouched. Reviewed implementation commit `f89877c10371dcd57077dc0413a46f536386422d`, tree `2122bb183fbb2f87c9b40384a6d13f9c526852aa`, adds one shared Android/Windows precision-editing path without changing PCM bytes, archive schema, provider behavior, or recording.
+
+- Assigned PAD long press opens `切り位置 / TRIM` directly. Portrait uses the full editor while landscape keeps the existing split workspace.
+- Waveform long press chooses the nearer START/END boundary, moves it to the pressed frame, performs long-press haptics, and focuses a source-clamped viewport no wider than one second. Normal tap, double-tap, pinch/pan, handles, Preview, entry Revert, Undo, and Redo remain available.
+- Independent `ここから / START` and `ここまで / END` controls show dial position plus previous/current/next exact time. Vertical touch drag, mouse wheel, and accessibility actions use one bounded frame policy with `1 FRAME`, `1 ms`, and `10 ms` precision.
+- The shared trim policy now uses saturated arithmetic, keeps start-inclusive/end-exclusive bounds inside the assigned source, and preserves a minimum two-frame range even for extreme wheel input.
+- Source-bound full local gate after review fixes: Android 225 tests / 44 suites, JVM-core 44 tests / 8 suites, desktop 35 tests / 12 suites, API 36 instrumentation 6 tests / 2 suites, all zero failures/errors/skips; Android Lint 0 errors / 8 warnings; APK and Windows app-image packaging PASS. Configured project validation and public-surface scan over 320 candidates PASS.
+- API 36 `medium_phone(AVD) - 16`: Compose instrumentation 6/6 PASS. Manual data-preserving install observed PAD long press→TRIM, waveform long press→`3:38.374–3:39.374` at `388.6x`, ZOOM+→same-focus `3:38.624–3:39.124` at `777.1x`, 10 ms wheel→END +10 ms, and Revert→original boundaries plus `1.0x`. Evidence locator: parent PAD `work/CHOPLAB_PRECISION_TRIM_EVIDENCE_20260820/`.
+- Final local artifacts: parent PAD `outputs/ChopLab-v0.16.1-preview.1-debug.apk`, 30,937,621 bytes / SHA-256 `040570008F4B2CD9CA4E27419C321AB830E07B8B47705F1CD383CD8DC4CDF33B`; `outputs/ChopLab-v0.16.1-preview.1-windows-app-image.zip`, 88,675,862 bytes / SHA-256 `4BE4FAEFEA04436500EC295DFB8CB7EF0555056F9DA235D342E22ED97EA2009C`; contained EXE 449,024 bytes / SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A`.
+- Current terminal launch: the v0.16.1 app-image replaced the prior v0.16.0 window. Tracked launcher PID `35212`; UI PID `36820` is responding with title `ChopLab — おとひろい PC` from the reviewed worktree app-image.
+- Gate ceiling: `LOCAL_PASS` plus scoped API 36 emulator interaction/instrumentation. Physical touch/haptics, audible boundary quality, TalkBack speech, provider/public Release, iOS native feature parity, and `HUMAN_GO` are not yet promoted.
+- Review: local parent two-pass from fixed point `923d7bb` (no substitute child model). Standards found absolute-frame delta overflow and a 38 dp precision touch target; both are fixed with shared saturated setting, a regression test, and 48 dp controls. Final Standards findings 0; final Spec findings 0.
+
 ## Windows Desktop full rebuild merged — 2026-08-20
 
 The user-requested PC rebuild was implemented in the isolated branch `codex/choplab-desktop-exe` without resetting or cleaning the dirty canonical checkout. PR #32 was squash-merged to `main` as `d88f022e5c7023c987e9b82036c04c5207415597`; the merged main tree `05e255ccb7eeba9c0cc9b939b68684229581c322` exactly matches the validated branch tree.

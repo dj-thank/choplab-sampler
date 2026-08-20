@@ -78,6 +78,7 @@ import com.choplab.sampler.audio.scratchDirectionLabel
 import com.choplab.sampler.audio.scratchSpeedFromGesture
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimPrecision
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.PcmAudio
@@ -95,14 +96,17 @@ import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
 import com.choplab.sampler.model.canUsePatternSteps
+import com.choplab.sampler.model.focusPadTrimAtFrame
 import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.isActive
-import com.choplab.sampler.model.padTrimNudgeFrames
+import com.choplab.sampler.model.nearestPadTrimBoundary
+import com.choplab.sampler.model.precisionTrimWindow
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.sourceUiPhase
+import com.choplab.sampler.model.stepPadTrimBoundary
 import com.choplab.sampler.model.visiblePads
 import kotlin.math.max
 import kotlin.math.abs
@@ -343,6 +347,11 @@ fun OtohiroiDeck(
                                     onOpenPadDetails = { padIndex ->
                                         viewModel.selectPad(padIndex)
                                         padPageName = PadEditorPage.PARAM.name
+                                        showPadDetails = true
+                                    },
+                                    onOpenPadTrim = { padIndex ->
+                                        viewModel.selectPad(padIndex)
+                                        padPageName = PadEditorPage.TRIM.name
                                         showPadDetails = true
                                     },
                                     onOpenLayerStudio = { layerStudioPageName = it.name },
@@ -1383,6 +1392,17 @@ private fun PadWorkspace(
                     .fillMaxHeight(),
             )
         }
+    } else if (page == PadEditorPage.TRIM) {
+        PadEditor(
+            state = state,
+            page = page,
+            onPageChange = onPageChange,
+            onReturn = onReturn,
+            viewModel = viewModel,
+            controlHeight = metrics.controlHeightDp.dp,
+            gap = gap,
+            modifier = Modifier.fillMaxSize(),
+        )
     } else {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -1401,7 +1421,7 @@ private fun PadWorkspace(
                 onRelease = viewModel::releasePad,
                 onSelect = viewModel::selectPad,
                 gap = gap,
-                modifier = Modifier.weight(if (page == PadEditorPage.TRIM) 0.72f else 1.15f),
+                modifier = Modifier.weight(1.15f),
             )
             PadEditor(
                 state = state,
@@ -1411,7 +1431,7 @@ private fun PadWorkspace(
                 viewModel = viewModel,
                 controlHeight = metrics.controlHeightDp.dp,
                 gap = gap,
-                modifier = Modifier.weight(if (page == PadEditorPage.TRIM) 1.28f else 0.85f),
+                modifier = Modifier.weight(0.85f),
             )
         }
     }
@@ -1518,10 +1538,39 @@ private fun PadTrimEditor(
         )
     }
     val canRestore = pad.startFrame != entrySnapshot.startFrame || pad.endFrame != entrySnapshot.endFrame
+    var activeBoundaryName by rememberSaveable(pad.globalIndex, audio.id) {
+        mutableStateOf(PadTrimBoundary.START.name)
+    }
+    var precisionName by rememberSaveable(pad.globalIndex, audio.id) {
+        mutableStateOf(PadTrimPrecision.MILLISECOND.name)
+    }
+    var precisionFocusFrame by rememberSaveable(pad.globalIndex, audio.id) {
+        mutableStateOf(pad.startFrame + (pad.endFrame - pad.startFrame) / 2)
+    }
+    var viewportResetRevision by rememberSaveable(pad.globalIndex, audio.id) {
+        mutableStateOf(0)
+    }
+    val activeBoundary = PadTrimBoundary.entries.firstOrNull { it.name == activeBoundaryName }
+        ?: PadTrimBoundary.START
+    val precision = PadTrimPrecision.entries.firstOrNull { it.name == precisionName }
+        ?: PadTrimPrecision.MILLISECOND
+    val focusWindow = precisionTrimWindow(
+        totalFrames = audio.frameCount,
+        sampleRate = audio.sampleRate,
+        focusFrame = precisionFocusFrame,
+    )
+    val precisionMaximumZoom = max(
+        1_024f,
+        audio.frameCount.toFloat() / focusWindow.length.coerceAtLeast(1) * 4f,
+    ).coerceAtMost(audio.frameCount.toFloat().coerceAtLeast(1f))
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        BeginnerCoachBar(
+            text = "波形を長押し：近い境界を移動して、その場所を1秒拡大",
+            modifier = Modifier.fillMaxWidth().height(30.dp),
+        )
         MachinePanel(modifier = Modifier.fillMaxWidth().weight(1f)) {
             WaveformEditor(
                 audio = audio,
@@ -1534,23 +1583,63 @@ private fun PadTrimEditor(
                 onRangeEndChange = viewModel::setSelectedPadEndFrame,
                 onSliceMarkerChange = { _, _ -> },
                 onWaveformTap = { frame ->
-                    if (abs(frame - pad.startFrame) <= abs(frame - pad.endFrame)) {
-                        viewModel.setSelectedPadStartFrame(frame)
-                    } else {
-                        viewModel.setSelectedPadEndFrame(frame)
+                    val boundary = nearestPadTrimBoundary(frame, pad.startFrame, pad.endFrame)
+                    activeBoundaryName = boundary.name
+                    precisionFocusFrame = frame
+                    when (boundary) {
+                        PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(frame)
+                        PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(frame)
                     }
                 },
+                onWaveformLongPress = { frame ->
+                    val focused = focusPadTrimAtFrame(pad, frame)
+                    activeBoundaryName = focused.boundary.name
+                    precisionFocusFrame = focused.pressedFrame
+                    when (focused.boundary) {
+                        PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(focused.pad.startFrame)
+                        PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(focused.pad.endFrame)
+                    }
+                },
+                longPressFocusFrames = focusWindow.length,
                 fillCanvas = true,
                 showViewportControls = false,
                 compactViewportControls = true,
                 showTimeReadout = true,
                 showInteractionHint = false,
-                maximumZoom = 256f,
-                zoomFocusFrame = pad.startFrame + (pad.endFrame - pad.startFrame) / 2,
+                maximumZoom = precisionMaximumZoom,
+                zoomFocusFrame = precisionFocusFrame,
+                viewportResetKey = viewportResetRevision,
                 readoutColor = Color(0xFFE8DDBF),
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        PrecisionTrimControls(
+            pad = pad,
+            activeBoundary = activeBoundary,
+            precision = precision,
+            focusWindow = focusWindow,
+            onBoundarySelected = { boundary ->
+                activeBoundaryName = boundary.name
+                precisionFocusFrame = when (boundary) {
+                    PadTrimBoundary.START -> pad.startFrame
+                    PadTrimBoundary.END -> pad.endFrame.coerceAtMost(audio.frameCount - 1)
+                }
+            },
+            onPrecisionSelected = { precisionName = it.name },
+            onBoundaryTicks = { boundary, ticks ->
+                activeBoundaryName = boundary.name
+                val updated = stepPadTrimBoundary(pad, boundary, ticks, precision)
+                when (boundary) {
+                    PadTrimBoundary.START -> if (updated.startFrame != pad.startFrame) {
+                        viewModel.setSelectedPadStartFrame(updated.startFrame)
+                    }
+                    PadTrimBoundary.END -> if (updated.endFrame != pad.endFrame) {
+                        viewModel.setSelectedPadEndFrame(updated.endFrame)
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(144.dp),
+        )
         Row(
             modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1563,7 +1652,13 @@ private fun PadTrimEditor(
             )
             MachineButton(
                 label = "編集前へ戻す\nREVERT",
-                onClick = { viewModel.restoreSelectedPadTrim(entrySnapshot) },
+                onClick = {
+                    viewModel.restoreSelectedPadTrim(entrySnapshot)
+                    activeBoundaryName = PadTrimBoundary.START.name
+                    precisionFocusFrame = entrySnapshot.startFrame +
+                        (entrySnapshot.endFrame - entrySnapshot.startFrame) / 2
+                    viewportResetRevision++
+                },
                 enabled = canRestore,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
@@ -1703,6 +1798,7 @@ private fun SequenceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onOpenPadDetails: (Int) -> Unit,
+    onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
     viewModel: SamplerDeckController,
 ) {
@@ -1713,6 +1809,7 @@ private fun SequenceWorkspace(
             state = state,
             metrics = metrics,
             onOpenPadDetails = onOpenPadDetails,
+            onOpenPadTrim = onOpenPadTrim,
             onOpenLayerStudio = onOpenLayerStudio,
             onShowFineControls = { showFineControls = true },
             viewModel = viewModel,
@@ -1831,6 +1928,7 @@ private fun BeatChopSurface(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onOpenPadDetails: (Int) -> Unit,
+    onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
     onShowFineControls: () -> Unit,
     viewModel: SamplerDeckController,
@@ -1854,7 +1952,7 @@ private fun BeatChopSurface(
             onTrigger = viewModel::triggerPad,
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPlayablePad,
-            onLongPress = onOpenPadDetails,
+            onLongPress = onOpenPadTrim,
             gap = gap,
             modifier = modifier,
         )

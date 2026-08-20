@@ -14,6 +14,7 @@ import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.EditHistory
 import com.choplab.sampler.model.DrumKitApplyDecision
@@ -26,9 +27,11 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
+import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.selectPlayableBank
 import com.choplab.sampler.model.selectPlayablePad
 import com.choplab.sampler.model.selectPlayablePadPage
+import com.choplab.sampler.model.setPadTrimBoundary
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stopAllPlaybackState
 import com.choplab.sampler.model.beginRecordingSession
@@ -535,9 +538,15 @@ class DesktopSamplerController(
     override fun setSelectedPadPitch(value: Float) = updateSelected("pad-pitch") { it.copy(pitchSemitones = value.coerceIn(-24f, 24f)) }
     override fun setSelectedPadTone(value: Float) = updateSelected("pad-tone") { it.copy(tone = value.coerceIn(0f, 1f)) }
     override fun setSelectedPadGain(value: Float) = updateSelected("pad-gain") { it.copy(gain = value.coerceIn(0f, 1.5f)) }
-    override fun setSelectedPadStartFrame(frame: Int) = updateSelected("pad-trim-start") { pad -> pad.copy(startFrame = frame.coerceIn(0, (pad.endFrame - 1).coerceAtLeast(0))) }
-    override fun setSelectedPadEndFrame(frame: Int) = updateSelected("pad-trim-end") { pad -> pad.copy(endFrame = frame.coerceAtLeast(pad.startFrame + 1)) }
-    override fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelected { it.copy(startFrame = snapshot.startFrame, endFrame = snapshot.endFrame) }
+    override fun setSelectedPadStartFrame(frame: Int) = updateSelected("pad-trim-start") { pad ->
+        setPadTrimBoundary(pad, PadTrimBoundary.START, frame)
+    }
+    override fun setSelectedPadEndFrame(frame: Int) = updateSelected("pad-trim-end") { pad ->
+        setPadTrimBoundary(pad, PadTrimBoundary.END, frame)
+    }
+    override fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelected { pad ->
+        restorePadTrimSnapshot(pad, snapshot)
+    }
     override fun toggleSelectedPadReverse() = updateSelected { it.copy(reverse = !it.reverse) }
     override fun toggleSelectedPadPlayMode() = updateSelected { it.copy(playMode = it.playMode.next()) }
     override fun setSelectedPadChokeGroup(group: Int) = updateSelected { it.copy(chokeGroup = group.coerceIn(0, 4)) }

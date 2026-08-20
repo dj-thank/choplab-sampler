@@ -134,4 +134,22 @@ class WaveformViewportPolicyTest {
             waveformOverviewGeometry(visibleStart = -10, visibleFrames = 100, totalFrames = 0, width = Float.NaN),
         )
     }
+
+    @Test
+    fun longPressFocusCreatesTheRequestedOneSecondViewportAtCenterAndEdges() {
+        val center = focusWaveformViewport(
+            frame = 240_000,
+            totalFrames = 480_000,
+            targetVisibleFrames = 48_000,
+        )
+        val first = focusWaveformViewport(100, 480_000, 48_000)
+        val last = focusWaveformViewport(479_999, 480_000, 48_000)
+
+        assertEquals(48_000, center.visibleFrames)
+        assertEquals(216_000, center.visibleStart)
+        assertEquals(10f, center.zoom, 0.0001f)
+        assertEquals(0, first.visibleStart)
+        assertEquals(432_000, last.visibleStart)
+        assertEquals(480_000, last.visibleStart + last.visibleFrames)
+    }
 }

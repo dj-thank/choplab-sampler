@@ -98,3 +98,23 @@ fun panWaveformViewport(
         visibleStart = nextStart,
     )
 }
+
+fun focusWaveformViewport(
+    frame: Int,
+    totalFrames: Int,
+    targetVisibleFrames: Int,
+): WaveformViewport {
+    val safeTotal = totalFrames.coerceAtLeast(1)
+    val visibleFrames = targetVisibleFrames.coerceIn(1, safeTotal)
+    val maximumStart = safeTotal - visibleFrames
+    val focus = frame.coerceIn(0, safeTotal - 1)
+    val visibleStart = (focus - visibleFrames / 2).coerceIn(0, maximumStart)
+    val scroll = if (maximumStart == 0) 0f else visibleStart.toFloat() / maximumStart
+    return WaveformViewport(
+        totalFrames = safeTotal,
+        zoom = safeTotal.toFloat() / visibleFrames,
+        scroll = scroll,
+        visibleStart = visibleStart,
+        visibleFrames = visibleFrames,
+    )
+}
