@@ -88,6 +88,9 @@ ChopLabを「画面ごとの機能集」ではなく、一つの制作機とし�
 - `:desktop:test :jvm-core:test`: PASS after shared controller integration.
 - `:app:assembleDebug`: PASS; 30,888,469-byte pre-version-bump APK installed only to `emulator-5580`.
 - API 36 emulator manual evidence at parent PAD `work/CHOPLAB_APP_CONTINUITY_EVIDENCE_20260820/`: CAPTURE OPEN invokes DocumentsUI; default BEAT shows 16-pad grid; scratch motion shows `FORWARD ×0.58 / 080%`; release resumes B-01 loop; autosave relaunch routes to BEAT. This is emulator evidence, not physical-device/Human evidence.
+- Full gate at candidate `1e15fe3`: Android 217 tests, JVM-core 44, desktop 35, all zero failures/errors/skips; lint 0 errors/8 warnings; APK and Windows package PASS.
+- Explicit Git Bash `scripts/validate_project.sh`: PASS. API 36 `connectedDebugAndroidTest`: 4/4 PASS.
+- Local parent two-axis review: Standards unresolved 0; Spec unresolved 0. Review found and fixed the Windows replacement-confirmation regression in `1e15fe3`.
 
 ## Risks and rollback
 
