@@ -21,11 +21,20 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(compose.desktop.currentOs)
+    implementation("net.java.dev.jna:jna:5.19.1")
+    implementation("net.java.dev.jna:jna-platform:5.19.1")
     testImplementation(kotlin("test"))
 }
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.register<JavaExec>("runWasapiProbe") {
+    group = "verification"
+    description = "Probe current Windows default render/capture endpoints through WASAPI"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.choplab.desktop.audio.wasapi.WasapiProbeMainKt")
 }
 
 tasks.register<Exec>("packageWindows") {

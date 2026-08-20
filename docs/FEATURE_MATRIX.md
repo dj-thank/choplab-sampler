@@ -5,6 +5,7 @@
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
 | Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` が `:shared` の Android-origin deck UI/model と `:jvm-core` のproject/archive/export処理を使用。4工程、波形、4×4 PAD、PAD editor、BANK A–D、16-step transport、KEY/TONE/LEVEL/REVERSE/GATE/LOOP/CHOKE、scratch、ローカルWAV、マイク、driver loopback候補、Undo/Redo、`.choplab`保存/復元/autosave、4小節WAV書き出しを接続。実ドライバー音質・レイテンシは未確認 |
+| Windows WASAPI endpoint | 🧪 local / current-device unavailable | JNA 5.19.1でMMDevice default/active/all-state endpointとmix formatをSTAからprobeし、native診断menuへ接続。現端末はJava Sound mixer 0、PnP AudioEndpoint present 0、MMDevice render/capture count 0、default `0x80070490`。adapter hardware presenceだけから音声利用可能とは主張しない |
 | Spotify OAuth / 現在再生情報 | 🧪 local | Native `連携` menuからAuthorization Code with PKCE、`127.0.0.1` callback、memory-only token、現在再生表示、一時停止/再開を接続。実アカウント/provider検証は未実施 |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |

@@ -43,6 +43,10 @@ The user-requested PC rebuild was implemented in the isolated branch `codex/chop
 - Explicit follow-up: driver loopback availability and audio quality, microphone/transport latency, Spotify account/device behavior, native low-latency WASAPI, signing/installer publication and Human acceptance remain separate.
 - Gate ceiling: `LOCAL_PASS`. The adapter rejects missing loopback hardware rather than claiming success; no provider/device/public/Human promotion is made.
 
+### Windows WASAPI endpoint probe — 2026-08-20
+
+The follow-up branch `codex/choplab-wasapi` adds JNA 5.19.1 MMDevice/IAudioClient endpoint probing and a native `診断` menu without replacing the existing engine. WaveFormat parsing and platform/error behavior are host-tested. On the current Windows session, JNA and an independent in-memory C# COM probe agree: render/capture all-state collection counts are zero and every default role returns `0x80070490`; PnP lists ten historical AudioEndpoint records but none are present. This is a current-device unavailable receipt, not audible render/capture evidence. No audio was recorded and no default device setting was changed.
+
 ## Public Android / iOS preview release track — 2026-08-19
 
 The public-release worktree adds an iOS 16 SwiftUI + AVFoundation preview under `ios/` and a GitHub Actions macOS build that generates an unsigned Simulator app. The iOS slice covers local audio import, 16 PAD playback, normalized per-PAD ranges, recording, and `ALL STOP`; it intentionally does not claim signed-device or App Store delivery. Android `versionName` is `0.14.0` with version code `22`, and the release workflow packages both platforms with SHA-256 sidecars under the same `v*` GitHub Release. The public-surface scan rejects credential/signing/audio candidates before build and release.

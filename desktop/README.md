@@ -13,6 +13,8 @@ The packaged launcher also accepts a `.wav` or `.choplab` path as its first argu
 
 The desktop app supports user-selected WAV import, microphone recording, a driver-exposed Windows playback loopback such as `Stereo Mix`, PAD voice controls, 16-step transport, scratch, four-bar WAV export, Undo/Redo, manual `.choplab` save/open, and app-owned three-generation autosave. A loopback input is never silently replaced with a microphone; unsupported drivers return a visible error.
 
+Use `診断 > Windows 音声エンドポイント` to run the JNA/WASAPI endpoint probe. It reports the current shared-mode render/capture formats when available and an explicit unavailable reason otherwise; it does not record audio.
+
 ## Spotify development login
 
 1. Register a Spotify Developer app.

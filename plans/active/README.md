@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** なし。次の実装seamは未選択。
+**進行中:** `windows-wasapi-endpoint-probe-20260820.md`。Java Sound mixerが0件のWindows hostで、JNA経由のMMDevice/WASAPI default render/capture endpointとmix formatを安全に取得する最小slice。target gateはsource/testの`LOCAL_PASS`と、current endpoint観測だけに限定した`DEVICE_PASS`。
 
 **完了済み:** `../completed/windows-exe-full-rebuild-20260820.md`。Android-origin shared UI/domainとJVM coreを使うWindows EXEを実装し、local verification、UI A/B、GitHub PR #32、全PR CI、squash merge、全merged-main CIまで完了。device/provider/signing/Human境界は未昇格。
 
@@ -35,6 +35,7 @@
 - `restart-playback-interruption-local-20260819.md`（完了済み本文を保全）
 - `windows-desktop-mvp-20260819.md`（初期プロトタイプの本文を保全）
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
+- `windows-wasapi-endpoint-probe-20260820.md`（現在の選択）
 
 ## Selection protocol
 
