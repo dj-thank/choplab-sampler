@@ -107,7 +107,7 @@ import com.choplab.sampler.model.stopAllPlaybackState
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.stopRecordingSession
 import com.choplab.sampler.model.shouldContinueSourcePlayback
-import com.choplab.sampler.model.trimPadBoundary
+import com.choplab.sampler.model.setPadTrimBoundary
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.transientAnalysisStillCurrent
 import com.choplab.sampler.persistence.AtomicProjectStore
@@ -1560,11 +1560,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun setSelectedPadStartFrame(frame: Int) = updateSelectedPad("trim-start") {
-        trimPadBoundary(it, PadTrimBoundary.START, frame - it.startFrame)
+        setPadTrimBoundary(it, PadTrimBoundary.START, frame)
     }
 
     override fun setSelectedPadEndFrame(frame: Int) = updateSelectedPad("trim-end") {
-        trimPadBoundary(it, PadTrimBoundary.END, frame - it.endFrame)
+        setPadTrimBoundary(it, PadTrimBoundary.END, frame)
     }
 
     override fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelectedPad {

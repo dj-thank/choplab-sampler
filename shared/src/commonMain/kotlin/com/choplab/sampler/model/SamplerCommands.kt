@@ -174,6 +174,21 @@ fun stepPadTrimBoundary(
     return trimPadBoundary(pad, boundary, delta)
 }
 
+fun setPadTrimBoundary(
+    pad: PadModel,
+    boundary: PadTrimBoundary,
+    frame: Int,
+): PadModel {
+    val currentFrame = when (boundary) {
+        PadTrimBoundary.START -> pad.startFrame
+        PadTrimBoundary.END -> pad.endFrame
+    }
+    val delta = (frame.toLong() - currentFrame)
+        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+        .toInt()
+    return trimPadBoundary(pad, boundary, delta)
+}
+
 fun capturePadTrimSnapshot(pad: PadModel): PadTrimSnapshot = PadTrimSnapshot(
     padIndex = pad.globalIndex,
     audioId = pad.audio?.id,

@@ -125,4 +125,18 @@ class PadTrimTest {
         assertTrue(huge.endFrame - huge.startFrame >= 2)
         assertSame(audio, huge.audio)
     }
+
+    @Test
+    fun `absolute trim setters clamp extreme frame values without overflowing their deltas`() {
+        val audio = PcmAudio(11L, "source.wav", ShortArray(10_000), 1_000)
+        val pad = PadModel(0, audio, startFrame = 2_000, endFrame = 8_000)
+
+        val start = setPadTrimBoundary(pad, PadTrimBoundary.START, Int.MAX_VALUE)
+        val end = setPadTrimBoundary(start, PadTrimBoundary.END, Int.MIN_VALUE)
+
+        assertEquals(7_998, start.startFrame)
+        assertEquals(8_000, start.endFrame)
+        assertEquals(7_998, end.startFrame)
+        assertEquals(8_000, end.endFrame)
+    }
 }

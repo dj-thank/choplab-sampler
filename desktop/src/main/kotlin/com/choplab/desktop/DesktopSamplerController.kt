@@ -31,9 +31,9 @@ import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.selectPlayableBank
 import com.choplab.sampler.model.selectPlayablePad
 import com.choplab.sampler.model.selectPlayablePadPage
+import com.choplab.sampler.model.setPadTrimBoundary
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.stopAllPlaybackState
-import com.choplab.sampler.model.trimPadBoundary
 import com.choplab.sampler.model.beginRecordingSession
 import com.choplab.sampler.model.endRecordingSession
 import com.choplab.sampler.model.failRecordingSession
@@ -539,10 +539,10 @@ class DesktopSamplerController(
     override fun setSelectedPadTone(value: Float) = updateSelected("pad-tone") { it.copy(tone = value.coerceIn(0f, 1f)) }
     override fun setSelectedPadGain(value: Float) = updateSelected("pad-gain") { it.copy(gain = value.coerceIn(0f, 1.5f)) }
     override fun setSelectedPadStartFrame(frame: Int) = updateSelected("pad-trim-start") { pad ->
-        trimPadBoundary(pad, PadTrimBoundary.START, frame - pad.startFrame)
+        setPadTrimBoundary(pad, PadTrimBoundary.START, frame)
     }
     override fun setSelectedPadEndFrame(frame: Int) = updateSelected("pad-trim-end") { pad ->
-        trimPadBoundary(pad, PadTrimBoundary.END, frame - pad.endFrame)
+        setPadTrimBoundary(pad, PadTrimBoundary.END, frame)
     }
     override fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelected { pad ->
         restorePadTrimSnapshot(pad, snapshot)

@@ -79,6 +79,7 @@ fun PrecisionTrimControls(
                 maximumFrame = pad.endFrame - 2,
                 sampleRate = audio.sampleRate,
                 stepFrames = stepFrames,
+                precision = precision,
                 focusWindow = focusWindow,
                 active = activeBoundary == PadTrimBoundary.START,
                 onSelect = { onBoundarySelected(PadTrimBoundary.START) },
@@ -92,6 +93,7 @@ fun PrecisionTrimControls(
                 maximumFrame = audio.frameCount,
                 sampleRate = audio.sampleRate,
                 stepFrames = stepFrames,
+                precision = precision,
                 focusWindow = focusWindow,
                 active = activeBoundary == PadTrimBoundary.END,
                 onSelect = { onBoundarySelected(PadTrimBoundary.END) },
@@ -100,7 +102,7 @@ fun PrecisionTrimControls(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().height(38.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             PadTrimPrecision.entries.forEach { option ->
@@ -123,6 +125,7 @@ private fun TrimBoundaryWheel(
     maximumFrame: Int,
     sampleRate: Int,
     stepFrames: Int,
+    precision: PadTrimPrecision,
     focusWindow: SliceRange,
     active: Boolean,
     onSelect: () -> Unit,
@@ -222,9 +225,9 @@ private fun TrimBoundaryWheel(
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    WheelNumber(formatPrecisionTrimTime(previous, sampleRate), emphasized = false)
-                    WheelNumber(formatPrecisionTrimTime(frame, sampleRate), emphasized = true)
-                    WheelNumber(formatPrecisionTrimTime(next, sampleRate), emphasized = false)
+                    WheelNumber(formatPrecisionTrimValue(previous, sampleRate, precision), emphasized = false)
+                    WheelNumber(formatPrecisionTrimValue(frame, sampleRate, precision), emphasized = true)
+                    WheelNumber(formatPrecisionTrimValue(next, sampleRate, precision), emphasized = false)
                 }
             }
         }
@@ -299,6 +302,19 @@ fun formatPrecisionTrimTime(frame: Int, sampleRate: Int): String {
     val seconds = totalMillis / 1_000L % 60L
     val millis = totalMillis % 1_000L
     return "%d:%02d.%03d".format(minutes, seconds, millis)
+}
+
+fun formatPrecisionTrimValue(
+    frame: Int,
+    sampleRate: Int,
+    precision: PadTrimPrecision,
+): String {
+    if (precision != PadTrimPrecision.FRAME) return formatPrecisionTrimTime(frame, sampleRate)
+    val totalMicros = frame.coerceAtLeast(0).toLong() * 1_000_000L / sampleRate.coerceAtLeast(1)
+    val minutes = totalMicros / 60_000_000L
+    val seconds = totalMicros / 1_000_000L % 60L
+    val micros = totalMicros % 1_000_000L
+    return "%d:%02d.%06d".format(minutes, seconds, micros)
 }
 
 fun trimDialProgress(frame: Int, focusWindow: SliceRange): Float {

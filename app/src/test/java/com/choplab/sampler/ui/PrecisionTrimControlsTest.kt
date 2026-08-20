@@ -12,6 +12,14 @@ class PrecisionTrimControlsTest {
         assertEquals("0:00.000", formatPrecisionTrimTime(0, 1_000))
         assertEquals("1:01.234", formatPrecisionTrimTime(61_234, 1_000))
         assertEquals("0:01.000", formatPrecisionTrimTime(48_000, 48_000))
+        assertEquals(
+            "0:00.000020",
+            formatPrecisionTrimValue(1, 48_000, PadTrimPrecision.FRAME),
+        )
+        assertEquals(
+            "0:01.000",
+            formatPrecisionTrimValue(48_000, 48_000, PadTrimPrecision.MILLISECOND),
+        )
     }
 
     @Test

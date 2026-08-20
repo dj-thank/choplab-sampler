@@ -1638,7 +1638,7 @@ private fun PadTrimEditor(
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(134.dp),
+            modifier = Modifier.fillMaxWidth().height(144.dp),
         )
         Row(
             modifier = Modifier.fillMaxWidth().height(48.dp),
