@@ -2,6 +2,19 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## v0.16.0 production continuity candidate — 2026-08-20
+
+- Source: isolated branch commits `1813385` + review fix `1e15fe3`, tree `bce75c1ecb4f30e193e12da38339c50c0cbc078c`; dirty canonical checkout untouched.
+- TDD/policy: launch destination, starter installation/preservation, scratch return validity, gesture dead zone/curve, default Beat Chop surface, project runtime-field omission, and Windows replacement confirmation all PASS.
+- Full local Gradle gate: `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :jvm-core:test :desktop:test :desktop:packageWindows --no-daemon --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL, 91 tasks.
+- Tests: Android 217 / JVM-core 44 / desktop 35; failures 0, errors 0, skipped 0. Android lint: errors 0, warnings 8.
+- Configured project gate: explicit Git Bash `scripts/validate_project.sh` PASS; public-surface 315 candidates PASS; Android XML parse PASS; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`.
+- API 36 emulator: `:app:connectedDebugAndroidTest` BUILD SUCCESSFUL; `SourceWaveformDeviceTest` 4/4 PASS on `medium_phone(AVD) - 16`. Manual scoped interaction proved CAPTURE OPEN→DocumentsUI, 4×4 default BEAT, live direction/speed/playhead, B-01 loop return after scratch, and edited-autosave BEAT routing. It did not record microphone/system audio.
+- Final local debug APK: package `com.choplab.sampler`, version `0.16.0 (24)`, minSdk 29, targetSdk 36; 30,872,085 bytes; SHA-256 `D12F572C70525E4218E03D1326771F688430528AA8221523C6B0FB33A06125F6`.
+- Final local Windows ZIP: 88,640,599 bytes; SHA-256 `4D740801C091B165716ECAB921045750FD4F352B07FAE57823E1146721DFDD32`; contained EXE SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A`.
+- Review: local parent two-pass Standards and Spec review after fixed point `8c12f71`; Windows `replaceExisting` regression found and fixed in `1e15fe3`; final unresolved findings 0/0. Luna runtime was not verified, so no child-model claim.
+- Gate: `LOCAL_PASS` + scoped emulator UI/instrumentation only. No physical-device, subjective audio, provider, public Release, signed iOS device, or Human promotion.
+
 ## 専用 API 36 review AVD — 2026-08-17
 
 - Source: clean `9177229de91f2560b93f381fffda26909eaf4d75`, tree `2fe15415cef8a7a2907ea71ac840996a0d847e0b`.

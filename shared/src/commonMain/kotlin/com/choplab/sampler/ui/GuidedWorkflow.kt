@@ -1,8 +1,10 @@
 package com.choplab.sampler.ui
 
+import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
@@ -11,6 +13,7 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activePhaseFor
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.inferProjectLaunchTarget
 
 enum class WorkflowStage(
     val label: String,
@@ -34,8 +37,13 @@ fun restoreWorkflowStage(savedName: String?): WorkflowStage =
             else -> WorkflowStage.CHOP
         }
 
-fun initialWorkflowStage(hasAudio: Boolean): WorkflowStage =
-    if (hasAudio) WorkflowStage.CHOP else WorkflowStage.CAPTURE
+fun initialWorkflowStage(state: SamplerUiState): WorkflowStage = when (
+    state.projectLaunchTarget ?: inferProjectLaunchTarget(state)
+) {
+    ProjectLaunchTarget.CAPTURE -> WorkflowStage.CAPTURE
+    ProjectLaunchTarget.CHOP -> WorkflowStage.CHOP
+    ProjectLaunchTarget.BEAT -> WorkflowStage.BEAT
+}
 
 fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean = when (stage) {
     WorkflowStage.CAPTURE -> true
@@ -45,7 +53,17 @@ fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean =
 }
 
 fun reconcileWorkflowStage(stage: WorkflowStage, state: SamplerUiState): WorkflowStage =
-    if (workflowStageEnabled(stage, state)) stage else initialWorkflowStage(state.currentAudio != null)
+    if (workflowStageEnabled(stage, state)) stage else initialWorkflowStage(state)
+
+data class BeatWorkspaceSurface(
+    val showPadGrid: Boolean,
+    val showDetailedSequencer: Boolean,
+)
+
+fun beatWorkspaceSurface(showFineControls: Boolean): BeatWorkspaceSurface = BeatWorkspaceSurface(
+    showPadGrid = !showFineControls,
+    showDetailedSequencer = showFineControls,
+)
 
 fun workflowStageKeepsSourcePlayback(stage: WorkflowStage): Boolean =
     stage == WorkflowStage.CHOP
@@ -201,9 +219,11 @@ private fun usesLargeTextDeckMode(fontScale: Float): Boolean =
     fontScale.isFinite() && fontScale >= 1.2f
 
 fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
-    state.currentAudio != null ||
-        state.pads.any(PadModel::isAssigned) ||
-        state.activeSteps.isNotEmpty()
+    !BuiltInDrumKits.isPristineStarterProduction(state) && (
+        state.currentAudio != null ||
+            state.pads.any(PadModel::isAssigned) ||
+            state.activeSteps.isNotEmpty()
+        )
 
 data class ChopSessionPresentation(
     val captureMode: Boolean,

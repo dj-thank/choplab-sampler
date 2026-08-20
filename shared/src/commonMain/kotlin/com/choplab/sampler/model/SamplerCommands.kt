@@ -54,6 +54,8 @@ fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
         scratchingPadIndex = null,
         scratchPlayheadFrame = -1,
         sourceScratchActive = false,
+        scratchSpeed = 0f,
+        scratchReturnAvailable = false,
         statusMessage = when {
             state.sourcePlaying && recordingContinues ->
                 "再生音を全停止中（録音は継続中）"

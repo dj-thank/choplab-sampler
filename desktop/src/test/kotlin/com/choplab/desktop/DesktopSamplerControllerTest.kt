@@ -13,6 +13,7 @@ import java.nio.file.Files
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
@@ -47,13 +48,25 @@ class DesktopSamplerControllerTest {
     fun builtInDrumKitUsesTheSharedAndroidCatalog() {
         val controller = controller()
         try {
+            val firstDrum = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val originalId = controller.state.value.pads[firstDrum].audio?.id
             controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
-            val drumPads = controller.state.value.pads.subList(
-                SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK,
-                SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK + SamplerConfig.DRUM_KIT_PAD_COUNT,
+            assertEquals(originalId, controller.state.value.pads[firstDrum].audio?.id)
+            assertEquals(
+                "BANK B ドラムには音があります。確認操作なしでは上書きしません",
+                controller.state.value.statusMessage,
             )
+
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = true)
+            val drumPads = controller.state.value.pads.subList(
+                firstDrum,
+                firstDrum + SamplerConfig.DRUM_KIT_PAD_COUNT,
+            )
+            assertNotEquals(originalId, drumPads.first().audio?.id)
             assertTrue(drumPads.all { it.isAssigned })
             assertTrue(drumPads.all { it.contentKind.name == "DRUM" })
+            assertEquals("boom-bap", controller.state.value.selectedDrumKitId)
+            assertTrue(controller.state.value.activeSteps.isNotEmpty())
         } finally {
             controller.close()
         }
@@ -66,7 +79,16 @@ class DesktopSamplerControllerTest {
             controller.setBpm(120f)
             controller.resetProject()
             assertEquals(null, controller.state.value.currentAudio)
-            assertEquals("音声を読み込むか録音してください", controller.state.value.statusMessage)
+            assertEquals(
+                "新しい制作を準備しました — BANK BにDUSTY JAZZをセット済み",
+                controller.state.value.statusMessage,
+            )
+            val drumStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            assertTrue(
+                controller.state.value.pads
+                    .subList(drumStart, drumStart + SamplerConfig.DRUM_KIT_PAD_COUNT)
+                    .all(PadModel::isAssigned),
+            )
         } finally {
             controller.close()
         }

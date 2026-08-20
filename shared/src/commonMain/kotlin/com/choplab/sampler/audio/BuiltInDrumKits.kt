@@ -5,6 +5,8 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.starterDrumKitInstallationAllowed
 import com.choplab.sampler.model.stepKey
 import kotlin.math.PI
 import kotlin.math.exp
@@ -26,6 +28,9 @@ data class DrumKitDefinition(
  */
 object BuiltInDrumKits {
     private const val SAMPLE_RATE = 48_000
+    private const val DEFAULT_BPM = 92f
+    private const val DEFAULT_SWING = 54f
+    const val DEFAULT_STARTER_KIT_ID = "dusty-jazz"
 
     val catalog = listOf(
         DrumKitDefinition("dusty-jazz", "DUSTY JAZZ", "丸いキック / 乾いたスネア", "WARM", 0.92f, 0.34f),
@@ -34,6 +39,10 @@ object BuiltInDrumKits {
         DrumKitDefinition("lofi-tape", "LO-FI TAPE", "暗いハット / 揺れた質感", "DARK", 0.74f, 0.62f),
         DrumKitDefinition("clean-studio", "CLEAN STUDIO", "明瞭 / 現代的", "HI-FI", 1.12f, 0.06f),
     )
+
+    private val defaultStarterPattern: Set<Int> by lazy {
+        starterPattern(DEFAULT_STARTER_KIT_ID, SamplerConfig.DRUM_BANK_INDEX)
+    }
 
     fun createBankPads(kitId: String, bankIndex: Int): List<PadModel> {
         require(bankIndex in 0 until SamplerConfig.BANK_COUNT)
@@ -76,6 +85,53 @@ object BuiltInDrumKits {
             listOf(4, 12).forEach { add(stepKey(base + 4, it)) }
             (0 until SamplerConfig.STEP_COUNT step 2).forEach { add(stepKey(base + 8, it)) }
             add(stepKey(base + 14, 15))
+        }
+    }
+
+    fun installStarterKit(state: SamplerUiState): SamplerUiState {
+        if (!starterDrumKitInstallationAllowed(state)) return state
+        val bankIndex = SamplerConfig.DRUM_BANK_INDEX
+        val starterPads = createBankPads(DEFAULT_STARTER_KIT_ID, bankIndex)
+        val pads = state.pads.toMutableList()
+        starterPads.forEach { pads[it.globalIndex] = it }
+        return state.copy(
+            pads = pads,
+            activeSteps = defaultStarterPattern,
+            selectedDrumKitId = DEFAULT_STARTER_KIT_ID,
+        )
+    }
+
+    fun isPristineStarterProduction(state: SamplerUiState): Boolean =
+        state.currentAudio == null && hasUntouchedStarterDrums(state)
+
+    fun hasUntouchedStarterDrums(state: SamplerUiState): Boolean {
+        if (
+            state.selectedDrumKitId != DEFAULT_STARTER_KIT_ID ||
+            state.bpm != DEFAULT_BPM ||
+            state.swing != DEFAULT_SWING ||
+            state.activeSteps != defaultStarterPattern
+        ) {
+            return false
+        }
+        val firstDrum = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        return state.pads.all { pad ->
+            val starterIndex = pad.globalIndex - firstDrum
+            if (starterIndex in 0 until SamplerConfig.DRUM_KIT_PAD_COUNT) {
+                val family = starterIndex / 4
+                pad.isAssigned &&
+                    pad.contentKind == PadContentKind.DRUM &&
+                    pad.audio?.id == stableId("$DEFAULT_STARTER_KIT_ID:$starterIndex") &&
+                    pad.startFrame == 0 &&
+                    pad.endFrame == pad.audio.frameCount &&
+                    pad.pitchSemitones == 0f &&
+                    pad.tone == 1f &&
+                    pad.gain == (if (family == 2) 0.72f else 0.9f) &&
+                    !pad.reverse &&
+                    pad.playMode == PadPlayMode.ONE_SHOT &&
+                    pad.chokeGroup == (if (family == 2) 1 else 0)
+            } else {
+                !pad.isAssigned
+            }
         }
     }
 

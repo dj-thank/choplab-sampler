@@ -11,9 +11,12 @@ import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.PatternRenderer
+import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
+import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.EditHistory
+import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
@@ -35,6 +38,7 @@ import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.observeRecordingSession
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
+import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
@@ -44,6 +48,11 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.ProjectOperationEpoch
+import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.ScratchReturnTarget
+import com.choplab.sampler.model.inferProjectLaunchTarget
+import com.choplab.sampler.model.scratchReturnTargetIsValid
+import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,6 +63,7 @@ import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * JVM shell for the shared deck. Audio/filesystem/permission work stays here;
@@ -88,10 +98,17 @@ class DesktopSamplerController(
         Thread(task, "ChopLab-Windows-Project-IO").apply { isDaemon = true }
     }
     @Volatile private var autosaveFuture: ScheduledFuture<*>? = null
+    @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
+    @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
+    private val projectLaunchRevision = AtomicLong(0L)
     val state: StateFlow<SamplerUiState> = mutableState.asStateFlow()
 
     init {
-        if (autosaveStore != null) recoverAutosave()
+        if (autosaveStore != null) {
+            recoverAutosave()
+        } else {
+            mutableState.value = freshProductionState()
+        }
     }
 
     fun loadWav(file: File) {
@@ -104,11 +121,16 @@ class DesktopSamplerController(
                     projectOperations.completeIfCurrent(operation) {
                         editHistory.reset()
                         val playbackFailure = runCatching { player.loadPcm(audio) }.exceptionOrNull()
-                        mutableState.value = SamplerUiState(
-                            statusMessage = playbackFailure?.let { "音声は読込済みですが再生機器を開けません: ${it.message}" }
-                                ?: "${file.name}を読み込みました。チョップで音を切ってください",
-                            currentAudio = audio,
-                            rangeEndFrame = audio.frameCount,
+                        mutableState.value = BuiltInDrumKits.installStarterKit(
+                            SamplerUiState(
+                                statusMessage = playbackFailure?.let { "音声は読込済みですが再生機器を開けません: ${it.message}" }
+                                    ?: "${file.name}を読み込みました。チョップで音を切ってください",
+                                currentAudio = audio,
+                                rangeEndFrame = audio.frameCount,
+                            ),
+                        ).copy(
+                            projectLaunchTarget = ProjectLaunchTarget.CHOP,
+                            projectLaunchRevision = nextProjectLaunchRevision(),
                         )
                         scheduleAutosave()
                     }
@@ -152,7 +174,14 @@ class DesktopSamplerController(
                 .onSuccess { restored ->
                     projectOperations.completeIfCurrent(operation) {
                         editHistory.reset()
-                        applyHistoryState(restored, "${file.name}を開きました")
+                        applyHistoryState(
+                            restored = restored,
+                            message = "${file.name}を開きました",
+                            launchTarget = inferProjectLaunchTarget(
+                                restored,
+                                starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
+                            ),
+                        )
                         scheduleAutosave()
                     }
                 }
@@ -275,11 +304,14 @@ class DesktopSamplerController(
         projectOperations.invalidate()
         stopCompetingPlayback()
         editHistory.reset()
-        mutableState.value = SamplerUiState(statusMessage = "音声を読み込むか録音してください")
+        mutableState.value = freshProductionState()
         scheduleAutosave()
     }
 
     override fun stopAllSounds() {
+        scratchReturnTarget = ScratchReturnTarget.None
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
         transport.stop()
         scratch.stop()
         player.stopAll()
@@ -360,7 +392,8 @@ class DesktopSamplerController(
             ?: state.pads.firstOrNull(PadModel::isAssigned)?.globalIndex
         val pad = index?.let(state.pads::get)
         if (pad?.isAssigned != true) return setStatus("スクラッチするビートPADを選んでください")
-        stopCompetingPlayback()
+        scratchReturnTarget = selectScratchReturnTarget(state)
+        stopCompetingPlayback(preserveScratchReturn = true)
         runCatching {
             scratch.start(
                 audio = requireNotNull(pad.audio),
@@ -382,10 +415,15 @@ class DesktopSamplerController(
                     scratchingPadIndex = index,
                     scratchPlayheadFrame = pad.startFrame,
                     sourceScratchActive = false,
+                    scratchSpeed = 0f,
+                    scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
                     statusMessage = "指を左右へ動かしてスクラッチ",
                 )
             }
-        }.onFailure { error -> setStatus("スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}") }
+        }.onFailure { error ->
+            scratchReturnTarget = ScratchReturnTarget.None
+            setStatus("スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}")
+        }
     }
 
     override fun beginSourceScratch() {
@@ -393,7 +431,8 @@ class DesktopSamplerController(
         val audio = state.currentAudio
         val range = state.sourceScratchRange()
         if (audio == null || range == null) return setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
-        stopCompetingPlayback()
+        scratchReturnTarget = selectScratchReturnTarget(state)
+        stopCompetingPlayback(preserveScratchReturn = true)
         runCatching {
             scratch.start(audio, range.startFrame, range.endFrame, range.startFrame, state.masterPitchSemitones)
         }.onSuccess {
@@ -407,22 +446,66 @@ class DesktopSamplerController(
                     scratchingPadIndex = null,
                     scratchPlayheadFrame = range.startFrame,
                     sourceScratchActive = true,
+                    scratchSpeed = 0f,
+                    scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
                     statusMessage = "選んだ元曲の範囲をスクラッチ中",
                 )
             }
-        }.onFailure { error -> setStatus("元曲スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}") }
+        }.onFailure { error ->
+            scratchReturnTarget = ScratchReturnTarget.None
+            setStatus("元曲スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}")
+        }
     }
-    override fun updateScratchSpeed(speed: Float) = scratch.updateSpeed(speed)
+    override fun updateScratchSpeed(speed: Float) {
+        val normalized = normalizeScratchSpeed(speed)
+        scratch.updateSpeed(normalized)
+        mutableState.update { current ->
+            if (current.scratchingPadIndex != null || current.sourceScratchActive) {
+                current.copy(scratchSpeed = normalized)
+            } else {
+                current
+            }
+        }
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = playbackMonitor.schedule(
+            {
+                scratch.updateSpeed(0f)
+                mutableState.update { current ->
+                    if (current.scratchingPadIndex != null || current.sourceScratchActive) {
+                        current.copy(scratchSpeed = 0f)
+                    } else {
+                        current
+                    }
+                }
+            },
+            SCRATCH_GESTURE_IDLE_TIMEOUT_MS,
+            TimeUnit.MILLISECONDS,
+        )
+    }
     override fun endScratch() {
+        val active = mutableState.value.let { it.scratchingPadIndex != null || it.sourceScratchActive }
+        if (!active) {
+            scratchReturnTarget = ScratchReturnTarget.None
+            scratchIdleFuture?.cancel(false)
+            scratchIdleFuture = null
+            return
+        }
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
         scratch.stop()
         mutableState.update {
             it.copy(
                 scratchingPadIndex = null,
                 scratchPlayheadFrame = -1,
                 sourceScratchActive = false,
-                statusMessage = "スクラッチ停止 — ビートループで通常再生へ戻れます",
+                scratchSpeed = 0f,
+                scratchReturnAvailable = false,
+                statusMessage = "スクラッチを停止しました",
             )
         }
+        val target = scratchReturnTarget
+        scratchReturnTarget = ScratchReturnTarget.None
+        resumeAfterScratch(target)
     }
 
     private fun toggleSource(shouldPlay: Boolean) {
@@ -541,11 +624,41 @@ class DesktopSamplerController(
         scheduleAutosave()
     }
 
-    override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) = commitEdit { state ->
-        val kitPads = BuiltInDrumKits.createBankPads(kitId, 1)
-        val pads = state.pads.toMutableList()
-        kitPads.forEach { pad -> pads[pad.globalIndex] = pad }
-        state.copy(pads = pads, statusMessage = "${kitId}をBANK Bへセットしました")
+    override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
+        val bankIndex = SamplerConfig.DRUM_BANK_INDEX
+        if (
+            drumKitApplyDecision(mutableState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&
+            !replaceExisting
+        ) {
+            setStatus("BANK B ドラムには音があります。確認操作なしでは上書きしません")
+            return
+        }
+        val replacement = runCatching { BuiltInDrumKits.createBankPads(kitId, bankIndex) }
+            .getOrElse {
+                setStatus("ドラムキットを読み込めませんでした")
+                return
+            }
+        val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
+        val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
+        mutableState.value.loopingPadIndex
+            ?.takeIf { it in bankStart until bankEnd }
+            ?.let(player::stopPad)
+        commitEdit { state ->
+            val pads = state.pads.toMutableList()
+            replacement.forEach { pads[it.globalIndex] = it }
+            state.copy(
+                pads = pads,
+                selectedBank = bankIndex,
+                selectedPad = bankStart,
+                selectedDrumKitId = kitId,
+                activeSteps = state.activeSteps
+                    .filterNotTo(linkedSetOf()) { key -> key / SamplerConfig.STEP_COUNT in bankStart until bankEnd } +
+                    BuiltInDrumKits.starterPattern(kitId, bankIndex),
+                loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
+                loopPlayheadFrame = if (state.loopingPadIndex in bankStart until bankEnd) -1 else state.loopPlayheadFrame,
+                statusMessage = "${BuiltInDrumKits.catalog.first { it.id == kitId }.name} を BANK B ドラムにセット",
+            )
+        }
     }
 
     override fun setBpm(value: Float) {
@@ -589,9 +702,16 @@ class DesktopSamplerController(
         return true
     }
 
-    private fun applyHistoryState(restored: SamplerUiState, message: String) {
+    private fun applyHistoryState(
+        restored: SamplerUiState,
+        message: String,
+        launchTarget: ProjectLaunchTarget? = null,
+    ) {
         transport.stop()
         scratch.stop()
+        scratchReturnTarget = ScratchReturnTarget.None
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
         player.stopAll()
         val next = restored.copy(
             statusMessage = message,
@@ -604,6 +724,14 @@ class DesktopSamplerController(
             scratchingPadIndex = null,
             scratchPlayheadFrame = -1,
             sourceScratchActive = false,
+            projectLaunchTarget = launchTarget ?: mutableState.value.projectLaunchTarget,
+            projectLaunchRevision = if (launchTarget != null) {
+                nextProjectLaunchRevision()
+            } else {
+                mutableState.value.projectLaunchRevision
+            },
+            scratchSpeed = 0f,
+            scratchReturnAvailable = false,
             canUndo = editHistory.canUndo,
             canRedo = editHistory.canRedo,
         )
@@ -635,9 +763,17 @@ class DesktopSamplerController(
                 .onSuccess { restored ->
                     editHistory.reset()
                     if (restored == null) {
-                        mutableState.value = SamplerUiState(statusMessage = "音声を読み込むか録音してください")
+                        mutableState.value = freshProductionState()
+                        scheduleAutosave()
                     } else {
-                        applyHistoryState(restored, "前回の自動保存を復元しました")
+                        applyHistoryState(
+                            restored = restored,
+                            message = "前回の自動保存を復元しました",
+                            launchTarget = inferProjectLaunchTarget(
+                                restored,
+                                starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
+                            ),
+                        )
                     }
                 }
                 .onFailure { error ->
@@ -658,7 +794,10 @@ class DesktopSamplerController(
         }
     }
 
-    private fun stopCompetingPlayback() {
+    private fun stopCompetingPlayback(preserveScratchReturn: Boolean = false) {
+        if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
         transport.stop()
         scratch.stop()
         player.stopAll()
@@ -673,7 +812,62 @@ class DesktopSamplerController(
                 scratchingPadIndex = null,
                 scratchPlayheadFrame = -1,
                 sourceScratchActive = false,
+                scratchSpeed = 0f,
+                scratchReturnAvailable = false,
             )
+        }
+    }
+
+    private fun freshProductionState(): SamplerUiState = BuiltInDrumKits.installStarterKit(
+        SamplerUiState(
+            statusMessage = "新しい制作を準備しました — BANK BにDUSTY JAZZをセット済み",
+        ),
+    ).copy(
+        projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
+        projectLaunchRevision = nextProjectLaunchRevision(),
+    )
+
+    private fun nextProjectLaunchRevision(): Long = projectLaunchRevision.incrementAndGet()
+
+    private fun resumeAfterScratch(target: ScratchReturnTarget): Boolean {
+        val current = mutableState.value
+        if (!scratchReturnTargetIsValid(target, current)) return false
+        return when (target) {
+            ScratchReturnTarget.None -> false
+            ScratchReturnTarget.Transport -> {
+                runCatching { transport.start(current.bpm, current.swing) }
+                    .onSuccess {
+                        mutableState.update {
+                            it.copy(
+                                transportPlaying = true,
+                                recordArmed = false,
+                                currentStep = 0,
+                                statusMessage = "スクラッチからビート再生へ戻りました",
+                            )
+                        }
+                    }
+                    .onFailure { setStatus("スクラッチ後のビート再開失敗: ${it.message ?: it.javaClass.simpleName}") }
+                    .isSuccess
+            }
+            is ScratchReturnTarget.PadLoop -> {
+                val pad = current.pads[target.padIndex]
+                runCatching {
+                    player.triggerPad(pad, forceLoop = true)
+                    current.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+                        .forEach { player.triggerPad(it, forceLoop = false) }
+                }.onSuccess {
+                    mutableState.update {
+                        it.copy(
+                            loopingPadIndex = target.padIndex,
+                            loopPlayheadFrame = if (pad.reverse) pad.endFrame - 1 else pad.startFrame,
+                            statusMessage = "スクラッチから${('A'.code + pad.bankIndex).toChar()}-%02dループへ戻りました"
+                                .format(pad.indexInBank + 1),
+                        )
+                    }
+                }.onFailure {
+                    setStatus("スクラッチ後のループ再開失敗: ${it.message ?: it.javaClass.simpleName}")
+                }.isSuccess
+            }
         }
     }
 
@@ -718,6 +912,7 @@ class DesktopSamplerController(
         projectOperations.invalidate()
         ioExecutor.shutdownNow()
         autosaveFuture?.cancel(false)
+        scratchIdleFuture?.cancel(false)
         persistenceExecutor.shutdownNow()
         playbackMonitor.shutdownNow()
         transport.close()

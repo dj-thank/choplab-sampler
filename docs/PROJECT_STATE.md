@@ -47,6 +47,20 @@ The user-requested PC rebuild was implemented in the isolated branch `codex/chop
 
 The follow-up branch `codex/choplab-wasapi` adds JNA 5.19.1 MMDevice/IAudioClient endpoint probing and a native `診断` menu without replacing the existing engine. WaveFormat parsing and platform/error behavior are host-tested. On the current Windows session, JNA and an independent in-memory C# COM probe agree: render/capture all-state collection counts are zero and every default role returns `0x80070490`; PnP lists ten historical AudioEndpoint records but none are present. This is a current-device unavailable receipt, not audible render/capture evidence. No audio was recorded and no default device setting was changed.
 
+## Android production continuity candidate — 2026-08-20
+
+The isolated branch `codex/choplab-app-product-intent` reconnects launch recovery, CAPTURE project opening, CHOP/BEAT material continuity, starter drums, and scratch performance without changing archive schema or the dirty canonical checkout.
+
+- Observed candidate: `1e15fe3c09e39c946905a1747b4f8a57ef7f9baf`, tree `bce75c1ecb4f30e193e12da38339c50c0cbc078c`, based on main `8c12f71f7c5a699669fdf0d5392a599fb50759c3`.
+- Product route: CAPTURE now exposes `制作を開く / OPEN PROJECT`; validated recovery routes untouched starter-only state to CAPTURE, Source plus untouched starter drums to CHOP, and user Beat/pad-only work to BEAT.
+- Shared material surface: normal BEAT keeps the selected waveform, BANK A–D, PAD page, and a fixed 4×4 playable PAD grid from CHOP. The existing responsive lane/16-step editor remains behind `並べる詳細 / STEPS`.
+- First sound: new/reset/new-Source productions receive the original generated DUSTY JAZZ 16-pad kit plus starter pattern. Restored/manual projects remain exact; Android and Windows reject BANK B replacement without the existing confirmation action.
+- Scratch: pointer-down acquisition, bounded symmetric speed with dead zone, 120 ms idle silence, live direction/speed/playhead, and one-time return to a still-valid prior loop/transport. Runtime return/launch fields are excluded from schema-5 archives and covered by round-trip tests.
+- Local validation observed by `2026-08-20T22:05:13+09:00`: Android 217 tests, JVM-core 44 tests, desktop 35 tests, all zero failures/errors/skips; Android lint 0 errors / 8 warnings; APK, Windows app-image, and project validator PASS. Local parent Standards/Spec two-pass review has no unresolved finding; no substitute child model was used.
+- API 36 emulator `emulator-5580`: instrumentation 4/4 PASS; CAPTURE OPEN invoked DocumentsUI; normal BEAT showed 16 PADs; live scratch showed `FORWARD ×0.58 / 080%`; release resumed B-01 loop; edited autosave relaunched directly to BEAT. Evidence locator: parent PAD `work/CHOPLAB_APP_CONTINUITY_EVIDENCE_20260820/`.
+- Local artifacts: parent PAD `outputs/ChopLab-v0.16.0-preview.1-debug.apk`, 30,872,085 bytes, SHA-256 `D12F572C70525E4218E03D1326771F688430528AA8221523C6B0FB33A06125F6`; `outputs/ChopLab-v0.16.0-preview.1-windows-app-image.zip`, 88,640,599 bytes, SHA-256 `4D740801C091B165716ECAB921045750FD4F352B07FAE57823E1146721DFDD32`.
+- Gate ceiling before GitHub: `LOCAL_PASS` plus scoped emulator UI/instrumentation evidence. Physical Android/iPhone behavior, audible scratch/drum quality, Bluetooth/route loss, TalkBack/VoiceOver speech, signed iOS IPA, provider/public Release, and `HUMAN_GO` are not promoted here.
+
 ## Public Android / iOS preview release track — 2026-08-19
 
 The public-release worktree adds an iOS 16 SwiftUI + AVFoundation preview under `ios/` and a GitHub Actions macOS build that generates an unsigned Simulator app. The iOS slice covers local audio import, 16 PAD playback, normalized per-PAD ranges, recording, and `ALL STOP`; it intentionally does not claim signed-device or App Store delivery. Android `versionName` is `0.14.0` with version code `22`, and the release workflow packages both platforms with SHA-256 sidecars under the same `v*` GitHub Release. The public-surface scan rejects credential/signing/audio candidates before build and release.

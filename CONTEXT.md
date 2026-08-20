@@ -47,3 +47,19 @@ A microphone recording aligned by restarting the active Beat loop when recording
 ## Scratch gesture
 
 Direct manipulation of one selected Chop with signed playback speed: rightward motion plays forward, leftward motion plays backward, and release stops the scratch voice.
+
+## Production
+
+The single resumable body of work a person is making: Source, Chops, PAD assignments, drum kit, Beat placements, tempo, and editable settings. Launch recovery and manual project opening restore a Production before asking the person to start over.
+
+## Chop surface
+
+The continuous performance surface made from the selected Chop waveform, BANK and PAD-page selectors, and the fixed four-by-four PAD grid. CHOP uses it to create Chops; BEAT keeps the same surface visible so the person can play and arrange those Chops without losing material context.
+
+## Starter drum kit
+
+An original built-in Drum kit installed into BANK B for a truly new Production. It makes the first Beat immediately playable but never overwrites an autosave, a manually opened project, or user-edited BANK B content.
+
+## Scratch performance
+
+Direct, latency-bounded manipulation of the selected Chop from pointer-down through release. Motion has a small noise dead zone, signed speed and a visible playhead; stopping motion becomes silent, and release returns to the Beat loop or transport that was running before the gesture when that target is still valid.

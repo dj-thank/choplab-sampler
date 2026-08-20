@@ -4,6 +4,16 @@
 
 ChopLab is an original mobile sampler optimized for a rapid source → chop → pad → pattern → song → export loop. It may learn from hardware-sampler workflows, but it must not copy proprietary visual identity, firmware behavior, assets or project formats.
 
+The core job is not to visit four disconnected feature screens. A person brings in a song or voice, finds memorable fragments, plays them immediately, and turns them into a Beat while the same waveform, Chops, and PAD locations remain understandable. Reopening the app should continue that Production before presenting an empty start.
+
+## Production continuity and first sound
+
+- **FLOW-001** Launch visibly checks the latest valid autosave, restores it atomically, and routes to CHOP or BEAT from recovered content; CAPTURE is shown only for a truly new Production.
+- **FLOW-002** CAPTURE exposes both source import and `制作を開く / OPEN PROJECT`, so an existing `.choplab` Production can be loaded before entering the save screen.
+- **FLOW-003** CHOP and BEAT keep one Chop surface: selected-Chop waveform, BANK/page selectors, and a fixed four-by-four PAD grid. Detailed step editing may be a secondary view but must not replace that performance surface by default.
+- **FLOW-004** A truly new Production contains ChopLab's original starter Drum kit in BANK B. Autosave recovery and manual project opening preserve their exact BANK B content and never receive an implicit replacement.
+- **FLOW-005** Scratch starts on direct contact, maps left/right movement to bounded signed speed with a noise dead zone, visibly follows the playhead, becomes silent when motion is idle, and safely resumes the valid Beat loop or transport that owned playback before the gesture.
+
 ## Capture and source handling
 
 - **CAP-001** Import audio through Android's document picker without requiring broad storage permission.
