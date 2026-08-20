@@ -73,6 +73,7 @@ ChopLabを「画面ごとの機能集」ではなく、一つの制作機とし�
 - Startup recovery is real, but the saved workflow stage is not part of the project. Routing must be derived from recovered audible content without a schema migration.
 - BEAT currently contains a waveform and selected sounds, yet its primary surface is a four-lane step board rather than CHOP's fixed performance grid; this explains the visible discontinuity.
 - `selectedDrumKitId` defaults to `dusty-jazz` even when BANK B is empty, so the field alone cannot prove installation.
+- GitHub Android runs `32372699096` and `32372741818` exposed that `scripts/run_pure_logic_smoke.sh` manually listed four shared model files. `SamplerModels.kt` referenced the new `ProjectLaunchTarget`, while `ProductionBootstrap.kt` and its `PatternEditing.kt` dependency were omitted. Windows/iOS and full Gradle builds were unaffected; the smoke harness now compiles the complete shared model directory glob.
 
 ## Decision log
 
@@ -91,6 +92,7 @@ ChopLabを「画面ごとの機能集」ではなく、一つの制作機とし�
 - Full gate at candidate `1e15fe3`: Android 217 tests, JVM-core 44, desktop 35, all zero failures/errors/skips; lint 0 errors/8 warnings; APK and Windows package PASS.
 - Explicit Git Bash `scripts/validate_project.sh`: PASS. API 36 `connectedDebugAndroidTest`: 4/4 PASS.
 - Local parent two-axis review: Standards unresolved 0; Spec unresolved 0. Review found and fixed the Windows replacement-confirmation regression in `1e15fe3`.
+- GitHub first Android attempt: deterministic RED at standalone `kotlinc` (`ProjectLaunchTarget` unresolved). Fast static repro failed with both required files absent from the smoke list, then passed after replacing the brittle list with the complete nine-file model glob; `:shared:compileKotlinDesktop` PASS.
 
 ## Risks and rollback
 
