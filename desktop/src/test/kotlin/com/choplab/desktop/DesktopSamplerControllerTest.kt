@@ -66,7 +66,16 @@ class DesktopSamplerControllerTest {
             controller.setBpm(120f)
             controller.resetProject()
             assertEquals(null, controller.state.value.currentAudio)
-            assertEquals("音声を読み込むか録音してください", controller.state.value.statusMessage)
+            assertEquals(
+                "新しい制作を準備しました — BANK BにDUSTY JAZZをセット済み",
+                controller.state.value.statusMessage,
+            )
+            val drumStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            assertTrue(
+                controller.state.value.pads
+                    .subList(drumStart, drumStart + SamplerConfig.DRUM_KIT_PAD_COUNT)
+                    .all(PadModel::isAssigned),
+            )
         } finally {
             controller.close()
         }

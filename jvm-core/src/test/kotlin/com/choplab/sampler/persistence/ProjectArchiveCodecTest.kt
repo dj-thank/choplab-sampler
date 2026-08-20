@@ -4,6 +4,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.audibleStepKeys
@@ -19,6 +20,7 @@ import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -95,6 +97,10 @@ class ProjectArchiveCodecTest {
             currentStep = 7,
             sourcePlaying = true,
             sourcePlayheadFrame = 3,
+            projectLaunchTarget = ProjectLaunchTarget.BEAT,
+            projectLaunchRevision = 99L,
+            scratchSpeed = -2f,
+            scratchReturnAvailable = true,
             masterPitchSemitones = -2f,
             selectedDrumKitId = "vinyl-soul",
         )
@@ -126,6 +132,10 @@ class ProjectArchiveCodecTest {
         assertFalse(restored.transportPlaying)
         assertFalse(restored.recordArmed)
         assertFalse(restored.sourcePlaying)
+        assertNull(restored.projectLaunchTarget)
+        assertEquals(0L, restored.projectLaunchRevision)
+        assertEquals(0f, restored.scratchSpeed)
+        assertFalse(restored.scratchReturnAvailable)
         assertEquals(-1, restored.currentStep)
     }
 

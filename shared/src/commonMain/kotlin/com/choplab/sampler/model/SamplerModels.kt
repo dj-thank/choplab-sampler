@@ -134,6 +134,14 @@ data class SamplerUiState(
     val scratchingPadIndex: Int? = null,
     val scratchPlayheadFrame: Int = -1,
     val sourceScratchActive: Boolean = false,
+    /** Runtime-only launch route. Project archives derive this after validation. */
+    val projectLaunchTarget: ProjectLaunchTarget? = null,
+    /** Runtime-only identity that lets the deck route after opening the same project twice. */
+    val projectLaunchRevision: Long = 0L,
+    /** Runtime-only signed scratch speed used by truthful visual feedback. */
+    val scratchSpeed: Float = 0f,
+    /** Runtime-only truth for whether release can return to a prior Beat owner. */
+    val scratchReturnAvailable: Boolean = false,
     val selectedDrumKitId: String = "dusty-jazz",
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,

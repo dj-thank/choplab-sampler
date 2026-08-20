@@ -43,6 +43,31 @@ class ScratchControlTest {
     }
 
     @Test
+    fun tinyPointerNoiseFallsInsideTheScratchDeadZone() {
+        assertEquals(
+            0f,
+            scratchSpeedFromGesture(
+                deltaPixels = 0.2f,
+                elapsedMillis = 16L,
+                sensitivityDivisor = 7f,
+            ),
+            0f,
+        )
+    }
+
+    @Test
+    fun scratchCurveIsSymmetricAndKeepsUsefulMidSpeedControl() {
+        val forward = scratchSpeedFromGesture(7f, 16L, 7f)
+        val backward = scratchSpeedFromGesture(-7f, 16L, 7f)
+
+        assertEquals(forward, -backward, 0.001f)
+        assertTrue(forward in 0.8f..1.6f)
+        assertEquals("FORWARD", scratchDirectionLabel(forward))
+        assertEquals("BACK", scratchDirectionLabel(backward))
+        assertEquals("HOLD", scratchDirectionLabel(0f))
+    }
+
+    @Test
     fun normalTouchEventGapDoesNotStopAnActiveScratchGesture() {
         assertFalse(scratchGestureIsIdle(elapsedMillis = 80L))
         assertTrue(scratchGestureIsIdle(elapsedMillis = 120L))

@@ -1,6 +1,11 @@
 package com.choplab.sampler.audio
 
+import kotlin.math.abs
+import kotlin.math.pow
+
 const val SCRATCH_GESTURE_IDLE_TIMEOUT_MS = 120L
+private const val SCRATCH_SPEED_DEAD_ZONE = 0.08f
+private const val SCRATCH_SPEED_CURVE_POWER = 0.82f
 
 fun scratchGestureIsIdle(elapsedMillis: Long): Boolean =
     elapsedMillis.coerceAtLeast(0L) >= SCRATCH_GESTURE_IDLE_TIMEOUT_MS
@@ -19,7 +24,20 @@ fun scratchSpeedFromGesture(
     val safeElapsed = elapsedMillis.coerceAtLeast(1L)
     val pixelsPerSecond = deltaPixels * 1_000f / safeElapsed
     // Preserve the previous 60 Hz feel while removing pointer-event-rate dependence.
-    return normalizeScratchSpeed(pixelsPerSecond / (60f * sensitivityDivisor))
+    val raw = normalizeScratchSpeed(pixelsPerSecond / (60f * sensitivityDivisor))
+    val magnitude = abs(raw)
+    if (magnitude <= SCRATCH_SPEED_DEAD_ZONE) return 0f
+    val normalizedMagnitude =
+        ((magnitude - SCRATCH_SPEED_DEAD_ZONE) / (4f - SCRATCH_SPEED_DEAD_ZONE))
+            .coerceIn(0f, 1f)
+    val curvedMagnitude = normalizedMagnitude.pow(SCRATCH_SPEED_CURVE_POWER) * 4f
+    return if (raw < 0f) -curvedMagnitude else curvedMagnitude
+}
+
+fun scratchDirectionLabel(speed: Float): String = when {
+    speed > SCRATCH_SPEED_DEAD_ZONE -> "FORWARD"
+    speed < -SCRATCH_SPEED_DEAD_ZONE -> "BACK"
+    else -> "HOLD"
 }
 
 fun scratchProgress(frame: Int, startFrame: Int, endFrame: Int): Float {

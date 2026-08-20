@@ -1,9 +1,11 @@
 package com.choplab.sampler.ui
 
+import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
@@ -49,6 +51,7 @@ class GuidedWorkflowTest {
         }
 
         assertFalse(requiresNewProjectConfirmation(SamplerUiState()))
+        assertFalse(requiresNewProjectConfirmation(BuiltInDrumKits.installStarterKit(SamplerUiState())))
         assertTrue(requiresNewProjectConfirmation(SamplerUiState(currentAudio = audio)))
         assertTrue(requiresNewProjectConfirmation(SamplerUiState(pads = assignedPads)))
         assertTrue(requiresNewProjectConfirmation(SamplerUiState(activeSteps = setOf(stepKey(0, 0)))))
@@ -143,9 +146,30 @@ class GuidedWorkflowTest {
     }
 
     @Test
-    fun newProjectsStartAtCaptureAndLoadedProjectsStartAtPlay() {
-        assertEquals(WorkflowStage.CAPTURE, initialWorkflowStage(hasAudio = false))
-        assertEquals(WorkflowStage.CHOP, initialWorkflowStage(hasAudio = true))
+    fun launchStageUsesTheResolvedProductionDestination() {
+        assertEquals(
+            WorkflowStage.CAPTURE,
+            initialWorkflowStage(SamplerUiState(projectLaunchTarget = ProjectLaunchTarget.CAPTURE)),
+        )
+        assertEquals(
+            WorkflowStage.CHOP,
+            initialWorkflowStage(SamplerUiState(projectLaunchTarget = ProjectLaunchTarget.CHOP)),
+        )
+        assertEquals(
+            WorkflowStage.BEAT,
+            initialWorkflowStage(SamplerUiState(projectLaunchTarget = ProjectLaunchTarget.BEAT)),
+        )
+    }
+
+    @Test
+    fun beatDefaultsToTheChopPadSurfaceAndKeepsStepsSecondary() {
+        val defaultSurface = beatWorkspaceSurface(showFineControls = false)
+        val fineSurface = beatWorkspaceSurface(showFineControls = true)
+
+        assertTrue(defaultSurface.showPadGrid)
+        assertFalse(defaultSurface.showDetailedSequencer)
+        assertFalse(fineSurface.showPadGrid)
+        assertTrue(fineSurface.showDetailedSequencer)
     }
 
     @Test
