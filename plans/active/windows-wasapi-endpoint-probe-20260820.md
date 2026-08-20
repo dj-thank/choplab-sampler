@@ -57,7 +57,8 @@ Replace the invalid assumption that Java Sound is usable on every Windows host. 
 - [x] 2026-08-20 — Ran JNA and independent C# probes: MMDevice render/capture all-state counts are 0 and every default role is not found. PnP AudioEndpoint present count is 0.
 - [x] 2026-08-20 — Added native `診断 > Windows 音声エンドポイント` action with background execution and truthful status output.
 - [x] 2026-08-20 — Completed local Standards/Spec review and committed candidate `5c0b84d`.
-- [ ] GitHub sync and the next streaming slice remain pending; streaming requires at least one present Windows AudioEndpoint.
+- [x] 2026-08-20 — Pushed PR #34; Android/Windows/iOS checks passed twice each.
+- [ ] The next streaming slice remains externally blocked until at least one Windows AudioEndpoint becomes present.
 
 ## Discoveries
 
@@ -77,6 +78,7 @@ Replace the invalid assumption that Java Sound is usable on every Windows host. 
 - Independent in-memory C# MMDevice probe: `renderAll=0 captureAll=0`, enum/count HRESULT `S_OK`, default HRESULT `0x80070490` for both flows.
 - `:desktop:test :desktop:packageWindows :app:compileDebugKotlin`: BUILD SUCCESSFUL with task-local `ANDROID_SDK_ROOT`; public-surface scan PASS.
 - Local parent two-axis review: no hard Standards violation and no missing in-scope Spec implementation. Streaming is externally blocked by endpoint absence.
+- PR #34 head checks: Android SUCCESS ×2, Windows SUCCESS ×2, iOS SUCCESS ×2.
 
 ## Risks and rollback
 
