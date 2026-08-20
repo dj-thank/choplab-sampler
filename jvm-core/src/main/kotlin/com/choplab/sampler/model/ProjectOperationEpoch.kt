@@ -10,12 +10,15 @@ import java.util.concurrent.atomic.AtomicLong
 class ProjectOperationEpoch {
     private val currentEpoch = AtomicLong(0L)
 
+    @Synchronized
     fun begin(): Long = currentEpoch.incrementAndGet()
 
+    @Synchronized
     fun invalidate(): Long = currentEpoch.incrementAndGet()
 
     fun isCurrent(epoch: Long): Boolean = currentEpoch.get() == epoch
 
+    @Synchronized
     fun completeIfCurrent(epoch: Long, completion: () -> Unit): Boolean {
         if (!isCurrent(epoch)) return false
         completion()

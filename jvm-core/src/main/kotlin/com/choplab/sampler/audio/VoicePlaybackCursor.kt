@@ -7,7 +7,7 @@ import kotlin.math.abs
  * Host-testable playback position for one start-inclusive/end-exclusive PAD range.
  * The audio thread owns each instance; advancing it performs no allocation.
  */
-internal class VoicePlaybackCursor(
+class VoicePlaybackCursor(
     startFrame: Int,
     endFrame: Int,
     reverse: Boolean,

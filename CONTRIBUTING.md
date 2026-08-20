@@ -28,6 +28,7 @@ Git BashまたはmacOS/Linuxでは:
 ./gradlew :app:testDebugUnitTest
 ./gradlew :app:lintDebug
 ./gradlew :app:assembleDebug
+./gradlew :jvm-core:test :desktop:test :desktop:packageWindows
 ```
 
 音声コールバック内では、ブロッキング、ファイルI/O、ログループ、ヒープ確保、重いJNI処理を行わないでください。音声フレーム範囲はstart-inclusive/end-exclusiveで扱い、ステレオ化する場合はチャンネル順を明示してください。

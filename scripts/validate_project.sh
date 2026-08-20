@@ -5,7 +5,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECTED_WRAPPER_SHA="497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7"
 
 python "$ROOT/scripts/check_public_surface.py"
-"$ROOT/scripts/run_pure_logic_smoke.sh"
+if command -v kotlinc >/dev/null 2>&1; then
+  "$ROOT/scripts/run_pure_logic_smoke.sh"
+else
+  echo "INFO: standalone kotlinc unavailable; using Gradle JVM-core/Desktop tests"
+  "$ROOT/gradlew" :jvm-core:test :desktop:test --no-daemon --max-workers=1 --no-watch-fs
+fi
 
 python - "$ROOT" <<'PY'
 from pathlib import Path

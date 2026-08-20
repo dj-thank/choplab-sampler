@@ -30,17 +30,17 @@ The selected restart seam [`plans/active/restart-playback-interruption-local-202
 
 The parent PAD's context-restart audit is recorded in [`PAD_HISTORY_RESTART_EXTRACT_20260819.md`](../../../../work/PAD_HISTORY_RESTART_EXTRACT_20260819.md). It is a historical-lead/current-snapshot reconciliation and skill extraction record only; it does not change app source or promote the current `LOCAL_PASS` ceiling.
 
-## Windows Desktop implementation slice — 2026-08-19
+## Windows Desktop full rebuild candidate — 2026-08-20
 
 The isolated branch `codex/choplab-desktop-exe` is the current implementation worktree for the user-requested PC direction. It imports the tracked documentation changes and the current restart plan state from the dirty canonical checkout without resetting or cleaning that checkout.
 
 - Worktree: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-exe-20260819`.
-- Target: `:shared` Compose Multiplatform + `:desktop` Kotlin/JVM shell; Android `:app` consumes the same shared UI/model.
-- Local implementation: Android-origin shared deck with the four-step workflow, source waveform, 4×4 PAD surface, selected-PAD KEY/TONE/LEVEL editor, BANK A–D dock, production actions, and BEAT 16-step sequencer; Windows local WAV open/play/stop and shared PAD editing use the JVM adapter. The selected quality direction is exact shared UI/model parity plus context-aware stage gates.
-- Spotify prototype: Authorization Code with PKCE, loopback callback, token exchange, current-playback metadata request. Spotify audio bytes, stream ripping, recording, full-track download, and MP3 conversion are deliberately absent.
-- Local evidence (observed `2026-08-19`): `:shared:compileKotlinDesktop :shared:compileAndroidMain`, `:app:testDebugUnitTest`, `:app:compileDebugKotlin`, `:desktop:test`, and `:desktop:packageWindows` passed. The new app-image launcher is intentionally `NotSigned`; the exact packaged child process responds with title `ChopLab — おとひろい PC`. Visual capture confirms the shared deck is rendered; full visual approval remains human evidence.
-- Explicit follow-up: KEY/TONE/LEVEL currently preserve the PAD editor state and original UI vocabulary; they are not yet a completed desktop DSP implementation. Project save/open, native low-latency audio, signing/installer publication, Spotify account/device verification, and Human audio acceptance remain separate.
-- Gate ceiling: `LOCAL_PASS`. Windows device latency, Spotify account/device behavior, public distribution, code signing, and Human audio acceptance remain unverified.
+- Target: `:shared` Compose Multiplatform UI/domain + `:jvm-core` archive/autosave/export/PCM rules + `:desktop` Windows adapters. Android `:app` consumes the same shared UI/model and JVM core.
+- Candidate implementation: one Android-origin four-stage deck; separate source and polyphonic PAD voices; PAD KEY/TONE/LEVEL/REVERSE/GATE/LOOP/CHOKE rendering; 16-step BPM/Swing transport; bidirectional scratch stream; microphone and fail-closed driver-loopback recording; shared `.choplab` manual save/open and three-generation autosave; shared four-bar WAV export; bounded EditHistory; and a native Spotify metadata/control menu.
+- Spotify boundary: Authorization Code with PKCE, loopback callback, memory-only token refresh, current playback, pause and resume. Spotify audio bytes, stream ripping, recording through the provider, full-track download and MP3 conversion remain deliberately absent.
+- Current local evidence (observed `2026-08-20`): UI contract validator PASS (`9` regions, exact `4`, semantic `4`, adapted `1`); `:jvm-core:test :desktop:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` BUILD SUCCESSFUL; `:desktop:packageWindows` BUILD SUCCESSFUL; packaged PID child responds with title `ChopLab — おとひろい PC`. The same 32,451,057-byte local project used by the Android reference was opened through the packaged EXE; `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-loaded-project-20260820.png` is a complete 1106×2202 capture at 200% DPI and maps the waveform, slice markers, assigned A01/A02, selected A02, BANK/page, dock and exact copy.
+- Explicit follow-up: driver loopback availability and audio quality, microphone/transport latency, loaded CHOP same-state A/B, Spotify account/device behavior, native low-latency WASAPI, signing/installer publication and Human acceptance remain separate.
+- Gate ceiling: `LOCAL_PASS`. The adapter rejects missing loopback hardware rather than claiming success; no provider/device/public/Human promotion is made.
 
 ## Public Android / iOS preview release track — 2026-08-19
 

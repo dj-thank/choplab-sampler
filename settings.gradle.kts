@@ -18,3 +18,4 @@ rootProject.name = "ChopLab"
 include(":app")
 include(":desktop")
 include(":shared")
+include(":jvm-core")

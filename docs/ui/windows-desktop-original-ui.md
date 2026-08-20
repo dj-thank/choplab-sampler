@@ -11,7 +11,8 @@ The machine-readable contract is
 implementation source is
 `shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt`.
 
-The Windows adapter currently provides local WAV decode/playback and the shared
-sampler editing state. Recording, project archive I/O, WASAPI loopback and
-Spotify provider work are explicit adapter milestones; they must not be
-represented as completed merely because the shared button is visible.
+The Windows adapter connects local WAV decode, source/PAD playback, microphone
+and driver-exposed playback-loopback recording, transport, scratch, project
+archive/autosave, Undo/Redo, export and Spotify metadata/control. The provider
+menu is native platform chrome and does not modify the shared deck. Device and
+provider success must still be evidenced separately from a visible button.

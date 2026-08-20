@@ -22,7 +22,18 @@ $commitEpoch = [long]((& git show -s --format=%ct HEAD).Trim())
 $commitTimeUtc = [DateTimeOffset]::FromUnixTimeSeconds($commitEpoch).UtcDateTime
 
 $sdkRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { $env:ANDROID_HOME }
-if ([string]::IsNullOrWhiteSpace($sdkRoot)) { throw 'ANDROID_SDK_ROOT or ANDROID_HOME is required' }
+if ([string]::IsNullOrWhiteSpace($sdkRoot) -and (Test-Path -LiteralPath 'local.properties' -PathType Leaf)) {
+    $sdkLine = Get-Content -LiteralPath 'local.properties' -Encoding UTF8 |
+        Where-Object { $_ -like 'sdk.dir=*' } |
+        Select-Object -First 1
+    if ($sdkLine) {
+        $sdkRoot = $sdkLine.Substring(8).Replace('\:', ':').Replace('\\', '\')
+    }
+}
+if ([string]::IsNullOrWhiteSpace($sdkRoot) -or -not (Test-Path -LiteralPath $sdkRoot -PathType Container)) {
+    throw 'Android SDK is not available through ANDROID_SDK_ROOT, ANDROID_HOME, or local.properties'
+}
+$sdkRoot = (Resolve-Path -LiteralPath $sdkRoot).Path
 $buildTools = Get-ChildItem -LiteralPath (Join-Path $sdkRoot 'build-tools') -Directory |
     Sort-Object Name -Descending |
     Select-Object -First 1

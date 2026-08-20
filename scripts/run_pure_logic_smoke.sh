@@ -7,15 +7,15 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 kotlinc \
-  "$ROOT/app/src/main/java/com/choplab/sampler/model/RecordingSession.kt" \
-  "$ROOT/app/src/main/java/com/choplab/sampler/model/SamplerModels.kt" \
-  "$ROOT/app/src/main/java/com/choplab/sampler/model/ProjectModels.kt" \
-  "$ROOT/app/src/main/java/com/choplab/sampler/model/SamplerCommands.kt" \
+  "$ROOT/shared/src/commonMain/kotlin/com/choplab/sampler/model/RecordingSession.kt" \
+  "$ROOT/shared/src/commonMain/kotlin/com/choplab/sampler/model/SamplerModels.kt" \
+  "$ROOT/shared/src/commonMain/kotlin/com/choplab/sampler/model/ProjectModels.kt" \
+  "$ROOT/shared/src/commonMain/kotlin/com/choplab/sampler/model/SamplerCommands.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/SamplerPlaybackEngine.kt" \
-  "$ROOT/app/src/main/java/com/choplab/sampler/audio/VoicePlaybackCursor.kt" \
+  "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/VoicePlaybackCursor.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/TransientDetector.kt" \
-  "$ROOT/app/src/main/java/com/choplab/sampler/audio/WavFileWriter.kt" \
-  "$ROOT/app/src/main/java/com/choplab/sampler/audio/PatternRenderer.kt" \
+  "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/WavFileWriter.kt" \
+  "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/PatternRenderer.kt" \
   "$ROOT/scripts/SmokeMain.kt" \
   -include-runtime \
   -d "$OUT/choplab-smoke.jar"

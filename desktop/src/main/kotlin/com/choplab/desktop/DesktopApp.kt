@@ -3,48 +3,80 @@ package com.choplab.desktop
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
-import androidx.compose.ui.unit.dp
 import com.choplab.desktop.audio.JavaSoundWavPlayer
+import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.sampler.ui.OtohiroiDeck
+import com.choplab.sampler.ui.theme.ChopLabTheme
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 
-fun main() = application {
+fun main(args: Array<String>) = application {
+    val startupFile = remember {
+        args.asSequence()
+            .map(::File)
+            .firstOrNull { file -> file.isFile && file.extension.lowercase() in setOf("wav", "choplab") }
+    }
     val player = remember { JavaSoundWavPlayer() }
-    val controller = remember { DesktopSamplerController(player) }
+    val controller = remember {
+        DesktopSamplerController(
+            player,
+            autosaveStore = if (startupFile == null) DesktopSamplerController.defaultAutosaveStore() else null,
+        )
+    }
+    val spotify = remember { SpotifyDesktopSession(controller::setStatus) }
     val state by controller.state.collectAsState()
+
+    LaunchedEffect(startupFile?.absolutePath) {
+        startupFile?.let { file ->
+            if (file.extension.equals("wav", ignoreCase = true)) controller.loadWav(file) else controller.openProject(file)
+        }
+    }
 
     Window(
         state = remember {
             WindowState(
-                width = 740.dp,
-                height = 520.dp,
-                position = WindowPosition.Aligned(androidx.compose.ui.Alignment.Center),
+                placement = WindowPlacement.Maximized,
             )
         },
         onCloseRequest = {
+            spotify.close()
             controller.close()
             exitApplication()
         },
         title = "ChopLab — おとひろい PC",
+        icon = DesktopWindowIcon,
         resizable = true,
     ) {
-        OtohiroiDeck(
-            state = state,
-            onImportAudio = { chooseWav(controller) },
-            onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
-            onToggleVocalRecording = controller::toggleVocalRecording,
-            onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
-            onExportBeat = { chooseExportWav(controller) },
-            onOpenProject = controller::openProject,
-            onSaveProject = controller::saveProject,
-            viewModel = controller,
-        )
+        MenuBar {
+            Menu("連携") {
+                Item("Spotify ログイン", onClick = spotify::login)
+                Item("Spotify 現在再生を表示", onClick = spotify::showCurrentPlayback)
+                Item("Spotify 一時停止", onClick = spotify::pause)
+                Item("Spotify 再開", onClick = spotify::resume)
+                Separator()
+                Item("Spotify 連携解除", onClick = spotify::disconnect)
+            }
+        }
+        ChopLabTheme {
+            OtohiroiDeck(
+                state = state,
+                onImportAudio = { chooseWav(controller) },
+                onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
+                onToggleVocalRecording = controller::toggleVocalRecording,
+                onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
+                onExportBeat = { chooseExportWav(controller) },
+                onOpenProject = { chooseProject(controller, FileDialog.LOAD) },
+                onSaveProject = { chooseProject(controller, FileDialog.SAVE) },
+                viewModel = controller,
+            )
+        }
     }
 }
 
@@ -69,4 +101,20 @@ private fun chooseExportWav(controller: DesktopSamplerController) {
         if (file.extension.equals("wav", ignoreCase = true)) file else File(file.parentFile, "${file.nameWithoutExtension}.wav")
     }
     controller.exportBeat(output)
+}
+
+private fun chooseProject(controller: DesktopSamplerController, mode: Int) {
+    val saving = mode == FileDialog.SAVE
+    val dialog = FileDialog(
+        null as Frame?,
+        if (saving) "ChopLab制作を保存" else "ChopLab制作を開く",
+        mode,
+    ).apply {
+        if (saving) file = "choplab-project.choplab"
+        filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".choplab", ignoreCase = true) }
+        isVisible = true
+    }
+    val selected = dialog.file ?: return
+    val file = File(dialog.directory, selected)
+    if (saving) controller.saveProject(file) else controller.openProject(file)
 }

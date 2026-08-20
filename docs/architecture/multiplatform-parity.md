@@ -19,11 +19,16 @@ source of truth.
   and landscape/portrait layout rules.
 - `SamplerDeckController`: the narrow UI interface. It exposes sampler commands,
   not platform APIs, so the UI cannot accidentally acquire Android or JVM code.
+- `jvm-core`: one Android/Windows implementation of the bounded `.choplab`
+  archive, three-generation autosave, PCM-16 WAV writer, four-bar renderer,
+  PAD voice rendering, and playback cursor rules. Platform shells do not fork
+  these formats or offline DSP rules.
 - Android `SamplerViewModel`: existing Android audio/recording/persistence
   adapter implementing the shared controller.
-- Windows `DesktopSamplerController`: JVM audio/file adapter implementing the
-  same controller. It is the migration seam for full Java Sound/WASAPI,
-  persistence and recording parity.
+- Windows `DesktopSamplerController`: the lifecycle integrator for Java Sound
+  source/PAD voices, 16-step transport, scratch stream, microphone/driver
+  loopback capture, shared persistence, edit history, autosave, export, and the
+  provider menu.
 - iOS: `ChopLabShared` framework target is reserved for the same shared deck and
   controller seam; AVAudioSession remains a platform adapter.
 
@@ -39,7 +44,10 @@ source of truth.
 
 ## Verification boundary
 
-The current migration has `LOCAL_PASS` for shared JVM and Android compilation,
-desktop unit tests, and Windows app-image packaging. Physical iPhone/device,
-WASAPI loopback, signed iOS framework, public release and human visual approval
-remain separate gates.
+The current migration has `LOCAL_PASS` for the UI contract, shared JVM tests,
+desktop tests, Android regression tests/Lint/APK, Windows app-image packaging,
+and a responding packaged process. A complete 200% DPI empty-state capture
+shows all four stages and all three capture choices. Actual driver loopback,
+microphone quality/latency, Spotify account authorization, physical iPhone,
+signed installers, public release, loaded-state visual comparison and Human
+audio/visual approval remain separate gates.
