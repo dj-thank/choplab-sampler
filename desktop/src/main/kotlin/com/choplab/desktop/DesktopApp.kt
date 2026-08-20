@@ -11,6 +11,7 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.provider.SpotifyDesktopSession
+import com.choplab.desktop.provider.WindowsAudioDiagnostics
 import com.choplab.sampler.ui.OtohiroiDeck
 import com.choplab.sampler.ui.theme.ChopLabTheme
 import java.awt.FileDialog
@@ -31,6 +32,7 @@ fun main(args: Array<String>) = application {
         )
     }
     val spotify = remember { SpotifyDesktopSession(controller::setStatus) }
+    val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
 
     LaunchedEffect(startupFile?.absolutePath) {
@@ -47,6 +49,7 @@ fun main(args: Array<String>) = application {
         },
         onCloseRequest = {
             spotify.close()
+            audioDiagnostics.close()
             controller.close()
             exitApplication()
         },
@@ -62,6 +65,9 @@ fun main(args: Array<String>) = application {
                 Item("Spotify 再開", onClick = spotify::resume)
                 Separator()
                 Item("Spotify 連携解除", onClick = spotify::disconnect)
+            }
+            Menu("診断") {
+                Item("Windows 音声エンドポイント", onClick = audioDiagnostics::run)
             }
         }
         ChopLabTheme {
