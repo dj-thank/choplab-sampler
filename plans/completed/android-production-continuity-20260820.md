@@ -65,7 +65,7 @@ ChopLabを「画面ごとの機能集」ではなく、一つの制作機とし�
 - [x] 2026-08-20 — Milestone 1: added red→green launch, starter, scratch-return, dead-zone, UI-surface, and archive runtime-field tests.
 - [x] 2026-08-20 — Milestone 2: wired CAPTURE project OPEN, content-derived launch routing, and new-production-only DUSTY JAZZ bootstrap on Android and shared Windows UI.
 - [x] 2026-08-20 — Milestone 3: made default BEAT a waveform/BANK/page/4×4 PAD Chop surface; retained responsive detailed sequencing; added pointer-down scratch, live direction/speed/playhead, idle silence, and valid loop/transport return.
-- [ ] Milestone 4 validation and GitHub delivery.
+- [x] 2026-08-20 — Milestone 4: local/source-bound validation, API 36 interaction evidence, two-axis review, PR #35, all PR and merged-main checks, annotated tag, Release workflow, asset/digest/anonymous HTTP read-back, and local public EXE launch completed.
 
 ## Discoveries
 
@@ -93,6 +93,9 @@ ChopLabを「画面ごとの機能集」ではなく、一つの制作機とし�
 - Explicit Git Bash `scripts/validate_project.sh`: PASS. API 36 `connectedDebugAndroidTest`: 4/4 PASS.
 - Local parent two-axis review: Standards unresolved 0; Spec unresolved 0. Review found and fixed the Windows replacement-confirmation regression in `1e15fe3`.
 - GitHub first Android attempt: deterministic RED at standalone `kotlinc` (`ProjectLaunchTarget` unresolved). Fast static repro failed with both required files absent from the smoke list, then passed after replacing the brittle list with the complete nine-file model glob; `:shared:compileKotlinDesktop` PASS.
+- PR #35 final head `8d1f79c`: Android 2/2, Windows 2/2, iOS 2/2 PASS. Squash merge `64e84b82888598bf7282a92fd277b54c027c1979`; merged-main runs `32374131628`, `32374131637`, `32374131624` all PASS.
+- Annotated tag object `4d881d5998381682e3739f8f0e0343d77d114f77` peels to merged commit `64e84b8`. Release workflow `32374833191` and all four jobs PASS; public prerelease `v0.16.0-preview.1` is non-draft.
+- Public read-back: Android APK SHA-256 `2F04339524022F25B4D1ABB513152195C331A3C955168C4E84140D523F01E437`; Windows ZIP `60C78C1D23BB2FE959C325C3AD42995EFF2758D242ED21E90602E92CA145C27A`; Windows EXE `A69373FE39324619903D7B575509AF976CF8ED8D2A5C6921C2E18F3B40F790CF`; iOS Simulator ZIP `B704C1861477F7D5C2CD6297CAFAA5C95984B67778ED63FF4B7A8697A5008267`. GitHub digests, sidecars, authenticated download, and anonymous HTTP 200 agree.
 
 ## Risks and rollback
 

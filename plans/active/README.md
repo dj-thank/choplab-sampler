@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**進行中:** `android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを一つの制作フローとして接続する。target gateは`LOCAL_PASS`とGitHub CIで、Pixel実機は別lease・別task。
+**現在の実装選択:** なし。Android production continuityは完了し、次の実装sliceは未選択。物理端末の音質／touch／TalkBackは別lease・別taskとしてのみ選択する。
+
+**完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 
 **診断完了・streaming待ち:** `windows-wasapi-endpoint-probe-20260820.md`。JNA/MMDevice診断とGitHub PR #34は完了。現hostにpresent AudioEndpointがないため、render/loopback streamingは外部状態が変わるまで開始しない。
 
@@ -38,7 +40,7 @@
 - `windows-desktop-mvp-20260819.md`（初期プロトタイプの本文を保全）
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
-- `android-production-continuity-20260820.md`（現在の選択）
+- `../completed/android-production-continuity-20260820.md`（完了済み）
 
 ## Selection protocol
 

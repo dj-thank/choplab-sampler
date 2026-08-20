@@ -2,7 +2,7 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## v0.16.0 production continuity candidate — 2026-08-20
+## v0.16.0 production continuity and public preview — 2026-08-20
 
 - Source: isolated branch commits `1813385` + review fix `1e15fe3`, tree `bce75c1ecb4f30e193e12da38339c50c0cbc078c`; dirty canonical checkout untouched.
 - TDD/policy: launch destination, starter installation/preservation, scratch return validity, gesture dead zone/curve, default Beat Chop surface, project runtime-field omission, and Windows replacement confirmation all PASS.
@@ -14,6 +14,10 @@
 - Final local Windows ZIP: 88,640,599 bytes; SHA-256 `4D740801C091B165716ECAB921045750FD4F352B07FAE57823E1146721DFDD32`; contained EXE SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A`.
 - Review: local parent two-pass Standards and Spec review after fixed point `8c12f71`; Windows `replaceExisting` regression found and fixed in `1e15fe3`; final unresolved findings 0/0. Luna runtime was not verified, so no child-model claim.
 - Gate: `LOCAL_PASS` + scoped emulator UI/instrumentation only. No physical-device, subjective audio, provider, public Release, signed iOS device, or Human promotion.
+- GitHub final: PR #35 head `8d1f79c` passed Android/Windows/iOS twice each; squash merge `64e84b8`; merged-main runs Android `32374131628`, Windows `32374131637`, iOS `32374131624` all success.
+- Release final: annotated tag object `4d881d5998381682e3739f8f0e0343d77d114f77` peels to `64e84b8`; Release run `32374833191` passed all four jobs; public prerelease is non-draft.
+- Public hashes: APK `2F04339524022F25B4D1ABB513152195C331A3C955168C4E84140D523F01E437`; Windows ZIP `60C78C1D23BB2FE959C325C3AD42995EFF2758D242ED21E90602E92CA145C27A`; contained EXE `A69373FE39324619903D7B575509AF976CF8ED8D2A5C6921C2E18F3B40F790CF`; iOS Simulator ZIP `B704C1861477F7D5C2CD6297CAFAA5C95984B67778ED63FF4B7A8697A5008267`. GitHub asset digests, sidecars, reverse downloads, and anonymous HTTP 200 agree.
+- Public gate is scoped to artifact distribution and integrity. Physical device, signed iOS IPA, audio/touch quality, TalkBack/VoiceOver speech, and Human acceptance are not claimed.
 
 ## 専用 API 36 review AVD — 2026-08-17
 

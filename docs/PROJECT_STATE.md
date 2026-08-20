@@ -47,7 +47,7 @@ The user-requested PC rebuild was implemented in the isolated branch `codex/chop
 
 The follow-up branch `codex/choplab-wasapi` adds JNA 5.19.1 MMDevice/IAudioClient endpoint probing and a native `診断` menu without replacing the existing engine. WaveFormat parsing and platform/error behavior are host-tested. On the current Windows session, JNA and an independent in-memory C# COM probe agree: render/capture all-state collection counts are zero and every default role returns `0x80070490`; PnP lists ten historical AudioEndpoint records but none are present. This is a current-device unavailable receipt, not audible render/capture evidence. No audio was recorded and no default device setting was changed.
 
-## Android production continuity candidate — 2026-08-20
+## Android production continuity / v0.16.0 — 2026-08-20
 
 The isolated branch `codex/choplab-app-product-intent` reconnects launch recovery, CAPTURE project opening, CHOP/BEAT material continuity, starter drums, and scratch performance without changing archive schema or the dirty canonical checkout.
 
@@ -60,6 +60,17 @@ The isolated branch `codex/choplab-app-product-intent` reconnects launch recover
 - API 36 emulator `emulator-5580`: instrumentation 4/4 PASS; CAPTURE OPEN invoked DocumentsUI; normal BEAT showed 16 PADs; live scratch showed `FORWARD ×0.58 / 080%`; release resumed B-01 loop; edited autosave relaunched directly to BEAT. Evidence locator: parent PAD `work/CHOPLAB_APP_CONTINUITY_EVIDENCE_20260820/`.
 - Local artifacts: parent PAD `outputs/ChopLab-v0.16.0-preview.1-debug.apk`, 30,872,085 bytes, SHA-256 `D12F572C70525E4218E03D1326771F688430528AA8221523C6B0FB33A06125F6`; `outputs/ChopLab-v0.16.0-preview.1-windows-app-image.zip`, 88,640,599 bytes, SHA-256 `4D740801C091B165716ECAB921045750FD4F352B07FAE57823E1146721DFDD32`.
 - Gate ceiling before GitHub: `LOCAL_PASS` plus scoped emulator UI/instrumentation evidence. Physical Android/iPhone behavior, audible scratch/drum quality, Bluetooth/route loss, TalkBack/VoiceOver speech, signed iOS IPA, provider/public Release, and `HUMAN_GO` are not promoted here.
+
+### GitHub merge and public preview closeout
+
+- PR [#35](https://github.com/dj-thank/choplab-sampler/pull/35) final head `8d1f79cbb709b50fa670d78d3fad22e7aea67cdc`: Android 2/2, Windows 2/2, iOS 2/2 checks PASS. The initial Android smoke-list omission was fixed before merge by compiling all shared model sources.
+- Squash-merged main: `64e84b82888598bf7282a92fd277b54c027c1979`, tree `6819b4237522991eb15eda060cc785fa2e071e6b`. Merged-main Android run `32374131628`, Windows `32374131637`, and iOS `32374131624` all PASS.
+- Annotated tag `v0.16.0-preview.1`: object `4d881d5998381682e3739f8f0e0343d77d114f77`, peeled commit `64e84b8`. Release workflow `32374833191` passed Android, Windows, iOS, and publish jobs.
+- Public non-draft prerelease: [ChopLab v0.16.0-preview.1](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.16.0-preview.1). Anonymous HEAD read-back returned HTTP 200 for the Release page and all three primary downloads.
+- Public Android APK: 30,872,085 bytes, SHA-256 `2F04339524022F25B4D1ABB513152195C331A3C955168C4E84140D523F01E437`, package `com.choplab.sampler`, version `0.16.0 (24)`, minSdk 29 / targetSdk 36, CI debug signer SHA-256 `F4DC354152DDE84D39E60D0FF810D5108D659D697FACE2E86E9A6A369379FC5C`.
+- Public Windows app-image ZIP: 88,640,593 bytes, SHA-256 `60C78C1D23BB2FE959C325C3AD42995EFF2758D242ED21E90602E92CA145C27A`; contained EXE SHA-256 `A69373FE39324619903D7B575509AF976CF8ED8D2A5C6921C2E18F3B40F790CF` matches the public JSON.
+- Public iOS Simulator ZIP: 241,058 bytes, SHA-256 `B704C1861477F7D5C2CD6297CAFAA5C95984B67778ED63FF4B7A8697A5008267`; it contains `ChopLab.app` and is not a signed device IPA.
+- Public evidence gate: `PUBLIC_PASS` only for tag-bound artifact availability, digest/sidecar integrity, package metadata, and anonymous download. Physical touch/audio quality, full Android/iOS parity, signed iPhone distribution, accessibility speech, and `HUMAN_GO` remain separate.
 
 ## Public Android / iOS preview release track — 2026-08-19
 
