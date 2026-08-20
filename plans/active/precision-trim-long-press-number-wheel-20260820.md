@@ -80,6 +80,7 @@
 - 2026-08-20 — Focused Android unit、Android compile/assemble、desktop test PASS。最新APKをAPI 36 `medium_phone(AVD) - 16`へdata-preserving installし、PAD長押し→TRIM、波形長押し→3:38.374–3:39.374の1秒窓、ZOOM+→同位置3:38.624–3:39.124の0.5秒窓、10 ms wheel→END +10 ms、Revert→元境界＋1.0xを画面で確認。
 - 2026-08-20 — `:app:connectedDebugAndroidTest` 6/6 PASS。long pressが通常tapを発火しないこと、100-frame focus、数値wheel swipeをinstrumentationで確認。
 - 2026-08-21 — Local parent Standards/Spec二軸review。Standardsでabsolute frame差分のoverflow余地と38 dp precision targetを検出し、shared setter＋extreme regression、48 dp化で解消。frame modeは6桁sub-ms表示へ改善。focused post-review build/testとAPI 36 visual recheck PASS。最終未解決はStandards 0 / Spec 0。
+- 2026-08-21 — Reviewed commit `f89877c` / tree `2122bb18`でsource-bound full gateを再実行。Android unit 225、JVM-core 44、desktop 35、API 36 instrumentation 6、failure/error/skip 0、Lint error 0。最終APK/Windows ZIPをparent PAD `outputs/`へ配置し、最新app-imageをこの端末で起動。
 
 ## Risks and rollback
 
