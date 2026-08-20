@@ -9,7 +9,7 @@
 | Spotify OAuth / 現在再生情報 | 🧪 local | Native `連携` menuからAuthorization Code with PKCE、`127.0.0.1` callback、memory-only token、現在再生表示、一時停止/再開を接続。実アカウント/provider検証は未実施 |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
-| Windows / Android / iOS 公開preview | 🧪 CI / Release | `v*`タグでAndroid debug APK、iOS Simulator app zip、Windows app-image zipを同一Releaseへ添付し、各SHA-256を生成。署名済みiOS実機IPAは未提供。 |
+| Windows / Android / iOS 公開preview | ✅ CI / Release | `v0.16.0-preview.1`でAndroid debug APK、iOS Simulator app zip、Windows app-image zipと各SHA-256を同一Releaseへ公開し、tag-bound build・GitHub digest・sidecar・匿名HTTP 200をread-back。署名済みiOS実機IPAは未提供。 |
 | 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |
