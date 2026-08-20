@@ -94,6 +94,7 @@ Shared model/UI files are single-writer truth. Platform capabilities report unav
 
 - The prior visual migration succeeded because Windows now renders the same Compose source, but several controller commands still only update status text. UI source equality alone is not backend parity.
 - Windows `jpackage` app-image replacement fails while the exact prior launcher/child process holds the destination; process ownership must be resolved by executable path and PID before repackaging.
+- GitHub Android run `32342306585` never reached instrumentation: the API 36 emulator booted with `-accel off` and timed out after 600 seconds because KVM permissions were not enabled. The workflow now applies the official `reactivecircus/android-emulator-runner` KVM group-permission preflight in Android and release jobs.
 
 ## Decision log
 
@@ -110,6 +111,7 @@ Shared model/UI files are single-writer truth. Platform capabilities report unav
 - Packaged empty-state capture: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-maximized-20260820.png`, 1106×2202 at 200% DPI.
 - Packaged loaded-state capture: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-loaded-project-20260820.png`, 1106×2202 at 200% DPI.
 - `scripts/validate_project.sh`: PASS after adding a Gradle JVM-core/Desktop fallback for Windows hosts without standalone `kotlinc`; XML and wrapper digest checks PASS.
+- `scripts/verify.ps1`: PASS at revision `6f8044b`; 116 clean-build tasks, Android app/test APK signer match, and revision-bound provenance receipt PASS. A later CI-only KVM commit requires its own final read-back before closure.
 
 ## Risks and rollback
 
