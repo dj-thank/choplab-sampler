@@ -16,6 +16,7 @@ import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.EditHistory
+import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
@@ -37,6 +38,7 @@ import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.observeRecordingSession
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
+import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
@@ -622,11 +624,41 @@ class DesktopSamplerController(
         scheduleAutosave()
     }
 
-    override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) = commitEdit { state ->
-        val kitPads = BuiltInDrumKits.createBankPads(kitId, 1)
-        val pads = state.pads.toMutableList()
-        kitPads.forEach { pad -> pads[pad.globalIndex] = pad }
-        state.copy(pads = pads, statusMessage = "${kitId}をBANK Bへセットしました")
+    override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
+        val bankIndex = SamplerConfig.DRUM_BANK_INDEX
+        if (
+            drumKitApplyDecision(mutableState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&
+            !replaceExisting
+        ) {
+            setStatus("BANK B ドラムには音があります。確認操作なしでは上書きしません")
+            return
+        }
+        val replacement = runCatching { BuiltInDrumKits.createBankPads(kitId, bankIndex) }
+            .getOrElse {
+                setStatus("ドラムキットを読み込めませんでした")
+                return
+            }
+        val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
+        val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
+        mutableState.value.loopingPadIndex
+            ?.takeIf { it in bankStart until bankEnd }
+            ?.let(player::stopPad)
+        commitEdit { state ->
+            val pads = state.pads.toMutableList()
+            replacement.forEach { pads[it.globalIndex] = it }
+            state.copy(
+                pads = pads,
+                selectedBank = bankIndex,
+                selectedPad = bankStart,
+                selectedDrumKitId = kitId,
+                activeSteps = state.activeSteps
+                    .filterNotTo(linkedSetOf()) { key -> key / SamplerConfig.STEP_COUNT in bankStart until bankEnd } +
+                    BuiltInDrumKits.starterPattern(kitId, bankIndex),
+                loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
+                loopPlayheadFrame = if (state.loopingPadIndex in bankStart until bankEnd) -1 else state.loopPlayheadFrame,
+                statusMessage = "${BuiltInDrumKits.catalog.first { it.id == kitId }.name} を BANK B ドラムにセット",
+            )
+        }
     }
 
     override fun setBpm(value: Float) {
