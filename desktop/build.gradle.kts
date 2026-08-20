@@ -2,6 +2,8 @@ import org.gradle.api.tasks.Exec
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
     application
 }
 
@@ -13,9 +15,12 @@ application {
     mainClass.set("com.choplab.desktop.DesktopAppKt")
 }
 
-val desktopVersion = providers.gradleProperty("desktopVersion").orElse("0.2.0")
+val desktopVersion = providers.gradleProperty("desktopVersion").orElse("0.3.0")
 
 dependencies {
+    implementation(project(":shared"))
+    implementation(project(":jvm-core"))
+    implementation(compose.desktop.currentOs)
     testImplementation(kotlin("test"))
 }
 

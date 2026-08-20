@@ -2,15 +2,16 @@
 
 ## Mission
 
-Build a reliable Android 10+ mobile sampler and an iOS 16+ preview companion. Keep the Android AudioTrack-based MVP as the current product baseline while the iOS target provides the same core capture/import, chop-range, PAD playback, recording, and stop workflow without claiming feature parity that has not been implemented.
+Build a reliable Android 10+ mobile sampler, a Windows desktop sampler, and an iOS 16+ preview companion. Keep the Android AudioTrack-based MVP as the behavioral baseline, share presentation/domain/JVM-safe production rules where possible, and never infer physical-device or provider parity from source-level reuse.
 
 ## Repository truth
 
 - `app/` remains the Android build target and AudioTrack-based MVP baseline.
-- `desktop/` is a bounded Windows/JVM prototype target; it is not Android feature parity and does not change the production-feature boundary below.
+- `desktop/` is the Windows/JVM app-image target. It consumes the Android-origin shared deck/domain and JVM core, while Java Sound devices, filesystem dialogs and OAuth remain platform adapters. Source-level feature wiring is not physical audio/device parity.
+- `shared/` owns cross-platform presentation/domain rules; `jvm-core/` owns Android/Windows archive, autosave, WAV/export and host-safe PCM rules.
 - `reference/pro-v0.2/` contains incomplete design artifacts and partial source. It is not a verified or buildable implementation.
 - Never claim a Pro feature exists merely because it appears in a reference README or partial source file.
-- Preserve `reference/pro-v0.2/` as historical input. Implement production code under `app/`.
+- Preserve `reference/pro-v0.2/` as historical input. Implement production code under the owning `app/`, `desktop/`, `shared/`, or `jvm-core/` module.
 
 ## Public release boundary
 
@@ -49,6 +50,7 @@ The Android test layers, exact device commands, and evidence boundaries are docu
 ./gradlew :app:testDebugUnitTest
 ./gradlew :app:lintDebug
 ./gradlew :app:assembleDebug
+./gradlew :jvm-core:test :desktop:test :desktop:packageWindows
 ```
 
 When the NDK path is introduced, also build all configured ABIs and run native host tests where practical. Never report success without command output or equivalent evidence.

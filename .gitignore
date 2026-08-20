@@ -11,6 +11,8 @@
 __pycache__/
 app/build/
 desktop/build/
+shared/build/
+jvm-core/build/
 
 # Native and IDE output
 /.kotlin/

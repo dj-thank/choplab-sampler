@@ -1,138 +1,120 @@
 package com.choplab.desktop
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.MenuBar
+import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.application
 import com.choplab.desktop.audio.JavaSoundWavPlayer
-import com.choplab.desktop.spotify.JdkSpotifyTokenClient
-import com.choplab.desktop.spotify.SpotifyApi
-import com.choplab.desktop.spotify.SpotifyLoopbackCallbackServer
-import com.choplab.desktop.spotify.SpotifyTokens
-import com.choplab.desktop.spotify.newSpotifyAuthorizationAttempt
-import com.choplab.desktop.ui.DesktopDeckPanel
-import java.awt.Desktop
-import java.awt.Dimension
-import java.awt.GraphicsEnvironment
-import javax.swing.JFileChooser
-import javax.swing.JFrame
-import javax.swing.SwingUtilities
-import javax.swing.filechooser.FileNameExtensionFilter
+import com.choplab.desktop.provider.SpotifyDesktopSession
+import com.choplab.sampler.ui.OtohiroiDeck
+import com.choplab.sampler.ui.theme.ChopLabTheme
+import java.awt.FileDialog
+import java.awt.Frame
+import java.io.File
 
-fun main() {
-    SwingUtilities.invokeLater { DesktopApp().show() }
+fun main(args: Array<String>) = application {
+    val startupFile = remember {
+        args.asSequence()
+            .map(::File)
+            .firstOrNull { file -> file.isFile && file.extension.lowercase() in setOf("wav", "choplab") }
+    }
+    val player = remember { JavaSoundWavPlayer() }
+    val controller = remember {
+        DesktopSamplerController(
+            player,
+            autosaveStore = if (startupFile == null) DesktopSamplerController.defaultAutosaveStore() else null,
+        )
+    }
+    val spotify = remember { SpotifyDesktopSession(controller::setStatus) }
+    val state by controller.state.collectAsState()
+
+    LaunchedEffect(startupFile?.absolutePath) {
+        startupFile?.let { file ->
+            if (file.extension.equals("wav", ignoreCase = true)) controller.loadWav(file) else controller.openProject(file)
+        }
+    }
+
+    Window(
+        state = remember {
+            WindowState(
+                placement = WindowPlacement.Maximized,
+            )
+        },
+        onCloseRequest = {
+            spotify.close()
+            controller.close()
+            exitApplication()
+        },
+        title = "ChopLab — おとひろい PC",
+        icon = DesktopWindowIcon,
+        resizable = true,
+    ) {
+        MenuBar {
+            Menu("連携") {
+                Item("Spotify ログイン", onClick = spotify::login)
+                Item("Spotify 現在再生を表示", onClick = spotify::showCurrentPlayback)
+                Item("Spotify 一時停止", onClick = spotify::pause)
+                Item("Spotify 再開", onClick = spotify::resume)
+                Separator()
+                Item("Spotify 連携解除", onClick = spotify::disconnect)
+            }
+        }
+        ChopLabTheme {
+            OtohiroiDeck(
+                state = state,
+                onImportAudio = { chooseWav(controller) },
+                onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
+                onToggleVocalRecording = controller::toggleVocalRecording,
+                onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
+                onExportBeat = { chooseExportWav(controller) },
+                onOpenProject = { chooseProject(controller, FileDialog.LOAD) },
+                onSaveProject = { chooseProject(controller, FileDialog.SAVE) },
+                viewModel = controller,
+            )
+        }
+    }
 }
 
-private class DesktopApp {
-    private val frame = JFrame("ChopLab — おとひろい PC")
-    private val player = JavaSoundWavPlayer()
-    private val spotifyApi = SpotifyApi()
-    private val tokenClient = JdkSpotifyTokenClient()
-    private var spotifyTokens: SpotifyTokens? = null
-    private lateinit var deck: DesktopDeckPanel
-
-    fun show() {
-        deck = DesktopDeckPanel(
-            player = player,
-            onLoadWav = ::chooseWav,
-            onSpotifyLogin = ::loginToSpotify,
-            onSpotifyCurrent = ::readCurrentSpotifyPlayback,
-        )
-        frame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
-        val scale = GraphicsEnvironment
-            .getLocalGraphicsEnvironment()
-            .defaultScreenDevice
-            .defaultConfiguration
-            .defaultTransform
-            .scaleX
-            .coerceAtLeast(1.0)
-        frame.minimumSize = Dimension((1180 / scale).toInt(), (820 / scale).toInt())
-        frame.contentPane = deck
-        frame.addWindowListener(object : java.awt.event.WindowAdapter() {
-            override fun windowClosed(event: java.awt.event.WindowEvent?) {
-                deck.close()
-                player.close()
-            }
-        })
-        frame.size = Dimension((1440 / scale).toInt(), (1180 / scale).toInt())
-        frame.setLocationRelativeTo(null)
-        frame.isVisible = true
+private fun chooseWav(controller: DesktopSamplerController) {
+    val dialog = FileDialog(null as Frame?, "ChopLabで開くWAV", FileDialog.LOAD).apply {
+        filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
+        isVisible = true
     }
+    val file = dialog.file ?: return
+    runCatching { controller.loadWav(File(dialog.directory, file)) }
+        .onFailure { controller.setStatus("WAV読込失敗: ${it.message ?: it.javaClass.simpleName}") }
+}
 
-    private fun chooseWav() {
-        val chooser = JFileChooser().apply {
-            dialogTitle = "ChopLabで開くWAV"
-            fileFilter = FileNameExtensionFilter("WAV audio (*.wav)", "wav")
-        }
-        if (chooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
-            deck.loadLocalWav(chooser.selectedFile)
-        }
+private fun chooseExportWav(controller: DesktopSamplerController) {
+    val dialog = FileDialog(null as Frame?, "書き出すWAVの保存先", FileDialog.SAVE).apply {
+        file = "choplab-export-4-bars.wav"
+        filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
+        isVisible = true
     }
-
-    private fun loginToSpotify() {
-        val clientId = System.getenv("CHOPLAB_SPOTIFY_CLIENT_ID")
-        if (clientId.isNullOrBlank()) {
-            deck.showExternalStatus("Spotify接続失敗: CHOPLAB_SPOTIFY_CLIENT_ID が未設定です")
-            return
-        }
-
-        Thread {
-            var callback: SpotifyLoopbackCallbackServer? = null
-            try {
-                callback = SpotifyLoopbackCallbackServer()
-                val attempt = newSpotifyAuthorizationAttempt(
-                    clientId = clientId,
-                    redirectUri = callback.redirectUri,
-                    scopes = listOf(
-                        "user-read-currently-playing",
-                        "user-read-playback-state",
-                        "playlist-read-private",
-                        "user-modify-playback-state",
-                    ),
-                )
-                check(Desktop.isDesktopSupported()) { "この環境では既定ブラウザを開けません" }
-                Desktop.getDesktop().browse(attempt.request.toUri())
-                val result = callback.await(attempt.state)
-                spotifyTokens = tokenClient.exchangeCode(
-                    clientId = clientId,
-                    code = result.code,
-                    redirectUri = callback.redirectUri,
-                    verifier = attempt.verifier,
-                )
-                SwingUtilities.invokeLater {
-                    deck.showExternalStatus("Spotify CONNECTED — tokenはこのセッションのメモリ内だけで保持")
-                }
-            } catch (error: Throwable) {
-                SwingUtilities.invokeLater {
-                    deck.showExternalStatus("Spotify接続失敗: ${error.message ?: error.javaClass.simpleName}")
-                }
-            } finally {
-                callback?.close()
-            }
-        }.apply {
-            name = "choplab-spotify-oauth"
-            isDaemon = true
-            start()
-        }
+    val selected = dialog.file ?: return
+    val output = File(dialog.directory, selected).let { file ->
+        if (file.extension.equals("wav", ignoreCase = true)) file else File(file.parentFile, "${file.nameWithoutExtension}.wav")
     }
+    controller.exportBeat(output)
+}
 
-    private fun readCurrentSpotifyPlayback() {
-        val tokens = spotifyTokens
-        if (tokens == null) {
-            deck.showExternalStatus("先に SPOTIFY LOGIN を実行してください")
-            return
-        }
-        Thread {
-            try {
-                val response = spotifyApi.currentPlayback(tokens.accessToken)
-                SwingUtilities.invokeLater {
-                    deck.showExternalStatus("Spotify CURRENT — HTTP ${response.statusCode} / ${response.body.length} bytes")
-                }
-            } catch (error: Throwable) {
-                SwingUtilities.invokeLater {
-                    deck.showExternalStatus("Spotify現在再生情報の取得失敗: ${error.message ?: error.javaClass.simpleName}")
-                }
-            }
-        }.apply {
-            name = "choplab-spotify-current-playback"
-            isDaemon = true
-            start()
-        }
+private fun chooseProject(controller: DesktopSamplerController, mode: Int) {
+    val saving = mode == FileDialog.SAVE
+    val dialog = FileDialog(
+        null as Frame?,
+        if (saving) "ChopLab制作を保存" else "ChopLab制作を開く",
+        mode,
+    ).apply {
+        if (saving) file = "choplab-project.choplab"
+        filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".choplab", ignoreCase = true) }
+        isVisible = true
     }
+    val selected = dialog.file ?: return
+    val file = File(dialog.directory, selected)
+    if (saving) controller.saveProject(file) else controller.openProject(file)
 }

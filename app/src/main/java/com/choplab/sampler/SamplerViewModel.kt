@@ -106,6 +106,7 @@ import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.transientAnalysisStillCurrent
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
+import com.choplab.sampler.ui.SamplerDeckController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,7 +121,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.pow
 
-class SamplerViewModel(application: Application) : AndroidViewModel(application) {
+class SamplerViewModel(application: Application) : AndroidViewModel(application), SamplerDeckController {
     private val mutableUiState = MutableStateFlow(beginAutosaveRecovery())
     val uiState: StateFlow<SamplerUiState> = mutableUiState.asStateFlow()
     private val decoder = AudioDecoder(application)
@@ -577,7 +578,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
     }
 
-    fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean = false) {
+    override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
         val bankIndex = SamplerConfig.DRUM_BANK_INDEX
         if (
             drumKitApplyDecision(mutableUiState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&
@@ -616,7 +617,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
     }
 
-    fun beginScratch() {
+    override fun beginScratch() {
         val state = mutableUiState.value
         val padIndex = state.selectedPad.takeIf { state.pads.getOrNull(it)?.isAssigned == true }
             ?: state.loopingPadIndex
@@ -644,7 +645,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun beginSourceScratch() {
+    override fun beginSourceScratch() {
         val state = mutableUiState.value
         val audio = state.currentAudio
         val range = state.sourceScratchRange()
@@ -676,7 +677,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun updateScratchSpeed(speed: Float) {
+    override fun updateScratchSpeed(speed: Float) {
         engine.updateScratchSpeed(speed)
         scratchIdleJob?.cancel()
         scratchIdleJob = viewModelScope.launch {
@@ -685,7 +686,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun endScratch() {
+    override fun endScratch() {
         scratchIdleJob?.cancel()
         scratchIdleJob = null
         engine.endScratch()
@@ -747,7 +748,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         application.startService(PlaybackCaptureService.stopIntent(application))
     }
 
-    fun stopActiveRecording() {
+    override fun stopActiveRecording() {
         when ((mutableUiState.value.recordingSession as? RecordingSession.Active)?.kind) {
             RecordingKind.SOURCE_MICROPHONE -> stopMicrophoneRecording()
             RecordingKind.SOURCE_SYSTEM_AUDIO -> stopSystemAudioCapture()
@@ -756,7 +757,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setRangeStart(frame: Int) {
+    override fun setRangeStart(frame: Int) {
         commitEdit(mergeKey = "range-start") { state ->
             val audio = state.currentAudio ?: return@commitEdit state
             val minimum = minimumSliceFrames(audio.sampleRate)
@@ -775,7 +776,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setRangeEnd(frame: Int) {
+    override fun setRangeEnd(frame: Int) {
         commitEdit(mergeKey = "range-end") { state ->
             val audio = state.currentAudio ?: return@commitEdit state
             val minimum = minimumSliceFrames(audio.sampleRate)
@@ -806,7 +807,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun resetProject() {
+    override fun resetProject() {
         projectOperations.invalidate()
         val previous = mutableUiState.value
         val stoppingSystemAudio = previous.systemAudioRecording
@@ -856,7 +857,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         commitEdit { it.copy(manualChopEnabled = !it.manualChopEnabled) }
     }
 
-    fun addSliceMarker(frame: Int) {
+    override fun addSliceMarker(frame: Int) {
         commitEdit { state ->
             val audio = state.currentAudio ?: return@commitEdit state
             val minimum = minimumSliceFrames(audio.sampleRate)
@@ -892,7 +893,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun moveSliceMarker(markerIndex: Int, frame: Int) {
+    override fun moveSliceMarker(markerIndex: Int, frame: Int) {
         commitEdit(mergeKey = "slice-marker-$markerIndex") { state ->
             val audio = state.currentAudio ?: return@commitEdit state
             if (markerIndex !in state.sliceMarkers.indices) return@commitEdit state
@@ -944,7 +945,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun selectSliceAt(frame: Int) {
+    override fun selectSliceAt(frame: Int) {
         mutableUiState.update { state ->
             val ranges = state.sliceRanges()
             val selected = ranges.indexOfFirst { range ->
@@ -1092,7 +1093,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         padsToSync.forEach(engine::updatePad)
     }
 
-    fun selectBank(bankIndex: Int) {
+    override fun selectBank(bankIndex: Int) {
         mutableUiState.update { state ->
             val bank = bankIndex.coerceIn(0, SamplerConfig.BANK_COUNT - 1)
             val indexInBank = state.selectedPad % SamplerConfig.PADS_PER_BANK
@@ -1123,7 +1124,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun selectPad(globalIndex: Int) {
+    override fun selectPad(globalIndex: Int) {
         if (globalIndex !in 0 until SamplerConfig.PAD_COUNT) return
         mutableUiState.update {
             it.copy(
@@ -1133,7 +1134,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun selectPadPage(pageIndex: Int) {
+    override fun selectPadPage(pageIndex: Int) {
         if (pageIndex !in 0 until SamplerConfig.PAD_PAGES_PER_BANK) return
         mutableUiState.update { state ->
             val bankStart = state.selectedBank * SamplerConfig.PADS_PER_BANK
@@ -1143,36 +1144,36 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun selectPlayablePad(globalIndex: Int) {
+    override fun selectPlayablePad(globalIndex: Int) {
         mutableUiState.update { state -> selectPlayablePadState(state, globalIndex) }
     }
 
-    fun selectPlayablePadPage(pageIndex: Int) {
+    override fun selectPlayablePadPage(pageIndex: Int) {
         mutableUiState.update { state -> selectPlayablePadPageState(state, pageIndex) }
     }
 
-    fun selectPlayableBank(bankIndex: Int) {
+    override fun selectPlayableBank(bankIndex: Int) {
         mutableUiState.update { state -> selectPlayableBankState(state, bankIndex) }
     }
 
-    fun ensurePlayablePadSelected() {
+    override fun ensurePlayablePadSelected() {
         mutableUiState.update(::ensurePlayablePadSelectedState)
     }
 
-    fun prepareDefaultChopDestination() {
+    override fun prepareDefaultChopDestination() {
         mutableUiState.update(::prepareDefaultMelodyChopDestination)
     }
 
-    fun capturePad(globalIndex: Int) {
+    override fun capturePad(globalIndex: Int) {
         handlePadPress(globalIndex, PadSurfaceMode.CAPTURE)
     }
 
-    fun triggerPad(globalIndex: Int) {
+    override fun triggerPad(globalIndex: Int) {
         handlePadPress(globalIndex, PadSurfaceMode.PERFORMANCE)
     }
 
     /** Preview is a single-voice audition: retriggering never stacks two previews. */
-    fun previewPad(globalIndex: Int) {
+    override fun previewPad(globalIndex: Int) {
         val pad = mutableUiState.value.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) return
         stopCompetingPlayback()
@@ -1239,11 +1240,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun releasePad(globalIndex: Int) {
+    override fun releasePad(globalIndex: Int) {
         engine.releasePad(globalIndex)
     }
 
-    fun stopSourceForWorkspaceChange() {
+    override fun stopSourceForWorkspaceChange() {
         val state = mutableUiState.value
         val shouldStop = state.sourcePlaying ||
             state.pendingSourceCommand == PendingSourceCommand.START
@@ -1264,7 +1265,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun toggleSourcePlayback() {
+    override fun toggleSourcePlayback() {
         val state = mutableUiState.value
         val audio = state.currentAudio ?: run {
             setStatus("先に曲を読み込んでください")
@@ -1314,7 +1315,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun toggleChopPlayback() {
+    override fun toggleChopPlayback() {
         val state = mutableUiState.value
         when (
             sourcePlaybackToggleAction(
@@ -1327,7 +1328,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun restartSourcePlayback() {
+    override fun restartSourcePlayback() {
         val state = mutableUiState.value
         if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
             setStatus("停止処理中です。音が止まってから再生してください")
@@ -1356,7 +1357,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun playSourceFrom(frame: Int) {
+    override fun playSourceFrom(frame: Int) {
         val state = mutableUiState.value
         if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
             setStatus("停止処理中です。音が止まってから位置を選んでください")
@@ -1386,7 +1387,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun seekSourcePlayback(frame: Int) {
+    override fun seekSourcePlayback(frame: Int) {
         val state = mutableUiState.value
         val audio = state.currentAudio ?: return
         val safe = frame.coerceIn(0, audio.frameCount - 1)
@@ -1406,7 +1407,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setMasterPitch(value: Float) {
+    override fun setMasterPitch(value: Float) {
         val pitch = value.coerceIn(-12f, 12f)
         val state = mutableUiState.value
         val audio = state.currentAudio
@@ -1485,35 +1486,35 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         commitEdit { it.copy(autoNextPad = !it.autoNextPad) }
     }
 
-    fun setSelectedPadPitch(value: Float) = updateSelectedPad("pitch") {
+    override fun setSelectedPadPitch(value: Float) = updateSelectedPad("pitch") {
         it.copy(pitchSemitones = value.coerceIn(-24f, 24f))
     }
 
-    fun setSelectedPadTone(value: Float) = updateSelectedPad("tone") {
+    override fun setSelectedPadTone(value: Float) = updateSelectedPad("tone") {
         it.copy(tone = value.coerceIn(0f, 1f))
     }
 
-    fun setSelectedPadGain(value: Float) = updateSelectedPad("gain") {
+    override fun setSelectedPadGain(value: Float) = updateSelectedPad("gain") {
         it.copy(gain = value.coerceIn(0f, 1.5f))
     }
 
-    fun setSelectedPadStartFrame(frame: Int) = updateSelectedPad("trim-start") {
+    override fun setSelectedPadStartFrame(frame: Int) = updateSelectedPad("trim-start") {
         trimPadBoundary(it, PadTrimBoundary.START, frame - it.startFrame)
     }
 
-    fun setSelectedPadEndFrame(frame: Int) = updateSelectedPad("trim-end") {
+    override fun setSelectedPadEndFrame(frame: Int) = updateSelectedPad("trim-end") {
         trimPadBoundary(it, PadTrimBoundary.END, frame - it.endFrame)
     }
 
-    fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelectedPad {
+    override fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot) = updateSelectedPad {
         restorePadTrimSnapshot(it, snapshot)
     }
 
-    fun toggleSelectedPadReverse() = updateSelectedPad {
+    override fun toggleSelectedPadReverse() = updateSelectedPad {
         it.copy(reverse = !it.reverse)
     }
 
-    fun toggleSelectedPadPlayMode() {
+    override fun toggleSelectedPadPlayMode() {
         val selectedPad = mutableUiState.value.selectedPad
         if (mutableUiState.value.loopingPadIndex == selectedPad) {
             engine.stopPad(selectedPad)
@@ -1530,7 +1531,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         toggleBeatLoop(mutableUiState.value.selectedPad)
     }
 
-    fun toggleBeatLoopControl() {
+    override fun toggleBeatLoopControl() {
         val state = mutableUiState.value
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
     }
@@ -1590,11 +1591,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setSelectedPadChokeGroup(group: Int) = updateSelectedPad {
+    override fun setSelectedPadChokeGroup(group: Int) = updateSelectedPad {
         it.copy(chokeGroup = group.coerceIn(0, 4))
     }
 
-    fun clearSelectedPad() {
+    override fun clearSelectedPad() {
         val selectedPad = mutableUiState.value.selectedPad
         if (mutableUiState.value.loopingPadIndex == selectedPad) {
             engine.stopPad(selectedPad)
@@ -1638,7 +1639,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         changed?.let(engine::updatePad)
     }
 
-    fun toggleStep(stepIndex: Int) {
+    override fun toggleStep(stepIndex: Int) {
         if (stepIndex !in 0 until SamplerConfig.STEP_COUNT) return
         val selectedPad = mutableUiState.value.selectedPadModel()
         patternStepBlockedMessage(selectedPad)?.let { message ->
@@ -1652,17 +1653,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
     }
 
-    fun setBpm(value: Float) {
+    override fun setBpm(value: Float) {
         commitEdit(mergeKey = "bpm") { it.copy(bpm = value.coerceIn(40f, 240f)) }
         syncPattern()
     }
 
-    fun setSwing(value: Float) {
+    override fun setSwing(value: Float) {
         commitEdit(mergeKey = "swing") { it.copy(swing = value.coerceIn(50f, 75f)) }
         syncPattern()
     }
 
-    fun toggleTransport() {
+    override fun toggleTransport() {
         val playing = mutableUiState.value.transportPlaying
         if (playing) {
             engine.stopTransport()
@@ -1684,7 +1685,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun toggleRecordArm() {
+    override fun toggleRecordArm() {
         val state = mutableUiState.value
         if (state.recordArmed) {
             mutableUiState.update {
@@ -1715,7 +1716,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun clearSelectedPadPattern() {
+    override fun clearSelectedPadPattern() {
         commitEdit { state ->
             val filtered = state.activeSteps.clearPadSteps(state.selectedPad)
             state.copy(activeSteps = filtered, statusMessage = "選択PADのシーケンスを消去しました")
@@ -1723,7 +1724,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         syncPattern()
     }
 
-    fun fillSelectedPadPattern(repeatGrid: RepeatGrid) {
+    override fun fillSelectedPadPattern(repeatGrid: RepeatGrid) {
         val selectedPad = mutableUiState.value.selectedPadModel()
         patternStepBlockedMessage(selectedPad)?.let { message ->
             setStatus(message)
@@ -1748,12 +1749,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         else -> "このPADはステップへ配置できません"
     }
 
-    fun clearAllPattern() {
+    override fun clearAllPattern() {
         commitEdit { it.copy(activeSteps = emptySet(), statusMessage = "パターンを全消去しました") }
         syncPattern()
     }
 
-    fun stopAllSounds() {
+    override fun stopAllSounds() {
         engine.stopAllPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
         mutableUiState.update(::stopAllPlaybackState)
@@ -1891,7 +1892,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun undoEdit() {
+    override fun undoEdit() {
         if (rejectEditWhileRecording()) return
         val restored = editHistory.undo(mutableUiState.value) ?: run {
             setStatus("戻せる操作はありません")
@@ -1902,7 +1903,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         scheduleAutosave()
     }
 
-    fun redoEdit() {
+    override fun redoEdit() {
         if (rejectEditWhileRecording()) return
         val restored = editHistory.redo(mutableUiState.value) ?: run {
             setStatus("やり直せる操作はありません")

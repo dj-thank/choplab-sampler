@@ -1,4 +1,9 @@
-# おとひろいを5工程のガイド付き制作機へ刷新する
+# おとひろいを5工程のガイド付き制作機へ刷新する（歴史計画）
+
+> Historical plan. The current Android source has since converged on the
+> shared four-stage workflow `入れる / チョップ / ビート / 保存`; consult
+> `docs/ui/android-parity-contract-v2.json` and `docs/architecture/multiplatform-parity.md`
+> for current behavior. This retained plan is not an implementation contract.
 
 ## Purpose and user-visible outcome
 

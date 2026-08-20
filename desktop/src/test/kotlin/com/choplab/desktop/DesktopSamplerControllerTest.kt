@@ -1,0 +1,229 @@
+package com.choplab.desktop
+
+import com.choplab.desktop.audio.JavaSoundWavPlayer
+import com.choplab.desktop.audio.DesktopSamplerAudioEngine
+import com.choplab.sampler.audio.PatternRenderer
+import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.persistence.AtomicProjectStore
+import java.nio.file.Files
+import com.choplab.sampler.ui.WorkflowStage
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class DesktopSamplerControllerTest {
+    private fun controller(): DesktopSamplerController =
+        DesktopSamplerController(JavaSoundWavPlayer(), autosaveStore = null)
+
+    @Test
+    fun sharedWorkflowUsesTheCurrentFourAndroidStages() {
+        assertEquals(listOf("入れる", "チョップ", "ビート", "保存"), WorkflowStage.entries.map { it.label })
+        assertEquals(listOf("CAPTURE", "CHOP", "BEAT", "SAVE"), WorkflowStage.entries.map { it.caption })
+    }
+
+    @Test
+    fun controllerUsesSharedTempoAndSelectionState() {
+        val controller = controller()
+        try {
+            controller.setBpm(140f)
+            controller.setSwing(61f)
+            controller.selectBank(2)
+            controller.selectPadPage(1)
+
+            assertEquals(140f, controller.state.value.bpm)
+            assertEquals(61f, controller.state.value.swing)
+            assertEquals(2, controller.state.value.selectedBank)
+            assertEquals(2 * SamplerConfig.PADS_PER_BANK + SamplerConfig.PAD_PAGE_SIZE, controller.state.value.selectedPad)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun builtInDrumKitUsesTheSharedAndroidCatalog() {
+        val controller = controller()
+        try {
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
+            val drumPads = controller.state.value.pads.subList(
+                SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK,
+                SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK + SamplerConfig.DRUM_KIT_PAD_COUNT,
+            )
+            assertTrue(drumPads.all { it.isAssigned })
+            assertTrue(drumPads.all { it.contentKind.name == "DRUM" })
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun resetReturnsToTheSharedEmptySourceState() {
+        val controller = controller()
+        try {
+            controller.setBpm(120f)
+            controller.resetProject()
+            assertEquals(null, controller.state.value.currentAudio)
+            assertEquals("音声を読み込むか録音してください", controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun windowsRendererWritesTheFourBarWavUsingSharedPadState() {
+        val output = Files.createTempFile("choplab-render", ".wav").toFile()
+        try {
+            val samples = ShortArray(480) { index -> if (index % 32 < 16) 12_000 else -12_000 }
+            val audio = PcmAudio(name = "test", samples = samples, sampleRate = 48_000)
+            val pads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) PadModel(index, audio, 0, samples.size) else PadModel(index)
+            }
+
+            PatternRenderer.renderToWav(output, pads, setOf(stepKey(0, 0)), 92f, 54f)
+
+            assertTrue(output.length() > 44L)
+            assertEquals('R'.code.toByte(), output.inputStream().use { it.read().toByte() })
+        } finally {
+            output.delete()
+        }
+    }
+
+    @Test
+    fun projectSaveAndOpenReplaceStateOnlyAfterAValidSharedArchive() {
+        val directory = Files.createTempDirectory("choplab-controller-project").toFile()
+        val project = directory.resolve("session.choplab")
+        val controller = controller()
+        try {
+            controller.setBpm(133f)
+            controller.setSwing(64f)
+            controller.saveProject(project)
+            awaitCondition { project.isFile && !controller.state.value.isLoading }
+            controller.setBpm(80f)
+
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "session.choplabを開きました" }
+
+            assertEquals(133f, controller.state.value.bpm)
+            assertEquals(64f, controller.state.value.swing)
+            assertEquals("session.choplabを開きました", controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun malformedProjectKeepsTheCurrentProductionState() {
+        val malformed = Files.createTempFile("choplab-controller-malformed", ".choplab").toFile()
+        val controller = controller()
+        try {
+            malformed.writeText("invalid", Charsets.UTF_8)
+            controller.setBpm(141f)
+
+            controller.openProject(malformed)
+            awaitCondition { controller.state.value.statusMessage.startsWith("制作読込失敗:") }
+
+            assertEquals(141f, controller.state.value.bpm)
+            assertTrue(controller.state.value.statusMessage.startsWith("制作読込失敗:"))
+        } finally {
+            controller.close()
+            malformed.delete()
+        }
+    }
+
+    @Test
+    fun undoAndRedoUseTheSharedBoundedEditHistory() {
+        val controller = controller()
+        try {
+            controller.setBpm(126f)
+            assertTrue(controller.state.value.canUndo)
+
+            controller.undoEdit()
+            assertEquals(92f, controller.state.value.bpm)
+            assertTrue(controller.state.value.canRedo)
+
+            controller.redoEdit()
+            assertEquals(126f, controller.state.value.bpm)
+            assertTrue(controller.state.value.canUndo)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun editsFlowIntoTheSharedThreeGenerationAutosaveStore() {
+        val directory = Files.createTempDirectory("choplab-controller-autosave").toFile()
+        val store = AtomicProjectStore(directory)
+        val controller = DesktopSamplerController(
+            JavaSoundWavPlayer(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            controller.setBpm(138f)
+
+            awaitCondition { runCatching { store.load()?.bpm == 138f }.getOrDefault(false) }
+            assertEquals(138f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun padControlsAndLoopCommandsReachTheDesktopAudioPort() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
+            controller.selectPad(SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK)
+            controller.setSelectedPadPitch(7f)
+            controller.setSelectedPadTone(0.4f)
+            controller.setSelectedPadGain(1.2f)
+            controller.toggleSelectedPadReverse()
+
+            controller.triggerPad(controller.state.value.selectedPad)
+            val hit = engine.triggered.last()
+            assertEquals(7f, hit.first.pitchSemitones)
+            assertEquals(0.4f, hit.first.tone)
+            assertEquals(1.2f, hit.first.gain)
+            assertTrue(hit.first.reverse)
+            assertEquals(false, hit.second)
+
+            controller.toggleBeatLoopControl()
+            assertEquals(PadPlayMode.LOOP, engine.triggered.last().first.playMode)
+            assertEquals(true, engine.triggered.last().second)
+        } finally {
+            controller.close()
+        }
+    }
+
+    private fun awaitCondition(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 2_000_000_000L
+        while (!condition()) {
+            if (System.nanoTime() >= deadline) error("Timed out waiting for asynchronous desktop state")
+            Thread.sleep(20L)
+        }
+    }
+
+    private class FakeAudioEngine : DesktopSamplerAudioEngine {
+        override var isSourcePlaying: Boolean = false
+        var sourcePosition: Int = 0
+        val triggered = mutableListOf<Pair<PadModel, Boolean>>()
+        override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
+        override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
+        override fun seekSource(frame: Int) { sourcePosition = frame }
+        override fun sourceFramePosition(): Int = sourcePosition
+        override fun padFramePosition(index: Int): Int? = null
+        override fun stop() { isSourcePlaying = false }
+        override fun triggerPad(pad: PadModel, forceLoop: Boolean) { triggered += pad to forceLoop }
+        override fun releasePad(index: Int) = Unit
+        override fun stopPad(index: Int) = Unit
+        override fun stopAll() { isSourcePlaying = false }
+        override fun close() = Unit
+    }
+}

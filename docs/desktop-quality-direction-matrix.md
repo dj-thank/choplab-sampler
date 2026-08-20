@@ -6,11 +6,11 @@
 
 ## Baseline
 
-現状は、Android の `OtohiroiDeck` / `PadGrid` / `BeatLaneBoard` / `GuidedWorkflow` / `ProductionDockPolicy` を文言・色・工程の正本にした Swing app-image である。ローカル WAV の読み込み、波形表示、PAD 割り当て／再生、4 BANK × 32 PAD、16-step arrange、Spotify PKCE のメタデータ／再生状態 seam、5工程の画面キャプチャを local で確認している。
+現状は、Android の `OtohiroiDeck` / `PadGrid` / `BeatLaneBoard` / `GuidedWorkflow` / `ProductionDockPolicy` を `:shared` へ移し、Android と Windows が同じ Compose UI・モデルをコンパイルする構成である。Windows はローカル WAV の読み込み／再生と共有編集 state を持つ。Spotify PKCE は metadata/control adapter として別 seam に残す。
 
 ## Selection criteria
 
-1. **Original fidelity:** UI contract の8領域、5工程、主要コピー、色トークン、CHOP/ARRANGE capture が崩れないこと。
+1. **Original fidelity:** parity contract の4工程、全コピー、色トークン、CHOP/BEAT/FINISH state が崩れないこと。
 2. **Flow integrity:** 未準備状態の次工程へ進めず、source → PAD → arrange の状態遷移が決定的であること。
 3. **Professional interaction:** キーボード、フォーカス、アクセシブルな名前、High-DPI、失敗時の説明があること。
 4. **Delivery reliability:** `:desktop:test`、Android regression、Windows app-image、GitHub PR CI が同じ境界を検証できること。
@@ -20,7 +20,7 @@
 
 | Direction | User promise / key assumption | Smallest reversible test | Upside | Main downside | Decision |
 |---|---|---|---|---|---|
-| A. 原作デック忠実版 | Android を知るユーザーが一目で同じ楽器だと分かる。正本の文脈・工程を守れば学習コストが下がる。 | 同一 WAV で CHOP/ARRANGE を capture し、8領域と主要コピーを validator へ通す。 | ユーザー意図に最も近く、比較可能な視覚契約がある。 | Swing の大規模な単一 UI は保守性が下がる。 | **採用する基盤** |
+| A. 原作デック忠実版 | Android を知るユーザーが一目で同じ楽器だと分かる。正本の文脈・工程を守れば学習コストが下がる。 | Android-origin UI source を Windows Compose target でコンパイルし、同一 state/copy contract を確認する。 | ユーザー意図に最も近く、二重実装の drift を防ぐ。 | Compose Multiplatform と native audio adapter の移行コストがある。 | **採用する基盤** |
 | B. Context-aware guided deck | `GuidedWorkflow` と `ProductionDockPolicy` の文脈を状態機械として使い、今できる次の行動と未対応境界を常に説明する。 | source 未読込／PAD 0件／PAD 1件／arrange の状態表を model test と GUI smoke で検証する。 | 「次に何をするか」が明確で、元UIのコピーを意味のある体験にできる。 | 状態を増やしすぎると説明過多になる。 | **主方向** |
 | C. Pro studio hybrid | 高密度な波形編集、ショートカット、保存・UNDO を先に足し、デスクトップDAWらしさを出す。 | 1つの undoable PAD assignment と Ctrl+O/Esc のキーボード操作を先に試す。 | 生産性と将来の拡張性が高い。 | 早期に追加すると原作の画面契約を壊し、スコープが膨らむ。 | 段階的に採用 |
 | D. Project-first session | `.choplab` 保存、開く、再開、バックアップを先に固める。 | 1セッションの source／PAD／steps の round-trip test。 | 制作物を失わない製品品質へ直結する。 | 今回の EXE UI fidelity の acceptance からは独立した大きな seam。 | 次フェーズ |
@@ -32,7 +32,7 @@ Primary direction is **A + B**: 原作デックを視覚契約として維持し
 
 - machine button、custom PAD、波形、16-step に accessible name/description と可視フォーカスを付ける。
 - Ctrl+O（WAVを開く）、Escape（全停止）、Ctrl+1〜5（工程選択）、PAD／波形／step のキーボード操作を追加する。
-- source → PAD → arrange の stage gate を `DesktopDeckModel` に集約し、UIから状態判定を重複させない。
+- source → PAD → beat の state and stage policy を `:shared` の model/UI policy に集約し、UIから状態判定を重複させない。
 - High-DPI の初期サイズ、版番号付き app-image、PRごとの Windows test/package CI、EXE SHA-256 receipt を揃える。
 - PAD の KEY/TONE/LEVEL は現在、原作UIの操作状態を保持する seam であり、音声DSPへの接続は次の明示的なマイルストーンとする。見かけだけの機能を完成扱いしない。
 

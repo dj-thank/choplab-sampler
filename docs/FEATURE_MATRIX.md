@@ -4,8 +4,8 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` Kotlin/JVM の元 Android deck 踏襲 UI。5工程、波形、4×4 PAD、PAD editor、BANK A–D、arrange 16-step、ローカルWAVのOPEN/PLAY/STOP、PAD割り当て。`v*` Releaseへapp-image zipとEXE SHA-256を添付。Windows音声レイテンシ・操作感は未確認 |
-| Spotify OAuth / 現在再生情報 | 🧪 local | Authorization Code with PKCE、`127.0.0.1` loopback callback、token交換、現在再生API request builder。実アカウント接続は未実施。tokenは試作中メモリ内のみ |
+| Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` が `:shared` の Android-origin deck UI/model と `:jvm-core` のproject/archive/export処理を使用。4工程、波形、4×4 PAD、PAD editor、BANK A–D、16-step transport、KEY/TONE/LEVEL/REVERSE/GATE/LOOP/CHOKE、scratch、ローカルWAV、マイク、driver loopback候補、Undo/Redo、`.choplab`保存/復元/autosave、4小節WAV書き出しを接続。実ドライバー音質・レイテンシは未確認 |
+| Spotify OAuth / 現在再生情報 | 🧪 local | Native `連携` menuからAuthorization Code with PKCE、`127.0.0.1` callback、memory-only token、現在再生表示、一時停止/再開を接続。実アカウント/provider検証は未実施 |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
 | Windows / Android / iOS 公開preview | 🧪 CI / Release | `v*`タグでAndroid debug APK、iOS Simulator app zip、Windows app-image zipを同一Releaseへ添付し、各SHA-256を生成。署名済みiOS実機IPAは未提供。 |

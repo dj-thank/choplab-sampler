@@ -1,0 +1,270 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "choplab-android-origin-deck-v2",
+  "product": "ChopLab / おとひろい",
+  "intent": "WindowsでAndroid版と同じ文言、4工程、情報順、PAD編集導線を、画面サイズに応じた拡大縮小だけで使用できる",
+  "reference": {
+    "primary_image": "../codex-workspace/ChopLab-Codex-Workspace/work/choplab-final-portrait.png",
+    "primary_dimensions_px": [1080, 2424],
+    "comparison_image": "../choplab-desktop-loaded-project-20260820.png",
+    "implementation_capture": "../choplab-desktop-loaded-project-20260820.png",
+    "implementation_dimensions_px": [1106, 2202],
+    "authority": "Android capture proves visual/copy target; Windows capture proves only the packaged baseline appearance, not backend or Human acceptance",
+    "notes": "Primary and implementation are both loaded CHOP states with two assigned PADs, selected A02, slice markers and the same shared MaterialTheme. Empty CAPTURE remains a separate packaged-state receipt."
+  },
+  "copy_policy": {
+    "observed_copy": "Pixels are transcribed without silent correction; punctuation, capitalization, numerals, and line roles are preserved.",
+    "authoritative_copy": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt and GuidedWorkflow.kt own current product copy.",
+    "confidence_values": ["exact", "inferred", "illegible"],
+    "forbidden_shortcuts": [
+      "Do not retype a Windows-only copy set",
+      "Do not infer backend success from a visible enabled button",
+      "Do not replace Japanese labels with desktop-specific synonyms"
+    ]
+  },
+  "coordinate_system": {
+    "origin": "top-left",
+    "units": "normalized_0_to_1",
+    "bounds_order": ["x", "y", "width", "height"],
+    "canvas": "full 1080x2424 Android capture including platform chrome"
+  },
+  "visual_tokens": {
+    "background": "#0F0D08",
+    "panel": "#EDE2C8",
+    "panel_dark": "#D3C5A5",
+    "ink": "#211D13",
+    "lamp": "#FF7417",
+    "green": "#9FD46B",
+    "pad": "#262116",
+    "pad_assigned": "#38301D",
+    "pad_lit": "#FFB25E",
+    "font_family": "monospace",
+    "console_corner_dp": 13,
+    "panel_corner_dp": 8
+  },
+  "regions": [
+    {
+      "id": "platform_chrome",
+      "title": "Platform-owned status and window chrome",
+      "bounds": [0.0, 0.0, 1.0, 0.07],
+      "observed_copy": [
+        {"text": "17:54", "confidence": "exact", "role": "Android system time"}
+      ],
+      "authoritative_copy": ["Platform-owned chrome; not ChopLab product copy"],
+      "purpose": "Frames the native application without entering the shared deck contract.",
+      "states": ["android_status_bar", "windows_title_bar"],
+      "interactions": ["platform_window_move", "platform_window_close"],
+      "visual_contract": ["Use native platform chrome", "Do not imitate Android system icons in the Windows client"],
+      "implementation": {
+        "fidelity": "adapted",
+        "target": "desktop/src/main/kotlin/com/choplab/desktop/DesktopApp.kt Window",
+        "evidence": ["../codex-workspace/ChopLab-Codex-Workspace/work/choplab-final-portrait.png", "../choplab-desktop-loaded-project-20260820.png"],
+        "deviation": "Intentional platform adaptation: Windows uses its native title bar while the deck below remains shared."
+      }
+    },
+    {
+      "id": "machine_header",
+      "title": "Machine identity, context, tempo, and ALL STOP",
+      "bounds": [0.034, 0.067, 0.932, 0.073],
+      "observed_copy": [
+        {"text": "OTOHIROI", "confidence": "exact", "role": "product heading"},
+        {"text": "チョップ / CHOP", "confidence": "exact", "role": "current mode"},
+        {"text": "A MELODY  92 BPM", "confidence": "exact", "role": "bank and tempo status"},
+        {"text": "音を全停止 / ALL STOP", "confidence": "exact", "role": "emergency playback action"}
+      ],
+      "authoritative_copy": ["OTOHIROI", "チョップ / CHOP", "A MELODY  92 BPM", "音を全停止 / ALL STOP"],
+      "purpose": "Keeps product identity, current working context, and the global stop action continuously visible.",
+      "states": ["idle", "source_loaded", "playing", "recording"],
+      "interactions": ["click_all_stop", "keyboard_activate_all_stop"],
+      "visual_contract": ["Dark machine strip on cream console", "Green bank/tempo telemetry", "ALL STOP remains a high-contrast cream control"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt MachineHeader",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "../codex-workspace/ChopLab-Codex-Workspace/work/choplab-final-portrait.png"],
+        "deviation": "None: copy, semantic role, colors, and control ownership are shared source."
+      }
+    },
+    {
+      "id": "workflow_strip",
+      "title": "Four-stage workflow",
+      "bounds": [0.034, 0.145, 0.932, 0.052],
+      "observed_copy": [
+        {"text": "1 入れる / CAPTURE", "confidence": "exact", "role": "workflow stage"},
+        {"text": "2 チョップ / CHOP", "confidence": "exact", "role": "selected workflow stage"},
+        {"text": "3 ビート / BEAT", "confidence": "exact", "role": "workflow stage"},
+        {"text": "4 保存 / SAVE", "confidence": "exact", "role": "workflow stage"}
+      ],
+      "authoritative_copy": ["1 入れる / CAPTURE", "2 チョップ / CHOP", "3 ビート / BEAT", "4 保存 / SAVE"],
+      "purpose": "Makes the complete production route visible and permits direct stage navigation under shared policy.",
+      "states": ["capture_selected", "chop_selected", "beat_selected", "save_selected", "disabled_by_operation"],
+      "interactions": ["click_stage", "keyboard_activate_stage"],
+      "visual_contract": ["Four equal controls in reading order", "Selected stage uses orange lamp fill", "Numerals, Japanese, and English captions remain together"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt WorkflowStrip",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/GuidedWorkflow.kt"],
+        "deviation": "None: Windows and Android compile the same workflow entries and strings."
+      }
+    },
+    {
+      "id": "guidance_and_source",
+      "title": "Guidance, source replacement, and waveform editing",
+      "bounds": [0.034, 0.203, 0.932, 0.151],
+      "observed_copy": [
+        {"text": "TIP 「チョップ開始」→ 音が鳴ったら空PADを叩く", "confidence": "exact", "role": "guided instruction"},
+        {"text": "素材を入れ替える / REPLACE SOURCE", "confidence": "exact", "role": "source action"},
+        {"text": "1", "confidence": "exact", "role": "waveform start marker"},
+        {"text": "2", "confidence": "exact", "role": "slice marker"},
+        {"text": "E", "confidence": "exact", "role": "waveform end marker"}
+      ],
+      "authoritative_copy": ["TIP 「チョップ開始」→ 音が鳴ったら空PADを叩く", "素材を入れ替える / REPLACE SOURCE", "1", "2", "E"],
+      "purpose": "Explains the current action and exposes the loaded PCM waveform, range, slice markers, and source replacement.",
+      "states": ["no_source", "loading", "source_loaded", "source_playing", "error"],
+      "interactions": ["replace_source", "waveform_seek", "drag_range", "drag_slice_marker", "keyboard_nudge"],
+      "visual_contract": ["Guidance precedes the waveform", "Waveform uses orange PCM envelope and marker handles", "Range and marker meaning survive responsive rearrangement"],
+      "implementation": {
+        "fidelity": "semantic",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt CaptureWorkspace/ChopWorkspace and WaveformEditor.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/WaveformEditor.kt"],
+        "deviation": "Layout may stack or compact under resolveDeckLayout, but copy, scan order, marker semantics, and interactions remain shared."
+      }
+    },
+    {
+      "id": "primary_transport_and_key",
+      "title": "Primary chop transport and master key",
+      "bounds": [0.034, 0.355, 0.932, 0.055],
+      "observed_copy": [
+        {"text": "チョップ開始 / START CHOP", "confidence": "exact", "role": "primary action"},
+        {"text": "高さ - / KEY", "confidence": "exact", "role": "key decrement"},
+        {"text": "KEY 0", "confidence": "exact", "role": "key status"},
+        {"text": "高さ + / KEY", "confidence": "exact", "role": "key increment"}
+      ],
+      "authoritative_copy": ["チョップ開始 / START CHOP", "高さ - / KEY", "KEY 0", "高さ + / KEY"],
+      "purpose": "Starts the guided chop flow and provides continuously visible master pitch control.",
+      "states": ["stopped", "starting", "playing", "stopping", "disabled"],
+      "interactions": ["start_or_stop_chop", "decrease_key", "increase_key", "keyboard_activate"],
+      "visual_contract": ["Primary transport owns the widest control", "KEY value is a dark telemetry tile", "All controls retain Japanese/English pairing"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt TransportStrip",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/GuidedWorkflow.kt"],
+        "deviation": "None in presentation; Windows backend must still prove audible state transitions separately."
+      }
+    },
+    {
+      "id": "bank_and_page_selectors",
+      "title": "BANK A-D and PAD page selectors",
+      "bounds": [0.034, 0.417, 0.932, 0.102],
+      "observed_copy": [
+        {"text": "A メロディー / MELODY", "confidence": "exact", "role": "selected bank"},
+        {"text": "B ドラム / DRUMS", "confidence": "exact", "role": "bank"},
+        {"text": "C ワンショット / ONE SHOTS", "confidence": "exact", "role": "bank"},
+        {"text": "D ボイス / VOICE", "confidence": "exact", "role": "bank"},
+        {"text": "PAD 01–16 / 選択 A-02 / 2音", "confidence": "exact", "role": "selected page status"},
+        {"text": "PAD 17–32 / 切替 / 空", "confidence": "exact", "role": "alternate page status"}
+      ],
+      "authoritative_copy": ["A メロディー / MELODY", "B ドラム / DRUMS", "C ワンショット / ONE SHOTS", "D ボイス / VOICE", "PAD 01–16 / 選択 A-02 / 2音", "PAD 17–32 / 切替 / 空"],
+      "purpose": "Exposes all four sound roles and both 16-PAD pages without hidden navigation.",
+      "states": ["bank_a", "bank_b", "bank_c", "bank_d", "page_1", "page_2", "empty_page"],
+      "interactions": ["select_bank", "select_page", "keyboard_activate"],
+      "visual_contract": ["Four BANK controls remain in A-D order", "Selected BANK/page uses orange", "Assignment count and selected PAD remain visible"],
+      "implementation": {
+        "fidelity": "semantic",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt BankStrip/PadPageStrip",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/BankVisuals.kt"],
+        "deviation": "Widths and label wrapping adapt to the desktop window; role order, copy, selection, and colors do not."
+      }
+    },
+    {
+      "id": "pad_grid",
+      "title": "Four-by-four performance PAD surface",
+      "bounds": [0.126, 0.526, 0.744, 0.347],
+      "observed_copy": [
+        {"text": "A01 0:24.8", "confidence": "exact", "role": "assigned PAD"},
+        {"text": "A02 0:36.7", "confidence": "exact", "role": "selected assigned PAD"},
+        {"text": "A03 EMPTY", "confidence": "exact", "role": "empty PAD"},
+        {"text": "A16 EMPTY", "confidence": "exact", "role": "empty PAD"}
+      ],
+      "authoritative_copy": ["A01", "A02", "A03 EMPTY", "A04 EMPTY", "A05 EMPTY", "A06 EMPTY", "A07 EMPTY", "A08 EMPTY", "A09 EMPTY", "A10 EMPTY", "A11 EMPTY", "A12 EMPTY", "A13 EMPTY", "A14 EMPTY", "A15 EMPTY", "A16 EMPTY"],
+      "purpose": "Supports selection, live chop assignment, preview/performance, and direct keyboard triggering for sixteen visible PADs.",
+      "states": ["empty", "assigned", "selected", "playing", "capture_destination", "disabled_by_recording"],
+      "interactions": ["tap_or_click", "long_press_or_context_edit", "keyboard_trigger", "release_gate"],
+      "visual_contract": ["Exactly 4 columns by 4 rows", "PADs remain near-square", "Assigned and selected states are visually distinct", "Keyboard hints never replace accessible PAD labels"],
+      "implementation": {
+        "fidelity": "semantic",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/PadGrid.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/PadGrid.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/PadGridGeometry.kt"],
+        "deviation": "PAD size scales to the available window and may be more compact than portrait Android; grid topology, labels, states, and command routing remain shared."
+      }
+    },
+    {
+      "id": "production_dock",
+      "title": "Beat, PAD edit, add, and scratch actions",
+      "bounds": [0.034, 0.884, 0.932, 0.055],
+      "observed_copy": [
+        {"text": "ビートへ / BEAT", "confidence": "exact", "role": "primary next action"},
+        {"text": "微調整 / PAD EDIT", "confidence": "exact", "role": "edit action"},
+        {"text": "音を足す / ADD", "confidence": "exact", "role": "layer action"},
+        {"text": "スクラッチ / SCRATCH", "confidence": "exact", "role": "scratch action"}
+      ],
+      "authoritative_copy": ["ビートへ / BEAT", "微調整 / PAD EDIT", "音を足す / ADD", "スクラッチ / SCRATCH"],
+      "purpose": "Keeps the four major post-chop destinations visible without scrolling or a hidden menu.",
+      "states": ["ready", "disabled", "active_destination"],
+      "interactions": ["open_beat", "open_pad_edit", "open_layer_studio", "open_scratch", "keyboard_activate"],
+      "visual_contract": ["Four actions remain in fixed order", "The primary destination may use orange", "Compact layout preserves the same labels and roles"],
+      "implementation": {
+        "fidelity": "semantic",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt ProductionDock",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/ProductionDockPolicy.kt"],
+        "deviation": "Desktop compacts spacing and typography through shared layout metrics; destination order and copy remain identical."
+      }
+    },
+    {
+      "id": "console_status_strip",
+      "title": "Current stage and operation status",
+      "bounds": [0.034, 0.944, 0.932, 0.042],
+      "observed_copy": [
+        {"text": "チョップ 曲を頭から流し、空PADを叩いて切ります / 前回の自動保存を復元しました", "confidence": "exact", "role": "status and recovery message"}
+      ],
+      "authoritative_copy": ["チョップ", "曲を頭から流し、空PADを叩いて切ります", "前回の自動保存を復元しました"],
+      "purpose": "Reports the selected stage, its guidance, and the latest operation outcome without modal interruption.",
+      "states": ["idle", "loading", "success", "error", "recording", "playing"],
+      "interactions": ["screen_reader_announce_status"],
+      "visual_contract": ["Dark full-width strip", "Orange stage label", "Status message remains truthful to backend state"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt ConsoleStatusStrip",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/model/SamplerModels.kt"],
+        "deviation": "None in role or copy; runtime message content must come from the active platform adapter and cannot claim an unimplemented action."
+      }
+    }
+  ],
+  "screen_state_acceptance": [
+    {
+      "state": "android_chop_loaded_reference",
+      "required_regions": ["machine_header", "workflow_strip", "guidance_and_source", "primary_transport_and_key", "bank_and_page_selectors", "pad_grid", "production_dock", "console_status_strip"],
+      "evidence": "../codex-workspace/ChopLab-Codex-Workspace/work/choplab-final-portrait.png",
+      "evidence_limit": "Appearance and visible Android state only; not current Windows backend proof."
+    },
+    {
+      "state": "windows_loaded_project_chop_packaged_200_percent_dpi",
+      "required_regions": ["platform_chrome", "machine_header", "workflow_strip", "guidance_and_source", "primary_transport_and_key", "bank_and_page_selectors", "pad_grid", "production_dock", "console_status_strip"],
+      "evidence": "../choplab-desktop-loaded-project-20260820.png",
+      "evidence_limit": "Complete same-workflow packaged appearance at one DPI; physical audio, touch, provider state and Human approval remain separate."
+    },
+    {
+      "state": "windows_empty_capture_packaged_200_percent_dpi",
+      "required_regions": ["platform_chrome", "machine_header", "workflow_strip", "guidance_and_source", "primary_transport_and_key", "console_status_strip"],
+      "evidence": "../choplab-desktop-maximized-20260820.png",
+      "evidence_limit": "Complete packaged empty-state appearance at one DPI; loaded CHOP parity, audio quality, provider state, and Human approval remain separate."
+    }
+  ],
+  "completion_criteria": [
+    "Every product region maps to shared implementation or an explicit platform adaptation",
+    "All observed and authoritative copy is independently reviewable",
+    "Windows packaged-runtime captures cover the same CHOP-loaded state at supported DPI settings",
+    "No P0 or P1 visual mismatch remains at the minimum supported viewport",
+    "Keyboard focus, long strings, loading, error, recording, playing, and save states are exercised",
+    "Backend, provider, device, public, and Human evidence gates remain separate from screenshot appearance"
+  ]
+}
