@@ -32,6 +32,8 @@ The core job is not to visit four disconnected feature screens. A person brings 
 - **CHOP-005** Audition the active slice and full selected range.
 - **CHOP-006** Assign the active slice to a pad and advance pad/slice with Auto Next.
 - **CHOP-007** Long sources must use bounded memory or a documented source/cache limit.
+- **CHOP-008** In PAD trim, a waveform long press moves the nearer START/END boundary to the pressed frame and opens a source-clamped precision viewport no wider than one second.
+- **CHOP-009** START and END expose independent numeric scroll wheels with previous/current/next values, dial position, and selectable frame/1 ms/10 ms steps; every update preserves start-inclusive/end-exclusive bounds, minimum Chop length, Preview, Revert, and Undo/Redo.
 
 ## Pads and voice engine
 

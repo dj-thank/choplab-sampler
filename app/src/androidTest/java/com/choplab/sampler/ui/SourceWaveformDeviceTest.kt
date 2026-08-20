@@ -17,6 +17,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.unit.dp
@@ -243,6 +244,25 @@ class SourceWaveformDeviceTest {
         assertNotEquals(initialState, changedState)
     }
 
+    @Test
+    fun waveformLongPressReportsTheFrameAndFocusesTheRequestedPrecisionWindow() {
+        var longPressedFrame = -1
+        var tappedFrame = -1
+        setDeterministicWaveform(
+            onWaveformTap = { tappedFrame = it },
+            onWaveformLongPress = { longPressedFrame = it },
+            longPressFocusFrames = 100,
+        )
+        val waveform = waveformNode()
+
+        waveform.performTouchInput { longClick(center) }
+        composeRule.waitForIdle()
+
+        assertEquals(500, longPressedFrame)
+        assertEquals(-1, tappedFrame)
+        assertEquals("拡大表示。450から549フレーム。全体1000フレーム", waveform.viewportDescription())
+    }
+
     private fun setDeterministicWaveform(
         startFrame: Int = 100,
         endFrame: Int = 900,
@@ -252,6 +272,8 @@ class SourceWaveformDeviceTest {
         fourthMarkerFrame: Int? = null,
         fifthMarkerFrame: Int? = null,
         onWaveformTap: (Int) -> Unit = {},
+        onWaveformLongPress: ((Int) -> Unit)? = null,
+        longPressFocusFrames: Int? = null,
     ) {
         val fixture = PcmAudio(
             id = 1L,
@@ -283,6 +305,8 @@ class SourceWaveformDeviceTest {
                     onRangeEndChange = { end = it.coerceIn(start + 1, fixture.frameCount) },
                     onSliceMarkerChange = { index, frame -> markers[index] = frame.coerceIn(1, fixture.frameCount - 1) },
                     onWaveformTap = onWaveformTap,
+                    onWaveformLongPress = onWaveformLongPress,
+                    longPressFocusFrames = longPressFocusFrames,
                     canvasHeight = 220.dp,
                     showViewportControls = false,
                     showTimeReadout = false,

@@ -20,7 +20,7 @@
 | DJスクラッチ | 🧪 local/emulator | 元曲slice/S-Eまたは選択PADをpointer-downから直接所有し、左右を正逆速度へ変換。微小ノイズdead zone、px/s正規化、120ms idle無音、方向／倍率／playhead表示をhost test＋API 36 emulatorで確認。解除時は直前の有効なBeat loop/transportへ一度だけ復帰し、再開対象なしでは停止。TalkBack操作を公開。物理実機の連続操作感・クリック音・読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
-| スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのCHOP/通常BEATは波形／操作＋4×4 PADをresponsive配置。360dp級portraitのheader/mode/control/page/PAD編集/stepper/Layer/Scratch/波形compact操作は48dp以上で、文字拡大時もcompact文字のsp値を縮めない。16-step全セルの48dp化はresponsive再設計待ち。UI sourceにscroll APIなし |
+| スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのCHOP/通常BEATは波形／操作＋4×4 PADをresponsive配置。360dp級portraitのheader/mode/control/page/PAD編集/stepper/Layer/Scratch/波形compact操作は48dp以上で、文字拡大時もcompact文字のsp値を縮めない。16-step全セルの48dp化はresponsive再設計待ち。画面全体のscroll containerはなく、TRIMのSTART/END数値ホイールだけが意図したbounded scroll inputを使う |
 | 曲を流しながらPADで刻む | 🧪 local/emulator | source再生中のCapture PADは空／割当済みにかかわらず現在位置を刻む。割当済みA01は旧音を鳴らさず現在素材へ上書きし、旧loop/scratch実行参照も解除 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
@@ -35,7 +35,7 @@
 | BANKを替えて音を重ねる | ✅ emulator/local | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、空BANKも選択可能。全128 PADを演奏・配置 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
 | トーンを変える | ✅ local | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider。再生中のloopへ即時反映するhost regressionあり |
-| 長すぎる音声の箇所選択 | ✅ | 最大10分、zoom/scroll/S/E handles |
+| 長すぎる音声の箇所選択 | ✅ local / API 36 emulator | 最大10分、zoom/pan/S/E handles。PAD長押しでTRIMへ入り、波形長押しで近いSTART/ENDを移動して押下位置の最大1秒窓へfocus。START/ENDはダイヤル付き前／現在／次の数値ホイールをframe・1 ms・10 ms単位で調整でき、Preview/Revert/Undo/Redoを保持 |
 | 波形viewportのアクセシビリティ | ✅ local / AVD framework-node / historical device focus-path | autosave非依存の固定PCM fixtureで2本指pinch/pan、前/次/reset、overview、S/E/chopの48dp・端点・可逆nudgeを検証。source-bound `9177229` は専用Google Play API 36 AVDのportrait font 1.0/1.3/2.0・landscapeで各4 tests PASS、fatal/ANR 0、設定復元PASS。物理Pixelの実TalkBack focus ringは既存receiptあり。TTS内容・完全な読み上げ順・service custom-action menuはHUMAN_GOへ分離。 |
 | プロ用のようにチョップ | ✅ MVP | 手動、自動、境界drag、zero-crossing snap。高度なspectral editor等は次段階 |
 | 選択後に次の対象へ遷移 | ✅ | AUTO NEXTでPAD + active slice前進 |

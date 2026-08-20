@@ -95,6 +95,13 @@ data class PadTrimSnapshot(
     val endFrame: Int,
 )
 
+data class PadTrimFocusResult(
+    val pad: PadModel,
+    val boundary: PadTrimBoundary,
+    val pressedFrame: Int,
+    val window: SliceRange,
+)
+
 fun padTrimNudgeFrames(sampleRate: Int, precision: PadTrimPrecision): Int {
     val safeSampleRate = sampleRate.coerceAtLeast(1)
     return when (precision) {
@@ -102,6 +109,69 @@ fun padTrimNudgeFrames(sampleRate: Int, precision: PadTrimPrecision): Int {
         PadTrimPrecision.MILLISECOND -> ((safeSampleRate + 500) / 1_000).coerceAtLeast(1)
         PadTrimPrecision.TEN_MILLISECONDS -> ((safeSampleRate + 50) / 100).coerceAtLeast(1)
     }
+}
+
+fun precisionTrimWindow(
+    totalFrames: Int,
+    sampleRate: Int,
+    focusFrame: Int,
+    maximumDurationMillis: Int = 1_000,
+): SliceRange {
+    if (totalFrames <= 0) return SliceRange(0, 0)
+    val safeSampleRate = sampleRate.coerceAtLeast(1)
+    val safeDurationMillis = maximumDurationMillis.coerceAtLeast(1)
+    val requestedFrames = (safeSampleRate.toLong() * safeDurationMillis / 1_000L)
+        .coerceAtLeast(1L)
+        .coerceAtMost(totalFrames.toLong())
+        .toInt()
+    val focus = focusFrame.coerceIn(0, totalFrames - 1)
+    val maximumStart = totalFrames - requestedFrames
+    val start = (focus - requestedFrames / 2).coerceIn(0, maximumStart)
+    return SliceRange(start, start + requestedFrames)
+}
+
+fun nearestPadTrimBoundary(
+    frame: Int,
+    startFrame: Int,
+    endFrame: Int,
+): PadTrimBoundary = if (
+    kotlin.math.abs(frame.toLong() - startFrame) <= kotlin.math.abs(frame.toLong() - endFrame)
+) {
+    PadTrimBoundary.START
+} else {
+    PadTrimBoundary.END
+}
+
+fun focusPadTrimAtFrame(
+    pad: PadModel,
+    pressedFrame: Int,
+): PadTrimFocusResult {
+    val audio = requireNotNull(pad.audio) { "Precision trim requires assigned audio" }
+    require(pad.isAssigned) { "Precision trim requires an assigned PAD" }
+    val safePressed = pressedFrame.coerceIn(0, audio.frameCount - 1)
+    val boundary = nearestPadTrimBoundary(safePressed, pad.startFrame, pad.endFrame)
+    val currentFrame = if (boundary == PadTrimBoundary.START) pad.startFrame else pad.endFrame
+    val updated = trimPadBoundary(pad, boundary, safePressed - currentFrame)
+    return PadTrimFocusResult(
+        pad = updated,
+        boundary = boundary,
+        pressedFrame = safePressed,
+        window = precisionTrimWindow(audio.frameCount, audio.sampleRate, safePressed),
+    )
+}
+
+fun stepPadTrimBoundary(
+    pad: PadModel,
+    boundary: PadTrimBoundary,
+    ticks: Int,
+    precision: PadTrimPrecision,
+): PadModel {
+    val audio = pad.audio ?: return pad
+    val stepFrames = padTrimNudgeFrames(audio.sampleRate, precision)
+    val delta = (ticks.toLong() * stepFrames)
+        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+        .toInt()
+    return trimPadBoundary(pad, boundary, delta)
 }
 
 fun capturePadTrimSnapshot(pad: PadModel): PadTrimSnapshot = PadTrimSnapshot(
@@ -134,13 +204,20 @@ fun trimPadBoundary(
     if (!pad.isAssigned || audio.frameCount < 2) return pad
     return when (boundary) {
         PadTrimBoundary.START -> pad.copy(
-            startFrame = (pad.startFrame + deltaFrames).coerceIn(0, pad.endFrame - 2),
+            startFrame = saturatedFrameOffset(pad.startFrame, deltaFrames)
+                .coerceIn(0, pad.endFrame - 2),
         )
         PadTrimBoundary.END -> pad.copy(
-            endFrame = (pad.endFrame + deltaFrames).coerceIn(pad.startFrame + 2, audio.frameCount),
+            endFrame = saturatedFrameOffset(pad.endFrame, deltaFrames)
+                .coerceIn(pad.startFrame + 2, audio.frameCount),
         )
     }
 }
+
+private fun saturatedFrameOffset(frame: Int, deltaFrames: Int): Int =
+    (frame.toLong() + deltaFrames)
+        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+        .toInt()
 
 fun selectPlayablePad(state: SamplerUiState, globalIndex: Int): SamplerUiState {
     val target = state.pads.getOrNull(globalIndex) ?: return state

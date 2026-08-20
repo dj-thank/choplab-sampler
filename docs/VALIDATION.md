@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## v0.16.1 precision trim local candidate — 2026-08-21
+
+- Source: isolated `codex/choplab-precision-trim`, baseline main `923d7bb711d399efdf7ea8726e9a72769f1d97a5`; dirty canonical checkout untouched. Final commit/tree binding is recorded after review.
+- TDD/policy: nearest-boundary tie, centered/edge/short-source one-second window, focused viewport, frame/1 ms/10 ms stepping, range clamp, arithmetic overflow, dial progress, exact time/copy, and waveform long-press-without-tap all PASS.
+- Full local Gradle gate: `:app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleDebug :jvm-core:test :desktop:test :desktop:packageWindows --no-daemon --max-workers=1 --no-watch-fs` BUILD SUCCESSFUL, 124 tasks.
+- Tests: Android unit 224 / 44 suites; JVM-core 44 / 8 suites; desktop 35 / 12 suites; API 36 instrumentation 6. Failures 0, errors 0, skipped 0. Android Lint: errors 0 / warnings 8.
+- Configured project gate: Git Bash `scripts/validate_project.sh` PASS; public-surface 320 candidates PASS; six Android XML files parse; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`.
+- API 36 emulator manual path: assigned A02 long press opened full portrait TRIM; waveform long press moved END to `3:38.873` and focused exactly one second; ZOOM+ retained that focus at half a second; 10 ms wheel moved END to `3:38.883`; Revert restored `0:36.703–6:28.563` and full-source `1.0x`. No microphone/system recording or public/provider operation occurred.
+- Preliminary candidate artifacts: debug APK version `0.16.1 (25)`, 30,937,621 bytes, SHA-256 `4E1159F15FBBE9A84112711FC473A24628530F2E88E2E39DA0560B72D86905C9`; Windows `ChopLab.exe`, 449,024 bytes, SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A`. Rebuild after final commit is required before source-bound delivery.
+- Gate: `LOCAL_PASS` plus scoped emulator UI/instrumentation. Physical device audio/touch, signed iPhone behavior, provider/public Release, accessibility speech, and Human acceptance are not claimed.
+
 ## v0.16.0 production continuity and public preview — 2026-08-20
 
 - Source: isolated branch commits `1813385` + review fix `1e15fe3`, tree `bce75c1ecb4f30e193e12da38339c50c0cbc078c`; dirty canonical checkout untouched.

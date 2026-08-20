@@ -37,9 +37,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -76,6 +78,8 @@ fun WaveformEditor(
     onRangeEndChange: (Int) -> Unit,
     onSliceMarkerChange: (Int, Int) -> Unit,
     onWaveformTap: (Int) -> Unit,
+    onWaveformLongPress: ((Int) -> Unit)? = null,
+    longPressFocusFrames: Int? = null,
     playheadFrame: Int? = null,
     modifier: Modifier = Modifier,
     canvasHeight: Dp = 220.dp,
@@ -86,11 +90,13 @@ fun WaveformEditor(
     showInteractionHint: Boolean = true,
     maximumZoom: Float = 32f,
     zoomFocusFrame: Int? = null,
+    viewportResetKey: Any? = null,
     readoutColor: Color? = null,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    var zoom by remember(audio.id) { mutableFloatStateOf(1f) }
-    var scroll by remember(audio.id) { mutableFloatStateOf(0f) }
+    val haptics = LocalHapticFeedback.current
+    var zoom by remember(audio.id, viewportResetKey) { mutableFloatStateOf(1f) }
+    var scroll by remember(audio.id, viewportResetKey) { mutableFloatStateOf(0f) }
 
     val viewport = resolveWaveformViewport(audio.frameCount, zoom, scroll)
     val totalFrames = viewport.totalFrames
@@ -139,6 +145,7 @@ fun WaveformEditor(
                         visibleStart,
                         visibleFrames,
                         canvasSize,
+                        longPressFocusFrames,
                     ) {
                         detectTapGestures(
                             onDoubleTap = { offset ->
@@ -161,6 +168,32 @@ fun WaveformEditor(
                                     .roundToInt()
                                     .coerceIn(0, totalFrames - 1)
                                 onWaveformTap(frame)
+                            },
+                            onLongPress = if (onWaveformLongPress != null || longPressFocusFrames != null) {
+                                { offset ->
+                                    if (canvasSize.width > 0) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val frame = waveformFrameAtX(
+                                            offset.x,
+                                            canvasSize.width.toFloat(),
+                                            visibleStart,
+                                            visibleFrames,
+                                            totalFrames,
+                                        )
+                                        longPressFocusFrames?.let { requestedFrames ->
+                                            val next = focusWaveformViewport(
+                                                frame = frame,
+                                                totalFrames = totalFrames,
+                                                targetVisibleFrames = requestedFrames,
+                                            )
+                                            zoom = next.zoom
+                                            scroll = next.scroll
+                                        }
+                                        onWaveformLongPress?.invoke(frame)
+                                    }
+                                }
+                            } else {
+                                null
                             },
                         )
                     }
@@ -188,6 +221,8 @@ fun WaveformEditor(
                     .semantics {
                         contentDescription = if (manualChopEnabled) {
                             "音声波形。タッチ操作はタップした位置にチョップを追加。アクセシビリティ操作は$accessibilityTapActionLabel"
+                        } else if (onWaveformLongPress != null) {
+                            "音声波形。タップで近い境界を移動。長押しでその位置へ移動して1秒以内に拡大。アクセシビリティ操作は$accessibilityTapActionLabel"
                         } else {
                             "音声波形。タッチ操作はタップした位置へ移動。アクセシビリティ操作は$accessibilityTapActionLabel"
                         }

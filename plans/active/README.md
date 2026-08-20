@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装選択:** なし。Android production continuityは完了し、次の実装sliceは未選択。物理端末の音質／touch／TalkBackは別lease・別taskとしてのみ選択する。
+**進行中:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにする。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
 
 **完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 
@@ -41,6 +41,7 @@
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
+- `precision-trim-long-press-number-wheel-20260820.md`（現在の選択）
 
 ## Selection protocol
 
