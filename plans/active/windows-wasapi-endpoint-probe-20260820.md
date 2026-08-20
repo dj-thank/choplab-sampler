@@ -56,7 +56,8 @@ Replace the invalid assumption that Java Sound is usable on every Windows host. 
 - [x] 2026-08-20 — Implemented host-tested COM/WaveFormat boundary and redacted JSON receipt.
 - [x] 2026-08-20 — Ran JNA and independent C# probes: MMDevice render/capture all-state counts are 0 and every default role is not found. PnP AudioEndpoint present count is 0.
 - [x] 2026-08-20 — Added native `診断 > Windows 音声エンドポイント` action with background execution and truthful status output.
-- [ ] Review, commit, GitHub sync, and select the next streaming slice.
+- [x] 2026-08-20 — Completed local Standards/Spec review and committed candidate `5c0b84d`.
+- [ ] GitHub sync and the next streaming slice remain pending; streaming requires at least one present Windows AudioEndpoint.
 
 ## Discoveries
 
@@ -74,6 +75,8 @@ Replace the invalid assumption that Java Sound is usable on every Windows host. 
 - `:desktop:test --tests 'com.choplab.desktop.audio.wasapi.*' --tests 'com.choplab.desktop.provider.WindowsAudioDiagnosticsTest'`: PASS.
 - `:desktop:runWasapiProbe`: expected exit 2 with a redacted receipt; COM calls succeed, render/capture active and all-state counts are 0, defaults return not found.
 - Independent in-memory C# MMDevice probe: `renderAll=0 captureAll=0`, enum/count HRESULT `S_OK`, default HRESULT `0x80070490` for both flows.
+- `:desktop:test :desktop:packageWindows :app:compileDebugKotlin`: BUILD SUCCESSFUL with task-local `ANDROID_SDK_ROOT`; public-surface scan PASS.
+- Local parent two-axis review: no hard Standards violation and no missing in-scope Spec implementation. Streaming is externally blocked by endpoint absence.
 
 ## Risks and rollback
 
