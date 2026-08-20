@@ -30,16 +30,17 @@ The selected restart seam [`plans/active/restart-playback-interruption-local-202
 
 The parent PAD's context-restart audit is recorded in [`PAD_HISTORY_RESTART_EXTRACT_20260819.md`](../../../../work/PAD_HISTORY_RESTART_EXTRACT_20260819.md). It is a historical-lead/current-snapshot reconciliation and skill extraction record only; it does not change app source or promote the current `LOCAL_PASS` ceiling.
 
-## Windows Desktop full rebuild candidate — 2026-08-20
+## Windows Desktop full rebuild merged — 2026-08-20
 
-The isolated branch `codex/choplab-desktop-exe` is the current implementation worktree for the user-requested PC direction. It imports the tracked documentation changes and the current restart plan state from the dirty canonical checkout without resetting or cleaning that checkout.
+The user-requested PC rebuild was implemented in the isolated branch `codex/choplab-desktop-exe` without resetting or cleaning the dirty canonical checkout. PR #32 was squash-merged to `main` as `d88f022e5c7023c987e9b82036c04c5207415597`; the merged main tree `05e255ccb7eeba9c0cc9b939b68684229581c322` exactly matches the validated branch tree.
 
 - Worktree: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-exe-20260819`.
 - Target: `:shared` Compose Multiplatform UI/domain + `:jvm-core` archive/autosave/export/PCM rules + `:desktop` Windows adapters. Android `:app` consumes the same shared UI/model and JVM core.
-- Candidate implementation: one Android-origin four-stage deck; separate source and polyphonic PAD voices; PAD KEY/TONE/LEVEL/REVERSE/GATE/LOOP/CHOKE rendering; 16-step BPM/Swing transport; bidirectional scratch stream; microphone and fail-closed driver-loopback recording; shared `.choplab` manual save/open and three-generation autosave; shared four-bar WAV export; bounded EditHistory; and a native Spotify metadata/control menu.
+- Merged implementation: one Android-origin four-stage deck; separate source and polyphonic PAD voices; PAD KEY/TONE/LEVEL/REVERSE/GATE/LOOP/CHOKE rendering; 16-step BPM/Swing transport; bidirectional scratch stream; microphone and fail-closed driver-loopback recording; shared `.choplab` manual save/open and three-generation autosave; shared four-bar WAV export; bounded EditHistory; and a native Spotify metadata/control menu.
 - Spotify boundary: Authorization Code with PKCE, loopback callback, memory-only token refresh, current playback, pause and resume. Spotify audio bytes, stream ripping, recording through the provider, full-track download and MP3 conversion remain deliberately absent.
 - Current local evidence (observed `2026-08-20`): UI contract validator PASS (`9` regions, exact `4`, semantic `4`, adapted `1`); `:jvm-core:test :desktop:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` BUILD SUCCESSFUL; `:desktop:packageWindows` BUILD SUCCESSFUL; packaged PID child responds with title `ChopLab — おとひろい PC`. The same 32,451,057-byte local project used by the Android reference was opened through the packaged EXE; `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-loaded-project-20260820.png` is a complete 1106×2202 capture at 200% DPI and maps the waveform, slice markers, assigned A01/A02, selected A02, BANK/page, dock and exact copy.
-- Explicit follow-up: driver loopback availability and audio quality, microphone/transport latency, loaded CHOP same-state A/B, Spotify account/device behavior, native low-latency WASAPI, signing/installer publication and Human acceptance remain separate.
+- GitHub read-back: PR head Android/Windows/iOS checks all passed twice; merged-main Android run `32344903904`, Windows run `32344903955`, and iOS run `32344903922` all passed. Final local main-tree ZIP is `ChopLab-Windows-0.3.0-main-d88f022.zip`, SHA-256 `9929CF01E75556735410AB2D50BD703BFCC6D66C83FC47622E3DB08E4A23CBA5`.
+- Explicit follow-up: driver loopback availability and audio quality, microphone/transport latency, Spotify account/device behavior, native low-latency WASAPI, signing/installer publication and Human acceptance remain separate.
 - Gate ceiling: `LOCAL_PASS`. The adapter rejects missing loopback hardware rather than claiming success; no provider/device/public/Human promotion is made.
 
 ## Public Android / iOS preview release track — 2026-08-19

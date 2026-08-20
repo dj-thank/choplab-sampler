@@ -1,12 +1,14 @@
 # ExecPlan registry
 
-更新: 2026-08-19
+更新: 2026-08-20
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中:** `windows-exe-full-rebuild-20260820.md`。Android ChopLabを正本として、Windows EXEの同一Compose UI・同一文言・sampler stateに加え、制作保存/復元、Windows音声アダプター、transport/scratch、Undo/Redo、Spotify metadata/control seam、packaged runtime検証までを閉じる。Spotify Content の取得・録音・stream ripping・MP3化は対象外。target gate は `LOCAL_PASS` のみ。
+**進行中:** なし。次の実装seamは未選択。
+
+**完了済み:** `../completed/windows-exe-full-rebuild-20260820.md`。Android-origin shared UI/domainとJVM coreを使うWindows EXEを実装し、local verification、UI A/B、GitHub PR #32、全PR CI、squash merge、全merged-main CIまで完了。device/provider/signing/Human境界は未昇格。
 
 **完了済み:** `restart-playback-interruption-local-20260819.md`。`app/` の playback interruption local contract を focused local test と source inspection で再確認した。実装差分はなく、Pro 統合、Pixel 9a、device/provider/public 検証は開始していない。
 
@@ -33,7 +35,6 @@
 - `restart-playback-interruption-local-20260819.md`（完了済み本文を保全）
 - `windows-desktop-mvp-20260819.md`（初期プロトタイプの本文を保全）
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
-- `windows-exe-full-rebuild-20260820.md`（現在の選択）
 
 ## Selection protocol
 

@@ -88,7 +88,7 @@ Shared model/UI files are single-writer truth. Platform capabilities report unav
 - [x] 2026-08-20 — Moved archive/autosave/export/WAV/cursor logic into `:jvm-core`; connected persistence, driver-loopback, provider, transport/scratch, live PAD controls and edit history.
 - [x] 2026-08-20 — Produced the 0.3.0 app-image, reopened it on this terminal and captured the complete maximized 200% DPI empty state.
 - [x] 2026-08-20 — Opened the same retained `.choplab` project through the packaged EXE and captured the Android-matching loaded CHOP state at 200% DPI.
-- [ ] Complete reviews, commit, GitHub synchronization, and revision-bound receipt.
+- [x] 2026-08-20 — Completed root Standards/Spec review, source-bound local verification, GitHub PR synchronization, all PR checks, squash merge, and all merged-main checks.
 
 ## Discoveries
 
@@ -105,13 +105,15 @@ Shared model/UI files are single-writer truth. Platform capabilities report unav
 ## Validation log
 
 - Planning checker: `python C:/Users/rambo/.agents/skills/run-diverse-luna-project/scripts/check_setup.py --agent-role luna_builder --ledger-json C:/Users/rambo/Documents/ChatGPT/pad/work/PAD_CHOPLAB_EXE_REBUILD_LEDGER.json` — PASS on 2026-08-20.
-- UI contract validator: PASS, 9 regions mapped; exact=4, semantic=4, adapted=1; 2 states.
+- UI contract validator: PASS, 9 regions mapped; exact=4, semantic=4, adapted=1; 3 states.
 - `:jvm-core:test :desktop:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: BUILD SUCCESSFUL on 2026-08-20.
 - `:desktop:packageWindows --rerun-tasks`: BUILD SUCCESSFUL; tracked launcher PID `13920`, responding child PID `28300`.
 - Packaged empty-state capture: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-maximized-20260820.png`, 1106×2202 at 200% DPI.
 - Packaged loaded-state capture: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-loaded-project-20260820.png`, 1106×2202 at 200% DPI.
 - `scripts/validate_project.sh`: PASS after adding a Gradle JVM-core/Desktop fallback for Windows hosts without standalone `kotlinc`; XML and wrapper digest checks PASS.
-- `scripts/verify.ps1`: PASS at revision `6f8044b`; 116 clean-build tasks, Android app/test APK signer match, and revision-bound provenance receipt PASS. A later CI-only KVM commit requires its own final read-back before closure.
+- `scripts/verify.ps1`: PASS at feature revision `6f8044b`; 116 clean-build tasks, Android app/test APK signer match, and revision-bound provenance receipt PASS.
+- PR #32 head `d3e52e2`: Android/Windows/iOS checks SUCCESS ×2 each. Squash-merged main `d88f022` uses the identical tree `05e255ccb7eeba9c0cc9b939b68684229581c322`; merged-main Android run `32344903904`, Windows run `32344903955`, and iOS run `32344903922` all SUCCESS.
+- Final main-tree Windows artifact: `ChopLab-Windows-0.3.0-main-d88f022.zip`, SHA-256 `9929CF01E75556735410AB2D50BD703BFCC6D66C83FC47622E3DB08E4A23CBA5`.
 
 ## Risks and rollback
 
