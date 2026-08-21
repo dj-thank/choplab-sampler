@@ -2,6 +2,7 @@ package com.choplab.sampler.audio
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -16,6 +17,17 @@ class AudioResourceLimitsTest {
             115_200_000L,
             AudioResourceLimits.maxRecordingPcmBytes(sampleRate = 48_000, channelCount = 2),
         )
+    }
+
+    @Test
+    fun importFileSizeRejectsOnlyKnownOversizedInputs() {
+        AudioResourceLimits.requireImportFileSize(null)
+        AudioResourceLimits.requireImportFileSize(-1L)
+        AudioResourceLimits.requireImportFileSize(AudioResourceLimits.MAX_IMPORT_FILE_BYTES)
+
+        assertFailsWith<IllegalArgumentException> {
+            AudioResourceLimits.requireImportFileSize(AudioResourceLimits.MAX_IMPORT_FILE_BYTES + 1L)
+        }
     }
 
     @Test
