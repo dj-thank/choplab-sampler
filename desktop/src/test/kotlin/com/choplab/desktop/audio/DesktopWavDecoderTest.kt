@@ -65,7 +65,7 @@ class DesktopWavDecoderTest {
     private fun pcm16LittleEndian(vararg samples: Short): ByteArray =
         ByteBuffer.allocate(samples.size * Short.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)
-            .apply { samples.forEach(::putShort) }
+            .apply { samples.forEach { sample -> putShort(sample) } }
             .array()
 
     private fun pcm16LittleEndian(vararg samples: Int): ByteArray =
