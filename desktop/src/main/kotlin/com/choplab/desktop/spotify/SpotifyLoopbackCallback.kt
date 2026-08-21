@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class SpotifyCallbackResult(
     val code: String,
@@ -19,6 +20,8 @@ data class SpotifyCallbackResult(
 class SpotifyLoopbackCallbackServer : AutoCloseable {
     private val result = CompletableFuture<SpotifyCallbackResult>()
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    private val closed = AtomicBoolean(false)
+    @Volatile private var expectedState: String? = null
 
     init {
         server.createContext("/callback") { exchange -> handle(exchange) }
@@ -28,48 +31,67 @@ class SpotifyLoopbackCallbackServer : AutoCloseable {
     val redirectUri: URI
         get() = URI("http://127.0.0.1:${server.address.port}/callback")
 
-    fun await(expectedState: String, timeout: Duration = Duration.ofMinutes(3)): SpotifyCallbackResult {
+    /** Must be installed before opening the provider authorization page. */
+    fun expectState(state: String) {
+        require(state.isNotBlank()) { "Spotify OAuth state must not be blank" }
+        check(!closed.get()) { "Spotify callback receiver is closed" }
+        check(!result.isDone) { "Spotify callback was already completed" }
+        expectedState = state
+    }
+
+    fun await(timeout: Duration = Duration.ofMinutes(3)): SpotifyCallbackResult {
+        check(expectedState != null) { "Spotify OAuth state was not configured" }
         return try {
-            val received = result.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
-            check(received.state == expectedState) { "Spotify OAuth state did not match" }
-            received
+            result.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
         } finally {
             close()
         }
     }
 
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         server.stop(0)
         result.cancel(false)
     }
 
     private fun handle(exchange: HttpExchange) {
         try {
+            if (exchange.requestMethod != "GET") {
+                respond(exchange, 405, "Only GET callbacks are accepted.")
+                return
+            }
             val query = parseQuery(exchange.requestURI.rawQuery.orEmpty())
+            val receivedState = query["state"]
+            val requiredState = expectedState
+            if (requiredState == null || receivedState.isNullOrBlank() || receivedState != requiredState) {
+                // A malformed or locally forged callback must not consume the one valid result.
+                respond(exchange, 400, "Spotify authorization state was invalid. Return to the original browser tab.")
+                return
+            }
+
             val error = query["error"]
             if (error != null) {
                 result.completeExceptionally(IllegalStateException("Spotify authorization failed: $error"))
-                respond(exchange, "Spotify authorization was denied. You can close this window.")
+                respond(exchange, 200, "Spotify authorization was denied. You can close this window.")
                 return
             }
             val code = query["code"]
-            val state = query["state"]
-            require(!code.isNullOrBlank() && !state.isNullOrBlank()) {
-                "Spotify callback did not contain code and state"
-            }
-            result.complete(SpotifyCallbackResult(code, state))
-            respond(exchange, "Spotify authorization succeeded. You can close this window.")
+            require(!code.isNullOrBlank()) { "Spotify callback did not contain an authorization code" }
+            result.complete(SpotifyCallbackResult(code, receivedState))
+            respond(exchange, 200, "Spotify authorization succeeded. You can close this window.")
         } catch (error: Throwable) {
             result.completeExceptionally(error)
-            respond(exchange, "Spotify authorization failed. You can close this window.")
+            respond(exchange, 400, "Spotify authorization failed. You can close this window.")
         }
     }
 
-    private fun respond(exchange: HttpExchange, message: String) {
+    private fun respond(exchange: HttpExchange, status: Int, message: String) {
         val bytes = "<html><body>${message.htmlEscape()}</body></html>"
             .toByteArray(StandardCharsets.UTF_8)
         exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
-        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.responseHeaders.add("Cache-Control", "no-store")
+        exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
+        exchange.sendResponseHeaders(status, bytes.size.toLong())
         exchange.responseBody.use { it.write(bytes) }
     }
 
