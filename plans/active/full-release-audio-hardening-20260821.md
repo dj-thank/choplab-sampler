@@ -134,7 +134,8 @@ The user-visible result is a preview build that fails closed instead of silently
 - [x] Milestone 3 implementation and focused tests.
 - [ ] Milestone 4 shared-DSP extraction/equivalence work; resource and lifecycle seams are complete, but this larger refactor remains deferred.
 - [ ] Milestone 5 administrative read-back; source-controlled scanning, SBOM, CODEOWNERS, security policy, and autosave durability are implemented.
-- [ ] Full CI rerun, final artifact inspection, PR review, and documentation closeout.
+- [x] Full source-controlled CI rerun and final artifact inspection at `0dc4a215`; documentation closeout is recorded here.
+- [ ] Human PR review and repository-administrator ruleset read-back remain external gates.
 
 ## Discoveries
 
@@ -153,8 +154,9 @@ The user-visible result is a preview build that fails closed instead of silently
 ## Validation log
 
 - Baseline source mapping — 2026-08-21 — GitHub read-back at commit `9a4e9edc`; no fresh build claim.
-- PR head `d871baf` — Supply-chain policy run 32468989684 PASS; Windows run 32468989763 PASS; iOS run 32468989677 PASS.
-- PR head `d871baf` — Android compilation, tests, lint, and release assembly PASS. Final-APK inspection correctly stopped on the exported AndroidX `ProfileInstallReceiver`; the verifier now accepts it only with the platform `android.permission.DUMP` guard, and the rerun remains pending.
+- PR head `d871baf` — Supply-chain policy run 32468989684 PASS; Windows run 32468989763 PASS; iOS run 32468989677 PASS. Android compilation, tests, lint, and release assembly passed, then final-APK inspection exposed the missing guarded-receiver policy case.
+- PR head `0dc4a215` — [Android run 32487125343](https://github.com/dj-thank/choplab-sampler/actions/runs/32487125343) PASS, including release-policy tests, unit tests, lint, unsigned release assembly, final release-APK inspection, and API 36 instrumentation/accessibility tests.
+- PR head `0dc4a215` — [Windows run 32487125323](https://github.com/dj-thank/choplab-sampler/actions/runs/32487125323) PASS; [iOS run 32487125298](https://github.com/dj-thank/choplab-sampler/actions/runs/32487125298) PASS, including the Kotlin/Native framework and Simulator tests/build; [supply-chain run 32487125397](https://github.com/dj-thank/choplab-sampler/actions/runs/32487125397) PASS, including complete-history scanning and a non-empty CycloneDX SBOM.
 
 ## Risks and rollback
 
