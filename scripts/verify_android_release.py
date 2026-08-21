@@ -104,7 +104,9 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
         element.attrib.get(f"{ANDROID}name", "")
         for element in root.findall("uses-permission")
     }
-    unexpected_permissions = permissions - ALLOWED_PERMISSIONS
+    generated_receiver_permission = f"{package_name}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+    allowed_permissions = ALLOWED_PERMISSIONS | {generated_receiver_permission}
+    unexpected_permissions = permissions - allowed_permissions
     missing_permissions = ALLOWED_PERMISSIONS - permissions
     if unexpected_permissions:
         raise VerificationError(
@@ -115,6 +117,17 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
         raise VerificationError(
             "Published APK is missing expected permissions: "
             + ", ".join(sorted(missing_permissions))
+        )
+
+    generated_permission_declarations = {
+        element.attrib.get(f"{ANDROID}name", "")
+        for element in root.findall("permission")
+    }
+    unexpected_declarations = generated_permission_declarations - {generated_receiver_permission}
+    if unexpected_declarations:
+        raise VerificationError(
+            "Published APK declares permissions outside the allowlist: "
+            + ", ".join(sorted(unexpected_declarations))
         )
 
     application = root.find("application")
