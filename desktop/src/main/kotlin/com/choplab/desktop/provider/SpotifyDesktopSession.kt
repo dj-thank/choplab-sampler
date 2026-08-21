@@ -8,6 +8,7 @@ import com.choplab.desktop.spotify.newSpotifyAuthorizationAttempt
 import java.awt.Desktop
 import java.time.Instant
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Memory-only Spotify metadata/control session.
@@ -24,7 +25,11 @@ class SpotifyDesktopSession(
     private val executor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "ChopLab-Spotify-OAuth").apply { isDaemon = true }
     }
+    private val stateLock = Any()
+    private val generation = ProviderSessionGeneration()
+    private val closed = AtomicBoolean(false)
     @Volatile private var credentials: Credentials? = null
+    @Volatile private var activeCallback: SpotifyLoopbackCallbackServer? = null
 
     val connected: Boolean
         get() = credentials != null
@@ -34,69 +39,114 @@ class SpotifyDesktopSession(
             onStatus("Spotify連携にはCHOPLAB_SPOTIFY_CLIENT_IDを設定してください")
             return
         }
-        submit("Spotifyログイン") {
-            SpotifyLoopbackCallbackServer().use { callback ->
+        if (closed.get()) {
+            onStatus("Spotify連携は終了しています")
+            return
+        }
+
+        val lease = generation.begin()
+        val previousCallback = synchronized(stateLock) {
+            credentials = null
+            activeCallback.also { activeCallback = null }
+        }
+        previousCallback?.close()
+
+        submit("Spotifyログイン", lease) {
+            generation.requireCurrent(lease)
+            val callback = SpotifyLoopbackCallbackServer()
+            try {
+                registerCallback(lease, callback)
                 val attempt = newSpotifyAuthorizationAttempt(
                     clientId = clientId,
                     redirectUri = callback.redirectUri,
                     scopes = listOf("user-read-playback-state", "user-modify-playback-state"),
                 )
+                callback.expectState(attempt.state)
+                generation.requireCurrent(lease)
                 check(Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                     "既定ブラウザーを開けません"
                 }
                 Desktop.getDesktop().browse(attempt.request.toUri())
-                onStatus("ブラウザーでSpotify連携を許可してください")
-                val received = callback.await(attempt.state)
+                statusIfCurrent(lease, "ブラウザーでSpotify連携を許可してください")
+                val received = callback.await()
+                generation.requireCurrent(lease)
                 val tokens = tokenClient.exchangeCode(
                     clientId,
                     received.code,
                     callback.redirectUri,
                     attempt.verifier,
                 )
-                credentials = Credentials(tokens, Instant.now())
-                onStatus("Spotifyと連携しました。音声取込はローカル素材または録音を使用します")
+                generation.requireCurrent(lease)
+                check(commitCredentials(lease, Credentials(tokens, Instant.now()))) {
+                    "Spotifyログインはキャンセルされました"
+                }
+                statusIfCurrent(
+                    lease,
+                    "Spotifyと連携しました。音声取込はローカル素材または録音を使用します",
+                )
+            } finally {
+                clearCallback(callback)
+                callback.close()
             }
         }
     }
 
-    fun showCurrentPlayback() = withAccessToken("Spotify現在再生") { token ->
+    fun showCurrentPlayback() = withAccessToken("Spotify現在再生") { token, lease ->
         val response = api.currentPlayback(token)
+        generation.requireCurrent(lease)
         when (response.statusCode) {
-            204 -> onStatus("Spotifyで現在再生中の曲はありません")
-            in 200..299 -> onStatus(SpotifyPlaybackJson.describe(response.body))
+            204 -> statusIfCurrent(lease, "Spotifyで現在再生中の曲はありません")
+            in 200..299 -> statusIfCurrent(lease, SpotifyPlaybackJson.describe(response.body))
             else -> error("Spotify現在再生API: HTTP ${response.statusCode}")
         }
     }
 
-    fun pause() = withAccessToken("Spotify一時停止") { token ->
+    fun pause() = withAccessToken("Spotify一時停止") { token, lease ->
         val response = api.pausePlayback(token)
+        generation.requireCurrent(lease)
         check(response.statusCode in 200..299) { "Spotify一時停止API: HTTP ${response.statusCode}" }
-        onStatus("Spotify再生を一時停止しました")
+        statusIfCurrent(lease, "Spotify再生を一時停止しました")
     }
 
-    fun resume() = withAccessToken("Spotify再開") { token ->
+    fun resume() = withAccessToken("Spotify再開") { token, lease ->
         val response = api.resumePlayback(token)
+        generation.requireCurrent(lease)
         check(response.statusCode in 200..299) { "Spotify再開API: HTTP ${response.statusCode}" }
-        onStatus("Spotify再生を再開しました")
+        statusIfCurrent(lease, "Spotify再生を再開しました")
     }
 
     fun disconnect() {
-        credentials = null
+        generation.invalidate()
+        val callback = synchronized(stateLock) {
+            credentials = null
+            activeCallback.also { activeCallback = null }
+        }
+        callback?.close()
         onStatus("Spotify連携をこの端末のメモリから解除しました")
     }
 
-    private fun withAccessToken(label: String, action: (String) -> Unit) {
-        submit(label) {
-            val current = refreshIfNeeded(credentials ?: error("先にSpotifyへログインしてください"))
-            credentials = current
-            action(current.tokens.accessToken)
+    private fun withAccessToken(label: String, action: (String, Long) -> Unit) {
+        if (closed.get()) {
+            onStatus("$label 失敗: Spotify連携は終了しています")
+            return
+        }
+        val lease = generation.snapshot()
+        submit(label, lease) {
+            generation.requireCurrent(lease)
+            val starting = credentials ?: error("先にSpotifyへログインしてください")
+            val current = refreshIfNeeded(starting)
+            generation.requireCurrent(lease)
+            check(commitCredentials(lease, current)) { "Spotify操作はキャンセルされました" }
+            generation.requireCurrent(lease)
+            action(current.tokens.accessToken, lease)
         }
     }
 
     private fun refreshIfNeeded(current: Credentials): Credentials {
         val refreshAt = current.acquiredAt.plusSeconds((current.tokens.expiresInSeconds - 60L).coerceAtLeast(0L))
         if (Instant.now().isBefore(refreshAt)) return current
-        val refreshToken = current.tokens.refreshToken ?: error("Spotifyログインの有効期限が切れました。再ログインしてください")
+        val refreshToken = current.tokens.refreshToken
+            ?: error("Spotifyログインの有効期限が切れました。再ログインしてください")
         val refreshed = tokenClient.refresh(clientId, refreshToken)
         return Credentials(
             tokens = refreshed.copy(refreshToken = refreshed.refreshToken ?: refreshToken),
@@ -104,16 +154,51 @@ class SpotifyDesktopSession(
         )
     }
 
-    private fun submit(label: String, action: () -> Unit) {
+    private fun registerCallback(lease: Long, callback: SpotifyLoopbackCallbackServer) {
+        synchronized(stateLock) {
+            generation.requireCurrent(lease)
+            check(activeCallback == null) { "別のSpotifyログインが進行中です" }
+            activeCallback = callback
+        }
+    }
+
+    private fun clearCallback(callback: SpotifyLoopbackCallbackServer) {
+        synchronized(stateLock) {
+            if (activeCallback === callback) activeCallback = null
+        }
+    }
+
+    private fun commitCredentials(lease: Long, value: Credentials): Boolean = synchronized(stateLock) {
+        if (!generation.isCurrent(lease) || closed.get()) {
+            false
+        } else {
+            credentials = value
+            true
+        }
+    }
+
+    private fun statusIfCurrent(lease: Long, message: String) {
+        if (generation.isCurrent(lease) && !closed.get()) onStatus(message)
+    }
+
+    private fun submit(label: String, lease: Long, action: () -> Unit) {
         executor.submit {
             runCatching(action).onFailure { error ->
-                onStatus("$label 失敗: ${error.message ?: error.javaClass.simpleName}")
+                if (generation.isCurrent(lease) && !closed.get()) {
+                    onStatus("$label 失敗: ${error.message ?: error.javaClass.simpleName}")
+                }
             }
         }
     }
 
     override fun close() {
-        credentials = null
+        if (!closed.compareAndSet(false, true)) return
+        generation.invalidate()
+        val callback = synchronized(stateLock) {
+            credentials = null
+            activeCallback.also { activeCallback = null }
+        }
+        callback?.close()
         executor.shutdownNow()
     }
 

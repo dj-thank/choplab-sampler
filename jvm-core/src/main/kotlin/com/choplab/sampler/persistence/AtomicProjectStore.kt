@@ -1,5 +1,7 @@
 package com.choplab.sampler.persistence
 
+import com.choplab.sampler.audio.AudioResourceLimits
+import com.choplab.sampler.model.ProjectLimits
 import com.choplab.sampler.model.SamplerUiState
 import java.io.File
 import java.io.FileOutputStream
@@ -9,7 +11,15 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /** Three-generation app-owned autosave with a synced, validated temporary replacement. */
-class AtomicProjectStore(private val directory: File) {
+class AtomicProjectStore(
+    private val directory: File,
+    private val maxResidentPcmBytes: Long = AudioResourceLimits.MAX_MOBILE_PROJECT_PCM_BYTES,
+) {
+    init {
+        require(maxResidentPcmBytes in 1L..ProjectLimits.MAX_TOTAL_PCM_BYTES) {
+            "自動保存プロジェクト読込メモリ上限が不正です"
+        }
+    }
     internal val primaryFile = File(directory, "autosave.choplab")
     private val backupFile = File(directory, "autosave.previous.choplab")
     private val olderBackupFile = File(directory, "autosave.previous2.choplab")
@@ -41,7 +51,9 @@ class AtomicProjectStore(private val directory: File) {
         runCatching { temporaryMetadataFile.delete() }
         try {
             writeArchive(temporaryFile, state)
-            temporaryFile.inputStream().buffered().use(ProjectArchiveCodec::read)
+            temporaryFile.inputStream().buffered().use { input ->
+                ProjectArchiveCodec.read(input, maxResidentPcmBytes)
+            }
             writeMetadata(temporaryMetadataFile, revision, sha256(temporaryFile))
             if (backupFile.exists()) {
                 moveGeneration(backupFile, backupMetadataFile, olderBackupFile, olderBackupMetadataFile)
@@ -76,7 +88,9 @@ class AtomicProjectStore(private val directory: File) {
         val decoded = candidates.mapNotNull { generation ->
             runCatching {
                 val revision = readVerifiedRevision(generation)
-                val state = generation.archive.inputStream().buffered().use(ProjectArchiveCodec::read)
+                val state = generation.archive.inputStream().buffered().use { input ->
+                    ProjectArchiveCodec.read(input, maxResidentPcmBytes)
+                }
                 DecodedGeneration(state, revision, generation.priority)
             }.onFailure { if (firstFailure == null) firstFailure = it }.getOrNull()
         }
@@ -172,6 +186,16 @@ class AtomicProjectStore(private val directory: File) {
                 destination.toPath(),
                 StandardCopyOption.REPLACE_EXISTING,
             )
+        }
+        syncDirectoryBestEffort(destination.absoluteFile.parentFile)
+    }
+
+    private fun syncDirectoryBestEffort(parent: File?) {
+        if (parent == null || !parent.isDirectory) return
+        runCatching {
+            java.nio.channels.FileChannel.open(parent.toPath(), java.nio.file.StandardOpenOption.READ).use { channel ->
+                channel.force(true)
+            }
         }
     }
 

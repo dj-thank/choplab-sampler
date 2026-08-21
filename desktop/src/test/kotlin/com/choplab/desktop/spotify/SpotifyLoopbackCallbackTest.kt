@@ -8,24 +8,60 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 
 class SpotifyLoopbackCallbackTest {
     @Test
-    fun callbackRejectsAStateThatDoesNotMatchTheAuthorizationAttempt() {
+    fun wrongStateDoesNotConsumeTheLaterValidCallback() {
         val callback = SpotifyLoopbackCallbackServer()
         try {
-            val request = HttpRequest.newBuilder(
-                URI("${callback.redirectUri}?code=code-123&state=attacker-state"),
-            ).GET().build()
-            val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
+            callback.expectState("expected-state")
+            val client = HttpClient.newHttpClient()
 
-            assertEquals(HttpURLConnection.HTTP_OK, response.statusCode())
-            assertFailsWith<IllegalStateException> {
-                callback.await("expected-state", Duration.ofSeconds(1))
-            }
+            val wrong = client.send(
+                request(callback, "code=forged&state=attacker-state"),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(HttpURLConnection.HTTP_BAD_REQUEST, wrong.statusCode())
+
+            val valid = client.send(
+                request(callback, "code=code-123&state=expected-state"),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(HttpURLConnection.HTTP_OK, valid.statusCode())
+
+            assertEquals(
+                SpotifyCallbackResult(code = "code-123", state = "expected-state"),
+                callback.await(Duration.ofSeconds(1)),
+            )
         } finally {
             callback.close()
         }
     }
+
+    @Test
+    fun providerDenialRequiresMatchingState() {
+        val callback = SpotifyLoopbackCallbackServer()
+        try {
+            callback.expectState("expected-state")
+            val client = HttpClient.newHttpClient()
+
+            val forgedDenial = client.send(
+                request(callback, "error=access_denied&state=attacker-state"),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(HttpURLConnection.HTTP_BAD_REQUEST, forgedDenial.statusCode())
+
+            val valid = client.send(
+                request(callback, "code=code-456&state=expected-state"),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            assertEquals(HttpURLConnection.HTTP_OK, valid.statusCode())
+            assertEquals("code-456", callback.await(Duration.ofSeconds(1)).code)
+        } finally {
+            callback.close()
+        }
+    }
+
+    private fun request(callback: SpotifyLoopbackCallbackServer, query: String): HttpRequest =
+        HttpRequest.newBuilder(URI("${callback.redirectUri}?$query")).GET().build()
 }

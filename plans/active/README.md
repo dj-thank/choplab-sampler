@@ -1,12 +1,14 @@
 # ExecPlan registry
 
-更新: 2026-08-20
+更新: 2026-08-21
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにする。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
+**進行中:** `full-release-audio-hardening-20260821.md`。2026-08-21の厳格レビューで特定した全事項を、公開成果物の再現性と非debug化、音声I/Oと録音の資源境界、iOS/Kotlin Native・OAuth lifecycle、DSP seamとcontroller分割、供給網・復旧・GitHub統制の順に是正する。target gateはPR上の全source/CI/artifact検査と、実際のbranch/tag protection read-back。物理device/provider/Human gateは別lease・別taskとして未昇格のまま保持する。
+
+**完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD／波形長押しから最大1秒の精密窓を開き、START/END数値ホイールとframe/1 ms/10 ms精度をAndroid/Windowsへ実装。PR #37としてmainへマージ済み。物理device/Human境界は未昇格。
 
 **完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 
@@ -41,7 +43,8 @@
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
-- `precision-trim-long-press-number-wheel-20260820.md`（現在の選択）
+- `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
+- `full-release-audio-hardening-20260821.md`（現在の選択）
 
 ## Selection protocol
 

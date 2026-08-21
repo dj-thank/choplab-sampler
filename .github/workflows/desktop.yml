@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/desktop.yml'
       - 'desktop/**'
+      - 'shared/**'
+      - 'jvm-core/**'
+      - 'scripts/**'
       - 'docs/ui/**'
       - 'gradle/**'
       - 'gradle.properties'
@@ -26,10 +29,33 @@ jobs:
   verify:
     name: Test and package EXE
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Archive committed source for review validation
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          git archive --format=zip --output=dist/choplab-source-snapshot.zip HEAD
+
+      - name: Upload committed source snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-source-snapshot
+          if-no-files-found: error
+          path: dist/choplab-source-snapshot.zip
+          retention-days: 1
+
+      - name: Test release policy scripts
+        shell: pwsh
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Read release metadata
+        id: release
+        shell: pwsh
+        run: python scripts/release_metadata.py --github-output $env:GITHUB_OUTPUT
 
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -42,15 +68,24 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :desktop:test :desktop:packageWindows
+        run: .\gradlew.bat --no-daemon --stacktrace :jvm-core:test :desktop:test :desktop:packageWindows
 
-      - name: Record EXE digest and archive app-image
+      - name: Verify EXE version, record digest, and archive app-image
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
-          $exe = Resolve-Path 'desktop/build/windows-app-image/ChopLab/ChopLab.exe'
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Get-FileHash -LiteralPath $exe -Algorithm SHA256 | ConvertTo-Json | Set-Content -Encoding utf8 'dist/ChopLab.exe.sha256.json'
-          Compress-Archive -Path 'desktop/build/windows-app-image/ChopLab' -DestinationPath 'dist/ChopLab-windows-app-image.zip' -CompressionLevel Optimal
+          .\scripts\verify-windows-artifact.ps1 `
+            -AppImage 'desktop/build/windows-app-image/ChopLab' `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -MetadataOutput 'dist/ChopLab-windows-metadata.json'
+          Compress-Archive `
+            -Path 'desktop/build/windows-app-image/ChopLab' `
+            -DestinationPath 'dist/ChopLab-windows-app-image.zip' `
+            -CompressionLevel Optimal
+          $zip = Resolve-Path 'dist/ChopLab-windows-app-image.zip'
+          (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path -Leaf $zip) |
+            Set-Content -Encoding utf8 "$zip.sha256"
 
       - name: Upload Windows app-image artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

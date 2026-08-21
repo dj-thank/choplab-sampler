@@ -411,6 +411,31 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
+    fun callerResidentBudgetIsRejectedBeforeLookingForDeclaredAudioEntry() {
+        val manifest = buildString {
+            appendLine("CHOPLAB_PROJECT\t5")
+            appendLine("audioCount\t1")
+            appendLine("audio\t0\t1\t48000\t2\tYQ\taudio/0.wav")
+            appendLine("state\t0\t0\t-1\t0\t0\t0\t1\t120.0\t50.0\t0\t0.0\t-1\t")
+            appendLine("slices\t")
+            appendLine("steps\t")
+            appendLine("padCount\t128")
+            repeat(128) { index ->
+                appendLine("pad\t$index\t-1\t0\t0\t0.0\t1.0\t1.0\t0\tONE_SHOT\tSAMPLE\t0")
+            }
+        }
+
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(
+                ByteArrayInputStream(zip(listOf("project.txt" to manifest.toByteArray(Charsets.UTF_8)))),
+                maxResidentPcmBytes = 2L,
+            )
+        }
+
+        assertEquals("この端末で安全に開けるプロジェクト音声容量を超えています", failure.message)
+    }
+
+    @Test
     fun declaredPcmExpansionBeyondProjectBudgetIsRejectedBeforeAnyAudioEntry() {
         val manifest = buildString {
             appendLine("CHOPLAB_PROJECT\t5")
