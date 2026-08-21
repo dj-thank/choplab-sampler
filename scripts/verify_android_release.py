@@ -20,9 +20,13 @@ ALLOWED_PERMISSIONS = {
     "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
     "android.permission.POST_NOTIFICATIONS",
 }
-ALLOWED_EXPORTED_COMPONENTS = {
-    "com.choplab.sampler.MainActivity",
-    ".MainActivity",
+EXPORTED_COMPONENT_PERMISSIONS: dict[str, str | None] = {
+    # The launcher is intentionally public and must not be permission-gated.
+    "com.choplab.sampler.MainActivity": None,
+    # AndroidX exports this receiver for shell/profile tooling, but protects every entry point
+    # with the platform signature permission. Accepting the class name without the permission
+    # check would turn a dependency manifest regression into a public attack surface.
+    "androidx.profileinstaller.ProfileInstallReceiver": "android.permission.DUMP",
 }
 COMPONENT_TAGS = ("activity", "activity-alias", "service", "receiver", "provider")
 
@@ -136,7 +140,7 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
     if application.attrib.get(f"{ANDROID}debuggable", "false").lower() == "true":
         raise VerificationError("Published APK is debuggable")
 
-    exported: set[str] = set()
+    exported: dict[str, str | None] = {}
     all_components: set[str] = set()
     for tag in COMPONENT_TAGS:
         for element in application.findall(tag):
@@ -146,7 +150,7 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
             normalized = normalize_component_name(package_name, raw_name)
             all_components.add(normalized)
             if element.attrib.get(f"{ANDROID}exported", "false").lower() == "true":
-                exported.add(normalized)
+                exported[normalized] = element.attrib.get(f"{ANDROID}permission")
 
     forbidden_tooling = sorted(
         component
@@ -159,16 +163,26 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
             "Published APK contains debug/test tooling components: " + ", ".join(forbidden_tooling)
         )
 
-    allowed_normalized = {
-        normalize_component_name(package_name, value) for value in ALLOWED_EXPORTED_COMPONENTS
-    }
-    unexpected_exported = exported - allowed_normalized
+    unexpected_exported = set(exported) - set(EXPORTED_COMPONENT_PERMISSIONS)
     if unexpected_exported:
         raise VerificationError(
             "Published APK exposes components outside the allowlist: "
             + ", ".join(sorted(unexpected_exported))
         )
-    if normalize_component_name(package_name, ".MainActivity") not in exported:
+
+    for component, required_permission in EXPORTED_COMPONENT_PERMISSIONS.items():
+        if component not in exported:
+            continue
+        actual_permission = exported[component]
+        if actual_permission != required_permission:
+            expected = required_permission or "no permission"
+            actual = actual_permission or "no permission"
+            raise VerificationError(
+                f"Exported component {component} must require {expected}; found {actual}"
+            )
+
+    main_activity = normalize_component_name(package_name, ".MainActivity")
+    if main_activity not in exported:
         raise VerificationError("Launcher MainActivity is not exported")
 
 
