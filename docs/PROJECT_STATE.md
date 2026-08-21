@@ -14,7 +14,7 @@ PR [#15](https://github.com/dj-thank/choplab-sampler/pull/15) は `27d1c7ce3e148
 
 逆ダウンロードした公開APKは30,591,947 bytes、SHA-256 `2B1A8453830CC7D2BBB6DE2CFB8064054EE208A14C22B4108171F889F841B600`。GitHub asset digestとchecksum sidecarが一致し、APK Signature Scheme v2、package `com.choplab.sampler`、`versionCode=13`、`versionName=0.9.3`、`minSdk=29`、`targetSdk=36` を確認した。CIとローカルのdebug署名鍵が異なるため、既存ローカル版を保持するエミュレーターへの公開APK上書きは `INSTALL_FAILED_UPDATE_INCOMPATIBLE` で拒否された。データ削除は行っておらず、物理Pixelも未接続のため、公開APKの実端末導入は未達として分離する。
 
-2026-08-12、物理Pixel 9a `5A121JEBF08094` へmain `5e7369eb28e9109a63d8e5fccca0b0f237f308e8` を再ビルドして導入した。オフライン検証、98テスト、Lint、assembleを含む全53 Gradleタスクを `--rerun-tasks` で再実行し、ローカルAPKは30,591,947 bytes、SHA-256 `3ADEDFBF228BB3A0BA750A74EAF55C5700DE68A4E38B3CD52D17B82B56EC2174`。既存v0.9.0と新APKの署名SHA-256はともに `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587` で、`adb install -r` がデータ保持のまま成功した。
+2026-08-12、物理Pixel 9a（端末識別子は非公開）へmain `5e7369eb28e9109a63d8e5fccca0b0f237f308e8` を再ビルドして導入した。オフライン検証、98テスト、Lint、assembleを含む全53 Gradleタスクを `--rerun-tasks` で再実行し、ローカルAPKは30,591,947 bytes、SHA-256 `3ADEDFBF228BB3A0BA750A74EAF55C5700DE68A4E38B3CD52D17B82B56EC2174`。既存v0.9.0と新APKの署名SHA-256はともに `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587` で、`adb install -r` がデータ保持のまま成功した。
 
 更新後は `versionCode=13` / `versionName=0.9.3`。アプリ私有領域は更新前後とも7ファイル・169,513 KBで、同じAPKを `/sdcard/Download/ChopLab-v0.9.3-pixel9a-debug.apk` へコピーし、端末SHA-256もPCと一致した。`MainActivity` はtop-resumed、プロセスは継続し、focused fatal/ANRは0件。既存プロジェクトからBeatへ入り、再生可能 `A-01` の実波形、`空 / EMPTY`、固定16ステップ、ループ操作、runtime非スクロールを物理画面で確認した。マイク録音と主観的な音質・遅延はこのsmokeでは操作していない。なお導入物は既存データと署名互換なローカルdebug APKであり、CI署名のpublic APKそのものを物理端末へ入れたという主張はしない。
 
