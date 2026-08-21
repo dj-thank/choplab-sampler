@@ -350,6 +350,14 @@
 - GitHub digest, checksum sidecar, package/version metadata, and APK Signature Scheme v2 all match
 - public APK emulator update: not claimed; Android rejected the CI-signed APK over the locally signed install with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; no app data was deleted
 - physical Pixel: not connected; exact public APK install/copy remains pending
+- 2026-08-12 physical Pixel 9a (device identifier redacted): pre-update v0.9.0 / code 10; post-update v0.9.3 / code 13
+- rebuild from main `5e7369e`: offline validation PASS; 98 tests, Lint, and assemble PASS with all 53 Gradle tasks rerun
+- local Pixel APK: 30,591,947 bytes; SHA-256 `3ADEDFBF228BB3A0BA750A74EAF55C5700DE68A4E38B3CD52D17B82B56EC2174`
+- installed/new APK signer matched the existing install at certificate SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`; `adb install -r` returned `Success`
+- app-private storage remained 7 files / 169,513 KB before and after update; no uninstall or data clear occurred
+- `/sdcard/Download/ChopLab-v0.9.3-pixel9a-debug.apk` matched the PC hash; `MainActivity` top-resumed with a live process and zero focused fatal/ANR signals
+- physical Beat UI: playable `A-01` auto-selected; waveform, `空 / EMPTY`, loop controls, and fixed 16-step board visible; runtime hierarchy had no scrollable node
+- privacy boundary: microphone recording was not activated; subjective audio/latency was not claimed
 
 ## 2026-08-11 GitHub Actions runtime maintenance
 

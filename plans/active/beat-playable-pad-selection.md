@@ -45,6 +45,7 @@
 - 2026-08-11 — PR #15 merged as `27d1c7c`; branch, PR, main, tag-verification, and release workflows passed. Public prerelease `v0.9.3-preview.1` published.
 - 2026-08-11 — reverse-downloaded public APK matched GitHub digest and sidecar at SHA-256 `2B1A8453830CC7D2BBB6DE2CFB8064054EE208A14C22B4108171F889F841B600`; v2 signature and package metadata verified.
 - 2026-08-11 — exact public APK device install remains open: CI/local debug signatures differ on the emulator, and no physical Pixel is connected. No app data was deleted.
+- 2026-08-12 — physical Pixel 9a (device identifier redacted) updated in place from local-signed v0.9.0 to local-signed v0.9.3. Signers matched, private storage stayed 7 files / 169,513 KB, PC/device APK hashes matched, and fixed Beat UI smoke passed without microphone activation. Exact CI-signed public APK installation remains a separate unclaimed gate.
 
 ## Risks and rollback
 
