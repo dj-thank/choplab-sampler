@@ -9,6 +9,7 @@ import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
+import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
@@ -937,7 +938,10 @@ class DesktopSamplerController(
                 ?.takeIf(String::isNotBlank)
                 ?.let(::File)
                 ?: File(System.getProperty("user.home"), "AppData/Local")
-            return AtomicProjectStore(File(root, "ChopLab/projects"))
+            return AtomicProjectStore(
+                directory = File(root, "ChopLab/projects"),
+                maxResidentPcmBytes = AudioResourceLimits.MAX_DESKTOP_PROJECT_PCM_BYTES,
+            )
         }
     }
 }

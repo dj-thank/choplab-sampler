@@ -13,7 +13,7 @@ object AudioResourceLimits {
     const val MAX_RECORDING_DURATION_SECONDS = 10L * 60L
     const val MIN_FREE_DISK_RESERVE_BYTES = 64L * 1024L * 1024L
     const val MAX_MOBILE_PROJECT_PCM_BYTES = 192L * 1024L * 1024L
-    const val MAX_DESKTOP_PROJECT_PCM_BYTES = 512L * 1024L * 1024L
+    const val MAX_DESKTOP_PROJECT_PCM_BYTES = 384L * 1024L * 1024L
 
     fun requireImportFileSize(sizeBytes: Long?) {
         if (sizeBytes == null || sizeBytes < 0L) return

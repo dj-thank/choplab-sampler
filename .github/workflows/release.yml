@@ -1,4 +1,4 @@
-name: Publish Android, iOS, and Windows preview artifacts
+name: Build and publish immutable ChopLab previews
 
 on:
   push:
@@ -13,8 +13,68 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  JAVA_VERSION: '17'
+
 jobs:
+  metadata:
+    name: Validate release identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      build_number: ${{ steps.release.outputs.build_number }}
+      tag: ${{ steps.release.outputs.tag }}
+      is_tag_release: ${{ steps.event.outputs.is_tag_release }}
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scan current and historical public surface
+        run: python3 scripts/check_public_surface.py --history
+
+      - name: Test release policy scripts
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Validate embedded version source and event
+        id: release
+        shell: bash
+        run: |
+          args=(--github-output "$GITHUB_OUTPUT")
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            args+=(--tag "$GITHUB_REF_NAME")
+          fi
+          python3 scripts/release_metadata.py "${args[@]}"
+
+      - name: Establish event policy
+        id: event
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo 'is_tag_release=true' >> "$GITHUB_OUTPUT"
+            git fetch --no-tags origin main:refs/remotes/origin/main
+            git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+              echo 'Release tags must point to a commit already reachable from main.' >&2
+              exit 1
+            }
+            if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release $GITHUB_REF_NAME already exists; published assets are immutable." >&2
+              exit 1
+            fi
+          else
+            echo 'is_tag_release=false' >> "$GITHUB_OUTPUT"
+            echo 'workflow_dispatch builds verification artifacts only; it never publishes a Release.'
+          fi
+
   build-android:
+    name: Android signed release candidate
+    needs: metadata
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -23,21 +83,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Enable KVM group permissions
-        shell: bash
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Check public surface
-        run: python3 scripts/check_public_surface.py
-
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
@@ -49,92 +99,179 @@ jobs:
           yes | sdkmanager --licenses >/dev/null
           sdkmanager_status=${PIPESTATUS[1]}
           set -o pipefail
-          if [ "$sdkmanager_status" -ne 0 ]; then
-            exit "$sdkmanager_status"
-          fi
+          [[ "$sdkmanager_status" -eq 0 ]] || exit "$sdkmanager_status"
           sdkmanager \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
-            "emulator" \
-            "system-images;android-36;google_apis;x86_64"
+            "ndk;29.0.14206865" \
+            "cmake;3.22.1"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
-      - name: Validate, test, and build Android preview on API 36 emulator
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          disable-animations: true
-          script: |
-            ./scripts/validate_project.sh
-            ./gradlew --stacktrace :app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleDebug
+      - name: Configure stable release signing
+        shell: bash
+        env:
+          IS_TAG_RELEASE: ${{ needs.metadata.outputs.is_tag_release }}
+          KEYSTORE_BASE64: ${{ secrets.CHOPLAB_ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.CHOPLAB_ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.CHOPLAB_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.CHOPLAB_ANDROID_KEY_PASSWORD }}
+          CERT_SHA256: ${{ secrets.CHOPLAB_ANDROID_CERT_SHA256 }}
+        run: |
+          if [[ "$IS_TAG_RELEASE" != 'true' ]]; then
+            echo 'Manual verification run: building an explicitly unsigned release candidate.'
+            exit 0
+          fi
+          for value_name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD CERT_SHA256; do
+            [[ -n "${!value_name}" ]] || {
+              echo "Missing required tag-release secret: $value_name" >&2
+              exit 1
+            }
+          done
+          keystore="$RUNNER_TEMP/choplab-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 0600 "$keystore"
+          [[ -s "$keystore" ]] || {
+            echo 'Decoded Android keystore is empty.' >&2
+            exit 1
+          }
+          {
+            echo "CHOPLAB_ANDROID_KEYSTORE=$keystore"
+            echo "CHOPLAB_ANDROID_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "CHOPLAB_ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "CHOPLAB_ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "CHOPLAB_ANDROID_CERT_SHA256=$CERT_SHA256"
+          } >> "$GITHUB_ENV"
 
-      - name: Prepare Android release assets
+      - name: Validate, test, lint, build release APK, and generate SBOM
         shell: bash
         run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/ChopLab-${GITHUB_REF_NAME}-debug.apk"
-          apk="dist/ChopLab-${GITHUB_REF_NAME}-debug.apk"
-          printf '%s  %s\n' "$(sha256sum "$apk" | awk '{print $1}')" "$(basename "$apk")" > "${apk}.sha256"
+          ./scripts/validate_project.sh
+          ./gradlew --stacktrace \
+            :app:testDebugUnitTest \
+            :app:lintRelease \
+            :app:assembleRelease \
+            cyclonedxBom
 
-      - name: Upload Android release assets
+      - name: Inspect and stage Android artifact
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          IS_TAG_RELEASE: ${{ needs.metadata.outputs.is_tag_release }}
+        run: |
+          mapfile -t apks < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print)
+          [[ "${#apks[@]}" -eq 1 ]] || {
+            printf 'Expected one release APK, found %s: %s\n' "${#apks[@]}" "${apks[*]}" >&2
+            exit 1
+          }
+          verify_args=(
+            --apk "${apks[0]}"
+            --version "$RELEASE_VERSION"
+            --version-code "$RELEASE_BUILD_NUMBER"
+          )
+          if [[ "$IS_TAG_RELEASE" == 'true' ]]; then
+            verify_args+=(--require-signed --expected-cert-sha256 "$CHOPLAB_ANDROID_CERT_SHA256")
+          fi
+          python3 scripts/verify_android_release.py "${verify_args[@]}"
+
+          sbom='build/reports/cyclonedx/bom.json'
+          [[ -s "$sbom" ]] || {
+            echo "CycloneDX SBOM was not generated at $sbom" >&2
+            exit 1
+          }
+          mkdir -p dist
+          apk_target="dist/ChopLab-${RELEASE_TAG}-android.apk"
+          sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
+          cp "${apks[0]}" "$apk_target"
+          cp "$sbom" "$sbom_target"
+          for file in "$apk_target" "$sbom_target"; do
+            printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"
+          done
+
+      - name: Upload Android and SBOM assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: choplab-android-release-assets
           if-no-files-found: error
           path: dist/*
+          retention-days: 7
 
   build-ios:
+    name: iOS Simulator preview
+    needs: metadata
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 55
     permissions:
       contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check public surface
-        run: python3 scripts/check_public_surface.py
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Install pinned XcodeGen
+        run: bash scripts/install-xcodegen.sh
+
+      - name: Compile shared Kotlin Native framework
+        run: ./gradlew --stacktrace :shared:linkDebugFrameworkIosSimulatorArm64
 
       - name: Generate project and run iOS tests
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
         run: |
           cd ios
           xcodegen generate --spec project.yml
           cd ..
           simulator_name="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $1; exit}' | xargs)"
-          test -n "${simulator_name}"
+          [[ -n "$simulator_name" ]]
           xcodebuild \
             -project ios/ChopLab.xcodeproj \
             -scheme ChopLab \
             -destination "platform=iOS Simulator,name=${simulator_name}" \
+            MARKETING_VERSION="$RELEASE_VERSION" \
+            CURRENT_PROJECT_VERSION="$RELEASE_BUILD_NUMBER" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             test
 
-      - name: Build and package iOS Simulator app
+      - name: Build, inspect, and stage Simulator app
         shell: bash
+        env:
+          CHOPLAB_VERSION: ${{ needs.metadata.outputs.version }}
+          CHOPLAB_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: |
-          export CHOPLAB_VERSION="${GITHUB_REF_NAME#v}"
           bash scripts/build-ios-simulator.sh
+          source_archive="dist/ChopLab-${CHOPLAB_VERSION}-ios-simulator.app.zip"
+          target_archive="dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
+          mv "$source_archive" "$target_archive"
+          rm -f "$source_archive.sha256"
+          printf '%s  %s\n' "$(shasum -a 256 "$target_archive" | awk '{print $1}')" "$(basename "$target_archive")" > "$target_archive.sha256"
 
-      - name: Upload iOS release assets
+      - name: Upload iOS assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: choplab-ios-release-assets
           if-no-files-found: error
           path: dist/*
+          retention-days: 7
 
   build-windows:
+    name: Windows app-image preview
+    needs: metadata
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -143,78 +280,148 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check public surface
-        shell: pwsh
-        run: python scripts/check_public_surface.py
-
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :desktop:test :desktop:packageWindows
+        run: .\gradlew.bat --no-daemon --stacktrace :jvm-core:test :desktop:test :desktop:packageWindows
 
-      - name: Prepare Windows release assets
+      - name: Inspect and stage Windows artifact
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $releaseName = $env:GITHUB_REF_NAME
-          $appImage = Resolve-Path 'desktop/build/windows-app-image/ChopLab'
-          $exe = Resolve-Path 'desktop/build/windows-app-image/ChopLab/ChopLab.exe'
-          $zip = Join-Path (Get-Location) "dist/ChopLab-$releaseName-windows-app-image.zip"
-          Compress-Archive -Path $appImage -DestinationPath $zip -CompressionLevel Optimal
-          (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash + "  " + (Split-Path -Leaf $zip) | Set-Content -Encoding utf8 "$zip.sha256"
-          Get-FileHash -LiteralPath $exe -Algorithm SHA256 | ConvertTo-Json | Set-Content -Encoding utf8 "dist/ChopLab-$releaseName-windows-exe.sha256.json"
+          .\scripts\verify-windows-artifact.ps1 `
+            -AppImage 'desktop/build/windows-app-image/ChopLab' `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -MetadataOutput "dist/ChopLab-$env:RELEASE_TAG-windows-metadata.json"
+          $archive = "dist/ChopLab-$env:RELEASE_TAG-windows-app-image.zip"
+          Compress-Archive `
+            -Path 'desktop/build/windows-app-image/ChopLab' `
+            -DestinationPath $archive `
+            -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path -Leaf $archive)" | Set-Content -Encoding utf8 "$archive.sha256"
 
-      - name: Upload Windows release assets
+      - name: Upload Windows assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: choplab-windows-release-assets
           if-no-files-found: error
           path: dist/*
+          retention-days: 7
 
   publish-release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-android, build-ios, build-windows]
+    name: Attest and publish immutable Release
+    if: needs.metadata.outputs.is_tag_release == 'true'
+    needs: [metadata, build-android, build-ios, build-windows]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - name: Checkout release metadata
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Download Android, iOS, and Windows release assets
+      - name: Download platform assets
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: choplab-*-release-assets
           path: dist
           merge-multiple: true
 
-      - name: Publish GitHub Release assets
+      - name: Refuse mutable or incomplete publication
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: |
-          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
-          elif [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then
-            gh release create "${GITHUB_REF_NAME}" dist/* \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "ChopLab ${GITHUB_REF_NAME}" \
-              --prerelease \
-              --notes-file "docs/releases/${GITHUB_REF_NAME}.md" \
-              --verify-tag
-          else
-            gh release create "${GITHUB_REF_NAME}" dist/* \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "ChopLab ${GITHUB_REF_NAME}" \
-              --prerelease \
-              --generate-notes \
-              --verify-tag
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to replace any asset." >&2
+            exit 1
           fi
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+            echo 'Release commit is no longer reachable from main.' >&2
+            exit 1
+          }
+
+      - name: Write source-bound manifest and checksums
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          manifest="dist/ChopLab-${RELEASE_TAG}-release-manifest.json"
+          python3 scripts/write_release_manifest.py \
+            --directory dist \
+            --output "$manifest" \
+            --version "$RELEASE_VERSION" \
+            --build-number "$RELEASE_BUILD_NUMBER" \
+            --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-run-id "$GITHUB_RUN_ID"
+          (
+            cd dist
+            find . -maxdepth 1 -type f \
+              ! -name '*.sha256' \
+              ! -name 'SHA256SUMS' \
+              -printf '%f\0' \
+              | sort -z \
+              | xargs -0 sha256sum
+          ) > dist/SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-release-manifest.json
+          subject-version: ${{ needs.metadata.outputs.version }}
+
+      - name: Attest dependency SBOM for runnable artifacts
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
+          subject-version: ${{ needs.metadata.outputs.version }}
+          sbom-path: dist/ChopLab-${{ needs.metadata.outputs.tag }}-sbom.cdx.json
+
+      - name: Publish once without asset replacement
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          release_args=(
+            "$RELEASE_TAG"
+            dist/*
+            --repo "$GITHUB_REPOSITORY"
+            --title "ChopLab $RELEASE_TAG"
+            --prerelease
+            --verify-tag
+          )
+          if [[ -f "docs/releases/${RELEASE_TAG}.md" ]]; then
+            release_args+=(--notes-file "docs/releases/${RELEASE_TAG}.md")
+          else
+            release_args+=(--generate-notes)
+          fi
+          gh release create "${release_args[@]}"

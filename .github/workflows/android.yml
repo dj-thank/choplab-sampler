@@ -71,14 +71,21 @@ jobs:
       - name: Offline project validation
         run: ./scripts/validate_project.sh
 
-      - name: Unit tests, lint, debug APK, and release APK
+      - name: Unit tests, lint, and debug APK
         run: >-
           ./gradlew --stacktrace
           :app:testDebugUnitTest
           :app:lintDebug
           :app:lintRelease
           :app:assembleDebug
-          :app:assembleRelease
+
+      - name: Build release APK without publishing
+        shell: bash
+        run: |
+          mkdir -p app/build/reports
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --info :app:assembleRelease 2>&1 \
+            | tee app/build/reports/release-assemble.log
 
       - name: Inspect final release APK
         shell: bash

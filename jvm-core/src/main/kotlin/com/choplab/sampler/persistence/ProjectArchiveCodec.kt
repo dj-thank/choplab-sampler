@@ -1,5 +1,6 @@
 package com.choplab.sampler.persistence
 
+import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
@@ -62,7 +63,19 @@ object ProjectArchiveCodec {
         }
     }
 
-    fun read(input: InputStream): SamplerUiState {
+    fun read(input: InputStream): SamplerUiState =
+        read(input, AudioResourceLimits.MAX_MOBILE_PROJECT_PCM_BYTES)
+
+    /**
+     * Reads an archive while enforcing the runtime PCM residency budget of the
+     * calling platform. The manifest is checked before any audio entry is
+     * decoded so a valid-but-large archive cannot drive a mobile process into
+     * an avoidable allocation failure.
+     */
+    fun read(input: InputStream, maxResidentPcmBytes: Long): SamplerUiState {
+        require(maxResidentPcmBytes in 1L..ProjectLimits.MAX_TOTAL_PCM_BYTES) {
+            "プロジェクト読込メモリ上限が不正です"
+        }
         ZipInputStream(BufferedInputStream(input)).use { zip ->
             val manifestEntry = zip.nextEntry ?: error("project.txtがありません")
             validateEntryName(manifestEntry.name)
@@ -72,6 +85,12 @@ object ProjectArchiveCodec {
             val manifestBytes = zip.readBytesBounded(MAX_MANIFEST_BYTES)
             zip.closeEntry()
             val manifest = parseManifest(manifestBytes.toString(Charsets.UTF_8))
+            val declaredPcmBytes = manifest.audio.sumOf { metadata ->
+                metadata.frameCount.toLong() * Short.SIZE_BYTES
+            }
+            require(declaredPcmBytes <= maxResidentPcmBytes) {
+                "この端末で安全に開けるプロジェクト音声容量を超えています"
+            }
 
             val audioByIndex = linkedMapOf<Int, PcmAudio>()
             val seenEntries = mutableSetOf(MANIFEST_ENTRY)
@@ -87,6 +106,9 @@ object ProjectArchiveCodec {
                 totalPcmBytes += metadata.frameCount.toLong() * Short.SIZE_BYTES
                 require(totalPcmBytes <= ProjectLimits.MAX_TOTAL_PCM_BYTES) {
                     "プロジェクト内の音声データが大きすぎます"
+                }
+                require(totalPcmBytes <= maxResidentPcmBytes) {
+                    "この端末で安全に開けるプロジェクト音声容量を超えています"
                 }
                 val samples = when (manifest.schemaVersion) {
                     LEGACY_PCM_SCHEMA_VERSION -> zip.readLegacyPcm16LittleEndian(metadata.frameCount)
