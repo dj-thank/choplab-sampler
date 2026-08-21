@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!--
+          ProfileInstallReceiver exists for adb/benchmark profile commands and is
+          exported by the AndroidX manifest. Public ChopLab APKs do not expose
+          diagnostic receivers; normal startup profile installation remains
+          available through AndroidX Startup.
+        -->
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            tools:node="remove" />
+    </application>
+</manifest>
