@@ -11,9 +11,7 @@ import javax.sound.sampled.AudioSystem
 object DesktopWavDecoder {
     fun decode(file: File): PcmAudio {
         require(file.isFile) { "Audio file does not exist: ${file.path}" }
-        require(file.length() <= AudioResourceLimits.MAX_IMPORT_FILE_BYTES) {
-            "音声ファイルが大きすぎます。256 MiB以下のファイルを使用してください"
-        }
+        AudioResourceLimits.requireImportFileSize(file.length())
         AudioSystem.getAudioInputStream(file).use { source ->
             val sourceFormat = source.format
             require(sourceFormat.sampleRate.isFinite() && sourceFormat.sampleRate >= 8_000f) {
