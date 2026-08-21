@@ -129,12 +129,12 @@ The user-visible result is a preview build that fails closed instead of silently
 - [x] 2026-08-21 — Confirmed repository, permissions, baseline commit, unprotected main state, and existing open PR boundary.
 - [x] 2026-08-21 — Created isolated branch `codex/choplab-full-hardening-20260821` from `9a4e9edc`.
 - [x] 2026-08-21 — Mapped release, audio import/recording, project archive, iOS, OAuth, KMP, CI, and governance seams.
-- [ ] Milestone 1 implementation and focused tests.
-- [ ] Milestone 2 implementation and focused tests.
-- [ ] Milestone 3 implementation and focused tests.
-- [ ] Milestone 4 implementation and focused tests.
-- [ ] Milestone 5 implementation and administrative read-back.
-- [ ] Full CI, artifact inspection, PR review, and documentation closeout.
+- [x] Milestone 1 source implementation and focused tests; final-APK inspection now permits the AndroidX profile installer receiver only when it retains the platform `android.permission.DUMP` guard.
+- [x] Milestone 2 implementation and focused tests.
+- [x] Milestone 3 implementation and focused tests.
+- [ ] Milestone 4 shared-DSP extraction/equivalence work; resource and lifecycle seams are complete, but this larger refactor remains deferred.
+- [ ] Milestone 5 administrative read-back; source-controlled scanning, SBOM, CODEOWNERS, security policy, and autosave durability are implemented.
+- [ ] Full CI rerun, final artifact inspection, PR review, and documentation closeout.
 
 ## Discoveries
 
@@ -153,6 +153,8 @@ The user-visible result is a preview build that fails closed instead of silently
 ## Validation log
 
 - Baseline source mapping — 2026-08-21 — GitHub read-back at commit `9a4e9edc`; no fresh build claim.
+- PR head `d871baf` — Supply-chain policy run 32468989684 PASS; Windows run 32468989763 PASS; iOS run 32468989677 PASS.
+- PR head `d871baf` — Android compilation, tests, lint, and release assembly PASS. Final-APK inspection correctly stopped on the exported AndroidX `ProfileInstallReceiver`; the verifier now accepts it only with the platform `android.permission.DUMP` guard, and the rerun remains pending.
 
 ## Risks and rollback
 
