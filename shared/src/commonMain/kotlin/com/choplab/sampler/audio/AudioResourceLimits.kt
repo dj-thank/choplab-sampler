@@ -15,6 +15,13 @@ object AudioResourceLimits {
     const val MAX_MOBILE_PROJECT_PCM_BYTES = 192L * 1024L * 1024L
     const val MAX_DESKTOP_PROJECT_PCM_BYTES = 512L * 1024L * 1024L
 
+    fun requireImportFileSize(sizeBytes: Long?) {
+        if (sizeBytes == null || sizeBytes < 0L) return
+        require(sizeBytes <= MAX_IMPORT_FILE_BYTES) {
+            "音声ファイルが大きすぎます。256 MiB以下のファイルを使用してください"
+        }
+    }
+
     fun maxRecordingPcmBytes(sampleRate: Int, channelCount: Int): Long {
         require(sampleRate in 8_000..192_000) { "Unsupported recording sample rate" }
         require(channelCount in 1..2) { "Unsupported recording channel count" }
