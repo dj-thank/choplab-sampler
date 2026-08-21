@@ -15,7 +15,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,6 +29,13 @@ jobs:
 
       - name: Check public surface
         run: python3 scripts/check_public_surface.py
+
+      - name: Test release policy scripts
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Read release metadata
+        id: release
+        run: python3 scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -64,8 +71,27 @@ jobs:
       - name: Offline project validation
         run: ./scripts/validate_project.sh
 
-      - name: Unit tests, lint and APK
-        run: ./gradlew --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Unit tests, lint, debug APK, and release APK
+        run: >-
+          ./gradlew --stacktrace
+          :app:testDebugUnitTest
+          :app:lintDebug
+          :app:lintRelease
+          :app:assembleDebug
+          :app:assembleRelease
+
+      - name: Inspect final release APK
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          release_apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "${release_apk}"
+          python3 scripts/verify_android_release.py \
+            --apk "${release_apk}" \
+            --version "${RELEASE_VERSION}" \
+            --version-code "${RELEASE_BUILD_NUMBER}"
 
       - name: Instrumentation and accessibility tests on API 36 emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
@@ -78,13 +104,14 @@ jobs:
           disable-animations: true
           script: ./gradlew --stacktrace :app:connectedDebugAndroidTest
 
-      - name: Upload reports and APK
+      - name: Upload reports and APKs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: choplab-debug-and-reports
+          name: choplab-android-and-reports
           if-no-files-found: warn
           path: |
             app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
             app/build/reports/**
             app/build/test-results/**
