@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-XCODEGEN_VERSION="2.46.0"
-XCODEGEN_COMMIT="8445e778451c7e44237b90281bde622d764b0084"
+# 2.46.0 moved a dependency to Swift tools 6.0 and cannot be built by the
+# Swift 5.10 toolchain on the macOS 14 runner. Pin the newest compatible
+# release to its immutable full commit until the CI image is moved to Swift 6.
+XCODEGEN_VERSION="2.45.4"
+XCODEGEN_COMMIT="8d3d3476a69ae3e5d68e1adccc701c410c05eb36"
 INSTALL_ROOT="${RUNNER_TEMP:-/tmp}/choplab-xcodegen"
 BIN_DIR="${RUNNER_TEMP:-/tmp}/choplab-bin"
 
