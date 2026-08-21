@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 2.46.0 moved a dependency to Swift tools 6.0 and cannot be built by the
-# Swift 5.10 toolchain on the macOS 14 runner. Pin the newest compatible
-# release to its immutable full commit until the CI image is moved to Swift 6.
-XCODEGEN_VERSION="2.45.4"
-XCODEGEN_COMMIT="8d3d3476a69ae3e5d68e1adccc701c410c05eb36"
+# The macOS 14 runner currently provides Swift 5.10. XcodeGen 2.45.x resolves
+# XcodeProj 9.x, whose package requires Swift tools 6.0. XcodeGen 2.43.0 is the
+# newest release verified here whose locked dependency graph remains on Swift
+# tools 5.9, so build that exact source commit instead of floating Homebrew.
+XCODEGEN_VERSION="2.43.0"
+XCODEGEN_COMMIT="7193eb447a6f60061f069e07bc1efd32d73c0e19"
 INSTALL_ROOT="${RUNNER_TEMP:-/tmp}/choplab-xcodegen"
 BIN_DIR="${RUNNER_TEMP:-/tmp}/choplab-bin"
 
