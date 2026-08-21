@@ -26,6 +26,10 @@ BASE_MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
     <application android:debuggable="false">
         <activity android:name=".MainActivity" android:exported="true" />
         <service android:name=".audio.PlaybackCaptureService" android:exported="false" />
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>
 """
@@ -38,6 +42,14 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
             expected_version="0.16.2",
             expected_version_code=26,
         )
+
+    def test_rejects_unprotected_profile_installer_receiver(self) -> None:
+        manifest = BASE_MANIFEST.replace(
+            '            android:permission="android.permission.DUMP" />',
+            "            />",
+        )
+        with self.assertRaisesRegex(VerificationError, "must require android.permission.DUMP"):
+            verify_manifest(parse_manifest(manifest), expected_version="0.16.2", expected_version_code=26)
 
     def test_rejects_debuggable_application(self) -> None:
         manifest = BASE_MANIFEST.replace('android:debuggable="false"', 'android:debuggable="true"')
