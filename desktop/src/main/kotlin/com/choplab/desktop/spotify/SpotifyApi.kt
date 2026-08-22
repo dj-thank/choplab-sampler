@@ -14,9 +14,9 @@ data class SpotifyApiRequest(
 )
 
 object SpotifyApiRequestBuilder {
-    fun searchTracks(accessToken: String, query: String, limit: Int = 20): SpotifyApiRequest {
+    fun searchTracks(accessToken: String, query: String, limit: Int = 10): SpotifyApiRequest {
         require(query.isNotBlank()) { "Spotify search query must not be blank" }
-        require(limit in 1..50) { "Spotify search limit must be between 1 and 50" }
+        require(limit in 1..10) { "Spotify search limit must be between 1 and 10" }
         val uri = URI(
             "https://api.spotify.com/v1/search?" +
                 "q=${encode(query)}&type=track&limit=$limit",
@@ -83,7 +83,7 @@ class JdkSpotifyApiTransport(
 }
 
 interface SpotifyApiClient {
-    fun searchTracks(accessToken: String, query: String, limit: Int = 20): SpotifyApiResponse
+    fun searchTracks(accessToken: String, query: String, limit: Int = 10): SpotifyApiResponse
     fun currentPlayback(accessToken: String): SpotifyApiResponse
     fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiResponse
     fun pausePlayback(accessToken: String): SpotifyApiResponse

@@ -45,6 +45,23 @@ final class SourceFileRepositoryTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testUnknownSizeSourceNeverWritesPastTheConfiguredLimit() throws {
+        let sources = root.appendingPathComponent("Sources", isDirectory: true)
+        let repository = SourceFileRepository(
+            directory: sources,
+            maximumBytes: 2,
+            knownSizeProvider: { _ in nil }
+        )
+        let input = root.appendingPathComponent("provider-backed.wav")
+        try Data([1, 2, 3]).write(to: input)
+
+        XCTAssertThrowsError(try repository.stageCopy(from: input)) { error in
+            XCTAssertEqual(error as? SourceFileRepositoryError, .fileTooLarge)
+        }
+        let remaining = (try? FileManager.default.contentsOfDirectory(atPath: sources.path)) ?? []
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
     func testAudioPolicyRejectsDurationAndSizeBoundaries() {
         XCTAssertNoThrow(
             try IOSAudioLimits.validateImport(

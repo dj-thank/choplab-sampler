@@ -18,7 +18,7 @@ enum IOSAudioLimits {
     }
 }
 
-enum SourceFileRepositoryError: LocalizedError {
+enum SourceFileRepositoryError: LocalizedError, Equatable {
     case fileTooLarge
     case audioTooLong
     case invalidAudio
@@ -42,14 +42,26 @@ struct SourceFileRepository {
     let directory: URL
     private let fileManager: FileManager
     private let maximumBytes: Int64
+    private let knownSizeProvider: (URL) -> Int64?
+
+    private static let copyBufferBytes = 64 * 1024
 
     init(
         directory: URL? = nil,
         fileManager: FileManager = .default,
-        maximumBytes: Int64 = IOSAudioLimits.maximumImportBytes
+        maximumBytes: Int64 = IOSAudioLimits.maximumImportBytes,
+        knownSizeProvider: @escaping (URL) -> Int64? = { url in
+            guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+                  let size = values.fileSize else {
+                return nil
+            }
+            return Int64(size)
+        }
     ) {
+        precondition(maximumBytes >= 0, "maximumBytes must not be negative")
         self.fileManager = fileManager
         self.maximumBytes = maximumBytes
+        self.knownSizeProvider = knownSizeProvider
         self.directory = directory ?? fileManager
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Sources", isDirectory: true)
@@ -62,19 +74,14 @@ struct SourceFileRepository {
             if accessed { source.stopAccessingSecurityScopedResource() }
         }
 
-        let knownSize = try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize
-        if let knownSize, Int64(knownSize) > maximumBytes {
+        if let knownSize = knownSizeProvider(source), knownSize > maximumBytes {
             throw SourceFileRepositoryError.fileTooLarge
         }
 
         let ext = source.pathExtension.isEmpty ? "audio" : source.pathExtension
         let candidate = directory.appendingPathComponent(".pending-\(UUID().uuidString).\(ext)")
         do {
-            try fileManager.copyItem(at: source, to: candidate)
-            let actualSize = try candidate.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard Int64(actualSize) <= maximumBytes else {
-                throw SourceFileRepositoryError.fileTooLarge
-            }
+            try copyBounded(from: source, to: candidate)
             return candidate
         } catch {
             try? fileManager.removeItem(at: candidate)
@@ -125,6 +132,30 @@ struct SourceFileRepository {
 
     private func ensureDirectory() throws {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    private func copyBounded(from source: URL, to candidate: URL) throws {
+        guard fileManager.createFile(atPath: candidate.path, contents: nil) else {
+            throw SourceFileRepositoryError.invalidAudio
+        }
+
+        let input = try FileHandle(forReadingFrom: source)
+        defer { try? input.close() }
+        let output = try FileHandle(forWritingTo: candidate)
+        defer { try? output.close() }
+
+        var copiedBytes: Int64 = 0
+        while true {
+            let data = try input.read(upToCount: Self.copyBufferBytes) ?? Data()
+            if data.isEmpty { break }
+            let chunkBytes = Int64(data.count)
+            guard chunkBytes <= maximumBytes - copiedBytes else {
+                throw SourceFileRepositoryError.fileTooLarge
+            }
+            try output.write(contentsOf: data)
+            copiedBytes += chunkBytes
+        }
+        try output.synchronize()
     }
 }
 

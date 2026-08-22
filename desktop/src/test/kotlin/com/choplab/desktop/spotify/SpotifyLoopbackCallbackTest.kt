@@ -8,6 +8,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class SpotifyLoopbackCallbackTest {
     @Test
@@ -61,6 +62,25 @@ class SpotifyLoopbackCallbackTest {
             )
             assertEquals(HttpURLConnection.HTTP_OK, valid.statusCode())
             assertEquals("code-456", callback.await(Duration.ofSeconds(1)).code)
+        } finally {
+            callback.close()
+        }
+    }
+
+    @Test
+    fun matchingProviderDenialUsesTheDedicatedFailureType() {
+        val callback = SpotifyLoopbackCallbackServer()
+        try {
+            callback.expectState("expected-state")
+            val response = HttpClient.newHttpClient().send(
+                request(callback, "error=access_denied&state=expected-state"),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+
+            assertEquals(HttpURLConnection.HTTP_OK, response.statusCode())
+            assertFailsWith<SpotifyAuthorizationDeniedException> {
+                callback.await(Duration.ofSeconds(1))
+            }
         } finally {
             callback.close()
         }

@@ -4,6 +4,7 @@ import com.choplab.desktop.spotify.SpotifyApiClient
 import com.choplab.desktop.spotify.SpotifyApiResponse
 import com.choplab.desktop.spotify.SpotifyAuthorizationCallback
 import com.choplab.desktop.spotify.SpotifyAuthorizationCallbackFactory
+import com.choplab.desktop.spotify.SpotifyAuthorizationDeniedException
 import com.choplab.desktop.spotify.SpotifyCallbackResult
 import com.choplab.desktop.spotify.SpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyTokenRequestException
@@ -19,6 +20,22 @@ import kotlin.test.assertTrue
 
 class SpotifyDesktopSessionLifecycleTest {
     @Test
+    fun malformedEnvironmentClientIdStartsUnconfigured() {
+        val session = session(
+            clientId = "not-a-valid-client-id",
+            callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback },
+        )
+        try {
+            assertEquals(SpotifyConnectionPhase.UNCONFIGURED, session.state.value.phase)
+            assertFalse(session.state.value.clientIdConfigured)
+            assertFalse(session.state.value.canLogin)
+            assertTrue(session.state.value.message.contains("形式"))
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
     fun authorizationFailureLeavesARecoverableErrorInsteadOfAuthenticating() {
         val session = session(callbackFactory = SpotifyAuthorizationCallbackFactory { FailingCallback })
         try {
@@ -27,6 +44,21 @@ class SpotifyDesktopSessionLifecycleTest {
 
             assertTrue(session.state.value.canLogin)
             assertTrue(session.state.value.message.contains("Spotifyログインに失敗しました"))
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun providerDenialExplainsThatLoginWasNotGranted() {
+        val session = session(callbackFactory = SpotifyAuthorizationCallbackFactory { DeniedCallback })
+        try {
+            session.login()
+            await { session.state.value.phase == SpotifyConnectionPhase.ERROR && !session.state.value.busy }
+
+            assertTrue(session.state.value.canLogin)
+            assertTrue(session.state.value.message.contains("拒否"))
+            assertFalse(session.state.value.message.contains("Client ID、Redirect URI"))
         } finally {
             session.close()
         }
@@ -90,6 +122,24 @@ class SpotifyDesktopSessionLifecycleTest {
 
             assertEquals("現在再生中の曲はありません", session.state.value.currentTrack)
             assertEquals("Spotifyで現在再生中の曲はありません", session.state.value.message)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun emptyLibraryHasAnExplicitEmptyState() {
+        val session = session(
+            api = FakeApi(savedTracksResponse = SpotifyApiResponse(200, "{\"items\":[]}")),
+            callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback },
+        )
+        try {
+            connect(session)
+            session.showLibrary()
+            await { !session.state.value.busy }
+
+            assertEquals(emptyList(), session.state.value.savedTracks)
+            assertEquals("保存済みトラックはありません", session.state.value.librarySummary)
         } finally {
             session.close()
         }
@@ -196,12 +246,13 @@ class SpotifyDesktopSessionLifecycleTest {
     }
 
     private fun session(
+        clientId: String = "abcdefghijklmnop",
         tokenClient: SpotifyTokenClient = FakeTokenClient(),
         api: SpotifyApiClient = FakeApi(),
         callbackFactory: SpotifyAuthorizationCallbackFactory,
     ) = SpotifyDesktopSession(
         onStatus = {},
-        clientId = "abcdefghijklmnop",
+        clientId = clientId,
         tokenClient = tokenClient,
         api = api,
         callbackFactory = callbackFactory,
@@ -257,6 +308,15 @@ class SpotifyDesktopSessionLifecycleTest {
         override val redirectUri: URI = URI("http://127.0.0.1:8877/callback")
         override fun expectState(state: String) = Unit
         override fun await(timeout: Duration): SpotifyCallbackResult = error("access_denied")
+        override fun cancel() = Unit
+        override fun close() = Unit
+    }
+
+    private object DeniedCallback : SpotifyAuthorizationCallback {
+        override val redirectUri: URI = URI("http://127.0.0.1:8877/callback")
+        override fun expectState(state: String) = Unit
+        override fun await(timeout: Duration): SpotifyCallbackResult =
+            throw SpotifyAuthorizationDeniedException()
         override fun cancel() = Unit
         override fun close() = Unit
     }

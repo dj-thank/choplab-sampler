@@ -6,6 +6,7 @@ import com.choplab.desktop.spotify.SpotifyApiClient
 import com.choplab.desktop.spotify.SpotifyApiResponse
 import com.choplab.desktop.spotify.SpotifyAuthorizationCallback
 import com.choplab.desktop.spotify.SpotifyAuthorizationCallbackFactory
+import com.choplab.desktop.spotify.SpotifyAuthorizationDeniedException
 import com.choplab.desktop.spotify.SpotifyLoopbackCallbackServer
 import com.choplab.desktop.spotify.SpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyTokenRequestException
@@ -36,6 +37,7 @@ data class SpotifyDesktopState(
     val clientIdSource: String? = null,
     val currentTrack: String = "現在再生情報は未取得です",
     val savedTracks: List<String> = emptyList(),
+    val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
 ) {
@@ -81,7 +83,8 @@ class SpotifyDesktopSession(
     private val lock = Any()
     private val generation = ProviderSessionGeneration()
     private val closed = AtomicBoolean(false)
-    private var configuredClientId: String = clientId.trim()
+    private var configuredClientId: String = clientId.trim().takeIf(::isValidSpotifyClientId).orEmpty()
+    private val providedClientIdWasInvalid = clientId.isNotBlank() && configuredClientId.isBlank()
     private var credentials: Credentials? = null
     private var nextLoginId = 0L
     private var activeLogin: ActiveLogin? = null
@@ -97,7 +100,7 @@ class SpotifyDesktopSession(
             return false
         }
         val normalized = value.trim()
-        if (!normalized.matches(Regex("[A-Za-z0-9]{16,128}"))) {
+        if (!isValidSpotifyClientId(normalized)) {
             report("Spotify Client IDの形式を確認してください（16〜128文字の英数字）")
             return false
         }
@@ -192,10 +195,31 @@ class SpotifyDesktopSession(
         when {
             !parsed.recognized -> OperationResult(
                 "Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください",
-                transform = { it.copy(savedTracks = emptyList()) },
+                transform = {
+                    it.copy(
+                        savedTracks = emptyList(),
+                        librarySummary = "ライブラリの応答を読み取れませんでした",
+                    )
+                },
             )
-            parsed.tracks.isEmpty() -> OperationResult("保存済みトラックはありません", transform = { it.copy(savedTracks = emptyList()) })
-            else -> OperationResult("保存済みトラックを${parsed.tracks.size}件表示しました", transform = { it.copy(savedTracks = parsed.tracks) })
+            parsed.tracks.isEmpty() -> OperationResult(
+                "保存済みトラックはありません",
+                transform = {
+                    it.copy(
+                        savedTracks = emptyList(),
+                        librarySummary = "保存済みトラックはありません",
+                    )
+                },
+            )
+            else -> OperationResult(
+                "保存済みトラックを${parsed.tracks.size}件表示しました",
+                transform = {
+                    it.copy(
+                        savedTracks = parsed.tracks,
+                        librarySummary = "保存済みトラックを${parsed.tracks.size}件表示中",
+                    )
+                },
+            )
         }
     }
 
@@ -354,12 +378,20 @@ class SpotifyDesktopSession(
     private fun loginFailureMessage(error: Throwable): String = when (error) {
         is CancellationException -> "Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"
         is TimeoutException -> "Spotifyログインが時間切れになりました。ブラウザーでの認可を確認して、もう一度ログインしてください"
+        is SpotifyAuthorizationDeniedException ->
+            "Spotify連携が拒否または中止されました。許可する場合は、もう一度ログインしてください"
         else -> "Spotifyログインに失敗しました。Client ID、Redirect URI、開発モードの許可ユーザーとPremiumを確認して再試行してください"
     }
 
     private fun initialState(message: String? = null): SpotifyDesktopState =
         if (configuredClientId.isBlank()) {
-            SpotifyDesktopState(message = message ?: "Client IDを設定してSpotifyへ接続してください")
+            SpotifyDesktopState(
+                message = message ?: if (providedClientIdWasInvalid) {
+                    "環境変数のSpotify Client ID形式が不正です。16〜128文字の英数字を設定し直してください"
+                } else {
+                    "Client IDを設定してSpotifyへ接続してください"
+                },
+            )
         } else {
             SpotifyDesktopState(
                 phase = SpotifyConnectionPhase.READY,
@@ -418,6 +450,8 @@ class SpotifyDesktopSession(
         val transform: (SpotifyDesktopState) -> SpotifyDesktopState = { it },
     )
 }
+
+private fun isValidSpotifyClientId(value: String): Boolean = value.matches(Regex("[A-Za-z0-9]{16,128}"))
 
 private class SpotifyApiException(
     val response: SpotifyApiResponse,

@@ -8,6 +8,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -15,6 +16,8 @@ data class SpotifyCallbackResult(
     val code: String,
     val state: String,
 )
+
+class SpotifyAuthorizationDeniedException : IllegalStateException("Spotify authorization was denied")
 
 interface SpotifyAuthorizationCallback : AutoCloseable {
     val redirectUri: URI
@@ -54,6 +57,8 @@ class SpotifyLoopbackCallbackServer : SpotifyAuthorizationCallback {
         check(expectedState != null) { "Spotify OAuth state was not configured" }
         return try {
             result.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
+        } catch (error: ExecutionException) {
+            throw (error.cause ?: error)
         } finally {
             close()
         }
@@ -84,7 +89,7 @@ class SpotifyLoopbackCallbackServer : SpotifyAuthorizationCallback {
 
             val error = query["error"]
             if (error != null) {
-                result.completeExceptionally(IllegalStateException("Spotify authorization failed: $error"))
+                result.completeExceptionally(SpotifyAuthorizationDeniedException())
                 respond(exchange, 200, "Spotify authorization was denied. You can close this window.")
                 return
             }

@@ -2,10 +2,18 @@ package com.choplab.desktop.spotify
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SpotifyApiTest {
+    @Test
+    fun searchRequestRejectsTheCurrentDevelopmentModeLimitOverTen() {
+        assertFailsWith<IllegalArgumentException> {
+            SpotifyApiRequestBuilder.searchTracks("access-token", "query", 11)
+        }
+    }
+
     @Test
     fun searchRequestUsesMetadataEndpointAndBearerToken() {
         val request = SpotifyApiRequestBuilder.searchTracks("access-token", "Aimer / カタオモイ", 10)

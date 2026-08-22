@@ -61,7 +61,10 @@ internal fun SpotifyPanel(session: SpotifyDesktopSession, state: SpotifyDesktopS
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
-                        if (session.configureClientId(clientId)) editingClientId = false
+                        if (session.configureClientId(clientId)) {
+                            clientId = ""
+                            editingClientId = false
+                        }
                     },
                     enabled = state.canConfigureClientId,
                 ) { Text("Client IDを設定") }
@@ -74,8 +77,10 @@ internal fun SpotifyPanel(session: SpotifyDesktopSession, state: SpotifyDesktopS
             Button(onClick = { editingClientId = true }, enabled = state.canConfigureClientId) { Text("Client IDを変更") }
         }
 
-        Text("最初の設定")
-        Text("1. Spotify Developer DashboardでWeb APIアプリを作成  2. http://127.0.0.1/callback をRedirect URIとして登録  3. 開発モードではPremiumと許可ユーザー設定を確認")
+        Text("最初の設定", fontWeight = FontWeight.SemiBold)
+        Text("1. Spotify Developer DashboardでWeb APIアプリを作成")
+        Text("2. Redirect URIに http://127.0.0.1/callback をポートなしで登録")
+        Text("3. Development Modeではアプリ所有者のPremiumと許可ユーザーを確認")
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = session::login, enabled = state.canLogin) { Text(if (state.phase == SpotifyConnectionPhase.ERROR) "もう一度ログイン" else "Spotifyにログイン") }
@@ -90,7 +95,14 @@ internal fun SpotifyPanel(session: SpotifyDesktopSession, state: SpotifyDesktopS
             Button(onClick = session::pause, enabled = state.canUsePlaybackControls) { Text("一時停止") }
             Button(onClick = session::resume, enabled = state.canUsePlaybackControls) { Text("再開") }
         }
-        Text(state.currentTrack, fontWeight = FontWeight.SemiBold)
+        Text(
+            state.currentTrack,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics {
+                contentDescription = "Spotify現在再生: ${state.currentTrack}"
+                liveRegion = LiveRegionMode.Polite
+            },
+        )
         Text(
             state.message,
             modifier = Modifier.semantics {
@@ -99,6 +111,13 @@ internal fun SpotifyPanel(session: SpotifyDesktopSession, state: SpotifyDesktopS
             },
         )
         Text("保存済みトラック（最大20件・タイトル／アーティストのメタデータのみ）")
+        Text(
+            state.librarySummary,
+            modifier = Modifier.semantics {
+                contentDescription = "Spotifyライブラリ: ${state.librarySummary}"
+                liveRegion = LiveRegionMode.Polite
+            },
+        )
         LazyColumn(
             Modifier.fillMaxWidth().weight(1f).semantics {
                 contentDescription = "Spotify保存済みトラック一覧。${state.savedTracks.size}件"
