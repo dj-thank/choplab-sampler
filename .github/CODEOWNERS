@@ -1,0 +1,12 @@
+# Default ownership. Branch rules must require CODEOWNERS approval for this to
+# become an enforced merge gate.
+* @dj-thank
+
+# Release, security, persistence, and realtime-audio boundaries always retain
+# explicit maintainer ownership even if narrower ownership is added later.
+/.github/ @dj-thank
+/app/src/main/java/com/choplab/sampler/audio/ @dj-thank
+/desktop/src/main/kotlin/com/choplab/desktop/audio/ @dj-thank
+/jvm-core/src/main/kotlin/com/choplab/sampler/ @dj-thank
+/shared/src/commonMain/kotlin/com/choplab/sampler/ @dj-thank
+/scripts/ @dj-thank

@@ -8,10 +8,11 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.choplab.sampler.model.PcmAudio
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -21,6 +22,7 @@ class AudioDecoder(private val context: Context) {
     }
 
     private fun decodeBlocking(uri: Uri): PcmAudio {
+        validateInputSize(uri)
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
 
@@ -42,7 +44,7 @@ class AudioDecoder(private val context: Context) {
             } else {
                 0L
             }
-            if (durationUs > MAX_DURATION_US) {
+            if (durationUs > AudioResourceLimits.MAX_IMPORT_DURATION_SECONDS * 1_000_000L) {
                 error("音声が長すぎます。MVP版では10分以内の音声を使用してください")
             }
 
@@ -56,7 +58,7 @@ class AudioDecoder(private val context: Context) {
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
             val output = Pcm16ArrayBuilder(
                 initialCapacity = estimateInitialCapacity(durationUs, outputSampleRate),
-                maximumSize = MAX_MONO_FRAMES,
+                maximumSize = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
             )
             val info = MediaCodec.BufferInfo()
             var inputEnded = false
@@ -215,6 +217,29 @@ class AudioDecoder(private val context: Context) {
         }
     }
 
+    private fun validateInputSize(uri: Uri) {
+        val sizeBytes = when (uri.scheme) {
+            "file" -> uri.path?.let(::File)?.takeIf(File::isFile)?.length()
+            else -> runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.SIZE),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor ->
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (sizeIndex >= 0 && cursor.moveToFirst() && !cursor.isNull(sizeIndex)) {
+                        cursor.getLong(sizeIndex)
+                    } else {
+                        null
+                    }
+                }
+            }.getOrNull()
+        }
+        AudioResourceLimits.requireImportFileSize(sizeBytes)
+    }
+
     private fun resolveDisplayName(uri: Uri): String {
         if (uri.scheme == "file") return uri.lastPathSegment ?: "recording.wav"
         return runCatching {
@@ -258,8 +283,6 @@ class AudioDecoder(private val context: Context) {
     private companion object {
         const val CODEC_TIMEOUT_US = 10_000L
         const val MAX_IDLE_POLLS = 500
-        const val MAX_DURATION_US = 10L * 60L * 1_000_000L
-        const val MAX_MONO_FRAMES = 30_000_000
     }
 }
 

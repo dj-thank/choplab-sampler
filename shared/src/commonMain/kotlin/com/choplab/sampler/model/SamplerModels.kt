@@ -1,6 +1,9 @@
 package com.choplab.sampler.model
 
 import kotlin.math.max
+import kotlin.random.Random
+
+private fun nextPcmAudioId(): Long = Random.nextLong(from = 1L, until = Long.MAX_VALUE)
 
 object SamplerConfig {
     const val BANK_COUNT = 4
@@ -63,7 +66,7 @@ enum class PendingSourceCommand {
 }
 
 data class PcmAudio(
-    val id: Long = System.nanoTime(),
+    val id: Long = nextPcmAudioId(),
     val name: String,
     val samples: ShortArray,
     val sampleRate: Int,

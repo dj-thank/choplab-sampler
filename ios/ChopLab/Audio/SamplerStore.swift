@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class SamplerStore: NSObject, ObservableObject {
+final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     let pads = PadGridPolicy.cells()
 
     @Published private(set) var sourceName = "音源未選択"
@@ -25,9 +25,12 @@ final class SamplerStore: NSObject, ObservableObject {
     private let engine = AVAudioEngine()
     private let sourcePlayer = AVAudioPlayerNode()
     private var padPlayers: [AVAudioPlayerNode] = []
+    private let sourceRepository = SourceFileRepository()
     private var sourceFile: AVAudioFile?
+    private var activeSourceURL: URL?
     private var recorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var playbackLease = PlaybackLease()
     private var padRanges = Array(repeating: SliceRange(start: 0, end: 1), count: 16)
 
     override init() {
@@ -41,15 +44,18 @@ final class SamplerStore: NSObject, ObservableObject {
             engine.connect(player, to: engine.mainMixerNode, format: nil)
             return player
         }
+
+        // The preview does not yet persist a project across launches. Retire files
+        // left by an interrupted import or a previous process before accepting a
+        // new source, instead of accumulating one UUID file per import forever.
+        sourceRepository.purgeOrphans(keeping: nil)
     }
 
     func importSource(from url: URL) {
-        do {
-            let localURL = try copyIntoAppStorage(from: url)
-            try loadSource(from: localURL, name: url.deletingPathExtension().lastPathComponent)
-        } catch {
-            statusMessage = "音源を読み込めませんでした: \(error.localizedDescription)"
-        }
+        _ = replaceSource(
+            from: url,
+            displayName: url.deletingPathExtension().lastPathComponent
+        )
     }
 
     func playSource() {
@@ -62,12 +68,21 @@ final class SamplerStore: NSObject, ObservableObject {
             try configureAudioSession(forRecording: false)
             try startEngineIfNeeded()
             stopPlayers()
-            sourcePlayer.scheduleFile(file, at: nil)
+            let generation = playbackLease.begin()
+            sourcePlayer.scheduleFile(file, at: nil) { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.playbackLease.isCurrent(generation) else { return }
+                    self.isSourcePlaying = false
+                    self.activePadID = nil
+                    self.statusMessage = "曲の再生が終了しました"
+                }
+            }
             sourcePlayer.play()
             isSourcePlaying = true
             activePadID = nil
             statusMessage = "曲を再生中"
         } catch {
+            stopPlayers()
             statusMessage = "再生を開始できませんでした: \(error.localizedDescription)"
         }
     }
@@ -88,19 +103,27 @@ final class SamplerStore: NSObject, ObservableObject {
         do {
             try configureAudioSession(forRecording: false)
             try startEngineIfNeeded()
-            sourcePlayer.stop()
-            padPlayers[pad.id].stop()
+            stopPlayers()
+            let generation = playbackLease.begin()
             padPlayers[pad.id].scheduleSegment(
                 file,
                 startingFrame: startFrame,
                 frameCount: frameCount,
                 at: nil
-            )
+            ) { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.playbackLease.isCurrent(generation) else { return }
+                    self.isSourcePlaying = false
+                    self.activePadID = nil
+                    self.statusMessage = "PAD \(pad.title) の再生が終了しました"
+                }
+            }
             padPlayers[pad.id].play()
             isSourcePlaying = false
             activePadID = pad.id
             statusMessage = "PAD \(pad.title) を再生中"
         } catch {
+            stopPlayers()
             statusMessage = "PADを再生できませんでした: \(error.localizedDescription)"
         }
     }
@@ -139,33 +162,55 @@ final class SamplerStore: NSObject, ObservableObject {
 
     func stopRecording() {
         guard isRecording else { return }
-        recorder?.stop()
+        let activeRecorder = recorder
+        activeRecorder?.delegate = nil
+        activeRecorder?.stop()
         recorder = nil
         isRecording = false
-
-        if let recordingURL {
-            importSource(from: recordingURL)
-            try? FileManager.default.removeItem(at: recordingURL)
-        }
-        self.recordingURL = nil
+        finishRecordingFile(successMessage: "録音を音源に設定しました")
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        statusMessage = "録音を音源に設定しました"
+    }
+
+    nonisolated func audioRecorderDidFinishRecording(
+        _ recorder: AVAudioRecorder,
+        successfully flag: Bool
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self, self.recorder === recorder else { return }
+            self.recorder = nil
+            self.isRecording = false
+            if flag {
+                self.finishRecordingFile(
+                    successMessage: "10分の録音上限に達したため停止し、音源に設定しました"
+                )
+            } else {
+                self.discardRecordingFile()
+                self.statusMessage = "録音を完了できませんでした"
+            }
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+        }
     }
 
     func stopAll() {
+        recorder?.delegate = nil
         recorder?.stop()
         recorder = nil
         isRecording = false
         discardRecordingFile()
         stopPlayers()
-        isSourcePlaying = false
-        activePadID = nil
         statusMessage = "停止しました"
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func beginRecording() {
         do {
+            recorder?.delegate = nil
+            recorder?.stop()
+            recorder = nil
+            discardRecordingFile()
             stopPlayers()
             try configureAudioSession(forRecording: true)
             let url = FileManager.default.temporaryDirectory
@@ -177,8 +222,10 @@ final class SamplerStore: NSObject, ObservableObject {
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
             let newRecorder = try AVAudioRecorder(url: url, settings: settings)
+            newRecorder.delegate = self
             newRecorder.prepareToRecord()
-            guard newRecorder.record() else {
+            guard newRecorder.record(forDuration: IOSAudioLimits.maximumRecordingSeconds) else {
+                newRecorder.delegate = nil
                 try? FileManager.default.removeItem(at: url)
                 statusMessage = "録音を開始できませんでした"
                 return
@@ -188,39 +235,70 @@ final class SamplerStore: NSObject, ObservableObject {
             isRecording = true
             isSourcePlaying = false
             activePadID = nil
-            statusMessage = "録音中。停止でPAD素材にします"
+            statusMessage = "録音中。停止でPAD素材にします（最大10分）"
         } catch {
+            discardRecordingFile()
             statusMessage = "録音を開始できませんでした: \(error.localizedDescription)"
         }
     }
 
-    private func loadSource(from url: URL, name: String) throws {
-        stopPlayers()
-        let file = try AVAudioFile(forReading: url)
-        guard file.length > 0 else {
-            throw NSError(domain: "ChopLab", code: 1, userInfo: [NSLocalizedDescriptionKey: "音源が空です"])
+    @discardableResult
+    private func replaceSource(from url: URL, displayName: String) -> Bool {
+        var candidateURL: URL?
+        var promotedURL: URL?
+        do {
+            let candidate = try sourceRepository.stageCopy(from: url)
+            candidateURL = candidate
+
+            let candidateFile = try AVAudioFile(forReading: candidate)
+            let byteCount = Int64(
+                try candidate.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            )
+            try IOSAudioLimits.validateImport(
+                byteCount: byteCount,
+                frameCount: candidateFile.length,
+                sampleRate: candidateFile.processingFormat.sampleRate
+            )
+
+            let promoted = try sourceRepository.promote(candidate)
+            candidateURL = nil
+            promotedURL = promoted
+            let committedFile = try AVAudioFile(forReading: promoted)
+            guard committedFile.length > 0 else {
+                throw SourceFileRepositoryError.invalidAudio
+            }
+
+            let previousURL = activeSourceURL
+            stopPlayers()
+            sourceFile = committedFile
+            activeSourceURL = promoted
+            sourceName = displayName.isEmpty ? "読み込んだ音源" : displayName
+            selectedPadID = 0
+            sourceRepository.retire(previousURL)
+            sourceRepository.purgeOrphans(keeping: promoted)
+            statusMessage = "\(sourceName) を読み込みました"
+            return true
+        } catch {
+            sourceRepository.retire(candidateURL)
+            if promotedURL != activeSourceURL {
+                sourceRepository.retire(promotedURL)
+            }
+            statusMessage = "音源を読み込めませんでした: \(error.localizedDescription)"
+            return false
         }
-        sourceFile = file
-        sourceName = name.isEmpty ? "読み込んだ音源" : name
-        selectedPadID = 0
-        statusMessage = "\(sourceName) を読み込みました"
     }
 
-    private func copyIntoAppStorage(from url: URL) throws -> URL {
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessed {
-                url.stopAccessingSecurityScopedResource()
-            }
+    private func finishRecordingFile(successMessage: String) {
+        guard let url = recordingURL else {
+            statusMessage = "録音ファイルが見つかりません"
+            return
         }
-
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sources", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let ext = url.pathExtension.isEmpty ? "audio" : url.pathExtension
-        let destination = directory.appendingPathComponent("source-\(UUID().uuidString).\(ext)")
-        try FileManager.default.copyItem(at: url, to: destination)
-        return destination
+        recordingURL = nil
+        let imported = replaceSource(from: url, displayName: "録音素材")
+        try? FileManager.default.removeItem(at: url)
+        if imported {
+            statusMessage = successMessage
+        }
     }
 
     private func configureAudioSession(forRecording: Bool) throws {
@@ -240,8 +318,11 @@ final class SamplerStore: NSObject, ObservableObject {
     }
 
     private func stopPlayers() {
+        playbackLease.invalidate()
         sourcePlayer.stop()
         padPlayers.forEach { $0.stop() }
+        isSourcePlaying = false
+        activePadID = nil
     }
 
     private func discardRecordingFile() {

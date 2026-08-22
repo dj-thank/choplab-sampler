@@ -1,14 +1,16 @@
 # ExecPlan registry
 
-更新: 2026-08-20
+更新: 2026-08-23
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中:** `spotify-connect-ux-lifecycle-20260823.md`。Windows `:desktop` のSpotify metadata/control-only連携を、明示的なOAuth lifecycle、認証cancel、disconnect優先、接続状態／現在再生／ライブラリ表示、失敗からの復帰、keyboard/screen-reader向け案内として整える。target gateは`LOCAL_PASS`のみで、実Spotify account／browser OAuth／device／publicは別task。
+**進行中:** `spotify-connect-ux-lifecycle-20260823.md`。Windows `:desktop` のSpotify metadata/control-only連携へ、`full-release-audio-hardening-20260821.md` のprovider generation／callback-state防御を統合し、明示的なOAuth lifecycle、認証cancel、disconnect優先、接続状態／現在再生／ライブラリ表示、失敗からの復帰、keyboard/screen-reader向け案内を単一ブランチで閉じる。targetは`LOCAL_PASS`と、同じsource revisionから作るAndroid APKのPixel retained-data deploy slice。実Spotify account/provider、公開、Human評価は別gate。
 
-**完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにした。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
+**source統合済み・外部ゲート分離:** `full-release-audio-hardening-20260821.md`。再現可能な非debug release、音声I/O資源境界、iOS/Kotlin Native lifecycle、供給網・復旧のsource実装とCI evidenceを本ブランチへ統合する。GitHub administrator ruleset、実device audio、Spotify provider、Human評価はsourceだけでは完了扱いにしない。
+
+**完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD／波形長押しから最大1秒の精密窓を開き、START/END数値ホイールとframe/1 ms/10 ms精度をAndroid/Windowsへ実装。PR #37としてmainへマージ済み。物理device/Human境界は未昇格。
 
 **完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 
@@ -43,7 +45,8 @@
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
-- `precision-trim-long-press-number-wheel-20260820.md`（現在の選択）
+- `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
+- `full-release-audio-hardening-20260821.md`（現在の選択）
 
 ## Selection protocol
 

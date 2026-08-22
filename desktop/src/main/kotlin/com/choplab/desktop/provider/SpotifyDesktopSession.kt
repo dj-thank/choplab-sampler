@@ -17,6 +17,7 @@ import java.time.Instant
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,9 +79,10 @@ class SpotifyDesktopSession(
         Thread(task, "ChopLab-Spotify-OAuth").apply { isDaemon = true }
     }
     private val lock = Any()
+    private val generation = ProviderSessionGeneration()
+    private val closed = AtomicBoolean(false)
     private var configuredClientId: String = clientId.trim()
     private var credentials: Credentials? = null
-    private var lifecycleEpoch = 0L
     private var nextLoginId = 0L
     private var activeLogin: ActiveLogin? = null
     private val mutableState = MutableStateFlow(initialState())
@@ -90,6 +92,10 @@ class SpotifyDesktopSession(
         get() = synchronized(lock) { credentials != null && mutableState.value.phase == SpotifyConnectionPhase.CONNECTED }
 
     fun configureClientId(value: String): Boolean {
+        if (closed.get()) {
+            onStatus("Spotify連携は終了しています")
+            return false
+        }
         val normalized = value.trim()
         if (!normalized.matches(Regex("[A-Za-z0-9]{16,128}"))) {
             report("Spotify Client IDの形式を確認してください（16〜128文字の英数字）")
@@ -97,7 +103,7 @@ class SpotifyDesktopSession(
         }
         val callback = synchronized(lock) {
             val old = activeLogin
-            lifecycleEpoch++
+            generation.invalidate()
             activeLogin = null
             credentials = null
             configuredClientId = normalized
@@ -117,6 +123,10 @@ class SpotifyDesktopSession(
     }
 
     fun login() {
+        if (closed.get()) {
+            onStatus("Spotify連携は終了しています")
+            return
+        }
         val login = synchronized(lock) {
             if (mutableState.value.busy) {
                 setStateLocked(mutableState.value.copy(message = "Spotifyの前の操作が完了してから実行してください"))
@@ -130,7 +140,7 @@ class SpotifyDesktopSession(
                 setStateLocked(mutableState.value.copy(message = "Spotifyはすでに接続済みです。再認証するには連携解除してください"))
                 return@synchronized null
             }
-            val attempt = ActiveLogin(++nextLoginId, lifecycleEpoch, null)
+            val attempt = ActiveLogin(++nextLoginId, generation.begin(), null)
             activeLogin = attempt
             setStateLocked(
                 mutableState.value.copy(
@@ -150,7 +160,7 @@ class SpotifyDesktopSession(
         val callback = synchronized(lock) {
             val active = activeLogin ?: return@synchronized null
             activeLogin = null
-            lifecycleEpoch++
+            generation.invalidate()
             setStateLocked(readyState("Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"))
             active.callback
         }
@@ -158,8 +168,9 @@ class SpotifyDesktopSession(
         onStatus("Spotifyログインをキャンセルしました")
     }
 
-    fun showCurrentPlayback() = withAccessToken("Spotify現在再生") { token ->
+    fun showCurrentPlayback() = withAccessToken("Spotify現在再生") { token, lease ->
         val response = api.currentPlayback(token)
+        generation.requireCurrent(lease)
         when (response.statusCode) {
             204 -> OperationResult(
                 "Spotifyで現在再生中の曲はありません",
@@ -173,8 +184,9 @@ class SpotifyDesktopSession(
         }
     }
 
-    fun showLibrary() = withAccessToken("Spotifyライブラリ") { token ->
+    fun showLibrary() = withAccessToken("Spotifyライブラリ") { token, lease ->
         val response = api.savedTracks(token)
+        generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
         val parsed = SpotifyPlaybackJson.savedTracks(response.body)
         when {
@@ -184,22 +196,25 @@ class SpotifyDesktopSession(
         }
     }
 
-    fun pause() = withAccessToken("Spotify一時停止") { token ->
+    fun pause() = withAccessToken("Spotify一時停止") { token, lease ->
         val response = api.pausePlayback(token)
+        generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "一時停止")
         OperationResult("Spotify再生を一時停止しました")
     }
 
-    fun resume() = withAccessToken("Spotify再開") { token ->
+    fun resume() = withAccessToken("Spotify再開") { token, lease ->
         val response = api.resumePlayback(token)
+        generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "再開")
         OperationResult("Spotify再生を再開しました")
     }
 
     fun disconnect() {
+        if (closed.get()) return
         val callback = synchronized(lock) {
             val old = activeLogin
-            lifecycleEpoch++
+            generation.invalidate()
             activeLogin = null
             credentials = null
             setStateLocked(readyState("Spotify連携を解除しました。トークンと表示済みメタデータはメモリから破棄されました"))
@@ -225,9 +240,13 @@ class SpotifyDesktopSession(
                 redirectUri = callback.redirectUri,
                 scopes = listOf("user-library-read", "user-read-playback-state", "user-modify-playback-state"),
             )
+            callback.expectState(attempt.state)
+            generation.requireCurrent(login.lease)
             browser.open(attempt.request.toUri())
-            val received = callback.await(attempt.state)
+            val received = callback.await()
+            generation.requireCurrent(login.lease)
             val tokens = tokenClient.exchangeCode(clientId, received.code, callback.redirectUri, attempt.verifier)
+            generation.requireCurrent(login.lease)
             val connected = synchronized(lock) {
                 if (!isCurrentLoginLocked(login)) return@synchronized false
                 credentials = Credentials(tokens, now())
@@ -256,7 +275,11 @@ class SpotifyDesktopSession(
         }
     }
 
-    private fun withAccessToken(label: String, action: (String) -> OperationResult) {
+    private fun withAccessToken(label: String, action: (String, Long) -> OperationResult) {
+        if (closed.get()) {
+            onStatus("$label 失敗: Spotify連携は終了しています")
+            return
+        }
         val operation = synchronized(lock) {
             if (mutableState.value.busy) {
                 setStateLocked(mutableState.value.copy(message = "Spotifyの前の操作が完了してから実行してください"))
@@ -268,15 +291,20 @@ class SpotifyDesktopSession(
                 return@synchronized null
             }
             setStateLocked(mutableState.value.copy(busy = true, message = "$label を実行しています"))
-            Operation(lifecycleEpoch, current, configuredClientId)
+            Operation(generation.snapshot(), current, configuredClientId)
         } ?: return
 
         executor.execute {
             try {
+                generation.requireCurrent(operation.lease)
                 val current = refreshIfNeeded(operation.credentials, operation.clientId)
-                val result = action(current.tokens.accessToken)
+                generation.requireCurrent(operation.lease)
+                val result = action(current.tokens.accessToken, operation.lease)
+                generation.requireCurrent(operation.lease)
                 val message = synchronized(lock) {
-                    if (lifecycleEpoch != operation.epoch || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) return@synchronized null
+                    if (closed.get() || !generation.isCurrent(operation.lease) || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) {
+                        return@synchronized null
+                    }
                     credentials = current
                     setStateLocked(result.transform(mutableState.value).copy(busy = false, message = result.message))
                     result.message
@@ -301,7 +329,9 @@ class SpotifyDesktopSession(
     }
 
     private fun completeOperationFailureLocked(operation: Operation, label: String, error: Throwable): String? {
-        if (lifecycleEpoch != operation.epoch || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) return null
+        if (closed.get() || !generation.isCurrent(operation.lease) || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) {
+            return null
+        }
         if ((error is SpotifyApiException && error.response.statusCode == 401) ||
             (error is SpotifyTokenRequestException && error.statusCode in 400..401)
         ) {
@@ -353,7 +383,7 @@ class SpotifyDesktopSession(
         )
 
     private fun isCurrentLoginLocked(login: ActiveLogin): Boolean =
-        activeLogin?.id == login.id && activeLogin?.epoch == login.epoch && lifecycleEpoch == login.epoch
+        !closed.get() && activeLogin?.id == login.id && activeLogin?.lease == login.lease && generation.isCurrent(login.lease)
 
     private fun setStateLocked(value: SpotifyDesktopState) {
         mutableState.value = value
@@ -365,8 +395,9 @@ class SpotifyDesktopSession(
     }
 
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        generation.invalidate()
         val callback = synchronized(lock) {
-            lifecycleEpoch++
             credentials = null
             val current = activeLogin?.callback
             activeLogin = null
@@ -377,8 +408,8 @@ class SpotifyDesktopSession(
     }
 
     private data class Credentials(val tokens: SpotifyTokens, val acquiredAt: Instant)
-    private data class ActiveLogin(val id: Long, val epoch: Long, val callback: SpotifyAuthorizationCallback?)
-    private data class Operation(val epoch: Long, val credentials: Credentials, val clientId: String)
+    private data class ActiveLogin(val id: Long, val lease: Long, val callback: SpotifyAuthorizationCallback?)
+    private data class Operation(val lease: Long, val credentials: Credentials, val clientId: String)
     private data class OperationResult(
         val message: String,
         val transform: (SpotifyDesktopState) -> SpotifyDesktopState = { it },

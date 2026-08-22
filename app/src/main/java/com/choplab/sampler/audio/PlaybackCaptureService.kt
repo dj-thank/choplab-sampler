@@ -113,7 +113,11 @@ class PlaybackCaptureService : Service() {
                     if (channels == 2) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT,
                 )
-                val buffer = ByteArray(max(minBuffer * 2, 16_384))
+                val frameBytes = channels * Short.SIZE_BYTES
+                val requestedBufferBytes = max(minBuffer * 2, 16_384)
+                val bufferSize = (requestedBufferBytes / frameBytes).coerceAtLeast(1) * frameBytes
+                val buffer = ByteArray(bufferSize)
+                val budget = RecordingBudget(sampleRate = SAMPLE_RATE, channelCount = channels)
                 var errorMessage: String? = null
 
                 try {
@@ -126,9 +130,32 @@ class PlaybackCaptureService : Service() {
                                 AudioRecord.READ_BLOCKING,
                             )
                             when {
-                                read > 0 -> writer.writePcm16Bytes(buffer, read)
-                                read == AudioRecord.ERROR_DEAD_OBJECT -> error("端末音声との接続が切れました")
-                                read < 0 && session.running.get() -> error("端末音声の読み取りエラー: $read")
+                                read > 0 -> {
+                                    if (read % frameBytes != 0) {
+                                        error("端末音声に不完全なPCMフレームがあります")
+                                    }
+                                    val decision = budget.decide(
+                                        requestedBytes = read,
+                                        usableSpaceBytes = session.outputFile.usableSpace.coerceAtLeast(0L),
+                                    )
+                                    if (decision.writableBytes > 0) {
+                                        writer.writePcm16Bytes(buffer, decision.writableBytes)
+                                        budget.commit(decision.writableBytes)
+                                    }
+                                    when (decision.stopAfterWrite) {
+                                        RecordingStopReason.DURATION_LIMIT -> {
+                                            session.running.set(false)
+                                            break
+                                        }
+                                        RecordingStopReason.LOW_DISK ->
+                                            error("録音用の空き容量が不足しています")
+                                        null -> Unit
+                                    }
+                                }
+                                read == AudioRecord.ERROR_DEAD_OBJECT ->
+                                    error("端末音声との接続が切れました")
+                                read < 0 && session.running.get() ->
+                                    error("端末音声の読み取りエラー: $read")
                             }
                         }
                     }
@@ -236,7 +263,7 @@ class PlaybackCaptureService : Service() {
 
         when (outcome) {
             CaptureOutcome.Completed -> {
-                if (session.outputFile.exists() && session.outputFile.length() > 44L) {
+                if (session.outputFile.exists() && session.outputFile.length() > WAV_HEADER_BYTES) {
                     CaptureEventBus.publish(PlaybackCaptureState.Completed(session.outputFile))
                 } else {
                     session.outputFile.delete()
@@ -337,6 +364,7 @@ class PlaybackCaptureService : Service() {
         private const val NOTIFICATION_ID = 42
         private const val STOP_TIMEOUT_MILLIS = 1_500L
         private const val RELEASE_TIMEOUT_MILLIS = 500L
+        private const val WAV_HEADER_BYTES = 44L
 
         fun startIntent(context: Context, resultCode: Int, data: Intent): Intent =
             Intent(context, PlaybackCaptureService::class.java)

@@ -1,5 +1,6 @@
 package com.choplab.sampler.persistence
 
+import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerUiState
 import java.io.File
 import java.io.FileOutputStream
@@ -7,6 +8,7 @@ import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AtomicProjectStoreTest {
@@ -117,6 +119,62 @@ class AtomicProjectStoreTest {
             val recovered = store.load()
 
             assertEquals(100f, recovered?.bpm)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun configuredResidentBudgetRejectsAutosaveBeforeCommit() {
+        val directory = Files.createTempDirectory("choplab-autosave-budget-test").toFile()
+        try {
+            val audio = PcmAudio(
+                id = 1L,
+                name = "budget.wav",
+                samples = shortArrayOf(1, 2),
+                sampleRate = 48_000,
+            )
+            val store = AtomicProjectStore(directory, maxResidentPcmBytes = 2L)
+
+            val failure = assertThrows(IllegalArgumentException::class.java) {
+                store.save(
+                    SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount),
+                    revision = 1L,
+                )
+            }
+
+            assertEquals("この端末で安全に開けるプロジェクト音声容量を超えています", failure.message)
+            assertFalse(store.primaryFile.exists())
+            assertFalse(File(directory, "autosave.pending.choplab").exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun configuredResidentBudgetRejectsExistingGenerationOnLoad() {
+        val directory = Files.createTempDirectory("choplab-autosave-load-budget-test").toFile()
+        try {
+            val audio = PcmAudio(
+                id = 2L,
+                name = "budget.wav",
+                samples = shortArrayOf(1, 2),
+                sampleRate = 48_000,
+            )
+            AtomicProjectStore(directory, maxResidentPcmBytes = 4L).save(
+                SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount),
+                revision = 1L,
+            )
+
+            val failure = assertThrows(IllegalStateException::class.java) {
+                AtomicProjectStore(directory, maxResidentPcmBytes = 2L).load()
+            }
+
+            assertEquals("自動保存プロジェクトを復元できません", failure.message)
+            assertEquals(
+                "この端末で安全に開けるプロジェクト音声容量を超えています",
+                failure.cause?.message,
+            )
         } finally {
             directory.deleteRecursively()
         }

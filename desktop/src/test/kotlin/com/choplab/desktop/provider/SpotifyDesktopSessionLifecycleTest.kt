@@ -47,7 +47,8 @@ class SpotifyDesktopSessionLifecycleTest {
             assertFalse(session.state.value.busy)
 
             callback.complete()
-            await { tokenClient.exchanges == 1 }
+            callback.awaitClosed()
+            assertEquals(0, tokenClient.exchanges)
             assertFalse(session.connected)
             assertEquals(SpotifyConnectionPhase.READY, session.state.value.phase)
         } finally {
@@ -67,7 +68,8 @@ class SpotifyDesktopSessionLifecycleTest {
 
             session.disconnect()
             callback.complete()
-            await { tokenClient.exchanges == 1 }
+            callback.awaitClosed()
+            assertEquals(0, tokenClient.exchanges)
 
             assertFalse(session.connected)
             assertEquals(SpotifyConnectionPhase.READY, session.state.value.phase)
@@ -216,14 +218,19 @@ class SpotifyDesktopSessionLifecycleTest {
 
     private object ImmediateCallback : SpotifyAuthorizationCallback {
         override val redirectUri: URI = URI("http://127.0.0.1:8877/callback")
-        override fun await(expectedState: String, timeout: Duration) = SpotifyCallbackResult("code", expectedState)
+        private var expectedState = ""
+        override fun expectState(state: String) {
+            expectedState = state
+        }
+        override fun await(timeout: Duration) = SpotifyCallbackResult("code", expectedState)
         override fun cancel() = Unit
         override fun close() = Unit
     }
 
     private object FailingCallback : SpotifyAuthorizationCallback {
         override val redirectUri: URI = URI("http://127.0.0.1:8877/callback")
-        override fun await(expectedState: String, timeout: Duration): SpotifyCallbackResult = error("access_denied")
+        override fun expectState(state: String) = Unit
+        override fun await(timeout: Duration): SpotifyCallbackResult = error("access_denied")
         override fun cancel() = Unit
         override fun close() = Unit
     }
@@ -232,16 +239,25 @@ class SpotifyDesktopSessionLifecycleTest {
         override val redirectUri: URI = URI("http://127.0.0.1:8877/callback")
         private val gate = CountDownLatch(1)
         private val started = CountDownLatch(1)
+        private val closed = CountDownLatch(1)
+        private var expectedState = ""
 
-        override fun await(expectedState: String, timeout: Duration): SpotifyCallbackResult {
+        override fun expectState(state: String) {
+            expectedState = state
+        }
+
+        override fun await(timeout: Duration): SpotifyCallbackResult {
             started.countDown()
             gate.await(2, TimeUnit.SECONDS)
             return SpotifyCallbackResult("code", expectedState)
         }
 
         fun awaitStarted() = assertTrue(started.await(2, TimeUnit.SECONDS), "Callback did not start")
+        fun awaitClosed() = assertTrue(closed.await(2, TimeUnit.SECONDS), "Callback did not close")
         fun complete() = gate.countDown()
         override fun cancel() = Unit
-        override fun close() = Unit
+        override fun close() {
+            closed.countDown()
+        }
     }
 }
