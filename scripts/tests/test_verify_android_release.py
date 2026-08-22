@@ -4,6 +4,7 @@ import unittest
 
 from scripts.verify_android_release import (
     VerificationError,
+    android_tool_executable_names,
     normalize_fingerprint,
     parse_manifest,
     verify_manifest,
@@ -36,6 +37,10 @@ BASE_MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
 
 
 class AndroidReleaseManifestPolicyTest(unittest.TestCase):
+    def test_windows_tool_resolution_accepts_exe_build_tools(self) -> None:
+        names = android_tool_executable_names("zipalign", platform="nt")
+        self.assertIn("zipalign.exe", names)
+
     def test_accepts_expected_release_surface(self) -> None:
         verify_manifest(
             parse_manifest(BASE_MANIFEST),

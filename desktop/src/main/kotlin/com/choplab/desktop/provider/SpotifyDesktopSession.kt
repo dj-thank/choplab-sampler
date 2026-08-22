@@ -190,7 +190,10 @@ class SpotifyDesktopSession(
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
         val parsed = SpotifyPlaybackJson.savedTracks(response.body)
         when {
-            !parsed.recognized -> OperationResult("Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください")
+            !parsed.recognized -> OperationResult(
+                "Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください",
+                transform = { it.copy(savedTracks = emptyList()) },
+            )
             parsed.tracks.isEmpty() -> OperationResult("保存済みトラックはありません", transform = { it.copy(savedTracks = emptyList()) })
             else -> OperationResult("保存済みトラックを${parsed.tracks.size}件表示しました", transform = { it.copy(savedTracks = parsed.tracks) })
         }

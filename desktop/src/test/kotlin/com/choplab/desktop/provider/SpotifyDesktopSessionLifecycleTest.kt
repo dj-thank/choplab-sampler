@@ -122,6 +122,32 @@ class SpotifyDesktopSessionLifecycleTest {
     }
 
     @Test
+    fun malformedLibraryResponseClearsPreviouslyDisplayedTracks() {
+        val api = FakeApi(
+            savedTracksResponse = SpotifyApiResponse(
+                200,
+                """{"items":[{"track":{"name":"Blue Room","artists":[{"name":"Sample Artist"}]}}]}""",
+            ),
+        )
+        val session = session(api = api, callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback })
+        try {
+            connect(session)
+            session.showLibrary()
+            await { !session.state.value.busy }
+            assertEquals(listOf("Sample Artist — Blue Room"), session.state.value.savedTracks)
+
+            api.savedTracksResponse = SpotifyApiResponse(200, "{\"not_items\":[]}")
+            session.showLibrary()
+            await { !session.state.value.busy }
+
+            assertEquals(emptyList(), session.state.value.savedTracks)
+            assertTrue(session.state.value.message.contains("読み取れませんでした"))
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
     fun invalidClientIdDoesNotReplaceTheWorkingConfiguration() {
         val session = session(callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback })
         try {
@@ -207,7 +233,7 @@ class SpotifyDesktopSessionLifecycleTest {
 
     private class FakeApi(
         private val currentPlaybackResponse: SpotifyApiResponse = SpotifyApiResponse(200, "{}"),
-        private val savedTracksResponse: SpotifyApiResponse = SpotifyApiResponse(200, "{\"items\":[]}"),
+        var savedTracksResponse: SpotifyApiResponse = SpotifyApiResponse(200, "{\"items\":[]}"),
     ) : SpotifyApiClient {
         override fun searchTracks(accessToken: String, query: String, limit: Int) = SpotifyApiResponse(200, "{}")
         override fun currentPlayback(accessToken: String) = currentPlaybackResponse

@@ -43,11 +43,20 @@ def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProces
     return result
 
 
+def android_tool_executable_names(name: str, *, platform: str = os.name) -> tuple[str, ...]:
+    if platform == "nt":
+        # Android command-line wrappers use .bat, while native build tools such
+        # as zipalign use .exe. Check both instead of guessing one extension.
+        return (f"{name}.bat", f"{name}.exe", f"{name}.cmd", name)
+    return (name,)
+
+
 def find_android_tool(name: str) -> str:
-    executable = f"{name}.bat" if os.name == "nt" else name
-    found = shutil.which(executable) or shutil.which(name)
-    if found:
-        return found
+    executables = android_tool_executable_names(name)
+    for executable in executables:
+        found = shutil.which(executable)
+        if found:
+            return found
 
     sdk_root_text = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
     if not sdk_root_text:
@@ -55,14 +64,15 @@ def find_android_tool(name: str) -> str:
     sdk_root = Path(sdk_root_text)
     candidates: list[Path] = []
     if name == "apkanalyzer":
-        candidates.extend(
-            [
-                sdk_root / "cmdline-tools" / "latest" / "bin" / executable,
-                sdk_root / "tools" / "bin" / executable,
-            ]
-        )
+        for executable in executables:
+            candidates.extend(
+                [
+                    sdk_root / "cmdline-tools" / "latest" / "bin" / executable,
+                    sdk_root / "tools" / "bin" / executable,
+                ]
+            )
     for build_tools in sorted((sdk_root / "build-tools").glob("*"), reverse=True):
-        candidates.append(build_tools / executable)
+        candidates.extend(build_tools / executable for executable in executables)
     for candidate in candidates:
         if candidate.is_file():
             return str(candidate)
