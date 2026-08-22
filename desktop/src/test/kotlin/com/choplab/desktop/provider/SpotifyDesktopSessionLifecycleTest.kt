@@ -9,6 +9,8 @@ import com.choplab.desktop.spotify.SpotifyCallbackResult
 import com.choplab.desktop.spotify.SpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyTokenRequestException
 import com.choplab.desktop.spotify.SpotifyTokens
+import java.io.IOException
+import java.net.BindException
 import java.net.URI
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
@@ -19,6 +21,54 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SpotifyDesktopSessionLifecycleTest {
+    @Test
+    fun unavailableDefaultBrowserHasSpecificRecoveryGuidance() {
+        val session = session(
+            callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback },
+            browser = SpotifyBrowser { throw SpotifyBrowserUnavailableException() },
+        )
+        try {
+            session.login()
+            await { session.state.value.phase == SpotifyConnectionPhase.ERROR && !session.state.value.busy }
+
+            assertTrue(session.state.value.message.contains("既定ブラウザー"))
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun loopbackPortFailureHasSpecificRecoveryGuidance() {
+        val session = session(
+            callbackFactory = SpotifyAuthorizationCallbackFactory { throw BindException("busy") },
+        )
+        try {
+            session.login()
+            await { session.state.value.phase == SpotifyConnectionPhase.ERROR && !session.state.value.busy }
+
+            assertTrue(session.state.value.message.contains("127.0.0.1"))
+            assertTrue(session.state.value.message.contains("ポート"))
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun tokenExchangeNetworkFailureHasSpecificRecoveryGuidance() {
+        val session = session(
+            tokenClient = FakeTokenClient(exchangeFailure = IOException("offline")),
+            callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback },
+        )
+        try {
+            session.login()
+            await { session.state.value.phase == SpotifyConnectionPhase.ERROR && !session.state.value.busy }
+
+            assertTrue(session.state.value.message.contains("ネットワーク"))
+        } finally {
+            session.close()
+        }
+    }
+
     @Test
     fun malformedEnvironmentClientIdStartsUnconfigured() {
         val session = session(
@@ -250,13 +300,14 @@ class SpotifyDesktopSessionLifecycleTest {
         tokenClient: SpotifyTokenClient = FakeTokenClient(),
         api: SpotifyApiClient = FakeApi(),
         callbackFactory: SpotifyAuthorizationCallbackFactory,
+        browser: SpotifyBrowser = SpotifyBrowser { },
     ) = SpotifyDesktopSession(
         onStatus = {},
         clientId = clientId,
         tokenClient = tokenClient,
         api = api,
         callbackFactory = callbackFactory,
-        browser = { },
+        browser = browser,
     )
 
     private fun await(condition: () -> Boolean) {
@@ -267,13 +318,14 @@ class SpotifyDesktopSessionLifecycleTest {
 
     private class FakeTokenClient(
         private val expiresInSeconds: Long = 3_600,
+        private val exchangeFailure: Throwable? = null,
         private val refreshFailure: Throwable? = null,
     ) : SpotifyTokenClient {
         @Volatile var exchanges = 0
 
         override fun exchangeCode(clientId: String, code: String, redirectUri: URI, verifier: String): SpotifyTokens {
             exchanges++
-            return tokens()
+            return exchangeFailure?.let { throw it } ?: tokens()
         }
 
         override fun refresh(clientId: String, refreshToken: String): SpotifyTokens =

@@ -13,6 +13,8 @@ import com.choplab.desktop.spotify.SpotifyTokenRequestException
 import com.choplab.desktop.spotify.SpotifyTokens
 import com.choplab.desktop.spotify.newSpotifyAuthorizationAttempt
 import java.awt.Desktop
+import java.io.IOException
+import java.net.BindException
 import java.net.URI
 import java.time.Instant
 import java.util.concurrent.CancellationException
@@ -53,12 +55,21 @@ fun interface SpotifyBrowser {
     fun open(uri: URI)
 }
 
+internal class SpotifyBrowserUnavailableException(cause: Throwable? = null) :
+    IllegalStateException("The default browser is unavailable", cause)
+
 internal object DesktopSpotifyBrowser : SpotifyBrowser {
     override fun open(uri: URI) {
-        check(Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-            "既定ブラウザーを開けません"
+        try {
+            if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                throw SpotifyBrowserUnavailableException()
+            }
+            Desktop.getDesktop().browse(uri)
+        } catch (error: SpotifyBrowserUnavailableException) {
+            throw error
+        } catch (error: Exception) {
+            throw SpotifyBrowserUnavailableException(error)
         }
-        Desktop.getDesktop().browse(uri)
     }
 }
 
@@ -380,6 +391,12 @@ class SpotifyDesktopSession(
         is TimeoutException -> "Spotifyログインが時間切れになりました。ブラウザーでの認可を確認して、もう一度ログインしてください"
         is SpotifyAuthorizationDeniedException ->
             "Spotify連携が拒否または中止されました。許可する場合は、もう一度ログインしてください"
+        is SpotifyBrowserUnavailableException ->
+            "既定ブラウザーを開けませんでした。Windowsの既定ブラウザー設定を確認して、もう一度ログインしてください"
+        is BindException ->
+            "Spotify認証用の127.0.0.1ポートを開けませんでした。ほかの認証画面を閉じて、もう一度ログインしてください"
+        is IOException ->
+            "Spotify認証のネットワーク通信に失敗しました。接続を確認して、もう一度ログインしてください"
         else -> "Spotifyログインに失敗しました。Client ID、Redirect URI、開発モードの許可ユーザーとPremiumを確認して再試行してください"
     }
 
