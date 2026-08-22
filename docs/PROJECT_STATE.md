@@ -47,7 +47,7 @@ The isolated branch `codex/choplab-precision-trim` is based on clean main `923d7
 
 ## Windows Spotify Connect UX lifecycle — 2026-08-23
 
-The single integration branch `codex/choplab-spotify-connect` is based on `origin/main` merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`, contains the merged release/audio hardening branch, and reaches final documented HEAD `665687de97aba8b8170cb3c3402ddc93b5717697` without touching the dirty canonical checkout. The source/device receipt is bound to `8306ed2114398a0d1adc89a9a4a653c1db409c1f`.
+The single integration branch `codex/choplab-spotify-connect` is based on `origin/main` merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`, contains the merged release/audio hardening branch, and reaches final documented HEAD `94d1fa054d0c281d8ad1498d599e895b34f61f5b` without touching the dirty canonical checkout. The source/device receipt is bound to `8306ed2114398a0d1adc89a9a4a653c1db409c1f`.
 
 - The panel now has explicit `Client ID未設定 → 接続準備完了 → 認証中 → 接続済み → 接続エラー` state, a current-process-only Client ID path, clear Development Mode setup guidance, cancel/retry actions, and polite accessibility announcements.
 - Cancel, disconnect, and Client ID reconfiguration invalidate an OAuth lifecycle epoch; an outstanding callback/token exchange cannot reconnect the session or restore stale metadata after the user cancels or disconnects.

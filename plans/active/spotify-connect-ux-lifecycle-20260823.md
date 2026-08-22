@@ -24,7 +24,7 @@ The target is `LOCAL_PASS`. Unit tests and packaged bytes do not prove browser O
 
 ## Completion record
 
-- Integrated branch: `codex/choplab-spotify-connect`; merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`; final documented HEAD `665687de97aba8b8170cb3c3402ddc93b5717697`; source/device receipt commit `8306ed2114398a0d1adc89a9a4a653c1db409c1f`.
+- Integrated branch: `codex/choplab-spotify-connect`; merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`; final documented HEAD `94d1fa054d0c281d8ad1498d599e895b34f61f5b`; source/device receipt commit `8306ed2114398a0d1adc89a9a4a653c1db409c1f`.
 - Acceptance criteria 1–6 are complete at `LOCAL_PASS`. Final desktop tests are 62/62, the Windows app-image verifies as `0.16.2`, packaged launch responds, and current/history public-surface plus package denylist scans pass.
 - Review-driven additions reject malformed environment Client IDs, distinguish OAuth denial/default-browser/loopback/network failures, expose an explicit library summary, honor the current Development Mode search limit, stream iOS imports under a hard byte budget, and validate Android decoder output format.
 - The security review is sealed with complete 48/48 coverage and zero reportable findings. The one suppressed iOS robustness candidate was remediated and regression-tested at source level; Windows cannot execute the iOS target.
