@@ -62,6 +62,22 @@ function Get-PackageDumpValue {
     return $match.Groups[1].Value
 }
 
+function Get-ForegroundActivityValue {
+    param(
+        [Parameter(Mandatory)] [AllowEmptyString()] [string[]]$Dump
+    )
+    $text = $Dump -join "`n"
+    foreach ($pattern in @(
+        "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)",
+        "ResumedActivity:\s+ActivityRecord\{.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)",
+        "mFocusedApp=ActivityRecord\{.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)"
+    )) {
+        $match = [regex]::Match($text, $pattern)
+        if ($match.Success) { return $match.Groups[1].Value }
+    }
+    return $null
+}
+
 function Restore-DeviceStateBestEffort {
     param(
         [Parameter(Mandatory)] [string]$TargetSerial,
@@ -160,9 +176,8 @@ try {
         $volumeMatch = [regex]::Match(($volumeBeforeOutput -join "`n"), "volume is\s+(\d+)")
         if (-not $volumeMatch.Success) { throw "Could not parse media volume before the run" }
         $volumeBefore = $volumeMatch.Groups[1].Value
-        $foregroundMatch = [regex]::Match(($activityBefore -join "`n"), "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)")
-        if (-not $foregroundMatch.Success) { throw "Could not parse foreground activity before the run" }
-        $foregroundBefore = $foregroundMatch.Groups[1].Value
+        $foregroundBefore = Get-ForegroundActivityValue -Dump $activityBefore
+        if ([string]::IsNullOrWhiteSpace($foregroundBefore)) { throw "Could not parse foreground activity before the run" }
         $restoreRequired = $true
         $restoreSerial = $Serial
         $restoreDirectory = $runDirectory
@@ -241,13 +256,14 @@ try {
         } else {
             Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "am", "start", "-n", $foregroundBefore) -LogPath (Join-Path $runDirectory "foreground-restore.txt") | Out-Null
         }
+        Start-Sleep -Milliseconds 500
         $activityFinal = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "dumpsys", "activity", "activities") -LogPath (Join-Path $runDirectory "activity-final.txt")
         $volumeFinalOutput = Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "cmd", "media_session", "volume", "--stream", "3", "--get") -LogPath (Join-Path $runDirectory "volume-final.txt")
         $rotationFinal = ((Invoke-NativeChecked -FilePath $adb -ArgumentList @("-s", $Serial, "shell", "settings", "get", "system", "accelerometer_rotation") -LogPath (Join-Path $runDirectory "rotation-final.txt") | Select-Object -First 1).Trim())
         $volumeFinalMatch = [regex]::Match(($volumeFinalOutput -join "`n"), "volume is\s+(\d+)")
-        $foregroundFinalMatch = [regex]::Match(($activityFinal -join "`n"), "topResumedActivity=.*?\s([A-Za-z0-9._]+/[A-Za-z0-9._$]+)")
         $volumeFinal = if ($volumeFinalMatch.Success) { $volumeFinalMatch.Groups[1].Value } else { "UNKNOWN" }
-        $foregroundFinal = if ($foregroundFinalMatch.Success) { $foregroundFinalMatch.Groups[1].Value } else { "UNKNOWN" }
+        $foregroundFinal = Get-ForegroundActivityValue -Dump $activityFinal
+        if ([string]::IsNullOrWhiteSpace($foregroundFinal)) { $foregroundFinal = "UNKNOWN" }
         $foregroundRestored = $foregroundFinal -eq $foregroundBefore -or
             ($foregroundBefore -match "launcher" -and $foregroundFinal -match "launcher")
         if ($rotationFinal -ne $rotationBefore -or $volumeFinal -ne $volumeBefore -or -not $foregroundRestored) {
