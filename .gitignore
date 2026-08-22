@@ -27,6 +27,7 @@ compile_commands.json
 /work/capture-window.ps1
 /work/click-window.ps1
 /work/desktop-quality-luna-project-ledger.json
+/work/device-evidence/
 *.apk
 *.aab
 *.ipa
