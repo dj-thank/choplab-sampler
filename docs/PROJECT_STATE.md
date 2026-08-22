@@ -47,14 +47,17 @@ The isolated branch `codex/choplab-precision-trim` is based on clean main `923d7
 
 ## Windows Spotify Connect UX lifecycle — 2026-08-23
 
-An isolated local Windows candidate based on `2500bbdbc8542d6de0470509f9f56b113719b2d0` advances the existing metadata/control-only Spotify seam without touching the dirty canonical checkout.
+The single integration branch `codex/choplab-spotify-connect` is based on `origin/main` merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`, contains the merged release/audio hardening branch, and reaches implementation HEAD `5e8da43fafd9642bead2c75d1bb28f1beb0dface` without touching the dirty canonical checkout.
 
 - The panel now has explicit `Client ID未設定 → 接続準備完了 → 認証中 → 接続済み → 接続エラー` state, a current-process-only Client ID path, clear Development Mode setup guidance, cancel/retry actions, and polite accessibility announcements.
 - Cancel, disconnect, and Client ID reconfiguration invalidate an OAuth lifecycle epoch; an outstanding callback/token exchange cannot reconnect the session or restore stale metadata after the user cancels or disconnects.
 - Current playback handles HTTP 204 by clearing stale display state. Saved-library responses distinguish an empty library from malformed provider data. 401/403/404/429/5xx guidance directs the user to re-login, Premium/allowlist/scopes, a Connect device, a bounded retry, or a later retry as appropriate.
+- Malformed environment Client IDs now start unconfigured, provider denial/cancellation is distinct from configuration failure, and default-browser, loopback-bind, and authentication-network failures each identify the recovery boundary. The panel shows an explicit library summary instead of a blank empty list and clears the entered Client ID after memory-only configuration.
 - The provider still uses Authorization Code with PKCE, an explicit `127.0.0.1` loopback callback, memory-only access/refresh tokens, and no Client Secret UI/persistence. Callback pages now set `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
-- Local validation at `2026-08-23T00:52+09:00`: `:jvm-core:test :desktop:test :desktop:packageWindows` passed; desktop test results were 13 suites / 47 tests / 0 failures / 0 errors / 0 skipped. `scripts/check_public_surface.py` passed over 323 public candidates. The app-image denylist found no audio, environment, signing-material, Client Secret, or Spotify content-capture/download/conversion path. Packaged `app/desktop.jar` SHA-256: `338B0DB6CC306033D870B5ED59FEAD35D3878D84B51D9DCD1BCBED44BA4B3926`.
-- Gate ceiling remains `LOCAL_PASS`. Browser OAuth, a real Spotify Premium/allowlisted user, a Spotify Connect device, physical keyboard/screen-reader behaviour, audio quality, publication, and `HUMAN_GO` are not claimed.
+- Cross-platform review hardening also bounds unknown-size iOS imports while they stream and rejects implausible Android decoder sample-rate/channel metadata before it reaches PCM mixing.
+- Final local validation: clean 184-task full Gradle gate PASS; Android 226 tests, JVM-core 49 tests, final desktop 62 tests, Python 19 tests, Android Lint, project validator, current/history public-surface scan, Android release metadata check, Windows app-image identity/denylist, SBOM generation, and packaged hidden launch all PASS. Windows `ChopLab.exe` SHA-256 is `2DCBA5BED76C97E4D2EF85B5F18304C325653ADF4BFFA66A77A443EB80C2622A`; final packaged `desktop.jar` SHA-256 is `85A51849256511F45028E4D05946F7AF4222146D4B8555493553D736A6A31814`.
+- A sealed fixed-diff security review closed 48/48 files with complete coverage and zero reportable findings. Its sole suppressed self-only iOS resource candidate was fixed anyway.
+- Pixel `5A121JEBF08094` was absent from ADB, mDNS, and Windows USB/PnP at the final check, so no physical install or device mutation occurred. Gate ceiling remains `LOCAL_PASS`; browser OAuth, real Premium/allowlist/Connect-device behavior, screen-reader speech, physical Pixel behavior, publication, and `HUMAN_GO` are not claimed.
 
 ## Windows Desktop full rebuild merged — 2026-08-20
 

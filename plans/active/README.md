@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `spotify-connect-ux-lifecycle-20260823.md`。Windows `:desktop` のSpotify metadata/control-only連携へ、`full-release-audio-hardening-20260821.md` のprovider generation／callback-state防御を統合し、明示的なOAuth lifecycle、認証cancel、disconnect優先、接続状態／現在再生／ライブラリ表示、失敗からの復帰、keyboard/screen-reader向け案内を単一ブランチで閉じる。targetは`LOCAL_PASS`と、同じsource revisionから作るAndroid APKのPixel retained-data deploy slice。実Spotify account/provider、公開、Human評価は別gate。
+**LOCAL完了・端末接続待ち:** `spotify-connect-ux-lifecycle-20260823.md`。Windows `:desktop` のSpotify metadata/control-only連携、release/audio hardening統合、OAuth lifecycle、認証cancel、disconnect優先、接続状態／現在再生／ライブラリ表示、境界別エラー復帰、keyboard/screen-reader向けsemantics、全test/package/security reviewは単一ブランチで`LOCAL_PASS`。同じsourceから作るAndroid APKのPixel retained-data deployだけは、serial `5A121JEBF08094` がADB/mDNS/USBに不在のため未実行。実Spotify account/provider、公開、Human評価は別gate。
 
 **source統合済み・外部ゲート分離:** `full-release-audio-hardening-20260821.md`。再現可能な非debug release、音声I/O資源境界、iOS/Kotlin Native lifecycle、供給網・復旧のsource実装とCI evidenceを本ブランチへ統合する。GitHub administrator ruleset、実device audio、Spotify provider、Human評価はsourceだけでは完了扱いにしない。
 
