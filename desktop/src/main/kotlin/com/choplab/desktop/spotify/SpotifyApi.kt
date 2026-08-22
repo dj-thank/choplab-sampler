@@ -27,6 +27,11 @@ object SpotifyApiRequestBuilder {
     fun currentPlayback(accessToken: String): SpotifyApiRequest =
         authorized("GET", URI("https://api.spotify.com/v1/me/player"), accessToken)
 
+    fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiRequest {
+        require(limit in 1..50) { "Spotify saved-track limit must be between 1 and 50" }
+        return authorized("GET", URI("https://api.spotify.com/v1/me/tracks?limit=$limit"), accessToken)
+    }
+
     fun pausePlayback(accessToken: String): SpotifyApiRequest =
         authorized("PUT", URI("https://api.spotify.com/v1/me/player/pause"), accessToken)
 
@@ -83,6 +88,9 @@ class SpotifyApi(
 
     fun currentPlayback(accessToken: String): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.currentPlayback(accessToken))
+
+    fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiResponse =
+        transport.send(SpotifyApiRequestBuilder.savedTracks(accessToken, limit))
 
     fun pausePlayback(accessToken: String): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.pausePlayback(accessToken))

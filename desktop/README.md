@@ -28,6 +28,8 @@ $env:CHOPLAB_SPOTIFY_CLIENT_ID = 'your-public-client-id'
 
 Start `連携 > Spotify ログイン` from the native Windows menu. The OAuth session uses Authorization Code with PKCE and keeps access/refresh tokens in memory only. No client secret or token belongs in source control, logs, project archives, or release artifacts.
 
+Alternatively open `連携 > Spotify Connect パネル` and enter the public Client ID for the current process only. It is not written to disk. The panel shows connection state, current playback, up to 20 saved-library track titles/artists, pause/resume controls, and practical recovery guidance.
+
 Spotify is deliberately a metadata/playback-control integration. The desktop app does not capture Spotify audio, download Spotify Content, stream-rip, record, extract, or convert Spotify tracks to MP3. Use a user-selected local WAV as the sampler source.
 
 Spotify's current official rules require an explicit loopback IP rather than `localhost`, recommend PKCE for desktop clients, and require Spotify Premium for pause/resume Player API calls. See [Redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), [Authorization Code with PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), and the [Pause Playback reference](https://developer.spotify.com/documentation/web-api/reference/pause-a-users-playback).

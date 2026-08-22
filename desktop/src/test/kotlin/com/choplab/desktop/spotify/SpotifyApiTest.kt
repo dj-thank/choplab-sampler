@@ -28,4 +28,15 @@ class SpotifyApiTest {
         assertEquals(null, request.body)
         assertEquals("Bearer access-token", request.headers["Authorization"])
     }
+
+    @Test
+    fun savedTracksRequestsMetadataOnlyLibraryEndpoint() {
+        val request = SpotifyApiRequestBuilder.savedTracks("access-token", 20)
+
+        assertEquals("GET", request.method)
+        assertEquals("https://api.spotify.com/v1/me/tracks?limit=20", request.uri.toString())
+        assertEquals(null, request.body)
+        assertFalse(request.uri.toString().contains("audio", ignoreCase = true))
+        assertFalse(request.uri.toString().contains("download", ignoreCase = true))
+    }
 }

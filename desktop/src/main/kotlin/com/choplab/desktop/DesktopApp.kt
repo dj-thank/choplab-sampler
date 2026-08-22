@@ -4,6 +4,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.WindowState
@@ -32,6 +34,8 @@ fun main(args: Array<String>) = application {
         )
     }
     val spotify = remember { SpotifyDesktopSession(controller::setStatus) }
+    val spotifyState by spotify.state.collectAsState()
+    var spotifyPanelVisible by remember { mutableStateOf(false) }
     val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
 
@@ -59,8 +63,10 @@ fun main(args: Array<String>) = application {
     ) {
         MenuBar {
             Menu("連携") {
+                Item("Spotify Connect パネル", onClick = { spotifyPanelVisible = true })
                 Item("Spotify ログイン", onClick = spotify::login)
                 Item("Spotify 現在再生を表示", onClick = spotify::showCurrentPlayback)
+                Item("Spotify ライブラリを表示", onClick = spotify::showLibrary)
                 Item("Spotify 一時停止", onClick = spotify::pause)
                 Item("Spotify 再開", onClick = spotify::resume)
                 Separator()
@@ -82,6 +88,14 @@ fun main(args: Array<String>) = application {
                 onSaveProject = { chooseProject(controller, FileDialog.SAVE) },
                 viewModel = controller,
             )
+        }
+    }
+    if (spotifyPanelVisible) {
+        Window(
+            onCloseRequest = { spotifyPanelVisible = false },
+            title = "ChopLab — Spotify Connect",
+        ) {
+            ChopLabTheme { SpotifyPanel(spotify, spotifyState) }
         }
     }
 }
