@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**進行中:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにする。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
+**進行中:** `spotify-connect-ux-lifecycle-20260823.md`。Windows `:desktop` のSpotify metadata/control-only連携を、明示的なOAuth lifecycle、認証cancel、disconnect優先、接続状態／現在再生／ライブラリ表示、失敗からの復帰、keyboard/screen-reader向け案内として整える。target gateは`LOCAL_PASS`のみで、実Spotify account／browser OAuth／device／publicは別task。
+
+**完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにした。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
 
 **完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 

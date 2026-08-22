@@ -15,8 +15,18 @@ data class SpotifyCallbackResult(
     val state: String,
 )
 
+interface SpotifyAuthorizationCallback : AutoCloseable {
+    val redirectUri: URI
+    fun await(expectedState: String, timeout: Duration = Duration.ofMinutes(3)): SpotifyCallbackResult
+    fun cancel()
+}
+
+fun interface SpotifyAuthorizationCallbackFactory {
+    fun create(): SpotifyAuthorizationCallback
+}
+
 /** One-shot loopback receiver. It never logs or persists the authorization code. */
-class SpotifyLoopbackCallbackServer : AutoCloseable {
+class SpotifyLoopbackCallbackServer : SpotifyAuthorizationCallback {
     private val result = CompletableFuture<SpotifyCallbackResult>()
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
 
@@ -25,10 +35,10 @@ class SpotifyLoopbackCallbackServer : AutoCloseable {
         server.start()
     }
 
-    val redirectUri: URI
+    override val redirectUri: URI
         get() = URI("http://127.0.0.1:${server.address.port}/callback")
 
-    fun await(expectedState: String, timeout: Duration = Duration.ofMinutes(3)): SpotifyCallbackResult {
+    override fun await(expectedState: String, timeout: Duration): SpotifyCallbackResult {
         return try {
             val received = result.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             check(received.state == expectedState) { "Spotify OAuth state did not match" }
@@ -42,6 +52,8 @@ class SpotifyLoopbackCallbackServer : AutoCloseable {
         server.stop(0)
         result.cancel(false)
     }
+
+    override fun cancel() = close()
 
     private fun handle(exchange: HttpExchange) {
         try {
@@ -69,6 +81,8 @@ class SpotifyLoopbackCallbackServer : AutoCloseable {
         val bytes = "<html><body>${message.htmlEscape()}</body></html>"
             .toByteArray(StandardCharsets.UTF_8)
         exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        exchange.responseHeaders.add("Cache-Control", "no-store")
+        exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
         exchange.sendResponseHeaders(200, bytes.size.toLong())
         exchange.responseBody.use { it.write(bytes) }
     }

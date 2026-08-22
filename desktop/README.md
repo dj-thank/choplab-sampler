@@ -17,22 +17,23 @@ Use `診断 > Windows 音声エンドポイント` to run the JNA/WASAPI endpoin
 
 ## Spotify development login
 
-1. Register a Spotify Developer app.
-2. Register the dynamic-port loopback redirect allowed by Spotify: `http://127.0.0.1/callback` (no port in the dashboard entry; the app adds its one-shot local port).
-3. Set only the public client ID in the current shell:
+1. Register a Spotify Developer app for Web API use.
+2. Register the dynamic-port loopback redirect `http://127.0.0.1/callback` (no port in the dashboard entry; the app adds its one-shot local port).
+3. In Development Mode, make sure the app owner has Spotify Premium and the intended Spotify account is on the app allowlist. Development Mode is limited to five authenticated users.
+4. Set only the public client ID in the current shell:
 
 ```powershell
 $env:CHOPLAB_SPOTIFY_CLIENT_ID = 'your-public-client-id'
 ./gradlew.bat :desktop:run
 ```
 
-Start `連携 > Spotify ログイン` from the native Windows menu. The OAuth session uses Authorization Code with PKCE and keeps access/refresh tokens in memory only. No client secret or token belongs in source control, logs, project archives, or release artifacts.
+Start `連携 > Spotify Connect パネル` from the native Windows menu. The panel makes the setup state, OAuth progress, retryable errors, current playback, library metadata, and Connect control state visible. It lets the user cancel an in-progress login and treats cancellation or disconnect as authoritative: a late callback cannot reconnect the session. The OAuth session uses Authorization Code with PKCE and keeps access/refresh tokens in memory only. No client secret or token belongs in source control, logs, project archives, or release artifacts.
 
-Alternatively open `連携 > Spotify Connect パネル` and enter the public Client ID for the current process only. It is not written to disk. The panel shows connection state, current playback, up to 20 saved-library track titles/artists, pause/resume controls, and practical recovery guidance.
+The public Client ID can be supplied by `CHOPLAB_SPOTIFY_CLIENT_ID` or entered into the panel for the current process only. It is not written to disk. The panel shows connection state, current playback, up to 20 saved-library track titles/artists, pause/resume controls, and recovery guidance for expired login, missing Premium or allowlist access, missing Connect devices, rate limits, and temporary provider errors.
 
 Spotify is deliberately a metadata/playback-control integration. The desktop app does not capture Spotify audio, download Spotify Content, stream-rip, record, extract, or convert Spotify tracks to MP3. Use a user-selected local WAV as the sampler source.
 
-Spotify's current official rules require an explicit loopback IP rather than `localhost`, recommend PKCE for desktop clients, and require Spotify Premium for pause/resume Player API calls. See [Redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), [Authorization Code with PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), and the [Pause Playback reference](https://developer.spotify.com/documentation/web-api/reference/pause-a-users-playback).
+Spotify's current official rules require an explicit loopback IP rather than `localhost`, permit dynamically assigned ports for a registered loopback IP literal, recommend PKCE for desktop clients, and impose Development Mode Premium/allowlist limits. See [Redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), [Authorization Code with PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), [Quota Modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes), and the [Get Playback State reference](https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback).
 
 ## Build the Windows app image
 

@@ -2,173 +2,398 @@ package com.choplab.desktop.provider
 
 import com.choplab.desktop.spotify.JdkSpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyApi
+import com.choplab.desktop.spotify.SpotifyApiClient
+import com.choplab.desktop.spotify.SpotifyApiResponse
+import com.choplab.desktop.spotify.SpotifyAuthorizationCallback
+import com.choplab.desktop.spotify.SpotifyAuthorizationCallbackFactory
 import com.choplab.desktop.spotify.SpotifyLoopbackCallbackServer
+import com.choplab.desktop.spotify.SpotifyTokenClient
+import com.choplab.desktop.spotify.SpotifyTokenRequestException
 import com.choplab.desktop.spotify.SpotifyTokens
 import com.choplab.desktop.spotify.newSpotifyAuthorizationAttempt
 import java.awt.Desktop
+import java.net.URI
 import java.time.Instant
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+enum class SpotifyConnectionPhase(val label: String) {
+    UNCONFIGURED("Client ID未設定"),
+    READY("接続準備完了"),
+    AUTHENTICATING("認証中"),
+    CONNECTED("接続済み"),
+    ERROR("接続エラー"),
+}
+
 data class SpotifyDesktopState(
+    val phase: SpotifyConnectionPhase = SpotifyConnectionPhase.UNCONFIGURED,
     val clientIdConfigured: Boolean = false,
-    val connection: String = "未接続",
+    val clientIdSource: String? = null,
     val currentTrack: String = "現在再生情報は未取得です",
     val savedTracks: List<String> = emptyList(),
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
-)
+) {
+    val connection: String get() = phase.label
+    val canLogin: Boolean get() = !busy && clientIdConfigured && phase != SpotifyConnectionPhase.CONNECTED
+    val canCancelLogin: Boolean get() = phase == SpotifyConnectionPhase.AUTHENTICATING
+    val canUsePlaybackControls: Boolean get() = !busy && phase == SpotifyConnectionPhase.CONNECTED
+    val canDisconnect: Boolean get() = phase != SpotifyConnectionPhase.UNCONFIGURED
+    val canConfigureClientId: Boolean get() = !busy
+}
+
+fun interface SpotifyBrowser {
+    fun open(uri: URI)
+}
+
+internal object DesktopSpotifyBrowser : SpotifyBrowser {
+    override fun open(uri: URI) {
+        check(Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+            "既定ブラウザーを開けません"
+        }
+        Desktop.getDesktop().browse(uri)
+    }
+}
 
 /**
  * Memory-only Spotify metadata/control session.
  *
- * This provider never exposes Spotify audio bytes to the sampler. Audio sources
- * remain local WAV or an explicitly started local recording.
+ * The explicit lifecycle ensures cancellation and disconnect always win over a
+ * late OAuth callback. It never exposes Spotify audio bytes to the sampler.
  */
 class SpotifyDesktopSession(
     private val onStatus: (String) -> Unit,
     clientId: String = System.getenv("CHOPLAB_SPOTIFY_CLIENT_ID").orEmpty(),
-    private val tokenClient: JdkSpotifyTokenClient = JdkSpotifyTokenClient(),
-    private val api: SpotifyApi = SpotifyApi(),
+    private val tokenClient: SpotifyTokenClient = JdkSpotifyTokenClient(),
+    private val api: SpotifyApiClient = SpotifyApi(),
+    private val callbackFactory: SpotifyAuthorizationCallbackFactory = SpotifyAuthorizationCallbackFactory { SpotifyLoopbackCallbackServer() },
+    private val browser: SpotifyBrowser = DesktopSpotifyBrowser,
+    private val now: () -> Instant = Instant::now,
 ) : AutoCloseable {
     private val executor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "ChopLab-Spotify-OAuth").apply { isDaemon = true }
     }
-    @Volatile private var credentials: Credentials? = null
-    @Volatile private var configuredClientId: String = clientId.trim()
-    private val mutableState = MutableStateFlow(SpotifyDesktopState(clientIdConfigured = configuredClientId.isNotBlank()))
+    private val lock = Any()
+    private var configuredClientId: String = clientId.trim()
+    private var credentials: Credentials? = null
+    private var lifecycleEpoch = 0L
+    private var nextLoginId = 0L
+    private var activeLogin: ActiveLogin? = null
+    private val mutableState = MutableStateFlow(initialState())
     val state: StateFlow<SpotifyDesktopState> = mutableState.asStateFlow()
 
     val connected: Boolean
-        get() = credentials != null
+        get() = synchronized(lock) { credentials != null && mutableState.value.phase == SpotifyConnectionPhase.CONNECTED }
 
-    fun configureClientId(value: String) {
+    fun configureClientId(value: String): Boolean {
         val normalized = value.trim()
         if (!normalized.matches(Regex("[A-Za-z0-9]{16,128}"))) {
             report("Spotify Client IDの形式を確認してください（16〜128文字の英数字）")
-            return
+            return false
         }
-        if (normalized != configuredClientId) credentials = null
-        configuredClientId = normalized
-        update { it.copy(clientIdConfigured = true, connection = "未接続", message = "Client IDをメモリ内に設定しました。次にログインしてください") }
+        val callback = synchronized(lock) {
+            val old = activeLogin
+            lifecycleEpoch++
+            activeLogin = null
+            credentials = null
+            configuredClientId = normalized
+            setStateLocked(
+                SpotifyDesktopState(
+                    phase = SpotifyConnectionPhase.READY,
+                    clientIdConfigured = true,
+                    clientIdSource = "この起動中のみ",
+                    message = "Client IDをメモリ内に設定しました。Spotifyログインを開始できます",
+                ),
+            )
+            old?.callback
+        }
+        callback?.cancel()
+        onStatus("Client IDをメモリ内に設定しました。ディスクには保存しません")
+        return true
     }
 
     fun login() {
-        val clientId = configuredClientId
-        if (clientId.isBlank()) {
-            report("Spotify Client IDが未設定です。連携パネルで設定するかCHOPLAB_SPOTIFY_CLIENT_IDを指定してください")
-            return
-        }
-        submit("Spotifyログイン") {
-            SpotifyLoopbackCallbackServer().use { callback ->
-                val attempt = newSpotifyAuthorizationAttempt(
-                    clientId = clientId,
-                    redirectUri = callback.redirectUri,
-                    scopes = listOf("user-library-read", "user-read-playback-state", "user-modify-playback-state"),
-                )
-                check(Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    "既定ブラウザーを開けません"
-                }
-                Desktop.getDesktop().browse(attempt.request.toUri())
-                update { it.copy(connection = "認証待ち", message = "ブラウザーでSpotify連携を許可してください") }
-                onStatus("ブラウザーでSpotify連携を許可してください")
-                val received = callback.await(attempt.state)
-                val tokens = tokenClient.exchangeCode(
-                    clientId,
-                    received.code,
-                    callback.redirectUri,
-                    attempt.verifier,
-                )
-                credentials = Credentials(tokens, Instant.now())
-                update { it.copy(connection = "接続済み", message = "Spotifyと接続しました（メタデータ／再生制御のみ）") }
-                onStatus("Spotifyと連携しました。音声取込はローカル素材または録音を使用します")
+        val login = synchronized(lock) {
+            if (mutableState.value.busy) {
+                setStateLocked(mutableState.value.copy(message = "Spotifyの前の操作が完了してから実行してください"))
+                return@synchronized null
             }
+            if (configuredClientId.isBlank()) {
+                setStateLocked(initialState("Spotify Client IDが未設定です。連携パネルで設定してください"))
+                return@synchronized null
+            }
+            if (credentials != null || mutableState.value.phase == SpotifyConnectionPhase.CONNECTED) {
+                setStateLocked(mutableState.value.copy(message = "Spotifyはすでに接続済みです。再認証するには連携解除してください"))
+                return@synchronized null
+            }
+            val attempt = ActiveLogin(++nextLoginId, lifecycleEpoch, null)
+            activeLogin = attempt
+            setStateLocked(
+                mutableState.value.copy(
+                    phase = SpotifyConnectionPhase.AUTHENTICATING,
+                    busy = true,
+                    message = "ブラウザーでSpotify連携を許可してください。中止する場合は「認証をキャンセル」を選びます",
+                ),
+            )
+            attempt to configuredClientId
+        } ?: return
+
+        onStatus("ブラウザーでSpotify連携を許可してください")
+        executor.execute { performLogin(login.first, login.second) }
+    }
+
+    fun cancelLogin() {
+        val callback = synchronized(lock) {
+            val active = activeLogin ?: return@synchronized null
+            activeLogin = null
+            lifecycleEpoch++
+            setStateLocked(readyState("Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"))
+            active.callback
         }
+        callback?.cancel()
+        onStatus("Spotifyログインをキャンセルしました")
     }
 
     fun showCurrentPlayback() = withAccessToken("Spotify現在再生") { token ->
         val response = api.currentPlayback(token)
         when (response.statusCode) {
-            204 -> onStatus("Spotifyで現在再生中の曲はありません")
-            in 200..299 -> SpotifyPlaybackJson.describe(response.body).also { description ->
-                update { it.copy(currentTrack = description, message = "現在再生を更新しました") }
-                onStatus(description)
+            204 -> OperationResult(
+                "Spotifyで現在再生中の曲はありません",
+                transform = { it.copy(currentTrack = "現在再生中の曲はありません") },
+            )
+            in 200..299 -> {
+                val description = SpotifyPlaybackJson.describe(response.body)
+                OperationResult("現在再生を更新しました", transform = { it.copy(currentTrack = description) })
             }
-            else -> error(SpotifyErrorGuidance.forStatus(response.statusCode, "現在再生"))
+            else -> throw SpotifyApiException(response, "現在再生")
         }
     }
 
     fun showLibrary() = withAccessToken("Spotifyライブラリ") { token ->
         val response = api.savedTracks(token)
-        if (response.statusCode !in 200..299) error(SpotifyErrorGuidance.forStatus(response.statusCode, "ライブラリ"))
-        val tracks = SpotifyPlaybackJson.savedTracks(response.body)
-        update { it.copy(savedTracks = tracks, message = if (tracks.isEmpty()) "保存済みトラックはありません" else "保存済みトラックを${tracks.size}件表示しました") }
+        if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
+        val parsed = SpotifyPlaybackJson.savedTracks(response.body)
+        when {
+            !parsed.recognized -> OperationResult("Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください")
+            parsed.tracks.isEmpty() -> OperationResult("保存済みトラックはありません", transform = { it.copy(savedTracks = emptyList()) })
+            else -> OperationResult("保存済みトラックを${parsed.tracks.size}件表示しました", transform = { it.copy(savedTracks = parsed.tracks) })
+        }
     }
 
     fun pause() = withAccessToken("Spotify一時停止") { token ->
         val response = api.pausePlayback(token)
-        check(response.statusCode in 200..299) { SpotifyErrorGuidance.forStatus(response.statusCode, "一時停止") }
-        onStatus("Spotify再生を一時停止しました")
+        if (response.statusCode !in 200..299) throw SpotifyApiException(response, "一時停止")
+        OperationResult("Spotify再生を一時停止しました")
     }
 
     fun resume() = withAccessToken("Spotify再開") { token ->
         val response = api.resumePlayback(token)
-        check(response.statusCode in 200..299) { SpotifyErrorGuidance.forStatus(response.statusCode, "再開") }
-        onStatus("Spotify再生を再開しました")
+        if (response.statusCode !in 200..299) throw SpotifyApiException(response, "再開")
+        OperationResult("Spotify再生を再開しました")
     }
 
     fun disconnect() {
-        credentials = null
-        update { SpotifyDesktopState(clientIdConfigured = configuredClientId.isNotBlank(), message = "Spotify連携を解除しました。トークンはメモリから破棄されました") }
+        val callback = synchronized(lock) {
+            val old = activeLogin
+            lifecycleEpoch++
+            activeLogin = null
+            credentials = null
+            setStateLocked(readyState("Spotify連携を解除しました。トークンと表示済みメタデータはメモリから破棄されました"))
+            old?.callback
+        }
+        callback?.cancel()
         onStatus("Spotify連携をこの端末のメモリから解除しました")
     }
 
-    private fun withAccessToken(label: String, action: (String) -> Unit) {
-        submit(label) {
-            val current = refreshIfNeeded(credentials ?: error("先にSpotifyへログインしてください"))
-            credentials = current
-            action(current.tokens.accessToken)
+    private fun performLogin(login: ActiveLogin, clientId: String) {
+        var callback: SpotifyAuthorizationCallback? = null
+        try {
+            callback = callbackFactory.create()
+            synchronized(lock) {
+                if (!isCurrentLoginLocked(login)) {
+                    callback.cancel()
+                    return
+                }
+                activeLogin = login.copy(callback = callback)
+            }
+            val attempt = newSpotifyAuthorizationAttempt(
+                clientId = clientId,
+                redirectUri = callback.redirectUri,
+                scopes = listOf("user-library-read", "user-read-playback-state", "user-modify-playback-state"),
+            )
+            browser.open(attempt.request.toUri())
+            val received = callback.await(attempt.state)
+            val tokens = tokenClient.exchangeCode(clientId, received.code, callback.redirectUri, attempt.verifier)
+            val connected = synchronized(lock) {
+                if (!isCurrentLoginLocked(login)) return@synchronized false
+                credentials = Credentials(tokens, now())
+                activeLogin = null
+                setStateLocked(
+                    mutableState.value.copy(
+                        phase = SpotifyConnectionPhase.CONNECTED,
+                        busy = false,
+                        message = "Spotifyと接続しました。表示とSpotify Connectの再生制御のみを行います",
+                    ),
+                )
+                true
+            }
+            if (connected) onStatus("Spotifyと接続しました。音声取込はローカル素材または録音を使用します")
+        } catch (error: Throwable) {
+            val failure = synchronized(lock) {
+                if (!isCurrentLoginLocked(login)) return@synchronized null
+                activeLogin = null
+                credentials = null
+                setStateLocked(errorState(loginFailureMessage(error)))
+                mutableState.value.message
+            }
+            if (failure != null) onStatus(failure)
+        } finally {
+            callback?.close()
         }
     }
 
-    private fun refreshIfNeeded(current: Credentials): Credentials {
+    private fun withAccessToken(label: String, action: (String) -> OperationResult) {
+        val operation = synchronized(lock) {
+            if (mutableState.value.busy) {
+                setStateLocked(mutableState.value.copy(message = "Spotifyの前の操作が完了してから実行してください"))
+                return@synchronized null
+            }
+            val current = credentials
+            if (current == null || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) {
+                setStateLocked(readyState("先にSpotifyへログインしてください"))
+                return@synchronized null
+            }
+            setStateLocked(mutableState.value.copy(busy = true, message = "$label を実行しています"))
+            Operation(lifecycleEpoch, current, configuredClientId)
+        } ?: return
+
+        executor.execute {
+            try {
+                val current = refreshIfNeeded(operation.credentials, operation.clientId)
+                val result = action(current.tokens.accessToken)
+                val message = synchronized(lock) {
+                    if (lifecycleEpoch != operation.epoch || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) return@synchronized null
+                    credentials = current
+                    setStateLocked(result.transform(mutableState.value).copy(busy = false, message = result.message))
+                    result.message
+                }
+                if (message != null) onStatus(message)
+            } catch (error: Throwable) {
+                val message = synchronized(lock) { completeOperationFailureLocked(operation, label, error) }
+                if (message != null) onStatus(message)
+            }
+        }
+    }
+
+    private fun refreshIfNeeded(current: Credentials, clientId: String): Credentials {
         val refreshAt = current.acquiredAt.plusSeconds((current.tokens.expiresInSeconds - 60L).coerceAtLeast(0L))
-        if (Instant.now().isBefore(refreshAt)) return current
+        if (now().isBefore(refreshAt)) return current
         val refreshToken = current.tokens.refreshToken ?: error("Spotifyログインの有効期限が切れました。再ログインしてください")
-        val refreshed = tokenClient.refresh(configuredClientId, refreshToken)
+        val refreshed = tokenClient.refresh(clientId, refreshToken)
         return Credentials(
             tokens = refreshed.copy(refreshToken = refreshed.refreshToken ?: refreshToken),
-            acquiredAt = Instant.now(),
+            acquiredAt = now(),
         )
     }
 
-    private fun submit(label: String, action: () -> Unit) {
-        update { it.copy(busy = true, message = "$label を実行しています") }
-        executor.submit {
-            runCatching(action)
-                .onFailure { error -> report("$label 失敗: ${error.message ?: error.javaClass.simpleName}") }
-                .also { update { state -> state.copy(busy = false) } }
+    private fun completeOperationFailureLocked(operation: Operation, label: String, error: Throwable): String? {
+        if (lifecycleEpoch != operation.epoch || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) return null
+        if ((error is SpotifyApiException && error.response.statusCode == 401) ||
+            (error is SpotifyTokenRequestException && error.statusCode in 400..401)
+        ) {
+            credentials = null
+            setStateLocked(errorState("$label: 認証期限が切れたか更新できませんでした。もう一度ログインしてください"))
+        } else {
+            val message = when (error) {
+                is SpotifyApiException -> SpotifyErrorGuidance.forStatus(error.response.statusCode, label, error.response.retryAfterSeconds)
+                is SpotifyTokenRequestException -> "$label: Spotify認証の更新に失敗しました。時間を置いて再試行してください"
+                else -> "$label に失敗しました。ネットワーク接続とSpotifyの状態を確認して再試行してください"
+            }
+            setStateLocked(mutableState.value.copy(busy = false, message = message))
         }
+        return mutableState.value.message
+    }
+
+    private fun loginFailureMessage(error: Throwable): String = when (error) {
+        is CancellationException -> "Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"
+        is TimeoutException -> "Spotifyログインが時間切れになりました。ブラウザーでの認可を確認して、もう一度ログインしてください"
+        else -> "Spotifyログインに失敗しました。Client ID、Redirect URI、開発モードの許可ユーザーとPremiumを確認して再試行してください"
+    }
+
+    private fun initialState(message: String? = null): SpotifyDesktopState =
+        if (configuredClientId.isBlank()) {
+            SpotifyDesktopState(message = message ?: "Client IDを設定してSpotifyへ接続してください")
+        } else {
+            SpotifyDesktopState(
+                phase = SpotifyConnectionPhase.READY,
+                clientIdConfigured = true,
+                clientIdSource = "環境変数",
+                message = message ?: "Client IDは環境変数から設定済みです。Spotifyログインを開始できます",
+            )
+        }
+
+    private fun readyState(message: String): SpotifyDesktopState =
+        if (configuredClientId.isBlank()) initialState(message) else SpotifyDesktopState(
+            phase = SpotifyConnectionPhase.READY,
+            clientIdConfigured = true,
+            clientIdSource = mutableState.value.clientIdSource ?: "この起動中のみ",
+            message = message,
+        )
+
+    private fun errorState(message: String): SpotifyDesktopState =
+        if (configuredClientId.isBlank()) initialState(message) else SpotifyDesktopState(
+            phase = SpotifyConnectionPhase.ERROR,
+            clientIdConfigured = true,
+            clientIdSource = mutableState.value.clientIdSource ?: "この起動中のみ",
+            message = message,
+        )
+
+    private fun isCurrentLoginLocked(login: ActiveLogin): Boolean =
+        activeLogin?.id == login.id && activeLogin?.epoch == login.epoch && lifecycleEpoch == login.epoch
+
+    private fun setStateLocked(value: SpotifyDesktopState) {
+        mutableState.value = value
     }
 
     private fun report(message: String) {
-        update { it.copy(message = message) }
+        synchronized(lock) { setStateLocked(mutableState.value.copy(message = message)) }
         onStatus(message)
     }
 
-    private fun update(transform: (SpotifyDesktopState) -> SpotifyDesktopState) {
-        mutableState.value = transform(mutableState.value)
-    }
-
     override fun close() {
-        credentials = null
+        val callback = synchronized(lock) {
+            lifecycleEpoch++
+            credentials = null
+            val current = activeLogin?.callback
+            activeLogin = null
+            current
+        }
+        callback?.cancel()
         executor.shutdownNow()
     }
 
     private data class Credentials(val tokens: SpotifyTokens, val acquiredAt: Instant)
+    private data class ActiveLogin(val id: Long, val epoch: Long, val callback: SpotifyAuthorizationCallback?)
+    private data class Operation(val epoch: Long, val credentials: Credentials, val clientId: String)
+    private data class OperationResult(
+        val message: String,
+        val transform: (SpotifyDesktopState) -> SpotifyDesktopState = { it },
+    )
 }
+
+private class SpotifyApiException(
+    val response: SpotifyApiResponse,
+    operation: String,
+) : IllegalStateException("$operation: HTTP ${response.statusCode}")
+
+internal data class SpotifySavedTracksResult(
+    val tracks: List<String>,
+    val recognized: Boolean,
+)
 
 internal object SpotifyPlaybackJson {
     fun describe(body: String): String {
@@ -183,15 +408,19 @@ internal object SpotifyPlaybackJson {
         return if (artist.isNullOrBlank()) "Spotify再生中: $name" else "Spotify再生中: $artist — $name"
     }
 
-    fun savedTracks(body: String): List<String> {
-        val root = runCatching { JsonValueReader(body).read() as? Map<*, *> }.getOrNull() ?: return emptyList()
-        val items = root["items"] as? List<*> ?: return emptyList()
-        return items.mapNotNull { entry ->
-            val track = (entry as? Map<*, *>)?.get("track") as? Map<*, *> ?: return@mapNotNull null
-            val name = track["name"] as? String ?: return@mapNotNull null
-            val artist = (track["artists"] as? List<*>)?.firstOrNull()?.let { it as? Map<*, *> }?.get("name") as? String
-            if (artist.isNullOrBlank()) name else "$artist — $name"
-        }
+    fun savedTracks(body: String): SpotifySavedTracksResult {
+        val root = runCatching { JsonValueReader(body).read() as? Map<*, *> }.getOrNull()
+            ?: return SpotifySavedTracksResult(emptyList(), recognized = false)
+        val items = root["items"] as? List<*> ?: return SpotifySavedTracksResult(emptyList(), recognized = false)
+        return SpotifySavedTracksResult(
+            tracks = items.mapNotNull { entry ->
+                val track = (entry as? Map<*, *>)?.get("track") as? Map<*, *> ?: return@mapNotNull null
+                val name = track["name"] as? String ?: return@mapNotNull null
+                val artist = (track["artists"] as? List<*>)?.firstOrNull()?.let { it as? Map<*, *> }?.get("name") as? String
+                if (artist.isNullOrBlank()) name else "$artist — $name"
+            },
+            recognized = true,
+        )
     }
 
     /** Small fail-closed JSON reader for provider responses; it does not retain the body. */
@@ -314,11 +543,12 @@ internal object SpotifyPlaybackJson {
 }
 
 internal object SpotifyErrorGuidance {
-    fun forStatus(status: Int, operation: String): String = when (status) {
+    fun forStatus(status: Int, operation: String, retryAfterSeconds: Long? = null): String = when (status) {
         401 -> "$operation: 認証期限が切れました。連携解除後に再ログインしてください"
-        403 -> "$operation: Spotify Premium、アプリの許可ユーザー、または必要な権限を確認してください"
+        403 -> "$operation: Spotify Premium、開発モードの許可ユーザー、または必要な権限を確認してください"
         404 -> "$operation: 操作できるSpotify Connect再生デバイスが見つかりません。Spotifyアプリで再生を開始してください"
-        429 -> "$operation: Spotify APIの利用上限です。しばらく待ってから再試行してください"
+        429 -> retryAfterSeconds?.let { "$operation: Spotify APIの利用上限です。$it 秒待ってから再試行してください" }
+            ?: "$operation: Spotify APIの利用上限です。しばらく待ってから再試行してください"
         in 500..599 -> "$operation: Spotify側で一時的な障害が発生しています。時間を置いて再試行してください"
         else -> "$operation: Spotify APIエラー (HTTP $status)"
     }

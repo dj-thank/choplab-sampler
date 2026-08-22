@@ -51,6 +51,7 @@ object SpotifyApiRequestBuilder {
 data class SpotifyApiResponse(
     val statusCode: Int,
     val body: String,
+    val retryAfterSeconds: Long? = null,
 )
 
 fun interface SpotifyApiTransport {
@@ -76,25 +77,34 @@ class JdkSpotifyApiTransport(
             else -> error("Unsupported Spotify method: ${request.method}")
         }
         val response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
-        return SpotifyApiResponse(response.statusCode(), response.body())
+        val retryAfter = response.headers().firstValue("Retry-After").orElse(null)?.toLongOrNull()
+        return SpotifyApiResponse(response.statusCode(), response.body(), retryAfter)
     }
+}
+
+interface SpotifyApiClient {
+    fun searchTracks(accessToken: String, query: String, limit: Int = 20): SpotifyApiResponse
+    fun currentPlayback(accessToken: String): SpotifyApiResponse
+    fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiResponse
+    fun pausePlayback(accessToken: String): SpotifyApiResponse
+    fun resumePlayback(accessToken: String): SpotifyApiResponse
 }
 
 class SpotifyApi(
     private val transport: SpotifyApiTransport = JdkSpotifyApiTransport(),
-) {
-    fun searchTracks(accessToken: String, query: String, limit: Int = 20): SpotifyApiResponse =
+) : SpotifyApiClient {
+    override fun searchTracks(accessToken: String, query: String, limit: Int): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.searchTracks(accessToken, query, limit))
 
-    fun currentPlayback(accessToken: String): SpotifyApiResponse =
+    override fun currentPlayback(accessToken: String): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.currentPlayback(accessToken))
 
-    fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiResponse =
+    override fun savedTracks(accessToken: String, limit: Int): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.savedTracks(accessToken, limit))
 
-    fun pausePlayback(accessToken: String): SpotifyApiResponse =
+    override fun pausePlayback(accessToken: String): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.pausePlayback(accessToken))
 
-    fun resumePlayback(accessToken: String): SpotifyApiResponse =
+    override fun resumePlayback(accessToken: String): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.resumePlayback(accessToken))
 }

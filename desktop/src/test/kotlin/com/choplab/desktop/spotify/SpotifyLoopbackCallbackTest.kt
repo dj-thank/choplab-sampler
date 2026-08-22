@@ -21,6 +21,8 @@ class SpotifyLoopbackCallbackTest {
             val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
 
             assertEquals(HttpURLConnection.HTTP_OK, response.statusCode())
+            assertEquals("no-store", response.headers().firstValue("Cache-Control").orElse(null))
+            assertEquals("nosniff", response.headers().firstValue("X-Content-Type-Options").orElse(null))
             assertFailsWith<IllegalStateException> {
                 callback.await("expected-state", Duration.ofSeconds(1))
             }

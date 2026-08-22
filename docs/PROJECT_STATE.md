@@ -45,6 +45,17 @@ The isolated branch `codex/choplab-precision-trim` is based on clean main `923d7
 - Gate ceiling: `LOCAL_PASS` plus scoped API 36 emulator interaction/instrumentation. Physical touch/haptics, audible boundary quality, TalkBack speech, provider/public Release, iOS native feature parity, and `HUMAN_GO` are not yet promoted.
 - Review: local parent two-pass from fixed point `923d7bb` (no substitute child model). Standards found absolute-frame delta overflow and a 38 dp precision touch target; both are fixed with shared saturated setting, a regression test, and 48 dp controls. Final Standards findings 0; final Spec findings 0.
 
+## Windows Spotify Connect UX lifecycle — 2026-08-23
+
+An isolated local Windows candidate based on `2500bbdbc8542d6de0470509f9f56b113719b2d0` advances the existing metadata/control-only Spotify seam without touching the dirty canonical checkout.
+
+- The panel now has explicit `Client ID未設定 → 接続準備完了 → 認証中 → 接続済み → 接続エラー` state, a current-process-only Client ID path, clear Development Mode setup guidance, cancel/retry actions, and polite accessibility announcements.
+- Cancel, disconnect, and Client ID reconfiguration invalidate an OAuth lifecycle epoch; an outstanding callback/token exchange cannot reconnect the session or restore stale metadata after the user cancels or disconnects.
+- Current playback handles HTTP 204 by clearing stale display state. Saved-library responses distinguish an empty library from malformed provider data. 401/403/404/429/5xx guidance directs the user to re-login, Premium/allowlist/scopes, a Connect device, a bounded retry, or a later retry as appropriate.
+- The provider still uses Authorization Code with PKCE, an explicit `127.0.0.1` loopback callback, memory-only access/refresh tokens, and no Client Secret UI/persistence. Callback pages now set `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+- Local validation at `2026-08-23T00:52+09:00`: `:jvm-core:test :desktop:test :desktop:packageWindows` passed; desktop test results were 13 suites / 47 tests / 0 failures / 0 errors / 0 skipped. `scripts/check_public_surface.py` passed over 323 public candidates. The app-image denylist found no audio, environment, signing-material, Client Secret, or Spotify content-capture/download/conversion path. Packaged `app/desktop.jar` SHA-256: `338B0DB6CC306033D870B5ED59FEAD35D3878D84B51D9DCD1BCBED44BA4B3926`.
+- Gate ceiling remains `LOCAL_PASS`. Browser OAuth, a real Spotify Premium/allowlisted user, a Spotify Connect device, physical keyboard/screen-reader behaviour, audio quality, publication, and `HUMAN_GO` are not claimed.
+
 ## Windows Desktop full rebuild merged — 2026-08-20
 
 The user-requested PC rebuild was implemented in the isolated branch `codex/choplab-desktop-exe` without resetting or cleaning the dirty canonical checkout. PR #32 was squash-merged to `main` as `d88f022e5c7023c987e9b82036c04c5207415597`; the merged main tree `05e255ccb7eeba9c0cc9b939b68684229581c322` exactly matches the validated branch tree.
