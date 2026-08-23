@@ -38,6 +38,9 @@ import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.ProjectOperationEpoch
+import com.choplab.sampler.model.ProductionCommand
+import com.choplab.sampler.model.ProductionEffect
+import com.choplab.sampler.model.ProductionMutation
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
@@ -85,10 +88,12 @@ import com.choplab.sampler.model.reconcilePendingSourceCommand
 import com.choplab.sampler.model.recordingStartPolicy
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.replaceSourceAudio
+import com.choplab.sampler.model.reduceProductionCommand
 import com.choplab.sampler.model.resetProjectState
 import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.resolvePadPressAction
 import com.choplab.sampler.model.liveRecordingStep
+import com.choplab.sampler.model.minimumChopFrames
 import com.choplab.sampler.model.resolvePerformancePadPressAction
 import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
 import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
@@ -107,6 +112,7 @@ import com.choplab.sampler.model.stopAllPlaybackState
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.stopRecordingSession
 import com.choplab.sampler.model.shouldContinueSourcePlayback
+import com.choplab.sampler.model.snapFrameToZeroCrossing
 import com.choplab.sampler.model.setPadTrimBoundary
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.transientAnalysisStillCurrent
@@ -812,41 +818,41 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun setRangeStart(frame: Int) {
-        commitEdit(mergeKey = "range-start") { state ->
-            val audio = state.currentAudio ?: return@commitEdit state
-            val minimum = minimumSliceFrames(audio.sampleRate)
-            val upper = (state.rangeEndFrame - minimum).coerceAtLeast(0)
-            val start = snapToZeroCrossing(
-                audio = audio,
-                targetFrame = frame.coerceIn(0, upper),
-                lowerBound = 0,
-                upperBound = upper,
-            )
-            state.copy(
-                rangeStartFrame = start,
-                sliceMarkers = state.sliceMarkers.filter { it > start && it < state.rangeEndFrame },
-                activeSliceIndex = null,
-            )
-        }
-    }
+    override fun dispatch(command: ProductionCommand) {
+        val before = mutableUiState.value
+        val result = reduceProductionCommand(before, command)
+        if (result.mutation == ProductionMutation.NONE && result.effects.isEmpty()) return
 
-    override fun setRangeEnd(frame: Int) {
-        commitEdit(mergeKey = "range-end") { state ->
-            val audio = state.currentAudio ?: return@commitEdit state
-            val minimum = minimumSliceFrames(audio.sampleRate)
-            val lower = (state.rangeStartFrame + minimum).coerceAtMost(audio.frameCount)
-            val end = snapToZeroCrossing(
-                audio = audio,
-                targetFrame = frame.coerceIn(lower, audio.frameCount),
-                lowerBound = lower,
-                upperBound = audio.frameCount,
-            )
-            state.copy(
-                rangeEndFrame = end,
-                sliceMarkers = state.sliceMarkers.filter { it > state.rangeStartFrame && it < end },
-                activeSliceIndex = null,
-            )
+        val stopFailure = result.effects
+            .filterIsInstance<ProductionEffect.StopPad>()
+            .firstNotNullOfOrNull { effect ->
+                runCatching { engine.stopPad(effect.index) }.exceptionOrNull()
+            }
+        if (stopFailure != null) {
+            setStatus("PADを停止できないため編集を適用しませんでした: ${stopFailure.message ?: "不明なエラー"}")
+            return
+        }
+
+        if (result.mutation == ProductionMutation.PROJECT) {
+            editHistory.record(before, result.mergeKey)
+        }
+        mutableUiState.value = result.state.copy(
+            canUndo = editHistory.canUndo,
+            canRedo = editHistory.canRedo,
+        )
+        val refreshFailure = result.effects.firstNotNullOfOrNull { effect ->
+            when (effect) {
+                is ProductionEffect.StopPad -> null
+                is ProductionEffect.RefreshPad -> runCatching { engine.updatePad(effect.pad) }.exceptionOrNull()
+                ProductionEffect.RefreshPattern -> runCatching { syncPattern() }.exceptionOrNull()
+            }
+        }
+        if (result.mutation == ProductionMutation.PROJECT) {
+            projectRevision++
+            scheduleAutosave()
+        }
+        if (refreshFailure != null) {
+            setStatus("編集は保存しましたが再生への反映に失敗しました: ${refreshFailure.message ?: "不明なエラー"}")
         }
     }
 
@@ -918,71 +924,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         commitEdit { it.copy(manualChopEnabled = !it.manualChopEnabled) }
     }
 
-    override fun addSliceMarker(frame: Int) {
-        commitEdit { state ->
-            val audio = state.currentAudio ?: return@commitEdit state
-            val minimum = minimumSliceFrames(audio.sampleRate)
-            if (state.rangeEndFrame - state.rangeStartFrame < minimum * 2) {
-                return@commitEdit state.copy(statusMessage = "選択範囲が短く、チョップ位置を追加できません")
-            }
-            val safe = snapToZeroCrossing(
-                audio = audio,
-                targetFrame = frame.coerceIn(
-                    state.rangeStartFrame + minimum,
-                    state.rangeEndFrame - minimum,
-                ),
-                lowerBound = state.rangeStartFrame + minimum,
-                upperBound = state.rangeEndFrame - minimum,
-            )
-            val existingPoints = listOf(state.rangeStartFrame) +
-                state.sliceMarkers.filter { it in (state.rangeStartFrame + 1) until state.rangeEndFrame } +
-                state.rangeEndFrame
-            if (existingPoints.any { kotlin.math.abs(it - safe) < minimum }) {
-                return@commitEdit state.copy(statusMessage = "既存スライスに近すぎます")
-            }
-            state.copy(
-                sliceMarkers = (state.sliceMarkers + safe).distinct().sorted(),
-                activeSliceIndex = null,
-                statusMessage = "チョップ位置を追加しました",
-            )
-        }
-    }
-
     fun clearSliceMarkers() {
         commitEdit {
             it.copy(sliceMarkers = emptyList(), activeSliceIndex = null, statusMessage = "チョップ位置を消去しました")
-        }
-    }
-
-    override fun moveSliceMarker(markerIndex: Int, frame: Int) {
-        commitEdit(mergeKey = "slice-marker-$markerIndex") { state ->
-            val audio = state.currentAudio ?: return@commitEdit state
-            if (markerIndex !in state.sliceMarkers.indices) return@commitEdit state
-
-            val minimum = minimumSliceFrames(audio.sampleRate)
-            val lower = if (markerIndex == 0) {
-                state.rangeStartFrame + minimum
-            } else {
-                state.sliceMarkers[markerIndex - 1] + minimum
-            }
-            val upper = if (markerIndex == state.sliceMarkers.lastIndex) {
-                state.rangeEndFrame - minimum
-            } else {
-                state.sliceMarkers[markerIndex + 1] - minimum
-            }
-            if (lower > upper) return@commitEdit state
-
-            val markers = state.sliceMarkers.toMutableList()
-            markers[markerIndex] = snapToZeroCrossing(
-                audio = audio,
-                targetFrame = frame.coerceIn(lower, upper),
-                lowerBound = lower,
-                upperBound = upper,
-            )
-            state.copy(
-                sliceMarkers = markers,
-                statusMessage = "チョップ境界 ${markerIndex + 1} を調整しました",
-            )
         }
     }
 
@@ -1003,16 +947,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 activeSliceIndex = sliceIndex.coerceAtMost(remainingSlices - 1),
                 statusMessage = "選択スライスに接する境界を削除しました",
             )
-        }
-    }
-
-    override fun selectSliceAt(frame: Int) {
-        mutableUiState.update { state ->
-            val ranges = state.sliceRanges()
-            val selected = ranges.indexOfFirst { range ->
-                frame >= range.startFrame && (frame < range.endFrame || range == ranges.lastOrNull())
-            }
-            state.copy(activeSliceIndex = selected.takeIf { it >= 0 })
         }
     }
 
@@ -1573,19 +1507,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     override fun toggleSelectedPadReverse() = updateSelectedPad {
         it.copy(reverse = !it.reverse)
-    }
-
-    override fun toggleSelectedPadPlayMode() {
-        val selectedPad = mutableUiState.value.selectedPad
-        if (mutableUiState.value.loopingPadIndex == selectedPad) {
-            engine.stopPad(selectedPad)
-            mutableUiState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1) }
-        }
-        updateSelectedPad {
-            it.copy(
-                playMode = if (it.playMode == PadPlayMode.GATE) PadPlayMode.ONE_SHOT else PadPlayMode.GATE,
-            )
-        }
     }
 
     fun toggleSelectedBeatLoop() {
@@ -2312,64 +2233,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun minimumSliceFrames(sampleRate: Int): Int =
-        (sampleRate * 0.008f).toInt().coerceAtLeast(64)
+    private fun minimumSliceFrames(sampleRate: Int): Int = minimumChopFrames(sampleRate)
 
     private fun snapToZeroCrossing(
         audio: PcmAudio,
         targetFrame: Int,
         lowerBound: Int,
         upperBound: Int,
-    ): Int {
-        val samples = audio.samples
-        if (samples.size < 2) return targetFrame.coerceIn(lowerBound, upperBound)
-
-        val safeLower = lowerBound.coerceIn(0, samples.size)
-        val safeUpper = upperBound.coerceIn(safeLower, samples.size)
-        val target = targetFrame.coerceIn(safeLower, safeUpper)
-        if (target == 0 || target == samples.size) return target
-
-        val radius = (audio.sampleRate * ZERO_CROSSING_SEARCH_SECONDS)
-            .toInt()
-            .coerceIn(32, 1_024)
-        val from = maxOf(1, safeLower, target - radius)
-        val to = minOf(samples.lastIndex, safeUpper, target + radius)
-        if (from > to) return target
-
-        var bestCrossing = -1
-        var bestDistance = Int.MAX_VALUE
-        for (frame in from..to) {
-            val previous = samples[frame - 1].toInt()
-            val current = samples[frame].toInt()
-            val crossesZero =
-                (previous <= 0 && current >= 0) || (previous >= 0 && current <= 0)
-            if (crossesZero) {
-                val distance = kotlin.math.abs(frame - target)
-                if (distance < bestDistance) {
-                    bestCrossing = frame
-                    bestDistance = distance
-                }
-            }
-        }
-        if (bestCrossing >= 0) return bestCrossing
-
-        var quietestFrame = target
-        var quietestMagnitude = kotlin.math.abs(samples[target].toInt())
-        for (frame in from..to) {
-            val magnitude = kotlin.math.abs(samples[frame].toInt())
-            if (magnitude < quietestMagnitude) {
-                quietestFrame = frame
-                quietestMagnitude = magnitude
-            }
-        }
-        return quietestFrame
-    }
+    ): Int = snapFrameToZeroCrossing(audio, targetFrame, lowerBound, upperBound)
 
     private companion object {
         const val EXPORT_BARS = 4
         const val MAX_HISTORY_ENTRIES = 40
         const val AUTOSAVE_DELAY_MS = 900L
-        const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
         const val LIVE_CHOP_LATENCY_SECONDS = 0.06
         const val STALE_CAPTURE_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
     }

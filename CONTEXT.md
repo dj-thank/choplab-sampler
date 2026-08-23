@@ -71,3 +71,11 @@ A waveform viewport no wider than one second, centered as closely as source boun
 ## Cut boundary wheel
 
 The numeric, scrollable control for one start-inclusive or end-exclusive Cut boundary. START and END each show previous/current/next time values plus a dial position and use an explicit frame, one-millisecond, or ten-millisecond step while preserving the minimum valid Chop length.
+
+## Production edit
+
+A reversible change to the music being made, such as moving a Chop boundary, changing a PAD, or placing a step. A selection or progress message by itself is not a Production edit.
+
+## Runtime action
+
+A temporary playback, recording, capture, or device operation performed while working on a Production. It becomes durable Production content only when its successful result is explicitly accepted.

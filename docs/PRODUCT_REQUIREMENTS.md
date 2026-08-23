@@ -97,3 +97,5 @@ The core job is not to visit four disconnected feature screens. A person brings 
 - **NFR-005** Build, lint and tests are reproducible in CI.
 - **NFR-006** Accessibility labels and appropriate touch targets for primary controls.
 - **NFR-007** Documentation distinguishes source presence, build verification and physical-device verification.
+- **NFR-008** Android, Windows and iPhone apply each migrated production command with the same admission, bounds, history and persistence policy.
+- **NFR-009** A platform effect failure must not be reported as an applied runtime success; project, device, provider and public evidence remain separate.

@@ -17,8 +17,12 @@ source of truth.
 - `shared/src/commonMain/kotlin/com/choplab/sampler/ui`: the Android-origin
   `OtohiroiDeck` and all deck subcomponents, including copy, semantics, density
   and landscape/portrait layout rules.
-- `SamplerDeckController`: the narrow UI interface. It exposes sampler commands,
-  not platform APIs, so the UI cannot accidentally acquire Android or JVM code.
+- `SamplerDeckController`: the compatibility UI seam. It exposes no platform
+  APIs, but its method-per-action surface is still broad. Migrated actions use
+  one `ProductionCommand` dispatch path rather than duplicating semantic rules
+  in Android and Windows controllers.
+- `ProductionCommand` reducer: classifies durable PROJECT edits separately from
+  SESSION-only selection/guidance and emits typed effects for platform adapters.
 - `jvm-core`: one Android/Windows implementation of the bounded `.choplab`
   archive, three-generation autosave, PCM-16 WAV writer, four-bar renderer,
   PAD voice rendering, and playback cursor rules. Platform shells do not fork
@@ -41,6 +45,9 @@ source of truth.
    status, never by silently changing shared UI behavior.
 4. Spotify OAuth/API is a provider adapter for metadata/control. It must not be
    used to bypass Spotify's protected audio delivery or create MP3 downloads.
+5. A migrated command has one admission, history and boundary policy on every
+   platform. Platform code may differ only in how typed capability effects are
+   executed and observed.
 
 ## Verification boundary
 

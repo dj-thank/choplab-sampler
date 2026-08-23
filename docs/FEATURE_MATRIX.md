@@ -4,12 +4,13 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Windows EXE版のPAD操作 | ✅ current local / historical CI / Release | `0.17.0` candidate `b6efbde` は共有Android-origin deckを保ち、現在表示中の割当済み16 PADを `1234 / QWER / ASDF / ZXCV` で演奏。repeat/modifier/source/recording/loadingをfail-closedにし、key-up・focus loss・終了でexact global PADを解放。File/Edit/Transport menu、72 desktop tests、full-tree installer/tamper/shortcut E2E、実user-local起動がPASS。実ドライバー音質・レイテンシは未確認 |
+| 全体最適化 / Production semantics | 🧪 current local / scoped device | `fcbed5b`で最初のshared `ProductionCommand -> PROJECT/SESSION/NONE + effects` tracerを実装。Android/Windowsのrange START/END、marker add/move、slice selection、通常PAD modeを一本化し、shared Desktop/Android host各12 tests、Desktop history/effect negative、full 152-task gate、Pixel data-preserving cold launchがPASS。残り約40 controller actionとProductionSession集約は段階移行 |
+| Windows EXE版のPAD操作 | ✅ current local / merged source | `main@ab68d2d`の`0.17.0`は共有Android-origin deckを保ち、現在表示中の割当済み16 PADを `1234 / QWER / ASDF / ZXCV` で演奏。repeat/modifier/source/recording/loadingをfail-closedにし、key-up・focus loss・終了でexact global PADを解放。File/Edit/Transport menu、現候補76 desktop tests、installer/tamper/shortcut E2E、実user-local起動がPASS。実ドライバー音質・レイテンシは未確認 |
 | Windows WASAPI endpoint | 🧪 local / current-device unavailable | JNA 5.19.1でMMDevice default/active/all-state endpointとmix formatをSTAからprobeし、native診断menuへ接続。現端末はJava Sound mixer 0、PnP AudioEndpoint present 0、MMDevice render/capture count 0、default `0x80070490`。adapter hardware presenceだけから音声利用可能とは主張しない |
 | Spotify OAuth / Connect UX | ✅ integrated local / exact-byte Android device receipt | Native `連携` menuのSpotify Connect panelからAuthorization Code with PKCE、dynamic-port `127.0.0.1` callback、memory-only token、明示的状態、cancel・late callback無効化、現在再生／保存済みライブラリ、pause/resume、境界別復帰案内を接続。Spotify Contentはメタデータ／再生制御のみ。Android device receiptはapp全体のexact bytes/instrumentationであり、実Spotify account/provider、物理音声品質、screen-reader speechを証明しない |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
-| Windows / Android / iOS 公開preview | ✅ existing Release / 0.17.0 local candidate | `v0.16.0-preview.1`の三平台公開とread-backは既存PASS。`v0.17.0`はAndroid/Windows local package、release-bound SBOM、user-local installまでPASSだが、GitHub PR/merged-main CI/tag/Release/reverse-downloadはこの時点では未到達。署名済みiOS実機IPAは未提供。 |
+| Windows / Android / iOS 公開preview | ✅ existing preview / v0.17 source tag / binary blocked | `v0.16.0-preview.1`の三平台公開とread-backは既存PASS。`v0.17.0` sourceはPR #45、`main@ab68d2d`、annotated tagとWindows/iOS tag artifactsまで確認済み。stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。署名済みiOS実機IPAは未提供。 |
 | 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ current local | AndroidとWindowsの停止後decodeが波形を読込み、fresh launch revisionでCHOPへ遷移してPAD割当／16-step制作へ続く。実録音内容は今回取得していない |
@@ -37,12 +38,12 @@
 | トーンを変える | ✅ local | PAD別one-pole low-pass Tone。「暗い・なじむ・原音」の意味名付きpresetと連続slider。再生中のloopへ即時反映するhost regressionあり |
 | 長すぎる音声の箇所選択 | ✅ local / API 36 emulator | 最大10分、zoom/pan/S/E handles。PAD長押しでTRIMへ入り、波形長押しで近いSTART/ENDを移動して押下位置の最大1秒窓へfocus。START/ENDはダイヤル付き前／現在／次の数値ホイールをframe・1 ms・10 ms単位で調整でき、Preview/Revert/Undo/Redoを保持 |
 | 波形viewportのアクセシビリティ | ✅ local / AVD framework-node / historical device focus-path | autosave非依存の固定PCM fixtureで2本指pinch/pan、前/次/reset、overview、S/E/chopの48dp・端点・可逆nudgeを検証。source-bound `9177229` は専用Google Play API 36 AVDのportrait font 1.0/1.3/2.0・landscapeで各4 tests PASS、fatal/ANR 0、設定復元PASS。物理Pixelの実TalkBack focus ringは既存receiptあり。TTS内容・完全な読み上げ順・service custom-action menuはHUMAN_GOへ分離。 |
-| プロ用のようにチョップ | ✅ MVP | 手動、自動、境界drag、zero-crossing snap。高度なspectral editor等は次段階 |
+| プロ用のようにチョップ | ✅ MVP/local/device launch | 手動、自動、境界drag、zero-crossing snap。range/marker境界policyはAndroid/Windows shared commandへ一本化。Pixelではexact APKの起動/navigationまでで、今回の物理gesture精度は未確認。高度なspectral editor等は次段階 |
 | 選択後に次の対象へ遷移 | ✅ | AUTO NEXTでPAD + active slice前進 |
 | ハードウェア系サンプラーの操作感 | ✅ device | 4工程、正方形PAD、役割色、波形、KEY/TONE/LEVEL、触覚、二段階clearを独自UIで再構成。連打感と触覚の最終評価はHuman判断 |
 | Pitch | ✅ | ±24 st、速度も連動 |
 | Reverse | ✅ | PAD別 |
-| One Shot / Gate / Beat Loop | 🧪 local | PAD別。Beat Loopはチョップ範囲全体を連続再生し、直前の同一PAD試聴voiceを先に除去 |
+| One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
 | Choke group | ✅ | 1–4 |
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界により予約途中の古いcommandも次回起動へ残さない。PAD差替え/clearは128固定slotのlatest-wins mailboxでqueue飽和時の旧A01残留を防止。32 PAD voice＋source voiceを事前確保し通常render pathのVoice生成を除去 |
 | マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
@@ -61,7 +62,7 @@
 | 録音中の編集所有権 | 🧪 local | MIC / DEVICE / VOICEのSTARTING・RECORDING・STOPPING中はproject edit、UNDO、REDOを拒否し、ボタンも無効化。PAD preview開始はengine停止と同時にsource/transport/loop/scratch UI truthを更新 |
 | Autosave/recovery | ✅ historical device / current local | 900ms debounce、SHA-256に結合した世代revision、store再生成後も古い/equal revisionを拒否、最新の検証済み世代を選ぶpending復旧、三世代保持。Windowsのstartup `.choplab` は古いautosave復元だけをskipし、その後の編集autosaveは同じstoreへ継続するhost regressionあり。現候補のDEVICE再実行は未実施。手動上書き前にもアプリ内安全コピーを作成 |
 | 起動時autosave復元と制作routing | ✅ emulator/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は新規取込を無効化し、`LOADING / 音声を読込中 / PLEASE WAIT`でfalseな`NO SOURCE`を防止。復元後は未編集starterだけ→CAPTURE、Source＋starter→CHOP、user Beat／PAD-only→BEATへroute。API 36でBeat編集→autosave→強制終了→BEAT復帰を確認 |
-| Undo / Redo | ✅ MVP | PAD、slice、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesce |
+| Undo / Redo | ✅ MVP/local | PAD、range/marker、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesceし、slice選択だけのSESSION changeはUndo/autosaveを増やさない |
 | MIDI | — | 未実装 |
 | Independent time-stretch | — | 未実装 |
 | Stereo internal engine | — | 未実装 |

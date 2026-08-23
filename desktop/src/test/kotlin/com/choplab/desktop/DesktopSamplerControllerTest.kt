@@ -19,6 +19,7 @@ import java.io.File
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -176,6 +177,123 @@ class DesktopSamplerControllerTest {
             controller.redoEdit()
             assertEquals(126f, controller.state.value.bpm)
             assertTrue(controller.state.value.canUndo)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun sliceSelectionIsSessionOnlyAndDoesNotPolluteUndoHistory() {
+        val directory = Files.createTempDirectory("choplab-session-selection").toFile()
+        val store = AtomicProjectStore(directory)
+        val audio = PcmAudio(
+            name = "selection.wav",
+            samples = ShortArray(2_000) { index -> if (index < 1_000) -2_000 else 2_000 },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeStartFrame = 0,
+                rangeEndFrame = audio.frameCount,
+                sliceMarkers = listOf(1_000),
+            ),
+        )
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            assertFalse(controller.state.value.canUndo)
+
+            controller.selectSliceAt(1_200)
+
+            assertEquals(1, controller.state.value.activeSliceIndex)
+            assertFalse(controller.state.value.canUndo)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sourceBoundaryUsesTheSameZeroCrossingAndMinimumPolicyOnDesktop() {
+        val directory = Files.createTempDirectory("choplab-desktop-boundary").toFile()
+        val store = AtomicProjectStore(directory)
+        val audio = PcmAudio(
+            name = "boundary.wav",
+            samples = ShortArray(2_000) { index -> if (index < 500) -2_000 else 2_000 },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeStartFrame = 0,
+                rangeEndFrame = audio.frameCount,
+                sliceMarkers = listOf(300, 1_000),
+            ),
+        )
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+
+            controller.setRangeStart(520)
+
+            assertEquals(500, controller.state.value.rangeStartFrame)
+            assertEquals(listOf(1_000), controller.state.value.sliceMarkers)
+            assertTrue(controller.state.value.canUndo)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun padPerformanceModeUsesSharedGatePolicyAndStopsLoopOwnership() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+
+            controller.toggleSelectedPadPlayMode()
+
+            assertEquals(PadPlayMode.GATE, controller.state.value.pads[loopPad].playMode)
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertTrue(loopPad in engine.stoppedPads)
+
+            controller.toggleSelectedPadPlayMode()
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[loopPad].playMode)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedLoopStopDoesNotPublishTheRequestedModeChange() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            engine.failNextStopPad = true
+
+            controller.toggleSelectedPadPlayMode()
+
+            assertEquals(PadPlayMode.LOOP, controller.state.value.pads[loopPad].playMode)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(controller.state.value.statusMessage.startsWith("PADを停止できないため編集を適用しませんでした:"))
+            controller.undoEdit()
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[loopPad].playMode)
         } finally {
             controller.close()
         }
@@ -347,7 +465,9 @@ class DesktopSamplerControllerTest {
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = mutableListOf<Pair<PadModel, Boolean>>()
+        val stoppedPads = mutableListOf<Int>()
         var failNextTrigger: Boolean = false
+        var failNextStopPad: Boolean = false
         override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
         override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
         override fun seekSource(frame: Int) { sourcePosition = frame }
@@ -362,7 +482,13 @@ class DesktopSamplerControllerTest {
             triggered += pad to forceLoop
         }
         override fun releasePad(index: Int) = Unit
-        override fun stopPad(index: Int) = Unit
+        override fun stopPad(index: Int) {
+            if (failNextStopPad) {
+                failNextStopPad = false
+                error("test stop unavailable")
+            }
+            stoppedPads += index
+        }
         override fun stopAll() { isSourcePlaying = false }
         override fun close() = Unit
     }

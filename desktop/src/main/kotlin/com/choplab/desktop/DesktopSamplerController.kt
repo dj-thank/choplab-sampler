@@ -53,10 +53,14 @@ import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.ProjectOperationEpoch
 import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.ProductionCommand
+import com.choplab.sampler.model.ProductionEffect
+import com.choplab.sampler.model.ProductionMutation
 import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.inferProjectLaunchTarget
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
+import com.choplab.sampler.model.reduceProductionCommand
 import com.choplab.sampler.ui.SamplerDeckController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -397,6 +401,39 @@ class DesktopSamplerController(
             stopRecording(active.kind)
         }
     }
+    override fun dispatch(command: ProductionCommand) {
+        val before = mutableState.value
+        val result = reduceProductionCommand(before, command)
+        if (result.mutation == ProductionMutation.NONE && result.effects.isEmpty()) return
+
+        val stopFailure = result.effects
+            .filterIsInstance<ProductionEffect.StopPad>()
+            .firstNotNullOfOrNull { effect ->
+                runCatching { player.stopPad(effect.index) }.exceptionOrNull()
+            }
+        if (stopFailure != null) {
+            setStatus("PADを停止できないため編集を適用しませんでした: ${stopFailure.message ?: "不明なエラー"}")
+            return
+        }
+
+        if (result.mutation == ProductionMutation.PROJECT) {
+            editHistory.record(before, result.mergeKey)
+        }
+        mutableState.value = result.state.copy(
+            canUndo = editHistory.canUndo,
+            canRedo = editHistory.canRedo,
+        )
+        result.effects.forEach { effect ->
+            when (effect) {
+                is ProductionEffect.StopPad -> Unit
+                is ProductionEffect.RefreshPad -> Unit // Java Sound reads the PAD on its next trigger.
+                ProductionEffect.RefreshPattern -> Unit // The desktop step callback reads current state.
+            }
+        }
+        if (result.mutation == ProductionMutation.PROJECT) {
+            scheduleAutosave()
+        }
+    }
     override fun stopSourceForWorkspaceChange() = stopAllSounds()
     override fun ensurePlayablePadSelected() = mutableState.update { it.copy(selectedPad = it.pads.firstOrNull(PadModel::isAssigned)?.globalIndex ?: it.selectedPad) }
     override fun prepareDefaultChopDestination() = commitEdit { prepareDefaultMelodyChopDestination(it) }
@@ -613,7 +650,6 @@ class DesktopSamplerController(
         restorePadTrimSnapshot(pad, snapshot)
     }
     override fun toggleSelectedPadReverse() = updateSelected { it.copy(reverse = !it.reverse) }
-    override fun toggleSelectedPadPlayMode() = updateSelected { it.copy(playMode = it.playMode.next()) }
     override fun setSelectedPadChokeGroup(group: Int) = updateSelected { it.copy(chokeGroup = group.coerceIn(0, 4)) }
     override fun clearSelectedPad() {
         val selected = mutableState.value.selectedPad
@@ -743,11 +779,6 @@ class DesktopSamplerController(
         commitEdit("swing") { it.copy(swing = value.coerceIn(50f, 75f)) }
         transport.updateTempo(mutableState.value.bpm, mutableState.value.swing)
     }
-    override fun addSliceMarker(frame: Int) = commitEdit { it.copy(sliceMarkers = (it.sliceMarkers + frame).distinct().sorted()) }
-    override fun selectSliceAt(frame: Int) = commitEdit { it.copy(activeSliceIndex = it.sliceRanges().indexOfFirst { range -> frame in range.startFrame until range.endFrame }.takeIf { index -> index >= 0 }) }
-    override fun setRangeStart(frame: Int) = commitEdit("range-start") { it.copy(rangeStartFrame = frame.coerceAtLeast(0)) }
-    override fun setRangeEnd(frame: Int) = commitEdit("range-end") { it.copy(rangeEndFrame = frame.coerceAtLeast(1)) }
-    override fun moveSliceMarker(markerIndex: Int, frame: Int) = commitEdit("slice-$markerIndex") { state -> state.copy(sliceMarkers = state.sliceMarkers.toMutableList().also { if (markerIndex in it.indices) it[markerIndex] = frame }.sorted()) }
 
     private fun updateSelected(mergeKey: String? = null, transform: (PadModel) -> PadModel) {
         val selected = mutableState.value.selectedPad
@@ -1008,10 +1039,4 @@ class DesktopSamplerController(
             )
         }
     }
-}
-
-private fun com.choplab.sampler.model.PadPlayMode.next() = when (this) {
-    com.choplab.sampler.model.PadPlayMode.ONE_SHOT -> com.choplab.sampler.model.PadPlayMode.GATE
-    com.choplab.sampler.model.PadPlayMode.GATE -> com.choplab.sampler.model.PadPlayMode.LOOP
-    com.choplab.sampler.model.PadPlayMode.LOOP -> com.choplab.sampler.model.PadPlayMode.ONE_SHOT
 }

@@ -9,6 +9,7 @@ kotlin {
     android {
         namespace = "com.choplab.shared"
         compileSdk = 37
+        withHostTest {}
     }
     jvm("desktop")
     iosArm64()

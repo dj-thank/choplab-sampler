@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**実行中:** `windows-desktop-daily-release-20260824.md`。public `main@c4956cf` から分離した clean worktree で、既存のシンプルな共有デックへ実際の `1234 / QWER / ASDF / ZXCV` PAD演奏とnative制作shortcutを接続し、data-preserving local install、Dependabot PR #40–#44 の修正付き統合、`0.17.0` GitHub source/binary Release と reverse-download 検証を行う。録音、Spotify認証、Cubase/MPC変更、app-data消去、署名済みinstaller、Human評価は対象外。
+**実行中:** `global-production-session-20260824.md`。`main@ab68d2d` から分離した clean worktree で、CaptureからExportまでの長期的な全体最適化を、shared `ProductionCommand -> state/effects` spine の最初の縦切りとして実装する。Source境界、slice selection/history、PAD performance mode のAndroid/Windows差を一本化し、UIの横展開より先に変更局所性と制作継続性を改善する。
+
+**直前のsource統合・binary配布待ち:** `windows-desktop-daily-release-20260824.md`。Windows PAD keyboard、native commands、data-preserving install、依存更新をPR #45 / `main@ab68d2d` / annotated `v0.17.0`へ統合済み。Windows/iOS tag artifactsは検証済みだが、stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。
 
 **直前の完了入力:** `../completed/session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは別の明示task。
 
@@ -50,6 +52,7 @@
 - `windows-desktop-mvp-20260819.md`（初期プロトタイプの本文を保全）
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
+- `windows-desktop-daily-release-20260824.md`（source統合完了、binary Releaseはstable Android signing待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
 - `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
 - `full-release-audio-hardening-20260821.md`（統合入力）

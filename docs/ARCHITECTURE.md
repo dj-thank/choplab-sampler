@@ -165,13 +165,15 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 
 優先順位の高い順:
 
-1. Oboe/AAudio native engineと実機latency matrix
-2. Project persistence、autosave、Undo/Redo
-3. Stereo sample pathとmulti-output renderer
-4. Zero-crossing snap、fade editor、normalize、trim、destructive sample edit
-5. Time-stretch independent from pitch
+1. shared `ProductionCommand` / effect spineと、編集履歴・revision・autosaveを持つ`ProductionSession`
+2. persistent Production、session selection、実適用済みruntime stateの分離
+3. realtime/offline共通event compiler・DSP parity harnessと、その下でのOboe/AAudio段階移行
+4. Stereo sample path、multi-output renderer、実機latency/xRun matrix
+5. Zero-crossing snap、fade editor、normalize、trim、time-stretch independent from pitch
 6. ADSR/filter envelope/LFO/insert and send FX
-7. MIDI/USB MIDI、velocity、aftertouch
-8. Multi-pattern、Song/Arrangement、per-track length/polymeter
-9. Stem export、share、project package
-10. Instrumented tests、Macrobenchmark、battery/thermal profiling
+7. Multi-pattern、Song/Arrangement、per-track length/polymeter
+8. MIDI/USB MIDI、velocity、aftertouch
+9. Stem export、share、portable project package
+10. Instrumented tests、Macrobenchmark、battery/thermal profilingとgate別release automation
+
+全体方針と評価軸は`docs/architecture/global-product-optimization-2026-08-24.md`を正本とする。native engineだけを先行させても、platformごとの編集規則、履歴、保存、runtime truthの分岐は解消しないため、semantic spineとparity harnessを先に成立させる。
