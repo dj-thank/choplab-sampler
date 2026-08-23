@@ -4,12 +4,12 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Windows EXE版のPAD操作 | ✅ integrated local / historical CI / Release | `:desktop` が `:shared` のAndroid-origin deckと`:jvm-core`を使用。4工程、波形、4×4 PAD、編集、BANK、16-step、voice controls、scratch、WAV、Undo/Redo、project/autosave/exportを接続。integrated `6914e3c`ではsource録音停止後CHOP、VOICE Beat-loop restart、startup project autosave、output-device failure safe stop/temp cleanupとSpotify panelが共存し、66 desktop tests・package・runtime smokeがPASS。実ドライバー音質・レイテンシは未確認 |
+| Windows EXE版のPAD操作 | ✅ current local / historical CI / Release | `0.17.0` candidate `b6efbde` は共有Android-origin deckを保ち、現在表示中の割当済み16 PADを `1234 / QWER / ASDF / ZXCV` で演奏。repeat/modifier/source/recording/loadingをfail-closedにし、key-up・focus loss・終了でexact global PADを解放。File/Edit/Transport menu、72 desktop tests、full-tree installer/tamper/shortcut E2E、実user-local起動がPASS。実ドライバー音質・レイテンシは未確認 |
 | Windows WASAPI endpoint | 🧪 local / current-device unavailable | JNA 5.19.1でMMDevice default/active/all-state endpointとmix formatをSTAからprobeし、native診断menuへ接続。現端末はJava Sound mixer 0、PnP AudioEndpoint present 0、MMDevice render/capture count 0、default `0x80070490`。adapter hardware presenceだけから音声利用可能とは主張しない |
 | Spotify OAuth / Connect UX | ✅ integrated local / exact-byte Android device receipt | Native `連携` menuのSpotify Connect panelからAuthorization Code with PKCE、dynamic-port `127.0.0.1` callback、memory-only token、明示的状態、cancel・late callback無効化、現在再生／保存済みライブラリ、pause/resume、境界別復帰案内を接続。Spotify Contentはメタデータ／再生制御のみ。Android device receiptはapp全体のexact bytes/instrumentationであり、実Spotify account/provider、物理音声品質、screen-reader speechを証明しない |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
-| Windows / Android / iOS 公開preview | ✅ CI / Release | `v0.16.0-preview.1`でAndroid debug APK、iOS Simulator app zip、Windows app-image zipと各SHA-256を同一Releaseへ公開し、tag-bound build・GitHub digest・sidecar・匿名HTTP 200をread-back。署名済みiOS実機IPAは未提供。 |
+| Windows / Android / iOS 公開preview | ✅ existing Release / 0.17.0 local candidate | `v0.16.0-preview.1`の三平台公開とread-backは既存PASS。`v0.17.0`はAndroid/Windows local package、release-bound SBOM、user-local installまでPASSだが、GitHub PR/merged-main CI/tag/Release/reverse-downloadはこの時点では未到達。署名済みiOS実機IPAは未提供。 |
 | 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ current local | AndroidとWindowsの停止後decodeが波形を読込み、fresh launch revisionでCHOPへ遷移してPAD割当／16-step制作へ続く。実録音内容は今回取得していない |

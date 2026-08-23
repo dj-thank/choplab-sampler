@@ -1,6 +1,23 @@
 # Project state
 
-## Current snapshot — 2026-08-24 integrated local candidate
+## Current snapshot — 2026-08-24 Windows daily-use v0.17.0 local candidate
+
+This snapshot supersedes the earlier integrated candidate below for current local source and distribution truth. It records local implementation, packaging, installation, and non-audio runtime only; GitHub PR/merge/Release remain pending at this point.
+
+- Observed at: `2026-08-24T02:33:05.8057664+09:00`.
+- Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-daily-20260824`, `codex/choplab-desktop-daily-release`; product source `b6efbde30a0fc1d8ce8a944405b20422fc238782`, tree `9760029f723c55465004908899255a7ad1c165a3`, based on public `main@c4956cfbf0a825dff76ee472b3a8fead9e4814ef`. The canonical dirty checkout remains untouched.
+- Product behavior: the existing simple shared deck and Android touch PAD visuals are preserved. Windows maps `1234 / QWER / ASDF / ZXCV` to the currently visible assigned 16-PAD page; repeated key-down, Ctrl/Alt/Meta, loading, source playback/transition, and recording are rejected. Key-up, focus loss, and close release the exact owned global PAD. Native File/Edit/Transport menus expose open/save/export, Undo/Redo, source play/stop, and ALL STOP.
+- MPC/Cubase boundary: installed MPC Beats `2.12.3.9` and its live Program Edit, Sample Edit, Step Sequencer, Pad Mixer, and Pad Mute modes were inspected read-only; Akai primary manuals establish contextual PAD roles. Cubase is not installed, so only current Steinberg zone documentation was used. No third-party assets, wording, project formats, or trade dress were copied. Research: [`docs/research/mpc-pad-functional-model-2026-08-24.md`](research/mpc-pad-functional-model-2026-08-24.md).
+- Dependency integration: PR #40–#44 intents are present: actions/attest 4.2.2, CycloneDX 3.4.1, Kotlin 2.4.10, AGP 9.3.1, Compose BOM 2026.08.00, Core KTX 1.19.0, and Gradle 9.7.1. The red #42 compileSdk gap is repaired with compileSdk 37 while minSdk 29 / targetSdk 36 remain; the red #43 wrapper contract is repaired with SHA `7a9ce74c…` and explicit UTF-8 enforcement.
+- Fresh local gate: final 142-task Gradle gate PASS; Android unit 226 / 44 suites, JVM-core 49 / 8 suites, desktop 72 / 16 suites, failures/errors/skips 0; debug/release Lint, debug APK, unsigned release APK, Windows app-image/package all PASS. Configured Git Bash validation, 22 Python policy tests, public-surface 369 candidates, `git diff --check`, and Android `0.17.0 (27)` unsigned identity check PASS.
+- SBOM: CycloneDX 1.6 root identity `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies; an unspecified root now fails CI.
+- Local artifacts: debug APK 31,495,040 bytes / SHA-256 `E2BFD3A81CC50352DAD8D06FC683AF03DD01206628C4170B8863ECEA4AEF1935`; unsigned release APK 24,011,892 bytes / `8188FCAE5AA3248EABF5DB68FC200862BB60C1F429821980CC498D6B81C7D206`; Windows EXE 449,024 bytes / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`; desktop JAR 330,897 bytes / `7164DFF0B7521FFCB2DF10032F5D45790F63D542FD656623378CC52BC80953BA`; full app-image digest `8487C2376FBCB5A4B83D84631E50A6165ECB0E1E772E5CAC0BFA0A2F65F98CC6`.
+- Daily installation: `%LOCALAPPDATA%/Programs/ChopLab/0.17.0-8487c2376fbc/ChopLab.exe`; Start Menu and Desktop `ChopLab.lnk` targets read back exactly. Existing `%LOCALAPPDATA%/ChopLab/projects` remained 2 files / 365,609 bytes with identical digest before install, after install, and after runtime.
+- Installed runtime: a temporary `LOCALAPPDATA` sandbox and empty Spotify Client ID produced responding title `ChopLab — おとひろい PC`; an unassigned `1` key smoke did not crash or start audio; exact launcher/UI process tree was stopped. Screenshot: parent PAD `work/CHOPLAB_WINDOWS_0.17.0_INSTALLED_RUNTIME.png`.
+- Full receipt: parent PAD `work/PAD_CHOPLAB_WINDOWS_0.17.0_LOCAL_RECEIPT.json` plus `work/CHOPLAB_WINDOWS_LOCAL_INSTALL_0.17.0.json`.
+- Gate ceiling: `LOCAL_PASS`. This run does not claim a fresh Android `DEVICE_PASS`, Spotify/provider access, physical audio/latency, accessibility speech, signed installer reputation, public GitHub bytes, or `HUMAN_GO`.
+
+## Previous snapshot — 2026-08-24 integrated local candidate
 
 This snapshot supersedes the two source-branch snapshots below. It records one local integration candidate only; it does not change public `main`, publish a release, authenticate Spotify, or authorize recording.
 

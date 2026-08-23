@@ -1,12 +1,14 @@
 # ExecPlan registry
 
-更新: 2026-08-23
+更新: 2026-08-24
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**完了・次の実装seam未選択:** `../completed/session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは別の明示taskであり、現在のactive implementation planはない。
+**実行中:** `windows-desktop-daily-release-20260824.md`。public `main@c4956cf` から分離した clean worktree で、既存のシンプルな共有デックへ実際の `1234 / QWER / ASDF / ZXCV` PAD演奏とnative制作shortcutを接続し、data-preserving local install、Dependabot PR #40–#44 の修正付き統合、`0.17.0` GitHub source/binary Release と reverse-download 検証を行う。録音、Spotify認証、Cubase/MPC変更、app-data消去、署名済みinstaller、Human評価は対象外。
+
+**直前の完了入力:** `../completed/session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは別の明示task。
 
 **統合入力・LOCAL/DEVICE receipt保全:** `spotify-connect-ux-lifecycle-20260823.md`。source/device receipt `8306ed2`のOAuth lifecycle、provider-state UI、release/audio hardening、Pixel 9a data-preserving instrumentationを保全する。実Spotify account/provider、公開、Human評価は別gate。
 

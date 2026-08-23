@@ -102,7 +102,7 @@ jobs:
           [[ "$sdkmanager_status" -eq 0 ]] || exit "$sdkmanager_status"
           sdkmanager \
             "platform-tools" \
-            "platforms;android-36" \
+            "platforms;android-37.0" \
             "build-tools;36.0.0" \
             "ndk;29.0.14206865" \
             "cmake;3.22.1"
@@ -183,6 +183,11 @@ jobs:
             echo "CycloneDX SBOM was not generated at $sbom" >&2
             exit 1
           }
+          python3 scripts/verify_sbom.py \
+            --sbom "$sbom" \
+            --group com.choplab \
+            --name ChopLab \
+            --version "$RELEASE_VERSION"
           mkdir -p dist
           apk_target="dist/ChopLab-${RELEASE_TAG}-android.apk"
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
@@ -293,6 +298,15 @@ jobs:
         shell: pwsh
         run: .\gradlew.bat --no-daemon --stacktrace :jvm-core:test :desktop:test :desktop:packageWindows
 
+      - name: Test data-preserving Windows user install
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: >-
+          .\scripts\test-install-windows-app.ps1
+          -AppImage 'desktop/build/windows-app-image/ChopLab'
+          -ExpectedVersion $env:RELEASE_VERSION
+
       - name: Inspect and stage Windows artifact
         shell: pwsh
         env:
@@ -386,7 +400,7 @@ jobs:
           ) > dist/SHA256SUMS
 
       - name: Attest build provenance
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
@@ -396,7 +410,7 @@ jobs:
           subject-version: ${{ needs.metadata.outputs.version }}
 
       - name: Attest dependency SBOM for runnable artifacts
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk

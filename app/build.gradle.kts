@@ -21,7 +21,7 @@ val releaseSigningAvailable = listOf(
 
 android {
     namespace = "com.choplab.sampler"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.choplab.sampler"
@@ -81,7 +81,7 @@ android {
 dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -89,7 +89,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0")
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.0")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

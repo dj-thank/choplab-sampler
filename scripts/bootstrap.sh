@@ -51,7 +51,7 @@ if $INSTALL_SDK; then
   yes | sdkmanager --licenses >/dev/null || true
   sdkmanager \
     "platform-tools" \
-    "platforms;android-36" \
+    "platforms;android-37.0" \
     "build-tools;36.0.0" \
     "ndk;29.0.14206865" \
     "cmake;3.22.1"

@@ -32,7 +32,7 @@ if ($InstallSdk) {
         if (Test-Path $Candidate) { $SdkManager = Get-Item $Candidate }
     }
     if (-not $SdkManager) { throw "sdkmanager is missing. Install Android command-line tools or use Android Studio SDK Manager." }
-    & $SdkManager.Source "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+    & $SdkManager.Source "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
     if ($LASTEXITCODE -ne 0) { throw "sdkmanager failed" }
 }
 

@@ -35,7 +35,7 @@ fi
 if [[ -n "$SDK_ROOT" && -d "$SDK_ROOT" ]]; then
   ok "Android SDK: $SDK_ROOT"
   for pkg in \
-    "platforms/android-36" \
+    "platforms/android-37.0" \
     "build-tools/36.0.0" \
     "platform-tools" \
     "ndk/29.0.14206865" \

@@ -24,7 +24,7 @@ if (-not $SdkRoot -and (Test-Path "local.properties")) {
 if ($SdkRoot -and (Test-Path $SdkRoot)) {
     Ok "Android SDK: $SdkRoot"
     $Packages = @(
-        "platforms\android-36",
+        "platforms\android-37.0",
         "build-tools\36.0.0",
         "platform-tools",
         "ndk\29.0.14206865",
