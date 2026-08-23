@@ -2,9 +2,9 @@
 
 ## Current snapshot — 2026-08-24 shared ProductionSession local candidate
 
-This snapshot supersedes the first command-spine snapshot below for current branch truth. It records the Horizon 2 application transaction owner and fresh local evidence only; its exact new APK has not yet received a device or GitHub gate.
+This snapshot supersedes the first command-spine snapshot below for current branch truth. It records the Horizon 2 application transaction owner plus fresh local and bounded device evidence; GitHub integration remains pending.
 
-- Observed at: `2026-08-24T04:37:09.4423782+09:00`.
+- Observed at: `2026-08-24T04:40:24.4018332+09:00`.
 - Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-production-session-20260824`, `codex/choplab-production-session`; reviewed product checkpoint `894a5ba88c0711d0b5633f29bea3104c50ddcd51`, tree `332263892639a31bfc6d8715886414f25529a7b9`, based on public `main@41be2c22b29521909ff0a0443e21523eff5e4e8a`. Dirty canonical and earlier worktrees remain untouched.
 - Application ownership: shared `ProductionSession` now owns bounded history, merge coalescing, monotonic revision, PROJECT/SESSION/NONE classification, canUndo/canRedo, persistence admission and one-use command plans. Android/Windows controllers no longer instantiate `EditHistory`; Android no longer owns a separate `projectRevision`.
 - Two-phase truth: a command is planned first, required blocking effects run, and only success permits commit. Foreign, stale, cancelled and double-resolved plans fail closed. Platform controllers retain StateFlow publication, actual I/O scheduler and audio/document/lifecycle adapters.
@@ -14,8 +14,10 @@ This snapshot supersedes the first command-spine snapshot below for current bran
 - Fresh local gate: 152 Gradle tasks PASS; Android 226 / 44 suites, JVM-core 50 / 8, Desktop 76 / 16, shared Desktop 19 / 3 and shared Android host 19 / 3; failures/errors/skips 0. Debug/release Lint, debug/unsigned-release APK and Windows app-image all PASS.
 - Policy: Python policy 22 PASS and public current/reachable-history scan 378 candidates PASS. Dependency inputs did not change; SBOM identity remains the merged-main verified CycloneDX 1.6 `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies, with a fresh hosted check still required before merge.
 - Local artifacts: debug APK 31,688,132 bytes / SHA-256 `9E5C5767E8FD0FDE89C94E9F4C4691E334FF32BB334291F5294BA65F2F76DB23`; unsigned release APK 24,044,660 bytes / `1249EC0C563D3D5102D089B3DC89015754783020D3A3656982919EC14C0F2E1E`; Windows app-image 405 files / 176,477,521 bytes, EXE SHA-256 `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
-- Review: first local-parent Standards/Spec passes found stale SSOT, one missing foreign-plan negative and ambiguous operation-epoch roadmap wording. The test/roadmap findings are fixed in `894a5ba`; this snapshot fixes SSOT and is followed by final re-review.
-- Gate ceiling: `LOCAL_PASS`. The previous phase's Pixel receipt is scoped to different APK SHA `EADA7421…` and is not promoted to this candidate. Windows runtime, exact Pixel install/readback, physical audio/gesture, provider, PR/main, binary Release and `HUMAN_GO` remain pending or excluded.
+- Windows runtime: exact packaged app-image produced responding launcher/UI processes and title `ChopLab — おとひろい PC` in an isolated data root. The exact tracked process tree was stopped; real user projects remained 2 files / 365,609 bytes with the same pre/post digest.
+- Pixel device: signer-matched retained-package update from previous `EADA7421…` bytes to exact candidate `9E5C5767…` used `adb install -r --no-streaming`. Installed base APK matched host bytes; projects remained 7 files / 62,592 KiB before/after/launch; cold `MainActivity` was top-resumed, four stages + ALL STOP were present, current-PID fatal/ANR 0, and the process was absent after force-stop. Receipt: parent PAD `work/PAD_CHOPLAB_PRODUCTION_SESSION_69EFBED_DEVICE_RECEIPT_20260824.json`.
+- Review: first local-parent Standards/Spec passes found stale SSOT, one missing foreign-plan negative and ambiguous operation-epoch roadmap wording. All findings are fixed; final re-review reports unresolved Standards 0 / Spec 0.
+- Gate ceiling: `LOCAL_PASS` plus scoped `DEVICE_PASS` for exact candidate install/readback/project-shape/cold-launch/navigation. Physical recovery behavior, audio/latency/gesture, provider, PR/main, binary Release and `HUMAN_GO` remain pending or excluded.
 
 ## Previous snapshot — 2026-08-24 global ProductionCommand local/device candidate
 

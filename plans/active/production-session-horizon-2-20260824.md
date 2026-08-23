@@ -80,8 +80,8 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - [x] 2026-08-24 04:38 JST — Bound verified autosave generation revision into ProductionSession and proved the next edit saves above disk.
 - [x] 2026-08-24 04:44 JST — Added the missing foreign-plan negative and clarified the operation-epoch concurrency boundary from two-axis review.
 - [x] 2026-08-24 04:37 JST — Final 152-task local gate passed; shared hosts 19 each, JVM-core 50, Android 226 and Desktop 76 with zero failures/errors/skips.
-- [ ] Complete final two-axis re-review and commit current SSOT.
-- [ ] Complete runtime/device receipt.
+- [x] 2026-08-24 04:37 JST — Final two-axis re-review unresolved Standards 0 / Spec 0; committed current local SSOT.
+- [x] 2026-08-24 04:40 JST — Exact Windows isolated runtime and Pixel `9E5C…` retained install/readback/cold launch passed.
 - [ ] Complete PR/merge/main readback.
 
 ## Discoveries
@@ -107,6 +107,8 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :desktop:test` — PASS after project-replacement integration.
 - `:shared:desktopTest :shared:testAndroidHostTest :jvm-core:test :app:testDebugUnitTest :desktop:test` — PASS after recovered-revision integration; JVM-core adds the disk-to-session save regression.
 - Full `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 152 tasks; shared 19/19, Android 226, JVM-core 50, Desktop 76; zero failures/errors/skips.
+- Windows packaged runtime — responding launcher/UI and exact title in isolated data; exact process stop; real project digest unchanged.
+- Pixel — exact candidate SHA `9e5c5767…`, signer match, data-preserving install/readback, projects 7 / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS. Receipt: parent PAD `work/PAD_CHOPLAB_PRODUCTION_SESSION_69EFBED_DEVICE_RECEIPT_20260824.json`.
 
 ## Risks and rollback
 
