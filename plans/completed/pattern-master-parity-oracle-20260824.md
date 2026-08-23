@@ -70,7 +70,7 @@ Offline WAV export retains every realtime PAD sample for a single pattern event 
 - [x] 2026-08-24 05:43 JST — Full 152-task local gate passed; Android 229 and all other suites zero failures/errors/skips.
 - [x] 2026-08-24 05:43 JST — Final review unresolved Standards 0 / Spec 0; committed local SSOT.
 - [x] 2026-08-24 05:46 JST — Exact Windows runtime and Pixel `DB08…` retained install/readback/cold launch passed.
-- [ ] Complete PR/merge/main readback.
+- [x] 2026-08-24 06:03 JST — PR #49 merged as `main@ecc6c54`; PR/push 8/8 and merged-main Android/Windows/iOS/Supply-chain 4/4 PASS.
 
 ## Discoveries
 
@@ -92,6 +92,8 @@ Offline WAV export retains every realtime PAD sample for a single pattern event 
 - Python policy 23 and public current/reachable-history surface 386 — PASS.
 - Windows packaged runtime and project-digest preservation — PASS.
 - Pixel exact SHA `db089f70…`, signer/installed bytes/project shape/cold launch/navigation/fatal negative — PASS. Receipt: parent PAD `work/PAD_CHOPLAB_PATTERN_MASTER_7B04728_DEVICE_RECEIPT_20260824.json`.
+- GitHub — parent PAD `work/PAD_CHOPLAB_PATTERN_MASTER_GITHUB_RECEIPT_20260824.md`; PR #49, exact tree and merged-main runs `32665966662`, `32665966566`, `32665966531`, `32665966589` PASS.
+- Windows daily install — provider artifact id `9500051082`, main `ecc6c54`, app-image digest `802a667d…`, installed at `%LOCALAPPDATA%/Programs/ChopLab/0.17.0-802a667d39cb`; shortcut/readback/runtime/project preservation PASS.
 
 ## Risks and rollback
 

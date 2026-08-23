@@ -6,7 +6,11 @@
 
 ## Current selection
 
-**実行中:** `pattern-master-parity-oracle-20260824.md`。`main@5c56d84`から分離したclean worktreeで、single PAD / step 0 / full barのrealtime Voice+master expected PCMとoffline WAVを全frame比較し、offline末尾sample欠落を修復する。polyphony/stereo/nativeは別段階。
+**現在の実装plan:** 未選択。global optimizationの四段階は`main@ecc6c54`まで統合済みで、次は新しいdecision boundaryである。既存planをfilenameだけで再開しない。
+
+**次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
+
+**直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
 **直前のaudio primitives完了:** `../completed/audio-parity-primitives-20260824.md`。shared DSP/non-finite policy、PAD PCM oracle、exact Pixel、PR #48、`main@5c56d84`、修正headと全main CIまで完了。
 
