@@ -21,7 +21,7 @@ val releaseSigningAvailable = listOf(
 
 android {
     namespace = "com.choplab.sampler"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.choplab.sampler"

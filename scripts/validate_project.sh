@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EXPECTED_WRAPPER_SHA="497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7"
+EXPECTED_WRAPPER_SHA="7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d"
 
 python "$ROOT/scripts/check_public_surface.py"
 if command -v kotlinc >/dev/null 2>&1; then
@@ -32,5 +32,13 @@ if [[ "$actual_sha" != "$EXPECTED_WRAPPER_SHA" ]]; then
   exit 1
 fi
 echo "Wrapper SHA-256 OK: $actual_sha"
+
+for wrapper_script in "$ROOT/gradlew" "$ROOT/gradlew.bat"; do
+  if ! grep -Fq -- '-Dfile.encoding=UTF-8' "$wrapper_script"; then
+    echo "Gradle wrapper must force UTF-8: $wrapper_script" >&2
+    exit 1
+  fi
+done
+echo "Gradle wrapper UTF-8 policy OK"
 
 echo "PASS: project-level offline validation completed"

@@ -4,7 +4,7 @@
 
 - Git
 - JDK 17
-- Android SDK Platform 36
+- Android SDK Platform 37.0 (compile); API 36 system image remains the instrumentation target
 - Build Tools 36.0.0
 - Android platform-tools
 - Android Studio or command-line SDK tools

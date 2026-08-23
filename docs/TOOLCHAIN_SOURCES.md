@@ -51,7 +51,7 @@ The stable URL is rolling, so the recorded hash identifies the bytes observed on
 The Gradle project requests or documents the following packages:
 
 - `platform-tools`
-- `platforms;android-36`
+- `platforms;android-37.0`
 - `build-tools;36.0.0`
 - `ndk;27.2.12479018` for the later native milestone
 - `cmake;3.22.1` for the later native milestone

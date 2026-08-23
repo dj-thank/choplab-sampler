@@ -8,7 +8,7 @@ plugins {
 kotlin {
     android {
         namespace = "com.choplab.shared"
-        compileSdk = 36
+        compileSdk = 37
     }
     jvm("desktop")
     iosArm64()
