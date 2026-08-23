@@ -57,4 +57,6 @@ The final report lists:
 - measured latency/xRun method and results if claimed;
 - remaining limitations and unverified items.
 
+For every command migrated to the shared production seam, common contract tests run on the desktop JVM and Android host target. Platform integration tests additionally prove history/autosave classification and at least one failed-effect negative path.
+
 A feature matrix must mark only observed implementation and verification status, not design intent.

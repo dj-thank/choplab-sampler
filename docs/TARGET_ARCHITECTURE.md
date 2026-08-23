@@ -10,7 +10,7 @@ Compose screens render immutable UI state and send intents. They do not own audi
 
 ### Application/state
 
-A ViewModel or application coordinator owns editing state and converts UI/MIDI/capture events into domain commands. It exposes explicit loading, saving, recording, rendering and error states.
+A `ProductionSession` application module owns editing history, revision and persistence admission. UI/MIDI/capture inputs become shared `ProductionCommand` values; a pure reducer returns classified PROJECT/SESSION mutations and typed `ProductionEffect` values. Platform coordinators expose explicit loading, saving, recording, rendering, runtime-application and error states while executing only the effects supported by their adapters.
 
 ### Domain
 
@@ -48,6 +48,8 @@ Android-specific adapters own `MidiDevice`, `AudioRecord`, MediaProjection and f
 ## Key interfaces to establish
 
 - `SamplerPlaybackEngine`
+- `ProductionCommand`, `ProductionCommandResult` and `ProductionEffect`
+- `ProductionSession`
 - `ProjectRepository`
 - `ProjectSnapshot` and schema version
 - `AudioAssetStore`

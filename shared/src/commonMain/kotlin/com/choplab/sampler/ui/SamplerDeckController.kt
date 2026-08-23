@@ -1,6 +1,7 @@
 package com.choplab.sampler.ui
 
 import com.choplab.sampler.model.PadTrimSnapshot
+import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.RepeatGrid
 
 /**
@@ -8,9 +9,11 @@ import com.choplab.sampler.model.RepeatGrid
  *
  * The deck owns presentation and exact copy. Platform shells own permissions,
  * documents and real-time audio, while each platform controller exposes the
- * same sampler commands to the deck.
+ * same sampler commands to the deck. The method-per-action surface is being
+ * migrated incrementally through [dispatch] so editing semantics do not fork.
  */
 interface SamplerDeckController {
+    fun dispatch(command: ProductionCommand)
     fun stopAllSounds()
     fun stopActiveRecording()
     fun resetProject()
@@ -41,7 +44,7 @@ interface SamplerDeckController {
     fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot)
     fun setSelectedPadChokeGroup(group: Int)
     fun toggleSelectedPadReverse()
-    fun toggleSelectedPadPlayMode()
+    fun toggleSelectedPadPlayMode() = dispatch(ProductionCommand.ToggleSelectedPadPerformanceMode)
     fun clearSelectedPad()
     fun fillSelectedPadPattern(grid: RepeatGrid)
     fun clearSelectedPadPattern()
@@ -59,9 +62,10 @@ interface SamplerDeckController {
     fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean)
     fun setBpm(value: Float)
     fun setSwing(value: Float)
-    fun addSliceMarker(frame: Int)
-    fun selectSliceAt(frame: Int)
-    fun setRangeStart(frame: Int)
-    fun setRangeEnd(frame: Int)
-    fun moveSliceMarker(markerIndex: Int, frame: Int)
+    fun addSliceMarker(frame: Int) = dispatch(ProductionCommand.AddSliceMarker(frame))
+    fun selectSliceAt(frame: Int) = dispatch(ProductionCommand.SelectSliceAt(frame))
+    fun setRangeStart(frame: Int) = dispatch(ProductionCommand.SetSourceRangeStart(frame))
+    fun setRangeEnd(frame: Int) = dispatch(ProductionCommand.SetSourceRangeEnd(frame))
+    fun moveSliceMarker(markerIndex: Int, frame: Int) =
+        dispatch(ProductionCommand.MoveSliceMarker(markerIndex, frame))
 }
