@@ -30,7 +30,7 @@ Offline rendering consumes the same project/sequence model and shared DSP primit
 
 ### Persistence
 
-A versioned archive layer converts project metadata to/from a bounded schema and uses a WAV/PCM codec for portable audio assets. Save is atomic/recoverable and independent from Compose.
+A versioned archive layer converts project metadata to/from a bounded schema and uses a WAV/PCM codec for portable audio assets. Save is atomic/recoverable and independent from Compose. Recovery returns the verified generation revision alongside state so the application session's next edit remains monotonic across process restarts.
 
 ### MIDI and capture adapters
 

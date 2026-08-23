@@ -31,6 +31,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - `ProductionSessionTransition`: decorated state, mutation, revision, persistence requirement and effects.
 - `applyEdit`: migration bridge for legacy pure transforms until they become typed commands.
 - `replaceProject`: one reset/revision boundary for source import, manual open, reset and recovery.
+- `AtomicProjectStore.loadWithRevision`: returns the verified generation revision so a recovered session advances above disk before its next save.
 - Android/Windows controllers: execute blocking effects, commit/cancel, publish returned state, execute non-blocking refresh and schedule only admitted persistence.
 - Decision record: `docs/architecture/ADR-0002-production-session-transactions.md`.
 
@@ -75,6 +76,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - [x] 2026-08-24 04:20 JST — Selected two-phase plan/effect/commit over an EditHistory-only wrapper; recorded ADR-0002.
 - [x] 2026-08-24 04:25 JST — Shared ProductionSession contracts pass on Desktop JVM and Android host.
 - [x] 2026-08-24 04:30 JST — Android/Windows compile and focused regression suites pass after initial migration.
+- [x] 2026-08-24 04:38 JST — Bound verified autosave generation revision into ProductionSession and proved the next edit saves above disk.
 - [ ] Complete full local gate and two-axis review.
 - [ ] Complete runtime/device receipt.
 - [ ] Complete PR/merge/main readback.
@@ -85,12 +87,14 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - Android separately owned a monotonic `projectRevision` used for stale async-result and autosave checks; Desktop had no equivalent application revision.
 - A pure reducer alone cannot safely commit a mode change that requires a fallible runtime stop; the application transaction must remain two-phase.
 - Recovery is a project replacement and should invalidate stale work, but it need not immediately rewrite the same validated autosave bytes.
+- The previous Android application revision restarted at zero even when disk held a higher verified revision, so post-recovery saves could be rejected until the counter caught up.
 
 ## Decision log
 
 - 2026-08-24 — Use one mutable ProductionSession journal rather than a thin EditHistory wrapper.
 - 2026-08-24 — Keep platform effect execution outside common code and make plan commit/cancel explicit.
 - 2026-08-24 — Advance revision on all project replacements, including recovery; allow recovery to suppress redundant persistence separately.
+- 2026-08-24 — Seed recovery from `max(session revision, verified disk revision) + 1`; the next durable edit is therefore always newer than the recovered generation.
 - 2026-08-24 — Keep legacy `applyEdit` as a bounded migration bridge and avoid expanding the typed command set in the same PR.
 
 ## Validation log
@@ -98,6 +102,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - `:shared:desktopTest :shared:testAndroidHostTest` — PASS after initial contract.
 - `:shared:desktopTest :shared:testAndroidHostTest :app:compileDebugKotlin :desktop:test` — PASS after initial controller integration.
 - `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :desktop:test` — PASS after project-replacement integration.
+- `:shared:desktopTest :shared:testAndroidHostTest :jvm-core:test :app:testDebugUnitTest :desktop:test` — PASS after recovered-revision integration; JVM-core adds the disk-to-session save regression.
 
 ## Risks and rollback
 

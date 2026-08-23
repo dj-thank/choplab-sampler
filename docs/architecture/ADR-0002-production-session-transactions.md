@@ -19,6 +19,8 @@ Introduce one shared `ProductionSession` that owns:
 - persistence admission for durable project transitions;
 - one-owner, one-use command plans.
 
+Autosave recovery reads the verified generation revision with the state. The session adopts at least that revision and advances once for the replacement, so the next durable edit cannot be rejected as older than the project it recovered.
+
 Command application is two-phase. `planCommand` reduces the pure command and exposes its typed effects. A platform adapter executes blocking effects such as `StopPad`. Only after they succeed may it call `commit`; on failure it calls `cancel`. This prevents history/revision/state success from preceding required runtime teardown.
 
 Platform controllers still own lifecycle resources, StateFlow publication, audio/document adapters and the actual autosave scheduler. They serialize calls into the session using their existing state owner.
@@ -29,6 +31,7 @@ Platform controllers still own lifecycle resources, StateFlow publication, audio
 - A stale, foreign, cancelled or already committed plan fails closed.
 - Legacy edits can migrate through `applyEdit` before every UI action becomes a typed command.
 - The first migration retains platform-specific state publication and post-commit effect handling; a later state-owner refactor may remove those final adapter differences.
+- Legacy archives without revision metadata still recover; the session advances from its current revision while the store retains its existing validation and generation fallback policy.
 
 ## Rejected alternatives
 

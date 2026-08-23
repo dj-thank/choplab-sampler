@@ -863,15 +863,17 @@ class DesktopSamplerController(
     private fun recoverAutosave() {
         val store = autosaveStore ?: return
         persistenceExecutor.execute {
-            runCatching { store.load() }
-                .onSuccess { restored ->
-                    if (restored == null) {
+            runCatching { store.loadWithRevision() }
+                .onSuccess { recovered ->
+                    if (recovered == null) {
                         mutableState.value = productionSession.replaceProject(freshProductionState()).state
                         scheduleAutosave()
                     } else {
+                        val restored = recovered.state
                         val transition = productionSession.replaceProject(
                             restored,
                             persistenceRequired = false,
+                            recoveredRevision = recovered.revision,
                         )
                         applyHistoryState(
                             restored = transition.state,

@@ -118,8 +118,12 @@ class ProductionSessionTest {
         assertEquals(2L, replaced.revision)
         assertFalse(replaced.state.canUndo)
 
-        val restored = session.replaceProject(SamplerUiState(bpm = 100f), persistenceRequired = false)
-        assertEquals(3L, restored.revision)
+        val restored = session.replaceProject(
+            SamplerUiState(bpm = 100f),
+            persistenceRequired = false,
+            recoveredRevision = 12L,
+        )
+        assertEquals(13L, restored.revision)
         assertEquals(ProductionMutation.PROJECT, restored.mutation)
         assertFalse(restored.persistenceRequired)
     }

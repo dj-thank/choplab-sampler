@@ -112,9 +112,13 @@ class ProductionSession(maxHistoryEntries: Int = 40) {
     fun replaceProject(
         state: SamplerUiState,
         persistenceRequired: Boolean = true,
+        recoveredRevision: Long? = null,
     ): ProductionSessionTransition {
         invalidatePlans()
         history.reset()
+        if (recoveredRevision != null) {
+            revision = maxOf(revision, recoveredRevision)
+        }
         advanceRevision()
         return transition(
             state = state,

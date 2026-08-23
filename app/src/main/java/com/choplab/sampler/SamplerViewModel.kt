@@ -1983,14 +1983,16 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val operation = projectOperations.begin()
         val revisionAtStart = productionSession.revision
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.load() } }
+            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.loadWithRevision() } }
             if (productionSession.revision != revisionAtStart) return@launch
             projectOperations.completeIfCurrent(operation) {
-                result.onSuccess { restored ->
-                    if (restored != null) {
+                result.onSuccess { recovered ->
+                    if (recovered != null) {
+                        val restored = recovered.state
                         val transition = productionSession.replaceProject(
                             restored,
                             persistenceRequired = false,
+                            recoveredRevision = recovered.revision,
                         )
                         applyProjectState(
                             restored = transition.state,
