@@ -91,7 +91,7 @@ The confirmed public seams for this plan are:
 - [x] Implement and verify milestone 1.
 - [x] Integrate and verify milestone 2.
 - [x] Complete the local installation and runtime milestone.
-- [ ] Complete full validation and two-axis review.
+- [x] Complete full validation and two-axis review.
 - [ ] Merge and verify the GitHub source and binary Release.
 
 ## Discoveries
@@ -115,6 +115,7 @@ The confirmed public seams for this plan are:
 - `cyclonedxBom` + `scripts/verify_sbom.py` — PASS; `com.choplab:ChopLab:0.17.0`, CycloneDX 1.6, 650 components, 651 dependencies.
 - `scripts/test-install-windows-app.ps1` — PASS for full-tree digest, idempotence, non-launcher tamper rejection, two shortcut readbacks, and project sentinel preservation.
 - Actual user-local install and sandboxed runtime — PASS; installed title responding, empty PAD-key smoke no crash, exact process pair stopped, real project digest unchanged.
+- Local parent two-axis review against `c4956cf` — Standards 0 unresolved; Spec 0 source findings. External GitHub merge/Release/reverse-download remains the only delivery gap. Review receipts: parent PAD `work/CHOPLAB_WINDOWS_0.17.0_STANDARDS_REVIEW.md` and `work/CHOPLAB_WINDOWS_0.17.0_SPEC_REVIEW.md`.
 
 ## Risks and rollback
 
