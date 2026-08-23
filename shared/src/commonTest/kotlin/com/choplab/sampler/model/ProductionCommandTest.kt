@@ -31,6 +31,53 @@ class ProductionCommandTest {
     }
 
     @Test
+    fun sourceRangeEndUsesTheSameZeroCrossingAndMarkerFilteringPolicy() {
+        val audio = crossingAudio()
+        val state = SamplerUiState(
+            currentAudio = audio,
+            rangeStartFrame = 0,
+            rangeEndFrame = audio.frameCount,
+            sliceMarkers = listOf(100, 300),
+            activeSliceIndex = 2,
+        )
+
+        val result = reduceProductionCommand(
+            state,
+            ProductionCommand.SetSourceRangeEnd(frame = 246),
+        )
+
+        assertEquals(ProductionMutation.PROJECT, result.mutation)
+        assertEquals("range-end", result.mergeKey)
+        assertEquals(250, result.state.rangeEndFrame)
+        assertEquals(listOf(100), result.state.sliceMarkers)
+        assertNull(result.state.activeSliceIndex)
+    }
+
+    @Test
+    fun movingSliceMarkerIsBoundedAndCarriesAStableMergeKey() {
+        val audio = PcmAudio(
+            name = "marker.wav",
+            samples = ShortArray(400) { frame -> if (frame < 180) -2_000 else 2_000 },
+            sampleRate = 1_000,
+        )
+        val state = SamplerUiState(
+            currentAudio = audio,
+            rangeStartFrame = 0,
+            rangeEndFrame = audio.frameCount,
+            sliceMarkers = listOf(100, 300),
+        )
+
+        val result = reduceProductionCommand(
+            state,
+            ProductionCommand.MoveSliceMarker(markerIndex = 0, frame = 184),
+        )
+
+        assertEquals(ProductionMutation.PROJECT, result.mutation)
+        assertEquals("slice-marker-0", result.mergeKey)
+        assertEquals(listOf(180, 300), result.state.sliceMarkers)
+    }
+
+    @Test
     fun invalidMarkerRequestChangesGuidanceWithoutCreatingProjectHistory() {
         val audio = crossingAudio(frameCount = 120)
         val state = SamplerUiState(

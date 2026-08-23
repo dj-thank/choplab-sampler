@@ -74,6 +74,7 @@ jobs:
       - name: Unit tests, lint, and debug APK
         run: >-
           ./gradlew --stacktrace
+          :shared:testAndroidHostTest
           :app:testDebugUnitTest
           :app:lintDebug
           :app:lintRelease
@@ -122,3 +123,4 @@ jobs:
             app/build/outputs/apk/release/*.apk
             app/build/reports/**
             app/build/test-results/**
+            shared/build/test-results/testAndroidHostTest/**

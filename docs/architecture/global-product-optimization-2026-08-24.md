@@ -41,7 +41,7 @@ Pattern / Song --- tempo / timing / arrangement
       v
 Project snapshot -- history / autosave / recovery / portability
 
-Every command crosses one semantic spine.
+Target: every migrated command crosses one semantic spine.
 Platform adapters execute audio, file, permission, and lifecycle effects.
 Evidence gates remain LOCAL -> DEVICE -> PROVIDER -> PUBLIC -> HUMAN.
 ```
