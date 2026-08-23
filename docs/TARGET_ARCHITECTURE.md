@@ -10,7 +10,7 @@ Compose screens render immutable UI state and send intents. They do not own audi
 
 ### Application/state
 
-A `ProductionSession` application module owns editing history, revision and persistence admission. UI/MIDI/capture inputs become shared `ProductionCommand` values; a pure reducer returns classified PROJECT/SESSION mutations and typed `ProductionEffect` values. Platform coordinators expose explicit loading, saving, recording, rendering, runtime-application and error states while executing only the effects supported by their adapters.
+A `ProductionSession` application module owns editing history, revision and persistence admission. UI/MIDI/capture inputs become shared `ProductionCommand` values; a pure reducer returns classified PROJECT/SESSION mutations and typed `ProductionEffect` values. Commands with blocking effects use a plan -> effect -> commit/cancel transaction, so required runtime teardown cannot lag behind published project truth. Platform coordinators expose explicit loading, saving, recording, rendering, runtime-application and error states while executing only the effects supported by their adapters.
 
 ### Domain
 

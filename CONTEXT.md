@@ -79,3 +79,7 @@ A reversible change to the music being made, such as moving a Chop boundary, cha
 ## Runtime action
 
 A temporary playback, recording, capture, or device operation performed while working on a Production. It becomes durable Production content only when its successful result is explicitly accepted.
+
+## Production session
+
+The ordered working context that decides whether an action changes the Production, only changes the current selection/guidance, or changes nothing. It keeps project revision and Undo/Redo history coherent while runtime actions remain separately observable.

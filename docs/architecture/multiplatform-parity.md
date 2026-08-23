@@ -23,6 +23,10 @@ source of truth.
   in Android and Windows controllers.
 - `ProductionCommand` reducer: classifies durable PROJECT edits separately from
   SESSION-only selection/guidance and emits typed effects for platform adapters.
+- `ProductionSession`: owns bounded history, monotonic revision, Undo/Redo
+  availability and persistence admission. Blocking effects must succeed between
+  command planning and commit; recovery invalidates stale plans without forcing
+  an immediate rewrite of the same validated project bytes.
 - `jvm-core`: one Android/Windows implementation of the bounded `.choplab`
   archive, three-generation autosave, PCM-16 WAV writer, four-bar renderer,
   PAD voice rendering, and playback cursor rules. Platform shells do not fork

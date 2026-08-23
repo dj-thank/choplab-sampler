@@ -17,7 +17,6 @@ import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
-import com.choplab.sampler.model.EditHistory
 import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
@@ -56,11 +55,11 @@ import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.ProductionEffect
 import com.choplab.sampler.model.ProductionMutation
+import com.choplab.sampler.model.ProductionSession
 import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.inferProjectLaunchTarget
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
-import com.choplab.sampler.model.reduceProductionCommand
 import com.choplab.sampler.ui.SamplerDeckController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -95,7 +94,7 @@ class DesktopSamplerController(
             },
         ),
     )
-    private val editHistory = EditHistory(maxEntries = 40)
+    private val productionSession = ProductionSession(maxHistoryEntries = 40)
     private val projectOperations = ProjectOperationEpoch()
     private val transport = DesktopTransport(::onTransportStep)
     private val scratch = DesktopScratchPlayer()
@@ -132,9 +131,8 @@ class DesktopSamplerController(
             runCatching { DesktopWavDecoder.decode(file) }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
-                        editHistory.reset()
                         val playbackFailure = runCatching { player.loadPcm(audio) }.exceptionOrNull()
-                        mutableState.value = BuiltInDrumKits.installStarterKit(
+                        val next = BuiltInDrumKits.installStarterKit(
                             SamplerUiState(
                                 statusMessage = playbackFailure?.let { "音声は読込済みですが再生機器を開けません: ${it.message}" }
                                     ?: "${file.name}を読み込みました。チョップで音を切ってください",
@@ -145,6 +143,7 @@ class DesktopSamplerController(
                             projectLaunchTarget = ProjectLaunchTarget.CHOP,
                             projectLaunchRevision = nextProjectLaunchRevision(),
                         )
+                        mutableState.value = productionSession.replaceProject(next).state
                         scheduleAutosave()
                     }
                 }
@@ -186,9 +185,9 @@ class DesktopSamplerController(
             runCatching { DesktopProjectFiles.load(file) }
                 .onSuccess { restored ->
                     projectOperations.completeIfCurrent(operation) {
-                        editHistory.reset()
+                        val transition = productionSession.replaceProject(restored)
                         applyHistoryState(
-                            restored = restored,
+                            restored = transition.state,
                             message = "${file.name}を開きました",
                             launchTarget = inferProjectLaunchTarget(
                                 restored,
@@ -349,8 +348,8 @@ class DesktopSamplerController(
                                 recordingSession = RecordingSession.Idle,
                             )
                         }
-                        editHistory.record(current)
-                        mutableState.value = next.copy(canUndo = editHistory.canUndo, canRedo = editHistory.canRedo)
+                        val transition = productionSession.applyEdit(current, next)
+                        mutableState.value = transition.state
                         runCatching { player.loadPcm(audio) }.onFailure { error ->
                             setStatus("録音は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}")
                         }
@@ -375,8 +374,7 @@ class DesktopSamplerController(
     override fun resetProject() {
         projectOperations.invalidate()
         stopCompetingPlayback()
-        editHistory.reset()
-        mutableState.value = freshProductionState()
+        mutableState.value = productionSession.replaceProject(freshProductionState()).state
         scheduleAutosave()
     }
 
@@ -403,34 +401,33 @@ class DesktopSamplerController(
     }
     override fun dispatch(command: ProductionCommand) {
         val before = mutableState.value
-        val result = reduceProductionCommand(before, command)
-        if (result.mutation == ProductionMutation.NONE && result.effects.isEmpty()) return
+        val plan = productionSession.planCommand(before, command)
+        if (plan.mutation == ProductionMutation.NONE && plan.effects.isEmpty()) {
+            productionSession.cancel(plan)
+            return
+        }
 
-        val stopFailure = result.effects
+        val stopFailure = plan.effects
             .filterIsInstance<ProductionEffect.StopPad>()
             .firstNotNullOfOrNull { effect ->
                 runCatching { player.stopPad(effect.index) }.exceptionOrNull()
             }
         if (stopFailure != null) {
+            productionSession.cancel(plan)
             setStatus("PADを停止できないため編集を適用しませんでした: ${stopFailure.message ?: "不明なエラー"}")
             return
         }
 
-        if (result.mutation == ProductionMutation.PROJECT) {
-            editHistory.record(before, result.mergeKey)
-        }
-        mutableState.value = result.state.copy(
-            canUndo = editHistory.canUndo,
-            canRedo = editHistory.canRedo,
-        )
-        result.effects.forEach { effect ->
+        val transition = productionSession.commit(plan)
+        mutableState.value = transition.state
+        transition.effects.forEach { effect ->
             when (effect) {
                 is ProductionEffect.StopPad -> Unit
                 is ProductionEffect.RefreshPad -> Unit // Java Sound reads the PAD on its next trigger.
                 ProductionEffect.RefreshPattern -> Unit // The desktop step callback reads current state.
             }
         }
-        if (result.mutation == ProductionMutation.PROJECT) {
+        if (transition.persistenceRequired) {
             scheduleAutosave()
         }
     }
@@ -723,14 +720,16 @@ class DesktopSamplerController(
     override fun toggleRecordArm() = mutableState.update { it.copy(recordArmed = !it.recordArmed) }
     override fun undoEdit() {
         if (rejectEditWhileRecording()) return
-        val restored = editHistory.undo(mutableState.value) ?: return setStatus("戻せる操作はありません")
-        applyHistoryState(restored, "1つ前の操作へ戻しました")
+        val transition = productionSession.undo(mutableState.value)
+            ?: return setStatus("戻せる操作はありません")
+        applyHistoryState(transition.state, "1つ前の操作へ戻しました")
         scheduleAutosave()
     }
     override fun redoEdit() {
         if (rejectEditWhileRecording()) return
-        val restored = editHistory.redo(mutableState.value) ?: return setStatus("やり直せる操作はありません")
-        applyHistoryState(restored, "操作をやり直しました")
+        val transition = productionSession.redo(mutableState.value)
+            ?: return setStatus("やり直せる操作はありません")
+        applyHistoryState(transition.state, "操作をやり直しました")
         scheduleAutosave()
     }
 
@@ -795,10 +794,10 @@ class DesktopSamplerController(
         if (rejectEditWhileRecording()) return
         val before = mutableState.value
         val after = transform(before)
-        if (after == before) return
-        editHistory.record(before, mergeKey)
-        mutableState.value = after.copy(canUndo = editHistory.canUndo, canRedo = editHistory.canRedo)
-        scheduleAutosave()
+        val transition = productionSession.applyEdit(before, after, mergeKey)
+        if (transition.mutation == ProductionMutation.NONE) return
+        mutableState.value = transition.state
+        if (transition.persistenceRequired) scheduleAutosave()
     }
 
     private fun rejectEditWhileRecording(): Boolean {
@@ -837,8 +836,8 @@ class DesktopSamplerController(
             },
             scratchSpeed = 0f,
             scratchReturnAvailable = false,
-            canUndo = editHistory.canUndo,
-            canRedo = editHistory.canRedo,
+            canUndo = productionSession.canUndo,
+            canRedo = productionSession.canRedo,
         )
         mutableState.value = next
         next.currentAudio?.let(player::loadPcm)
@@ -866,13 +865,16 @@ class DesktopSamplerController(
         persistenceExecutor.execute {
             runCatching { store.load() }
                 .onSuccess { restored ->
-                    editHistory.reset()
                     if (restored == null) {
-                        mutableState.value = freshProductionState()
+                        mutableState.value = productionSession.replaceProject(freshProductionState()).state
                         scheduleAutosave()
                     } else {
+                        val transition = productionSession.replaceProject(
+                            restored,
+                            persistenceRequired = false,
+                        )
                         applyHistoryState(
-                            restored = restored,
+                            restored = transition.state,
                             message = "前回の自動保存を復元しました",
                             launchTarget = inferProjectLaunchTarget(
                                 restored,
