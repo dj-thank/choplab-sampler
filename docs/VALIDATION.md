@@ -2,6 +2,19 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Windows daily-use v0.17.0 local candidate — 2026-08-24
+
+- Product source: `codex/choplab-desktop-daily-release@b6efbde30a0fc1d8ce8a944405b20422fc238782`, tree `9760029f723c55465004908899255a7ad1c165a3`, base `c4956cf`; dirty canonical checkout untouched.
+- Functional TDD: Windows 4×4 PAD mapping, key-repeat suppression, modifier/context admission, exact global-PAD key-up ownership, and focus-loss release were each exercised through `DesktopPadKeyboardTest`. Shared Android touch PAD behavior was restored unchanged after review rejected PC-only visual noise on mobile.
+- Final Gradle gate: 142 tasks PASS; Android unit 226 / 44 suites, JVM-core 49 / 8 suites, desktop 72 / 16 suites; failures/errors/skips 0. Debug/release Lint, debug/unsigned-release APK, and Windows app-image package PASS.
+- Policy/package gates: configured Git Bash validation PASS; Python 22/22 PASS; public surface 369 candidates PASS; wrapper 9.7.1 JAR SHA-256 `7A9CE74CFF467CA1BF60A4FCD9F05185ACCEDA4D0F382434D393E17864262C5D`; wrapper UTF-8 policy PASS; `git diff --check` PASS.
+- Android release identity: `0.17.0 (27)`, intentionally unsigned local candidate. compileSdk 37; targetSdk 36; minSdk 29.
+- Supply chain: CycloneDX 1.6 identity `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies. CI now rejects empty/unspecified SBOM identity.
+- Windows identity: ProductVersion `0.17.0`; EXE SHA-256 `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`; desktop JAR `7164DFF0B7521FFCB2DF10032F5D45790F63D542FD656623378CC52BC80953BA`; complete app-image digest `8487C2376FBCB5A4B83D84631E50A6165ECB0E1E772E5CAC0BFA0A2F65F98CC6`.
+- Installer E2E: full-tree digest staging, identical-byte idempotence, non-launcher tamper rejection, shortcut target readback, and project sentinel preservation PASS. Actual user install path is `%LOCALAPPDATA%/Programs/ChopLab/0.17.0-8487c2376fbc`; Start Menu/Desktop shortcuts target it.
+- Installed runtime: temporary app-data sandbox, no provider credentials, no recording/audio action; responding title observed, empty `1` key smoke PASS, exact process pair stopped. User project digest stayed identical.
+- Receipt: parent PAD `work/PAD_CHOPLAB_WINDOWS_0.17.0_LOCAL_RECEIPT.json`. Gate is `LOCAL_PASS`; GitHub PR/merge/Release reverse-download, device/provider/audio/accessibility/Human gates remain pending.
+
 ## Full hardening + Spotify Connect + production continuity integration — 2026-08-24
 
 - Integration source: `codex/choplab-session-integration@6914e3c4d7bfabc85b43eaadfcfaa8de69072739`, tree `94fbc43839d2d74ae383ac973b456ceb4fea9dca`; base parent `261d034`, merged parent `df61bb5`, merge base `9a4e9edc`.

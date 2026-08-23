@@ -69,7 +69,7 @@ The confirmed public seams for this plan are:
 
 ### Milestone 3: daily local installation
 - Add and test the data-preserving PowerShell installer.
-- Package the Windows app-image and install it below `%LOCALAPPDATA%/Programs/ChopLab/0.17.0`.
+- Package the Windows app-image and install it below `%LOCALAPPDATA%/Programs/ChopLab/<version>-<app-image-hash-prefix>`.
 - Create/update Start Menu and Desktop shortcuts to the exact versioned EXE.
 - Launch the installed EXE through the tracked-process wrapper and verify title/path/responding state without using audio or provider actions.
 
@@ -88,9 +88,9 @@ The confirmed public seams for this plan are:
 - [x] 2026-08-24 01:07 JST — Fixed exact root, owner, base, dirty exclusion, rollback, target gate, stop boundaries, and root-only dispatch policy.
 - [x] 2026-08-24 01:07 JST — Initial broad shell direction selected from a shallow Main-screen comparison.
 - [x] 2026-08-24 01:35 JST — User correction stopped that direction. Read-only live `Program Edit`, `Sample Edit`, `Step Sequencer`, `Pad Mixer`, and `Pad Mute` plus Akai primary manuals established the contextual PAD-role model. The uncommitted shell implementation was removed; functional keyboard PAD input is the replacement seam.
-- [ ] Implement and verify milestone 1.
-- [ ] Integrate and verify milestone 2.
-- [ ] Complete the local installation and runtime milestone.
+- [x] Implement and verify milestone 1.
+- [x] Integrate and verify milestone 2.
+- [x] Complete the local installation and runtime milestone.
 - [ ] Complete full validation and two-axis review.
 - [ ] Merge and verify the GitHub source and binary Release.
 
@@ -110,7 +110,11 @@ The confirmed public seams for this plan are:
 
 ## Validation log
 
-- Pending.
+- `scripts/validate_project.sh` — PASS on Gradle 9.7.1 wrapper SHA `7a9ce74c…`, UTF-8 policy, public-surface and XML contracts.
+- `:app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 142 tasks; Android 226, JVM-core 49, Desktop 72 tests; zero failures/errors/skips.
+- `cyclonedxBom` + `scripts/verify_sbom.py` — PASS; `com.choplab:ChopLab:0.17.0`, CycloneDX 1.6, 650 components, 651 dependencies.
+- `scripts/test-install-windows-app.ps1` — PASS for full-tree digest, idempotence, non-launcher tamper rejection, two shortcut readbacks, and project sentinel preservation.
+- Actual user-local install and sandboxed runtime — PASS; installed title responding, empty PAD-key smoke no crash, exact process pair stopped, real project digest unchanged.
 
 ## Risks and rollback
 
