@@ -1,5 +1,7 @@
 package com.choplab.sampler.model
 
+import kotlin.jvm.JvmInline
+
 object ProjectSchema {
     const val CURRENT_VERSION = 1
 }

@@ -1,0 +1,8 @@
+{
+  "version": "0.16.2",
+  "product_version": "0.16.2",
+  "file_version": "0.16.2",
+  "executable": "ChopLab.exe",
+  "executable_sha256": "2dcba5bed76c97e4d2ef85b5f18304c325653adf4bffa66a77a443eb80c2622a",
+  "commit": "6914e3c4d7bfabc85b43eaadfcfaa8de69072739"
+}

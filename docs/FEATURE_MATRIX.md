@@ -4,19 +4,19 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Windows EXE版のPAD操作 | 🧪 local / CI / Release | `:desktop` が `:shared` の Android-origin deck UI/model と `:jvm-core` のproject/archive/export処理を使用。4工程、波形、4×4 PAD、PAD editor、BANK A–D、16-step transport、KEY/TONE/LEVEL/REVERSE/GATE/LOOP/CHOKE、scratch、ローカルWAV、マイク、driver loopback候補、Undo/Redo、`.choplab`保存/復元/autosave、4小節WAV書き出しを接続。実ドライバー音質・レイテンシは未確認 |
+| Windows EXE版のPAD操作 | ✅ integrated local / historical CI / Release | `:desktop` が `:shared` のAndroid-origin deckと`:jvm-core`を使用。4工程、波形、4×4 PAD、編集、BANK、16-step、voice controls、scratch、WAV、Undo/Redo、project/autosave/exportを接続。integrated `6914e3c`ではsource録音停止後CHOP、VOICE Beat-loop restart、startup project autosave、output-device failure safe stop/temp cleanupとSpotify panelが共存し、66 desktop tests・package・runtime smokeがPASS。実ドライバー音質・レイテンシは未確認 |
 | Windows WASAPI endpoint | 🧪 local / current-device unavailable | JNA 5.19.1でMMDevice default/active/all-state endpointとmix formatをSTAからprobeし、native診断menuへ接続。現端末はJava Sound mixer 0、PnP AudioEndpoint present 0、MMDevice render/capture count 0、default `0x80070490`。adapter hardware presenceだけから音声利用可能とは主張しない |
-| Spotify OAuth / 現在再生情報 | 🧪 local | Native `連携` menuからAuthorization Code with PKCE、`127.0.0.1` callback、memory-only token、現在再生表示、一時停止/再開を接続。実アカウント/provider検証は未実施 |
+| Spotify OAuth / Connect UX | ✅ integrated local / exact-byte Android device receipt | Native `連携` menuのSpotify Connect panelからAuthorization Code with PKCE、dynamic-port `127.0.0.1` callback、memory-only token、明示的状態、cancel・late callback無効化、現在再生／保存済みライブラリ、pause/resume、境界別復帰案内を接続。Spotify Contentはメタデータ／再生制御のみ。Android device receiptはapp全体のexact bytes/instrumentationであり、実Spotify account/provider、物理音声品質、screen-reader speechを証明しない |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
 | Windows / Android / iOS 公開preview | ✅ CI / Release | `v0.16.0-preview.1`でAndroid debug APK、iOS Simulator app zip、Windows app-image zipと各SHA-256を同一Releaseへ公開し、tag-bound build・GitHub digest・sidecar・匿名HTTP 200をread-back。署名済みiOS実機IPAは未提供。 |
 | 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
-| 録音をそのままビート化 | ✅ | 停止後に波形へ自動読込、PAD割当、16-step制作 |
+| 録音をそのままビート化 | ✅ current local | AndroidとWindowsの停止後decodeが波形を読込み、fresh launch revisionでCHOPへ遷移してPAD割当／16-step制作へ続く。実録音内容は今回取得していない |
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示。CHOPと通常BEATは同じ4×4演奏面を共有し、詳細sequencerだけを二次面へ分離 |
 | 正方形PAD | ✅ device/emulator | 4×4 / 8×2とも親領域へ収まる最大正方形を中央配置。Pixel 9a portraitとv0.11 portrait/landscape emulatorで確認 |
 | 内蔵ドラムキット | ✅ emulator/local | オリジナル合成5キット×16音。新規／reset／新規Source制作だけはDUSTY JAZZ＋starter beatをBANK Bへ自動配置し、復元／手動OPEN済みBANK Bは暗黙変更しない。別kit適用で既存音がある場合は二度押し確認 |
-| ビートへ声を重ねる | 🧪 local | loop再始動に合わせて録音し、BANK Dへ最大32テイク。project schema 5とWAV exportに含む。実環境の声は未録音 |
+| ビートへ声を重ねる | 🧪 current local | AndroidとWindowsで選択Beat loopを先頭から再始動して録音状態とloop表示を一致させ、BANK Dへ最大32テイク。project schema 5とWAV exportに含む。fake recorder/audio-port host testのみで、実環境の声は未録音 |
 | DJスクラッチ | 🧪 local/emulator | 元曲slice/S-Eまたは選択PADをpointer-downから直接所有し、左右を正逆速度へ変換。微小ノイズdead zone、px/s正規化、120ms idle無音、方向／倍率／playhead表示をhost test＋API 36 emulatorで確認。解除時は直前の有効なBeat loop/transportへ一度だけ復帰し、再開対象なしでは停止。TalkBack操作を公開。物理実機の連続操作感・クリック音・読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
@@ -59,7 +59,7 @@
 | 再生表示と実音声の同期 | 🧪 local/device UI | `STOPPED / STARTING / PLAYING / STOPPING`を音声スレッド適用値と保留命令から導出。差替え・リセット・読込も停止確認前にSTOPPEDを表示せず、Undoは保留命令を復元しない |
 | 全再生停止 | 🧪 local/device UI | `ALL STOP`がsource、PAD voice、loop、scratchの境界を先に発行してからtransportを停止。UIのstep/loop/scratchも同時に解除し、録音中データは明示的に継続 |
 | 録音中の編集所有権 | 🧪 local | MIC / DEVICE / VOICEのSTARTING・RECORDING・STOPPING中はproject edit、UNDO、REDOを拒否し、ボタンも無効化。PAD preview開始はengine停止と同時にsource/transport/loop/scratch UI truthを更新 |
-| Autosave/recovery | ✅ historical device / current local | 900ms debounce、SHA-256に結合した世代revision、store再生成後も古い/equal revisionを拒否、最新の検証済み世代を選ぶpending復旧、三世代保持。新しいrevisionメタデータ候補はLOCAL検証済みで、現候補のDEVICE再実行は未実施。手動上書き前にもアプリ内安全コピーを作成 |
+| Autosave/recovery | ✅ historical device / current local | 900ms debounce、SHA-256に結合した世代revision、store再生成後も古い/equal revisionを拒否、最新の検証済み世代を選ぶpending復旧、三世代保持。Windowsのstartup `.choplab` は古いautosave復元だけをskipし、その後の編集autosaveは同じstoreへ継続するhost regressionあり。現候補のDEVICE再実行は未実施。手動上書き前にもアプリ内安全コピーを作成 |
 | 起動時autosave復元と制作routing | ✅ emulator/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は新規取込を無効化し、`LOADING / 音声を読込中 / PLEASE WAIT`でfalseな`NO SOURCE`を防止。復元後は未編集starterだけ→CAPTURE、Source＋starter→CHOP、user Beat／PAD-only→BEATへroute。API 36でBeat編集→autosave→強制終了→BEAT復帰を確認 |
 | Undo / Redo | ✅ MVP | PAD、slice、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesce |
 | MIDI | — | 未実装 |

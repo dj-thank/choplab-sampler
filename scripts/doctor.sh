@@ -67,7 +67,7 @@ else
   warn "Gradle wrapper is not executable; run chmod +x gradlew scripts/*.sh"
 fi
 
-if [[ -d .git ]]; then
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   BRANCH="$(git branch --show-current 2>/dev/null || true)"
   ok "Git repository${BRANCH:+ on branch $BRANCH}"
   if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then warn "working tree has uncommitted changes"; else ok "working tree is clean"; fi

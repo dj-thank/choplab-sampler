@@ -16,6 +16,10 @@ data class SpotifyTokens(
     val scope: String,
 )
 
+class SpotifyTokenRequestException(
+    val statusCode: Int,
+) : IllegalStateException("Spotify token request failed with HTTP $statusCode")
+
 object SpotifyTokenForm {
     fun authorizationCode(clientId: String, code: String, redirectUri: URI, verifier: String): String = form(
         linkedMapOf(
@@ -40,15 +44,20 @@ object SpotifyTokenForm {
     }
 }
 
+interface SpotifyTokenClient {
+    fun exchangeCode(clientId: String, code: String, redirectUri: URI, verifier: String): SpotifyTokens
+    fun refresh(clientId: String, refreshToken: String): SpotifyTokens
+}
+
 class JdkSpotifyTokenClient(
     private val client: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10))
         .build(),
-) {
-    fun exchangeCode(clientId: String, code: String, redirectUri: URI, verifier: String): SpotifyTokens =
+) : SpotifyTokenClient {
+    override fun exchangeCode(clientId: String, code: String, redirectUri: URI, verifier: String): SpotifyTokens =
         post(SpotifyTokenForm.authorizationCode(clientId, code, redirectUri, verifier))
 
-    fun refresh(clientId: String, refreshToken: String): SpotifyTokens =
+    override fun refresh(clientId: String, refreshToken: String): SpotifyTokens =
         post(SpotifyTokenForm.refresh(clientId, refreshToken))
 
     private fun post(form: String): SpotifyTokens {
@@ -58,9 +67,7 @@ class JdkSpotifyTokenClient(
             .POST(HttpRequest.BodyPublishers.ofString(form))
             .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        check(response.statusCode() in 200..299) {
-            "Spotify token request failed with HTTP ${response.statusCode()}"
-        }
+        if (response.statusCode() !in 200..299) throw SpotifyTokenRequestException(response.statusCode())
         return SpotifyTokensJson.parse(response.body())
     }
 }

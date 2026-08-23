@@ -1,12 +1,20 @@
 # ExecPlan registry
 
-更新: 2026-08-20
+更新: 2026-08-23
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにする。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
+**完了・次の実装seam未選択:** `../completed/session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは別の明示taskであり、現在のactive implementation planはない。
+
+**統合入力・LOCAL/DEVICE receipt保全:** `spotify-connect-ux-lifecycle-20260823.md`。source/device receipt `8306ed2`のOAuth lifecycle、provider-state UI、release/audio hardening、Pixel 9a data-preserving instrumentationを保全する。実Spotify account/provider、公開、Human評価は別gate。
+
+**統合入力・LOCAL完了:** `cross-platform-production-continuity-20260823.md`。reviewed source `31061be`のsource録音後CHOP遷移、VOICE Beat-loop restart、startup project autosave、出力device失敗時safe stop/temp cleanupを保全する。
+
+**統合入力・source hardening:** `full-release-audio-hardening-20260821.md`。再現可能な非debug release、音声I/O資源境界、iOS/Kotlin Native lifecycle、供給網・復旧sourceを保全する。GitHub administrator ruleset、実device audio、provider、Humanはsourceだけでは完了扱いにしない。
+
+**完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD／波形長押しから最大1秒の精密窓を開き、START/END数値ホイールとframe/1 ms/10 ms精度をAndroid/Windowsへ実装。PR #37としてmainへマージ済み。物理device/Human境界は未昇格。
 
 **完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 
@@ -41,7 +49,11 @@
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
-- `precision-trim-long-press-number-wheel-20260820.md`（現在の選択）
+- `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
+- `full-release-audio-hardening-20260821.md`（統合入力）
+- `spotify-connect-ux-lifecycle-20260823.md`（統合入力）
+- `cross-platform-production-continuity-20260823.md`（統合入力）
+- `../completed/session-integration-20260823.md`（完了済み統合plan）
 
 ## Selection protocol
 

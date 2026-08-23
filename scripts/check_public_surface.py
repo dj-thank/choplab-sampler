@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 import subprocess
 import sys
@@ -43,13 +44,26 @@ SECRET_PATTERNS = [
 ]
 
 
-def public_candidate_paths() -> list[PurePosixPath]:
-    result = subprocess.run(
-        ["git", "ls-files", "-co", "--exclude-standard", "-z"],
+def run_git(arguments: list[str]) -> bytes:
+    return subprocess.run(
+        ["git", *arguments],
         check=True,
         capture_output=True,
-    )
-    return [PurePosixPath(raw.decode("utf-8")) for raw in result.stdout.split(b"\0") if raw]
+    ).stdout
+
+
+def public_candidate_paths() -> list[PurePosixPath]:
+    result = run_git(["ls-files", "-co", "--exclude-standard", "-z"])
+    return [PurePosixPath(raw.decode("utf-8")) for raw in result.split(b"\0") if raw]
+
+
+def historical_paths() -> list[PurePosixPath]:
+    paths: list[PurePosixPath] = []
+    for raw_line in run_git(["rev-list", "--objects", "--all"]).splitlines():
+        parts = raw_line.decode("utf-8", errors="replace").split(" ", maxsplit=1)
+        if len(parts) == 2 and parts[1]:
+            paths.append(PurePosixPath(parts[1]))
+    return paths
 
 
 def suspicious_path(path: PurePosixPath) -> str | None:
@@ -80,7 +94,43 @@ def scan_zip(path: PurePosixPath) -> list[str]:
     return findings
 
 
+def scan_text(label: str, content: str) -> list[str]:
+    return [
+        f"{label}: secret-shaped content matched {pattern.pattern!r}"
+        for pattern in SECRET_PATTERNS
+        if pattern.search(content)
+    ]
+
+
+def scan_history() -> list[str]:
+    findings: list[str] = []
+    for path in historical_paths():
+        reason = suspicious_path(path)
+        if reason:
+            findings.append(f"git history path {path}: {reason}")
+
+    # A textual patch includes every textual addition/deletion reachable from all
+    # refs without checking out or materializing historical files. Binary payloads
+    # are intentionally not printed; their suspicious names are covered above.
+    history_patch = run_git(
+        ["log", "--all", "--format=", "--no-ext-diff", "--no-textconv", "-p"],
+    ).decode("utf-8", errors="replace")
+    findings.extend(scan_text("git history patch", history_patch))
+    return findings
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="also scan reachable historical paths and text patches",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     paths = public_candidate_paths()
     findings: list[str] = []
     for path in paths:
@@ -94,9 +144,10 @@ def main() -> int:
             content = Path(path).read_bytes().decode("utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        for pattern in SECRET_PATTERNS:
-            if pattern.search(content):
-                findings.append(f"{path}: secret-shaped content matched {pattern.pattern!r}")
+        findings.extend(scan_text(str(path), content))
+
+    if args.history:
+        findings.extend(scan_history())
 
     if findings:
         print("PUBLIC SURFACE CHECK: FAIL", file=sys.stderr)
@@ -104,8 +155,9 @@ def main() -> int:
             print(f"- {finding}", file=sys.stderr)
         return 1
 
+    scope = "current tree and reachable history" if args.history else "current tree"
     print(
-        f"PUBLIC SURFACE CHECK: PASS ({len(paths)} public candidates; "
+        f"PUBLIC SURFACE CHECK: PASS ({len(paths)} public candidates; {scope}; "
         "no credential, signing, or audio candidates)"
     )
     return 0

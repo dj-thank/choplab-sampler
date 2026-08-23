@@ -1,6 +1,37 @@
 # Project state
 
-## Current snapshot — 2026-08-19
+## Current snapshot — 2026-08-24 integrated local candidate
+
+This snapshot supersedes the two source-branch snapshots below. It records one local integration candidate only; it does not change public `main`, publish a release, authenticate Spotify, or authorize recording.
+
+- Observed at: `2026-08-24T00:10:19+09:00`.
+- Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-session-integration-20260823`, `codex/choplab-session-integration`.
+- Product source: merge commit `6914e3c4d7bfabc85b43eaadfcfaa8de69072739`, tree `94fbc43839d2d74ae383ac973b456ceb4fea9dca`; parents `261d034` (full hardening + Spotify UX) and `df61bb5` (cross-platform production continuity); merge base `9a4e9edc`.
+- Integrated behavior: reproducible release/resource/security hardening, Spotify metadata/control-only panel and lifecycle, source recording→CHOP routing, vocal Beat-loop restart, startup-project autosave, and output-device failure stop/temp cleanup coexist. Only `docs/VALIDATION.md` and `plans/active/README.md` conflicted; both histories were retained.
+- Fresh local gate: clean 184-task Gradle gate PASS; Android unit 226 / 44 suites, JVM-core 49 / 8 suites, desktop 66 / 15 suites, failures/errors/skips 0; Android Lint fatal/error 0 and warnings 6. Configured project validation, 19 Python release-policy tests, public-surface 355 candidates, 9-region UI contract, Android release policy, Windows ProductVersion, SBOM, and `git diff --check` all PASS.
+- Source-bound receipt: [`outputs/session-integration-receipt-6914e3c4d7bf.json`](../outputs/session-integration-receipt-6914e3c4d7bf.json). Debug APK SHA-256 `797531839DEBF5B3E589BB56038366AFDCBE47754707332E80785E5EEE206DE6`; test APK `13A7E1EC8312DC2226AFA419312D65A1DF5C500601739B6C4BB05C1C193C1191`; unsigned release candidate `9F0D4CCF1FB9D024A2243C5C7645BE72976C80B7FEBD8E2A952C9B65B81F1325`; Windows EXE `2DCBA5BED76C97E4D2EF85B5F18304C325653ADF4BFFA66A77A443EB80C2622A`; desktop JAR `4EC3C580CAEE07FA55DDE52D4FF0C91E4642F07AF375B59AF17F4E935058FA5C`.
+- Windows runtime: exact packaged launcher PID `29280` produced responding UI PID `25408`, title `ChopLab — おとひろい PC`; both exact-path processes were stopped. No Client ID, token, audio, or provider operation was used.
+- Android device evidence: integrated `app`, `shared`, `jvm-core`, root build, settings, and Gradle-property Git objects exactly equal accepted source `8306ed2`; integrated host APK/test APK hashes exactly equal its host and installed read-back hashes. The accepted receipt proves data-preserving install, package/version/signer, 6 deterministic instrumentation tests, autosave preservation, cold launch with zero fatal/ANR/crash, and phone-state restoration. The device is not currently attached, so no new mutation was attempted.
+- Review: local parent Standards and Spec passes report zero unresolved findings. The previous Luna probe was rejected for writable effective sandbox; no substitute child model was used.
+- Gate ceiling: `LOCAL_PASS` plus scoped `DEVICE_PASS` for the exact Android APK/test APK bytes and recorded non-recording scope only. Provider, public, physical audio/latency, accessibility speech, and `HUMAN_GO` are not reached.
+
+## Input snapshot — 2026-08-23 cross-platform production continuity
+
+This source-branch snapshot remains historical input to the integrated current snapshot above. Historical device/public receipts below remain scoped to their own revisions.
+
+- Observed at: `2026-08-23T20:28:30+09:00`.
+- Implementation worktree: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-cross-platform-polish-20260823`; branch `codex/choplab-cross-platform-polish`; reviewed source commit `31061be2cc8f82327a2881f5dcc56c54b9753482`, tree `27c3c22be94716d7315231ac4c5f791f951dd196`, based on `9a4e9edc2686914c28c91b2d614dfb95281935c2`. The dirty canonical checkout and the separate Spotify/full-hardening branch remain untouched.
+- Selected plan: [`plans/active/cross-platform-production-continuity-20260823.md`](../plans/active/cross-platform-production-continuity-20260823.md). The direction matrix selected production-state continuity over broad reskin, feature expansion, or hardware-dependent native audio work.
+- Windows parity candidate: recorder dependencies now use the existing `DesktopAudioRecorder` seam; decoded source recording publishes a fresh `ProjectLaunchTarget.CHOP`; successful vocal recording restarts and retains the selected Beat loop; startup-file sessions skip stale recovery without disabling subsequent three-generation autosave.
+- TDD: the three primary public-controller seams plus the review-found playback-device failure seam were each observed RED before their minimal implementation and GREEN afterward. Final results are 225 Android unit tests / 44 suites, 44 JVM-core tests / 8 suites, and 39 desktop tests / 12 suites, with failures/errors/skips 0. Android Lint has 0 fatal, 0 errors, and 4 warnings.
+- Local gate: `:desktop:test :jvm-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :desktop:packageWindows` BUILD SUCCESSFUL (91 tasks); configured `scripts/validate_project.sh` PASS; public-surface scan PASS over 322 candidates; UI contract PASS (`9` regions, exact `4`, semantic `4`, adapted `1`); `git diff --check` PASS.
+- Source-bound artifacts: [`outputs/build-provenance-31061be2cc8f.json`](../outputs/build-provenance-31061be2cc8f.json) binds the exact source commit/tree, debug APK 30,937,621 bytes / SHA-256 `040570008F4B2CD9CA4E27419C321AB830E07B8B47705F1CD383CD8DC4CDF33B`, test APK 10,564,866 bytes / SHA-256 `13A7E1EC8312DC2226AFA419312D65A1DF5C500601739B6C4BB05C1C193C1191`, package `com.choplab.sampler` `0.16.1 (25)`, and signer SHA-256 `C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587`. [`outputs/windows-provenance-31061be2cc8f.json`](../outputs/windows-provenance-31061be2cc8f.json) binds packaged `ChopLab.exe`, 449,024 bytes / SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A`.
+- Final Windows runtime smoke: tracked launcher PID `41504` produced responding child PID `22664` with title `ChopLab — おとひろい PC`; both exact-path processes were stopped after the smoke. No audio endpoint, recording, or Spotify operation was used.
+- Review: local parent Standards/Spec two-pass found one shared issue—Beat output creation could throw after the vocal recorder opened. A RED regression now proves that the recorder is stopped asynchronously, the temporary take is deleted, loop state returns idle, and actionable Windows-output guidance is shown. Final focused `:desktop:test :desktop:packageWindows` passed with 39 tests.
+- Device boundary: this task is the Pixel/ADB owner, but bounded preflight and post-local-gate recheck both returned no attached device at `2026-08-23T20:03:47+09:00` and `2026-08-23T20:27:57+09:00`. No install or device mutation was attempted; repeated polling stops here. Another branch's receipt is not promoted.
+- Gate ceiling: `LOCAL_PASS`. Fresh `DEVICE_PASS` is explicitly blocked on Pixel reconnection and remains separate from physical audio, recording, TalkBack speech, provider, public, and `HUMAN_GO`.
+
+## Previous restart snapshot — 2026-08-19
 
 This is the current restart snapshot. The dated sections below are a historical validation ledger; they remain useful as provenance, but they do not override this section when a revision or gate differs.
 
@@ -44,6 +75,20 @@ The isolated branch `codex/choplab-precision-trim` is based on clean main `923d7
 - Current terminal launch: the v0.16.1 app-image replaced the prior v0.16.0 window. Tracked launcher PID `35212`; UI PID `36820` is responding with title `ChopLab — おとひろい PC` from the reviewed worktree app-image.
 - Gate ceiling: `LOCAL_PASS` plus scoped API 36 emulator interaction/instrumentation. Physical touch/haptics, audible boundary quality, TalkBack speech, provider/public Release, iOS native feature parity, and `HUMAN_GO` are not yet promoted.
 - Review: local parent two-pass from fixed point `923d7bb` (no substitute child model). Standards found absolute-frame delta overflow and a 38 dp precision touch target; both are fixed with shared saturated setting, a regression test, and 48 dp controls. Final Standards findings 0; final Spec findings 0.
+
+## Windows Spotify Connect UX lifecycle — 2026-08-23
+
+The single integration branch `codex/choplab-spotify-connect` is based on `origin/main` merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`, contains the merged release/audio hardening branch, and has documentation-only commits after the source/device receipt commit `8306ed2114398a0d1adc89a9a4a653c1db409c1f`, without touching the dirty canonical checkout.
+
+- The panel now has explicit `Client ID未設定 → 接続準備完了 → 認証中 → 接続済み → 接続エラー` state, a current-process-only Client ID path, clear Development Mode setup guidance, cancel/retry actions, and polite accessibility announcements.
+- Cancel, disconnect, and Client ID reconfiguration invalidate an OAuth lifecycle epoch; an outstanding callback/token exchange cannot reconnect the session or restore stale metadata after the user cancels or disconnects.
+- Current playback handles HTTP 204 by clearing stale display state. Saved-library responses distinguish an empty library from malformed provider data. 401/403/404/429/5xx guidance directs the user to re-login, Premium/allowlist/scopes, a Connect device, a bounded retry, or a later retry as appropriate.
+- Malformed environment Client IDs now start unconfigured, provider denial/cancellation is distinct from configuration failure, and default-browser, loopback-bind, and authentication-network failures each identify the recovery boundary. The panel shows an explicit library summary instead of a blank empty list and clears the entered Client ID after memory-only configuration.
+- The provider still uses Authorization Code with PKCE, an explicit `127.0.0.1` loopback callback, memory-only access/refresh tokens, and no Client Secret UI/persistence. Callback pages now set `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+- Cross-platform review hardening also bounds unknown-size iOS imports while they stream and rejects implausible Android decoder sample-rate/channel metadata before it reaches PCM mixing.
+- Final local validation: clean 184-task full Gradle gate PASS; Android 226 tests, JVM-core 49 tests, final desktop 62 tests, Python 19 tests, Android Lint, project validator, current/history public-surface scan, Android release metadata check, Windows app-image identity/denylist, SBOM generation, and packaged hidden launch all PASS. Windows `ChopLab.exe` SHA-256 is `2DCBA5BED76C97E4D2EF85B5F18304C325653ADF4BFFA66A77A443EB80C2622A`; final packaged `desktop.jar` SHA-256 is `85A51849256511F45028E4D05946F7AF4222146D4B8555493553D736A6A31814`.
+- A sealed fixed-diff security review closed 48/48 files with complete coverage and zero reportable findings. Its sole suppressed self-only iOS resource candidate was fixed anyway.
+- Pixel `5A121JEBF08094` is now a scoped `DEVICE_PASS`: accepted receipt `work/device-evidence/20260823-025301-8306ed21/manifest.json` plus `launch-smoke.json` bind clean source `8306ed2`, app/test APK hashes and signer, `adb install -r`, six instrumentation tests, cold launch, autosave preservation, and foreground/rotation/volume restoration. The initial parser-only false stop is retained separately and not promoted. Browser OAuth, real Premium/allowlist/Connect-device behavior, physical audio quality, screen-reader speech, publication, and `HUMAN_GO` are not claimed.
 
 ## Windows Desktop full rebuild merged — 2026-08-20
 

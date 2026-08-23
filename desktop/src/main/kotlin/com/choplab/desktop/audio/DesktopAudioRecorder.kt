@@ -1,5 +1,7 @@
 package com.choplab.desktop.audio
 
+import com.choplab.sampler.audio.RecordingBudget
+import com.choplab.sampler.audio.RecordingStopReason
 import com.choplab.sampler.audio.WavFileWriter
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,6 +37,10 @@ internal class DesktopTargetLineRecorder(
             val capture = lineFactory()
             val target = capture.line
             val format = capture.format
+            require(format.sampleSizeInBits == 16 && !format.isBigEndian) {
+                "PCM-16 little-endian形式が必要です"
+            }
+            require(format.channels in 1..2) { "モノラルまたはステレオ録音が必要です" }
             file.parentFile?.mkdirs()
             target.open(format)
             target.start()
@@ -68,19 +74,43 @@ internal class DesktopTargetLineRecorder(
         return when {
             timedOut -> Result.failure(IllegalStateException("録音の停止に時間がかかっています"))
             error != null -> Result.failure(error)
-            file != null && file.isFile && file.length() > 44L -> Result.success(file)
+            file != null && file.isFile && file.length() > WAV_HEADER_BYTES -> Result.success(file)
             else -> Result.failure(IllegalStateException("録音された音声がありません"))
         }
     }
 
     private fun record(target: TargetDataLine, format: AudioFormat, file: File) {
-        val buffer = ByteArray(format.sampleRate.toInt() * 2 / 10)
+        val sampleRate = format.sampleRate.toInt()
+        val channels = format.channels
+        val frameBytes = channels * Short.SIZE_BYTES
+        val requestedBufferBytes = sampleRate * frameBytes / 10
+        val bufferSize = (requestedBufferBytes / frameBytes).coerceAtLeast(1) * frameBytes
+        val buffer = ByteArray(bufferSize)
+        val budget = RecordingBudget(sampleRate = sampleRate, channelCount = channels)
+
         try {
-            WavFileWriter(file, format.sampleRate.toInt(), format.channels).use { writer ->
+            WavFileWriter(file, sampleRate, channels).use { writer ->
                 while (running.get()) {
                     val read = target.read(buffer, 0, buffer.size)
-                    if (read > 0) writer.writePcm16Bytes(buffer, read)
-                    if (read < 0 && running.get()) error("音声入力エラー: $read")
+                    when {
+                        read < 0 && running.get() -> error("音声入力エラー: $read")
+                        read <= 0 -> continue
+                        read % frameBytes != 0 -> error("音声入力に不完全なPCMフレームがあります")
+                    }
+
+                    val decision = budget.decide(read, file.usableSpace.coerceAtLeast(0L))
+                    if (decision.writableBytes > 0) {
+                        writer.writePcm16Bytes(buffer, decision.writableBytes)
+                        budget.commit(decision.writableBytes)
+                    }
+                    when (decision.stopAfterWrite) {
+                        RecordingStopReason.DURATION_LIMIT -> {
+                            running.set(false)
+                            break
+                        }
+                        RecordingStopReason.LOW_DISK -> error("録音用の空き容量が不足しています")
+                        null -> Unit
+                    }
                 }
             }
         } catch (throwable: Throwable) {
@@ -101,6 +131,7 @@ internal class DesktopTargetLineRecorder(
 
     private companion object {
         const val STOP_TIMEOUT_MS = 2_000L
+        const val WAV_HEADER_BYTES = 44L
     }
 }
 

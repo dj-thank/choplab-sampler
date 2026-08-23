@@ -7,6 +7,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 kotlinc \
+  "$ROOT"/shared/src/commonMain/kotlin/com/choplab/sampler/format/*.kt \
   "$ROOT"/shared/src/commonMain/kotlin/com/choplab/sampler/model/*.kt \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/SamplerPlaybackEngine.kt" \
   "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/VoicePlaybackCursor.kt" \

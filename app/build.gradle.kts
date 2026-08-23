@@ -3,6 +3,22 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val choplabVersion = providers.gradleProperty("choplabVersion").orElse("0.0.0-dev")
+val choplabBuildNumber = providers.gradleProperty("choplabBuildNumber")
+    .map { value -> value.toInt() }
+    .orElse(1)
+
+val releaseStorePath = providers.environmentVariable("CHOPLAB_ANDROID_KEYSTORE").orNull
+val releaseStorePassword = providers.environmentVariable("CHOPLAB_ANDROID_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("CHOPLAB_ANDROID_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("CHOPLAB_ANDROID_KEY_PASSWORD").orNull
+val releaseSigningAvailable = listOf(
+    releaseStorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.choplab.sampler"
     compileSdk = 36
@@ -11,16 +27,35 @@ android {
         applicationId = "com.choplab.sampler"
         minSdk = 29
         targetSdk = 36
-        versionCode = 25
-        versionName = "0.16.1"
+        versionCode = choplabBuildNumber.get()
+        versionName = choplabVersion.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        if (releaseSigningAvailable) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStorePath))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
+            isDebuggable = false
             isMinifyEnabled = false
+            if (releaseSigningAvailable) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
