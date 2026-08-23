@@ -75,15 +75,20 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class DesktopSamplerController(
     private val player: DesktopSamplerAudioEngine,
-    private val microphone: DesktopMicrophoneRecorder = DesktopMicrophoneRecorder(),
-    private val systemAudio: DesktopSystemAudioRecorder = DesktopSystemAudioRecorder(),
+    private val microphone: DesktopAudioRecorder = DesktopMicrophoneRecorder(),
+    private val systemAudio: DesktopAudioRecorder = DesktopSystemAudioRecorder(),
     private val autosaveStore: AtomicProjectStore? = defaultAutosaveStore(),
     private val autosaveDelayMillis: Long = 900L,
+    private val recoverAutosaveOnStart: Boolean = true,
 ) : SamplerDeckController, AutoCloseable {
     private val mutableState = MutableStateFlow(
         SamplerUiState(
-            isLoading = autosaveStore != null,
-            statusMessage = if (autosaveStore != null) "前回の制作を確認しています" else "音声を読み込むか録音してください",
+            isLoading = autosaveStore != null && recoverAutosaveOnStart,
+            statusMessage = if (autosaveStore != null && recoverAutosaveOnStart) {
+                "前回の制作を確認しています"
+            } else {
+                "音声を読み込むか録音してください"
+            },
         ),
     )
     private val editHistory = EditHistory(maxEntries = 40)
@@ -108,7 +113,7 @@ class DesktopSamplerController(
     val state: StateFlow<SamplerUiState> = mutableState.asStateFlow()
 
     init {
-        if (autosaveStore != null) {
+        if (autosaveStore != null && recoverAutosaveOnStart) {
             recoverAutosave()
         } else {
             mutableState.value = freshProductionState()
@@ -224,20 +229,77 @@ class DesktopSamplerController(
             return
         }
         val before = mutableState.value
-        if (!beginRecordingSession(before, kind).recordingSession.isActive) {
+        val prepared = beginRecordingSession(before, kind)
+        if (!prepared.recordingSession.isActive) {
             setStatus("録音を開始できません")
             return
         }
-        stopAllSounds()
+        val vocalLoopPadIndex = if (kind == RecordingKind.VOCAL_OVERDUB) {
+            before.loopingPadIndex
+                ?.takeIf { index -> before.pads.getOrNull(index)?.isAssigned == true }
+                ?: before.pads.firstOrNull { pad -> pad.isAssigned && pad.playMode == PadPlayMode.LOOP }?.globalIndex
+                ?: return setStatus("先にビートPADを選び「ビートをループ」を開始してください")
+        } else {
+            null
+        }
+        if (vocalLoopPadIndex == null) stopAllSounds()
         val output = File(
             File(System.getProperty("java.io.tmpdir"), "ChopLab/recordings"),
             "${kind.name.lowercase()}-${Instant.now().toEpochMilli()}.wav",
         )
-        mutableState.value = beginRecordingSession(mutableState.value, kind)
+        mutableState.value = prepared
         recorderFor(kind).start(output).onSuccess {
-            mutableState.update { observeRecordingSession(it, kind).copy(statusMessage = "録音中です。停止ボタンで素材にします") }
+            val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
+            val loopPlaybackFailure = if (loopPad != null) {
+                stopAllSounds()
+                runCatching { player.triggerPad(loopPad, forceLoop = true) }.exceptionOrNull()
+            } else {
+                null
+            }
+            if (loopPlaybackFailure != null) {
+                stopRecordingAfterPlaybackFailure(kind, output, loopPlaybackFailure)
+                return@onSuccess
+            }
+            mutableState.update {
+                observeRecordingSession(it, kind).copy(
+                    loopingPadIndex = loopPad?.globalIndex ?: it.loopingPadIndex,
+                    loopPlayheadFrame = loopPad?.startFrame ?: it.loopPlayheadFrame,
+                    statusMessage = if (loopPad != null) {
+                        "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存"
+                    } else {
+                        "録音中です。停止ボタンで素材にします"
+                    },
+                )
+            }
         }.onFailure { error ->
             mutableState.update { failRecordingSession(it, kind).copy(statusMessage = "録音開始失敗: ${error.message ?: error.javaClass.simpleName}") }
+        }
+    }
+
+    private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, output: File, error: Throwable) {
+        val message = "ビートを開始できないため声の録音を停止しました。Windowsの出力デバイスを確認してください: " +
+            (error.message ?: error.javaClass.simpleName)
+        mutableState.update { state ->
+            state.copy(
+                recordingSession = (state.recordingSession as? RecordingSession.Active)
+                    ?.copy(phase = RecordingPhase.STOPPING)
+                    ?: state.recordingSession,
+                loopingPadIndex = null,
+                loopPlayheadFrame = -1,
+                statusMessage = message,
+            )
+        }
+        ioExecutor.execute {
+            val ownedFile = runCatching { recorderFor(kind).stop().getOrThrow() }.getOrNull()
+            runCatching { ownedFile?.delete() }
+            runCatching { output.delete() }
+            mutableState.update {
+                endRecordingSession(it, kind).copy(
+                    loopingPadIndex = null,
+                    loopPlayheadFrame = -1,
+                    statusMessage = message,
+                )
+            }
         }
     }
 
@@ -273,6 +335,8 @@ class DesktopSamplerController(
                                 rangeStartFrame = 0,
                                 rangeEndFrame = audio.frameCount,
                                 sourcePlayheadFrame = 0,
+                                projectLaunchTarget = ProjectLaunchTarget.CHOP,
+                                projectLaunchRevision = nextProjectLaunchRevision(),
                                 statusMessage = if (kind == RecordingKind.SOURCE_SYSTEM_AUDIO) {
                                     "端末音声録音を読み込みました。チョップで音を切ってください"
                                 } else {

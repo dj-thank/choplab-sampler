@@ -6,9 +6,13 @@
 
 ## Current selection
 
-**LOCAL/DEVICE完了・外部gate分離:** `spotify-connect-ux-lifecycle-20260823.md`。Windows `:desktop` のSpotify metadata/control-only連携、release/audio hardening統合、OAuth lifecycle、認証cancel、disconnect優先、接続状態／現在再生／ライブラリ表示、境界別エラー復帰、keyboard/screen-reader向けsemantics、全test/package/security review、serial `5A121JEBF08094` Pixel 9aへのデータ保持 `adb install -r` と6件instrumentationを単一ブランチで閉じた。実Spotify account/provider、公開、Human評価は別gate。
+**進行中:** `session-integration-20260823.md`。`codex/choplab-spotify-connect@261d034`をbaseに、`codex/choplab-cross-platform-polish@df61bb5`を統合し、full release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへまとめる。targetはfresh `LOCAL_PASS`。Pixel/device evidenceはexact APK bytesとの一致かfresh runが確認できたscopeだけを別欄で扱い、provider/public/Humanへは昇格しない。
 
-**source統合済み・外部ゲート分離:** `full-release-audio-hardening-20260821.md`。再現可能な非debug release、音声I/O資源境界、iOS/Kotlin Native lifecycle、供給網・復旧のsource実装とCI evidenceを本ブランチへ統合する。GitHub administrator ruleset、実device audio、Spotify provider、Human評価はsourceだけでは完了扱いにしない。
+**統合入力・LOCAL/DEVICE receipt保全:** `spotify-connect-ux-lifecycle-20260823.md`。source/device receipt `8306ed2`のOAuth lifecycle、provider-state UI、release/audio hardening、Pixel 9a data-preserving instrumentationを保全する。実Spotify account/provider、公開、Human評価は別gate。
+
+**統合入力・LOCAL完了:** `cross-platform-production-continuity-20260823.md`。reviewed source `31061be`のsource録音後CHOP遷移、VOICE Beat-loop restart、startup project autosave、出力device失敗時safe stop/temp cleanupを保全する。
+
+**統合入力・source hardening:** `full-release-audio-hardening-20260821.md`。再現可能な非debug release、音声I/O資源境界、iOS/Kotlin Native lifecycle、供給網・復旧sourceを保全する。GitHub administrator ruleset、実device audio、provider、Humanはsourceだけでは完了扱いにしない。
 
 **完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD／波形長押しから最大1秒の精密窓を開き、START/END数値ホイールとframe/1 ms/10 ms精度をAndroid/Windowsへ実装。PR #37としてmainへマージ済み。物理device/Human境界は未昇格。
 
@@ -46,7 +50,10 @@
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
 - `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
-- `full-release-audio-hardening-20260821.md`（現在の選択）
+- `full-release-audio-hardening-20260821.md`（統合入力）
+- `spotify-connect-ux-lifecycle-20260823.md`（統合入力）
+- `cross-platform-production-continuity-20260823.md`（統合入力）
+- `session-integration-20260823.md`（現在の選択）
 
 ## Selection protocol
 

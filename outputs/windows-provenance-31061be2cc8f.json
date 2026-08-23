@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-08-23T11:28:30Z",
+  "source": {
+    "head": "31061be2cc8f82327a2881f5dcc56c54b9753482",
+    "tree": "27c3c22be94716d7315231ac4c5f791f951dd196",
+    "trackedCleanAtBuild": true
+  },
+  "artifact": {
+    "path": "desktop/build/windows-app-image/ChopLab/ChopLab.exe",
+    "sizeBytes": 449024,
+    "lastWriteTimeUtc": "2026-08-23T11:26:40.0611062Z",
+    "sha256": "40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A"
+  },
+  "build": {
+    "command": ":app:assembleDebug :desktop:packageWindows --rerun-tasks --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain",
+    "result": "BUILD_SUCCESSFUL",
+    "actionableTasks": 62
+  },
+  "runtimeSmoke": {
+    "launcherPid": 41504,
+    "uiPid": 22664,
+    "responding": true,
+    "windowTitle": "ChopLab — おとひろい PC",
+    "exactProcessTreeStoppedAfterSmoke": true
+  },
+  "excluded": [
+    "audio playback quality",
+    "recording",
+    "device audio capture",
+    "Spotify authentication",
+    "provider operations",
+    "public release",
+    "Human approval"
+  ],
+  "gate": "LOCAL_PASS"
+}
