@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**進行中:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにする。target gateは`LOCAL_PASS`とAPI 36 emulatorで、物理Pixelは別lease・別task。
+**進行中:** `cross-platform-production-continuity-20260823.md`。AndroidとWindows EXEの共通4工程を基準に、Windowsのsource録音後CHOP遷移、Beatに合わせたVOICE録音、startup project sessionのautosave継続をpublic controller seamでRED→GREENする。まず`LOCAL_PASS`を閉じ、Pixelが再接続した場合だけデータ保持型の非録音device sliceを別receiptで行う。
+
+**完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにした。`v0.16.1-preview.1`へ束縛されたlocal/API 36/public evidenceは保全するが、今回のbranchのdevice evidenceには流用しない。
 
 **完了済み:** `../completed/android-production-continuity-20260820.md`。起動時の制作復元／手動OPEN、CHOPと同じ4×4 PAD素材面を保つBEAT、新規制作だけの初期ドラム、演奏として成立するスクラッチを接続。PR #35、全PR/merged-main CI、`v0.16.0-preview.1` public Releaseとasset read-backまで完了。物理device/Human境界は未昇格。
 
@@ -41,7 +43,8 @@
 - `windows-desktop-ui-fidelity-20260819.md`（shared UI移植の完了済み履歴）
 - `windows-wasapi-endpoint-probe-20260820.md`（診断完了、streamingは外部待ち）
 - `../completed/android-production-continuity-20260820.md`（完了済み）
-- `precision-trim-long-press-number-wheel-20260820.md`（現在の選択）
+- `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
+- `cross-platform-production-continuity-20260823.md`（現在の選択）
 
 ## Selection protocol
 

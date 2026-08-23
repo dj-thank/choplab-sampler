@@ -1,15 +1,21 @@
 package com.choplab.desktop
 
 import com.choplab.desktop.audio.JavaSoundWavPlayer
+import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.sampler.audio.PatternRenderer
+import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.persistence.AtomicProjectStore
 import java.nio.file.Files
+import java.io.File
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -197,6 +203,82 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun sourceRecordingRoutesTheProductionToChopAfterDecode() {
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            val launchRevision = controller.state.value.projectLaunchRevision
+
+            controller.toggleMicrophoneRecording()
+            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            controller.toggleMicrophoneRecording()
+            awaitCondition { controller.state.value.currentAudio != null }
+
+            assertEquals(ProjectLaunchTarget.CHOP, controller.state.value.projectLaunchTarget)
+            assertTrue(controller.state.value.projectLaunchRevision > launchRevision)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun vocalRecordingRestartsAndKeepsTheSelectedBeatLoopActive() {
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            val triggersBeforeRecording = engine.triggered.size
+
+            controller.toggleVocalRecording()
+
+            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(engine.triggered.size > triggersBeforeRecording)
+            assertEquals(loopPad, engine.triggered.last().first.globalIndex)
+            assertEquals(true, engine.triggered.last().second)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun startupProjectPolicySkipsRecoveryWithoutDisablingFutureAutosave() {
+        val directory = Files.createTempDirectory("choplab-startup-autosave").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 117f))
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            assertEquals(92f, controller.state.value.bpm)
+            assertEquals(false, controller.state.value.isLoading)
+
+            controller.setBpm(139f)
+
+            awaitCondition { runCatching { store.load()?.bpm == 139f }.getOrDefault(false) }
+            assertEquals(139f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun padControlsAndLoopCommandsReachTheDesktopAudioPort() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -247,5 +329,32 @@ class DesktopSamplerControllerTest {
         override fun stopPad(index: Int) = Unit
         override fun stopAll() { isSourcePlaying = false }
         override fun close() = Unit
+    }
+
+    private class FakeRecorder : DesktopAudioRecorder {
+        private var output: File? = null
+        override var isRecording: Boolean = false
+            private set
+
+        override fun start(file: File): Result<Unit> {
+            output = file
+            isRecording = true
+            return Result.success(Unit)
+        }
+
+        override fun stop(): Result<File> {
+            val file = output ?: return Result.failure(IllegalStateException("recording was not started"))
+            file.parentFile?.mkdirs()
+            val pcm = ByteArray(960) { index -> if (index % 4 < 2) 0x20 else 0xE0.toByte() }
+            WavFileWriter(file, sampleRate = 48_000, channelCount = 1).use { writer ->
+                writer.writePcm16Bytes(pcm, pcm.size)
+            }
+            isRecording = false
+            return Result.success(file)
+        }
+
+        override fun close() {
+            isRecording = false
+        }
     }
 }
