@@ -2,11 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Full hardening + Spotify Connect + production continuity integration — 2026-08-23
+## Full hardening + Spotify Connect + production continuity integration — 2026-08-24
 
-- Integration worktree: `codex/choplab-session-integration`, base `261d034c52ebf6d767cd9a20f31c866e2fed1100`, merged input `df61bb50a8003e2d0417ec47955ea1dc9d52f0e0`, merge base `9a4e9edc2686914c28c91b2d614dfb95281935c2`.
-- The two source receipts below remain historical inputs until the integrated source receives its own clean build, test, package, artifact, runtime, and review receipts.
-- Current gate while the merge is unresolved: `NOT_YET_LOCAL_PASS`. No device/provider/public/Human promotion.
+- Integration source: `codex/choplab-session-integration@6914e3c4d7bfabc85b43eaadfcfaa8de69072739`, tree `94fbc43839d2d74ae383ac973b456ceb4fea9dca`; base parent `261d034`, merged parent `df61bb5`, merge base `9a4e9edc`.
+- Merge resolution: implementation auto-merged; only this validation history and plan registry conflicted. Both source receipts were retained and `session-integration-20260823.md` became the single current plan.
+- Fresh clean Gradle gate: 184 tasks PASS. Android unit 226 / 44 suites, JVM-core 49 / 8 suites, desktop 66 / 15 suites; failures 0, errors 0, skipped 0. Android Lint fatal 0 / errors 0 / warnings 6. Debug, unsigned release, androidTest APK, Windows app-image, and combined CycloneDX SBOM built successfully.
+- Other local gates: configured Git Bash validation PASS; Python release/public policy 19/19 PASS; public-surface 355 current / 360 reachable-history candidates PASS; packaged desktop JAR 138-entry credential/signing/audio-name scan PASS; UI contract 9 regions (`exact 4 / semantic 4 / adapted 1`) and 3 states PASS; Android unsigned release policy `0.16.2 (26)` PASS; Windows ProductVersion `0.16.2` PASS; `git diff --check` PASS.
+- Integrated artifacts: `outputs/build-provenance-6914e3c4d7bf.json`, `outputs/windows-metadata-6914e3c4d7bf.json`, and `outputs/session-integration-receipt-6914e3c4d7bf.json`. Exact hashes are recorded in the integrated receipt.
+- Windows runtime: credential-free packaged launch responded with title `ChopLab — おとひろい PC`; exact launcher/UI process tree was stopped. No Spotify login/provider or audio operation occurred.
+- Device reconciliation: integrated Android/shared/JVM/build Git objects equal `8306ed2`; debug/test APK hashes equal that accepted Pixel host/install/read-back receipt exactly. Scoped receipt carries only data-preserving install/readback, package/version/signer, 6 instrumentation tests, autosave preservation, cold launch, and phone-state restoration. Current device is absent; no fresh install or mutation occurred.
+- Review: local parent Standards 0 / Spec 0; no substitute child model. The prior Luna packet remains rejected because effective sandbox was writable.
+- Gate: `LOCAL_PASS` plus scoped `DEVICE_PASS` for exact Android bytes. Provider, public, actual recording/audio quality, TalkBack speech, signed distribution, and Human gates remain unclaimed.
 
 ### Input receipt A: v0.16.2 Spotify Connect integrated local candidate
 

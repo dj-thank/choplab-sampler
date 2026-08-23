@@ -1,8 +1,23 @@
 # Project state
 
-## Current snapshot — 2026-08-23 cross-platform production continuity
+## Current snapshot — 2026-08-24 integrated local candidate
 
-This snapshot supersedes the older restart snapshot for the isolated Android/Windows polish task. Historical device/public receipts below remain scoped to their own revisions.
+This snapshot supersedes the two source-branch snapshots below. It records one local integration candidate only; it does not change public `main`, publish a release, authenticate Spotify, or authorize recording.
+
+- Observed at: `2026-08-24T00:10:19+09:00`.
+- Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-session-integration-20260823`, `codex/choplab-session-integration`.
+- Product source: merge commit `6914e3c4d7bfabc85b43eaadfcfaa8de69072739`, tree `94fbc43839d2d74ae383ac973b456ceb4fea9dca`; parents `261d034` (full hardening + Spotify UX) and `df61bb5` (cross-platform production continuity); merge base `9a4e9edc`.
+- Integrated behavior: reproducible release/resource/security hardening, Spotify metadata/control-only panel and lifecycle, source recording→CHOP routing, vocal Beat-loop restart, startup-project autosave, and output-device failure stop/temp cleanup coexist. Only `docs/VALIDATION.md` and `plans/active/README.md` conflicted; both histories were retained.
+- Fresh local gate: clean 184-task Gradle gate PASS; Android unit 226 / 44 suites, JVM-core 49 / 8 suites, desktop 66 / 15 suites, failures/errors/skips 0; Android Lint fatal/error 0 and warnings 6. Configured project validation, 19 Python release-policy tests, public-surface 355 candidates, 9-region UI contract, Android release policy, Windows ProductVersion, SBOM, and `git diff --check` all PASS.
+- Source-bound receipt: [`outputs/session-integration-receipt-6914e3c4d7bf.json`](../outputs/session-integration-receipt-6914e3c4d7bf.json). Debug APK SHA-256 `797531839DEBF5B3E589BB56038366AFDCBE47754707332E80785E5EEE206DE6`; test APK `13A7E1EC8312DC2226AFA419312D65A1DF5C500601739B6C4BB05C1C193C1191`; unsigned release candidate `9F0D4CCF1FB9D024A2243C5C7645BE72976C80B7FEBD8E2A952C9B65B81F1325`; Windows EXE `2DCBA5BED76C97E4D2EF85B5F18304C325653ADF4BFFA66A77A443EB80C2622A`; desktop JAR `4EC3C580CAEE07FA55DDE52D4FF0C91E4642F07AF375B59AF17F4E935058FA5C`.
+- Windows runtime: exact packaged launcher PID `29280` produced responding UI PID `25408`, title `ChopLab — おとひろい PC`; both exact-path processes were stopped. No Client ID, token, audio, or provider operation was used.
+- Android device evidence: integrated `app`, `shared`, `jvm-core`, root build, settings, and Gradle-property Git objects exactly equal accepted source `8306ed2`; integrated host APK/test APK hashes exactly equal its host and installed read-back hashes. The accepted receipt proves data-preserving install, package/version/signer, 6 deterministic instrumentation tests, autosave preservation, cold launch with zero fatal/ANR/crash, and phone-state restoration. The device is not currently attached, so no new mutation was attempted.
+- Review: local parent Standards and Spec passes report zero unresolved findings. The previous Luna probe was rejected for writable effective sandbox; no substitute child model was used.
+- Gate ceiling: `LOCAL_PASS` plus scoped `DEVICE_PASS` for the exact Android APK/test APK bytes and recorded non-recording scope only. Provider, public, physical audio/latency, accessibility speech, and `HUMAN_GO` are not reached.
+
+## Input snapshot — 2026-08-23 cross-platform production continuity
+
+This source-branch snapshot remains historical input to the integrated current snapshot above. Historical device/public receipts below remain scoped to their own revisions.
 
 - Observed at: `2026-08-23T20:28:30+09:00`.
 - Implementation worktree: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-cross-platform-polish-20260823`; branch `codex/choplab-cross-platform-polish`; reviewed source commit `31061be2cc8f82327a2881f5dcc56c54b9753482`, tree `27c3c22be94716d7315231ac4c5f791f951dd196`, based on `9a4e9edc2686914c28c91b2d614dfb95281935c2`. The dirty canonical checkout and the separate Spotify/full-hardening branch remain untouched.

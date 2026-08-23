@@ -64,15 +64,16 @@ The merge retains `shared/` as presentation/domain truth, `jvm-core/` as Android
 - [x] 2026-08-23 — Merge preview proved only two documentation conflicts.
 - [x] 2026-08-24 — Both conflicts resolved by preserving both receipt histories and selecting this integration plan; no marker remains.
 - [x] 2026-08-24 — Merged desktop, JVM-core, and Android unit suites passed before the merge commit.
-- [ ] Full local gate and source-bound artifacts.
-- [ ] Runtime/device evidence reconciliation.
-- [ ] Two-axis review and closeout.
+- [x] 2026-08-24 — Fresh clean 184-task gate, configured validation, Python policy tests, public-surface, UI contract, packaging, SBOM, and source-bound artifacts passed.
+- [x] 2026-08-24 — Packaged Windows runtime passed; exact Android source objects and APK/test APK bytes matched the accepted `8306ed2` device receipt, so only that bounded scope was carried.
+- [x] 2026-08-24 — Local-parent Standards and Spec reviews completed with zero unresolved findings; repo/PAD closeout remains.
 
 ## Discoveries
 
 - Implementation source auto-merges despite both branches editing `DesktopApp.kt` and `DesktopSamplerController.kt`; their changes are structurally compatible.
 - The conflicting docs represent two valid, disjoint receipt histories. The correct resolution is a new integration current state plus retained input receipts, not choosing one history.
 - Pixel is not currently attached, so fresh device execution is unavailable at integration start.
+- Integrated Android/shared/JVM/build inputs are Git-object-identical to accepted source `8306ed2`; debug and test APKs are also byte-identical to its installed read-back artifacts.
 
 ## Decision log
 
@@ -91,6 +92,16 @@ The merge retains `shared/` as presentation/domain truth, `jvm-core/` as Android
 - `:desktop:test :jvm-core:test :app:testDebugUnitTest --no-daemon --max-workers=1 --no-watch-fs --console=plain`
   - 2026-08-24 after one online CycloneDX plugin dependency resolution; subsequent cache is local.
   - `BUILD SUCCESSFUL` in 2m17s. No merge-source compile or test failure.
+- `clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :jvm-core:test :desktop:test :desktop:packageWindows cyclonedxBom --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain`
+  - 2026-08-24 from product source `6914e3c`.
+  - `BUILD SUCCESSFUL` in 4m05s; 184 tasks. Android 226, JVM-core 49, desktop 66; failures/errors/skips 0; lint errors 0.
+- Configured validation / Python policy / public-surface / UI contract / artifact verification
+  - 2026-08-24.
+  - PASS: Python 19, public candidates 355 current / 360 reachable history, packaged JAR 138 entries, UI regions 9, Android unsigned release `0.16.2 (26)`, Windows ProductVersion `0.16.2`.
+- Windows packaged runtime smoke
+  - responding title `ChopLab — おとひろい PC`; exact launcher/UI PIDs stopped; no credential/provider/audio operation.
+- Device receipt equivalence
+  - integrated `app`, `shared`, `jvm-core`, root build, settings, and Gradle properties equal `8306ed2` objects; host APK/test APK hashes equal accepted installed read-back hashes. Scoped `DEVICE_PASS` only for that exact receipt.
 
 ## Risks and rollback
 

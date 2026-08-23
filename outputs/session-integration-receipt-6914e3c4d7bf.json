@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-08-23T15:10:19.6155973Z",
+  "source": {
+    "head": "6914e3c4d7bfabc85b43eaadfcfaa8de69072739",
+    "tree": "94fbc43839d2d74ae383ac973b456ceb4fea9dca",
+    "branch": "codex/choplab-session-integration",
+    "parents": [
+      "261d034c52ebf6d767cd9a20f31c866e2fed1100",
+      "df61bb50a8003e2d0417ec47955ea1dc9d52f0e0"
+    ],
+    "mergeBase": "9a4e9edc2686914c28c91b2d614dfb95281935c2",
+    "trackedCleanAtBuild": true
+  },
+  "checks": {
+    "cleanGradle": {
+      "result": "PASS",
+      "tasks": 184,
+      "androidUnit": 226,
+      "androidSuites": 44,
+      "jvmCore": 49,
+      "jvmCoreSuites": 8,
+      "desktop": 66,
+      "desktopSuites": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "lintFatal": 0,
+      "lintErrors": 0,
+      "lintWarnings": 6
+    },
+    "configuredValidation": "PASS",
+    "pythonReleasePolicyTests": 19,
+    "publicSurfaceCandidates": 355,
+    "publicSurfaceHistoryCandidates": 360,
+    "publicSurfaceResult": "PASS",
+    "desktopJarEntryScan": "PASS_138_ENTRIES",
+    "uiContract": {
+      "result": "PASS",
+      "regions": 9,
+      "exact": 4,
+      "semantic": 4,
+      "adapted": 1,
+      "states": 3
+    },
+    "gitDiffCheck": "PASS",
+    "androidReleasePolicy": "PASS_UNSIGNED_CI_CANDIDATE",
+    "windowsVersion": "PASS_0.16.2"
+  },
+  "artifacts": {
+    "androidDebug": {
+      "bytes": 30970285,
+      "sha256": "797531839DEBF5B3E589BB56038366AFDCBE47754707332E80785E5EEE206DE6",
+      "package": "com.choplab.sampler",
+      "versionName": "0.16.2",
+      "versionCode": 26,
+      "signerSha256": "C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587"
+    },
+    "androidTest": {
+      "bytes": 10564866,
+      "sha256": "13A7E1EC8312DC2226AFA419312D65A1DF5C500601739B6C4BB05C1C193C1191",
+      "signerSha256": "C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587"
+    },
+    "androidRelease": {
+      "bytes": 23752115,
+      "sha256": "9F0D4CCF1FB9D024A2243C5C7645BE72976C80B7FEBD8E2A952C9B65B81F1325",
+      "signing": "intentionally unsigned local CI candidate"
+    },
+    "windowsExe": {
+      "bytes": 449024,
+      "sha256": "2DCBA5BED76C97E4D2EF85B5F18304C325653ADF4BFFA66A77A443EB80C2622A",
+      "productVersion": "0.16.2"
+    },
+    "desktopJar": {
+      "bytes": 305501,
+      "sha256": "4EC3C580CAEE07FA55DDE52D4FF0C91E4642F07AF375B59AF17F4E935058FA5C"
+    },
+    "combinedSbom": {
+      "bytes": 1048686,
+      "sha256": "76B933E1AB8D6DBEA9A305BE0B0E654143A35152F6F1C5A975ACDE34908372E4"
+    }
+  },
+  "windowsRuntimeSmoke": {
+    "launcherPid": 29280,
+    "uiPid": 25408,
+    "responding": true,
+    "title": "ChopLab — おとひろい PC",
+    "credentialsConfigured": false,
+    "exactProcessTreeStopped": true
+  },
+  "androidDeviceEquivalence": {
+    "referenceSource": "8306ed2114398a0d1adc89a9a4a653c1db409c1f",
+    "referenceTree": "717a22f8c5cac32644cd966476b1fe3b19ad6a49",
+    "equalGitObjects": {
+      "app": "b2ccf762073189d936ed0fc2b3b31a75e76515d1",
+      "shared": "45f6e6564839bd21bce67c2cbeb8f708f3baa3d5",
+      "jvmCore": "8f3545ab793b993663264ec15661751d63cfe552",
+      "rootBuild": "e741352dc87037967bd3cbcc94c8d6e24271a176",
+      "gradleProperties": "1e1b64ec03eb0eafcd0b44800e4d1b86bbd4931a",
+      "settings": "dcbdae58b001f33ad6ad3dc5eb4acfdf95318be1"
+    },
+    "referenceReceipt": {
+      "manifestSha256": "D355012CF96978D20B8E8691C3AAB731174112F76094EB545171C1FECE804536",
+      "launchSmokeSha256": "5D7B6109D98FFC119D66683E2B2601B92DF3A1EAC2C937010A2CA8D86D4E20C1"
+    },
+    "exactHostAndInstalledHashesMatch": true,
+    "instrumentation": "PASS_6_TESTS",
+    "autosavePreserved": true,
+    "phoneStateRestored": true,
+    "coldLaunch": "PASS_0_FATAL_ANR_CRASH",
+    "currentDeviceAttached": false,
+    "scope": "exact Android APK and test APK install/readback, package/version/signer, deterministic instrumentation, autosave preservation, cold launch, and phone-state restoration only",
+    "excluded": [
+      "recording or device-audio capture",
+      "physical audio quality or latency",
+      "TalkBack spoken output",
+      "Spotify account/provider/device behavior",
+      "Human acceptance"
+    ],
+    "gate": "SCOPED_DEVICE_PASS_EXACT_ANDROID_BYTES"
+  },
+  "verifiedGates": [
+    "LOCAL_PASS",
+    "DEVICE_PASS"
+  ],
+  "devicePassScope": "Android exact bytes only",
+  "unreached": [
+    "PROVIDER_PASS",
+    "PUBLIC_PASS",
+    "HUMAN_GO"
+  ]
+}
