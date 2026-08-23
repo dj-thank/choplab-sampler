@@ -11,10 +11,22 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.KeyShortcut
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.WindowsAudioDiagnostics
+import com.choplab.sampler.model.PendingSourceCommand
+import com.choplab.sampler.model.RecordingSession
+import com.choplab.sampler.model.visiblePads
 import com.choplab.sampler.ui.OtohiroiDeck
+import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
 import java.awt.FileDialog
 import java.awt.Frame
@@ -38,6 +50,13 @@ fun main(args: Array<String>) = application {
     var spotifyPanelVisible by remember { mutableStateOf(false) }
     val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
+    val padKeyOwner = remember { DesktopPadKeyOwner() }
+    val closeApplication = {
+        spotify.close()
+        audioDiagnostics.close()
+        controller.close()
+        exitApplication()
+    }
 
     LaunchedEffect(startupFile?.absolutePath) {
         startupFile?.let { file ->
@@ -51,17 +70,105 @@ fun main(args: Array<String>) = application {
                 placement = WindowPlacement.Maximized,
             )
         },
-        onCloseRequest = {
-            spotify.close()
-            audioDiagnostics.close()
-            controller.close()
-            exitApplication()
-        },
+        onCloseRequest = closeApplication,
         title = "ChopLab — おとひろい PC",
         icon = DesktopWindowIcon,
         resizable = true,
+        onPreviewKeyEvent = { event ->
+            when (event.type) {
+                KeyEventType.KeyDown -> {
+                    val visiblePads = state.visiblePads()
+                    val action = padKeyOwner.press(
+                        key = event.key,
+                        visiblePadIndices = visiblePads.map { it.globalIndex },
+                        playablePadIndices = visiblePads.filter { it.isAssigned }.mapTo(mutableSetOf()) { it.globalIndex },
+                        inputEnabled = !state.isLoading &&
+                            !state.sourcePlaying &&
+                            state.pendingSourceCommand == PendingSourceCommand.NONE &&
+                            state.recordingSession == RecordingSession.Idle,
+                        ctrl = event.isCtrlPressed,
+                        alt = event.isAltPressed,
+                        meta = event.isMetaPressed,
+                    )
+                    if (action == null) {
+                        false
+                    } else {
+                        controller.selectPlayablePad(action.padIndex)
+                        controller.triggerPad(action.padIndex)
+                        true
+                    }
+                }
+                KeyEventType.KeyUp -> {
+                    val action = padKeyOwner.release(event.key)
+                    if (action == null) {
+                        false
+                    } else {
+                        controller.releasePad(action.padIndex)
+                        true
+                    }
+                }
+                else -> false
+            }
+        },
     ) {
         MenuBar {
+            Menu("ファイル") {
+                Item(
+                    "WAVを読み込む",
+                    shortcut = KeyShortcut(Key.O, ctrl = true),
+                    enabled = externalDocumentActionsEnabled(state),
+                    onClick = { chooseWav(controller) },
+                )
+                Item(
+                    "制作を開く",
+                    shortcut = KeyShortcut(Key.O, ctrl = true, shift = true),
+                    enabled = externalDocumentActionsEnabled(state),
+                    onClick = { chooseProject(controller, FileDialog.LOAD) },
+                )
+                Item(
+                    "制作を保存",
+                    shortcut = KeyShortcut(Key.S, ctrl = true),
+                    enabled = externalDocumentActionsEnabled(state),
+                    onClick = { chooseProject(controller, FileDialog.SAVE) },
+                )
+                Item(
+                    "ビートをWAV書き出し",
+                    shortcut = KeyShortcut(Key.E, ctrl = true),
+                    enabled = externalDocumentActionsEnabled(state),
+                    onClick = { chooseExportWav(controller) },
+                )
+                Separator()
+                Item("終了", shortcut = KeyShortcut(Key.F4, alt = true), onClick = closeApplication)
+            }
+            Menu("編集") {
+                Item(
+                    "元に戻す",
+                    shortcut = KeyShortcut(Key.Z, ctrl = true),
+                    enabled = state.canUndo,
+                    onClick = controller::undoEdit,
+                )
+                Item(
+                    "やり直す",
+                    shortcut = KeyShortcut(Key.Y, ctrl = true),
+                    enabled = state.canRedo,
+                    onClick = controller::redoEdit,
+                )
+            }
+            Menu("トランスポート") {
+                Item(
+                    if (state.sourcePlaying) "素材を停止" else "素材を再生",
+                    shortcut = KeyShortcut(Key.Spacebar),
+                    enabled = state.currentAudio != null && !state.isLoading,
+                    onClick = controller::toggleSourcePlayback,
+                )
+                Item(
+                    "すべての音を停止",
+                    shortcut = KeyShortcut(Key.Escape),
+                    onClick = controller::stopAllSounds,
+                )
+                Separator()
+                Item("PADキー  1234 / QWER / ASDF / ZXCV", enabled = false, onClick = {})
+            }
             Menu("連携") {
                 Item("Spotify Connect パネル", onClick = { spotifyPanelVisible = true })
                 Item("Spotify ログイン", onClick = spotify::login, enabled = spotifyState.canLogin)
