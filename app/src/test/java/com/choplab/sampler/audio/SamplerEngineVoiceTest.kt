@@ -11,9 +11,9 @@ import org.junit.Test
 class SamplerEngineVoiceTest {
     @Test
     fun toneFilterCoefficientIsBoundedAndComputedAtTheControlBoundary() {
-        assertEquals(1f, toneFilterAlpha(tone = 1f, outputSampleRate = 48_000), 0f)
-        val dark = toneFilterAlpha(tone = 0.15f, outputSampleRate = 48_000)
-        val medium = toneFilterAlpha(tone = 0.65f, outputSampleRate = 48_000)
+        assertEquals(1f, SamplerDspPrimitives.toneFilterAlpha(tone = 1f, outputSampleRate = 48_000), 0f)
+        val dark = SamplerDspPrimitives.toneFilterAlpha(tone = 0.15f, outputSampleRate = 48_000)
+        val medium = SamplerDspPrimitives.toneFilterAlpha(tone = 0.65f, outputSampleRate = 48_000)
         assertTrue(dark in 0f..1f)
         assertTrue(medium in 0f..1f)
         assertTrue(medium > dark)

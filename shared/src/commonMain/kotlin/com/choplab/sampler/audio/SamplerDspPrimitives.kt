@@ -28,13 +28,15 @@ object SamplerDspPrimitives {
         outputSampleRate: Int,
     ): Double {
         val pitchRatio = 2.0.pow(this.pitchSemitones(pitchSemitones).toDouble() / 12.0)
-        return pitchRatio * sourceSampleRate.coerceAtLeast(1) / outputSampleRate.coerceAtLeast(1).toDouble()
+        val safeSourceRate = sourceSampleRate.coerceIn(MIN_SAMPLE_RATE, MAX_SAMPLE_RATE)
+        val safeOutputRate = outputSampleRate.coerceIn(MIN_SAMPLE_RATE, MAX_SAMPLE_RATE)
+        return pitchRatio * safeSourceRate / safeOutputRate.toDouble()
     }
 
     fun toneFilterAlpha(tone: Float, outputSampleRate: Int): Float {
         val safeTone = this.tone(tone)
         if (safeTone >= TONE_BYPASS_THRESHOLD) return 1f
-        val safeSampleRate = outputSampleRate.coerceIn(8_000, 192_000)
+        val safeSampleRate = outputSampleRate.coerceIn(MIN_SAMPLE_RATE, MAX_SAMPLE_RATE)
         val cutoffHz = 80.0 * 225.0.pow(safeTone.toDouble())
         return (1.0 - exp(-2.0 * PI * cutoffHz / safeSampleRate))
             .toFloat()
@@ -74,7 +76,8 @@ object SamplerDspPrimitives {
         swing: Float,
         step: Int,
     ): Double {
-        val straightSixteenth = sampleRate.coerceAtLeast(1) * 60.0 / this.bpm(bpm) / 4.0
+        val safeSampleRate = sampleRate.coerceIn(MIN_SAMPLE_RATE, MAX_SAMPLE_RATE)
+        val straightSixteenth = safeSampleRate * 60.0 / this.bpm(bpm) / 4.0
         val longRatio = this.swing(swing).toDouble() / 50.0
         return if (step % 2 == 0) {
             straightSixteenth * longRatio
@@ -87,4 +90,6 @@ object SamplerDspPrimitives {
     const val STRAIGHT_SWING = 50f
     const val TONE_BYPASS_THRESHOLD = 0.995f
     const val BOUNDARY_FADE_SOURCE_FRAMES = 48.0
+    const val MIN_SAMPLE_RATE = 8_000
+    const val MAX_SAMPLE_RATE = 192_000
 }

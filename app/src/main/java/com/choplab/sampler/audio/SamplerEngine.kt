@@ -20,9 +20,6 @@ import kotlin.math.max
 
 internal const val PREVIEW_PAD_INDEX = -1
 
-internal fun toneFilterAlpha(tone: Float, outputSampleRate: Int): Float =
-    SamplerDspPrimitives.toneFilterAlpha(tone, outputSampleRate)
-
 /**
  * Low-latency streaming sampler and sample-accurate 16-step sequencer.
  *
@@ -818,7 +815,7 @@ class SamplerEngine(
             reverse = pad.reverse
             gain = pad.gain
             tone = pad.tone
-            filterAlpha = toneFilterAlpha(pad.tone, outputSampleRate)
+            filterAlpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
             sourceStep = sourceStepFor(pad, outputSampleRate)
             cursor.reset(startFrame, endFrame, reverse, playMode)
             filterState = 0f
@@ -851,7 +848,7 @@ class SamplerEngine(
             if (!active || pad.padIndex != padIndex || pad.audio.id != audioId) return
             sourceStep = sourceStepFor(pad, outputSampleRate)
             tone = pad.tone
-            filterAlpha = toneFilterAlpha(pad.tone, outputSampleRate)
+            filterAlpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
             gain = pad.gain
         }
 

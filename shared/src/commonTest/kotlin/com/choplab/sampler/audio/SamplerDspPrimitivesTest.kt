@@ -16,6 +16,39 @@ class SamplerDspPrimitivesTest {
     }
 
     @Test
+    fun finiteControlsAndSampleRatesUseTheDocumentedBounds() {
+        assertEquals(-24f, SamplerDspPrimitives.pitchSemitones(-30f))
+        assertEquals(24f, SamplerDspPrimitives.pitchSemitones(30f))
+        assertEquals(0f, SamplerDspPrimitives.tone(-1f))
+        assertEquals(1f, SamplerDspPrimitives.tone(2f))
+        assertEquals(0f, SamplerDspPrimitives.gain(-1f))
+        assertEquals(1.5f, SamplerDspPrimitives.gain(2f))
+        assertEquals(40f, SamplerDspPrimitives.bpm(20f))
+        assertEquals(240f, SamplerDspPrimitives.bpm(300f))
+        assertEquals(50f, SamplerDspPrimitives.swing(20f))
+        assertEquals(75f, SamplerDspPrimitives.swing(90f))
+
+        assertEquals(
+            1.0,
+            SamplerDspPrimitives.sourceStep(
+                pitchSemitones = 0f,
+                sourceSampleRate = 1,
+                outputSampleRate = 1,
+            ),
+            1e-9,
+        )
+        assertEquals(
+            24.0,
+            SamplerDspPrimitives.sourceStep(
+                pitchSemitones = 0f,
+                sourceSampleRate = Int.MAX_VALUE,
+                outputSampleRate = 0,
+            ),
+            1e-9,
+        )
+    }
+
+    @Test
     fun pitchStepAndToneAlphaAreFiniteAndBounded() {
         assertEquals(2.0, SamplerDspPrimitives.sourceStep(12f, 48_000, 48_000), 1e-9)
         assertEquals(1.0, SamplerDspPrimitives.sourceStep(Float.NaN, 48_000, 48_000), 1e-9)
