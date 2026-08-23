@@ -77,6 +77,7 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - [x] 2026-08-24 05:10 JST — Review fixes bound sample-rate/finite clamps and removed the Android middle man; final full gate shared hosts 25 each.
 - [x] 2026-08-24 05:10 JST — Final two-axis re-review unresolved Standards 0 / Spec 0; committed local SSOT.
 - [x] 2026-08-24 05:14 JST — Exact Windows isolated runtime and Pixel `F9CD…` retained install/readback/cold launch passed.
+- [x] 2026-08-24 05:18 JST — First Android push run exposed a standalone-kotlinc source-list omission; added the shared DSP file and a policy regression test.
 - [ ] Complete PR/merge/main readback.
 
 ## Discoveries
@@ -101,6 +102,7 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - Review-fix full gate — PASS, 152 tasks; shared 25/25, Android 228, JVM-core 52 and Desktop 76 with zero failures/errors/skips.
 - Windows packaged runtime — responding launcher/UI, exact process stop and real-project digest preservation PASS.
 - Pixel — exact SHA `f9cd14e0…`, signer match, retained install/readback, projects 7 / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS. Receipt: parent PAD `work/PAD_CHOPLAB_AUDIO_PARITY_3CCD414_DEVICE_RECEIPT_20260824.json`.
+- GitHub Android push run `32663874014` — failed before Gradle at `run_pure_logic_smoke.sh` because its explicit kotlinc source list omitted `SamplerDspPrimitives.kt`; product Gradle gates were not reached. Fix adds the source and policy test; local host has no standalone kotlinc, so bash syntax + Python contract + fresh hosted readback are required.
 
 ## Risks and rollback
 
