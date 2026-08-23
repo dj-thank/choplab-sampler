@@ -183,6 +183,11 @@ jobs:
             echo "CycloneDX SBOM was not generated at $sbom" >&2
             exit 1
           }
+          python3 scripts/verify_sbom.py \
+            --sbom "$sbom" \
+            --group com.choplab \
+            --name ChopLab \
+            --version "$RELEASE_VERSION"
           mkdir -p dist
           apk_target="dist/ChopLab-${RELEASE_TAG}-android.apk"
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
