@@ -108,6 +108,23 @@ class ProductionSessionTest {
     }
 
     @Test
+    fun commandPlanCannotBeCommittedByAnotherProductionSession() {
+        val owner = ProductionSession()
+        val other = ProductionSession()
+        val plan = owner.planCommand(
+            SamplerUiState(),
+            ProductionCommand.ToggleSelectedPadPerformanceMode,
+        )
+
+        assertFailsWith<IllegalArgumentException> { other.commit(plan) }
+        assertEquals(0L, other.revision)
+        assertFalse(other.canUndo)
+
+        owner.cancel(plan)
+        assertEquals(0L, owner.revision)
+    }
+
+    @Test
     fun replacingProjectResetsHistoryAndCanOptionallyPreserveRevision() {
         val session = ProductionSession()
         val initial = SamplerUiState()

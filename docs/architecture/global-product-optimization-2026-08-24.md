@@ -108,7 +108,7 @@ UI、キーボード、MIDI、将来の AI proposal が送る共通の意図。c
 
 ### Horizon 2 — ProductionSession
 
-- edit history、project revision、autosave admission、operation epoch を一つの application module へ集約する。
+- edit history、project revision、autosave admissionを一つの application moduleへ集約する。JVM-atomic operation epochは、runtime observationも直列化できる次のshared state-owner段階までplatform concurrency adapterとして保持する。
 - persistent / session / runtime state の投影を明示する。
 - platform controller は effects と lifecycle の adapter へ縮める。
 - blocking effectはplanとcommitの間に実行し、失敗時はcancelしてhistory/revision/state successを発生させない。

@@ -22,6 +22,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - Restoring a validated project advances the in-memory revision but may explicitly suppress redundant persistence.
 - Platform controllers retain StateFlow publication, actual autosave scheduler, audio/document/lifecycle adapters and post-effect failure reporting.
 - Calls are serialized by the controller's existing command state owner; this slice does not rewrite audio observation threads.
+- JVM-atomic `ProjectOperationEpoch` remains a platform concurrency adapter until a later shared state owner can serialize asynchronous completion and runtime observation without weakening thread safety.
 - No schema migration, recording, provider auth, tag/release, data deletion, force push or signing-policy change.
 
 ## Architecture and interfaces
@@ -77,6 +78,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - [x] 2026-08-24 04:25 JST — Shared ProductionSession contracts pass on Desktop JVM and Android host.
 - [x] 2026-08-24 04:30 JST — Android/Windows compile and focused regression suites pass after initial migration.
 - [x] 2026-08-24 04:38 JST — Bound verified autosave generation revision into ProductionSession and proved the next edit saves above disk.
+- [x] 2026-08-24 04:44 JST — Added the missing foreign-plan negative and clarified the operation-epoch concurrency boundary from two-axis review.
 - [ ] Complete full local gate and two-axis review.
 - [ ] Complete runtime/device receipt.
 - [ ] Complete PR/merge/main readback.
