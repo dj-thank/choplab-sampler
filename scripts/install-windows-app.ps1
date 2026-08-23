@@ -40,6 +40,23 @@ function Convert-ToComparableVersion([string]$Text) {
     return [Version]::new([int]$parts[0], [int]$parts[1], [int]$parts[2], [int]$parts[3])
 }
 
+function Get-AppImageDigest([string]$Directory) {
+    $entries = Get-ChildItem -LiteralPath $Directory -File -Recurse -Force | ForEach-Object {
+        $relativePath = [IO.Path]::GetRelativePath($Directory, $_.FullName).Replace('\', '/')
+        $fileHash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$fileHash`t$relativePath"
+    }
+    $orderedEntries = @($entries | Sort-Object)
+    if ($orderedEntries.Count -eq 0) { throw "App-image contains no files: $Directory" }
+    $payload = [Text.Encoding]::UTF8.GetBytes(($orderedEntries -join "`n") + "`n")
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        return [Convert]::ToHexString($sha256.ComputeHash($payload)).ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+    }
+}
+
 function New-ChopLabShortcut(
     [string]$ShortcutPath,
     [string]$TargetPath,
@@ -83,7 +100,8 @@ $safeInstallRoot = Get-SafeFullPath $InstallRoot 'InstallRoot'
 $safeStartMenuRoot = Get-SafeFullPath $StartMenuRoot 'StartMenuRoot'
 $safeDesktopRoot = Get-SafeFullPath $DesktopRoot 'DesktopRoot'
 $sourceHash = (Get-FileHash -LiteralPath $sourceExe -Algorithm SHA256).Hash.ToLowerInvariant()
-$installDirectory = Join-Path $safeInstallRoot "$Version-$($sourceHash.Substring(0, 12))"
+$sourceAppImageHash = Get-AppImageDigest $sourceDirectory
+$installDirectory = Join-Path $safeInstallRoot "$Version-$($sourceAppImageHash.Substring(0, 12))"
 $installedExe = Join-Path $installDirectory 'ChopLab.exe'
 $reusedExisting = $false
 $stagingDirectory = Join-Path $safeInstallRoot ".staging-$PID-$([guid]::NewGuid().ToString('N'))"
@@ -94,9 +112,9 @@ try {
         if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
             throw "Existing versioned install is incomplete: $installDirectory"
         }
-        $installedHash = (Get-FileHash -LiteralPath $installedExe -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($installedHash -ne $sourceHash) {
-            throw "Existing versioned install has different executable bytes: $installDirectory"
+        $installedAppImageHash = Get-AppImageDigest $installDirectory
+        if ($installedAppImageHash -ne $sourceAppImageHash) {
+            throw "Existing versioned install has a different app-image content digest: $installDirectory"
         }
         $reusedExisting = $true
     } else {
@@ -108,8 +126,10 @@ try {
         if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
             throw "Staged app-image is missing ChopLab.exe: $stagedExe"
         }
-        $stagedHash = (Get-FileHash -LiteralPath $stagedExe -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($stagedHash -ne $sourceHash) { throw 'Staged executable hash does not match source app-image' }
+        $stagedAppImageHash = Get-AppImageDigest $stagingDirectory
+        if ($stagedAppImageHash -ne $sourceAppImageHash) {
+            throw 'Staged app-image content digest does not match source app-image'
+        }
         Move-Item -LiteralPath $stagingDirectory -Destination $installDirectory
     }
 } finally {
@@ -137,6 +157,7 @@ $result = [ordered]@{
     version = $Version
     source_executable = $sourceExe
     source_executable_sha256 = $sourceHash
+    source_app_image_sha256 = $sourceAppImageHash
     install_directory = $installDirectory
     installed_executable = $installedExe
     start_menu_shortcut = $startMenuShortcut
@@ -147,7 +168,9 @@ $result = [ordered]@{
     installed_at_utc = [DateTimeOffset]::UtcNow.ToString('o')
 }
 
-$installReceipt = Join-Path $installDirectory 'install-receipt.json'
+$receiptDirectory = Join-Path $safeInstallRoot 'receipts'
+New-Item -ItemType Directory -Path $receiptDirectory -Force | Out-Null
+$installReceipt = Join-Path $receiptDirectory "$Version-$sourceAppImageHash.json"
 $result | ConvertTo-Json | Set-Content -LiteralPath $installReceipt -Encoding utf8
 if (-not [string]::IsNullOrWhiteSpace($ReceiptOutput)) {
     $safeReceiptOutput = [IO.Path]::GetFullPath($ReceiptOutput)

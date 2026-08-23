@@ -1,6 +1,7 @@
 package com.choplab.desktop
 
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +31,8 @@ import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.io.File
 
 fun main(args: Array<String>) = application {
@@ -52,6 +55,7 @@ fun main(args: Array<String>) = application {
     val state by controller.state.collectAsState()
     val padKeyOwner = remember { DesktopPadKeyOwner() }
     val closeApplication = {
+        padKeyOwner.releaseAll().forEach { controller.releasePad(it.padIndex) }
         spotify.close()
         audioDiagnostics.close()
         controller.close()
@@ -111,6 +115,18 @@ fun main(args: Array<String>) = application {
             }
         },
     ) {
+        DisposableEffect(window, padKeyOwner) {
+            val focusListener = object : WindowAdapter() {
+                override fun windowLostFocus(event: WindowEvent) {
+                    padKeyOwner.releaseAll().forEach { controller.releasePad(it.padIndex) }
+                }
+            }
+            window.addWindowFocusListener(focusListener)
+            onDispose {
+                window.removeWindowFocusListener(focusListener)
+                padKeyOwner.releaseAll()
+            }
+        }
         MenuBar {
             Menu("ファイル") {
                 Item(

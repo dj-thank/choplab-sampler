@@ -82,4 +82,21 @@ class DesktopPadKeyboardTest {
         assertNull(desktopPadOffsetForKey(Key.Spacebar))
         assertNull(owner.press(Key.Spacebar, (0 until 16).toList(), (0 until 16).toSet(), true))
     }
+
+    @Test
+    fun focusLossReleasesEveryOwnedPadExactlyOnce() {
+        val owner = DesktopPadKeyOwner()
+        val visiblePage = (32 until 48).toList()
+        val playable = visiblePage.toSet()
+        owner.press(Key.One, visiblePage, playable, inputEnabled = true)
+        owner.press(Key.V, visiblePage, playable, inputEnabled = true)
+
+        assertEquals(
+            setOf(DesktopPadKeyAction.Release(32), DesktopPadKeyAction.Release(47)),
+            owner.releaseAll().toSet(),
+        )
+        assertEquals(emptyList(), owner.releaseAll())
+        assertNull(owner.release(Key.One))
+        assertNull(owner.release(Key.V))
+    }
 }

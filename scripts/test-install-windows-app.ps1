@@ -47,6 +47,12 @@ try {
     $sourceHash = (Get-FileHash -LiteralPath (Join-Path $AppImage 'ChopLab.exe') -Algorithm SHA256).Hash
     $installedHash = (Get-FileHash -LiteralPath $installedExe -Algorithm SHA256).Hash
     if ($sourceHash -ne $installedHash) { throw 'Installed executable hash does not match source app-image' }
+    if ([string]$first.source_app_image_sha256 -notmatch '^[0-9a-f]{64}$') {
+        throw 'Installer did not return a full app-image content digest'
+    }
+    if (-not $first.install_directory.EndsWith($first.source_app_image_sha256.Substring(0, 12))) {
+        throw 'Versioned install path is not bound to the app-image content digest'
+    }
 
     $shell = New-Object -ComObject WScript.Shell
     foreach ($shortcutPath in @($first.start_menu_shortcut, $first.desktop_shortcut)) {
@@ -75,7 +81,29 @@ try {
         throw 'Idempotent installer run selected different bytes'
     }
 
-    Write-Host "PASS: Windows app-image install is hash-bound, shortcut-bound, idempotent, and project-data preserving"
+    $runtimeFile = Get-ChildItem -LiteralPath $first.install_directory -File -Recurse |
+        Where-Object FullName -ne $installedExe |
+        Select-Object -First 1
+    if ($null -eq $runtimeFile) { throw 'No non-launcher runtime file found for tamper test' }
+    Add-Content -LiteralPath $runtimeFile.FullName -Value 'tampered-by-installer-test' -Encoding ascii
+    $tamperFailure = $null
+    try {
+        & $installer `
+            -AppImage $AppImage `
+            -Version $ExpectedVersion `
+            -InstallRoot $installRoot `
+            -StartMenuRoot $startMenuRoot `
+            -DesktopRoot $desktopRoot `
+            -ReceiptOutput $receipt
+    } catch {
+        $tamperFailure = $_
+    }
+    if ($null -eq $tamperFailure) { throw 'Installer accepted a tampered non-launcher runtime file' }
+    if ($tamperFailure.Exception.Message -notmatch 'content digest') {
+        throw "Unexpected tamper failure: $($tamperFailure.Exception.Message)"
+    }
+
+    Write-Host "PASS: Windows app-image install is full-tree hash-bound, shortcut-bound, idempotent, tamper-rejecting, and project-data preserving"
 } finally {
     if (Test-Path -LiteralPath $testRoot) {
         $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)

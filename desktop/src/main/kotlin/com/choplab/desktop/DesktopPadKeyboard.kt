@@ -58,4 +58,10 @@ class DesktopPadKeyOwner {
 
     fun release(key: Key): DesktopPadKeyAction.Release? =
         ownedPads.remove(key)?.let(DesktopPadKeyAction::Release)
+
+    fun releaseAll(): List<DesktopPadKeyAction.Release> {
+        val releases = ownedPads.values.map(DesktopPadKeyAction::Release)
+        ownedPads.clear()
+        return releases
+    }
 }
