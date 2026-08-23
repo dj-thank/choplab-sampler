@@ -12,7 +12,7 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 - Core implementation checkpoint: `889a37a`.
 - The dirty canonical checkout at `work/codex-workspace/ChopLab-Codex-Workspace` is read-only and excluded.
 - v0.17.0 source, annotated tag and Windows daily install already exist. Binary GitHub Release remains fail-closed because stable Android signing secrets are absent.
-- Local implementation gate is green. Device and GitHub integration milestones remain open until fresh observation.
+- Local implementation gate and the bounded Pixel slice are green. GitHub integration remains open until fresh readback.
 
 ## Constraints and invariants
 
@@ -77,8 +77,9 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 - [x] 2026-08-24 03:24 JST — Implemented checkpoint `889a37a`: six commands, two platform adapters, common tests and Desktop integration negatives.
 - [x] 2026-08-24 03:35 JST — Full 152-task local Gradle gate passed.
 - [x] 2026-08-24 03:42 JST — Policy, public history surface and SBOM checks passed.
-- [ ] Resolve two-axis review findings and bind current SSOT.
-- [ ] Complete Windows runtime and bounded Pixel evidence.
+- [x] 2026-08-24 03:44 JST — Resolved code/test/workflow findings in `fcbed5b`; rebuilt the ExecPlan and bound current SSOT.
+- [x] 2026-08-24 03:48 JST — Exact packaged Windows launcher/UI responded in isolated data; exact processes stopped and real project digest remained unchanged.
+- [x] 2026-08-24 03:52 JST — Pixel signer/version admission, `install -r --no-streaming`, byte readback, project preservation and cold launch passed.
 - [ ] Complete PR, merge and merged-main readback.
 
 ## Discoveries
@@ -105,7 +106,10 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 - `python scripts/check_public_surface.py --history` — PASS, 374 current/reachable-history candidates; no credential, signing or audio candidate.
 - wrapper SHA-256 — PASS `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d`; both wrappers retain explicit UTF-8.
 - `cyclonedxBom` plus `verify_sbom.py` — PASS, CycloneDX 1.6 `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies.
-- Local two-axis review checkpoint `889a37a` — four Standards and four Spec findings recorded in parent PAD `work/`; review fixes are in progress.
+- Local two-axis review checkpoint `889a37a` — four Standards and four Spec findings recorded in parent PAD `work/`; all hard/partial findings were repaired before SSOT closure.
+- Review-fix focused gate — shared Desktop 12, shared Android host 12 and Desktop 76 PASS; both hosted workflows parse and invoke the relevant shared task.
+- Windows packaged runtime — responding launcher/UI pair and exact title; real projects 2 files / 365,609 bytes / unchanged digest; exact tracked process tree stopped.
+- Pixel receipt — `work/PAD_CHOPLAB_GLOBAL_OPT_FCBED5B_DEVICE_RECEIPT_20260824.json`; exact host/installed SHA `eada7421…`, signer match, projects 7 files / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS.
 
 ## Risks and rollback
 
@@ -117,7 +121,7 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 
 ## Remaining device validation
 
-- Exact Pixel identity, package version/signer and APK readback.
-- Data-preserving `adb install -r`, cold launch, fatal/ANR/crash negative path and project/autosave preservation.
-- Physical PAD/range interaction only where it can be observed without recording or audio extraction.
-- Physical latency/xRuns, audio quality, route loss, microphone/system capture, TalkBack speech and HUMAN_GO remain outside this tracer even after a scoped DEVICE_PASS.
+- Physical range/marker gesture precision and long-press ergonomics remain unobserved in this tracer.
+- PAD audio output, latency/xRuns, subjective audio quality, route loss, microphone/system capture and recording are not inferred from the cold-launch receipt.
+- TalkBack speech/order and HUMAN_GO remain separate human boundaries.
+- Provider authentication and binary Release are not device outcomes.

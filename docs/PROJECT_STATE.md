@@ -1,6 +1,24 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Windows daily-use v0.17.0 local candidate
+## Current snapshot — 2026-08-24 global ProductionCommand local/device candidate
+
+This snapshot supersedes the Windows-only local snapshot below for current product-development truth. It records the first system-level semantic-spine tracer, fresh local verification and a bounded data-preserving Pixel receipt; GitHub integration for this tracer remains pending.
+
+- Observed at: `2026-08-24T03:52:53.9475490+09:00`.
+- Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-global-optimization-20260824`, `codex/choplab-global-optimization`; reviewed implementation checkpoint `fcbed5b01bf6c14e1fafc045159fe086011db747`, tree `334a0bb6d2eb9a13a01bbfec394bb25bba6ad4ea`, based on `main@ab68d2d`. The canonical dirty checkout remains untouched.
+- System direction: UI breadth, native-engine-first rewrite and DAW-wide expansion were rejected as the immediate path. The selected capability ladder is shared Production semantics -> ProductionSession -> realtime/offline audio parity -> arrange/mix -> assist/release operations. SSOT: [`docs/architecture/global-product-optimization-2026-08-24.md`](architecture/global-product-optimization-2026-08-24.md), ADR-0001 and the active ExecPlan.
+- Implemented tracer: range START/END, slice marker add/move, slice selection and normal PAD mode now enter one `ProductionCommand` reducer. Results distinguish PROJECT/SESSION/NONE and emit typed effects. Android and Windows no longer differ on zero-crossing/minimum range safety, end-exclusive selection, selection-only Undo/autosave, or ONE_SHOT/GATE versus explicit Beat LOOP.
+- Runtime failure truth: a loop-owned PAD is stopped before state publication. A failed stop leaves the previous mode/owner and adds no history. A post-publication refresh failure preserves the edit but reports that runtime application failed.
+- Fresh local gate: 152-task Gradle gate PASS; Android 226 / 44 suites, JVM-core 49 / 8, Desktop 76 / 16, shared Desktop 12 / 2 and shared Android host 12 / 2; failures/errors/skips 0. Debug/release Lint, debug/unsigned-release APK and Windows app-image all PASS.
+- Policy/SBOM: 22 Python tests PASS; public current/reachable-history scan PASS over 374 candidates; wrapper SHA `7a9ce74c…` and explicit UTF-8 PASS; CycloneDX 1.6 `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies PASS.
+- Local artifacts: debug APK 31,443,058 bytes / SHA-256 `EADA7421F8420FEFAE4E5942BDA881E131D00EAB9D5BB3F8218ADAD0EC43527D`; unsigned release APK 24,028,276 bytes / `09578400AD7B242663AD7891B6C7CDC2A635D61B7474DDA52DC6793C540AB9CA`; Windows app-image 405 files / 176,465,465 bytes, EXE 449,024 bytes / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Windows runtime: exact packaged EXE produced a responding launcher/UI pair and title `ChopLab — おとひろい PC` in an isolated data root. Both tracked PIDs were stopped; real `%LOCALAPPDATA%/ChopLab/projects` remained 2 files / 365,609 bytes with the same pre/post digest. A PowerShell 7 JSON date-coercion mismatch in the generic stop helper was safely handled through its Windows PowerShell 5.1 compatibility boundary after exact PID/path/creation verification; this was not a ChopLab failure.
+- Pixel device receipt: Pixel 9a / Android 17 / API 37 / arm64-v8a; existing `0.16.2 (26)` signer matched the candidate. `adb install -r --no-streaming` updated to `0.17.0 (27)`; installed base APK SHA exactly equals the host debug APK. Project shape stayed 7 files / 62,592 KiB before install, after install and after cold launch. `MainActivity` was top-resumed, all four stage labels plus ALL STOP were present, current-process fatal/ANR count was 0, and the process was absent after exact force-stop. Receipt: parent PAD `work/PAD_CHOPLAB_GLOBAL_OPT_FCBED5B_DEVICE_RECEIPT_20260824.json`.
+- Review: initial local-parent Standards/Spec passes found stale ExecPlan/SSOT, missing range-END/move tests, missing hosted shared-test tasks and one target/current wording issue. The implementation/test/workflow findings are repaired in `fcbed5b`; SSOT closure and final re-review follow this snapshot.
+- GitHub/release: this tracer has not yet been pushed or merged. Existing v0.17 source/tag state remains at `main@ab68d2d`; binary Release is still fail-closed on stable Android signing secrets and is not weakened or partially published here.
+- Gate ceiling: `LOCAL_PASS` plus scoped `DEVICE_PASS` for exact APK install/readback, project-shape preservation, cold launch/navigation labels and fatal/ANR negative path. Physical range/marker gestures, PAD audio/latency, recording, route loss, TalkBack speech, provider behavior, binary Release and `HUMAN_GO` remain unverified.
+
+## Previous snapshot — 2026-08-24 Windows daily-use v0.17.0 local candidate
 
 This snapshot supersedes the earlier integrated candidate below for current local source and distribution truth. It records local implementation, packaging, installation, and non-audio runtime only; GitHub PR/merge/Release remain pending at this point.
 
