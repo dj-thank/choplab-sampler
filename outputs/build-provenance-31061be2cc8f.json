@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-08-23T11:27:38.4566309Z",
+  "source": {
+    "head": "31061be2cc8f82327a2881f5dcc56c54b9753482",
+    "tree": "27c3c22be94716d7315231ac4c5f791f951dd196",
+    "trackedClean": true
+  },
+  "toolchain": {
+    "javaHome": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\tools\\jdk17\\jdk-17.0.20+8",
+    "androidSdkRoot": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\tools\\android-sdk",
+    "buildTools": "36.0.0"
+  },
+  "appApk": {
+    "path": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\choplab-cross-platform-polish-20260823\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+    "sizeBytes": 30937621,
+    "lastWriteTimeUtc": "2026-08-23T11:26:24.4693402Z",
+    "sha256": "040570008F4B2CD9CA4E27419C321AB830E07B8B47705F1CD383CD8DC4CDF33B",
+    "signerSha256": "C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587",
+    "package": {
+      "name": "com.choplab.sampler",
+      "versionCode": "25",
+      "versionName": "0.16.1"
+    }
+  },
+  "androidTestApk": {
+    "path": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\choplab-cross-platform-polish-20260823\\app\\build\\outputs\\apk\\androidTest\\debug\\app-debug-androidTest.apk",
+    "sizeBytes": 10564866,
+    "lastWriteTimeUtc": "2026-08-23T11:27:32.3221865Z",
+    "sha256": "13A7E1EC8312DC2226AFA419312D65A1DF5C500601739B6C4BB05C1C193C1191",
+    "signerSha256": "C0BE467A0F8010BED6F2687D1FDD138498E99B0401722C487459AEEDC453D587",
+    "package": null
+  }
+}

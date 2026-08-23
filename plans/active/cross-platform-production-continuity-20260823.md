@@ -8,6 +8,7 @@ Androidスマホ版とWindows EXE版で、同じ「入れる → チョップ �
 
 - Implementation worktree: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-cross-platform-polish-20260823`.
 - Branch/base: `codex/choplab-cross-platform-polish`, `9a4e9edc2686914c28c91b2d614dfb95281935c2`, tree `4e79be4cbb8923b67076da146c420322c0dd943a`.
+- Reviewed implementation source: `31061be2cc8f82327a2881f5dcc56c54b9753482`, tree `27c3c22be94716d7315231ac4c5f791f951dd196`.
 - Canonical dirty checkout remains untouched.
 - Fresh local baseline: `:app:testDebugUnitTest :jvm-core:test :desktop:test --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain` passed on 2026-08-23 using JDK 17, portable Android SDK, and `work/gradle-home`.
 - `DesktopSamplerController.toggleRecording` currently stops all playback for every recording kind. It does not restart the selected Beat loop for `VOCAL_OVERDUB`.
@@ -69,7 +70,7 @@ Androidスマホ版とWindows EXE版で、同じ「入れる → チョップ �
 - [x] 2026-08-23 — Milestone 2: minimal controller/startup implementation turned all focused tests GREEN.
 - [x] 2026-08-23 — Milestone 3: 91-task cross-platform gate, configured validation, public-surface scan, UI contract, package smoke, and `git diff --check` passed.
 - [x] 2026-08-23 — Local two-axis review found and closed the Beat-output failure path; final desktop test/package passed with 39 tests.
-- [ ] Milestone 4 device slice or explicit unavailable blocker; Pixel was absent at the first bounded preflight.
+- [x] 2026-08-23 — Milestone 4 closed as an explicit device blocker: Pixel was absent at both the initial and one post-local-gate bounded check; no install or device mutation occurred.
 
 ## Discoveries
 
@@ -89,8 +90,8 @@ Androidスマホ版とWindows EXE版で、同じ「入れる → チョップ �
   - 2026-08-23, Windows / JDK 17 / portable Android SDK / `work/gradle-home`.
   - `BUILD SUCCESSFUL` in 1m39s.
 - `adb devices -l`
-  - 2026-08-23T20:03:47+09:00.
-  - No devices attached; no install or mutation attempted.
+  - 2026-08-23T20:03:47+09:00 and `2026-08-23T20:27:57+09:00`.
+  - No devices attached; no install or mutation attempted; polling stopped after the planned recheck.
 - `:desktop:test :jvm-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :desktop:packageWindows --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain`
   - 2026-08-23, Windows / JDK 17 / portable Android SDK / `work/gradle-home`.
   - `BUILD SUCCESSFUL` in 1m27s; 91 tasks. Android 225, JVM-core 44, desktop 38 tests before review; failures/errors/skips 0; lint errors 0.
@@ -100,6 +101,9 @@ Androidスマホ版とWindows EXE版で、同じ「入れる → チョップ �
 - `scripts/validate_project.sh`, `scripts/check_public_surface.py`, UI contract validator, and `git diff --check`
   - 2026-08-23.
   - PASS; public candidates 322; UI regions 9 (`4 exact / 4 semantic / 1 adapted`).
+- `:app:assembleDebug :desktop:packageWindows --rerun-tasks` and `:app:assembleDebugAndroidTest`
+  - 2026-08-23 after source commit `31061be`.
+  - BUILD SUCCESSFUL (62 tasks + 71 tasks); Android and Windows provenance receipts recorded under `outputs/`.
 
 ## Risks and rollback
 

@@ -4,16 +4,17 @@
 
 ## Android / Windows production continuity candidate — 2026-08-23
 
-- Source: isolated `codex/choplab-cross-platform-polish`, base `9a4e9edc2686914c28c91b2d614dfb95281935c2` / tree `4e79be4cbb8923b67076da146c420322c0dd943a`; feature commit pending at this entry; canonical dirty checkout and Spotify/full-hardening branch untouched.
+- Source: isolated `codex/choplab-cross-platform-polish`, reviewed implementation commit `31061be2cc8f82327a2881f5dcc56c54b9753482` / tree `27c3c22be94716d7315231ac4c5f791f951dd196`, based on `9a4e9edc2686914c28c91b2d614dfb95281935c2`; canonical dirty checkout and Spotify/full-hardening branch untouched.
 - TDD RED→GREEN: source-recording decode publishes CHOP launch target/revision; successful vocal recording restarts and retains the selected Beat loop through the public audio port; startup project policy skips stale recovery while retaining future autosave. Focused tests use a bounded fake `DesktopAudioRecorder` and do not open recording hardware.
 - Full local Gradle gate: `:desktop:test :jvm-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :desktop:packageWindows --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain` BUILD SUCCESSFUL, 91 tasks.
 - Tests: Android unit 225 / 44 suites; JVM-core 44 / 8 suites; desktop 39 / 12 suites; failures 0, errors 0, skipped 0. Android Lint: fatal 0, errors 0, warnings 4.
 - Configured gate: Git Bash `scripts/validate_project.sh` PASS; public-surface 322 candidates PASS; six Android XML files parse; Gradle Wrapper SHA-256 `497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`.
 - UI evidence: existing Android-origin contract validates 9 regions (`exact 4 / semantic 4 / adapted 1`) and 3 states. No UI pixels changed; the existing 1080×2424 Android and 1106×2202 Windows captures remain appearance references, not runtime proof.
-- Current uncommitted-build artifacts: APK 30,937,621 bytes / SHA-256 `040570008F4B2CD9CA4E27419C321AB830E07B8B47705F1CD383CD8DC4CDF33B`; `ChopLab.exe` 449,024 bytes / SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A`. A responding packaged child window was observed and then its exact tracked process tree was stopped.
-- Device: `adb devices -l` returned no attached device at `2026-08-23T20:03:47+09:00`; install, data mutation, recording, and device-audio capture were not attempted.
+- Source-bound artifacts: `outputs/build-provenance-31061be2cc8f.json` binds APK 30,937,621 bytes / SHA-256 `040570008F4B2CD9CA4E27419C321AB830E07B8B47705F1CD383CD8DC4CDF33B`, test APK 10,564,866 bytes / SHA-256 `13A7E1EC8312DC2226AFA419312D65A1DF5C500601739B6C4BB05C1C193C1191`, package/version/signer, exact source commit and tree. `outputs/windows-provenance-31061be2cc8f.json` binds `ChopLab.exe` 449,024 bytes / SHA-256 `40903D73A17CD6DE66D33567779C2350B72C3FD6B16701662008265534F8E69A` and a responding packaged window whose exact process tree was stopped.
+- Post-commit artifact refresh: `:app:assembleDebug :desktop:packageWindows --rerun-tasks` BUILD SUCCESSFUL (62 tasks), followed by `:app:assembleDebugAndroidTest` BUILD SUCCESSFUL (71 tasks). The provenance checker then passed.
+- Device: `adb devices -l` returned no attached device at both bounded checks (`20:03:47` and `20:27:57` JST); install, data mutation, recording, and device-audio capture were not attempted. No further polling in this run.
 - Review repair: local parent Standards/Spec review exposed an output-device exception after vocal recorder start. The negative test was RED, then GREEN after bounded asynchronous recorder stop, owned temporary-file deletion, idle loop state, and actionable Windows-output guidance. Final `:desktop:test :desktop:packageWindows` BUILD SUCCESSFUL (19 tasks).
-- Gate: candidate `LOCAL_PASS`; fresh physical `DEVICE_PASS`, actual recording alignment/audio quality, TalkBack speech, Spotify provider, public and Human gates are not claimed.
+- Gate: `LOCAL_PASS`; fresh physical `DEVICE_PASS` is blocked on Pixel reconnection. Actual recording alignment/audio quality, TalkBack speech, Spotify provider, public and Human gates are not claimed.
 
 ## v0.16.1 precision trim local candidate — 2026-08-21
 

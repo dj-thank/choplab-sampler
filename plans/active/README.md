@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `cross-platform-production-continuity-20260823.md`。AndroidとWindows EXEの共通4工程を基準に、Windowsのsource録音後CHOP遷移、Beatに合わせたVOICE録音、startup project sessionのautosave継続をpublic controller seamでRED→GREENする。まず`LOCAL_PASS`を閉じ、Pixelが再接続した場合だけデータ保持型の非録音device sliceを別receiptで行う。
+**LOCAL完了 / DEVICE blocked:** `cross-platform-production-continuity-20260823.md`。AndroidとWindows EXEの共通4工程を基準に、Windowsのsource録音後CHOP遷移、Beatに合わせたVOICE録音、startup project sessionのautosave継続、出力device失敗時の安全停止をpublic controller seamでRED→GREENした。reviewed sourceは`31061be`。`LOCAL_PASS`は閉じ、Pixelは二回のbounded checkで未接続だったため、データ保持型の非録音device sliceは別の再接続taskへ残す。
 
 **完了済み:** `precision-trim-long-press-number-wheel-20260820.md`。PAD長押し後のTRIMで、波形長押し位置へ近い境界を移して最大1秒の精密窓を開き、START/ENDをダイヤル付き数値ホイールとframe/1 ms/10 ms精度で選べるようにした。`v0.16.1-preview.1`へ束縛されたlocal/API 36/public evidenceは保全するが、今回のbranchのdevice evidenceには流用しない。
 
