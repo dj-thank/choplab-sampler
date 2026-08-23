@@ -35,11 +35,10 @@ ChopLab becomes a normal daily-use Windows application on this PC: its existing 
 | Recreate Cubase arranger/mixer | Low for current sampler scope | Very high scope expansion | Defer |
 | Only shrink the empty waveform | Low | Does not solve PAD input, commands, or installation | Reject |
 
-Selected contract: retain ChopLab's cream/green/ink identity, shared responsive deck, and four-stage workflow. The same visible 16-PAD page is played from `1234 / QWER / ASDF / ZXCV`; PAD content badges and key labels coexist. Native Windows menus provide file/project/save/export, undo/redo, source transport, and ALL STOP without duplicating the production screen. The evidence and deferrals are recorded in `docs/research/mpc-pad-functional-model-2026-08-24.md`.
+Selected contract: retain ChopLab's cream/green/ink identity, shared responsive deck, four-stage workflow, and existing mobile PAD visuals. The same visible 16-PAD page is played from `1234 / QWER / ASDF / ZXCV` on Windows, where the native menu documents the PC-only map. Native Windows menus provide file/project/save/export, undo/redo, source transport, and ALL STOP without duplicating the production screen. The evidence and deferrals are recorded in `docs/research/mpc-pad-functional-model-2026-08-24.md`.
 
 ## Architecture and interfaces
 
-- `shared/.../PadGrid.kt`: exposes one canonical 16-key label order and always shows a key legend separately from PAD content badges.
 - `desktop/.../DesktopPadKeyboard.kt`: pure key-to-visible-PAD mapping and modifier/repeat admission rules.
 - `DesktopApp.kt`: owns native File/Edit/Transport/Integration/Diagnostics menus, shortcuts, window lifecycle, and key-down/key-up ownership for the currently visible PAD page.
 - `scripts/install-windows-app.ps1`: verifies source app-image/version, stages and atomically promotes a versioned local installation, and creates user-owned shortcuts. It never deletes project data.
@@ -49,11 +48,10 @@ Selected contract: retain ChopLab's cream/green/ink identity, shared responsive 
 
 The confirmed public seams for this plan are:
 
-1. `desktopPadOffsetForKey` and `desktopPadKeyAdmission` for the canonical 4×4 mapping, modifiers, key repeat, and key-up ownership.
-2. canonical PAD key labels and separate content badges in the shared deck.
-3. Windows native package metadata and installer-script input/output/shortcut contract.
-4. existing controller public actions for load/open/save/export/undo/redo/stop.
-5. packaged EXE startup and exact installed/reverse-downloaded Release bytes.
+1. `desktopPadOffsetForKey` and `DesktopPadKeyOwner` for the canonical 4×4 mapping, modifiers, key repeat, focus loss, and key-up ownership.
+2. Windows native package metadata and installer-script input/output/shortcut contract.
+3. existing controller public actions for load/open/save/export/undo/redo/stop.
+4. packaged EXE startup and exact installed/reverse-downloaded Release bytes.
 
 ## Milestones
 
@@ -118,7 +116,7 @@ The confirmed public seams for this plan are:
 
 - Combined Kotlin/Compose/AGP/Gradle updates may expose compatibility failures absent from isolated bot PRs. Keep dependency work in its own commit and revert that commit if primary-source-supported repair cannot make the full gate pass.
 - Global key handling can conflict with native shortcuts or repeat into duplicate voices. Admission excludes Ctrl/Alt/Meta, tracks key ownership, ignores repeated key-down, and releases the exact owned PAD on key-up.
-- Shortcut creation can point at stale bytes. The installer verifies the source EXE, writes a versioned destination, and reads back each shortcut target.
+- Shortcut creation can point at stale bytes. The installer binds the complete source app-image tree to a full SHA-256 receipt and derived path, rejects a mismatched existing tree, and reads back each shortcut target.
 - Public Release can succeed while assets differ locally. Promotion requires reverse download and sidecar/hash comparison before the installed copy is considered public-byte equivalent.
 
 ## Remaining device validation

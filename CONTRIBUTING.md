@@ -5,7 +5,7 @@
 ## 開発環境
 
 - JDK 17
-- Android SDK Platform 36
+- Android SDK Platform 37.0（compile）
 - Android Build Tools 36.0.0
 - Gradle Wrapper（リポジトリ同梱）
 

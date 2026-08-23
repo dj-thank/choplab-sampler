@@ -58,6 +58,6 @@ $release = python scripts/release_metadata.py | ConvertFrom-Json
   -Version $release.version
 ```
 
-The destination is `%LOCALAPPDATA%\Programs\ChopLab\<version>-<app-image-hash>`. The digest covers every launcher, runtime, library, and resource file in deterministic relative-path order. Re-running the command with identical bytes is idempotent; different or tampered bytes never overwrite/reuse that immutable app-image directory. Older app versions are retained, while the two `ChopLab.lnk` shortcuts move to the exact newly selected EXE. The installer never removes or rewrites `%LOCALAPPDATA%\ChopLab\projects`, where app-owned autosaves live.
+The destination is `%LOCALAPPDATA%\Programs\ChopLab\<version>-<app-image-hash-prefix>`. The underlying full SHA-256 covers every launcher, runtime, library, and resource file in deterministic relative-path order and is recorded in the install receipt. Re-running the command with identical bytes is idempotent; different or tampered bytes never overwrite/reuse that immutable app-image directory. Older app versions are retained, while the two `ChopLab.lnk` shortcuts move to the exact newly selected EXE. The installer never removes or rewrites `%LOCALAPPDATA%\ChopLab\projects`, where app-owned autosaves live.
 
 This app-image is self-contained but not a single-file program; keep its runtime directory together. It is not a code-signed MSI/MSIX, so Windows reputation/signing remains a separate release boundary.

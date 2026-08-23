@@ -40,13 +40,13 @@ The context is also allowed to reject an operation. In the local 2.12.3 build, P
 
 1. Keep `入れる → チョップ → ビート → 保存` and the shared 4×4 PAD surface. Do not add a Cubase/MPC-style permanent inspector, mixer, timeline, or collection of mode windows just to look more professional.
 2. Make the existing Windows PAD key legends real. The visible `1234 / QWER / ASDF / ZXCV` layout becomes a tested desktop input contract for the currently visible 16-PAD page. Key-down selects/triggers once; key-up releases Gate playback. Ctrl/Alt/Meta combinations remain available to native commands.
-3. Always keep the keyboard legend visible. PAD content badges such as DRUM, VOICE, or LOOP must not replace the input key label.
+3. Keep the shared mobile PAD visually focused on its musical content. Document the PC-only key map in the Windows native menu and desktop guide rather than adding another permanent badge to Android.
 4. Add native Windows File/Edit/Transport shortcuts because they shorten real production tasks without changing the shared mobile workflow.
 5. Preserve explicit disabled reasons and truthful scope. A future 16 Level, live Note Repeat, Pad Perform, Pad Mixer, or Pad Mute slice needs its own domain state and audio tests; it is not added as a decorative toggle.
 
 ## Acceptance implications
 
-- Android retains the same touch PAD behavior and visuals apart from a non-destructive key/badge labeling clarification.
+- Android retains the same touch PAD behavior and visuals.
 - Windows key mapping follows the exact currently visible page and selected BANK; it never captures/replaces audio and never triggers from Ctrl/Alt/Meta shortcuts.
 - Key repeat cannot create duplicate voices merely because Windows repeats a key-down event.
 - Key-up releases the same global PAD index that key-down owned, even if selection changes meanwhile.

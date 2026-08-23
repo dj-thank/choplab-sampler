@@ -54,7 +54,7 @@ import com.choplab.sampler.model.bankRoleFor
 import kotlin.math.abs
 import kotlin.math.max
 
-const val PAD_KEY_LABELS = "1234QWERASDFZXCV"
+private const val PAD_KEYS = "1234QWERASDFZXCV"
 
 @Composable
 fun PadGrid(
@@ -101,7 +101,7 @@ fun PadGrid(
                         val pad = pads[indexInGrid]
                         PerformancePad(
                             pad = pad,
-                            keyLabel = PAD_KEY_LABELS[indexInGrid].toString(),
+                            keyLabel = PAD_KEYS[indexInGrid].toString(),
                             selected = pad.globalIndex == selectedPad,
                             captureMode = captureMode,
                             sourcePhase = sourcePhase,
@@ -254,31 +254,19 @@ private fun PerformancePad(
                 }
             }
         }
-        val contentBadge = padContentBadge(pad)
-        if (contentBadge.isNotEmpty()) {
-            Text(
-                text = contentBadge,
-                color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
-                fontFamily = FontFamily.Monospace,
-                fontSize = if (compact) 6.sp else 7.sp,
-                modifier = Modifier.align(Alignment.BottomStart),
-            )
-        }
         Text(
-            text = keyLabel,
+            text = when {
+                pad.playMode == PadPlayMode.LOOP -> "LOOP"
+                pad.contentKind == PadContentKind.DRUM -> "DRM"
+                pad.contentKind == PadContentKind.VOCAL -> "VOX"
+                else -> keyLabel
+            },
             color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
             fontFamily = FontFamily.Monospace,
             fontSize = if (compact) 7.sp else 8.sp,
             modifier = Modifier.align(Alignment.BottomEnd),
         )
     }
-}
-
-fun padContentBadge(pad: PadModel): String = when {
-    pad.playMode == PadPlayMode.LOOP -> "LOOP"
-    pad.contentKind == PadContentKind.DRUM -> "DRM"
-    pad.contentKind == PadContentKind.VOCAL -> "VOX"
-    else -> ""
 }
 
 fun padAccessibilityDescription(

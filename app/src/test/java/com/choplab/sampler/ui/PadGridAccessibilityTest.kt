@@ -1,8 +1,6 @@
 package com.choplab.sampler.ui
 
 import com.choplab.sampler.model.PadModel
-import com.choplab.sampler.model.PadContentKind
-import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SourceUiPhase
 import org.junit.Assert.assertEquals
@@ -11,17 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PadGridAccessibilityTest {
-    @Test
-    fun padKeyboardLabelsStayCanonicalWhileContentUsesASeparateBadge() {
-        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
-
-        assertEquals("1234QWERASDFZXCV", PAD_KEY_LABELS)
-        assertEquals("LOOP", padContentBadge(PadModel(0, audio, 0, 50, playMode = PadPlayMode.LOOP)))
-        assertEquals("DRM", padContentBadge(PadModel(1, audio, 0, 50, contentKind = PadContentKind.DRUM)))
-        assertEquals("VOX", padContentBadge(PadModel(2, audio, 0, 50, contentKind = PadContentKind.VOCAL)))
-        assertEquals("", padContentBadge(PadModel(3, audio, 0, 50)))
-    }
-
     @Test
     fun captureModeDescribesAssignedPadsAsAuditionAndEmptyPadsAsChopTargets() {
         val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
