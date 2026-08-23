@@ -75,8 +75,8 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - [x] 2026-08-24 05:08 JST — Focused shared/JVM/Android parity and non-finite tests pass.
 - [x] 2026-08-24 05:12 JST — Full 152-task local gate passed; shared hosts 24 each, Android 228, JVM-core 52 and Desktop 76 with zero failures/errors/skips.
 - [x] 2026-08-24 05:10 JST — Review fixes bound sample-rate/finite clamps and removed the Android middle man; final full gate shared hosts 25 each.
-- [ ] Complete final two-axis re-review and current SSOT commit.
-- [ ] Complete runtime/device receipt.
+- [x] 2026-08-24 05:10 JST — Final two-axis re-review unresolved Standards 0 / Spec 0; committed local SSOT.
+- [x] 2026-08-24 05:14 JST — Exact Windows isolated runtime and Pixel `F9CD…` retained install/readback/cold launch passed.
 - [ ] Complete PR/merge/main readback.
 
 ## Discoveries
@@ -99,6 +99,8 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - Full `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 152 tasks; shared 24/24, Android 228, JVM-core 52, Desktop 76; zero failures/errors/skips.
 - Python policy 22 and public current/reachable-history surface 382 — PASS.
 - Review-fix full gate — PASS, 152 tasks; shared 25/25, Android 228, JVM-core 52 and Desktop 76 with zero failures/errors/skips.
+- Windows packaged runtime — responding launcher/UI, exact process stop and real-project digest preservation PASS.
+- Pixel — exact SHA `f9cd14e0…`, signer match, retained install/readback, projects 7 / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS. Receipt: parent PAD `work/PAD_CHOPLAB_AUDIO_PARITY_3CCD414_DEVICE_RECEIPT_20260824.json`.
 
 ## Risks and rollback
 
