@@ -68,6 +68,7 @@ Androidスマホ版とWindows EXE版で、同じ「入れる → チョップ �
 - [x] 2026-08-23 — Milestone 1: each of the three public seams observed RED for the intended missing behavior/API.
 - [x] 2026-08-23 — Milestone 2: minimal controller/startup implementation turned all focused tests GREEN.
 - [x] 2026-08-23 — Milestone 3: 91-task cross-platform gate, configured validation, public-surface scan, UI contract, package smoke, and `git diff --check` passed.
+- [x] 2026-08-23 — Local two-axis review found and closed the Beat-output failure path; final desktop test/package passed with 39 tests.
 - [ ] Milestone 4 device slice or explicit unavailable blocker; Pixel was absent at the first bounded preflight.
 
 ## Discoveries
@@ -92,7 +93,10 @@ Androidスマホ版とWindows EXE版で、同じ「入れる → チョップ �
   - No devices attached; no install or mutation attempted.
 - `:desktop:test :jvm-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :desktop:packageWindows --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain`
   - 2026-08-23, Windows / JDK 17 / portable Android SDK / `work/gradle-home`.
-  - `BUILD SUCCESSFUL` in 1m27s; 91 tasks. Android 225, JVM-core 44, desktop 38 tests; failures/errors/skips 0; lint errors 0.
+  - `BUILD SUCCESSFUL` in 1m27s; 91 tasks. Android 225, JVM-core 44, desktop 38 tests before review; failures/errors/skips 0; lint errors 0.
+- `:desktop:test :desktop:packageWindows --offline --no-daemon --max-workers=1 --no-watch-fs --console=plain`
+  - 2026-08-23 after the review repair.
+  - `BUILD SUCCESSFUL` in 33s; 19 tasks; final desktop 39 tests, failures/errors/skips 0.
 - `scripts/validate_project.sh`, `scripts/check_public_surface.py`, UI contract validator, and `git diff --check`
   - 2026-08-23.
   - PASS; public candidates 322; UI regions 9 (`4 exact / 4 semantic / 1 adapted`).

@@ -279,6 +279,33 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun vocalRecordingStopsSafelyWhenTheBeatOutputCannotStart() {
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            engine.failNextTrigger = true
+
+            val startResult = runCatching { controller.toggleVocalRecording() }
+
+            assertTrue(startResult.isSuccess)
+            awaitCondition { controller.state.value.recordingSession !is RecordingSession.Active }
+            assertEquals(false, recorder.isRecording)
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertTrue(controller.state.value.statusMessage.contains("Windowsの出力デバイスを確認"))
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun padControlsAndLoopCommandsReachTheDesktopAudioPort() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -318,13 +345,20 @@ class DesktopSamplerControllerTest {
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = mutableListOf<Pair<PadModel, Boolean>>()
+        var failNextTrigger: Boolean = false
         override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
         override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
         override fun seekSource(frame: Int) { sourcePosition = frame }
         override fun sourceFramePosition(): Int = sourcePosition
         override fun padFramePosition(index: Int): Int? = null
         override fun stop() { isSourcePlaying = false }
-        override fun triggerPad(pad: PadModel, forceLoop: Boolean) { triggered += pad to forceLoop }
+        override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
+            if (failNextTrigger) {
+                failNextTrigger = false
+                error("test output unavailable")
+            }
+            triggered += pad to forceLoop
+        }
         override fun releasePad(index: Int) = Unit
         override fun stopPad(index: Int) = Unit
         override fun stopAll() { isSourcePlaying = false }

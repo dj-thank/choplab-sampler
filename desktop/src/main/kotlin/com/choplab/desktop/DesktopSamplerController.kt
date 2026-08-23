@@ -249,9 +249,15 @@ class DesktopSamplerController(
         mutableState.value = prepared
         recorderFor(kind).start(output).onSuccess {
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
-            if (loopPad != null) {
+            val loopPlaybackFailure = if (loopPad != null) {
                 stopAllSounds()
-                player.triggerPad(loopPad, forceLoop = true)
+                runCatching { player.triggerPad(loopPad, forceLoop = true) }.exceptionOrNull()
+            } else {
+                null
+            }
+            if (loopPlaybackFailure != null) {
+                stopRecordingAfterPlaybackFailure(kind, loopPlaybackFailure)
+                return@onSuccess
             }
             mutableState.update {
                 observeRecordingSession(it, kind).copy(
@@ -266,6 +272,32 @@ class DesktopSamplerController(
             }
         }.onFailure { error ->
             mutableState.update { failRecordingSession(it, kind).copy(statusMessage = "録音開始失敗: ${error.message ?: error.javaClass.simpleName}") }
+        }
+    }
+
+    private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, error: Throwable) {
+        val message = "ビートを開始できないため声の録音を停止しました。Windowsの出力デバイスを確認してください: " +
+            (error.message ?: error.javaClass.simpleName)
+        mutableState.update { state ->
+            state.copy(
+                recordingSession = (state.recordingSession as? RecordingSession.Active)
+                    ?.copy(phase = RecordingPhase.STOPPING)
+                    ?: state.recordingSession,
+                loopingPadIndex = null,
+                loopPlayheadFrame = -1,
+                statusMessage = message,
+            )
+        }
+        ioExecutor.execute {
+            val ownedFile = runCatching { recorderFor(kind).stop().getOrThrow() }.getOrNull()
+            runCatching { ownedFile?.delete() }
+            mutableState.update {
+                endRecordingSession(it, kind).copy(
+                    loopingPadIndex = null,
+                    loopPlayheadFrame = -1,
+                    statusMessage = message,
+                )
+            }
         }
     }
 
