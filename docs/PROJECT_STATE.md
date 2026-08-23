@@ -1,6 +1,22 @@
 # Project state
 
-## Current snapshot — 2026-08-24 shared audio-parity primitives local candidate
+## Current snapshot — 2026-08-24 full-bar pattern/master parity local candidate
+
+This snapshot supersedes the primitive-level parity snapshot below for current branch truth. It records the single-event full-bar oracle, terminal-sample repair and fresh local evidence only; its exact new artifact has not yet received device or GitHub evidence.
+
+- Observed at: `2026-08-24T05:43:21.9546039+09:00`.
+- Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-pattern-master-oracle-20260824`, `codex/choplab-pattern-master-oracle`; product checkpoint `c2dd5c74b79e09ce2134011caf966c9d89fa777f`, tree `2070dd502260b311ca942d0d56af8d6b86f029f9`, based on public `main@5c56d844c86dc7dcdbd57e3f88154d99469e1a65`. Dirty canonical and earlier worktrees remain untouched.
+- Oracle: one reverse/pitched/filtered PAD at step 0 is rendered for one full bar. Expected PCM is Android `SamplerEngine.Voice` plus shared master limiter; actual PCM is `PatternRenderer` WAV. Every frame and the last energetic frame are compared with maximum tolerance one integer PCM unit.
+- RED evidence: initial maximum delta was 61 at frame 402, with offline 0 and realtime -61.
+- Root cause/repair: OfflineVoice returned a final nonzero sample and marked itself finished in the same call. PatternRenderer removed it before adding that returned value. The renderer now mixes the value first, then retires a finished voice; focused oracle is GREEN.
+- Scope: this closes single PAD / single event / mono master ordering. Polyphony, choke, repeated events, loop/vocal, stereo and physical perception are not inferred.
+- Fresh local gate: 152 Gradle tasks PASS; shared Desktop 25, shared Android host 25, Android 229, JVM-core 52 and Desktop 76; failures/errors/skips 0. Debug/release Lint, APKs and Windows app-image PASS.
+- Policy: Python policy 23 and public current/reachable-history scan 386 candidates PASS. Dependency inputs are unchanged and require fresh hosted supply-chain readback before merge.
+- Local artifacts: debug APK 31,459,442 bytes / SHA-256 `DB089F705E526CFD7D7D848988C77E6EC4D7791FD535DD95451FF6C2B200F7D5`; unsigned release APK 24,044,660 bytes / `519DC77F3F1928E35CC73A15F941D662A5371337242024D12723D3A1B974F976`; Windows app-image 405 files / 176,479,579 bytes, EXE SHA-256 `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Review: initial Standards pass found only stale SSOT plus accepted cross-module test-helper duplication; Spec found no source issue. This snapshot fixes SSOT and is followed by final re-review.
+- Gate ceiling: `LOCAL_PASS`. Previous Pixel bytes `F9CD14E0…` do not prove this new `DB089F70…` APK. Exact runtime/device, physical audio, provider, PR/main, binary Release and HUMAN_GO remain pending or excluded.
+
+## Previous snapshot — 2026-08-24 shared audio-parity primitives local candidate
 
 This snapshot supersedes the ProductionSession snapshot below for current branch truth. It records a numeric parity tracer plus fresh local and bounded device evidence; GitHub integration remains pending.
 

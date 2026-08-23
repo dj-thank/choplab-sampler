@@ -67,7 +67,8 @@ Offline WAV export retains every realtime PAD sample for a single pattern event 
 - [x] 2026-08-24 05:37 JST — Fixed exact main, owner, scope, tolerance and native-engine stop boundary.
 - [x] 2026-08-24 05:39 JST — Oracle RED: delta 61 at frame 402, offline 0 / realtime -61.
 - [x] 2026-08-24 05:41 JST — One-line mix-before-remove repair makes oracle GREEN.
-- [ ] Complete full local gate and review.
+- [x] 2026-08-24 05:43 JST — Full 152-task local gate passed; Android 229 and all other suites zero failures/errors/skips.
+- [ ] Complete final review and current SSOT commit.
 - [ ] Complete exact artifact checks.
 - [ ] Complete PR/merge/main readback.
 
@@ -87,6 +88,8 @@ Offline WAV export retains every realtime PAD sample for a single pattern event 
 
 - Focused oracle before fix — RED, maximum delta 61 at frame 402 (`offline=0`, `realtime=-61`).
 - Focused oracle after mix-before-remove — PASS.
+- Full `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 152 tasks; Android 229, shared 25/25, JVM-core 52, Desktop 76.
+- Python policy 23 and public current/reachable-history surface 386 — PASS.
 
 ## Risks and rollback
 
