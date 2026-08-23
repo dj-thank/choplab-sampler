@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** 未選択。global optimizationの四段階は`main@ecc6c54`まで統合済みで、次は新しいdecision boundaryである。既存planをfilenameだけで再開しない。
+**現在の実装plan:** 未選択。global optimizationの四段階はproduct bytes `ecc6c54`まで、source-state closeoutはPR #50まで統合済みで、次は新しいdecision boundaryである。docs-only commitで変動するremote `main`のexact SHAはGit/providerからread-backし、このregistryへ自己参照定数として固定しない。既存planをfilenameだけで再開しない。
 
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 

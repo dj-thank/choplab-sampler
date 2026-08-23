@@ -35,6 +35,7 @@ When resuming after compaction, interruption, or a different task, use the paren
 ## Current evidence and plan rules
 
 - `docs/PROJECT_STATE.md` is the current state SSOT; its top snapshot wins over older dated entries when the revision or gate differs.
+- A documentation-only commit cannot truthfully hard-code its own future merge commit as the timeless "current main". Record the immutable product-byte anchor and revision-bound provider read-back separately, and resolve the current remote main from Git when exact identity is needed.
 - `docs/FEATURE_MATRIX.md` describes implementation and test scope, not automatic gate promotion. A device, provider, public, or human claim must point to a revision-bound receipt with its observation time, scope, and negative path.
 - The evidence order is `LOCAL_PASS -> DEVICE_PASS -> PROVIDER_PASS -> PUBLIC_PASS -> HUMAN_GO`. Source-bound AVD/framework tests do not prove physical audio, route loss, TalkBack speech, subjective feel, or human acceptance.
 - `plans/active/README.md` is the plan registry. Existing plan files are retained historical context unless the registry marks one as the current selection; do not resume a plan from its filename alone.
