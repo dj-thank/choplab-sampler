@@ -292,6 +292,7 @@ class DesktopSamplerControllerTest {
             controller.selectPad(loopPad)
             controller.toggleBeatLoopControl()
             engine.failNextTrigger = true
+            recorder.failStop = true
 
             val startResult = runCatching { controller.toggleVocalRecording() }
 
@@ -300,6 +301,7 @@ class DesktopSamplerControllerTest {
             assertEquals(false, recorder.isRecording)
             assertEquals(null, controller.state.value.loopingPadIndex)
             assertTrue(controller.state.value.statusMessage.contains("Windowsの出力デバイスを確認"))
+            assertEquals(false, recorder.lastOutput?.exists())
         } finally {
             controller.close()
         }
@@ -367,17 +369,28 @@ class DesktopSamplerControllerTest {
 
     private class FakeRecorder : DesktopAudioRecorder {
         private var output: File? = null
+        val lastOutput: File?
+            get() = output
+        var failStop: Boolean = false
         override var isRecording: Boolean = false
             private set
 
         override fun start(file: File): Result<Unit> {
             output = file
             isRecording = true
+            if (failStop) {
+                file.parentFile?.mkdirs()
+                file.writeText("partial", Charsets.UTF_8)
+            }
             return Result.success(Unit)
         }
 
         override fun stop(): Result<File> {
             val file = output ?: return Result.failure(IllegalStateException("recording was not started"))
+            if (failStop) {
+                isRecording = false
+                return Result.failure(IllegalStateException("test recorder stop failure"))
+            }
             file.parentFile?.mkdirs()
             val pcm = ByteArray(960) { index -> if (index % 4 < 2) 0x20 else 0xE0.toByte() }
             WavFileWriter(file, sampleRate = 48_000, channelCount = 1).use { writer ->

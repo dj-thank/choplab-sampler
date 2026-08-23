@@ -256,7 +256,7 @@ class DesktopSamplerController(
                 null
             }
             if (loopPlaybackFailure != null) {
-                stopRecordingAfterPlaybackFailure(kind, loopPlaybackFailure)
+                stopRecordingAfterPlaybackFailure(kind, output, loopPlaybackFailure)
                 return@onSuccess
             }
             mutableState.update {
@@ -275,7 +275,7 @@ class DesktopSamplerController(
         }
     }
 
-    private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, error: Throwable) {
+    private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, output: File, error: Throwable) {
         val message = "ビートを開始できないため声の録音を停止しました。Windowsの出力デバイスを確認してください: " +
             (error.message ?: error.javaClass.simpleName)
         mutableState.update { state ->
@@ -291,6 +291,7 @@ class DesktopSamplerController(
         ioExecutor.execute {
             val ownedFile = runCatching { recorderFor(kind).stop().getOrThrow() }.getOrNull()
             runCatching { ownedFile?.delete() }
+            runCatching { output.delete() }
             mutableState.update {
                 endRecordingSession(it, kind).copy(
                     loopingPadIndex = null,
