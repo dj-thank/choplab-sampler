@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Realtime / offline / Windows audio parity | 🧪 current local / scoped device | `6838028`でpitch step、tone alpha、gain、boundary fade、soft limiter、swing、NaN/Inf policyをallocation-free shared化。Android Voiceとhost PADのPCM最大差1、offline非有限値finite、shared両host各25、Android 228、JVM-core 52、full 152-task gate、exact `F9CD…` Pixel retained install/cold launchがPASS。pattern/master/stereo/physical listeningは次段階 |
 | ProductionSession / 履歴・復旧の全体整合 | 🧪 current local / scoped device | `894a5ba`でhistory、merge coalescing、monotonic revision、Undo/Redo flags、persistence admission、plan/commit/cancelをshared化。Android/Windowsのsource/recording/reset/open/recovery/editを一本化し、復旧disk revisionより次saveを必ず新しくする。shared両host各19、JVM-core 50、full 152-task gate、exact `9E5C…` Pixel retained install/cold launchがPASS。物理recovery操作は未確認 |
 | 全体最適化 / Production semantics | 🧪 current local / scoped device | `fcbed5b`で最初のshared `ProductionCommand -> PROJECT/SESSION/NONE + effects` tracerを実装。Android/Windowsのrange START/END、marker add/move、slice selection、通常PAD modeを一本化し、shared Desktop/Android host各12 tests、Desktop history/effect negative、full 152-task gate、Pixel data-preserving cold launchがPASS。残り約40 controller actionのtyped-command化とshared state ownerは段階移行 |
 | Windows EXE版のPAD操作 | ✅ current local / merged source | `main@ab68d2d`の`0.17.0`は共有Android-origin deckを保ち、現在表示中の割当済み16 PADを `1234 / QWER / ASDF / ZXCV` で演奏。repeat/modifier/source/recording/loadingをfail-closedにし、key-up・focus loss・終了でexact global PADを解放。File/Edit/Transport menu、現候補76 desktop tests、installer/tamper/shortcut E2E、実user-local起動がPASS。実ドライバー音質・レイテンシは未確認 |
@@ -46,7 +47,7 @@
 | Reverse | ✅ | PAD別 |
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
 | Choke group | ✅ | 1–4 |
-| リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界により予約途中の古いcommandも次回起動へ残さない。PAD差替え/clearは128固定slotのlatest-wins mailboxでqueue飽和時の旧A01残留を防止。32 PAD voice＋source voiceを事前確保し通常render pathのVoice生成を除去 |
+| リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
 | マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。端末音声captureは世代付きsessionと2秒のstop/release境界を持ち、開始途中STOPと旧workerの新session破壊をLOCALで防止。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中の競合操作を遮断。現候補の実MediaProjection/AudioRecord再検証は未実施 |
 | 一時録音のprivacy cleanup | 🧪 local | app cacheのChopLab命名mic/system/vocal WAVだけを所有対象とし、decode成功・失敗・取消・無効化後に削除。異常終了残留は24時間後の起動時に限定清掃。SAF import、export、project、無関係cacheは削除対象外 |

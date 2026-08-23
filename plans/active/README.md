@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**実行中:** `production-session-horizon-2-20260824.md`。`main@41be2c2`から分離したclean worktreeで、Android/Windowsに残るhistory・revision・canUndo/Redo・persistence admission・command transactionの重複をshared `ProductionSession`へ集約する。UI/project schema/audio algorithmは変えず、blocking effect成功後だけcommitする。
+**実行中:** `audio-parity-primitives-20260824.md`。`main@28bd388`から分離したclean worktreeで、Android realtime・offline WAV・Windows PADに重複するpitch/tone/gain/fade/limiter/swing数式とNaN policyをallocation-free shared primitivesへ集約し、native engine前のPCM equivalence oracleを作る。
+
+**直前のProductionSession完了:** `../completed/production-session-horizon-2-20260824.md`。shared transaction/history/revision/recovery、exact Pixel、PR #47、`main@28bd388`、全PR/main CIまで完了。physical recovery/audio/provider/Humanは別gate。
 
 **直前の全体最適化tracer完了:** `../completed/global-production-session-20260824.md`。shared `ProductionCommand`の最初の6操作、Desktop/Android host parity tests、Windows/Pixel、PR #46、`main@41be2c2`、全PR/main CIまで完了。物理gesture/audio/recording/TalkBack/provider/Humanは別gate。
 

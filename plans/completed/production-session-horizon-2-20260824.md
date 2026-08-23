@@ -11,7 +11,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - Owner: root task `01a02e46-4c8f-7120-a7be-a4d202c713d0`; one checkout, Pixel/ADB and GitHub writer.
 - Dirty canonical checkout and earlier phase worktrees are preserved and excluded from writes.
 - ADR-0001's first semantic tracer is complete on main. Android and Windows still directly own `EditHistory`, revision/flags and repeated command-commit sequencing at this baseline.
-- Initial `ProductionSession` contract and controller migration compile locally; final local/device/GitHub evidence is not yet claimed.
+- ProductionSession, restart-safe revision, exact Pixel receipt, PR #47 and merged-main readback are complete. Public main is `28bd388`, with the exact reviewed tree `3e3a90d`.
 
 ## Constraints and invariants
 
@@ -82,7 +82,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - [x] 2026-08-24 04:37 JST — Final 152-task local gate passed; shared hosts 19 each, JVM-core 50, Android 226 and Desktop 76 with zero failures/errors/skips.
 - [x] 2026-08-24 04:37 JST — Final two-axis re-review unresolved Standards 0 / Spec 0; committed current local SSOT.
 - [x] 2026-08-24 04:40 JST — Exact Windows isolated runtime and Pixel `9E5C…` retained install/readback/cold launch passed.
-- [ ] Complete PR/merge/main readback.
+- [x] 2026-08-24 04:57 JST — PR #47 merged as `main@28bd388`; PR/push 8/8 and merged-main Android/Windows/iOS/Supply-chain 4/4 PASS.
 
 ## Discoveries
 
@@ -109,6 +109,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - Full `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 152 tasks; shared 19/19, Android 226, JVM-core 50, Desktop 76; zero failures/errors/skips.
 - Windows packaged runtime — responding launcher/UI and exact title in isolated data; exact process stop; real project digest unchanged.
 - Pixel — exact candidate SHA `9e5c5767…`, signer match, data-preserving install/readback, projects 7 / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS. Receipt: parent PAD `work/PAD_CHOPLAB_PRODUCTION_SESSION_69EFBED_DEVICE_RECEIPT_20260824.json`.
+- GitHub — parent PAD `work/PAD_CHOPLAB_PRODUCTION_SESSION_GITHUB_RECEIPT_20260824.md`; PR #47, tree equality and merged-main runs `32662509006`, `32662509027`, `32662509010`, `32662509005` PASS.
 
 ## Risks and rollback
 

@@ -83,3 +83,7 @@ A temporary playback, recording, capture, or device operation performed while wo
 ## Production session
 
 The ordered working context that decides whether an action changes the Production, only changes the current selection/guidance, or changes nothing. It keeps project revision and Undo/Redo history coherent while runtime actions remain separately observable.
+
+## Audio parity oracle
+
+A deterministic comparison that renders the same Production input through two audio paths and measures an explicit numeric tolerance. It proves a bounded behavior match for that fixture; it does not by itself prove physical latency, device quality, or human-perceived equivalence.

@@ -9,6 +9,7 @@ mkdir -p "$OUT"
 kotlinc \
   "$ROOT"/shared/src/commonMain/kotlin/com/choplab/sampler/format/*.kt \
   "$ROOT"/shared/src/commonMain/kotlin/com/choplab/sampler/model/*.kt \
+  "$ROOT/shared/src/commonMain/kotlin/com/choplab/sampler/audio/SamplerDspPrimitives.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/SamplerPlaybackEngine.kt" \
   "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/VoicePlaybackCursor.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/TransientDetector.kt" \

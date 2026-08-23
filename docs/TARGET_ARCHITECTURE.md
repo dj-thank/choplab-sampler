@@ -22,11 +22,11 @@ A Kotlin interface separates application logic from playback implementation. Dur
 
 ### Native DSP
 
-C++ owns the low-latency output stream, bounded commands, immutable pad/sequence snapshots, voices and real-time DSP. Control-thread updates never invalidate data referenced by the callback.
+C++ will own the low-latency output stream, bounded commands, immutable pad/sequence snapshots, voices and real-time DSP after parity gates exist. Allocation-free numeric policies for pitch step, tone alpha, gain, boundary fade, limiting and swing live in shared primitives first, so legacy, offline, desktop and future native paths have an executable oracle. Control-thread updates never invalidate data referenced by the callback.
 
 ### Offline rendering
 
-Offline rendering consumes the same project/sequence model and shared DSP primitives where feasible. It runs outside the UI/audio callback, supports cancellation/progress and writes incrementally.
+Offline rendering consumes the same project/sequence model and shared allocation-free DSP primitives. It runs outside the UI/audio callback, supports cancellation/progress and writes incrementally. Voice/event kernels migrate only after direct realtime/host and pattern-level equivalence tests define tolerances.
 
 ### Persistence
 

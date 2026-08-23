@@ -1,11 +1,8 @@
 package com.choplab.sampler.audio
 
 import com.choplab.sampler.model.PadModel
-import kotlin.math.PI
 import kotlin.math.ceil
-import kotlin.math.exp
 import kotlin.math.floor
-import kotlin.math.pow
 
 /** Host-side rendering of one PAD voice using the same core controls as the Android engine. */
 object PadPcmRenderer {
@@ -16,17 +13,16 @@ object PadPcmRenderer {
 
         val start = pad.startFrame.coerceIn(0, audio.samples.lastIndex)
         val end = pad.endFrame.coerceIn(start + 1, audio.samples.size)
-        val sourceStep = 2.0.pow(pad.pitchSemitones.coerceIn(-24f, 24f) / 12.0) *
-            audio.sampleRate / outputSampleRate.toDouble()
+        val sourceStep = SamplerDspPrimitives.sourceStep(
+            pitchSemitones = pad.pitchSemitones,
+            sourceSampleRate = audio.sampleRate,
+            outputSampleRate = outputSampleRate,
+        )
         val frameCount = ceil((end - start) / sourceStep).toInt().coerceAtLeast(1)
         val result = ShortArray(frameCount)
         var filterState = 0f
-        val tone = pad.tone.coerceIn(0f, 1f)
-        val gain = pad.gain.coerceIn(0f, 1.5f)
-        val alpha = if (tone >= 0.995f) 1f else {
-            val cutoffHz = 80.0 * 225.0.pow(tone.toDouble())
-            (1.0 - exp(-2.0 * PI * cutoffHz / outputSampleRate)).toFloat()
-        }
+        val gain = SamplerDspPrimitives.gain(pad.gain)
+        val alpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
 
         for (outputFrame in result.indices) {
             val offset = outputFrame * sourceStep
@@ -38,15 +34,16 @@ object PadPcmRenderer {
             val first = audio.samples[lower] / 32_768f
             val second = audio.samples[upper] / 32_768f
             val raw = first + (second - first) * fraction
-            val filtered = if (tone >= 0.995f) raw else {
+            val filtered = if (alpha >= 1f) raw else {
                 filterState += alpha * (raw - filterState)
                 filterState
             }
-            val fromStart = if (pad.reverse) end - 1.0 - position else position - start
-            val toEnd = if (pad.reverse) position - start else end - 1.0 - position
-            val boundary = minOf(1.0, fromStart / CLICK_FADE_SOURCE_FRAMES, toEnd / CLICK_FADE_SOURCE_FRAMES)
-                .coerceAtLeast(0.0)
-                .toFloat()
+            val boundary = SamplerDspPrimitives.boundaryEnvelope(
+                position = position,
+                startFrame = start,
+                endFrame = end,
+                reverse = pad.reverse,
+            )
             result[outputFrame] = (filtered * gain * boundary)
                 .coerceIn(-1f, 1f)
                 .times(Short.MAX_VALUE)
@@ -55,6 +52,4 @@ object PadPcmRenderer {
         }
         return result
     }
-
-    private const val CLICK_FADE_SOURCE_FRAMES = 48.0
 }

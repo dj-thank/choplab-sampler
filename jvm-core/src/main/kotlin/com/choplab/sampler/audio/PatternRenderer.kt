@@ -6,12 +6,9 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.stepKey
 import java.io.File
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
-import kotlin.math.exp
 import kotlin.math.floor
-import kotlin.math.pow
 
 data class PatternRenderSummary(
     val bars: Int,
@@ -53,8 +50,8 @@ object PatternRenderer : PatternRenderService {
         require(bars in 1..64) { "bars must be between 1 and 64" }
         require(outputSampleRate in 8_000..192_000) { "Unsupported output sample rate" }
 
-        val safeBpm = bpm.coerceIn(40f, 240f)
-        val safeSwing = swing.coerceIn(50f, 75f)
+        val safeBpm = SamplerDspPrimitives.bpm(bpm)
+        val safeSwing = SamplerDspPrimitives.swing(swing)
         val stepStarts = calculateStepStarts(outputSampleRate, safeBpm, safeSwing)
         val barFrames = ceil(stepStarts.last()).toInt().coerceAtLeast(1)
         val totalFrames = barFrames * bars
@@ -107,7 +104,7 @@ object PatternRenderer : PatternRenderService {
                 var voiceIndex = 0
                 while (voiceIndex < voices.size) {
                     val voice = voices[voiceIndex]
-                    val value = voice.render(outputSampleRate)
+                    val value = voice.render()
                     if (voice.finished) {
                         voices.removeAt(voiceIndex)
                     } else {
@@ -116,7 +113,7 @@ object PatternRenderer : PatternRenderService {
                     }
                 }
 
-                val limited = mix / (1f + abs(mix))
+                val limited = SamplerDspPrimitives.softLimit(mix)
                 peak = maxOf(peak, abs(limited))
                 pcmBuffer[bufferIndex++] = (limited.coerceIn(-1f, 1f) * Short.MAX_VALUE)
                     .toInt()
@@ -144,14 +141,8 @@ object PatternRenderer : PatternRenderService {
         swing: Float,
     ): DoubleArray {
         val starts = DoubleArray(SamplerConfig.STEP_COUNT + 1)
-        val straightSixteenth = sampleRate * 60.0 / bpm.toDouble() / 4.0
-        val longRatio = swing.toDouble() / 50.0
         repeat(SamplerConfig.STEP_COUNT) { step ->
-            val length = if (step % 2 == 0) {
-                straightSixteenth * longRatio
-            } else {
-                straightSixteenth * (2.0 - longRatio)
-            }
+            val length = SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
             starts[step + 1] = starts[step] + length
         }
         return starts
@@ -180,9 +171,9 @@ object PatternRenderer : PatternRenderService {
                     sourceSampleRate = audio.sampleRate,
                     startFrame = start,
                     endFrame = end,
-                    pitchSemitones = pad.pitchSemitones.coerceIn(-24f, 24f),
-                    tone = pad.tone.coerceIn(0f, 1f),
-                    gain = pad.gain.coerceIn(0f, 1.5f),
+                    pitchSemitones = SamplerDspPrimitives.pitchSemitones(pad.pitchSemitones),
+                    tone = SamplerDspPrimitives.tone(pad.tone),
+                    gain = SamplerDspPrimitives.gain(pad.gain),
                     reverse = pad.reverse,
                     playMode = pad.playMode,
                     chokeGroup = pad.chokeGroup.coerceIn(0, 4),
@@ -204,6 +195,7 @@ object PatternRenderer : PatternRenderService {
         private val gain = pad.gain
         private val tone = pad.tone
         private val sourceStep: Double
+        private val filterAlpha: Float
         private val cursor = VoicePlaybackCursor(
             startFrame = startFrame,
             endFrame = endFrame,
@@ -218,8 +210,12 @@ object PatternRenderer : PatternRenderService {
             private set
 
         init {
-            val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
-            sourceStep = pitchRatio * pad.sourceSampleRate / outputSampleRate.toDouble()
+            sourceStep = SamplerDspPrimitives.sourceStep(
+                pitchSemitones = pad.pitchSemitones,
+                sourceSampleRate = pad.sourceSampleRate,
+                outputSampleRate = outputSampleRate,
+            )
+            filterAlpha = SamplerDspPrimitives.toneFilterAlpha(tone, outputSampleRate)
         }
 
         fun release(frames: Int) {
@@ -230,7 +226,7 @@ object PatternRenderer : PatternRenderService {
             }
         }
 
-        fun render(outputSampleRate: Int): Float {
+        fun render(): Float {
             if (finished) {
                 finished = true
                 return 0f
@@ -244,28 +240,18 @@ object PatternRenderer : PatternRenderService {
             val upperSample = samples[upper] / 32_768f
             val raw = lowerSample + (upperSample - lowerSample) * fraction
 
-            val framesFromStart = if (reverse) {
-                (endFrame - 1.0) - position
-            } else {
-                position - startFrame
-            }
-            val framesToEnd = if (reverse) {
-                position - startFrame
-            } else {
-                (endFrame - 1.0) - position
-            }
-            val boundaryEnvelope = minOf(
-                1.0,
-                framesFromStart / CLICK_FADE_SOURCE_FRAMES,
-                framesToEnd / CLICK_FADE_SOURCE_FRAMES,
-            ).coerceAtLeast(0.0).toFloat()
+            val boundaryEnvelope = SamplerDspPrimitives.boundaryEnvelope(
+                position = position,
+                startFrame = startFrame,
+                endFrame = endFrame,
+                reverse = reverse,
+            )
 
-            val filtered = if (tone >= 0.995f) {
+            val filtered = if (filterAlpha >= 1f) {
+                filterState = raw
                 raw
             } else {
-                val cutoffHz = 80.0 * 225.0.pow(tone.toDouble())
-                val alpha = (1.0 - exp(-2.0 * PI * cutoffHz / outputSampleRate)).toFloat()
-                filterState += alpha * (raw - filterState)
+                filterState += filterAlpha * (raw - filterState)
                 filterState
             }
 
@@ -285,5 +271,4 @@ object PatternRenderer : PatternRenderService {
     private const val BUFFER_FRAMES = 4_096
     private const val MAX_POLYPHONY = 32
     private const val FAST_RELEASE_FRAMES = 48
-    private const val CLICK_FADE_SOURCE_FRAMES = 48.0
 }
