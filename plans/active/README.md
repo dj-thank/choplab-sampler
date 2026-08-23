@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**実行中:** `audio-parity-primitives-20260824.md`。`main@28bd388`から分離したclean worktreeで、Android realtime・offline WAV・Windows PADに重複するpitch/tone/gain/fade/limiter/swing数式とNaN policyをallocation-free shared primitivesへ集約し、native engine前のPCM equivalence oracleを作る。
+**実行中:** `pattern-master-parity-oracle-20260824.md`。`main@5c56d84`から分離したclean worktreeで、single PAD / step 0 / full barのrealtime Voice+master expected PCMとoffline WAVを全frame比較し、offline末尾sample欠落を修復する。polyphony/stereo/nativeは別段階。
+
+**直前のaudio primitives完了:** `../completed/audio-parity-primitives-20260824.md`。shared DSP/non-finite policy、PAD PCM oracle、exact Pixel、PR #48、`main@5c56d84`、修正headと全main CIまで完了。
 
 **直前のProductionSession完了:** `../completed/production-session-horizon-2-20260824.md`。shared transaction/history/revision/recovery、exact Pixel、PR #47、`main@28bd388`、全PR/main CIまで完了。physical recovery/audio/provider/Humanは別gate。
 

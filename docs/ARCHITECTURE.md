@@ -150,7 +150,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 - 48 kHz mono PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 
-リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、soft limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持つ。次はpattern/master toleranceを追加してから共通Voice kernelまたはnative moduleへ進み、音の差分と保守コストを測定可能な形で減らす。
+リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、soft limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持つ。さらにsingle PAD / single event / full barではrealtime Voice + shared limiterとoffline WAVを全frame比較し、最大1 PCM unitをgateとする。polyphony/choke/loop/vocal/stereoを同様に拡張してから共通Voice kernelまたはnative moduleへ進む。
 
 ## 8. メモリ戦略
 
