@@ -74,7 +74,8 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - [x] 2026-08-24 05:05 JST — Implemented initial primitive policy and three-path integration.
 - [x] 2026-08-24 05:08 JST — Focused shared/JVM/Android parity and non-finite tests pass.
 - [x] 2026-08-24 05:12 JST — Full 152-task local gate passed; shared hosts 24 each, Android 228, JVM-core 52 and Desktop 76 with zero failures/errors/skips.
-- [ ] Complete two-axis review and current SSOT.
+- [x] 2026-08-24 05:10 JST — Review fixes bound sample-rate/finite clamps and removed the Android middle man; final full gate shared hosts 25 each.
+- [ ] Complete final two-axis re-review and current SSOT commit.
 - [ ] Complete runtime/device receipt.
 - [ ] Complete PR/merge/main readback.
 
@@ -97,6 +98,7 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - `:shared:desktopTest :shared:testAndroidHostTest :jvm-core:test :app:testDebugUnitTest` — PASS after initial primitive integration and parity/non-finite tests.
 - Full `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 152 tasks; shared 24/24, Android 228, JVM-core 52, Desktop 76; zero failures/errors/skips.
 - Python policy 22 and public current/reachable-history surface 382 — PASS.
+- Review-fix full gate — PASS, 152 tasks; shared 25/25, Android 228, JVM-core 52 and Desktop 76 with zero failures/errors/skips.
 
 ## Risks and rollback
 

@@ -1,6 +1,23 @@
 # Project state
 
-## Current snapshot — 2026-08-24 shared ProductionSession local candidate
+## Current snapshot — 2026-08-24 shared audio-parity primitives local candidate
+
+This snapshot supersedes the ProductionSession snapshot below for current branch truth. It records a numeric parity tracer and fresh local evidence only; the exact new APK has not yet received device or GitHub evidence.
+
+- Observed at: `2026-08-24T05:10:39.5482285+09:00`.
+- Worktree/branch: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-audio-parity-20260824`, `codex/choplab-audio-parity`; reviewed product checkpoint `6838028420cb36b8b17dfe03d2e94fa2a8cfe08c`, tree `9278c6201823408ffae85ee6ddb99c9cbfb76fb1`, based on public `main@28bd388acef12dde96befac9774a1853831f82b0`. Dirty canonical and earlier worktrees remain untouched.
+- Shared policy: allocation-free `SamplerDspPrimitives` owns finite/clamp policy, pitch source step, tone coefficient, forward/reverse boundary fade, soft limiter and swung step duration for Android realtime, JVM offline export and Windows PAD rendering.
+- Invalid inputs: NaN/Infinity map explicitly to pitch 0 st, tone bypass, gain silence, BPM 92 and straight swing. Sample rates are bounded to 8,000..192,000. Finite parameter clamps remain pitch -24..24, tone 0..1, gain 0..1.5, BPM 40..240 and swing 50..75.
+- Realtime safety/performance: callback call sites remain allocation/lock/I/O free. Tone exponential is calculated at voice start/live-control update; offline rendering no longer recalculates it for every active voice sample.
+- Parity oracle: the same PAD rendered through Android `SamplerEngine.Voice` and JVM `PadPcmRenderer` differs by at most one PCM integer unit for the fixture. Offline renderer has direct non-finite/timing regressions, while shared numeric contracts run on Desktop JVM and Android host.
+- Scope boundary: Voice lifecycle, command queues, AudioTrack/Java Sound handles, offline writer and project schema remain in their existing modules. Full-pattern/master/stereo tolerance and native-engine replacement remain later horizons.
+- Fresh local gate: 152 Gradle tasks PASS; shared Desktop 25 / 4 suites, shared Android host 25 / 4, Android 228 / 44, JVM-core 52 / 8 and Desktop 76 / 16; failures/errors/skips 0. Debug/release Lint, debug/unsigned-release APK and Windows app-image all PASS.
+- Policy: Python policy 22 and public current/reachable-history scan 382 candidates PASS. Dependency inputs are unchanged; current-main SBOM identity remains separately hosted-verified and requires a fresh PR check before merge.
+- Local artifacts: debug APK 31,529,520 bytes / SHA-256 `F9CD14E0A620D59F6D8877D76260118CCDE9D5F5A64291CB47F55F87A0DFE93D`; unsigned release APK 24,044,660 bytes / `A4FF8D3619BA320774453C24F25C62DA0096C90A5DF771C34FD87B95E43308D1`; Windows app-image 405 files / 176,479,580 bytes, EXE SHA-256 `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Review: first local-parent Standards/Spec passes found stale SSOT, a tone-alpha middle man, incomplete sample-rate bounds and missing direct finite-clamp contracts. Code/test findings are fixed in `6838028`; this snapshot fixes SSOT and is followed by final re-review.
+- Gate ceiling: `LOCAL_PASS`. The installed Pixel still contains prior candidate SHA `9E5C5767…`; it is not evidence for this `F9CD14E0…` APK. Windows runtime, exact device install/readback, physical audio, provider, PR/main, binary Release and `HUMAN_GO` remain pending or excluded.
+
+## Previous snapshot — 2026-08-24 shared ProductionSession local candidate
 
 This snapshot supersedes the first command-spine snapshot below for current branch truth. It records the Horizon 2 application transaction owner plus fresh local and bounded device evidence; GitHub integration remains pending.
 
