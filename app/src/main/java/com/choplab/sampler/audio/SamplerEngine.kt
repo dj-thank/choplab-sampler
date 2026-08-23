@@ -14,22 +14,14 @@ import com.choplab.sampler.model.stepKey
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReferenceArray
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
-import kotlin.math.pow
 
 internal const val PREVIEW_PAD_INDEX = -1
 
-internal fun toneFilterAlpha(tone: Float, outputSampleRate: Int): Float {
-    val safeTone = if (tone.isFinite()) tone.coerceIn(0f, 1f) else 1f
-    if (safeTone >= 0.995f) return 1f
-    val safeSampleRate = outputSampleRate.coerceIn(8_000, 192_000)
-    val cutoffHz = 80.0 * 225.0.pow(safeTone.toDouble())
-    return (1.0 - exp(-2.0 * PI * cutoffHz / safeSampleRate)).toFloat().coerceIn(0f, 1f)
-}
+internal fun toneFilterAlpha(tone: Float, outputSampleRate: Int): Float =
+    SamplerDspPrimitives.toneFilterAlpha(tone, outputSampleRate)
 
 /**
  * Low-latency streaming sampler and sample-accurate 16-step sequencer.
@@ -300,8 +292,8 @@ class SamplerEngine(
         enqueue(
             EngineCommand.SetPattern(
                 steps = steps,
-                bpm = bpm.coerceIn(40f, 240f),
-                swing = swing.coerceIn(50f, 75f),
+                bpm = SamplerDspPrimitives.bpm(bpm),
+                swing = SamplerDspPrimitives.swing(swing),
             ),
         )
     }
@@ -396,7 +388,7 @@ class SamplerEngine(
                     }
 
                     // Smooth saturating limiter protects against polyphonic overload.
-                    val limited = monoMix / (1f + abs(monoMix))
+                    val limited = SamplerDspPrimitives.softLimit(monoMix)
                     val outputIndex = frame * 2
                     output[outputIndex] = limited
                     output[outputIndex + 1] = limited
@@ -649,13 +641,7 @@ class SamplerEngine(
     }
 
     private fun stepLengthFrames(step: Int): Double {
-        val straightSixteenth = outputSampleRate * 60.0 / bpm.toDouble() / 4.0
-        val longRatio = swing.toDouble() / 50.0
-        return if (step % 2 == 0) {
-            straightSixteenth * longRatio
-        } else {
-            straightSixteenth * (2.0 - longRatio)
-        }
+        return SamplerDspPrimitives.stepLengthFrames(outputSampleRate, bpm, swing, step)
     }
 
     private fun startVoice(pad: PadSnapshot) {
@@ -756,9 +742,9 @@ class SamplerEngine(
                     audio = audio,
                     startFrame = pad.startFrame.coerceIn(0, audio.frameCount - 1),
                     endFrame = pad.endFrame.coerceIn(1, audio.frameCount),
-                    pitchSemitones = pad.pitchSemitones.coerceIn(-24f, 24f),
-                    tone = pad.tone.coerceIn(0f, 1f),
-                    gain = pad.gain.coerceIn(0f, 1.5f),
+                    pitchSemitones = SamplerDspPrimitives.pitchSemitones(pad.pitchSemitones),
+                    tone = SamplerDspPrimitives.tone(pad.tone),
+                    gain = SamplerDspPrimitives.gain(pad.gain),
                     reverse = pad.reverse,
                     playMode = pad.playMode,
                     chokeGroup = pad.chokeGroup.coerceIn(0, 4),
@@ -889,21 +875,12 @@ class SamplerEngine(
             val upperSample = samples[upper] / 32_768f
             val raw = lowerSample + (upperSample - lowerSample) * fraction
 
-            val framesFromStart = if (reverse) {
-                (endFrame - 1.0) - position
-            } else {
-                position - startFrame
-            }
-            val framesToEnd = if (reverse) {
-                position - startFrame
-            } else {
-                (endFrame - 1.0) - position
-            }
-            val boundaryEnvelope = minOf(
-                1.0,
-                framesFromStart / CLICK_FADE_SOURCE_FRAMES,
-                framesToEnd / CLICK_FADE_SOURCE_FRAMES,
-            ).coerceAtLeast(0.0).toFloat()
+            val boundaryEnvelope = SamplerDspPrimitives.boundaryEnvelope(
+                position = position,
+                startFrame = startFrame,
+                endFrame = endFrame,
+                reverse = reverse,
+            )
 
             val filtered = if (filterAlpha >= 1f) {
                 filterState = raw
@@ -926,8 +903,11 @@ class SamplerEngine(
         }
 
         private fun sourceStepFor(pad: PadSnapshot, outputSampleRate: Int): Double {
-            val pitchRatio = 2.0.pow(pad.pitchSemitones.toDouble() / 12.0)
-            return pitchRatio * pad.audio.sampleRate / outputSampleRate.toDouble()
+            return SamplerDspPrimitives.sourceStep(
+                pitchSemitones = pad.pitchSemitones,
+                sourceSampleRate = pad.audio.sampleRate,
+                outputSampleRate = outputSampleRate,
+            )
         }
 
         private companion object {
@@ -971,7 +951,6 @@ class SamplerEngine(
         const val MAX_POLYPHONY = 32
         const val RELEASE_FRAMES = 192
         const val FAST_RELEASE_FRAMES = 48
-        const val CLICK_FADE_SOURCE_FRAMES = 48.0
         const val SOURCE_PAD_INDEX = -2
         const val SOURCE_SCRATCH_PAD_INDEX = -3
         const val SCRATCH_SMOOTHING = 0.025

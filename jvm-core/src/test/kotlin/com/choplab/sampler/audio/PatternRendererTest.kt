@@ -214,6 +214,42 @@ class PatternRendererTest {
         }
     }
 
+    @Test
+    fun nonFiniteParametersUseTheSameSafeOfflinePolicy() {
+        val sampleRate = 8_000
+        val audio = PcmAudio(
+            name = "offline-non-finite",
+            samples = ShortArray(512) { frame -> (frame * 37 - 8_000).toShort() },
+            sampleRate = sampleRate,
+        )
+        fun pads(pad: PadModel): List<PadModel> =
+            List(SamplerConfig.PAD_COUNT) { index -> if (index == 0) pad else PadModel(index) }
+        val neutralPad = PadModel(0, audio, 0, audio.frameCount, gain = 1f)
+        val nonFinitePad = neutralPad.copy(pitchSemitones = Float.NaN, tone = Float.NaN)
+
+        val neutral = renderPcm(pads(neutralPad), setOf(stepKey(0, 0)), sampleRate, swing = 50f)
+        val sanitized = renderPcm(pads(nonFinitePad), setOf(stepKey(0, 0)), sampleRate, swing = 50f)
+        assertTrue(neutral.contentEquals(sanitized))
+
+        val file = File.createTempFile("choplab-non-finite-policy", ".wav")
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = pads(neutralPad.copy(gain = Float.NaN)),
+                activeSteps = setOf(stepKey(0, 0)),
+                bpm = Float.NaN,
+                swing = Float.POSITIVE_INFINITY,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            assertTrue(summary.peak.isFinite())
+            assertEquals(0f, summary.peak, 0f)
+            assertTrue(summary.frameCount > 0)
+        } finally {
+            file.delete()
+        }
+    }
+
     private fun littleEndianInt(bytes: ByteArray, offset: Int): Int =
         ByteBuffer.wrap(bytes, offset, Int.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)

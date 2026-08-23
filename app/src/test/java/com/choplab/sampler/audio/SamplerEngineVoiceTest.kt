@@ -211,4 +211,58 @@ class SamplerEngineVoiceTest {
         val resumedFilter = voice.render(48_000)
         assertTrue(kotlin.math.abs(resumedFilter - bypassed) < 0.05f)
     }
+
+    @Test
+    fun realtimeVoiceMatchesTheSharedHostPadOracle() {
+        val audio = PcmAudio(
+            name = "parity.wav",
+            samples = ShortArray(512) { frame -> (frame * 53 - 12_000).toShort() },
+            sampleRate = 48_000,
+        )
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = 24,
+            endFrame = 480,
+            pitchSemitones = 3f,
+            tone = 0.4f,
+            gain = 0.7f,
+        )
+        val expected = PadPcmRenderer.render(pad, outputSampleRate = 48_000)
+        val voice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(pad), 48_000)
+        val actual = ShortArray(expected.size) {
+            (voice.render(48_000).coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
+        }
+
+        val maximumDelta = expected.indices.maxOf { index ->
+            kotlin.math.abs(expected[index].toInt() - actual[index].toInt())
+        }
+        assertTrue("Realtime/host PAD delta was $maximumDelta", maximumDelta <= 1)
+    }
+
+    @Test
+    fun realtimeSnapshotNeutralizesNonFinitePadControls() {
+        val audio = PcmAudio(
+            name = "non-finite.wav",
+            samples = ShortArray(128) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val snapshot = SamplerEngine.PadSnapshot.from(
+            PadModel(
+                globalIndex = 0,
+                audio = audio,
+                startFrame = 0,
+                endFrame = audio.frameCount,
+                pitchSemitones = Float.NaN,
+                tone = Float.NaN,
+                gain = Float.NaN,
+            ),
+        )
+
+        assertEquals(0f, snapshot.pitchSemitones, 0f)
+        assertEquals(1f, snapshot.tone, 0f)
+        assertEquals(0f, snapshot.gain, 0f)
+        val voice = SamplerEngine.Voice(snapshot, 48_000)
+        repeat(64) { assertTrue(voice.render(48_000).isFinite()) }
+    }
 }

@@ -118,6 +118,7 @@ UI、キーボード、MIDI、将来の AI proposal が送る共通の意図。c
 - realtime と offline の event compiler / DSP primitives を共有する。
 - stereo identity、time stretch、ADSR/LFO、voice stealing、route loss を tolerance と negative path 付きで検証する。
 - native engine は parity harness を満たすまで legacy engine と置換しない。
+- 最初のtracerはpitch/tone/gain/fade/limiter/swingと非有限値policyを共有し、realtime Voiceとhost PAD PCMの直接oracleを作る。pattern/master/stereoは別の次段階。
 
 ### Horizon 4 — arrange and mix
 

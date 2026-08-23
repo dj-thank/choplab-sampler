@@ -35,4 +35,28 @@ class PadPcmRendererTest {
         val rendered = PadPcmRenderer.render(PadModel(0, audio, 0, audio.frameCount, gain = 0f))
         assertTrue(rendered.all { it == 0.toShort() })
     }
+
+    @Test
+    fun nonFiniteControlsMatchTheExplicitNeutralPolicy() {
+        val neutral = PadPcmRenderer.render(
+            PadModel(0, audio, 0, audio.frameCount, pitchSemitones = 0f, tone = 1f, gain = 1f),
+        )
+        val nonFinitePitchAndTone = PadPcmRenderer.render(
+            PadModel(
+                0,
+                audio,
+                0,
+                audio.frameCount,
+                pitchSemitones = Float.NaN,
+                tone = Float.NaN,
+                gain = 1f,
+            ),
+        )
+        val nonFiniteGain = PadPcmRenderer.render(
+            PadModel(0, audio, 0, audio.frameCount, gain = Float.POSITIVE_INFINITY),
+        )
+
+        assertTrue(neutral.contentEquals(nonFinitePitchAndTone))
+        assertTrue(nonFiniteGain.all { it == 0.toShort() })
+    }
 }
