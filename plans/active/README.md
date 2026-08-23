@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**LOCAL完了 / scoped Android DEVICE完了 / 外部gate分離:** `session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは未到達。
+**完了・次の実装seam未選択:** `../completed/session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは別の明示taskであり、現在のactive implementation planはない。
 
 **統合入力・LOCAL/DEVICE receipt保全:** `spotify-connect-ux-lifecycle-20260823.md`。source/device receipt `8306ed2`のOAuth lifecycle、provider-state UI、release/audio hardening、Pixel 9a data-preserving instrumentationを保全する。実Spotify account/provider、公開、Human評価は別gate。
 
@@ -53,7 +53,7 @@
 - `full-release-audio-hardening-20260821.md`（統合入力）
 - `spotify-connect-ux-lifecycle-20260823.md`（統合入力）
 - `cross-platform-production-continuity-20260823.md`（統合入力）
-- `session-integration-20260823.md`（現在の選択）
+- `../completed/session-integration-20260823.md`（完了済み統合plan）
 
 ## Selection protocol
 

@@ -66,7 +66,7 @@ The merge retains `shared/` as presentation/domain truth, `jvm-core/` as Android
 - [x] 2026-08-24 — Merged desktop, JVM-core, and Android unit suites passed before the merge commit.
 - [x] 2026-08-24 — Fresh clean 184-task gate, configured validation, Python policy tests, public-surface, UI contract, packaging, SBOM, and source-bound artifacts passed.
 - [x] 2026-08-24 — Packaged Windows runtime passed; exact Android source objects and APK/test APK bytes matched the accepted `8306ed2` device receipt, so only that bounded scope was carried.
-- [x] 2026-08-24 — Local-parent Standards and Spec reviews completed with zero unresolved findings; repo/PAD closeout remains.
+- [x] 2026-08-24 — Local-parent Standards and Spec reviews completed with zero unresolved findings; repo/PAD ledgers and SSOT closed, and this plan moved to `plans/completed/`.
 
 ## Discoveries
 

@@ -1,6 +1,6 @@
 # Session integration Spec review
 
-Execution: local parent two-pass; no substitute child model used. Spec source: `plans/active/session-integration-20260823.md`. Fixed point `261d034c52ebf6d767cd9a20f31c866e2fed1100`.
+Execution: local parent two-pass; no substitute child model used. Spec source: `plans/completed/session-integration-20260823.md` (active during execution). Fixed point `261d034c52ebf6d767cd9a20f31c866e2fed1100`.
 
 ## Result
 

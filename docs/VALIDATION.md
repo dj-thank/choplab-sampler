@@ -5,7 +5,7 @@
 ## Full hardening + Spotify Connect + production continuity integration — 2026-08-24
 
 - Integration source: `codex/choplab-session-integration@6914e3c4d7bfabc85b43eaadfcfaa8de69072739`, tree `94fbc43839d2d74ae383ac973b456ceb4fea9dca`; base parent `261d034`, merged parent `df61bb5`, merge base `9a4e9edc`.
-- Merge resolution: implementation auto-merged; only this validation history and plan registry conflicted. Both source receipts were retained and `session-integration-20260823.md` became the single current plan.
+- Merge resolution: implementation auto-merged; only this validation history and plan registry conflicted. Both source receipts were retained; the integration plan completed and moved to `plans/completed/session-integration-20260823.md`.
 - Fresh clean Gradle gate: 184 tasks PASS. Android unit 226 / 44 suites, JVM-core 49 / 8 suites, desktop 66 / 15 suites; failures 0, errors 0, skipped 0. Android Lint fatal 0 / errors 0 / warnings 6. Debug, unsigned release, androidTest APK, Windows app-image, and combined CycloneDX SBOM built successfully.
 - Other local gates: configured Git Bash validation PASS; Python release/public policy 19/19 PASS; public-surface 355 current / 360 reachable-history candidates PASS; packaged desktop JAR 138-entry credential/signing/audio-name scan PASS; UI contract 9 regions (`exact 4 / semantic 4 / adapted 1`) and 3 states PASS; Android unsigned release policy `0.16.2 (26)` PASS; Windows ProductVersion `0.16.2` PASS; `git diff --check` PASS.
 - Integrated artifacts: `outputs/build-provenance-6914e3c4d7bf.json`, `outputs/windows-metadata-6914e3c4d7bf.json`, and `outputs/session-integration-receipt-6914e3c4d7bf.json`. Exact hashes are recorded in the integrated receipt.
