@@ -31,6 +31,7 @@ A user can, on a supported physical device:
 - Real-time and offline rendering are compared with tolerances documented in tests.
 - Voice stealing, queue overflow, stream restart, silence, clipping and NaN/Inf behavior are tested.
 - Shared DSP primitives run on Desktop JVM and Android host, remain allocation-free at callback use sites, and directly compare at least one realtime PAD voice with a host-rendered PCM oracle under an explicit tolerance.
+- Offline pattern/master parity includes a full-bar, all-frame oracle whose expected path is realtime Voice plus the shared master limiter; a voice's final returned sample is mixed before retirement.
 
 ## Persistence and safety
 

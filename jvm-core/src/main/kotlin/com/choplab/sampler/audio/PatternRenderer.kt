@@ -105,10 +105,10 @@ object PatternRenderer : PatternRenderService {
                 while (voiceIndex < voices.size) {
                     val voice = voices[voiceIndex]
                     val value = voice.render()
+                    mix += value
                     if (voice.finished) {
                         voices.removeAt(voiceIndex)
                     } else {
-                        mix += value
                         voiceIndex++
                     }
                 }

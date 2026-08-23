@@ -12,7 +12,7 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - Dirty canonical and earlier phase worktrees remain preserved and excluded.
 - Baseline duplication: Android `SamplerEngine` is about 935 lines, offline `PatternRenderer` about 264, and `PadPcmRenderer` about 55. Pitch step, tone coefficient, boundary fade, gain policy, swing timing and limiting are separately implemented.
 - Baseline divergence: realtime tone maps non-finite input to bypass, while offline/desktop formulas can propagate NaN; offline tone recalculates `exp()` for every rendered sample.
-- Initial common primitives and focused parity tests compile locally; full local/device/GitHub gates are not yet claimed.
+- Shared primitives, exact Pixel receipt, PR #48 and merged-main readback are complete. Public main is `5c56d84`, with final reviewed tree `c38aea7`.
 
 ## Constraints and invariants
 
@@ -78,7 +78,7 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - [x] 2026-08-24 05:10 JST — Final two-axis re-review unresolved Standards 0 / Spec 0; committed local SSOT.
 - [x] 2026-08-24 05:14 JST — Exact Windows isolated runtime and Pixel `F9CD…` retained install/readback/cold launch passed.
 - [x] 2026-08-24 05:18 JST — First Android push run exposed a standalone-kotlinc source-list omission; added the shared DSP file and a policy regression test.
-- [ ] Complete PR/merge/main readback.
+- [x] 2026-08-24 05:36 JST — PR #48 merged as `main@5c56d84`; final-head 8/8 and merged-main Android/Windows/iOS/Supply-chain 4/4 PASS.
 
 ## Discoveries
 
@@ -103,6 +103,7 @@ The same PAD parameters produce the same bounded numeric behavior in Android rea
 - Windows packaged runtime — responding launcher/UI, exact process stop and real-project digest preservation PASS.
 - Pixel — exact SHA `f9cd14e0…`, signer match, retained install/readback, projects 7 / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS. Receipt: parent PAD `work/PAD_CHOPLAB_AUDIO_PARITY_3CCD414_DEVICE_RECEIPT_20260824.json`.
 - GitHub Android push run `32663874014` — failed before Gradle at `run_pure_logic_smoke.sh` because its explicit kotlinc source list omitted `SamplerDspPrimitives.kt`; product Gradle gates were not reached. Fix adds the source and policy test; local host has no standalone kotlinc, so bash syntax + Python contract + fresh hosted readback are required.
+- GitHub — parent PAD `work/PAD_CHOPLAB_AUDIO_PARITY_GITHUB_RECEIPT_20260824.md`; corrected final head `bae13a6`, PR #48, exact tree and merged-main runs `32664487427`, `32664487515`, `32664487491`, `32664487490` PASS.
 
 ## Risks and rollback
 
