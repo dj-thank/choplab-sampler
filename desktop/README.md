@@ -11,6 +11,8 @@ This target is the local Windows EXE for ChopLab. It renders the Android-origin 
 
 The packaged launcher also accepts a `.wav` or `.choplab` path as its first argument, which is used for Windows “Open with” workflows and deterministic loaded-state visual checks.
 
+The visible 4 × 4 PAD page is playable from the computer keyboard using `1234 / QWER / ASDF / ZXCV`. A key-down triggers one assigned PAD and key-up releases that exact PAD. The mapping is intentionally inactive while a source is playing, a recording is active, or a project is loading, and Ctrl/Alt/Meta combinations remain available to Windows shortcuts. Native `ファイル`, `編集`, and `トランスポート` menus expose WAV/project open, save, export, Undo/Redo, source playback, and ALL STOP.
+
 The desktop app supports user-selected WAV import, microphone recording, a driver-exposed Windows playback loopback such as `Stereo Mix`, PAD voice controls, 16-step transport, scratch, four-bar WAV export, Undo/Redo, manual `.choplab` save/open, and app-owned three-generation autosave. A loopback input is never silently replaced with a microphone; unsupported drivers return a visible error.
 
 Use `診断 > Windows 音声エンドポイント` to run the JNA/WASAPI endpoint probe. It reports the current shared-mode render/capture formats when available and an explicit unavailable reason otherwise; it does not record audio.
@@ -43,4 +45,19 @@ Spotify's current official rules require an explicit loopback IP rather than `lo
 
 The generated self-contained launcher is under `desktop/build/windows-app-image/ChopLab/ChopLab.exe`. This is an app-image containing a private Java runtime, not yet a signed installer or public release.
 
-The default desktop version is `0.3.0` and can be overridden for a controlled build with `-PdesktopVersion=0.3.1`. Every GitHub PR touching the desktop target runs the Windows test/package workflow and uploads the app-image plus an EXE SHA-256 receipt. A `v*` GitHub Release also packages the Windows app-image beside the Android APK and iOS Simulator preview. This app-image is self-contained but not a single-file program; keep its runtime directory together. Signing and installer publication remain separate authorized steps.
+The embedded desktop version comes from the same `choplabVersion` property used by Android/iOS release metadata. Every GitHub PR touching the desktop target runs the Windows test/package/install workflow and uploads the app-image plus an EXE SHA-256 receipt. A `v*` GitHub Release also packages the Windows app-image beside the Android APK and iOS Simulator preview.
+
+## Install for daily use
+
+After packaging, install the exact app-image into a version-and-hash-bound user directory and create Start Menu/Desktop shortcuts:
+
+```powershell
+$release = python scripts/release_metadata.py | ConvertFrom-Json
+./scripts/install-windows-app.ps1 `
+  -AppImage 'desktop/build/windows-app-image/ChopLab' `
+  -Version $release.version
+```
+
+The destination is `%LOCALAPPDATA%\Programs\ChopLab\<version>-<exe-hash>`. Re-running the command with identical bytes is idempotent; different bytes never overwrite that immutable directory. Older app versions are retained, while the two `ChopLab.lnk` shortcuts move to the exact newly selected EXE. The installer never removes or rewrites `%LOCALAPPDATA%\ChopLab\projects`, where app-owned autosaves live.
+
+This app-image is self-contained but not a single-file program; keep its runtime directory together. It is not a code-signed MSI/MSIX, so Windows reputation/signing remains a separate release boundary.

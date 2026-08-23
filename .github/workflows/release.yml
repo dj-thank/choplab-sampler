@@ -293,6 +293,15 @@ jobs:
         shell: pwsh
         run: .\gradlew.bat --no-daemon --stacktrace :jvm-core:test :desktop:test :desktop:packageWindows
 
+      - name: Test data-preserving Windows user install
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: >-
+          .\scripts\test-install-windows-app.ps1
+          -AppImage 'desktop/build/windows-app-image/ChopLab'
+          -ExpectedVersion $env:RELEASE_VERSION
+
       - name: Inspect and stage Windows artifact
         shell: pwsh
         env:
