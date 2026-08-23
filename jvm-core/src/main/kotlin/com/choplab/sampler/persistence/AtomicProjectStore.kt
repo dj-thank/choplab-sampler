@@ -10,6 +10,11 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
+data class RecoveredProjectState(
+    val state: SamplerUiState,
+    val revision: Long?,
+)
+
 /** Three-generation app-owned autosave with a synced, validated temporary replacement. */
 class AtomicProjectStore(
     private val directory: File,
@@ -81,7 +86,10 @@ class AtomicProjectStore(
     }
 
     @Synchronized
-    fun load(): SamplerUiState? {
+    fun load(): SamplerUiState? = loadWithRevision()?.state
+
+    @Synchronized
+    fun loadWithRevision(): RecoveredProjectState? {
         val candidates = generations().filter { it.archive.isFile }
         if (candidates.isEmpty()) return null
         var firstFailure: Throwable? = null
@@ -97,7 +105,7 @@ class AtomicProjectStore(
         decoded.maxWithOrNull(
             compareBy<DecodedGeneration> { it.revision ?: Long.MIN_VALUE }
                 .thenBy { it.priority },
-        )?.let { return it.state }
+        )?.let { return RecoveredProjectState(it.state, it.revision) }
         throw IllegalStateException("自動保存プロジェクトを復元できません", firstFailure)
     }
 

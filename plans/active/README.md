@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**実行中:** `global-production-session-20260824.md`。`main@ab68d2d` から分離した clean worktree で、CaptureからExportまでの長期的な全体最適化を、shared `ProductionCommand -> state/effects` spine の最初の縦切りとして実装する。Source境界、slice selection/history、PAD performance mode のAndroid/Windows差を一本化し、UIの横展開より先に変更局所性と制作継続性を改善する。
+**実行中:** `production-session-horizon-2-20260824.md`。`main@41be2c2`から分離したclean worktreeで、Android/Windowsに残るhistory・revision・canUndo/Redo・persistence admission・command transactionの重複をshared `ProductionSession`へ集約する。UI/project schema/audio algorithmは変えず、blocking effect成功後だけcommitする。
+
+**直前の全体最適化tracer完了:** `../completed/global-production-session-20260824.md`。shared `ProductionCommand`の最初の6操作、Desktop/Android host parity tests、Windows/Pixel、PR #46、`main@41be2c2`、全PR/main CIまで完了。物理gesture/audio/recording/TalkBack/provider/Humanは別gate。
 
 **直前のsource統合・binary配布待ち:** `windows-desktop-daily-release-20260824.md`。Windows PAD keyboard、native commands、data-preserving install、依存更新をPR #45 / `main@ab68d2d` / annotated `v0.17.0`へ統合済み。Windows/iOS tag artifactsは検証済みだが、stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。
 

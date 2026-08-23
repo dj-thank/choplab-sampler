@@ -24,7 +24,6 @@ import com.choplab.sampler.audio.SamplerPlaybackEngine
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.normalizeScratchSpeed
-import com.choplab.sampler.model.EditHistory
 import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
@@ -41,6 +40,7 @@ import com.choplab.sampler.model.ProjectOperationEpoch
 import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.ProductionEffect
 import com.choplab.sampler.model.ProductionMutation
+import com.choplab.sampler.model.ProductionSession
 import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
@@ -88,7 +88,6 @@ import com.choplab.sampler.model.reconcilePendingSourceCommand
 import com.choplab.sampler.model.recordingStartPolicy
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.replaceSourceAudio
-import com.choplab.sampler.model.reduceProductionCommand
 import com.choplab.sampler.model.resetProjectState
 import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.resolvePadPressAction
@@ -148,12 +147,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         focusAdapter = playbackFocusAdapter,
         playbackSilencer = PlaybackSilencer(engine::stopAllPlayback),
     )
-    private val editHistory = EditHistory(maxEntries = MAX_HISTORY_ENTRIES)
+    private val productionSession = ProductionSession(maxHistoryEntries = MAX_HISTORY_ENTRIES)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
     private var autosaveJob: Job? = null
     private var scratchIdleJob: Job? = null
-    private var projectRevision = 0L
     private var projectLaunchRevision = 0L
     private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
     private val projectOperations = ProjectOperationEpoch()
@@ -366,7 +364,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
                             val previous = mutableUiState.value
-                            editHistory.reset()
                             val newProduction = BuiltInDrumKits.installStarterKit(
                                 replaceSourceAudio(previous, audio),
                             ).copy(
@@ -377,10 +374,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                                 previousState = previous,
                                 replacementState = newProduction,
                             )
-                            mutableUiState.value = replaced
-                            engine.updateAllPads(replaced.pads)
+                            val transition = productionSession.replaceProject(replaced)
+                            mutableUiState.value = transition.state
+                            engine.updateAllPads(transition.state.pads)
                             syncPattern()
-                            projectRevision++
                             scheduleAutosave()
                         }
                     }
@@ -820,35 +817,33 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     override fun dispatch(command: ProductionCommand) {
         val before = mutableUiState.value
-        val result = reduceProductionCommand(before, command)
-        if (result.mutation == ProductionMutation.NONE && result.effects.isEmpty()) return
+        val plan = productionSession.planCommand(before, command)
+        if (plan.mutation == ProductionMutation.NONE && plan.effects.isEmpty()) {
+            productionSession.cancel(plan)
+            return
+        }
 
-        val stopFailure = result.effects
+        val stopFailure = plan.effects
             .filterIsInstance<ProductionEffect.StopPad>()
             .firstNotNullOfOrNull { effect ->
                 runCatching { engine.stopPad(effect.index) }.exceptionOrNull()
             }
         if (stopFailure != null) {
+            productionSession.cancel(plan)
             setStatus("PADを停止できないため編集を適用しませんでした: ${stopFailure.message ?: "不明なエラー"}")
             return
         }
 
-        if (result.mutation == ProductionMutation.PROJECT) {
-            editHistory.record(before, result.mergeKey)
-        }
-        mutableUiState.value = result.state.copy(
-            canUndo = editHistory.canUndo,
-            canRedo = editHistory.canRedo,
-        )
-        val refreshFailure = result.effects.firstNotNullOfOrNull { effect ->
+        val transition = productionSession.commit(plan)
+        mutableUiState.value = transition.state
+        val refreshFailure = transition.effects.firstNotNullOfOrNull { effect ->
             when (effect) {
                 is ProductionEffect.StopPad -> null
                 is ProductionEffect.RefreshPad -> runCatching { engine.updatePad(effect.pad) }.exceptionOrNull()
                 ProductionEffect.RefreshPattern -> runCatching { syncPattern() }.exceptionOrNull()
             }
         }
-        if (result.mutation == ProductionMutation.PROJECT) {
-            projectRevision++
+        if (transition.persistenceRequired) {
             scheduleAutosave()
         }
         if (refreshFailure != null) {
@@ -901,18 +896,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             application.startService(PlaybackCaptureService.stopIntent(application))
         }
         CaptureEventBus.reset()
-        editHistory.reset()
-        projectRevision++
-        val revision = projectRevision
         val stoppingReset = preserveAppliedSourceTruthWhileStopping(previous, reset)
-        mutableUiState.value = stoppingReset
-        engine.updateAllPads(stoppingReset.pads)
+        val transition = productionSession.replaceProject(stoppingReset)
+        val revision = transition.revision
+        mutableUiState.value = transition.state
+        engine.updateAllPads(transition.state.pads)
         syncPattern()
         autosaveJob = viewModelScope.launch {
             val failure = withContext(Dispatchers.IO) {
                 runCatching { autosaveStore.save(reset, revision) }.exceptionOrNull()
             }
-            if (failure != null && projectRevision == revision) {
+            if (failure != null && productionSession.revision == revision) {
                 mutableUiState.update {
                     it.copy(statusMessage = failure.message ?: "リセット状態を保存できませんでした")
                 }
@@ -977,7 +971,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun autoChopTransient() {
         val snapshot = mutableUiState.value
-        val revisionAtStart = projectRevision
+        val revisionAtStart = productionSession.revision
         val audio = snapshot.currentAudio ?: return
         viewModelScope.launch(Dispatchers.Default) {
             withContext(Dispatchers.Main) {
@@ -1007,7 +1001,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         snapshot = snapshot,
                         snapshotRevision = revisionAtStart,
                         current = current,
-                        currentRevision = projectRevision,
+                        currentRevision = productionSession.revision,
                     )
                 ) {
                     mutableUiState.update { state ->
@@ -1794,7 +1788,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveProject(destination: Uri) {
         val snapshot = mutableUiState.value
-        val revision = projectRevision
+        val revision = productionSession.revision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
             runCatching {
@@ -1838,7 +1832,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val operation = projectOperations.begin()
-        val revisionAtStart = projectRevision
+        val revisionAtStart = productionSession.revision
         stopCompetingPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
         mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを開いています…") }
@@ -1850,7 +1844,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         ?: error("プロジェクトを開けません")
                 }
             }.onSuccess { restored ->
-                if (projectRevision != revisionAtStart) {
+                if (productionSession.revision != revisionAtStart) {
                     projectOperations.completeIfCurrent(operation) {
                         mutableUiState.update {
                             it.copy(isLoading = false, statusMessage = "編集中のため読み込み結果を破棄しました")
@@ -1859,10 +1853,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     return@onSuccess
                 }
                 projectOperations.completeIfCurrent(operation) {
-                    editHistory.reset()
-                    projectRevision++
+                    val transition = productionSession.replaceProject(restored)
                     applyProjectState(
-                        restored = restored,
+                        restored = transition.state,
                         message = "プロジェクトを開きました",
                         launchTarget = inferProjectLaunchTarget(
                             restored,
@@ -1886,23 +1879,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     override fun undoEdit() {
         if (rejectEditWhileRecording()) return
-        val restored = editHistory.undo(mutableUiState.value) ?: run {
+        val transition = productionSession.undo(mutableUiState.value) ?: run {
             setStatus("戻せる操作はありません")
             return
         }
-        projectRevision++
-        applyProjectState(restored, "1つ前の操作へ戻しました")
+        applyProjectState(transition.state, "1つ前の操作へ戻しました")
         scheduleAutosave()
     }
 
     override fun redoEdit() {
         if (rejectEditWhileRecording()) return
-        val restored = editHistory.redo(mutableUiState.value) ?: run {
+        val transition = productionSession.redo(mutableUiState.value) ?: run {
             setStatus("やり直せる操作はありません")
             return
         }
-        projectRevision++
-        applyProjectState(restored, "操作をやり直しました")
+        applyProjectState(transition.state, "操作をやり直しました")
         scheduleAutosave()
     }
 
@@ -1917,21 +1908,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (rejectEditWhileRecording()) return
         val before = mutableUiState.value
         val after = transform(before)
-        if (after == before) return
-        if (before.hasSameEditableContent(after)) {
-            mutableUiState.value = after.copy(
-                canUndo = editHistory.canUndo,
-                canRedo = editHistory.canRedo,
-            )
-            return
-        }
-        editHistory.record(before, mergeKey)
-        mutableUiState.value = after.copy(
-            canUndo = editHistory.canUndo,
-            canRedo = editHistory.canRedo,
-        )
-        projectRevision++
-        scheduleAutosave()
+        val transition = productionSession.applyEdit(before, after, mergeKey)
+        if (transition.mutation == ProductionMutation.NONE) return
+        mutableUiState.value = transition.state
+        if (transition.persistenceRequired) scheduleAutosave()
     }
 
     private fun rejectEditWhileRecording(): Boolean {
@@ -1940,24 +1920,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         setStatus("${recordingKindLabel(session)}をSTOPしてから編集してください")
         return true
     }
-
-    private fun SamplerUiState.hasSameEditableContent(other: SamplerUiState): Boolean =
-        currentAudio == other.currentAudio &&
-            rangeStartFrame == other.rangeStartFrame &&
-            rangeEndFrame == other.rangeEndFrame &&
-            sliceMarkers == other.sliceMarkers &&
-            activeSliceIndex == other.activeSliceIndex &&
-            manualChopEnabled == other.manualChopEnabled &&
-            selectedBank == other.selectedBank &&
-            selectedPad == other.selectedPad &&
-            autoNextPad == other.autoNextPad &&
-            pads == other.pads &&
-            activeSteps == other.activeSteps &&
-            bpm == other.bpm &&
-            swing == other.swing &&
-            sourcePlayheadFrame == other.sourcePlayheadFrame &&
-            masterPitchSemitones == other.masterPitchSemitones &&
-            selectedDrumKitId == other.selectedDrumKitId
 
     private fun applyProjectState(
         restored: SamplerUiState,
@@ -1988,8 +1950,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             },
             scratchSpeed = 0f,
             scratchReturnAvailable = false,
-            canUndo = editHistory.canUndo,
-            canRedo = editHistory.canRedo,
+            canUndo = productionSession.canUndo,
+            canRedo = productionSession.canRedo,
         )
         val stoppedRestoredState = preserveAppliedSourceTruthWhileStopping(
             previousState = previous,
@@ -2002,14 +1964,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun scheduleAutosave() {
         val snapshot = mutableUiState.value
-        val revision = projectRevision
+        val revision = productionSession.revision
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(AUTOSAVE_DELAY_MS)
             val failure = withContext(Dispatchers.IO) {
                 runCatching { autosaveStore.save(snapshot, revision) }.exceptionOrNull()
             }
-            if (failure != null && projectRevision == revision) {
+            if (failure != null && productionSession.revision == revision) {
                 mutableUiState.update {
                     it.copy(statusMessage = failure.message ?: "自動保存できませんでした")
                 }
@@ -2019,16 +1981,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun recoverAutosave() {
         val operation = projectOperations.begin()
-        val revisionAtStart = projectRevision
+        val revisionAtStart = productionSession.revision
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.load() } }
-            if (projectRevision != revisionAtStart) return@launch
+            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.loadWithRevision() } }
+            if (productionSession.revision != revisionAtStart) return@launch
             projectOperations.completeIfCurrent(operation) {
-                result.onSuccess { restored ->
-                    if (restored != null) {
-                        editHistory.reset()
+                result.onSuccess { recovered ->
+                    if (recovered != null) {
+                        val restored = recovered.state
+                        val transition = productionSession.replaceProject(
+                            restored,
+                            persistenceRequired = false,
+                            recoveredRevision = recovered.revision,
+                        )
                         applyProjectState(
-                            restored = restored,
+                            restored = transition.state,
                             message = "前回の自動保存を復元しました",
                             launchTarget = inferProjectLaunchTarget(
                                 restored,
@@ -2042,10 +2009,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             projectLaunchRevision = nextProjectLaunchRevision(),
                             statusMessage = "新しい制作を準備しました — BANK BにDUSTY JAZZをセット済み",
                         )
-                        mutableUiState.value = starter
-                        engine.updateAllPads(starter.pads)
+                        val transition = productionSession.replaceProject(starter)
+                        mutableUiState.value = transition.state
+                        engine.updateAllPads(transition.state.pads)
                         syncPattern()
-                        projectRevision++
                         scheduleAutosave()
                     }
                 }.onFailure { throwable ->

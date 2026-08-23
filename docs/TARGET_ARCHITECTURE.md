@@ -10,7 +10,7 @@ Compose screens render immutable UI state and send intents. They do not own audi
 
 ### Application/state
 
-A `ProductionSession` application module owns editing history, revision and persistence admission. UI/MIDI/capture inputs become shared `ProductionCommand` values; a pure reducer returns classified PROJECT/SESSION mutations and typed `ProductionEffect` values. Platform coordinators expose explicit loading, saving, recording, rendering, runtime-application and error states while executing only the effects supported by their adapters.
+A `ProductionSession` application module owns editing history, revision and persistence admission. UI/MIDI/capture inputs become shared `ProductionCommand` values; a pure reducer returns classified PROJECT/SESSION mutations and typed `ProductionEffect` values. Commands with blocking effects use a plan -> effect -> commit/cancel transaction, so required runtime teardown cannot lag behind published project truth. Platform coordinators expose explicit loading, saving, recording, rendering, runtime-application and error states while executing only the effects supported by their adapters.
 
 ### Domain
 
@@ -30,7 +30,7 @@ Offline rendering consumes the same project/sequence model and shared DSP primit
 
 ### Persistence
 
-A versioned archive layer converts project metadata to/from a bounded schema and uses a WAV/PCM codec for portable audio assets. Save is atomic/recoverable and independent from Compose.
+A versioned archive layer converts project metadata to/from a bounded schema and uses a WAV/PCM codec for portable audio assets. Save is atomic/recoverable and independent from Compose. Recovery returns the verified generation revision alongside state so the application session's next edit remains monotonic across process restarts.
 
 ### MIDI and capture adapters
 

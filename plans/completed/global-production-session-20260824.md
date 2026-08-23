@@ -12,7 +12,7 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 - Core implementation checkpoint: `889a37a`.
 - The dirty canonical checkout at `work/codex-workspace/ChopLab-Codex-Workspace` is read-only and excluded.
 - v0.17.0 source, annotated tag and Windows daily install already exist. Binary GitHub Release remains fail-closed because stable Android signing secrets are absent.
-- Local implementation gate and the bounded Pixel slice are green. GitHub integration remains open until fresh readback.
+- Local implementation gate, bounded Pixel slice, PR #46 and merged-main readback are green. Public main is `41be2c2`, with the exact reviewed tree `79a412c`.
 
 ## Constraints and invariants
 
@@ -80,7 +80,7 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 - [x] 2026-08-24 03:44 JST — Resolved code/test/workflow findings in `fcbed5b`; rebuilt the ExecPlan and bound current SSOT.
 - [x] 2026-08-24 03:48 JST — Exact packaged Windows launcher/UI responded in isolated data; exact processes stopped and real project digest remained unchanged.
 - [x] 2026-08-24 03:52 JST — Pixel signer/version admission, `install -r --no-streaming`, byte readback, project preservation and cold launch passed.
-- [ ] Complete PR, merge and merged-main readback.
+- [x] 2026-08-24 04:15 JST — PR #46 merged as `main@41be2c2`; PR/push 8/8 and merged-main Android/Windows/iOS/Supply-chain 4/4 PASS.
 
 ## Discoveries
 
@@ -110,6 +110,7 @@ ChopLab's simple deck keeps one continuous Source -> Chop -> PAD -> Pattern -> S
 - Review-fix focused gate — shared Desktop 12, shared Android host 12 and Desktop 76 PASS; both hosted workflows parse and invoke the relevant shared task.
 - Windows packaged runtime — responding launcher/UI pair and exact title; real projects 2 files / 365,609 bytes / unchanged digest; exact tracked process tree stopped.
 - Pixel receipt — `work/PAD_CHOPLAB_GLOBAL_OPT_FCBED5B_DEVICE_RECEIPT_20260824.json`; exact host/installed SHA `eada7421…`, signer match, projects 7 files / 62,592 KiB preserved, cold launch/navigation/fatal negative PASS.
+- GitHub receipt — parent PAD `work/PAD_CHOPLAB_GLOBAL_OPT_GITHUB_RECEIPT_20260824.md`; PR #46, tree equality and exact merged-main runs `32660087814`, `32660087821`, `32660087857`, `32660087856` PASS.
 
 ## Risks and rollback
 

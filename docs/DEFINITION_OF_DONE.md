@@ -59,4 +59,6 @@ The final report lists:
 
 For every command migrated to the shared production seam, common contract tests run on the desktop JVM and Android host target. Platform integration tests additionally prove history/autosave classification and at least one failed-effect negative path.
 
+Application-state migration is complete only when stale, foreign, cancelled and double-resolved command plans fail closed; project replacement, Undo/Redo and coalesced edits advance one monotonic session revision; and recovery-only persistence suppression is directly tested.
+
 A feature matrix must mark only observed implementation and verification status, not design intent.

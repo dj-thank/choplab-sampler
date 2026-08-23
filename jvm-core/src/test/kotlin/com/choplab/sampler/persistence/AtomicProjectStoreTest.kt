@@ -1,6 +1,7 @@
 package com.choplab.sampler.persistence
 
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProductionSession
 import com.choplab.sampler.model.SamplerUiState
 import java.io.File
 import java.io.FileOutputStream
@@ -37,6 +38,32 @@ class AtomicProjectStoreTest {
             assertTrue(store.save(SamplerUiState(bpm = 130f), revision = 2L))
 
             assertEquals(130f, store.load()?.bpm)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun recoveredRevisionSeedsTheNextProductionSessionSaveAboveDisk() {
+        val directory = Files.createTempDirectory("choplab-autosave-session-revision-test").toFile()
+        try {
+            val store = AtomicProjectStore(directory)
+            assertTrue(store.save(SamplerUiState(bpm = 120f), revision = 7L))
+            val recovered = requireNotNull(AtomicProjectStore(directory).loadWithRevision())
+            assertEquals(7L, recovered.revision)
+
+            val session = ProductionSession()
+            val restored = session.replaceProject(
+                state = recovered.state,
+                persistenceRequired = false,
+                recoveredRevision = recovered.revision,
+            )
+            assertEquals(8L, restored.revision)
+            val edited = session.applyEdit(restored.state, restored.state.copy(bpm = 130f))
+
+            assertEquals(9L, edited.revision)
+            assertTrue(AtomicProjectStore(directory).save(edited.state, edited.revision))
+            assertEquals(130f, AtomicProjectStore(directory).load()?.bpm)
         } finally {
             directory.deleteRecursively()
         }
