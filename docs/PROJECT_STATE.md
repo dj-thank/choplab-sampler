@@ -1,6 +1,21 @@
 # Project state
 
-## Current snapshot — 2026-08-24 full-bar pattern/master parity local candidate
+## Current snapshot — 2026-08-24 global optimization source/device/daily-install closeout
+
+This snapshot is the current public-source truth. Four bounded optimization phases are merged; no implementation plan is selected beyond the next explicit product/audio decision.
+
+- Observed at: `2026-08-24T06:08:34+09:00`.
+- Public source: `main@ecc6c540143388bbf7f4f5523c94056d0770d1ac`, tree `0178b1b563a42136b6c9ad8f335a8883a583da31`, source version `0.17.0 (27)`.
+- Integrated PRs: #46 shared ProductionCommand semantics; #47 ProductionSession/restart-safe revision; #48 shared DSP primitives/non-finite policy/PAD PCM oracle; #49 full-bar pattern/master oracle and final-sample repair.
+- Current checks: every final PR/push check passed; exact merged-main Android `32665966662`, Windows `32665966566`, iOS `32665966531`, Supply-chain `32665966589` passed.
+- Current local/device evidence: final product checkpoint `c2dd5c7`; full 152-task gate; Android 229, shared hosts 25/25, JVM-core 52, Desktop 76, all failures/errors/skips 0; Pixel exact APK `DB089F70…` retained install/readback/project-preservation/cold-launch scope is DEVICE_PASS.
+- Current daily Windows: merged-main artifact id `9500051082`, metadata commit `ecc6c54`, app-image digest `802A667D…`, installed at `%LOCALAPPDATA%/Programs/ChopLab/0.17.0-802a667d39cb`; Start Menu/Desktop targets, responding runtime and real project digest passed. Older versioned installs remain.
+- Audio truth reached: allocation-free shared pitch/tone/gain/fade/limiter/swing policy; explicit NaN/Inf policy; realtime PAD/host PCM delta <= 1; single-event full-bar realtime/offline master delta <= 1. RED locator for the repaired bug was frame 402, offline 0 / realtime -61.
+- Evidence ceiling: `LOCAL_PASS` + scoped exact-APK `DEVICE_PASS` + GitHub source/main CI readback. Physical audio quality/latency, recording, route loss, TalkBack speech, providers, binary Release and HUMAN_GO remain separate.
+- Release boundary: `v0.17.0` tag remains immutable at old main `ab68d2d`; its failed release run is not the latest-integrated route. Stable Android signing secrets are absent. After they exist, use a new version from current main (candidate `v0.18.0`) with PR/tag/Release/reverse-download; do not rewrite the old tag.
+- Next product decision: select exactly one of polyphony/choke, loop/vocal, stereo, or multi-pattern/Song. A native/Voice-kernel rewrite is not admitted before the selected audio dimension has an oracle.
+
+## Previous snapshot — 2026-08-24 full-bar pattern/master parity local candidate
 
 This snapshot supersedes the primitive-level parity snapshot below for current branch truth. It records the single-event full-bar oracle, terminal-sample repair plus fresh local and bounded device evidence; GitHub integration remains pending.
 
