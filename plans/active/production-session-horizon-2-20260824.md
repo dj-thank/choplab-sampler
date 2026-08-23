@@ -79,7 +79,8 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - [x] 2026-08-24 04:30 JST — Android/Windows compile and focused regression suites pass after initial migration.
 - [x] 2026-08-24 04:38 JST — Bound verified autosave generation revision into ProductionSession and proved the next edit saves above disk.
 - [x] 2026-08-24 04:44 JST — Added the missing foreign-plan negative and clarified the operation-epoch concurrency boundary from two-axis review.
-- [ ] Complete full local gate and two-axis review.
+- [x] 2026-08-24 04:37 JST — Final 152-task local gate passed; shared hosts 19 each, JVM-core 50, Android 226 and Desktop 76 with zero failures/errors/skips.
+- [ ] Complete final two-axis re-review and commit current SSOT.
 - [ ] Complete runtime/device receipt.
 - [ ] Complete PR/merge/main readback.
 
@@ -105,6 +106,7 @@ ChopLab keeps the same simple UI and project format, but every migrated edit now
 - `:shared:desktopTest :shared:testAndroidHostTest :app:compileDebugKotlin :desktop:test` — PASS after initial controller integration.
 - `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :desktop:test` — PASS after project-replacement integration.
 - `:shared:desktopTest :shared:testAndroidHostTest :jvm-core:test :app:testDebugUnitTest :desktop:test` — PASS after recovered-revision integration; JVM-core adds the disk-to-session save regression.
+- Full `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — PASS, 152 tasks; shared 19/19, Android 226, JVM-core 50, Desktop 76; zero failures/errors/skips.
 
 ## Risks and rollback
 
