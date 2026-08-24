@@ -199,6 +199,50 @@ class GuidedWorkflowTest {
     }
 
     @Test
+    fun pristineStarterGetsAFocusedOwnAudioEntryAndAnExplicitDemoRoute() {
+        val starter = BuiltInDrumKits.installStarterKit(SamplerUiState())
+
+        val presentation = captureEntryPresentation(starter)
+
+        assertTrue(presentation.focused)
+        assertTrue(presentation.starterDemoAvailable)
+        assertEquals("まず、自分の音を入れる", presentation.title)
+        assertEquals("曲を読み込むか、前の制作を開きます", presentation.guidance)
+    }
+
+    @Test
+    fun loadedOrRecordingCaptureKeepsTheExistingSourceSafetyWorkspace() {
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val loaded = captureEntryPresentation(SamplerUiState(currentAudio = audio))
+        val recording = captureEntryPresentation(
+            SamplerUiState(
+                recordingSession = RecordingSession.Active(
+                    kind = RecordingKind.SOURCE_MICROPHONE,
+                    phase = RecordingPhase.RECORDING,
+                ),
+            ),
+        )
+
+        assertFalse(loaded.focused)
+        assertFalse(recording.focused)
+    }
+
+    @Test
+    fun saveCopySeparatesProjectSafetyFromWavReadiness() {
+        assertEquals(
+            FinishReadinessPresentation(
+                title = "制作は保存できます",
+                guidance = "WAVはまだ準備中です。『ビート』で鳴らすマスを光らせてください。",
+            ),
+            finishReadinessPresentation(readyForWav = false),
+        )
+        assertEquals(
+            "ビートを書き出せます",
+            finishReadinessPresentation(readyForWav = true).title,
+        )
+    }
+
+    @Test
     fun everyStageHasShortBeginnerGuidanceAndLinearNextStep() {
         WorkflowStage.entries.forEach { stage ->
             assertTrue(stage.guidance.isNotBlank())
@@ -295,6 +339,11 @@ class GuidedWorkflowTest {
         assertEquals(8f, compactMachineButtonFontSizeSp(fontScale = 2f))
         assertEquals(9f, compactMachineButtonLineHeightSp(fontScale = 2f))
         assertFalse(machineHeaderShowsCaption(fontScale = 1.3f))
+        assertTrue(machineHeaderShowsBankStatus(fontScale = 1f))
+        assertFalse(machineHeaderShowsBankStatus(fontScale = 1.3f))
+        assertEquals(1, workflowStageRows(fontScale = 1f))
+        assertEquals(2, workflowStageRows(fontScale = 1.3f))
+        assertEquals(2, workflowStageRows(fontScale = 2f))
     }
 
     @Test

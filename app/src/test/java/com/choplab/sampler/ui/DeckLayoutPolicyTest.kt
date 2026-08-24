@@ -22,7 +22,7 @@ class DeckLayoutPolicyTest {
 
     @Test
     fun regularPortraitAllocatesLargerControlsWithoutRequiringScroll() {
-        val metrics = resolveDeckLayout(widthDp = 412, heightDp = 820)
+        val metrics = resolveDeckLayout(widthDp = 412, heightDp = 820, fontScale = 1f)
 
         assertEquals(DeckOrientation.PORTRAIT, metrics.orientation)
         assertEquals(DeckDensity.REGULAR, metrics.density)
@@ -31,6 +31,24 @@ class DeckLayoutPolicyTest {
         assertTrue(metrics.controlHeightDp >= 48)
         assertTrue(820 - metrics.fixedChromeHeightDp >= 650)
         assertTrue(metrics.workspaceHeightAfterProductionDock(820) >= 600)
+        assertEquals(1, metrics.workflowRows)
+        assertEquals(false, metrics.largeText)
+    }
+
+    @Test
+    fun largeTextAddsSpaceForTwoWorkflowRowsWithoutEliminatingTheWorkspace() {
+        val medium = resolveDeckLayout(widthDp = 412, heightDp = 820, fontScale = 1.3f)
+        val largest = resolveDeckLayout(widthDp = 360, heightDp = 640, fontScale = 2f)
+
+        listOf(medium, largest).forEach { metrics ->
+            assertEquals(2, metrics.workflowRows)
+            assertEquals(true, metrics.largeText)
+            assertTrue(metrics.headerHeightDp >= 60)
+            assertTrue(metrics.modeBarHeightDp >= 96)
+            assertTrue(metrics.statusHeightDp >= 64)
+        }
+        assertTrue(medium.workspaceHeightAfterProductionDock(820) >= 480)
+        assertTrue(largest.workspaceHeightAfterProductionDock(640) >= 300)
     }
 
     @Test

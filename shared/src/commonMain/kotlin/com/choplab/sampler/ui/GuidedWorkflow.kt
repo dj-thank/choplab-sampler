@@ -112,6 +112,43 @@ fun captureSourceStatusLabel(
 fun emptySourceWaveformLabel(isLoading: Boolean): String =
     if (isLoading) "音声を読込中\nPLEASE WAIT" else "NO SOURCE\nLOAD OR RECORD AUDIO"
 
+data class CaptureEntryPresentation(
+    val focused: Boolean,
+    val starterDemoAvailable: Boolean,
+    val title: String,
+    val guidance: String,
+)
+
+fun captureEntryPresentation(state: SamplerUiState): CaptureEntryPresentation {
+    val focused = state.currentAudio == null &&
+        !state.isLoading &&
+        state.recordingSession == RecordingSession.Idle
+    return CaptureEntryPresentation(
+        focused = focused,
+        starterDemoAvailable = focused && BuiltInDrumKits.isPristineStarterProduction(state),
+        title = "まず、自分の音を入れる",
+        guidance = "曲を読み込むか、前の制作を開きます",
+    )
+}
+
+data class FinishReadinessPresentation(
+    val title: String,
+    val guidance: String,
+)
+
+fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentation =
+    if (readyForWav) {
+        FinishReadinessPresentation(
+            title = "ビートを書き出せます",
+            guidance = "操作は端末内へ自動保存。再生で確認し、4小節WAVにもできます。",
+        )
+    } else {
+        FinishReadinessPresentation(
+            title = "制作は保存できます",
+            guidance = "WAVはまだ準備中です。『ビート』で鳴らすマスを光らせてください。",
+        )
+    }
+
 data class CaptureInputPolicy(
     val fileEnabled: Boolean,
     val microphoneEnabled: Boolean,
@@ -208,6 +245,12 @@ fun compactMachineButtonLineHeightSp(@Suppress("UNUSED_PARAMETER") fontScale: Fl
 fun machineHeaderShowsCaption(fontScale: Float): Boolean =
     !usesLargeTextDeckMode(fontScale)
 
+fun machineHeaderShowsBankStatus(fontScale: Float): Boolean =
+    !usesLargeTextDeckMode(fontScale)
+
+fun workflowStageRows(fontScale: Float): Int =
+    if (usesLargeTextDeckMode(fontScale)) 2 else 1
+
 fun beatLoopButtonLabel(looping: Boolean, fontScale: Float): String =
     if (usesLargeTextDeckMode(fontScale)) {
         if (looping) "ループ停止" else "選択音ループ"
@@ -215,7 +258,7 @@ fun beatLoopButtonLabel(looping: Boolean, fontScale: Float): String =
         if (looping) "選択音ループ停止\nSTOP" else "選択音をループ\nSTART"
     }
 
-private fun usesLargeTextDeckMode(fontScale: Float): Boolean =
+fun usesLargeTextDeckMode(fontScale: Float): Boolean =
     fontScale.isFinite() && fontScale >= 1.2f
 
 fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =

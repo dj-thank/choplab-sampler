@@ -11,6 +11,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -237,7 +239,12 @@ fun OtohiroiDeck(
                 .fillMaxSize()
                 .widthIn(max = 980.dp),
         ) {
-            val metrics = resolveDeckLayout(maxWidth.value.roundToInt(), maxHeight.value.roundToInt())
+            val fontScale = LocalDensity.current.fontScale
+            val metrics = resolveDeckLayout(
+                widthDp = maxWidth.value.roundToInt(),
+                heightDp = maxHeight.value.roundToInt(),
+                fontScale = fontScale,
+            )
             val gap = metrics.gapDp.dp
             Surface(
                 color = DeckPanel,
@@ -258,14 +265,14 @@ fun OtohiroiDeck(
                         state = state,
                         stage = stage,
                         height = metrics.headerHeightDp.dp,
+                        largeText = metrics.largeText,
                         onStopAll = viewModel::stopAllSounds,
                         onStopRecording = viewModel::stopActiveRecording,
                     )
                     WorkflowStrip(
                         state = state,
                         selected = stage,
-                        height = metrics.modeBarHeightDp.dp,
-                        compact = metrics.density == DeckDensity.COMPACT,
+                        metrics = metrics,
                         onSelect = { target ->
                             val actions = workflowNavigationActions(stage, target)
                             if (WorkflowNavigationAction.STOP_SOURCE in actions) {
@@ -287,6 +294,10 @@ fun OtohiroiDeck(
                                 onOpenProject = onOpenProject,
                                 onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                                 onToggleSystemAudioRecording = onToggleSystemAudioRecording,
+                                onTryStarterDemo = {
+                                    viewModel.ensurePlayablePadSelected()
+                                    stageName = WorkflowStage.BEAT.name
+                                },
                                 onContinue = {
                                     val policy = startChopPolicy(state.sourceUiPhase())
                                     if (policy.enabled) {
@@ -378,6 +389,7 @@ fun OtohiroiDeck(
                             state = state,
                             stage = stage,
                             height = metrics.statusHeightDp.dp,
+                            largeText = metrics.largeText,
                         )
                     }
                 }
@@ -722,6 +734,7 @@ private fun MachineHeader(
     state: SamplerUiState,
     stage: WorkflowStage,
     height: Dp,
+    largeText: Boolean,
     onStopAll: () -> Unit,
     onStopRecording: () -> Unit,
 ) {
@@ -749,8 +762,8 @@ private fun MachineHeader(
                 color = Color(0xFFFFF1CF),
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
-                fontSize = 14.sp,
-                letterSpacing = 1.5.sp,
+                fontSize = if (largeText) 10.sp else 14.sp,
+                letterSpacing = if (largeText) 1.sp else 1.5.sp,
                 maxLines = 1,
             )
             if (machineHeaderShowsCaption(fontScale)) {
@@ -763,22 +776,28 @@ private fun MachineHeader(
                 )
             }
         }
-        val bankRole = bankRoleFor(state.selectedBank)
-        Text(
-            recording?.statusLabel ?: "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
-            color = if (recording != null) DeckLamp else DeckGreen,
-            fontFamily = DeckFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 9.sp,
-            maxLines = 1,
-        )
+        if (machineHeaderShowsBankStatus(fontScale)) {
+            val bankRole = bankRoleFor(state.selectedBank)
+            Text(
+                recording?.statusLabel ?: "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
+                color = if (recording != null) DeckLamp else DeckGreen,
+                fontFamily = DeckFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.sp,
+                maxLines = 1,
+            )
+        }
         MachineButton(
-            label = recording?.stopLabel ?: "音を全停止\nALL STOP",
+            label = if (largeText) {
+                recording?.stopLabel?.substringBefore('\n') ?: "全停止"
+            } else {
+                recording?.stopLabel ?: "音を全停止\nALL STOP"
+            },
             onClick = if (recording != null) onStopRecording else onStopAll,
             enabled = recording?.stopEnabled ?: true,
             active = recording != null || playbackActive,
             modifier = Modifier
-                .width(82.dp)
+                .width(if (largeText) 72.dp else 82.dp)
                 .fillMaxHeight(),
             compact = true,
         )
@@ -823,28 +842,61 @@ private fun StatusLamp(
 private fun WorkflowStrip(
     state: SamplerUiState,
     selected: WorkflowStage,
-    height: Dp,
-    compact: Boolean,
+    metrics: DeckLayoutMetrics,
     onSelect: (WorkflowStage) -> Unit,
 ) {
+    val compact = metrics.density == DeckDensity.COMPACT || metrics.largeText
+    if (metrics.workflowRows == 1) {
+        WorkflowStageRow(
+            stages = WorkflowStage.entries,
+            state = state,
+            selected = selected,
+            compact = compact,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxWidth().height(metrics.modeBarHeightDp.dp),
+        )
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth().height(metrics.modeBarHeightDp.dp),
+            verticalArrangement = Arrangement.spacedBy(metrics.gapDp.dp),
+        ) {
+            WorkflowStage.entries.chunked(2).forEach { stages ->
+                WorkflowStageRow(
+                    stages = stages,
+                    state = state,
+                    selected = selected,
+                    compact = true,
+                    onSelect = onSelect,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowStageRow(
+    stages: List<WorkflowStage>,
+    state: SamplerUiState,
+    selected: WorkflowStage,
+    compact: Boolean,
+    onSelect: (WorkflowStage) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height),
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        WorkflowStage.entries.forEachIndexed { index, stage ->
-            val enabled = workflowStageEnabled(stage, state)
+        stages.forEach { stage ->
+            val index = WorkflowStage.entries.indexOf(stage)
             WorkflowStageButton(
                 number = index + 1,
                 stage = stage,
                 selected = selected == stage,
                 compact = compact,
-                enabled = enabled,
+                enabled = workflowStageEnabled(stage, state),
                 onClick = { onSelect(stage) },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
     }
@@ -926,11 +978,25 @@ private fun CaptureWorkspace(
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
+    onTryStarterDemo: () -> Unit,
     onContinue: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
     val audio = state.currentAudio
+    val entry = captureEntryPresentation(state)
+    if (entry.focused) {
+        FocusedCaptureEntry(
+            state = state,
+            metrics = metrics,
+            onImportAudio = onImportAudio,
+            onOpenProject = onOpenProject,
+            onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+            onToggleSystemAudioRecording = onToggleSystemAudioRecording,
+            onTryStarterDemo = onTryStarterDemo,
+        )
+        return
+    }
     if (metrics.orientation == DeckOrientation.LANDSCAPE) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -1014,6 +1080,179 @@ private fun CaptureWorkspace(
                 onContinue = onContinue,
                 onReset = viewModel::resetProject,
             )
+        }
+    }
+}
+
+@Composable
+private fun FocusedCaptureEntry(
+    state: SamplerUiState,
+    metrics: DeckLayoutMetrics,
+    onImportAudio: () -> Unit,
+    onOpenProject: () -> Unit,
+    onToggleMicrophoneRecording: () -> Unit,
+    onToggleSystemAudioRecording: () -> Unit,
+    onTryStarterDemo: () -> Unit,
+) {
+    val entry = captureEntryPresentation(state)
+    val inputPolicy = captureInputPolicy(state)
+    val microphoneControl = recordingControlPresentation(
+        session = state.recordingSession,
+        kind = RecordingKind.SOURCE_MICROPHONE,
+        idleLabel = "マイクで録る\nMIC",
+        stopLabel = "録音を止める\nMIC STOP",
+    )
+    val systemAudioControl = recordingControlPresentation(
+        session = state.recordingSession,
+        kind = RecordingKind.SOURCE_SYSTEM_AUDIO,
+        idleLabel = "端末音声を録る\nDEVICE",
+        stopLabel = "録音を止める\nDEVICE STOP",
+    )
+    val scrollState = rememberScrollState()
+    val gap = metrics.gapDp.dp
+    val bodyModifier = if (metrics.largeText) {
+        Modifier.fillMaxSize().verticalScroll(scrollState)
+    } else {
+        Modifier.fillMaxSize()
+    }
+    MachinePanel(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = bodyModifier,
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            Text(
+                text = entry.title,
+                color = DeckGreen,
+                fontFamily = DeckFont,
+                fontWeight = FontWeight.Black,
+                fontSize = if (metrics.largeText) 12.sp else 15.sp,
+                maxLines = 2,
+            )
+            Text(
+                text = entry.guidance,
+                color = Color(0xFFE8DDBF),
+                fontFamily = DeckFont,
+                fontSize = if (metrics.largeText) 8.sp else 9.sp,
+                lineHeight = if (metrics.largeText) 10.sp else 12.sp,
+                maxLines = 2,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(if (metrics.largeText) 72.dp else 80.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                NewSourceActionButton(
+                    state = state,
+                    label = "曲を読み込む\nLOAD AUDIO",
+                    onConfirm = onImportAudio,
+                    enabled = inputPolicy.fileEnabled,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+                MachineButton(
+                    label = "制作を開く\nOPEN PROJECT",
+                    onClick = onOpenProject,
+                    enabled = externalDocumentActionsEnabled(state),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+            Text(
+                text = "録音から始める",
+                color = DeckLamp,
+                fontFamily = DeckFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.sp,
+                maxLines = 1,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(if (metrics.largeText) 72.dp else 72.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                NewSourceActionButton(
+                    state = state,
+                    label = microphoneControl.label,
+                    onConfirm = onToggleMicrophoneRecording,
+                    enabled = inputPolicy.microphoneEnabled && microphoneControl.enabled,
+                    active = microphoneControl.active,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+                NewSourceActionButton(
+                    state = state,
+                    label = systemAudioControl.label,
+                    onConfirm = onToggleSystemAudioRecording,
+                    enabled = inputPolicy.systemAudioEnabled && systemAudioControl.enabled,
+                    active = systemAudioControl.active,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+            }
+            if (entry.starterDemoAvailable) {
+                MachinePanel(
+                    modifier = Modifier.fillMaxWidth().height(if (metrics.largeText) 148.dp else 108.dp),
+                ) {
+                    if (metrics.largeText) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            Text(
+                                text = "すぐ試す  DUSTY JAZZデモ",
+                                color = DeckGreen,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = "PAD、ビート、保存を音入りで試せます",
+                                color = Color(0xFFE8DDBF),
+                                fontFamily = DeckFont,
+                                fontSize = 8.sp,
+                                maxLines = 2,
+                            )
+                            MachineButton(
+                                label = "デモを試す",
+                                onClick = onTryStarterDemo,
+                                active = true,
+                                modifier = Modifier.fillMaxWidth().height(64.dp),
+                                compact = true,
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(
+                                    text = "すぐ試す  DUSTY JAZZデモ",
+                                    color = DeckGreen,
+                                    fontFamily = DeckFont,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    text = "PAD、ビート、保存を音入りで試せます",
+                                    color = Color(0xFFE8DDBF),
+                                    fontFamily = DeckFont,
+                                    fontSize = 8.sp,
+                                    maxLines = 2,
+                                )
+                            }
+                            MachineButton(
+                                label = "デモを試す\nTRY BEAT",
+                                onClick = onTryStarterDemo,
+                                active = true,
+                                modifier = Modifier.width(170.dp).fillMaxHeight(),
+                                compact = true,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -3200,6 +3439,7 @@ private fun FinishWorkspace(
     val assignedPads = state.pads.count(PadModel::isAssigned)
     val audibleSteps = state.activeSteps.audibleStepKeys(state.pads).size
     val ready = state.activeSteps.hasAudiblePatternContent(state.pads)
+    val readiness = finishReadinessPresentation(ready)
     val summary: @Composable (Modifier) -> Unit = { modifier ->
         MachinePanel(modifier = modifier) {
             Column(
@@ -3207,7 +3447,7 @@ private fun FinishWorkspace(
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
                 Text(
-                    text = if (ready) "ビートを書き出せます" else "あと少し。鳴らす場所を並べましょう",
+                    text = readiness.title,
                     color = if (ready) DeckGreen else DeckLamp,
                     fontFamily = DeckFont,
                     fontWeight = FontWeight.Black,
@@ -3215,11 +3455,7 @@ private fun FinishWorkspace(
                     maxLines = 2,
                 )
                 Text(
-                    text = if (ready) {
-                        "操作は端末内へ自動保存。再生で確認し、4小節WAVにもできます。"
-                    } else {
-                        "操作は端末内へ3世代で自動保存。『ビート』で鳴らすマスを光らせてください。"
-                    },
+                    text = readiness.guidance,
                     color = Color(0xFFE8DDBF),
                     fontFamily = DeckFont,
                     fontSize = 9.sp,
@@ -3476,6 +3712,7 @@ private fun ConsoleStatusStrip(
     state: SamplerUiState,
     stage: WorkflowStage,
     height: Dp,
+    largeText: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -3490,24 +3727,51 @@ private fun ConsoleStatusStrip(
             active = state.isLoading || state.hasPlaybackActivity() || state.hasRecordingActivity(),
             alert = state.hasRecordingActivity(),
         )
-        Text(
-            text = stage.label,
-            color = DeckLamp,
-            fontFamily = DeckFont,
-            fontWeight = FontWeight.Black,
-            fontSize = 8.sp,
-        )
-        Text(
-            text = "${stage.guidance}  /  ${state.statusMessage}",
-            color = Color(0xFFE8DDBF),
-            fontFamily = DeckFont,
-            fontSize = 8.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .semantics { contentDescription = "状態: ${state.statusMessage}" },
-        )
+        if (largeText) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "${stage.label}。${stage.guidance}。状態: ${state.statusMessage}" },
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "${stage.label}  ${stage.guidance}",
+                    color = DeckLamp,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 8.sp,
+                    lineHeight = 9.sp,
+                    maxLines = 2,
+                )
+                Text(
+                    text = state.statusMessage,
+                    color = Color(0xFFE8DDBF),
+                    fontFamily = DeckFont,
+                    fontSize = 7.sp,
+                    lineHeight = 8.sp,
+                    maxLines = 1,
+                )
+            }
+        } else {
+            Text(
+                text = stage.label,
+                color = DeckLamp,
+                fontFamily = DeckFont,
+                fontWeight = FontWeight.Black,
+                fontSize = 8.sp,
+            )
+            Text(
+                text = "${stage.guidance}  /  ${state.statusMessage}",
+                color = Color(0xFFE8DDBF),
+                fontFamily = DeckFont,
+                fontSize = 8.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "状態: ${state.statusMessage}" },
+            )
+        }
     }
 }
 

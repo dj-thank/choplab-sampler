@@ -58,6 +58,7 @@ import com.choplab.sampler.model.ProductionMutation
 import com.choplab.sampler.model.ProductionSession
 import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.inferProjectLaunchTarget
+import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
@@ -432,7 +433,7 @@ class DesktopSamplerController(
         }
     }
     override fun stopSourceForWorkspaceChange() = stopAllSounds()
-    override fun ensurePlayablePadSelected() = mutableState.update { it.copy(selectedPad = it.pads.firstOrNull(PadModel::isAssigned)?.globalIndex ?: it.selectedPad) }
+    override fun ensurePlayablePadSelected() = mutableState.update(::ensurePlayablePadSelectedState)
     override fun prepareDefaultChopDestination() = commitEdit { prepareDefaultMelodyChopDestination(it) }
     override fun restartSourcePlayback() = playSourceFrom(0)
 

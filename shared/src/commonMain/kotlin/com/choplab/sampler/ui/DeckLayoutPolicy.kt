@@ -18,6 +18,8 @@ enum class PerformanceWorkspaceLayout {
 data class DeckLayoutMetrics(
     val orientation: DeckOrientation,
     val density: DeckDensity,
+    val largeText: Boolean,
+    val workflowRows: Int,
     val contentPaddingDp: Int,
     val gapDp: Int,
     val headerHeightDp: Int,
@@ -41,7 +43,7 @@ data class DeckLayoutMetrics(
         totalHeightDp - fixedChromeHeightDp - productionDockHeightDp
 }
 
-fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
+fun resolveDeckLayout(widthDp: Int, heightDp: Int, fontScale: Float = 1f): DeckLayoutMetrics {
     require(widthDp > 0) { "widthDp must be positive" }
     require(heightDp > 0) { "heightDp must be positive" }
 
@@ -55,17 +57,21 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
     } else {
         heightDp < 440
     }
+    val largeText = fontScale.isFinite() && fontScale >= 1.2f
+    val workflowRows = if (largeText) 2 else 1
 
     return if (compact) {
         val primaryControlHeight = if (orientation == DeckOrientation.PORTRAIT) 48 else 40
         DeckLayoutMetrics(
             orientation = orientation,
             density = DeckDensity.COMPACT,
+            largeText = largeText,
+            workflowRows = workflowRows,
             contentPaddingDp = 6,
             gapDp = if (orientation == DeckOrientation.LANDSCAPE) 3 else 5,
-            headerHeightDp = primaryControlHeight,
-            modeBarHeightDp = primaryControlHeight,
-            statusHeightDp = 28,
+            headerHeightDp = if (largeText) 60 else primaryControlHeight,
+            modeBarHeightDp = if (largeText) primaryControlHeight * 2 + 5 else primaryControlHeight,
+            statusHeightDp = if (largeText) 72 else 28,
             controlHeightDp = primaryControlHeight,
             waveformHeightDp = if (orientation == DeckOrientation.PORTRAIT) 104 else 128,
         )
@@ -73,11 +79,13 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int): DeckLayoutMetrics {
         DeckLayoutMetrics(
             orientation = orientation,
             density = DeckDensity.REGULAR,
+            largeText = largeText,
+            workflowRows = workflowRows,
             contentPaddingDp = 10,
             gapDp = 8,
-            headerHeightDp = 48,
-            modeBarHeightDp = 48,
-            statusHeightDp = 34,
+            headerHeightDp = if (largeText) 64 else 48,
+            modeBarHeightDp = if (largeText) 104 else 48,
+            statusHeightDp = if (largeText) 72 else 34,
             controlHeightDp = 48,
             waveformHeightDp = if (orientation == DeckOrientation.PORTRAIT) 132 else 160,
         )

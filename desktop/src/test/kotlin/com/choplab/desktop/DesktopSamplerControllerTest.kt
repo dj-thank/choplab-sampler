@@ -13,6 +13,7 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.persistence.AtomicProjectStore
 import java.nio.file.Files
 import java.io.File
@@ -96,6 +97,27 @@ class DesktopSamplerControllerTest {
                     .subList(drumStart, drumStart + SamplerConfig.DRUM_KIT_PAD_COUNT)
                     .all(PadModel::isAssigned),
             )
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun beatEntryPlayableSelectionKeepsPadBankAndPageCoherent() {
+        val controller = controller()
+        try {
+            controller.resetProject()
+            controller.selectBank(0)
+            controller.selectPadPage(1)
+
+            controller.ensurePlayablePadSelected()
+
+            val state = controller.state.value
+            val firstDrum = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            assertEquals(firstDrum, state.selectedPad)
+            assertEquals(SamplerConfig.DRUM_BANK_INDEX, state.selectedBank)
+            assertEquals(0, state.selectedPadPage())
+            assertEquals("B-01をビートの操作対象にしました", state.statusMessage)
         } finally {
             controller.close()
         }
