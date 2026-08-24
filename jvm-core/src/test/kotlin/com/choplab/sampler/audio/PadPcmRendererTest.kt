@@ -69,6 +69,49 @@ class PadPcmRendererTest {
     }
 
     @Test
+    fun reverseOneShotUsesCursorRoundingAtTheStartBoundary() {
+        val shortAudio = PcmAudio(
+            name = "short",
+            samples = shortArrayOf(8_000, 16_000),
+            sampleRate = 8_000,
+        )
+        val rendered = PadPcmRenderer.render(
+            PadModel(
+                globalIndex = 0,
+                audio = shortAudio,
+                startFrame = 0,
+                endFrame = 2,
+                pitchSemitones = -12f,
+                reverse = true,
+            ),
+            outputSampleRate = 48_000,
+        )
+
+        assertEquals(12, rendered.size)
+    }
+
+    @Test
+    fun reverseLoopKeepsTheFullRangeCycle() {
+        val oneShot = PadPcmRenderer.render(
+            PadModel(0, audio, 100, 102, pitchSemitones = -12f, reverse = true),
+        )
+        val loop = PadPcmRenderer.render(
+            PadModel(
+                globalIndex = 0,
+                audio = audio,
+                startFrame = 100,
+                endFrame = 102,
+                pitchSemitones = -12f,
+                reverse = true,
+                playMode = PadPlayMode.LOOP,
+            ),
+        )
+
+        assertEquals(3, oneShot.size)
+        assertEquals(4, loop.size)
+    }
+
+    @Test
     fun zeroGainProducesSilence() {
         val rendered = PadPcmRenderer.render(PadModel(0, audio, 0, audio.frameCount, gain = 0f))
         assertTrue(rendered.all { it == 0.toShort() })
