@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。pristine first entry、large-text workflow chrome、Android/Windowsのselected PAD/bank/page coherenceを改善し、GitHub review repair `8736430`でcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを補正した。hosted CIとreview thread closeout待ち。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52は`495ddc9`としてmerge済み。follow-up `0d73984`でcompact-landscape CAPTURE、large-text CHOP/BEAT、inline status、autosave非依存instrumentationまでGitHub review 5件を補正した。hosted CIとreview thread closeout待ち。
 
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 

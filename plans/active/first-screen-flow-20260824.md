@@ -74,6 +74,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 15:52 JST — Independent verifier's 40 dp compact-landscape finding reproduced RED, repaired to stage 49 dp / demo 59 dp, and re-observed on exact final APK.
 - [x] 2026-08-24 16:08 JST — Three GitHub review threads reproduced: normal compact-landscape CAPTURE clipping, collapsed 200% BEAT quick/detail workspaces and autosave-dependent first-screen instrumentation. Source repair `8736430` plus direct large-text navigation coverage is complete.
 - [x] 2026-08-24 16:08 JST — Review-repair static gates PASS: diff check, 23 Python tests and 389-candidate public-surface scan. Fresh Gradle/AVD proof is delegated to hosted PR CI because this container lacks the Android SDK/cached Gradle and cannot download the distribution.
+- [x] 2026-08-24 16:17 JST — PR #52 merged at `495ddc9`; two later review findings were reproduced and fixed in follow-up product commit `0d73984`: large-text CHOP uses a touch-safe bounded-scroll stack, and compact-landscape status remains visible in the header.
 - [ ] Independent review, GitHub integration and closeout.
 
 ## Discoveries
@@ -84,11 +85,13 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - A 360 × 640 dp viewport at font scale 2.0 cannot show all first-entry choices simultaneously without shrinking text or targets. The selected bounded-scroll exception exposes the demo on one intentional swipe while header, workflow and status remain fixed.
 - The BEAT quick surface has more fixed controls than the post-chrome 360 × 640 / 200% workspace can hold; leaving timeline and PAD grid weighted collapses both. Quick and detailed bodies therefore need their own bounded-scroll policy and explicit content heights.
 - A real-activity first-screen test is nondeterministic after data-preserving installs because autosave may correctly restore CHOP or BEAT. The new in-memory shared-deck fixture is deterministic and never touches retained user projects.
+- A 640 × 360 dp / large-text CHOP split cannot fit its fixed left-side rows even before allocating waveform space. The large-text policy therefore switches CHOP to the same explicit-height stacked scroll boundary while normal landscape remains split.
+- Compact landscape intentionally omits the separate status strip; large text also hides the original bank/BPM header label. A dedicated inline-header status policy is required so recording and transient feedback never disappear.
 
 ## Validation evidence
 
 - Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
-- Review-repair source: `8736430b48d5f97683949240d04cb6b231d94a14`, tree `47dd8c295164e867b0fd12ad681205546bd656d0`; hosted compile/runtime checks pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
+- Review-repair source: `0d73984a26eec50fbf8c74ca0c88f7e803b7f1d0`, tree `45d00f2c27d4f9225d7892776c55412604fbcd09`; hosted compile/runtime checks pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
 - Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
 - Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
@@ -100,6 +103,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - 2026-08-24 — Keep the starter, but expose it as an explicit demo entry instead of treating enabled BEAT/SAVE tabs as self-explanatory.
 - 2026-08-24 — Permit a large-text-only two-row stage strip and scrollable first-entry body. Fixed-console identity does not justify clipped accessibility content.
 - 2026-08-24 — Extend bounded body scrolling to compact-landscape CAPTURE and large-text BEAT quick/detail while retaining normal-text fixed/responsive layouts and fixed global chrome.
+- 2026-08-24 — Use the same bounded large-text body policy for CHOP and preserve compact-landscape status in the fixed header instead of restoring a space-consuming status strip.
 - 2026-08-24 — Keep existing loaded-source workspaces unchanged unless fresh post-implementation screenshots show a regression.
 
 ## Validation log
