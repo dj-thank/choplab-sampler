@@ -19,6 +19,21 @@ if ($Serial -notmatch '^emulator-\d+$') {
 if ([string]::IsNullOrWhiteSpace($AndroidSdkRoot)) { throw 'ANDROID_SDK_ROOT is required' }
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location -LiteralPath $root
+$instrumentationParser = Join-Path $root 'scripts\instrumentation_summary.py'
+if (-not (Test-Path -LiteralPath $instrumentationParser -PathType Leaf)) {
+    throw "Instrumentation parser is absent: $instrumentationParser"
+}
+$pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+$pythonArguments = @('-3')
+if (-not $pythonLauncher) {
+    $pythonLauncher = Get-Command python3 -ErrorAction SilentlyContinue
+    $pythonArguments = @()
+}
+if (-not $pythonLauncher) {
+    $pythonLauncher = Get-Command python -ErrorAction SilentlyContinue
+    $pythonArguments = @()
+}
+if (-not $pythonLauncher) { throw 'Python 3 is required to parse instrumentation results' }
 $manifest = Get-Content -LiteralPath 'config\choplab-review-avd.json' -Raw -Encoding UTF8 | ConvertFrom-Json
 $trackedStatus = @(& git status --porcelain=v1 --untracked-files=no)
 if ($LASTEXITCODE -ne 0) { throw 'git status failed' }
@@ -44,6 +59,19 @@ function Invoke-Adb([string[]]$Arguments, [switch]$AllowFailure) {
         throw "adb -s $Serial $($Arguments -join ' ') failed ($exitCode):`n$($output -join "`n")"
     }
     return [pscustomobject]@{ ExitCode = $exitCode; Lines = $output; Text = ($output -join "`n") }
+}
+
+function Get-InstrumentationSummary([string]$Transcript) {
+    $output = @($Transcript | & $pythonLauncher.Source @pythonArguments $instrumentationParser 2>&1)
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "Instrumentation summary parser failed ($exitCode):`n$($output -join "`n")"
+    }
+    try {
+        return ($output -join "`n") | ConvertFrom-Json
+    } catch {
+        throw "Instrumentation summary parser returned invalid JSON:`n$($output -join "`n")"
+    }
 }
 
 function Wait-EmulatorReady([int]$TimeoutSeconds) {
@@ -138,18 +166,26 @@ try {
             'com.choplab.sampler.test/androidx.test.runner.AndroidJUnitRunner'
         ) -AllowFailure
         $stopwatch.Stop()
+        $summary = Get-InstrumentationSummary -Transcript $instrumentation.Text
         $passed = $instrumentation.ExitCode -eq 0 -and
-            $instrumentation.Text -match '(?m)^OK \(4 tests\)\s*$' -and
-            $instrumentation.Text -notmatch '(?m)^FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed'
+            [bool]$summary.passed
         $runs.Add([ordered]@{
             name = $entry.Name
             fontScale = $entry.FontScale
             rotation = $entry.Rotation
             durationSeconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 3)
             passed = $passed
+            testCount = $summary.testCount
             transcript = $instrumentation.Text
         })
-        if (-not $passed) { throw "Instrumentation failed for $($entry.Name):`n$($instrumentation.Text)" }
+        if (-not $passed) {
+            $reason = if ($instrumentation.ExitCode -ne 0) {
+                "adb instrumentation exit code $($instrumentation.ExitCode)"
+            } else {
+                [string]$summary.reason
+            }
+            throw "Instrumentation failed for $($entry.Name) ($reason):`n$($instrumentation.Text)"
+        }
     }
 
     $logs = (Invoke-Adb -Arguments @('logcat', '-d', '-v', 'brief') -AllowFailure).Text
