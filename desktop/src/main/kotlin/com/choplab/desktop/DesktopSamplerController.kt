@@ -98,7 +98,10 @@ class DesktopSamplerController(
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
     private val projectOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
-    private val transport = DesktopTransport(::onTransportStep) { worker -> transportWorkerStarter(worker) }
+    private val transport = DesktopTransport(
+        startWorker = { worker -> transportWorkerStarter(worker) },
+        onStep = ::onTransportStep,
+    )
     private val scratch = DesktopScratchPlayer()
     private val playbackMonitor = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "ChopLab-Windows-Playback-Monitor").apply { isDaemon = true }
