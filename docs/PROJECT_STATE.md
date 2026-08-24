@@ -12,6 +12,15 @@ This snapshot records a bounded iOS preview safety correction. It does not promo
 - Local evidence: 23 Python policy tests, public-surface scan over 390 candidates and `git diff --check` PASS. Linux has no Xcode/Simulator, and the Gradle wrapper distribution was unavailable locally, so Swift compilation, Simulator execution, microphone behavior and audible output remain for hosted macOS/device verification.
 - Gate ceiling: source-level local policy evidence only; no `DEVICE_PASS`, signed iOS build, recording-quality, route-loss or `HUMAN_GO` claim.
 
+## Previous snapshot — 2026-08-24 desktop recorder startup cleanup candidate
+
+- Observed at: `2026-08-24T16:36+09:00`.
+- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the other worktrees remain untouched.
+- Recorder lifecycle: after a Windows `TargetDataLine` is acquired, every setup failure now closes that exact local line before clearing recorder state. In particular, an exception from `TargetDataLine.start()` after a successful `open()` cannot leak the native capture line or leave a stale output/worker/failure reference.
+- Regression scope: a deterministic proxy line exercises successful `open`, failing `start`, exact-once `close`, idle state, temporary-WAV deletion, and inert follow-up `stop` / `close`, without opening recording hardware.
+- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
+- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
+
 ## Previous snapshot — 2026-08-24 guided first-screen local candidate
 
 This snapshot is the current product behavior anchor for first entry and shared navigation. Moving GitHub `main` and hosted workflow identities are provider read-backs, while the immutable implementation claim is bound to the product commit below.

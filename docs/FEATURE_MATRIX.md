@@ -14,7 +14,7 @@
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 local policy / GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。録音中の新規importはUI/store双方で拒否し、picker取消/失敗は録音・既存Sourceを停止/置換しないMainActor回帰を追加。Swift/Simulator実行と署名なし`.app.zip`はmacOS CI境界。 |
 | Windows / Android / iOS 公開preview | ✅ existing preview / v0.17 source tag / binary blocked | `v0.16.0-preview.1`の三平台公開とread-backは既存PASS。`v0.17.0` sourceはPR #45、`main@ab68d2d`、annotated tagとWindows/iOS tag artifactsまで確認済み。stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。署名済みiOS実機IPAは未提供。 |
-| 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
+| 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。Windows CIはcheckout直後の未変更treeをscanし、policy testsの後にsource snapshotを作成・uploadする。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ current local | AndroidとWindowsの停止後decodeが波形を読込み、fresh launch revisionでCHOPへ遷移してPAD割当／16-step制作へ続く。実録音内容は今回取得していない |
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示。CHOPと通常BEATは同じ4×4演奏面を共有し、詳細sequencerだけを二次面へ分離 |
@@ -50,7 +50,7 @@
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
 | Choke group | ✅ | 1–4 |
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
-| マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
+| マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない。Windowsはlineの`open`成功後に`start`が失敗してもexact-once closeし、一時WAVと内部状態を破棄するhost regressionを含む |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。端末音声captureは世代付きsessionと2秒のstop/release境界を持ち、開始途中STOPと旧workerの新session破壊をLOCALで防止。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中の競合操作を遮断。現候補の実MediaProjection/AudioRecord再検証は未実施 |
 | 一時録音のprivacy cleanup | 🧪 local | app cacheのChopLab命名mic/system/vocal WAVだけを所有対象とし、decode成功・失敗・取消・無効化後に削除。異常終了残留は24時間後の起動時に限定清掃。SAF import、export、project、無関係cacheは削除対象外 |
 | 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |

@@ -5,6 +5,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECTED_WRAPPER_SHA="7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d"
 
 python "$ROOT/scripts/check_public_surface.py"
+
+tracked_executables="$(git -C "$ROOT" ls-files --stage -- gradlew 'scripts/*.sh')"
+non_executable=()
+while IFS=$'\t' read -r metadata path; do
+  [[ -n "$path" ]] || continue
+  mode="${metadata%% *}"
+  if [[ "$mode" != "100755" ]]; then
+    non_executable+=("$path ($mode)")
+  fi
+done <<< "$tracked_executables"
+if (( ${#non_executable[@]} > 0 )); then
+  printf 'Tracked executable must use Git mode 100755: %s\n' "${non_executable[@]}" >&2
+  exit 1
+fi
+echo "Tracked executable modes OK"
+
 if command -v kotlinc >/dev/null 2>&1; then
   "$ROOT/scripts/run_pure_logic_smoke.sh"
 else
