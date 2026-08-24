@@ -1,6 +1,19 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Desktop import sample-rate admission candidate
+## Current snapshot — 2026-08-24 realtime PAD terminal-sample retirement candidate
+
+This snapshot records a bounded Android realtime mixer correction independently from the completed offline pattern/master repair. It is based on the exact merged fractional-timing main and preserves that timing implementation and evidence.
+
+- Observed at: `2026-08-24T20:08+09:00`.
+- Source state: reachable integration product commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`, with parents prior reviewed PR head `72dbaaa1b79d1c0f92b4213c65f915908b3e894e` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`; the later evidence commit is documentation-only.
+- Integration boundary: the two reviewed runtime/test blobs are byte-identical to original product `eabd063`; merged #66 carried-residual timing and merged #67 Desktop sample-rate admission source/tests/docs are retained.
+- Runtime correction: the Android pooled-PAD mixer now adds the value returned by `Voice.render()` before deactivating a voice that became finished during that same call. Loop-monitor identity is captured before rendering and its frame is published only while the voice remains active, preserving the prior loop-state contract.
+- Realtime boundary: the callback helper accepts and returns primitives plus an existing pooled `Voice`; it performs no allocation, lock, I/O, logging, Android UI call or heavy JNI work.
+- Focused regression: the established reverse, pitched and filtered parity fixture reaches retirement after exactly 403 rendered frames. The final returned sample remains in the runtime mix as PCM `-61`, then the pool slot is inactive and finished.
+- Fresh local checks: Python policy suite 39/39, public-surface scan 394 candidates, deterministic float/PCM fixture reproduction and `git diff --check` PASS. `./scripts/doctor.sh` found Java 17/Git and reported the expected absent Android SDK/ADB. `./scripts/validate_project.sh` passed its public-surface and executable-mode phases, then the uncached Gradle 9.7.1 distribution could not be provisioned; the focused Android unit task reached the same network-unreachable prerequisite with a writable task-local cache.
+- Gate ceiling: source/static candidate only. Hosted Android compilation/unit tests, APK/device execution, audible terminal behavior, audio quality, latency, provider/public release and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 Desktop import sample-rate admission candidate
 
 This snapshot records one bounded Desktop decoder admission correction. It changes neither decoded PCM shape nor the project archive schema.
 
