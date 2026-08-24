@@ -43,6 +43,18 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("docs/notes.txt" in finding for finding in findings))
         self.assertTrue(any("secret-shaped content" in finding for finding in findings))
 
+    def test_zip_content_scan_reads_bounded_member_names(self) -> None:
+        token = "github_pat_" + "a" * 24
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "named.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(f"docs/{token}.txt", "safe")
+
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("filename" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
     def test_zip_content_scan_fails_closed_at_member_and_total_limits(self) -> None:
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "source.zip"
@@ -186,7 +198,11 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 archive.writestr("second.txt", b"")
                 archive.writestr("third.txt", b"")
 
-            findings = scan_zip(archive_path, entry_count_limit=2)
+            with patch(
+                "scripts.check_public_surface.zipfile.ZipFile",
+                side_effect=AssertionError("ZipFile must not be constructed"),
+            ):
+                findings = scan_zip(archive_path, entry_count_limit=2)
 
         self.assertEqual(1, len(findings))
         self.assertIn("3 entries", findings[0])
@@ -449,6 +465,54 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings = scan_history()
 
         self.assertTrue(any("merge-only.zip" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_history_scan_preserves_newlines_in_zip_paths(self) -> None:
+        object_id = "e" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("docs/notes.txt", "github_pat_" + "e" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{object_id} unrelated/archive.dat\n".encode("ascii")
+            if arguments == [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                ":(icase,glob)**/*.zip",
+            ]:
+                return (
+                    f":000000 100644 {'0' * 40} {object_id} A\0"
+                    "evil\nname.zip\0"
+                ).encode("ascii")
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("evil\nname.zip" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:

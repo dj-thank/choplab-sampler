@@ -78,6 +78,12 @@ SECRET_PATTERNS = [
 ]
 ZIP_LOCAL_FILE_HEADER = struct.Struct("<4s5H3L2H")
 ZIP_LOCAL_FILE_SIGNATURE = b"PK\x03\x04"
+ZIP_END_OF_CENTRAL_DIRECTORY = struct.Struct("<4s4H2LH")
+ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = b"PK\x05\x06"
+ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER_SIZE = 46
+ZIP_MAX_COMMENT_LENGTH = (1 << 16) - 1
+ZIP64_UINT16_SENTINEL = (1 << 16) - 1
+ZIP64_UINT32_SENTINEL = (1 << 32) - 1
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -174,6 +180,112 @@ def decode_text_for_secret_scan(content: bytes) -> str:
     return content.decode("utf-8-sig", errors="replace")
 
 
+def preflight_zip_directory(
+    source: Path | PurePosixPath | BytesIO,
+    *,
+    archive_label: str,
+    entry_count_limit: int,
+    total_scan_limit: int,
+) -> list[str]:
+    """Bound central-directory allocation before ZipFile constructs ZipInfo objects."""
+    tail_limit = ZIP_END_OF_CENTRAL_DIRECTORY.size + ZIP_MAX_COMMENT_LENGTH
+    try:
+        if isinstance(source, BytesIO):
+            original_position = source.tell()
+            try:
+                source.seek(0, 2)
+                archive_size = source.tell()
+                tail_offset = max(0, archive_size - tail_limit)
+                source.seek(tail_offset)
+                tail = source.read(tail_limit)
+            finally:
+                source.seek(original_position)
+        else:
+            archive_path = Path(source)
+            archive_size = archive_path.stat().st_size
+            tail_offset = max(0, archive_size - tail_limit)
+            with archive_path.open("rb") as stream:
+                stream.seek(tail_offset)
+                tail = stream.read(tail_limit)
+    except (OSError, ValueError) as error:
+        return [
+            f"{archive_label}: archive directory preflight failed "
+            f"({type(error).__name__})"
+        ]
+
+    search_end = len(tail)
+    directory_fields: tuple[bytes, int, int, int, int, int, int, int] | None = None
+    directory_offset = 0
+    while search_end:
+        candidate = tail.rfind(
+            ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE,
+            0,
+            search_end,
+        )
+        if candidate < 0:
+            break
+        if candidate + ZIP_END_OF_CENTRAL_DIRECTORY.size <= len(tail):
+            try:
+                fields = ZIP_END_OF_CENTRAL_DIRECTORY.unpack_from(tail, candidate)
+            except struct.error:
+                fields = None
+            if fields is not None:
+                comment_length = fields[-1]
+                absolute_offset = tail_offset + candidate
+                if (
+                    absolute_offset
+                    + ZIP_END_OF_CENTRAL_DIRECTORY.size
+                    + comment_length
+                    == archive_size
+                ):
+                    directory_fields = fields
+                    directory_offset = absolute_offset
+                    break
+        search_end = candidate
+
+    if directory_fields is None:
+        return [f"{archive_label}: bounded end-of-central-directory record not found"]
+
+    (
+        _,
+        disk_number,
+        central_directory_disk,
+        entries_on_disk,
+        entry_count,
+        central_directory_size,
+        central_directory_offset,
+        _,
+    ) = directory_fields
+    if (
+        disk_number != 0
+        or central_directory_disk != 0
+        or entries_on_disk != entry_count
+    ):
+        return [f"{archive_label}: multi-disk ZIP archives are not supported"]
+    if (
+        entry_count == ZIP64_UINT16_SENTINEL
+        or central_directory_size == ZIP64_UINT32_SENTINEL
+        or central_directory_offset == ZIP64_UINT32_SENTINEL
+    ):
+        return [f"{archive_label}: ZIP64 directory metadata exceeds bounded scan policy"]
+    if entry_count > entry_count_limit:
+        return [
+            f"{archive_label}: archive contains {entry_count} entries, exceeding "
+            f"the {entry_count_limit}-entry content scan limit"
+        ]
+    maximum_directory_size = (
+        ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER_SIZE * entry_count + total_scan_limit
+    )
+    if central_directory_size > maximum_directory_size:
+        return [
+            f"{archive_label}: central directory metadata exceeds the "
+            f"{total_scan_limit}-byte total content scan limit before parsing"
+        ]
+    if central_directory_offset + central_directory_size > directory_offset:
+        return [f"{archive_label}: central directory bounds are invalid"]
+    return []
+
+
 def scan_zip(
     source: Path | PurePosixPath | BytesIO,
     *,
@@ -186,6 +298,15 @@ def scan_zip(
     findings: list[str] = []
     scanned_bytes = 0
     archive_label = label or str(source)
+
+    preflight_findings = preflight_zip_directory(
+        source,
+        archive_label=archive_label,
+        entry_count_limit=entry_count_limit,
+        total_scan_limit=total_scan_limit,
+    )
+    if preflight_findings:
+        return preflight_findings
 
     def scan_metadata(metadata_label: str, content: bytes) -> bool:
         nonlocal scanned_bytes
