@@ -76,6 +76,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 16:45 JST — Post-merge review fixes normal compact-landscape CAPTURE, 200% BEAT quick/detail and autosave-independent instrumentation. Three device-test defects were caught RED and repaired; exact final instrumentation is `OK (8 tests)`.
 - [x] 2026-08-24 16:45 JST — Closeout source `07f8dcf` / tree `dcd5969`: clean 191-task plus final 184-task gate, policy, exact artifacts, physical-swipe visuals and independent re-review complete.
 - [x] 2026-08-24 18:20 JST — PR #62 reachable review repair source `c569604` / tree `4e7250f`: PAD-started vertical swipes cancel before selection/playback, GATE retains a real hold after scroll arbitration, compact LOOP/DRM/VOX remain in full semantics, and focused real-pointer/unit regressions cover each path.
+- [x] 2026-08-24 18:39 JST — Follow-up product `4e8b62f` / tree `6ff0b00` integrates `main@a930da4` and gives every triggered deferred GATE exact-one release when TRIM recomposition cancels its pointer-input node; the real-pointer regression also preserves zero actions for an 80 ms parent-cancelled pre-activation swipe.
 - [ ] Run hosted Gradle plus the focused API 36 gesture test for the review-repair head; local wrapper acquisition is blocked by the unavailable Gradle distribution.
 - [ ] Closeout PR and merged-main read-back.
 
@@ -87,13 +88,13 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - A 360 × 640 dp viewport at font scale 2.0 cannot show all first-entry choices simultaneously without shrinking text or targets. The selected bounded-scroll exception exposes the demo on one intentional swipe while header, workflow and status remain fixed.
 - A large-text BEAT body has more fixed controls than the remaining workspace. Weighted timeline/PAD children collapse; explicit heights plus bounded body scrolling preserve 48 dp PADs and all lower controls.
 - A retained-data Activity test may correctly restore CHOP/BEAT. The deterministic first-screen test must render a starter-only CAPTURE state in memory and give its dynamic controller proxy stable `equals/hashCode/toString` behavior.
-- A PAD `onPress` callback runs before a parent scroll recognizes touch slop. In a bounded scroll body, ONE SHOT side effects therefore belong to completed tap; GATE uses a bounded activation delay and then releases on the real pointer-up. A drag consumed before activation must dispatch no controller action.
+- A PAD `onPress` callback runs before a parent scroll recognizes touch slop. In a bounded scroll body, ONE SHOT side effects therefore belong to completed tap; GATE uses a bounded activation delay and then owns one release on pointer-up or post-trigger node cancellation. A drag consumed before activation must dispatch no controller action.
 - Compact large-text cells can intentionally omit secondary captions only when semantics independently enumerate both play mode and content kind; PAD assignment alone is not a complete accessible role description.
 
 ## Validation evidence
 
 - Product anchor: `07f8dcf3c2b0fe17c1e1d8ed3d135728c18f0c96`, tree `dcd5969bf72ceab1facbceb43c3fe63a9df99b4d`.
-- Review-repair source: `c569604da05dd3f9ce1df0e0af9dd306f3794d6b`, tree `4e7250ffb480f23d4254a561cf7bf30978f3b914`, integrating original PR #62 head with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`; static policy 34/34, public surface 394 and diff check PASS. Gradle/device execution remains pending.
+- Review-repair source: reachable commit `4e8b62fd56ccf13162b9166a4c802a962f6d28bb`, tree `6ff0b00a28e1ebb1d0ddde32df621bffe34f31e9`, integrating the prior PR #62 head with `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`; static policy 39/39, public surface 394, XML parse and diff check PASS. Gradle/device execution remains pending.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
 - Instrumentation: API 36 `OK (8 tests)` after exact data-preserving APK installs。first-screen 2本はin-memory shared-deck fixtureであり、production MainActivity/controller wiringは別のmanual cold-launch/navigation captureに限定する。
 - Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/` and `closeout/`.
@@ -105,7 +106,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - 2026-08-24 — Keep the starter, but expose it as an explicit demo entry instead of treating enabled BEAT/SAVE tabs as self-explanatory.
 - 2026-08-24 — Permit a large-text-only two-row stage strip and scrollable first-entry body. Fixed-console identity does not justify clipped accessibility content.
 - 2026-08-24 — Extend bounded body scrolling to compact-landscape CAPTURE and large-text BEAT quick/detail; keep normal-text responsive composition and global chrome fixed.
-- 2026-08-24 — In a scrollable BEAT body, commit ONE SHOT on completed tap and GATE after a bounded scroll-classification delay through real pointer-up; preserve direct press performance everywhere else.
+- 2026-08-24 — In a scrollable BEAT body, commit ONE SHOT on completed tap and GATE after a bounded scroll-classification delay through real pointer-up or post-trigger node cancellation; preserve direct press performance everywhere else.
 - 2026-08-24 — Treat play mode and content kind as semantic PAD identity even when compact layout hides their secondary visual caption.
 - 2026-08-24 — Keep existing loaded-source workspaces unchanged unless fresh post-implementation screenshots show a regression.
 

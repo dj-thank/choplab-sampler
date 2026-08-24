@@ -21,7 +21,7 @@ Keep the shared four-stage model `入れる → チョップ → ビート → �
 
 At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. The first-entry body scrolls when enlarged content or compact landscape height cannot fit. Large-text BEAT quick/detail bodies also use bounded scrolling with explicit waveform and 48 dp-safe PAD-grid heights; global chrome remains fixed. Normal text retains the one-row chrome and existing responsive BEAT composition.
 
-Within a scrollable BEAT body, ONE SHOT PAD selection and playback commit only after the pointer gesture completes as a tap. GATE waits through a short scroll-classification window, then preserves the remaining physical hold until pointer-up. A vertical drag canceled by the parent before activation sends no PAD model or audio action. Non-scroll PAD surfaces keep their direct press-down performance path.
+Within a scrollable BEAT body, ONE SHOT PAD selection and playback commit only after the pointer gesture completes as a tap. GATE waits through a short scroll-classification window, then preserves the remaining physical hold until pointer-up. Once triggered, it owns an exact-once release even if opening TRIM replaces and cancels the gesture node. A vertical drag canceled by the parent before activation sends no PAD model or audio action. Non-scroll PAD surfaces keep their direct press-down performance path.
 
 Both platform controllers use the shared `ensurePlayablePadSelected` state transition, which updates selected PAD, bank and page together.
 
