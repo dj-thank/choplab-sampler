@@ -68,9 +68,10 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 14:15 JST — Current source/dirty boundary fixed; Product Design combined audit captured Android and Windows baseline states.
 - [x] 2026-08-24 14:15 JST — Selected explicit-entry + adaptive-large-text direction; strict lock and DAW dashboard rejected.
 - [x] 2026-08-24 15:10 JST — Focused RED tests reproduced missing entry policy, large-text rows and Desktop bank/page coherence.
-- [x] 2026-08-24 15:10 JST — Shared entry/chrome policy, Desktop shared selection and focused GREEN complete at product commit `c153234`.
-- [x] 2026-08-24 15:10 JST — Full clean 184-task gate, policy gates, exact hashes and final Android/Windows visual regression PASS.
-- [x] 2026-08-24 15:10 JST — Exact API 36 debug/test APK data-preserving install and full seven-test instrumentation PASS; 360 × 640 dp / 200% scroll verified and emulator settings restored.
+- [x] 2026-08-24 15:52 JST — Shared entry/chrome policy, Desktop shared selection and focused GREEN complete at reviewed product commit `43d8ace`.
+- [x] 2026-08-24 15:52 JST — Clean 191-task gate plus final 184-task incremental cross-platform gate, policy gates, exact hashes and final Android/Windows visual regression PASS.
+- [x] 2026-08-24 15:52 JST — Exact final API 36 debug/test APK data-preserving install and full seven-test instrumentation PASS; portrait and 640 × 360 dp landscape large-text scroll verified and emulator settings restored.
+- [x] 2026-08-24 15:52 JST — Independent verifier's 40 dp compact-landscape finding reproduced RED, repaired to stage 49 dp / demo 59 dp, and re-observed on exact final APK.
 - [ ] Independent review, GitHub integration and closeout.
 
 ## Discoveries
@@ -82,10 +83,10 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 
 ## Validation evidence
 
-- Product anchor: `c1532345838b90b19e071bdea8a1554b4000a015`, tree `559bbaa995f5db1b73c00f344b91f2ad411d136e`.
-- Gradle: 184 tasks PASS; shared 25/25, Android 233, JVM-core 52, Desktop 77; failures/errors/skips 0.
+- Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
+- Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
 - Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
-- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/final/`.
+- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
 - Pixel 9a: disconnected; no physical-device gate promotion.
 - A Windows CopyFromScreen capture was invalid at 200% DPI/off-screen placement; PrintWindow produced the accepted full-window evidence.
 
