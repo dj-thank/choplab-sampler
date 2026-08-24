@@ -207,25 +207,29 @@ private fun PerformancePad(
                         pressed = true
                         try {
                             if (deferGatePerformance) {
-                                coroutineScope {
-                                    var gateStarted = false
-                                    val delayedStart = launch {
-                                        // Let the scroll parent consume a drag before committing audio.
-                                        delay(SCROLL_GATE_ACTIVATION_DELAY_MILLIS)
-                                        onSelect()
-                                        onTrigger()
-                                        gateStarted = true
+                                var gateTriggered = false
+                                try {
+                                    coroutineScope {
+                                        val delayedStart = launch {
+                                            // Let the scroll parent consume a drag before committing audio.
+                                            delay(SCROLL_GATE_ACTIVATION_DELAY_MILLIS)
+                                            onSelect()
+                                            onTrigger()
+                                            gateTriggered = true
+                                        }
+                                        val released = tryAwaitRelease()
+                                        delayedStart.cancelAndJoin()
+                                        if (!gateTriggered && released) {
+                                            // A short completed tap remains an intentional preview.
+                                            onSelect()
+                                            onTrigger()
+                                            gateTriggered = true
+                                        }
                                     }
-                                    val released = tryAwaitRelease()
-                                    delayedStart.cancelAndJoin()
-                                    if (gateStarted) {
-                                        onRelease()
-                                    } else if (released) {
-                                        // A short completed tap remains an intentional preview.
-                                        onSelect()
-                                        onTrigger()
-                                        onRelease()
-                                    }
+                                } finally {
+                                    // Opening trim replaces this pointerInput node. Once trigger ownership
+                                    // was acquired, cancellation must still release the GATE exactly once.
+                                    if (gateTriggered) onRelease()
                                 }
                             } else {
                                 if (!deferPadActionUntilTap) {

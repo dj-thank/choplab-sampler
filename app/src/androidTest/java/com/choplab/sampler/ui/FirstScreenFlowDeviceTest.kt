@@ -147,7 +147,7 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
-    fun largeTextGateHoldStartsAfterScrollArbitrationAndReleasesOnPointerUp() {
+    fun largeTextGateScrollCancellationAndLongPressRecompositionReleaseExactlyOnce() {
         val padActions = mutableListOf<Pair<String, Long>>()
         val state = setPristineDeck(
             fontScale = 2f,
@@ -167,18 +167,37 @@ class FirstScreenFlowDeviceTest {
             padActions.clear()
         }
 
-        composeRule.onNode(
-            hasContentDescription("PAD 01 割り当て済み。再生モード GATE", substring = true),
-        ).performScrollTo().performTouchInput { longClick() }
+        val gateDescription = hasContentDescription(
+            "PAD 01 割り当て済み。再生モード GATE",
+            substring = true,
+        )
+        val gatePad = composeRule.onNode(gateDescription).performScrollTo()
+        val topBeforeSwipe = gatePad.fetchSemanticsNode().boundsInRoot.top
+        gatePad.performTouchInput { swipeUp(durationMillis = 80) }
         composeRule.waitForIdle()
+        val topAfterSwipe = composeRule.onNode(gateDescription).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(
+            "The GATE swipe should move the large-text workspace",
+            topAfterSwipe < topBeforeSwipe - 1f,
+        )
+        composeRule.runOnIdle {
+            assertTrue("A parent-cancelled GATE must not acquire trigger ownership", padActions.isEmpty())
+        }
+
+        composeRule.onNode(gateDescription).performScrollTo().performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText("切り位置", substring = true)).assertIsDisplayed()
 
         composeRule.runOnIdle {
-            assertEquals(
-                listOf("selectPlayablePad", "triggerPad", "releasePad"),
-                padActions.map { it.first },
-            )
+            val actionNames = padActions.map { it.first }
+            assertEquals(1, actionNames.count { it == "triggerPad" })
+            assertEquals(1, actionNames.count { it == "releasePad" })
             val triggerTime = padActions.first { it.first == "triggerPad" }.second
             val releaseTime = padActions.first { it.first == "releasePad" }.second
+            assertTrue(
+                "Opening trim must release after the triggered GATE",
+                actionNames.indexOf("releasePad") > actionNames.indexOf("triggerPad"),
+            )
             assertTrue("A deferred GATE hold must not trigger and release in one frame", releaseTime > triggerTime)
         }
     }
