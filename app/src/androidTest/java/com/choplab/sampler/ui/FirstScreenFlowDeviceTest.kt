@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.ui.theme.ChopLabTheme
@@ -69,7 +70,10 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
             .performClick()
 
-        val selectedPad = composeRule.onNode(hasText("B01", substring = true)).performScrollTo()
+        composeRule.onNode(hasText("B01", substring = true)).performScrollTo().assertIsDisplayed()
+        val selectedPad = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo()
         selectedPad.assertIsDisplayed()
         val minimumTargetPx = 48f * composeRule.density.density
         val bounds = selectedPad.fetchSemanticsNode().boundsInRoot
@@ -86,7 +90,11 @@ class FirstScreenFlowDeviceTest {
     }
 
     private fun setPristineDeck(fontScale: Float = 1f): MutableState<SamplerUiState> {
-        val state = mutableStateOf(BuiltInDrumKits.installStarterKit(SamplerUiState()))
+        val state = mutableStateOf(
+            BuiltInDrumKits.installStarterKit(SamplerUiState()).copy(
+                projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
+            ),
+        )
         val controller = noOpController {
             state.value = ensurePlayablePadSelectedState(state.value)
         }
@@ -114,11 +122,17 @@ class FirstScreenFlowDeviceTest {
     }
 
     private fun noOpController(onEnsurePlayablePadSelected: () -> Unit): SamplerDeckController {
-        val handler = java.lang.reflect.InvocationHandler { _, method, _ ->
-            if (method.name == SamplerDeckController::ensurePlayablePadSelected.name) {
-                onEnsurePlayablePadSelected()
+        val handler = java.lang.reflect.InvocationHandler { proxy, method, arguments ->
+            when (method.name) {
+                "equals" -> proxy === arguments?.firstOrNull()
+                "hashCode" -> System.identityHashCode(proxy)
+                "toString" -> "NoOpSamplerDeckController"
+                SamplerDeckController::ensurePlayablePadSelected.name -> {
+                    onEnsurePlayablePadSelected()
+                    null
+                }
+                else -> null
             }
-            null
         }
         return Proxy.newProxyInstance(
             SamplerDeckController::class.java.classLoader,
