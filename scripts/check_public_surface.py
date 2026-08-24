@@ -78,6 +78,8 @@ SECRET_PATTERNS = [
 ]
 ZIP_LOCAL_FILE_HEADER = struct.Struct("<4s5H3L2H")
 ZIP_LOCAL_FILE_SIGNATURE = b"PK\x03\x04"
+ZIP_DATA_DESCRIPTOR = struct.Struct("<3L")
+ZIP_DATA_DESCRIPTOR_SIGNATURE = b"PK\x07\x08"
 ZIP_END_OF_CENTRAL_DIRECTORY = struct.Struct("<4s4H2LH")
 ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = b"PK\x05\x06"
 ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER = struct.Struct("<4s6H3L5H2L")
@@ -329,9 +331,13 @@ def preflight_zip_directory(
             return [f"{archive_label}: central directory entry signature is invalid"]
         filename_length, extra_length, comment_length = record[10:13]
         local_header_offset = record[16]
-        if local_header_offset == ZIP64_UINT32_SENTINEL:
+        if (
+            record[8] == ZIP64_UINT32_SENTINEL
+            or record[9] == ZIP64_UINT32_SENTINEL
+            or local_header_offset == ZIP64_UINT32_SENTINEL
+        ):
             return [
-                f"{archive_label}: ZIP64 local-header offset exceeds bounded scan policy"
+                f"{archive_label}: ZIP64 entry metadata exceeds bounded scan policy"
             ]
         minimum_local_header_offset = (
             local_header_offset
@@ -401,6 +407,7 @@ def scan_zip(
     try:
         with zipfile.ZipFile(source) as archive:
             entries = archive.infolist()
+            claimed_ranges: list[tuple[int, int]] = []
             if len(entries) > entry_count_limit:
                 findings.append(
                     f"{archive_label}: archive contains {len(entries)} entries, exceeding "
@@ -454,6 +461,7 @@ def scan_zip(
                     int,
                 ] | None = None
                 local_header_valid = False
+                local_record_end: int | None = None
                 try:
                     if stream is None:
                         raise ValueError("archive stream is unavailable")
@@ -471,6 +479,33 @@ def scan_zip(
                     local_extra = stream.read(extra_length)
                     if len(local_name) != name_length or len(local_extra) != extra_length:
                         raise ValueError("truncated local file header metadata")
+                    payload_end = stream.tell() + info.compress_size
+                    local_record_end = payload_end
+                    if fields[2] & 0x08:
+                        stream.seek(payload_end)
+                        descriptor = stream.read(
+                            len(ZIP_DATA_DESCRIPTOR_SIGNATURE)
+                            + ZIP_DATA_DESCRIPTOR.size
+                        )
+                        descriptor_offset = 0
+                        if descriptor.startswith(ZIP_DATA_DESCRIPTOR_SIGNATURE):
+                            descriptor_offset = len(ZIP_DATA_DESCRIPTOR_SIGNATURE)
+                        required_size = descriptor_offset + ZIP_DATA_DESCRIPTOR.size
+                        if len(descriptor) < required_size:
+                            raise ValueError("truncated ZIP data descriptor")
+                        descriptor_values = ZIP_DATA_DESCRIPTOR.unpack_from(
+                            descriptor,
+                            descriptor_offset,
+                        )
+                        if descriptor_values != (
+                            info.CRC,
+                            info.compress_size,
+                            info.file_size,
+                        ):
+                            raise ValueError(
+                                "ZIP data descriptor does not match central directory"
+                            )
+                        local_record_end += required_size
                     local_header_valid = True
                 except (OSError, ValueError, struct.error) as error:
                     findings.append(
@@ -547,11 +582,13 @@ def scan_zip(
                             )
                 if not local_header_valid:
                     continue
+                if local_record_end is not None:
+                    claimed_ranges.append((info.header_offset, local_record_end))
                 if info.is_dir():
-                    if info.file_size:
+                    if info.file_size or info.compress_size:
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: "
-                            "directory-marked entry contains data"
+                            "directory-marked entry contains data or compressed payload"
                         )
                     continue
                 if entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES:
@@ -579,10 +616,34 @@ def scan_zip(
                 try:
                     with archive.open(info) as member:
                         content = member.read(member_scan_limit + 1)
+                        compressed_bytes_remaining = getattr(
+                            member,
+                            "_compress_left",
+                            0,
+                        )
+                        decompressor = getattr(member, "_decompressor", None)
+                        trailing_compressed_data = bool(compressed_bytes_remaining)
+                        if decompressor is not None:
+                            trailing_compressed_data = trailing_compressed_data or bool(
+                                getattr(decompressor, "unused_data", b"")
+                            )
+                            trailing_compressed_data = trailing_compressed_data or bool(
+                                getattr(decompressor, "unconsumed_tail", b"")
+                            )
+                            if hasattr(decompressor, "eof"):
+                                trailing_compressed_data = (
+                                    trailing_compressed_data or not decompressor.eof
+                                )
                 except (NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile) as error:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: content scan failed "
                         f"({type(error).__name__})"
+                    )
+                    continue
+                if trailing_compressed_data:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: declared compressed "
+                        "payload contains trailing or unconsumed data"
                     )
                     continue
                 if len(content) > member_scan_limit:
@@ -601,6 +662,23 @@ def scan_zip(
                 text = decode_text_for_secret_scan(content)
                 member_label = f"{archive_label}: archive entry {name!r}"
                 findings.extend(scan_text(member_label, text))
+
+            if len(claimed_ranges) == len(entries):
+                expected_offset = 0
+                for range_start, range_end in sorted(claimed_ranges):
+                    if range_start != expected_offset or range_end < range_start:
+                        findings.append(
+                            f"{archive_label}: ZIP local records do not form one "
+                            "contiguous claimed range"
+                        )
+                        break
+                    expected_offset = range_end
+                else:
+                    if expected_offset != archive.start_dir:
+                        findings.append(
+                            f"{archive_label}: ZIP local records leave unclaimed bytes "
+                            "before the central directory"
+                        )
     except (OSError, zipfile.BadZipFile) as error:
         findings.append(
             f"{archive_label}: archive content scan failed ({type(error).__name__})"
@@ -679,12 +757,23 @@ def scan_public_path(path: Path | PurePosixPath) -> list[str]:
     reason = suspicious_path(path)
     if reason:
         findings.append(f"{path}: {reason}")
+    resolved_path = Path(path)
+    if resolved_path.is_symlink():
+        try:
+            link_target = resolved_path.readlink()
+        except OSError as error:
+            findings.append(
+                f"{path}: symbolic-link target scan failed ({type(error).__name__})"
+            )
+            return findings
+        findings.extend(scan_text(f"{path}: symbolic-link target", str(link_target)))
+        return findings
     if path.suffix.lower() == ".zip":
-        findings.extend(scan_zip(Path(path), label=str(path)))
+        findings.extend(scan_zip(resolved_path, label=str(path)))
         return findings
 
     try:
-        content = Path(path).read_bytes().decode("utf-8")
+        content = resolved_path.read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError):
         return findings
     findings.extend(scan_text(str(path), content))

@@ -243,6 +243,73 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             any("end-of-central-directory record not found" in item for item in trailing_findings)
         )
 
+    def test_zip_content_scan_rejects_unclaimed_interior_bytes(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w") as archive:
+            archive.writestr("notes.txt", "safe")
+        archive_bytes = bytearray(candidate.getvalue())
+        central_offset = archive_bytes.index(b"PK\x01\x02")
+        archive_bytes[central_offset:central_offset] = token
+        end_record_offset = archive_bytes.index(b"PK\x05\x06", central_offset)
+        archive_bytes[
+            end_record_offset + 16 : end_record_offset + 20
+        ] = (central_offset + len(token)).to_bytes(4, "little")
+
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            self.assertEqual(b"safe", archive.read("notes.txt"))
+        findings = scan_zip(BytesIO(archive_bytes), label="interior-gap.zip")
+
+        self.assertTrue(
+            any("leave unclaimed bytes" in item for item in findings)
+        )
+
+    def test_zip_content_scan_rejects_compressed_directory_payload(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w") as archive:
+            archive.writestr("folder/", token)
+        archive_bytes = bytearray(candidate.getvalue())
+        central_offset = archive_bytes.index(b"PK\x01\x02")
+        archive_bytes[14:18] = b"\x00" * 4
+        archive_bytes[22:26] = b"\x00" * 4
+        archive_bytes[central_offset + 16 : central_offset + 20] = b"\x00" * 4
+        archive_bytes[central_offset + 24 : central_offset + 28] = b"\x00" * 4
+
+        findings = scan_zip(BytesIO(archive_bytes), label="directory-payload.zip")
+
+        self.assertTrue(
+            any("compressed payload" in item for item in findings)
+        )
+
+    def test_zip_content_scan_rejects_trailing_compressed_stream_data(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", "safe")
+        archive_bytes = bytearray(candidate.getvalue())
+        original_central_offset = archive_bytes.index(b"PK\x01\x02")
+        original_compressed_size = int.from_bytes(archive_bytes[18:22], "little")
+        expanded_compressed_size = original_compressed_size + len(token)
+        archive_bytes[original_central_offset:original_central_offset] = token
+        central_offset = original_central_offset + len(token)
+        archive_bytes[18:22] = expanded_compressed_size.to_bytes(4, "little")
+        archive_bytes[
+            central_offset + 20 : central_offset + 24
+        ] = expanded_compressed_size.to_bytes(4, "little")
+        end_record_offset = archive_bytes.index(b"PK\x05\x06", central_offset)
+        archive_bytes[
+            end_record_offset + 16 : end_record_offset + 20
+        ] = central_offset.to_bytes(4, "little")
+
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            self.assertEqual(b"safe", archive.read("notes.txt"))
+        findings = scan_zip(BytesIO(archive_bytes), label="compressed-trailing.zip")
+
+        self.assertTrue(
+            any("compressed payload contains trailing" in item for item in findings)
+        )
+
     def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "many.zip"
@@ -298,6 +365,21 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings = scan_public_path(archive_path)
 
         self.assertEqual([], findings)
+
+    def test_current_zip_symlink_is_scanned_without_following_target(self) -> None:
+        token = "github_pat_" + "a" * 24
+        with TemporaryDirectory() as directory:
+            safe_link = Path(directory) / "latest.zip"
+            secret_link = Path(directory) / "secret.zip"
+            safe_link.symlink_to("releases/missing.zip")
+            secret_link.symlink_to(token)
+
+            safe_findings = scan_public_path(safe_link)
+            secret_findings = scan_public_path(secret_link)
+
+        self.assertEqual([], safe_findings)
+        self.assertTrue(any("symbolic-link target" in item for item in secret_findings))
+        self.assertTrue(any("secret-shaped content" in item for item in secret_findings))
 
     def test_directory_marked_zip_entry_with_payload_is_rejected(self) -> None:
         token = "github_pat_" + "a" * 24
