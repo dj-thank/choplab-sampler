@@ -34,6 +34,25 @@ data class DeckLayoutMetrics(
     val showStatusStrip: Boolean
         get() = orientation != DeckOrientation.LANDSCAPE || density != DeckDensity.COMPACT
 
+    val showInlineHeaderStatus: Boolean
+        get() = largeText && !showStatusStrip
+
+    val focusedCaptureNeedsScroll: Boolean
+        get() = largeText ||
+            (orientation == DeckOrientation.LANDSCAPE && density == DeckDensity.COMPACT)
+
+    val beatWorkspaceNeedsScroll: Boolean
+        get() = largeText
+
+    val performanceWorkspaceNeedsScroll: Boolean
+        get() = largeText
+
+    val touchSafePadGridHeightDp: Int
+        get() = 4 * maxOf(48, controlHeightDp) + 3 * gapDp
+
+    val beatPadGridHeightDp: Int
+        get() = touchSafePadGridHeightDp
+
     val fixedChromeHeightDp: Int
         get() = headerHeightDp + modeBarHeightDp +
             (if (showStatusStrip) statusHeightDp else 0) +
@@ -93,7 +112,7 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int, fontScale: Float = 1f): DeckL
 }
 
 fun performanceWorkspaceLayout(metrics: DeckLayoutMetrics): PerformanceWorkspaceLayout =
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+    if (metrics.orientation == DeckOrientation.LANDSCAPE && !metrics.performanceWorkspaceNeedsScroll) {
         PerformanceWorkspaceLayout.SPLIT_PAD_GRID
     } else {
         PerformanceWorkspaceLayout.STACKED

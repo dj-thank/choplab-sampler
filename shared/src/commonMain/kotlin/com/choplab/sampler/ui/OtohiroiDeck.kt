@@ -266,6 +266,7 @@ fun OtohiroiDeck(
                         stage = stage,
                         height = metrics.headerHeightDp.dp,
                         largeText = metrics.largeText,
+                        showInlineStatus = metrics.showInlineHeaderStatus,
                         onStopAll = viewModel::stopAllSounds,
                         onStopRecording = viewModel::stopActiveRecording,
                     )
@@ -442,6 +443,7 @@ private fun PerformanceWorkspace(
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
+    val scrollState = rememberScrollState()
     val sourcePhase = state.sourceUiPhase()
     val presentation = chopSessionPresentation(
         sourcePhase = sourcePhase,
@@ -463,7 +465,11 @@ private fun PerformanceWorkspace(
         return
     }
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = if (metrics.performanceWorkspaceNeedsScroll) {
+            Modifier.fillMaxSize().verticalScroll(scrollState)
+        } else {
+            Modifier.fillMaxSize()
+        },
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
         ChopCoachRow(
@@ -508,7 +514,13 @@ private fun PerformanceWorkspace(
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
             gap = gap,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = if (metrics.performanceWorkspaceNeedsScroll) {
+                Modifier
+                    .fillMaxWidth()
+                    .height(metrics.touchSafePadGridHeightDp.dp)
+            } else {
+                Modifier.weight(1f).fillMaxWidth()
+            },
         )
         ChopNextActionRow(
             state = state,
@@ -735,6 +747,7 @@ private fun MachineHeader(
     stage: WorkflowStage,
     height: Dp,
     largeText: Boolean,
+    showInlineStatus: Boolean,
     onStopAll: () -> Unit,
     onStopRecording: () -> Unit,
 ) {
@@ -766,7 +779,18 @@ private fun MachineHeader(
                 letterSpacing = if (largeText) 1.sp else 1.5.sp,
                 maxLines = 1,
             )
-            if (machineHeaderShowsCaption(fontScale)) {
+            if (showInlineStatus) {
+                Text(
+                    recording?.statusLabel ?: state.statusMessage,
+                    color = if (recording != null) DeckLamp else DeckGreen,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 7.sp,
+                    lineHeight = 8.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else if (machineHeaderShowsCaption(fontScale)) {
                 Text(
                     "${stage.label} / ${stage.caption}",
                     color = Color(0xFF9C906F),
@@ -1110,7 +1134,7 @@ private fun FocusedCaptureEntry(
     )
     val scrollState = rememberScrollState()
     val gap = metrics.gapDp.dp
-    val bodyModifier = if (metrics.largeText) {
+    val bodyModifier = if (metrics.focusedCaptureNeedsScroll) {
         Modifier.fillMaxSize().verticalScroll(scrollState)
     } else {
         Modifier.fillMaxSize()
@@ -2046,6 +2070,7 @@ private fun SequenceWorkspace(
 ) {
     val gap = metrics.gapDp.dp
     var showFineControls by rememberSaveable { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
     if (beatWorkspaceSurface(showFineControls).showPadGrid) {
         BeatChopSurface(
             state = state,
@@ -2058,7 +2083,7 @@ private fun SequenceWorkspace(
         )
         return
     }
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+    if (metrics.orientation == DeckOrientation.LANDSCAPE && !metrics.beatWorkspaceNeedsScroll) {
         Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -2100,7 +2125,11 @@ private fun SequenceWorkspace(
         }
     } else {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (metrics.beatWorkspaceNeedsScroll) {
+                Modifier.fillMaxSize().verticalScroll(scrollState)
+            } else {
+                Modifier.fillMaxSize()
+            },
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             BankStrip(
@@ -2115,9 +2144,11 @@ private fun SequenceWorkspace(
                 transportPlaying = state.transportPlaying,
                 loopPlayheadFrame = state.loopPlayheadFrame,
                 loopPlaying = state.loopingPadIndex != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.75f),
+                modifier = if (metrics.beatWorkspaceNeedsScroll) {
+                    Modifier.fillMaxWidth().height(metrics.waveformHeightDp.dp)
+                } else {
+                    Modifier.fillMaxWidth().weight(0.75f)
+                },
             )
             SequenceTransportRow(
                 state = state,
@@ -2176,6 +2207,7 @@ private fun BeatChopSurface(
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
+    val scrollState = rememberScrollState()
     val timeline: @Composable (Modifier) -> Unit = { modifier ->
         ArrangementWaveformTimeline(
             pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
@@ -2209,7 +2241,7 @@ private fun BeatChopSurface(
         )
     }
 
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+    if (metrics.orientation == DeckOrientation.LANDSCAPE && !metrics.beatWorkspaceNeedsScroll) {
         Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -2264,7 +2296,11 @@ private fun BeatChopSurface(
         }
     } else {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (metrics.beatWorkspaceNeedsScroll) {
+                Modifier.fillMaxSize().verticalScroll(scrollState)
+            } else {
+                Modifier.fillMaxSize()
+            },
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             BeginnerCoachBar(
@@ -2273,7 +2309,13 @@ private fun BeatChopSurface(
                     if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
                 ),
             )
-            timeline(Modifier.fillMaxWidth().weight(0.46f))
+            timeline(
+                if (metrics.beatWorkspaceNeedsScroll) {
+                    Modifier.fillMaxWidth().height(metrics.waveformHeightDp.dp)
+                } else {
+                    Modifier.fillMaxWidth().weight(0.46f)
+                },
+            )
             BankStrip(
                 selectedBank = state.selectedBank,
                 height = metrics.controlHeightDp.dp,
@@ -2284,7 +2326,13 @@ private fun BeatChopSurface(
                 height = metrics.controlHeightDp.dp,
                 onSelectPage = viewModel::selectPlayablePadPage,
             )
-            padGrid(Modifier.fillMaxWidth().weight(1.54f))
+            padGrid(
+                if (metrics.beatWorkspaceNeedsScroll) {
+                    Modifier.fillMaxWidth().height(metrics.beatPadGridHeightDp.dp)
+                } else {
+                    Modifier.fillMaxWidth().weight(1.54f)
+                },
+            )
             SelectedPadQuickEditor(
                 state = state,
                 height = metrics.controlHeightDp.dp,
