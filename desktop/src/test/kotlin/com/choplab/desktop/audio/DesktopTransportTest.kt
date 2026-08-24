@@ -1,5 +1,9 @@
 package com.choplab.desktop.audio
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,5 +27,33 @@ class DesktopTransportTest {
 
         assertTrue(long > short)
         assertEquals(straightPair, long + short)
+    }
+
+    @Test
+    fun startBarrierPublishesStateBeforeStepZero() {
+        val statePublished = AtomicBoolean(false)
+        val stepZeroSawPublishedState = AtomicBoolean(false)
+        val stepZeroCalls = AtomicInteger(0)
+        val firstStep = CountDownLatch(1)
+        val transport = DesktopTransport { step ->
+            if (step == 0) {
+                stepZeroSawPublishedState.set(statePublished.get())
+                stepZeroCalls.incrementAndGet()
+                firstStep.countDown()
+            }
+        }
+
+        try {
+            transport.start(bpm = 240f, swing = 50f) {
+                statePublished.set(true)
+            }
+
+            assertTrue(firstStep.await(1L, TimeUnit.SECONDS))
+            transport.stop()
+            assertTrue(stepZeroSawPublishedState.get())
+            assertEquals(1, stepZeroCalls.get())
+        } finally {
+            transport.close()
+        }
     }
 }
