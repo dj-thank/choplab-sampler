@@ -2,6 +2,15 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Desktop recorder startup cancellation candidate — 2026-08-24
+
+- Product source: reachable commit `c8caf5d7bcd9c38a789d7e5e88699d2797b754b1`, tree `b09f94eca57f4eba51f17e51548ef3c31bd16eb6`, based directly on merged `main@dfcd9d8871f34ca5ed125c9a1113c6a4dd612887`; the later evidence commit changes documentation only. Runtime/test blobs are `48c6cf0ff51887eaa965fc7fb048e4fa5a37a905` / `2ebb1d131f83f5df89820eb884d501fa94524dab`.
+- RED contract: while `TargetDataLine.start()` blocks, the previous recorder has not published `line`, `worker`, `outputFile` or `running=true`. Concurrent `stop()` therefore returns without affecting startup, after which start can launch a late capture worker.
+- Repair contract: `stop()` latches cancellation under the recorder lifecycle lock. Startup performs its cancellation check, resource publication and worker start in that same critical section. Whichever operation wins is therefore observable to the other; the cancellation failure path closes the exact locally acquired line, clears state and deletes the partial file.
+- Deterministic regression: a proxy line and two latches hold the starter thread inside `TargetDataLine.start()`. After stop wins, releasing the line must finish the starter with the exact cancellation error, zero payload reads, open/start/close counts of 1/1/1, `isRecording=false` and no output file.
+- Local PASS: `./scripts/doctor.sh`; Python policy tests 39/39; public-surface current/history over 395 candidates; tracked executable policy; `git diff --check`. `./scripts/validate_project.sh` passed its public-surface/executable phases, then both it and focused `:shared:desktopTest :jvm-core:test :desktop:test` were blocked before Gradle execution because the uncached 9.7.1 distribution could not be downloaded in the network-restricted sandbox.
+- Gate: source/static candidate. Hosted Windows compilation/test/package plus exact-head clean review are required. No physical capture timing, audio quality/content, device-removal, provider, public release or Human result is claimed.
+
 ## Shared Android/Desktop import-name latest-main integration — 2026-08-24
 
 - Product source: reachable integration `e0d3fa1df5862bcfa038812bb12ecf6d2c45911e`, tree `1558c4a2331e8ef3a7b2809b38f264e671c188a6`, with parents prior exact PR head `d2c99fc2d4bb9c84bf6366a7f2568cca88294422` and merged `main@3072eedd84b357f4ccd22c611dcc7b7f22f92874`; the final follow-up is documentation-only.

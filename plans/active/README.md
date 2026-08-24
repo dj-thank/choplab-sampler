@@ -12,6 +12,8 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
+**独立したDesktop recorder開始取消修正:** exact `main@dfcd9d8`上のproduct `c8caf5d` / tree `b09f94e`で、blocking `TargetDataLine.start()`中のSTOPをlatched cancellationへ変え、復帰後のcapture worker公開・readを禁止する。open/start/close各1回、read 0、一時WAV削除をlatch regressionへ固定し、既存planを再選択しない限定lifecycle deltaとする。Python/public/diffはPASS、hosted Windows CIが実行gate。
+
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
