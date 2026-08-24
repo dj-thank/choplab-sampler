@@ -905,13 +905,17 @@ class DesktopSamplerController(
             canUndo = productionSession.canUndo,
             canRedo = productionSession.canRedo,
         )
+        if (!hydrateAudio) {
+            // Clear the old device state before publishing the recovered project. A state
+            // observer may synchronously apply pitch and load the source while publication
+            // is in progress; clearing after publication would erase that newer readiness.
+            sourcePlaybackReady = false
+            sourcePlaybackError = null
+        }
         mutableState.value = next
         if (hydrateAudio) {
             val playbackFailure = loadSourcePcm(next.currentAudio)
             if (playbackFailure != null) setStatus(requireNotNull(sourcePlaybackError))
-        } else {
-            sourcePlaybackReady = false
-            sourcePlaybackError = null
         }
     }
 

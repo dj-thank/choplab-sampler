@@ -934,6 +934,9 @@ class DesktopSamplerControllerTest {
 
             assertEquals(7f, controller?.state?.value?.masterPitchSemitones)
             assertEquals(listOf(7f), engine.loadedPitchSemitones)
+            controller?.playSourceFrom(0)
+            assertEquals(1, engine.playFromCalls)
+            assertTrue(controller?.state?.value?.sourcePlaying == true)
         } finally {
             recoveryObserver?.cancel()
             controller?.close()
