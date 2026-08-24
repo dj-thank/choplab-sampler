@@ -3,6 +3,7 @@ package com.choplab.desktop
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
+import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
@@ -17,6 +18,8 @@ import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.persistence.AtomicProjectStore
 import java.nio.file.Files
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -447,6 +450,63 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun closePersistsNewerAsyncProjectAfterWaitingForOlderRunningAutosave() {
+        val directory = Files.createTempDirectory("choplab-controller-close-newer-project").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            val audio = PcmAudio(
+                name = "newer-project.wav",
+                samples = ShortArray(64) { it.toShort() },
+                sampleRate = 48_000,
+            )
+            val newerProject = DesktopProjectFiles.save(
+                directory.resolve("newer-project.choplab"),
+                SamplerUiState(
+                    currentAudio = audio,
+                    rangeEndFrame = audio.frameCount,
+                    bpm = 151f,
+                ),
+            )
+            synchronized(store) {
+                controller.setBpm(143f)
+                awaitAutosaveBlockedOnStore()
+
+                controller.openProject(newerProject)
+                engine.awaitBlockedLoad()
+                assertEquals(151f, controller.state.value.bpm)
+
+                closeThread = thread(name = "ChopLab-Test-Newer-Project-Close") { controller.close() }
+                awaitCondition { closeThread.state == Thread.State.BLOCKED }
+                engine.releaseBlockedLoad()
+                awaitThreadWaiting(closeThread)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(151f, store.load()?.bpm)
+            assertEquals(
+                143f,
+                DesktopProjectFiles.load(directory.resolve("autosave.previous.choplab")).bpm,
+            )
+            assertFalse(directory.resolve("autosave.previous2.choplab").exists())
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sourceRecordingRoutesTheProductionToChopAfterDecode() {
         val recorder = FakeRecorder()
         val controller = DesktopSamplerController(
@@ -596,15 +656,27 @@ class DesktopSamplerControllerTest {
     private fun awaitThreadWaiting(thread: Thread) = awaitCondition { thread.state == Thread.State.WAITING }
 
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
+        private val loadEntered = CountDownLatch(1)
+        private val loadRelease = CountDownLatch(1)
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = mutableListOf<Pair<PadModel, Boolean>>()
         val stoppedPads = mutableListOf<Int>()
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
+        @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
         @Volatile var closeCalls: Int = 0
-        override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
+        override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) {
+            if (!blockNextLoad) return
+            blockNextLoad = false
+            loadEntered.countDown()
+            check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+        }
+        fun awaitBlockedLoad() {
+            check(loadEntered.await(2L, TimeUnit.SECONDS)) { "Timed out waiting for the asynchronous project load" }
+        }
+        fun releaseBlockedLoad() = loadRelease.countDown()
         override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
         override fun seekSource(frame: Int) { sourcePosition = frame }
         override fun sourceFramePosition(): Int = sourcePosition
