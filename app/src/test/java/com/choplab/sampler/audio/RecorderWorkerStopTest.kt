@@ -61,6 +61,91 @@ class RecorderWorkerStopTest {
     }
 
     @Test
+    fun stopDuringBlockedRecorderStartReleasesPendingInputAndPreventsWorker() {
+        val startEntered = CountDownLatch(1)
+        val released = CountDownLatch(1)
+        val finishStarting = CountDownLatch(1)
+        val creationCalls = AtomicInteger(0)
+        val stopCalls = AtomicInteger(0)
+        val releaseCalls = AtomicInteger(0)
+        val readCalls = AtomicInteger(0)
+        val fakeInput = object : RecorderInput {
+            override val recordingState: Int = AudioRecord.RECORDSTATE_RECORDING
+
+            override fun startRecording() {
+                startEntered.countDown()
+                released.await()
+                finishStarting.await()
+            }
+
+            override fun read(buffer: ShortArray): Int {
+                readCalls.incrementAndGet()
+                return 0
+            }
+
+            override fun stop() {
+                stopCalls.incrementAndGet()
+            }
+
+            override fun release() {
+                releaseCalls.incrementAndGet()
+                released.countDown()
+            }
+        }
+        val recorder = MicrophoneRecorder(RecorderInputFactory {
+            creationCalls.incrementAndGet()
+            fakeInput
+        })
+        val output = Files.createTempFile("choplab-mic-blocked-start", ".wav").toFile()
+        val replacementOutput = Files.createTempFile("choplab-mic-replacement", ".wav").toFile()
+        val startResult = AtomicReference<Result<Unit>>()
+        val stopResult = AtomicReference<Result<java.io.File>>()
+        val replacementResult = AtomicReference<Result<Unit>>()
+        val startThread = Thread { startResult.set(recorder.start(output)) }.apply { start() }
+        var stopThread: Thread? = null
+        var replacementThread: Thread? = null
+
+        try {
+            assertTrue(startEntered.await(1, TimeUnit.SECONDS))
+            stopThread = Thread { stopResult.set(recorder.stop()) }.apply { start() }
+
+            assertTrue(
+                "stop must release a pending input without waiting for startRecording",
+                released.await(1, TimeUnit.SECONDS),
+            )
+            replacementThread = Thread {
+                replacementResult.set(recorder.start(replacementOutput))
+            }.apply { start() }
+            replacementThread.join(500L)
+            assertFalse("replacement start must be rejected while cancellation unwinds", replacementThread.isAlive)
+            assertTrue(replacementResult.get().isFailure)
+            assertEquals(1, creationCalls.get())
+
+            finishStarting.countDown()
+            startThread.join(1_000L)
+            stopThread.join(1_000L)
+
+            assertFalse(startThread.isAlive)
+            assertFalse(stopThread.isAlive)
+            assertTrue(startResult.get().isFailure)
+            assertTrue(stopResult.get().isFailure)
+            assertFalse(recorder.isRecording)
+            assertEquals(1, stopCalls.get())
+            assertEquals(1, releaseCalls.get())
+            assertEquals(0, readCalls.get())
+            assertFalse("cancelled startup must delete its app-owned output", output.exists())
+        } finally {
+            released.countDown()
+            finishStarting.countDown()
+            startThread.join(1_000L)
+            stopThread?.join(1_000L)
+            replacementThread?.join(1_000L)
+            output.delete()
+            replacementOutput.delete()
+        }
+    }
+
+    @Test
     fun liveWorkerAfterTimeoutIsNotReportedAsAFinishedRecording() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
