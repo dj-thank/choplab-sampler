@@ -12,11 +12,13 @@ import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.persistence.AtomicProjectStore
 import java.nio.file.Files
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,6 +49,52 @@ class DesktopSamplerControllerTest {
             assertEquals(61f, controller.state.value.swing)
             assertEquals(2, controller.state.value.selectedBank)
             assertEquals(2 * SamplerConfig.PADS_PER_BANK + SamplerConfig.PAD_PAGE_SIZE, controller.state.value.selectedPad)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun transportStartsWithEveryAudibleStepZeroHitExactlyOnce() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val stepZeroPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.clearAllPattern()
+            controller.selectPad(stepZeroPad)
+            controller.toggleStep(0)
+            controller.setBpm(40f)
+
+            controller.toggleTransport()
+            awaitCondition { engine.triggered.any { it.first.globalIndex == stepZeroPad } }
+            controller.toggleTransport()
+
+            assertEquals(1, engine.triggered.count { it.first.globalIndex == stepZeroPad })
+            assertFalse(controller.state.value.transportPlaying)
+            assertEquals(-1, controller.state.value.currentStep)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedTransportRestartAfterScratchRestoresRecordArm() {
+        val controller = controller()
+        try {
+            val stepZeroPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.clearAllPattern()
+            controller.selectPad(stepZeroPad)
+            controller.toggleStep(0)
+            controller.toggleRecordArm()
+            controller.transportWorkerStarter = { error("test transport start unavailable") }
+
+            val resumed = controller.resumeAfterScratch(ScratchReturnTarget.Transport)
+
+            assertFalse(resumed)
+            assertTrue(controller.state.value.recordArmed)
+            assertFalse(controller.state.value.transportPlaying)
+            assertEquals(-1, controller.state.value.currentStep)
+            assertTrue(controller.state.value.statusMessage.startsWith("スクラッチ後のビート再開失敗"))
         } finally {
             controller.close()
         }
@@ -486,7 +534,7 @@ class DesktopSamplerControllerTest {
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
-        val triggered = mutableListOf<Pair<PadModel, Boolean>>()
+        val triggered = CopyOnWriteArrayList<Pair<PadModel, Boolean>>()
         val stoppedPads = mutableListOf<Int>()
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
