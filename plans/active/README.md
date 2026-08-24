@@ -12,7 +12,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**独立したDesktop永続化修正:** 到達可能なproduct checkpoint `3832056`（tree `555bda5`、`main@a930da4`）は、window/controller close時に900 ms debounce中の最終autosaveを失う競合を修正する限定follow-up。scheduled workは最新snapshotで一度だけflushし、running workは重複送信せず完了を待つ。closeはsnapshot取得後、待機前にtransport／scratch／recorder／playerを停止する。上記画面planの選択、archive schema、三世代recovery policyは変更しない。
+**独立したDesktop永続化修正:** 到達可能なproduct checkpoint `c189667`（tree `2fa94b4`、`main@ae77cd9`）は、window/controller close時に最終autosaveを失う競合を修正する限定follow-up。scheduled workは最新snapshotで一度だけflushし、running workは重複送信せず完了を待つ。非同期に公開済みのclose snapshotがrunning workより新しいProductionSession revisionなら、旧work完了後に一度だけ追随保存する。closeはsnapshot取得後、待機前にtransport／scratch／recorder／playerを停止する。上記画面planの選択、archive schema、三世代recovery policyは変更しない。
 
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 
