@@ -46,7 +46,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 5. PCM float/8/16/24/32-bitを内部PCM-16へ正規化
 6. 微小なDC offsetを除去
 
-最大10分／最大30,000,000 mono framesで防御し、巨大ファイルによるメモリ枯渇を抑えます。
+展開可能なmono frame数は `min(30,000,000, sampleRate × 600秒)` です。duration metadataが欠落・不正確でもAndroid/Windowsのstreaming builderが同じ上限で停止し、8 kHzでは4,800,000 frames、48 kHzでは28,800,000 framesまでを受理します。高sample-rateでは30,000,000-frameの全体memory ceilingを優先し、巨大ファイルによるメモリ枯渇を抑えます。
 
 ### 3.2 マイク
 
