@@ -16,6 +16,8 @@
 
 **独立したreverse PAD末尾修正:** exact-base `main@a0b356c`起点のproduct `1b8b424` / tree `614c93f`で、逆one-shot/gateのcount/renderだけをrealtime cursor advanceへ統一する。48→60 kHzの旧末尾無音（80→79）と8→48 kHzの1/12-step丸め（12）を固定し、allocation前count＋resetでtrim-copyを回避。review報告の2-frame / pitch −5でLOOP/Windows forceLoopはmain同一のdirect position・3-element有限render境界を保持し、Desktop playheadを変えない。arbitrary-pitch loop位相は別horizon。hosted JVM/Windows CIとexact reviewがmerge gate。
 
+**独立したAndroid microphone開始取消修正:** exact `main@029500a`統合product `7c2ecbc` / tree `5aae213`で、caller上の同期native startをdaemon startupに分離し、actual start完了をexact STARTING sessionだけに確認する。pending STOPはframework `stop`に入らず、unjoined daemonに`release`を委譲してbounded latch結果を必ず判定。factory/start/releaseの独立latchでUI復帰、timeout失敗、`stop/release/read = 0/1/0`、late callback非復活、代替start fail-closedを固定する。#74 reverseパスを保持し、hosted Android/shared CIとexact reviewがmerge gate。
+
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
