@@ -12,9 +12,9 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**独立保守delta:** reachable integration product `08fb123`（tree `dc9a9e8`、`main@3330881`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `0a9def1`の全CI／再review PASSを保持し、merged #68 realtime PADと#70 Android import-name bytesも維持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
+**独立保守delta:** Desktop transport step-zero修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合をworker開始前readiness barrierで排除し、exact head `4c8f2c6`のclean reviewと全4 CI成功後に`main@3072eed`へsquash merge済み。新しいExecPlanは選択せず、物理Windows音声／実scheduler latencyは別gateのまま。
 
-**独立release-policy delta:** merged `main@3330881`を保持するreachable policy product `45895a5` / tree `b203436`は、公開面scanをcurrent／reachable-history ZIP member/commentへ拡張する小規模修正。case-insensitive raw path/blob履歴からZIP aliasを列挙してtree objectをblob capへ含めず、4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率と履歴blob materializationをboundedにする。payload付きdirectory entryを拒否し、binary/audio本文とstructured scan後のraw containerはtext再scanしない。merged #68/#70 bytesを保持し、Python 51/51・current/history scanはPASS。新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
+**独立release-policy delta:** merged `main@3072eed`を統合するreachable policy product `e443a40` / tree `7925921`は、公開面scanをcurrent／reachable-history ZIP member/commentへ拡張する小規模修正。case-insensitive raw path/blob履歴からZIP aliasを列挙してtree objectをblob capへ含めず、4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率と履歴blob materializationをboundedにする。payload付きdirectory entryを拒否し、binary/audio本文とstructured scan後のraw containerはtext再scanしない。merged #65/#68/#70 bytesを保持し、Python 51/51・current/history scanはPASS。新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 
