@@ -2,14 +2,26 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Desktop close-time autosave review repair candidate — 2026-08-24
+## Android import-name persistence integrated candidate — 2026-08-24
 
-- Integration boundary: reachable product commit `2fa8ca72f4a7ffb826bc45f91b141afcf4743a24`, tree `010d965bec64a375d85bf8ebe2fc010f5d7ab880`, joins prior PR #64 head `28c13a2da58e4f3f66e26eb503d507208c32fa7b` with exact merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The product tree retains #66 fractional timing and #67 Desktop import sample-rate admission unchanged; the following evidence commit is documentation-only.
-- Review RED: close could capture the initial loading state while startup recovery still owned the single persistence executor. The queued close save could then supersede the recovered project. The repair owns the startup recovery `Future` and waits for its publication before invalidating project operations and capturing the close snapshot.
-- Deterministic regression: an existing revision-7 BPM 127 archive blocks startup recovery on the store while close begins. Close must remain waiting; after release, both primary and previous generations must contain BPM 127. The old order wrote stale initial BPM 92 as primary.
-- Hosted RED correction: exact prior head `28c13a2da58e4f3f66e26eb503d507208c32fa7b` passed Android, iOS and supply-chain workflows, but Windows run `32718029950` / job `97403336494` failed at `DesktopSamplerControllerTest.kt:539`. The file name assertion passed; the failing `projectLaunchTarget` oracle was invalid because archive serialization intentionally omits runtime launch routing and revision. The test now binds persisted source name, frame count and range instead.
-- Local evidence: Python policy 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS. Gradle 9.7.1 is not cached, so the focused Desktop tests and full Windows workflow require hosted read-back on the published exact head.
-- Gate: source/static latest-main integration plus revision-bound prior-head CI only. No packaged Windows execution, physical audio, power-loss or Human result is claimed.
+- Product source: reachable integration commit `b7364eeab02cccdde260d65337cf9a403f9a6a5d`, tree `dae6252f28c70f56f817c1d5d4e18374de882ea4`, with parents prior reviewed head `caea87f823d96f091f8515dd0eb3e86f18d9d27e` and merged `main@2786c3722a9e56fa299d2a88f009d882545b0768`; the final follow-up is documentation-only.
+- Main preservation: merged #68 `SamplerEngine.kt` / `SamplerEngineVoiceTest.kt` blobs remain exact `de686ba` / `9d51556`; reviewed import-name runtime/test blobs remain exact `2da4fa2` / `4ba02e5`.
+- Contract: every display name published by Android decode is nonblank and no longer than `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Provider `DISPLAY_NAME` remains preferred; blank values and a whitespace-only bounded prefix fall back to the URI segment and then `sample`. Bounding does not split a valid surrogate pair.
+- Regression: an overlong name whose first 240 units are whitespace falls back to `fallback.wav`; a supplementary character straddling code-unit 240 is removed intact, remains nonblank and round trips exactly through `ProjectArchiveCodec`.
+- Prior-head provider evidence: exact `caea87f` received a clean Codex re-review; Android run `32721144140` and supply-chain run `32721144052` passed. The integrated head requires its own hosted read-back.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, exact four-blob preservation and `git diff --check` PASS. Uncached Gradle 9.7.1 is unavailable locally, so no Kotlin test pass is claimed for the integrated tree.
+- Gate: source/static latest-main integration plus prior-head hosted evidence only; hosted Android CI must pass before merge. No device/provider import, autosave recovery, audible output, publication or Human result is claimed.
+
+## Android realtime PAD terminal-sample retirement candidate — 2026-08-24
+
+- Product source: reachable integration commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`, with parents prior reviewed PR head `72dbaaa1b79d1c0f92b4213c65f915908b3e894e` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The later evidence commit changes documentation only.
+- Main preservation: `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt` retain the exact original product blobs `de686ba` / `9d51556`; merged #66 timing and merged #67 Desktop import-boundary source/tests/docs are retained.
+- Contract: for each active pooled PAD voice, the Android callback mixes the float returned by `Voice.render()` before deactivating a voice that became finished in that call. Existing loop-frame publication remains limited to a still-active monitored LOOP voice.
+- Regression: `SamplerEngineVoiceTest.runtimeMixesFinalReturnedPadSampleBeforeRetirement` uses the established reverse/pitch/tone fixture and requires 403 frames, terminal limited PCM `-61`, then `active=false` and `finished=true`.
+- Realtime review: `mixVoiceSampleAndRetire` uses only the existing `Voice`, primitive arguments and a primitive return. No collection, lambda, lock, I/O, log, UI call or native transition was added to the callback.
+- Local PASS: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` ran 39/39; `python3 scripts/check_public_surface.py` scanned 394 candidates; `git diff --check` passed. A separate deterministic numeric reproduction confirmed 403 frames and terminal PCM `-61`.
+- Local prerequisite ceiling: `./scripts/validate_project.sh` passed its public-surface/executable checks, then could not create the Gradle distribution lock's parent directory under the default cache. With a writable task-local cache, `./gradlew :app:testDebugUnitTest --offline --no-daemon --max-workers=1 --no-watch-fs` could not fetch the uncached Gradle 9.7.1 distribution because the network is unreachable. No Kotlin/Gradle PASS is claimed locally.
+- Gate: source/static candidate. Hosted Android CI is required before `LOCAL_PASS`; device listening, audio quality/latency, provider/public release and Human evidence remain separate.
 
 ## Desktop import sample-rate admission candidate — 2026-08-24
 

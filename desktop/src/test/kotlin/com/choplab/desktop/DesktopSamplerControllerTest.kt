@@ -659,13 +659,26 @@ class DesktopSamplerControllerTest {
     fun closeWaitsForStartupRecoveryBeforeCapturingTheAutosave() {
         val directory = Files.createTempDirectory("choplab-close-startup-recovery").toFile()
         val store = AtomicProjectStore(directory)
-        store.save(SamplerUiState(bpm = 127f), revision = 7L)
+        val recoveredAudio = PcmAudio(
+            name = "startup-recovery.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+                bpm = 127f,
+            ),
+            revision = 7L,
+        )
+        val engine = FakeAudioEngine()
         var controller: DesktopSamplerController? = null
         lateinit var closeThread: Thread
         try {
             synchronized(store) {
                 val created = DesktopSamplerController(
-                    FakeAudioEngine(),
+                    engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
                     autosaveStore = store,
@@ -683,6 +696,7 @@ class DesktopSamplerControllerTest {
             closeThread.join(2_000L)
 
             assertFalse(closeThread.isAlive)
+            assertEquals(0, engine.loadPcmCalls)
             assertEquals(127f, store.load()?.bpm)
             assertEquals(
                 127f,
@@ -690,6 +704,39 @@ class DesktopSamplerControllerTest {
             )
         } finally {
             controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeDoesNotPersistAStartupRecoveryErrorPlaceholder() {
+        val directory = Files.createTempDirectory("choplab-close-recovery-error").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 131f), revision = 9L)
+        val primary = directory.resolve("autosave.choplab")
+        val validArchive = primary.readBytes()
+        primary.writeText("corrupt startup archive", Charsets.UTF_8)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition {
+                controller.state.value.statusMessage.startsWith("自動保存を復元できません:")
+            }
+            primary.writeBytes(validArchive)
+
+            controller.close()
+
+            assertEquals(131f, store.load()?.bpm)
+            assertTrue(validArchive.contentEquals(primary.readBytes()))
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
+        } finally {
+            controller.close()
             directory.deleteRecursively()
         }
     }
@@ -779,7 +826,9 @@ class DesktopSamplerControllerTest {
         @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
         @Volatile var closeCalls: Int = 0
+        @Volatile var loadPcmCalls: Int = 0
         override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) {
+            loadPcmCalls++
             if (!blockNextLoad) return
             blockNextLoad = false
             loadEntered.countDown()

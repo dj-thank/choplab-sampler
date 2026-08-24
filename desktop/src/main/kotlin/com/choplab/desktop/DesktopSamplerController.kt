@@ -48,6 +48,7 @@ import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.ProjectOperationEpoch
@@ -114,6 +115,12 @@ class DesktopSamplerController(
     private val autosaveLifecycleLock = Any()
     private var autosaveWork: AutosaveWork? = null
     private var startupRecoveryFuture: Future<*>? = null
+    private var startupRecoveryOutcome = if (autosaveStore != null && recoverAutosaveOnStart) {
+        StartupRecoveryOutcome.PENDING
+    } else {
+        StartupRecoveryOutcome.NOT_REQUESTED
+    }
+    private var startupRecoveryFailureRevision: Long? = null
     private var closed = false
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
@@ -815,6 +822,7 @@ class DesktopSamplerController(
         restored: SamplerUiState,
         message: String,
         launchTarget: ProjectLaunchTarget? = null,
+        hydrateAudio: Boolean = true,
     ) {
         transport.stop()
         scratch.stop()
@@ -845,7 +853,7 @@ class DesktopSamplerController(
             canRedo = productionSession.canRedo,
         )
         mutableState.value = next
-        next.currentAudio?.let(player::loadPcm)
+        if (hydrateAudio) next.currentAudio?.let(player::loadPcm)
     }
 
     private fun scheduleAutosave() {
@@ -919,6 +927,15 @@ class DesktopSamplerController(
 
     private fun flushAutosaveOnClose(request: AutosaveCloseRequest) {
         val store = autosaveStore ?: return
+        if (
+            request.startupRecoveryOutcome == StartupRecoveryOutcome.FAILED &&
+            request.pending == null &&
+            request.snapshot.revision == request.startupRecoveryFailureRevision
+        ) {
+            // A recovery error publishes an empty UI placeholder, not a new project.
+            // Keep the user's existing generations untouched unless a later edit owns work.
+            return
+        }
         val workToAwait = synchronized(autosaveLifecycleLock) {
             when (request.pending?.phase) {
                 AutosavePhase.SCHEDULED -> {
@@ -989,33 +1006,63 @@ class DesktopSamplerController(
     private fun recoverAutosave(): Future<*> {
         val store = requireNotNull(autosaveStore)
         return persistenceExecutor.submit {
-            runCatching { store.loadWithRevision() }
-                .onSuccess { recovered ->
-                    if (recovered == null) {
-                        mutableState.value = productionSession.replaceProject(freshProductionState()).state
-                        scheduleAutosave()
-                    } else {
-                        val restored = recovered.state
-                        val transition = productionSession.replaceProject(
-                            restored,
-                            persistenceRequired = false,
-                            recoveredRevision = recovered.revision,
-                        )
-                        applyHistoryState(
-                            restored = transition.state,
-                            message = "前回の自動保存を復元しました",
-                            launchTarget = inferProjectLaunchTarget(
-                                restored,
-                                starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
-                            ),
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    mutableState.value = SamplerUiState(
-                        statusMessage = "自動保存を復元できません: ${error.message ?: error.javaClass.simpleName}",
+            var scheduleFreshAutosave = false
+            var recoveryFailed = false
+            val recoveredAudio = try {
+                val recovered = store.loadWithRevision()
+                if (recovered == null) {
+                    mutableState.value = productionSession.replaceProject(freshProductionState()).state
+                    scheduleFreshAutosave = true
+                    null
+                } else {
+                    val restored = recovered.state
+                    val transition = productionSession.replaceProject(
+                        restored,
+                        persistenceRequired = false,
+                        recoveredRevision = recovered.revision,
                     )
+                    applyHistoryState(
+                        restored = transition.state,
+                        message = "前回の自動保存を復元しました",
+                        launchTarget = inferProjectLaunchTarget(
+                            restored,
+                            starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
+                        ),
+                        hydrateAudio = false,
+                    )
+                    transition.state.currentAudio
                 }
+            } catch (error: Throwable) {
+                synchronized(autosaveLifecycleLock) {
+                    startupRecoveryOutcome = StartupRecoveryOutcome.FAILED
+                    startupRecoveryFailureRevision = productionSession.revision
+                }
+                mutableState.value = SamplerUiState(
+                    statusMessage = "自動保存を復元できません: ${error.message ?: error.javaClass.simpleName}",
+                )
+                recoveryFailed = true
+                null
+            }
+            if (!recoveryFailed) {
+                synchronized(autosaveLifecycleLock) {
+                    startupRecoveryOutcome = StartupRecoveryOutcome.SUCCEEDED
+                }
+                if (scheduleFreshAutosave) scheduleAutosave()
+                scheduleRecoveredAudioHydration(recoveredAudio)
+            }
+        }
+    }
+
+    private fun scheduleRecoveredAudioHydration(audio: PcmAudio?) {
+        if (audio == null) return
+        val operation = synchronized(autosaveLifecycleLock) {
+            if (closed) return
+            projectOperations.begin()
+        }
+        ioExecutor.execute {
+            projectOperations.completeIfCurrent(operation) {
+                player.loadPcm(audio)
+            }
         }
     }
 
@@ -1162,6 +1209,8 @@ class DesktopSamplerController(
                     state = mutableState.value,
                     revision = productionSession.revision,
                 ),
+                startupRecoveryOutcome = startupRecoveryOutcome,
+                startupRecoveryFailureRevision = startupRecoveryFailureRevision,
             )
         }
         ioExecutor.shutdownNow()
@@ -1183,6 +1232,13 @@ class DesktopSamplerController(
         CANCELLED,
     }
 
+    private enum class StartupRecoveryOutcome {
+        NOT_REQUESTED,
+        PENDING,
+        SUCCEEDED,
+        FAILED,
+    }
+
     private data class AutosaveSnapshot(
         val state: SamplerUiState,
         val revision: Long,
@@ -1198,6 +1254,8 @@ class DesktopSamplerController(
     private data class AutosaveCloseRequest(
         val pending: AutosaveWork?,
         val snapshot: AutosaveSnapshot,
+        val startupRecoveryOutcome: StartupRecoveryOutcome,
+        val startupRecoveryFailureRevision: Long?,
     )
 
     companion object {
