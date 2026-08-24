@@ -72,7 +72,14 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 15:52 JST — Clean 191-task gate plus final 184-task incremental cross-platform gate, policy gates, exact hashes and final Android/Windows visual regression PASS.
 - [x] 2026-08-24 15:52 JST — Exact final API 36 debug/test APK data-preserving install and full seven-test instrumentation PASS; portrait and 640 × 360 dp landscape large-text scroll verified and emulator settings restored.
 - [x] 2026-08-24 15:52 JST — Independent verifier's 40 dp compact-landscape finding reproduced RED, repaired to stage 49 dp / demo 59 dp, and re-observed on exact final APK.
-- [ ] Independent review, GitHub integration and closeout.
+- [x] 2026-08-24 16:45 JST — PR #52 merged to `main@495ddc9`; final PR and merged-main Android/Windows/iOS/Supply checks PASS; provider Windows artifact `9510151389` installed data-preservingly.
+- [x] 2026-08-24 16:45 JST — Post-merge review fixes normal compact-landscape CAPTURE, 200% BEAT quick/detail and autosave-independent instrumentation. Three device-test defects were caught RED and repaired; exact final instrumentation is `OK (8 tests)`.
+- [x] 2026-08-24 16:45 JST — Closeout source `07f8dcf` / tree `dcd5969`: clean 191-task plus final 184-task gate, policy, exact artifacts, physical-swipe visuals and independent re-review complete.
+- [x] 2026-08-24 18:20 JST — PR #62 reachable review repair source `c569604` / tree `4e7250f`: PAD-started vertical swipes cancel before selection/playback, GATE retains a real hold after scroll arbitration, compact LOOP/DRM/VOX remain in full semantics, and focused real-pointer/unit regressions cover each path.
+- [x] 2026-08-24 18:39 JST — Follow-up product `4e8b62f` / tree `6ff0b00` integrates `main@a930da4` and gives every triggered deferred GATE exact-one release when TRIM recomposition cancels its pointer-input node; the real-pointer regression also preserves zero actions for an 80 ms parent-cancelled pre-activation swipe.
+- [x] 2026-08-24 19:00 JST — CI located the missing Compose Test `longClick` import, and exact-head review located stale pointer routing after an in-place ONE SHOT→GATE update. Product `5b9592f` / tree `97569b6` imports the established API, keys pointer input by `pad.playMode`, makes the existing fixture prove the transition explicitly, and integrates decode-limit `main@ae77cd9` while retaining both evidence snapshots.
+- [ ] Run hosted Gradle plus the focused API 36 gesture test for the review-repair head; local wrapper acquisition is blocked by the unavailable Gradle distribution.
+- [ ] Closeout PR and merged-main read-back.
 
 ## Discoveries
 
@@ -80,13 +87,19 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - At font scale 2.0, the current one-row strip and fixed header fail visibly despite pure tests asserting fixed compact 8/9 sp values.
 - Desktop `ensurePlayablePadSelected()` copies only `selectedPad`; Android calls the shared state helper that also synchronizes bank and page.
 - A 360 × 640 dp viewport at font scale 2.0 cannot show all first-entry choices simultaneously without shrinking text or targets. The selected bounded-scroll exception exposes the demo on one intentional swipe while header, workflow and status remain fixed.
+- A large-text BEAT body has more fixed controls than the remaining workspace. Weighted timeline/PAD children collapse; explicit heights plus bounded body scrolling preserve 48 dp PADs and all lower controls.
+- A retained-data Activity test may correctly restore CHOP/BEAT. The deterministic first-screen test must render a starter-only CAPTURE state in memory and give its dynamic controller proxy stable `equals/hashCode/toString` behavior.
+- A PAD `onPress` callback runs before a parent scroll recognizes touch slop. In a bounded scroll body, ONE SHOT side effects therefore belong to completed tap; GATE uses a bounded activation delay and then owns one release on pointer-up or post-trigger node cancellation. A drag consumed before activation must dispatch no controller action.
+- A `pointerInput` block retains the values captured when its keys were last changed. `pad.playMode` must therefore be a key so Undo/Redo or another in-place ONE SHOT/GATE update cannot keep stale routing.
+- Compact large-text cells can intentionally omit secondary captions only when semantics independently enumerate both play mode and content kind; PAD assignment alone is not a complete accessible role description.
 
 ## Validation evidence
 
-- Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
+- Product anchor: `07f8dcf3c2b0fe17c1e1d8ed3d135728c18f0c96`, tree `dcd5969bf72ceab1facbceb43c3fe63a9df99b4d`.
+- Review-repair source: reachable commit `5b9592ff27608166a99fe77af0876ad1d6b917f5`, tree `97569b6a07fb74f9ee5b59101c0ea27059259a1b`, integrating exact prior PR #62 head `9a844c667e7372df970004aa1583ffbc3c6d6ceb` with `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`; static policy 39/39, public surface 394, XML parse and diff check PASS. Gradle/device execution remains pending.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
-- Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
-- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
+- Instrumentation: API 36 `OK (8 tests)` after exact data-preserving APK installs。first-screen 2本はin-memory shared-deck fixtureであり、production MainActivity/controller wiringは別のmanual cold-launch/navigation captureに限定する。
+- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/` and `closeout/`.
 - Pixel 9a: disconnected; no physical-device gate promotion.
 - A Windows CopyFromScreen capture was invalid at 200% DPI/off-screen placement; PrintWindow produced the accepted full-window evidence.
 
@@ -94,6 +107,10 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 
 - 2026-08-24 — Keep the starter, but expose it as an explicit demo entry instead of treating enabled BEAT/SAVE tabs as self-explanatory.
 - 2026-08-24 — Permit a large-text-only two-row stage strip and scrollable first-entry body. Fixed-console identity does not justify clipped accessibility content.
+- 2026-08-24 — Extend bounded body scrolling to compact-landscape CAPTURE and large-text BEAT quick/detail; keep normal-text responsive composition and global chrome fixed.
+- 2026-08-24 — In a scrollable BEAT body, commit ONE SHOT on completed tap and GATE after a bounded scroll-classification delay through real pointer-up or post-trigger node cancellation; preserve direct press performance everywhere else.
+- 2026-08-24 — Restart a PAD's pointer-input coroutine when `playMode` changes; displayed mode and captured gesture routing must advance together.
+- 2026-08-24 — Treat play mode and content kind as semantic PAD identity even when compact layout hides their secondary visual caption.
 - 2026-08-24 — Keep existing loaded-source workspaces unchanged unless fresh post-implementation screenshots show a regression.
 
 ## Validation log

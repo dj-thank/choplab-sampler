@@ -19,7 +19,9 @@ Keep the shared four-stage model `入れる → チョップ → ビート → �
 - the built-in starter is named as a separate `DUSTY JAZZデモ` route;
 - loading, loaded-source and active-recording states retain the existing waveform and stop/safety controls.
 
-At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. Only the first-entry body may use bounded vertical scrolling when enlarged content cannot fit. Normal text retains the one-row chrome.
+At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. The first-entry body scrolls when enlarged content or compact landscape height cannot fit. Large-text BEAT quick/detail bodies also use bounded scrolling with explicit waveform and 48 dp-safe PAD-grid heights; global chrome remains fixed. Normal text retains the one-row chrome and existing responsive BEAT composition.
+
+Within a scrollable BEAT body, ONE SHOT PAD selection and playback commit only after the pointer gesture completes as a tap. GATE waits through a short scroll-classification window, then preserves the remaining physical hold until pointer-up. Once triggered, it owns an exact-once release even if opening TRIM replaces and cancels the gesture node. Changing a PAD between ONE SHOT and GATE restarts its pointer handler so routing cannot retain a stale mode. A vertical drag canceled by the parent before activation sends no PAD model or audio action. Non-scroll PAD surfaces keep their direct press-down performance path.
 
 Both platform controllers use the shared `ensurePlayablePadSelected` state transition, which updates selected PAD, bank and page together.
 
@@ -28,7 +30,8 @@ Both platform controllers use the shared `ensurePlayablePadSelected` state trans
 - A first-time user can distinguish making with personal audio from trying the bundled demo.
 - The demo keeps its existing pads, pattern and export readiness; no audio or project semantics change.
 - Large text preserves full action labels and 48 dp minimum targets instead of shrinking typography.
-- The initial large-text surface may require one intentional scroll on a 360 × 640 dp viewport; global deck scrolling is not introduced.
+- Constrained CAPTURE or large-text BEAT may require an intentional body scroll; global chrome and normal-text composition do not scroll.
+- When a 48 dp large-text PAD cannot fit its secondary LOOP/DRM/VOX/key caption cleanly, the visible cell keeps its complete PAD identity while accessibility semantics always state both play mode and content kind.
 - Android and Windows render the same entry and workflow policy while keeping platform I/O adapters separate.
 
 ## Rejected alternatives

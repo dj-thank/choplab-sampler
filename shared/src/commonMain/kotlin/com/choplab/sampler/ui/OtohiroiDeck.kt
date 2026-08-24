@@ -1110,7 +1110,7 @@ private fun FocusedCaptureEntry(
     )
     val scrollState = rememberScrollState()
     val gap = metrics.gapDp.dp
-    val bodyModifier = if (metrics.largeText) {
+    val bodyModifier = if (metrics.focusedCaptureNeedsScroll) {
         Modifier.fillMaxSize().verticalScroll(scrollState)
     } else {
         Modifier.fillMaxSize()
@@ -1476,6 +1476,7 @@ private fun SelectedPadQuickEditor(
     viewModel: SamplerDeckController,
 ) {
     val pad = state.selectedPadModel()
+    val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1532,7 +1533,8 @@ private fun SelectedPadQuickEditor(
             }
             if (onOpenDetails != null) {
                 MachineButton(
-                    label = "音を整える\nPAD EDIT",
+                    label = if (largeText) "調整\nEDIT" else "音を整える\nPAD EDIT",
+                    contentLabel = "音を整える\nPAD EDIT",
                     onClick = onOpenDetails,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
@@ -2046,6 +2048,7 @@ private fun SequenceWorkspace(
 ) {
     val gap = metrics.gapDp.dp
     var showFineControls by rememberSaveable { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
     if (beatWorkspaceSurface(showFineControls).showPadGrid) {
         BeatChopSurface(
             state = state,
@@ -2058,7 +2061,7 @@ private fun SequenceWorkspace(
         )
         return
     }
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+    if (metrics.orientation == DeckOrientation.LANDSCAPE && !metrics.beatWorkspaceNeedsScroll) {
         Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -2100,13 +2103,18 @@ private fun SequenceWorkspace(
         }
     } else {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (metrics.beatWorkspaceNeedsScroll) {
+                Modifier.fillMaxSize().verticalScroll(scrollState)
+            } else {
+                Modifier.fillMaxSize()
+            },
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             BankStrip(
                 selectedBank = state.selectedBank,
                 height = metrics.controlHeightDp.dp,
                 onSelectBank = viewModel::selectPlayableBank,
+                compactLabels = metrics.largeText,
             )
             ArrangementWaveformTimeline(
                 pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
@@ -2115,9 +2123,11 @@ private fun SequenceWorkspace(
                 transportPlaying = state.transportPlaying,
                 loopPlayheadFrame = state.loopPlayheadFrame,
                 loopPlaying = state.loopingPadIndex != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.75f),
+                modifier = if (metrics.beatWorkspaceNeedsScroll) {
+                    Modifier.fillMaxWidth().height(metrics.waveformHeightDp.dp)
+                } else {
+                    Modifier.fillMaxWidth().weight(0.75f)
+                },
             )
             SequenceTransportRow(
                 state = state,
@@ -2176,6 +2186,7 @@ private fun BeatChopSurface(
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
+    val scrollState = rememberScrollState()
     val timeline: @Composable (Modifier) -> Unit = { modifier ->
         ArrangementWaveformTimeline(
             pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
@@ -2195,6 +2206,7 @@ private fun BeatChopSurface(
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPlayablePad,
             onLongPress = onOpenPadTrim,
+            deferPadActionUntilTap = metrics.beatWorkspaceNeedsScroll,
             gap = gap,
             modifier = modifier,
         )
@@ -2209,7 +2221,7 @@ private fun BeatChopSurface(
         )
     }
 
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+    if (metrics.orientation == DeckOrientation.LANDSCAPE && !metrics.beatWorkspaceNeedsScroll) {
         Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(gap),
@@ -2264,27 +2276,49 @@ private fun BeatChopSurface(
         }
     } else {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (metrics.beatWorkspaceNeedsScroll) {
+                Modifier.fillMaxSize().verticalScroll(scrollState)
+            } else {
+                Modifier.fillMaxSize()
+            },
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             BeginnerCoachBar(
-                text = arrangeQuickGuidance(state.selectedPadModel(), compact = false),
+                text = arrangeQuickGuidance(state.selectedPadModel(), compact = metrics.largeText),
                 modifier = Modifier.fillMaxWidth().height(
-                    if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
+                    when {
+                        metrics.largeText -> 48.dp
+                        metrics.density == DeckDensity.COMPACT -> 24.dp
+                        else -> 28.dp
+                    },
                 ),
+                multiLine = metrics.largeText,
             )
-            timeline(Modifier.fillMaxWidth().weight(0.46f))
+            timeline(
+                if (metrics.beatWorkspaceNeedsScroll) {
+                    Modifier.fillMaxWidth().height(metrics.waveformHeightDp.dp)
+                } else {
+                    Modifier.fillMaxWidth().weight(0.46f)
+                },
+            )
             BankStrip(
                 selectedBank = state.selectedBank,
                 height = metrics.controlHeightDp.dp,
                 onSelectBank = viewModel::selectPlayableBank,
+                compactLabels = metrics.largeText,
             )
             PadPageStrip(
                 state = state,
                 height = metrics.controlHeightDp.dp,
                 onSelectPage = viewModel::selectPlayablePadPage,
             )
-            padGrid(Modifier.fillMaxWidth().weight(1.54f))
+            padGrid(
+                if (metrics.beatWorkspaceNeedsScroll) {
+                    Modifier.fillMaxWidth().height(metrics.beatPadGridHeightDp.dp)
+                } else {
+                    Modifier.fillMaxWidth().weight(1.54f)
+                },
+            )
             SelectedPadQuickEditor(
                 state = state,
                 height = metrics.controlHeightDp.dp,
@@ -2312,6 +2346,7 @@ private fun BeatChopSurface(
 private fun BeginnerCoachBar(
     text: String,
     modifier: Modifier = Modifier,
+    multiLine: Boolean = false,
 ) {
     Row(
         modifier = modifier
@@ -2334,7 +2369,8 @@ private fun BeginnerCoachBar(
             fontFamily = DeckFont,
             fontWeight = FontWeight.Bold,
             fontSize = 9.sp,
-            maxLines = 1,
+            lineHeight = if (multiLine) 10.sp else 11.sp,
+            maxLines = if (multiLine) 2 else 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -3966,6 +4002,7 @@ private fun MachineButton(
     enabled: Boolean = true,
     active: Boolean? = null,
     compact: Boolean = false,
+    contentLabel: String? = null,
 ) {
     val fontScale = LocalDensity.current.fontScale
     val interactionSource = remember { MutableInteractionSource() }
@@ -3994,7 +4031,7 @@ private fun MachineButton(
             )
             .semantics {
                 role = Role.Button
-                contentDescription = label
+                contentDescription = contentLabel ?: label
                 active?.let { this.selected = it }
             },
     ) {
