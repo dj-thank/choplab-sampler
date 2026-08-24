@@ -35,6 +35,34 @@ AUDIO_SUFFIXES = {
     ".opus",
     ".wav",
 }
+ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
+    ".7z",
+    ".aab",
+    ".apk",
+    ".bin",
+    ".class",
+    ".dex",
+    ".dll",
+    ".dylib",
+    ".exe",
+    ".gif",
+    ".gz",
+    ".ico",
+    ".jar",
+    ".jpeg",
+    ".jpg",
+    ".o",
+    ".pdf",
+    ".png",
+    ".so",
+    ".tar",
+    ".webp",
+    ".xz",
+    ".zip",
+}
+ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
+ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
+ZIP_COMPRESSION_RATIO_LIMIT = 100
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"gh" + r"o_[A-Za-z0-9_]{20,}"),
@@ -80,15 +108,88 @@ def suspicious_path(path: PurePosixPath) -> str | None:
     return None
 
 
-def scan_zip(path: PurePosixPath) -> list[str]:
+def decode_probable_text(content: bytes) -> str | None:
+    try:
+        decoded = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return None
+    if "\x00" in decoded:
+        return None
+    controls = sum(
+        1
+        for character in decoded
+        if not character.isprintable() and character not in "\t\n\r\f"
+    )
+    if decoded and controls * 100 > len(decoded):
+        return None
+    return decoded
+
+
+def scan_zip(
+    path: Path | PurePosixPath,
+    *,
+    member_scan_limit: int = ZIP_MEMBER_SCAN_LIMIT,
+    total_scan_limit: int = ZIP_TOTAL_SCAN_LIMIT,
+    compression_ratio_limit: int = ZIP_COMPRESSION_RATIO_LIMIT,
+) -> list[str]:
     findings: list[str] = []
+    scanned_bytes = 0
     try:
         with zipfile.ZipFile(path) as archive:
-            for name in archive.namelist():
+            for info in archive.infolist():
+                name = info.filename
                 entry = PurePosixPath(name)
                 reason = suspicious_path(entry)
                 if reason:
                     findings.append(f"{path}: archive entry {name!r}: {reason}")
+                if info.is_dir() or entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES:
+                    continue
+                if info.file_size > member_scan_limit:
+                    findings.append(
+                        f"{path}: archive entry {name!r}: exceeds "
+                        f"{member_scan_limit}-byte member content scan limit"
+                    )
+                    continue
+                compressed_size = max(info.compress_size, 1)
+                if info.file_size > compressed_size * compression_ratio_limit:
+                    findings.append(
+                        f"{path}: archive entry {name!r}: exceeds "
+                        f"{compression_ratio_limit}:1 compression scan limit"
+                    )
+                    continue
+                if scanned_bytes + info.file_size > total_scan_limit:
+                    findings.append(
+                        f"{path}: archive content exceeds "
+                        f"{total_scan_limit}-byte total content scan limit"
+                    )
+                    break
+
+                try:
+                    with archive.open(info) as member:
+                        content = member.read(member_scan_limit + 1)
+                except (NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile) as error:
+                    findings.append(
+                        f"{path}: archive entry {name!r}: content scan failed "
+                        f"({type(error).__name__})"
+                    )
+                    continue
+                if len(content) > member_scan_limit:
+                    findings.append(
+                        f"{path}: archive entry {name!r}: exceeded "
+                        f"{member_scan_limit}-byte member content scan limit while reading"
+                    )
+                    continue
+                if scanned_bytes + len(content) > total_scan_limit:
+                    findings.append(
+                        f"{path}: archive content exceeded "
+                        f"{total_scan_limit}-byte total content scan limit while reading"
+                    )
+                    break
+                scanned_bytes += len(content)
+                text = decode_probable_text(content)
+                if text is not None:
+                    label = f"{path}: archive entry {name!r}"
+                    findings.extend(scan_text(label, text))
     except (OSError, zipfile.BadZipFile):
         return findings
     return findings
