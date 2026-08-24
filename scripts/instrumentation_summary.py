@@ -16,6 +16,10 @@ _FAILURE_MARKERS = (
         "JUnit reported a non-zero failure count",
         re.compile(r"(?im)^\s*Tests run:\s*\d+\s*,\s*Failures:\s*[1-9]\d*\b"),
     ),
+    (
+        "JUnit reported a non-zero error count",
+        re.compile(r"(?im)^\s*Tests run:\s*\d+.*\bErrors:\s*[1-9]\d*\b"),
+    ),
     ("instrumentation failed", re.compile(r"(?i)\bINSTRUMENTATION_FAILED\b")),
     ("instrumentation aborted", re.compile(r"(?i)\bINSTRUMENTATION_ABORTED\b")),
     ("instrumentation process crashed", re.compile(r"(?i)\bProcess crashed\b")),

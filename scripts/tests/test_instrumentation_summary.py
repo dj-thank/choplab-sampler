@@ -50,6 +50,14 @@ class InstrumentationSummaryTest(unittest.TestCase):
         self.assertIsNone(summary.testCount)
         self.assertIn("failures", (summary.reason or "").lower())
 
+    def test_rejects_junit_error_even_if_an_ok_line_is_present(self) -> None:
+        transcript = "OK (5 tests)\nTests run: 5, Failures: 0, Errors: 1\n"
+        summary = parse_instrumentation_summary(transcript)
+
+        self.assertFalse(summary.passed)
+        self.assertIsNone(summary.testCount)
+        self.assertIn("error", (summary.reason or "").lower())
+
     def test_rejects_instrumentation_failure_abort_and_crash_markers(self) -> None:
         for marker in (
             "INSTRUMENTATION_FAILED: java.lang.IllegalStateException",
