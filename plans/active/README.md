@@ -12,13 +12,15 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**直近の統合保守:** Desktop transportのworker-before-state競合は、worker開始前readiness barrier、step-0 exact-once、worker-start失敗時record-arm復元としてPR #65 / `main@3072eed`へ統合済み。現在のDesktop永続化productはそのsource/tests/docsを保持する。
+**独立したDesktop recorder開始取消修正:** exact-base `main@dfcd9d8`上のproduct repair `27283f8` / tree `4ffc5f7`で、blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeしてnative startを解除し、復帰後のcapture worker公開・readを禁止する。close駆動gate、open/start/close各1回、read 0、一時WAV削除をlatch regressionへ固定し、既存planを再選択しない限定lifecycle deltaとする。Python/public/diffはPASS、hosted Windows CIが実行gate。
 
-**直近の統合保守:** Android/Desktop import名境界は、archive-compatibleな非空・最大240 UTF-16単位・post-truncate-blank fallback・surrogate-safe規則をshared production seamへ集約し、PR #71 / `main@dfcd9d8`へ統合済み。現在のDesktop永続化productはAndroid provider/URI選択、Desktop `File.name`適用、shared common contractと両platformのarchive regressionをbyte-for-byte保持する。
-
-**独立したDesktop永続化修正:** reachable integration product `9bb8eff`（tree `59e8ef0`、`main@dfcd9d8`統合済み）は、window/controller close時に最終autosaveを失う競合、startup recoveryをstale初期snapshotが上書きする競合、復元失敗placeholderの誤保存、close後の不要なPCM hydrate、復元hydrateによる後発user操作の無効化、復元device failureの不可視化を修正する限定delta。recoveryは公開前に取得したproject-operation ownershipをhydrateまで再利用し、後発user load/openを優先する。closeはstartup state、admitted hydrate／project publicationを順にdrainして最新snapshotを取得し、close-time autosave待機前にtransport／scratch／recorder／playerを停止する。failed recoveryは後続editがない限り保存せず、scheduled workは一度だけflush、successful running workは重複送信せず待ち、failed latest workは一度retry、新revisionは旧成功work後に一度だけ追随保存する。#71 shared/Desktop import名、#65 transport readiness、#66 timing、#67 Desktop import境界、#68 realtime terminal sample、#70 Android provider名選択を保持し、上記画面planの選択、archive schema、三世代recovery policyは変更しない。
+**直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
+
+**独立したAndroid import名境界修正:** merged `main@2786c37`を統合したproduct `b7364ee` / tree `dae6252`で、provider／URI由来のblankまたは240 UTF-16単位超の表示名をdecode公開前にarchive-compatibleへ正規化する。切断後のblank再評価とsurrogate pair分断防止をarchive round-trip regressionへ固定し、merged #68 runtime/test/docs、PCM bytes、schema、provider I/Oや上記画面planは変更しない。hosted Android CIがmerge gate。
+
+**独立したshared／Desktop import名境界修正:** integration product `e0d3fa1` / tree `1558c4a`はprior clean headとmerged `main@3072eed`を統合し、上記Android名規則をshared production seamへ移してDesktop `File.name`にも同じ非空・240 UTF-16単位・post-truncate-blank fallback・surrogate-safe契約を適用する。#65 transport blobsと#68 runtime/testをexact保持し、shared common contractとDesktop archive read-back回帰を追加。旧headは全CI／clean review PASS、最新main headのhosted再実行がmerge gate。
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 

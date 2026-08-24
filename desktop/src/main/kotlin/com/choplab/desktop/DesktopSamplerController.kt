@@ -99,6 +99,8 @@ class DesktopSamplerController(
     )
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
     private val projectOperations = ProjectOperationEpoch()
+    private val recoveryOperations = ProjectOperationEpoch()
+    private val statusOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
@@ -125,7 +127,10 @@ class DesktopSamplerController(
         StartupRecoveryOutcome.NOT_REQUESTED
     }
     private var startupRecoveryFailureRevision: Long? = null
+    private var startupRecoveryDurableRevision: Long? = null
     private var closed = false
+    @Volatile private var sourcePlaybackReady = false
+    @Volatile private var sourcePlaybackError: String? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
     private val projectLaunchRevision = AtomicLong(0L)
@@ -140,6 +145,7 @@ class DesktopSamplerController(
     }
 
     fun loadWav(file: File) {
+        statusOperations.invalidate()
         val operation = projectOperations.begin()
         stopCompetingPlayback()
         mutableState.update { it.copy(isLoading = true, statusMessage = "${file.name}を解析しています") }
@@ -147,7 +153,8 @@ class DesktopSamplerController(
             runCatching { DesktopWavDecoder.decode(file) }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
-                        val playbackFailure = runCatching { player.loadPcm(audio) }.exceptionOrNull()
+                        recoveryOperations.invalidate()
+                        val playbackFailure = loadSourcePcm(audio)
                         val next = BuiltInDrumKits.installStarterKit(
                             SamplerUiState(
                                 statusMessage = playbackFailure?.let(::sourcePlaybackFailureMessage)
@@ -176,24 +183,25 @@ class DesktopSamplerController(
     fun toggleVocalRecording() = toggleRecording(RecordingKind.VOCAL_OVERDUB)
     fun exportBeat() = setStatus("保存先を選択してください")
     fun exportBeat(outputFile: File) {
-        val operation = projectOperations.begin()
+        val operation = statusOperations.begin()
         val snapshot = mutableState.value
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
             runCatching {
                 PatternRenderer.renderToWav(outputFile, snapshot.pads, snapshot.activeSteps, snapshot.bpm, snapshot.swing)
             }.onSuccess {
-                projectOperations.completeIfCurrent(operation) {
+                statusOperations.completeIfCurrent(operation) {
                     mutableState.update { it.copy(isLoading = false, statusMessage = "${outputFile.name}を書き出しました") }
                 }
             }.onFailure { error ->
-                projectOperations.completeIfCurrent(operation) {
+                statusOperations.completeIfCurrent(operation) {
                     mutableState.update { it.copy(isLoading = false, statusMessage = "WAV書き出し失敗: ${error.message ?: error.javaClass.simpleName}") }
                 }
             }
         }
     }
     fun openProject(file: File) {
+        statusOperations.invalidate()
         val operation = projectOperations.begin()
         stopCompetingPlayback()
         mutableState.update { it.copy(isLoading = true, statusMessage = "${file.name}を開いています") }
@@ -201,6 +209,7 @@ class DesktopSamplerController(
             runCatching { DesktopProjectFiles.load(file) }
                 .onSuccess { restored ->
                     projectOperations.completeIfCurrent(operation) {
+                        recoveryOperations.invalidate()
                         val transition = productionSession.replaceProject(restored)
                         applyHistoryState(
                             restored = transition.state,
@@ -222,18 +231,18 @@ class DesktopSamplerController(
     }
 
     fun saveProject(file: File) {
-        val operation = projectOperations.begin()
+        val operation = statusOperations.begin()
         val snapshot = mutableState.value
         mutableState.update { it.copy(isLoading = true, statusMessage = "制作を保存しています") }
         ioExecutor.execute {
             runCatching { DesktopProjectFiles.save(file, snapshot) }
                 .onSuccess { written ->
-                    projectOperations.completeIfCurrent(operation) {
+                    statusOperations.completeIfCurrent(operation) {
                         mutableState.update { it.copy(isLoading = false, statusMessage = "${written.name}を保存しました") }
                     }
                 }
                 .onFailure { error ->
-                    projectOperations.completeIfCurrent(operation) {
+                    statusOperations.completeIfCurrent(operation) {
                         mutableState.update { it.copy(isLoading = false, statusMessage = "制作保存失敗: ${error.message ?: error.javaClass.simpleName}") }
                     }
                 }
@@ -323,6 +332,7 @@ class DesktopSamplerController(
     }
 
     private fun stopRecording(kind: RecordingKind) {
+        statusOperations.invalidate()
         val operation = projectOperations.begin()
         mutableState.update { it.copy(recordingSession = (it.recordingSession as? RecordingSession.Active)?.copy(phase = RecordingPhase.STOPPING) ?: it.recordingSession) }
         ioExecutor.execute {
@@ -332,6 +342,7 @@ class DesktopSamplerController(
                 .mapCatching { file -> file to DesktopWavDecoder.decode(file) }
                 .onSuccess { (_, audio) ->
                     projectOperations.completeIfCurrent(operation) {
+                        recoveryOperations.invalidate()
                         val current = mutableState.value
                         val next = if (kind == RecordingKind.VOCAL_OVERDUB) {
                             val target = current.pads.nextVocalPadIndex()
@@ -366,7 +377,12 @@ class DesktopSamplerController(
                         }
                         val transition = productionSession.applyEdit(current, next)
                         mutableState.value = transition.state
-                        runCatching { player.loadPcm(audio) }.onFailure { error ->
+                        val playbackFailure = if (kind == RecordingKind.VOCAL_OVERDUB) {
+                            runCatching { player.loadPcm(audio) }.exceptionOrNull()
+                        } else {
+                            loadSourcePcm(audio)
+                        }
+                        playbackFailure?.let { error ->
                             setStatus("録音は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}")
                         }
                         scheduleAutosave()
@@ -388,8 +404,12 @@ class DesktopSamplerController(
     fun setStatus(message: String) = mutableState.update { it.copy(statusMessage = message) }
 
     override fun resetProject() {
+        statusOperations.invalidate()
         projectOperations.invalidate()
+        recoveryOperations.invalidate()
         stopCompetingPlayback()
+        sourcePlaybackReady = false
+        sourcePlaybackError = null
         mutableState.value = productionSession.replaceProject(freshProductionState()).state
         scheduleAutosave()
     }
@@ -490,14 +510,24 @@ class DesktopSamplerController(
     override fun playSourceFrom(frame: Int) {
         val state = mutableState.value
         if (state.currentAudio == null) return
+        if (!sourcePlaybackIsReady()) return
         val safe = frame.coerceIn(0, state.rangeEndFrame)
         stopCompetingPlayback()
-        player.playFrom(safe)
+        val playbackFailure = runCatching { player.playFrom(safe) }.exceptionOrNull()
+        if (playbackFailure != null) {
+            publishSourcePlaybackFailure(playbackFailure)
+            return
+        }
         mutableState.update { it.copy(sourcePlayheadFrame = safe, sourcePlaying = true, statusMessage = "元曲を再生中です") }
     }
     override fun seekSourcePlayback(frame: Int) {
+        if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return
         val safe = frame.coerceIn(0, mutableState.value.rangeEndFrame)
-        player.seekSource(safe)
+        val playbackFailure = runCatching { player.seekSource(safe) }.exceptionOrNull()
+        if (playbackFailure != null) {
+            publishSourcePlaybackFailure(playbackFailure)
+            return
+        }
         mutableState.update { it.copy(sourcePlayheadFrame = safe) }
     }
     override fun toggleSourcePlayback() = toggleSource(!mutableState.value.sourcePlaying)
@@ -630,8 +660,13 @@ class DesktopSamplerController(
         val state = mutableState.value
         if (state.currentAudio == null) return
         if (shouldPlay) {
+            if (!sourcePlaybackIsReady()) return
             stopCompetingPlayback()
-            player.playFrom(state.sourcePlayheadFrame)
+            val playbackFailure = runCatching { player.playFrom(state.sourcePlayheadFrame) }.exceptionOrNull()
+            if (playbackFailure != null) {
+                publishSourcePlaybackFailure(playbackFailure)
+                return
+            }
             mutableState.update { it.copy(sourcePlaying = true, statusMessage = "元曲を再生中です") }
         } else {
             val frame = player.sourceFramePosition().coerceIn(0, state.rangeEndFrame)
@@ -646,8 +681,13 @@ class DesktopSamplerController(
         val frame = mutableState.value.sourcePlayheadFrame
         commitEdit("master-pitch") { it.copy(masterPitchSemitones = pitch) }
         mutableState.value.currentAudio?.let { audio ->
-            player.loadPcm(audio, pitch)
-            if (wasPlaying) player.playFrom(frame)
+            val loadFailure = loadSourcePcm(audio, pitch)
+            if (loadFailure != null) {
+                setStatus(requireNotNull(sourcePlaybackError))
+            } else if (wasPlaying) {
+                val playbackFailure = runCatching { player.playFrom(frame) }.exceptionOrNull()
+                if (playbackFailure != null) publishSourcePlaybackFailure(playbackFailure)
+            }
         }
     }
     override fun setSelectedPadPitch(value: Float) = updateSelected("pad-pitch") { it.copy(pitchSemitones = value.coerceIn(-24f, 24f)) }
@@ -859,7 +899,13 @@ class DesktopSamplerController(
             canRedo = productionSession.canRedo,
         )
         mutableState.value = next
-        if (hydrateAudio) next.currentAudio?.let(player::loadPcm)
+        if (hydrateAudio) {
+            val playbackFailure = loadSourcePcm(next.currentAudio)
+            if (playbackFailure != null) setStatus(requireNotNull(sourcePlaybackError))
+        } else {
+            sourcePlaybackReady = false
+            sourcePlaybackError = null
+        }
     }
 
     private fun scheduleAutosave() {
@@ -942,6 +988,15 @@ class DesktopSamplerController(
             // Keep the user's existing generations untouched unless a later edit owns work.
             return
         }
+        if (
+            request.startupRecoveryOutcome == StartupRecoveryOutcome.SUCCEEDED &&
+            request.pending == null &&
+            request.snapshot.revision == request.startupRecoveryDurableRevision
+        ) {
+            // Recovery was published without an editable mutation. The archive already owns
+            // this content, so a no-op launch/close must not rotate distinct older generations.
+            return
+        }
         val workToAwait = synchronized(autosaveLifecycleLock) {
             when (request.pending?.phase) {
                 AutosavePhase.SCHEDULED -> {
@@ -1011,16 +1066,17 @@ class DesktopSamplerController(
 
     private fun recoverAutosave(): Future<*> {
         val store = requireNotNull(autosaveStore)
-        // Startup recovery owns an operation epoch before the controller escapes its
-        // constructor. Reuse that epoch for hydration so a later user load/open wins.
-        val recoveryOperation = projectOperations.begin()
+        // Recovery owns a separate epoch before the controller escapes its constructor.
+        // Project replacement invalidates it only after that replacement succeeds; failed
+        // user loads therefore fall back to the still-recoverable startup snapshot.
+        val recoveryOperation = recoveryOperations.begin()
         return persistenceExecutor.submit {
             var scheduleFreshAutosave = false
             var recoveryFailed = false
             val recoveredAudio = try {
                 val recovered = store.loadWithRevision()
                 if (recovered == null) {
-                    projectOperations.completeIfCurrent(recoveryOperation) {
+                    recoveryOperations.completeIfCurrent(recoveryOperation) {
                         mutableState.value = productionSession.replaceProject(freshProductionState()).state
                         scheduleFreshAutosave = true
                     }
@@ -1028,7 +1084,7 @@ class DesktopSamplerController(
                 } else {
                     val restored = recovered.state
                     var audioToHydrate: PcmAudio? = null
-                    projectOperations.completeIfCurrent(recoveryOperation) {
+                    recoveryOperations.completeIfCurrent(recoveryOperation) {
                         val transition = productionSession.replaceProject(
                             restored,
                             persistenceRequired = false,
@@ -1044,15 +1100,18 @@ class DesktopSamplerController(
                             hydrateAudio = false,
                         )
                         audioToHydrate = transition.state.currentAudio
+                        synchronized(autosaveLifecycleLock) {
+                            startupRecoveryDurableRevision = transition.revision
+                        }
                     }
                     audioToHydrate
                 }
             } catch (error: Throwable) {
-                synchronized(autosaveLifecycleLock) {
-                    startupRecoveryOutcome = StartupRecoveryOutcome.FAILED
-                    startupRecoveryFailureRevision = productionSession.revision
-                }
-                projectOperations.completeIfCurrent(recoveryOperation) {
+                recoveryOperations.completeIfCurrent(recoveryOperation) {
+                    synchronized(autosaveLifecycleLock) {
+                        startupRecoveryOutcome = StartupRecoveryOutcome.FAILED
+                        startupRecoveryFailureRevision = productionSession.revision
+                    }
                     mutableState.value = SamplerUiState(
                         statusMessage = "自動保存を復元できません: ${error.message ?: error.javaClass.simpleName}",
                     )
@@ -1076,13 +1135,46 @@ class DesktopSamplerController(
             if (closed) return
         }
         ioExecutor.execute {
-            projectOperations.completeIfCurrent(recoveryOperation) {
+            recoveryOperations.completeIfCurrent(recoveryOperation) {
                 val hydrate = synchronized(autosaveLifecycleLock) { !closed }
                 if (hydrate) {
-                    runCatching { player.loadPcm(audio) }
-                        .onFailure { error -> setStatus(sourcePlaybackFailureMessage(error)) }
+                    val playbackFailure = loadSourcePcm(audio)
+                    if (playbackFailure != null) setStatus(requireNotNull(sourcePlaybackError))
                 }
             }
+        }
+    }
+
+    private fun loadSourcePcm(audio: PcmAudio?, pitchSemitones: Float = 0f): Throwable? {
+        sourcePlaybackReady = false
+        sourcePlaybackError = null
+        if (audio == null) return null
+        val failure = runCatching { player.loadPcm(audio, pitchSemitones) }.exceptionOrNull()
+        if (failure == null) {
+            sourcePlaybackReady = true
+        } else {
+            sourcePlaybackError = sourcePlaybackFailureMessage(failure)
+        }
+        return failure
+    }
+
+    private fun sourcePlaybackIsReady(): Boolean {
+        if (sourcePlaybackReady) return true
+        mutableState.update {
+            it.copy(
+                sourcePlaying = false,
+                statusMessage = sourcePlaybackError
+                    ?: "音声を再生できません。Windowsの出力デバイスを確認してください",
+            )
+        }
+        return false
+    }
+
+    private fun publishSourcePlaybackFailure(error: Throwable) {
+        sourcePlaybackReady = false
+        sourcePlaybackError = sourcePlaybackFailureMessage(error)
+        mutableState.update {
+            it.copy(sourcePlaying = false, statusMessage = requireNotNull(sourcePlaybackError))
         }
     }
 
@@ -1246,6 +1338,8 @@ class DesktopSamplerController(
         // completeIfCurrent owns the project-operation monitor for its entire publication.
         // Invalidate and wait for any admitted completion before taking the close snapshot.
         projectOperations.invalidate()
+        recoveryOperations.invalidate()
+        statusOperations.invalidate()
         val closeRequest = synchronized(autosaveLifecycleLock) {
             AutosaveCloseRequest(
                 pending = autosaveWork,
@@ -1255,18 +1349,22 @@ class DesktopSamplerController(
                 ),
                 startupRecoveryOutcome = startupRecoveryOutcome,
                 startupRecoveryFailureRevision = startupRecoveryFailureRevision,
+                startupRecoveryDurableRevision = startupRecoveryDurableRevision,
             )
         }
-        ioExecutor.shutdownNow()
-        playbackMonitor.shutdownNow()
-        stopCompetingPlayback()
-        transport.close()
-        scratch.close()
-        microphone.close()
-        systemAudio.close()
-        player.close()
-        flushAutosaveOnClose(closeRequest)
-        persistenceExecutor.shutdownNow()
+        runCatching { ioExecutor.shutdownNow() }
+        runCatching { playbackMonitor.shutdownNow() }
+        runCatching { stopCompetingPlayback() }
+        runCatching { transport.close() }
+        runCatching { scratch.close() }
+        runCatching { microphone.close() }
+        runCatching { systemAudio.close() }
+        runCatching { player.close() }
+        try {
+            flushAutosaveOnClose(closeRequest)
+        } finally {
+            runCatching { persistenceExecutor.shutdownNow() }
+        }
     }
 
     private enum class AutosavePhase {
@@ -1300,6 +1398,7 @@ class DesktopSamplerController(
         val snapshot: AutosaveSnapshot,
         val startupRecoveryOutcome: StartupRecoveryOutcome,
         val startupRecoveryFailureRevision: Long?,
+        val startupRecoveryDurableRevision: Long?,
     )
 
     companion object {
