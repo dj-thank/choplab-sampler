@@ -56,7 +56,7 @@
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
 | Choke group | ✅ | 1–4 |
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
-| マイク停止の完了確認 | 🧪 current local | Androidはnative startをdaemon startupへ逃がし、pending STOPはframework `stop`を呼ばず`release`も非同期に委譲。startup待ちを最大2秒で失敗確定し、未完成WAVをdecodeせず、実unwindまで代替startをfail-closedにする。Windowsはlineの`open`後`start`失敗でexact-once closeと一時WAV破棄を保持 |
+| マイク停止の完了確認 | 🧪 current local | Androidはnative startをdaemon startupへ逃がし、pending STOPはframework `stop`を呼ばず`release`も非同期に委譲。startup待ちを最大2秒で失敗確定し、未完成WAVをdecodeせず、実unwindまで代替startをfail-closedにする。RESET/`onCleared`は取消状態だけを同期公開し、native待ちはdaemonで完了する。Windowsはlineの`open`後`start`失敗でexact-once closeと一時WAV破棄を保持 |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。MIC/VOICEのnative開始完了は一致するSTARTINGだけをRECORDINGへ進め、late callbackがSTOPPING/Idleを復活させたりBeat loopを始動しない。開始時に既存再生を停止し、録音中の競合操作を遮断。実MediaProjection/AudioRecord再検証は未実施 |
 | 一時録音のprivacy cleanup | 🧪 local | app cacheのChopLab命名mic/system/vocal WAVだけを所有対象とし、decode成功・失敗・取消・無効化後に削除。異常終了残留は24時間後の起動時に限定清掃。SAF import、export、project、無関係cacheは削除対象外 |
 | 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |
