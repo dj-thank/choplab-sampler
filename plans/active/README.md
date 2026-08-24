@@ -14,7 +14,7 @@
 
 **直近の統合保守:** Desktop recorder開始取消修正はPR #73 / `main@a0b356c`へ統合済み。blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeし、late worker公開・readを禁止する。exact headはclean review・threads 0・4 workflows PASS、物理microphoneは別gate。
 
-**独立したreverse PAD末尾修正:** exact-base `main@a0b356c`上のproduct `6bb8045` / tree `f2f9912`で、last-included frameから始まる逆再生のframe数をin-range positionだけへ限定する。48→60 kHzの64-frame fixtureで旧80 frames＋末尾無音1 frameをREDとし、realtime cursorと同じ79 frames／最後の有効PCM非0を固定する。Android callbackやforward経路を変えず、既存planを再選択しない限定audio parity delta。hosted JVM/Windows CIとexact reviewがmerge gate。
+**独立したreverse PAD末尾修正:** exact-base `main@a0b356c`起点のproduct `6151317` / tree `73d6f68`で、逆再生のcount/renderをrealtimeと同じone-shot cursor advanceへ統一する。48→60 kHzの64-frame fixtureで旧80 frames＋末尾無音1 frameをREDとし、79 frames／最後の有効PCM非0を固定。allocation前count＋resetでtrim-copyを避け、Android callbackやforward経路を変えない限定audio parity delta。hosted JVM/Windows CIとexact reviewがmerge gate。
 
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 

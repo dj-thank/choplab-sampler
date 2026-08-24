@@ -1,6 +1,7 @@
 package com.choplab.sampler.audio
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPlayMode
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -18,23 +19,30 @@ object PadPcmRenderer {
             sourceSampleRate = audio.sampleRate,
             outputSampleRate = outputSampleRate,
         )
-        val frameCount = (
-            if (pad.reverse) {
-                // Reverse starts at the last included frame, not the exclusive end.
-                // Count only positions that remain inside the range, as the realtime cursor does.
-                (floor((end - start - 1) / sourceStep) + 1.0).toInt()
-            } else {
-                ceil((end - start) / sourceStep).toInt()
+        val reverseCursor = if (pad.reverse) {
+            VoicePlaybackCursor(start, end, reverse = true, playMode = PadPlayMode.ONE_SHOT)
+        } else {
+            null
+        }
+        val frameCount = if (reverseCursor != null) {
+            // Count and reset before allocation so duration and PCM use realtime's advance order.
+            var count = 0
+            while (!reverseCursor.finished) {
+                count++
+                reverseCursor.advance(sourceStep)
             }
-        ).coerceAtLeast(1)
+            reverseCursor.reset(start, end, reverse = true, playMode = PadPlayMode.ONE_SHOT)
+            count
+        } else {
+            ceil((end - start) / sourceStep).toInt().coerceAtLeast(1)
+        }
         val result = ShortArray(frameCount)
         var filterState = 0f
         val gain = SamplerDspPrimitives.gain(pad.gain)
         val alpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
 
         for (outputFrame in result.indices) {
-            val offset = outputFrame * sourceStep
-            val position = if (pad.reverse) end - 1.0 - offset else start + offset
+            val position = reverseCursor?.position ?: (start + outputFrame * sourceStep)
             if (position < start || position >= end) break
             val lower = floor(position).toInt().coerceIn(start, end - 1)
             val upper = (lower + 1).coerceAtMost(end - 1)
@@ -57,6 +65,7 @@ object PadPcmRenderer {
                 .times(Short.MAX_VALUE)
                 .toInt()
                 .toShort()
+            reverseCursor?.advance(sourceStep)
         }
         return result
     }
