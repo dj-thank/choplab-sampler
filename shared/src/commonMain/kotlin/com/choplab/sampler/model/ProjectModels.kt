@@ -23,6 +23,32 @@ object ProjectLimits {
     const val MAX_SONG_SECTIONS = 512
 }
 
+/**
+ * Selects a nonblank audio display name that can be persisted by the project archive.
+ * Names are bounded in UTF-16 code units without splitting a surrogate pair.
+ */
+fun persistableAudioDisplayName(
+    preferredName: String?,
+    fallbackName: String?,
+): String {
+    val limit = ProjectLimits.MAX_ASSET_NAME_CHARS
+    fun bounded(candidate: String?): String? {
+        if (candidate.isNullOrBlank()) return null
+        if (candidate.length <= limit) return candidate
+
+        var endIndex = limit
+        if (
+            candidate[endIndex - 1] in '\uD800'..'\uDBFF' &&
+            candidate[endIndex] in '\uDC00'..'\uDFFF'
+        ) {
+            endIndex--
+        }
+        return candidate.substring(0, endIndex).takeIf { it.isNotBlank() }
+    }
+
+    return bounded(preferredName) ?: bounded(fallbackName) ?: "sample"
+}
+
 @JvmInline
 value class AudioAssetId(val value: String) {
     init {

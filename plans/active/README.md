@@ -12,11 +12,13 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**独立保守delta:** reachable integration product `08fb123`（tree `dc9a9e8`、`main@3330881`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `0a9def1`の全CI／再review PASSを保持し、merged #68 realtime PADと#70 Android import-name bytesも維持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
+**直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 
 **独立したAndroid import名境界修正:** merged `main@2786c37`を統合したproduct `b7364ee` / tree `dae6252`で、provider／URI由来のblankまたは240 UTF-16単位超の表示名をdecode公開前にarchive-compatibleへ正規化する。切断後のblank再評価とsurrogate pair分断防止をarchive round-trip regressionへ固定し、merged #68 runtime/test/docs、PCM bytes、schema、provider I/Oや上記画面planは変更しない。hosted Android CIがmerge gate。
+
+**独立したshared／Desktop import名境界修正:** integration product `e0d3fa1` / tree `1558c4a`はprior clean headとmerged `main@3072eed`を統合し、上記Android名規則をshared production seamへ移してDesktop `File.name`にも同じ非空・240 UTF-16単位・post-truncate-blank fallback・surrogate-safe契約を適用する。#65 transport blobsと#68 runtime/testをexact保持し、shared common contractとDesktop archive read-back回帰を追加。旧headは全CI／clean review PASS、最新main headのhosted再実行がmerge gate。
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
