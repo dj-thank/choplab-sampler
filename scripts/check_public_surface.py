@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import zipfile
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 
 
@@ -63,6 +64,10 @@ ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
 ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
 ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
 ZIP_COMPRESSION_RATIO_LIMIT = 100
+ZIP_ENTRY_COUNT_LIMIT = 4_096
+HISTORICAL_ZIP_BLOB_COUNT_LIMIT = 128
+HISTORICAL_ZIP_CONTAINER_LIMIT = 16 * 1024 * 1024
+HISTORICAL_ZIP_TOTAL_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"gh" + r"o_[A-Za-z0-9_]{20,}"),
@@ -85,13 +90,17 @@ def public_candidate_paths() -> list[PurePosixPath]:
     return [PurePosixPath(raw.decode("utf-8")) for raw in result.split(b"\0") if raw]
 
 
-def historical_paths() -> list[PurePosixPath]:
-    paths: list[PurePosixPath] = []
+def historical_objects() -> list[tuple[str, PurePosixPath]]:
+    objects: list[tuple[str, PurePosixPath]] = []
     for raw_line in run_git(["rev-list", "--objects", "--all"]).splitlines():
         parts = raw_line.decode("utf-8", errors="replace").split(" ", maxsplit=1)
         if len(parts) == 2 and parts[1]:
-            paths.append(PurePosixPath(parts[1]))
-    return paths
+            objects.append((parts[0], PurePosixPath(parts[1])))
+    return objects
+
+
+def historical_paths() -> list[PurePosixPath]:
+    return [path for _, path in historical_objects()]
 
 
 def suspicious_path(path: PurePosixPath) -> str | None:
@@ -126,40 +135,58 @@ def decode_probable_text(content: bytes) -> str | None:
 
 
 def scan_zip(
-    path: Path | PurePosixPath,
+    source: Path | PurePosixPath | BytesIO,
     *,
+    label: str | None = None,
     member_scan_limit: int = ZIP_MEMBER_SCAN_LIMIT,
     total_scan_limit: int = ZIP_TOTAL_SCAN_LIMIT,
     compression_ratio_limit: int = ZIP_COMPRESSION_RATIO_LIMIT,
+    entry_count_limit: int = ZIP_ENTRY_COUNT_LIMIT,
 ) -> list[str]:
     findings: list[str] = []
     scanned_bytes = 0
+    archive_label = label or str(source)
     try:
-        with zipfile.ZipFile(path) as archive:
-            for info in archive.infolist():
+        with zipfile.ZipFile(source) as archive:
+            entries = archive.infolist()
+            if len(entries) > entry_count_limit:
+                findings.append(
+                    f"{archive_label}: archive contains {len(entries)} entries, exceeding "
+                    f"the {entry_count_limit}-entry content scan limit"
+                )
+                return findings
+
+            for info in entries:
                 name = info.filename
                 entry = PurePosixPath(name)
                 reason = suspicious_path(entry)
                 if reason:
-                    findings.append(f"{path}: archive entry {name!r}: {reason}")
-                if info.is_dir() or entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES:
+                    findings.append(f"{archive_label}: archive entry {name!r}: {reason}")
+                if info.is_dir():
+                    if info.file_size:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: "
+                            "directory-marked entry contains data"
+                        )
+                    continue
+                if entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES:
                     continue
                 if info.file_size > member_scan_limit:
                     findings.append(
-                        f"{path}: archive entry {name!r}: exceeds "
+                        f"{archive_label}: archive entry {name!r}: exceeds "
                         f"{member_scan_limit}-byte member content scan limit"
                     )
                     continue
                 compressed_size = max(info.compress_size, 1)
                 if info.file_size > compressed_size * compression_ratio_limit:
                     findings.append(
-                        f"{path}: archive entry {name!r}: exceeds "
+                        f"{archive_label}: archive entry {name!r}: exceeds "
                         f"{compression_ratio_limit}:1 compression scan limit"
                     )
                     continue
                 if scanned_bytes + info.file_size > total_scan_limit:
                     findings.append(
-                        f"{path}: archive content exceeds "
+                        f"{archive_label}: archive content exceeds "
                         f"{total_scan_limit}-byte total content scan limit"
                     )
                     break
@@ -169,29 +196,31 @@ def scan_zip(
                         content = member.read(member_scan_limit + 1)
                 except (NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile) as error:
                     findings.append(
-                        f"{path}: archive entry {name!r}: content scan failed "
+                        f"{archive_label}: archive entry {name!r}: content scan failed "
                         f"({type(error).__name__})"
                     )
                     continue
                 if len(content) > member_scan_limit:
                     findings.append(
-                        f"{path}: archive entry {name!r}: exceeded "
+                        f"{archive_label}: archive entry {name!r}: exceeded "
                         f"{member_scan_limit}-byte member content scan limit while reading"
                     )
                     continue
                 if scanned_bytes + len(content) > total_scan_limit:
                     findings.append(
-                        f"{path}: archive content exceeded "
+                        f"{archive_label}: archive content exceeded "
                         f"{total_scan_limit}-byte total content scan limit while reading"
                     )
                     break
                 scanned_bytes += len(content)
                 text = decode_probable_text(content)
                 if text is not None:
-                    label = f"{path}: archive entry {name!r}"
-                    findings.extend(scan_text(label, text))
-    except (OSError, zipfile.BadZipFile):
-        return findings
+                    member_label = f"{archive_label}: archive entry {name!r}"
+                    findings.extend(scan_text(member_label, text))
+    except (OSError, zipfile.BadZipFile) as error:
+        findings.append(
+            f"{archive_label}: archive content scan failed ({type(error).__name__})"
+        )
     return findings
 
 
@@ -203,12 +232,58 @@ def scan_text(label: str, content: str) -> list[str]:
     ]
 
 
+def scan_historical_zip_blobs(
+    objects: list[tuple[str, PurePosixPath]],
+) -> list[str]:
+    findings: list[str] = []
+    candidates: dict[str, PurePosixPath] = {}
+    for object_id, path in objects:
+        if path.suffix.lower() == ".zip":
+            candidates.setdefault(object_id, path)
+
+    if len(candidates) > HISTORICAL_ZIP_BLOB_COUNT_LIMIT:
+        findings.append(
+            "git history ZIP content: "
+            f"{len(candidates)} unique blobs exceed the "
+            f"{HISTORICAL_ZIP_BLOB_COUNT_LIMIT}-archive scan limit"
+        )
+
+    scanned_container_bytes = 0
+    for object_id, path in list(candidates.items())[:HISTORICAL_ZIP_BLOB_COUNT_LIMIT]:
+        if run_git(["cat-file", "-t", object_id]).strip() != b"blob":
+            continue
+        size = int(run_git(["cat-file", "-s", object_id]).strip())
+        archive_label = f"git history ZIP {path} ({object_id[:12]})"
+        if size > HISTORICAL_ZIP_CONTAINER_LIMIT:
+            findings.append(
+                f"{archive_label}: exceeds the "
+                f"{HISTORICAL_ZIP_CONTAINER_LIMIT}-byte container scan limit"
+            )
+            continue
+        if scanned_container_bytes + size > HISTORICAL_ZIP_TOTAL_LIMIT:
+            findings.append(
+                "git history ZIP content exceeds the "
+                f"{HISTORICAL_ZIP_TOTAL_LIMIT}-byte aggregate container scan limit"
+            )
+            break
+
+        content = run_git(["cat-file", "blob", object_id])
+        if len(content) != size:
+            findings.append(f"{archive_label}: blob size changed while reading")
+            continue
+        scanned_container_bytes += len(content)
+        findings.extend(scan_zip(BytesIO(content), label=archive_label))
+    return findings
+
+
 def scan_history() -> list[str]:
     findings: list[str] = []
-    for path in historical_paths():
+    objects = historical_objects()
+    for _, path in objects:
         reason = suspicious_path(path)
         if reason:
             findings.append(f"git history path {path}: {reason}")
+    findings.extend(scan_historical_zip_blobs(objects))
 
     # A textual patch includes every textual addition/deletion reachable from all
     # refs without checking out or materializing historical files. Binary payloads
@@ -217,6 +292,23 @@ def scan_history() -> list[str]:
         ["log", "--all", "--format=", "--no-ext-diff", "--no-textconv", "-p"],
     ).decode("utf-8", errors="replace")
     findings.extend(scan_text("git history patch", history_patch))
+    return findings
+
+
+def scan_public_path(path: Path | PurePosixPath) -> list[str]:
+    findings: list[str] = []
+    reason = suspicious_path(path)
+    if reason:
+        findings.append(f"{path}: {reason}")
+    if path.suffix.lower() == ".zip":
+        findings.extend(scan_zip(Path(path), label=str(path)))
+        return findings
+
+    try:
+        content = Path(path).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return findings
+    findings.extend(scan_text(str(path), content))
     return findings
 
 
@@ -235,17 +327,7 @@ def main() -> int:
     paths = public_candidate_paths()
     findings: list[str] = []
     for path in paths:
-        reason = suspicious_path(path)
-        if reason:
-            findings.append(f"{path}: {reason}")
-        if path.suffix.lower() == ".zip":
-            findings.extend(scan_zip(path))
-
-        try:
-            content = Path(path).read_bytes().decode("utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        findings.extend(scan_text(str(path), content))
+        findings.extend(scan_public_path(path))
 
     if args.history:
         findings.extend(scan_history())

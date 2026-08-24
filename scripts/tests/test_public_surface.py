@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import unittest
 import zipfile
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from scripts.check_public_surface import scan_text, scan_zip, suspicious_path
+from scripts.check_public_surface import (
+    scan_history,
+    scan_public_path,
+    scan_text,
+    scan_zip,
+    suspicious_path,
+)
 
 
 class PublicSurfacePolicyTest(unittest.TestCase):
@@ -71,6 +79,91 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertEqual(1, len(findings))
         self.assertIn("audio asset", findings[0])
         self.assertNotIn("secret-shaped content", findings[0])
+
+    def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "many.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("first.txt", b"")
+                archive.writestr("second.txt", b"")
+                archive.writestr("third.txt", b"")
+
+            findings = scan_zip(archive_path, entry_count_limit=2)
+
+        self.assertEqual(1, len(findings))
+        self.assertIn("3 entries", findings[0])
+        self.assertIn("2-entry content scan limit", findings[0])
+
+    def test_public_zip_is_not_rescanned_as_one_text_container(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "assets.zip"
+            archive_bytes = None
+            for padding in range(256):
+                candidate = BytesIO()
+                info = zipfile.ZipInfo("data.bin", date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_STORED
+                info.create_system = 0
+                info.external_attr = 1
+                with zipfile.ZipFile(candidate, "w") as archive:
+                    archive.writestr(info, token + str(padding).encode("ascii"))
+                try:
+                    candidate.getvalue().decode("utf-8")
+                except UnicodeDecodeError:
+                    continue
+                archive_bytes = candidate.getvalue()
+                break
+
+            self.assertIsNotNone(archive_bytes)
+            archive_path.write_bytes(archive_bytes or b"")
+            self.assertIn(token.decode("ascii"), archive_path.read_text(encoding="utf-8"))
+            findings = scan_public_path(archive_path)
+
+        self.assertEqual([], findings)
+
+    def test_directory_marked_zip_entry_with_payload_is_rejected(self) -> None:
+        token = "github_pat_" + "a" * 24
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "source.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("docs/notes.txt/", token)
+
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("directory-marked entry contains data" in item for item in findings))
+
+    def test_history_scan_reads_reachable_zip_blob_content(self) -> None:
+        object_id = "a" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("docs/notes.txt", "github_pat_" + "a" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{object_id} docs/removed.zip\n".encode("ascii")
+            if arguments == ["cat-file", "-t", object_id]:
+                return b"blob\n"
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("docs/removed.zip" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (
