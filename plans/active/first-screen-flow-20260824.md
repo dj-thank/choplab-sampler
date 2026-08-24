@@ -78,7 +78,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 16:20 JST — Follow-up PR opened for all five review repairs; review replies are posted and hosted checks are the remaining integration gate.
 - [x] 2026-08-24 16:43 JST — Hosted Android compile/unit/lint/APK gates passed; instrumentation exposed the test proxy returning null from `equals`. The proxy now implements identity `equals`/`hashCode`/`toString`; refreshed device execution is pending.
 - [x] 2026-08-24 — Review follow-up rebased onto `main@a930da4`, retaining PRs #54/#55/#56/#57/#59/#60/#63; 39 Python tests, 394-candidate public-surface scan, six XML parses and diff checks pass locally.
-- [x] 2026-08-24 — Review thread `3841779683` and all five exact-head follow-ups are repaired at reachable product `0790224` / tree `bf663eb`: large-text CHOP/ONE SHOT commit on completed tap, held empty CHOP captures on pointer-up, GATE activates after a 120 ms scroll window, short taps retain 80 ms, node cancellation releases exactly once, play-mode changes restart arbitration, pre-activation parent swipes dispatch zero controller calls, and normal PADs retain press-down playback.
+- [x] 2026-08-24 — Review thread `3841779683` and all five exact-head follow-ups are repaired at reachable product `dfe52d7` / tree `ef1ce32`: large-text CHOP/ONE SHOT commit on completed tap, held empty CHOP captures on pointer-up, GATE activates after a 120 ms scroll window, short taps retain 80 ms, node cancellation releases exactly once, play-mode changes restart arbitration, pre-activation parent swipes dispatch zero controller calls, and normal PADs retain press-down playback.
 - [ ] Run hosted Android unit/androidTest compilation and the three focused pointer regressions; local Gradle 9.7.1 acquisition is blocked by the unavailable distribution host.
 - [ ] Independent review, GitHub integration and closeout.
 
@@ -97,7 +97,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 ## Validation evidence
 
 - Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
-- Review-repair source: reachable commit `079022485dacd3d853b368c1f4e6d54aaf5a045d`, tree `bf663eb4070e446473924991d4303d72fbd69682`, integrating base `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`; the final follow-up commit only binds documentation to this source. Static policy, public-surface, XML and diff gates pass; hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
+- Review-repair source: reachable commit `dfe52d72946e0deefa64eed02539178a03558c0a`, tree `ef1ce320740fc1254023efe5aa2ef648ec38792e`, integrating base `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`; the final follow-up commit only binds documentation to this source. Static policy, public-surface, XML and diff gates pass; hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
 - Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
 - Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
