@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。ユーザーが次のdecision boundaryとして画面・導線を最優先に選択した。pristine first entry、large-text workflow chrome、Android/Windowsのselected PAD/bank/page coherenceを、fresh screenshotとfocused testから改善する。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。最新review deltaはscroll内ONE SHOT/GATE arbitration、発火後cancellationのexact-once release、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsをreachable product/verification `5b9592f`で追加済み。`main@ae77cd9`のdecode上限も統合済み。static gateはPASS、hosted Gradle／device gestureが残る。
 
 **直近の統合保守:** iOS import/recording exclusionは録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-upとしてPR #60 / `main@5430d0d`へ統合済み。macOS CIと物理録音は別gateのまま。
 

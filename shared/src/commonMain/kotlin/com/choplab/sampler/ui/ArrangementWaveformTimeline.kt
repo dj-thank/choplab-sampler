@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -45,6 +46,7 @@ fun ArrangementWaveformTimeline(
     loopPlayheadFrame: Int = -1,
     loopPlaying: Boolean = false,
 ) {
+    val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val peaks = remember(pad.audio?.id, pad.startFrame, pad.endFrame) {
         buildSlicePeaks(pad)
     }
@@ -185,15 +187,19 @@ fun ArrangementWaveformTimeline(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "実波形  PAD $padLabel",
+                text = if (largeText) "PAD $padLabel" else "実波形  PAD $padLabel",
                 color = DeckGreen,
                 fontFamily = TimelineFont,
                 fontWeight = FontWeight.Black,
                 fontSize = 9.sp,
             )
             Text(
-                text = loopProgress?.let { "ループ ${(it * 100).toInt()}%  ·  PAD $padLabel" }
-                    ?: "いま $stepLabel  ·  BANK $bankText",
+                text = if (largeText) {
+                    loopProgress?.let { "LOOP ${(it * 100).toInt()}%" } ?: "$stepLabel  $bankText"
+                } else {
+                    loopProgress?.let { "ループ ${(it * 100).toInt()}%  ·  PAD $padLabel" }
+                        ?: "いま $stepLabel  ·  BANK $bankText"
+                },
                 color = if (transportPlaying || loopPlaying) Color(0xFFFFD29A) else Color(0xFFA89A78),
                 fontFamily = TimelineFont,
                 fontWeight = FontWeight.Black,

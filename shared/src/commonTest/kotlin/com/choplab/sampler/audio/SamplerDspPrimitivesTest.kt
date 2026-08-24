@@ -93,4 +93,28 @@ class SamplerDspPrimitivesTest {
         assertTrue(safe.isFinite())
         assertTrue(safe > 0.0)
     }
+
+    @Test
+    fun fractionalTransportDeadlineUsesTheFirstFrameAtOrAfterIt() {
+        val firstStepLength = SamplerDspPrimitives.stepLengthFrames(
+            sampleRate = 48_000,
+            bpm = 92f,
+            swing = 54f,
+            step = 0,
+        )
+        val secondStepLength = SamplerDspPrimitives.stepLengthFrames(
+            sampleRate = 48_000,
+            bpm = 92f,
+            swing = 54f,
+            step = 1,
+        )
+
+        assertEquals(0, SamplerDspPrimitives.scheduledFrameAtOrAfter(0.0))
+        assertEquals(8_453, SamplerDspPrimitives.scheduledFrameAtOrAfter(firstStepLength))
+        assertEquals(
+            15_653,
+            SamplerDspPrimitives.scheduledFrameAtOrAfter(firstStepLength + secondStepLength),
+        )
+        assertEquals(1_000, SamplerDspPrimitives.scheduledFrameAtOrAfter(1_000.0))
+    }
 }
