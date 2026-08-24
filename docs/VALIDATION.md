@@ -2,6 +2,14 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Guided first-screen GitHub review repair — 2026-08-24
+
+- Product source: `codex/choplab-screen-flow@8736430b48d5f97683949240d04cb6b231d94a14`, tree `47dd8c295164e867b0fd12ad681205546bd656d0`, parent `b73681d`, base `main@3cc4cd5`.
+- Review closure candidate: compact-landscape CAPTURE now opts into bounded scrolling; large-text BEAT quick and detailed bodies use a stacked bounded-scroll composition with explicit waveform and computed 48 dp-safe PAD-grid heights; normal-text layouts retain their previous fixed/responsive paths.
+- Instrumentation isolation: `FirstScreenFlowDeviceTest` now renders a deterministic in-memory pristine state/controller seam and never launches autosave recovery, clears app data or mutates retained projects. Its added large-text case scrolls through the demo, verifies the selected PAD target and traverses both QUICK and STEPS bodies.
+- Current-container checks: `git diff --check` PASS; Python policy suite 23/23 PASS; public-surface scan 389 candidates PASS.
+- Environment boundary: this Linux container has no Android SDK or cached Gradle distribution and cannot reach `services.gradle.org`; fresh Gradle compilation/instrumentation is not claimed. Hosted PR CI must pass before merge or gate promotion. The artifact/runtime evidence in the next section remains bound to `43d8ace` and is not proof for `8736430`.
+
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 
 - Product source: `codex/choplab-screen-flow@43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`, base `3cc4cd5`; dirty canonical checkout untouched.

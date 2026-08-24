@@ -19,7 +19,7 @@ Keep the shared four-stage model `入れる → チョップ → ビート → �
 - the built-in starter is named as a separate `DUSTY JAZZデモ` route;
 - loading, loaded-source and active-recording states retain the existing waveform and stop/safety controls.
 
-At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. Only the first-entry body may use bounded vertical scrolling when enlarged content cannot fit. Normal text retains the one-row chrome.
+At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. The first-entry body uses bounded vertical scrolling when enlarged content or compact landscape height cannot fit. The large-text BEAT quick and detailed bodies also use bounded scrolling with explicit waveform and PAD-grid heights, while global chrome remains fixed. Normal text retains the one-row chrome and existing responsive BEAT composition.
 
 Both platform controllers use the shared `ensurePlayablePadSelected` state transition, which updates selected PAD, bank and page together.
 
@@ -28,7 +28,7 @@ Both platform controllers use the shared `ensurePlayablePadSelected` state trans
 - A first-time user can distinguish making with personal audio from trying the bundled demo.
 - The demo keeps its existing pads, pattern and export readiness; no audio or project semantics change.
 - Large text preserves full action labels and 48 dp minimum targets instead of shrinking typography.
-- The initial large-text surface may require one intentional scroll on a 360 × 640 dp viewport; global deck scrolling is not introduced.
+- The initial surface may require one intentional scroll in constrained portrait or landscape, and the large-text BEAT body may scroll to retain usable PADs and lower controls; global deck scrolling is not introduced.
 - Android and Windows render the same entry and workflow policy while keeping platform I/O adapters separate.
 
 ## Rejected alternatives
