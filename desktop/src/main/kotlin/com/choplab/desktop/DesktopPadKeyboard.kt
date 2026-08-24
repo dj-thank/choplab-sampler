@@ -1,12 +1,19 @@
 package com.choplab.desktop
 
 import androidx.compose.ui.input.key.Key
+import com.choplab.sampler.ui.PadTriggerOwnership
 
 sealed interface DesktopPadKeyAction {
     val padIndex: Int
 
-    data class Press(override val padIndex: Int) : DesktopPadKeyAction
-    data class Release(override val padIndex: Int) : DesktopPadKeyAction
+    data class Press(
+        override val padIndex: Int,
+        val ownership: Long = PadTriggerOwnership.NONE,
+    ) : DesktopPadKeyAction
+    data class Release(
+        override val padIndex: Int,
+        val ownership: Long = PadTriggerOwnership.NONE,
+    ) : DesktopPadKeyAction
 }
 
 fun desktopPadOffsetForKey(key: Key): Int? = when (key) {
@@ -37,7 +44,12 @@ fun desktopPadOffsetForKey(key: Key): Int? = when (key) {
  * releases the same global PAD even if the visible bank/page changes meanwhile.
  */
 class DesktopPadKeyOwner {
-    private val ownedPads = mutableMapOf<Key, Int>()
+    private data class OwnedPad(
+        val padIndex: Int,
+        var ownership: Long = PadTriggerOwnership.NONE,
+    )
+
+    private val ownedPads = mutableMapOf<Key, OwnedPad>()
 
     fun press(
         key: Key,
@@ -52,15 +64,22 @@ class DesktopPadKeyOwner {
         val offset = desktopPadOffsetForKey(key) ?: return null
         val padIndex = visiblePadIndices.getOrNull(offset) ?: return null
         if (padIndex !in playablePadIndices) return null
-        ownedPads[key] = padIndex
+        ownedPads[key] = OwnedPad(padIndex)
         return DesktopPadKeyAction.Press(padIndex)
     }
 
+    /** Binds the successfully triggered controller token to the exact physical key hold. */
+    fun bindOwnership(key: Key, ownership: Long) {
+        ownedPads[key]?.ownership = ownership
+    }
+
     fun release(key: Key): DesktopPadKeyAction.Release? =
-        ownedPads.remove(key)?.let(DesktopPadKeyAction::Release)
+        ownedPads.remove(key)?.let { DesktopPadKeyAction.Release(it.padIndex, it.ownership) }
 
     fun releaseAll(): List<DesktopPadKeyAction.Release> {
-        val releases = ownedPads.values.map(DesktopPadKeyAction::Release)
+        val releases = ownedPads.values.map {
+            DesktopPadKeyAction.Release(it.padIndex, it.ownership)
+        }
         ownedPads.clear()
         return releases
     }

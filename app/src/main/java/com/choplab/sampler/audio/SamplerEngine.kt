@@ -40,6 +40,7 @@ class SamplerEngine(
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val controlPadKit = AtomicReferenceArray<PadSnapshot?>(SamplerConfig.PAD_COUNT)
     private val pendingPadUpdates = LatestIndexedMailbox<PadSnapshot>(SamplerConfig.PAD_COUNT)
+    private val padVoiceOwnership = PadVoiceOwnership()
     private val voices = Array(MAX_POLYPHONY) { Voice() }
     private val sourceVoice = Voice()
     private var sourceVoiceGeneration = 0L
@@ -163,9 +164,10 @@ class SamplerEngine(
         pads.forEach(::updatePad)
     }
 
-    override fun triggerPad(globalIndex: Int) {
-        enqueue(EngineCommand.Trigger(globalIndex))
-    }
+    override fun triggerPad(globalIndex: Int): Long? =
+        padVoiceOwnership.offerOwned(globalIndex, ::enqueuePrepared) { ownership ->
+            EngineCommand.Trigger(globalIndex, ownership)
+        }
 
     override fun startPadLoop(globalIndex: Int) {
         enqueuePrepared {
@@ -227,7 +229,12 @@ class SamplerEngine(
     }
 
     override fun releasePad(globalIndex: Int) {
-        enqueue(EngineCommand.Release(globalIndex))
+        enqueue(EngineCommand.Release(globalIndex, ownership = null))
+    }
+
+    override fun releasePadIfOwned(globalIndex: Int, ownership: Long) {
+        if (ownership == PadVoiceOwnership.NONE) return
+        enqueue(EngineCommand.Release(globalIndex, ownership))
     }
 
     override fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int) {
@@ -446,7 +453,7 @@ class SamplerEngine(
                 is EngineCommand.Trigger -> {
                     applyPendingPadUpdates()
                     val pad = padKit.getOrNull(command.padIndex)
-                    if (pad != null) startVoice(pad)
+                    if (pad != null) startVoice(pad, command.ownership)
                 }
                 is EngineCommand.StartPadLoop -> {
                     applyPendingPadUpdates()
@@ -487,6 +494,7 @@ class SamplerEngine(
                     command.padIndex,
                     playMode = PadPlayMode.GATE,
                     frames = RELEASE_FRAMES,
+                    ownership = command.ownership,
                 )
                 is EngineCommand.Preview -> startVoice(command.pad)
                 is EngineCommand.PlaySource -> {
@@ -642,7 +650,10 @@ class SamplerEngine(
         return SamplerDspPrimitives.stepLengthFrames(outputSampleRate, bpm, swing, step)
     }
 
-    private fun startVoice(pad: PadSnapshot) {
+    private fun startVoice(
+        pad: PadSnapshot,
+        ownership: Long = padVoiceOwnership.acquire(pad.padIndex),
+    ) {
         if (pad.endFrame <= pad.startFrame || pad.audio.samples.isEmpty()) return
 
         if (pad.playMode == PadPlayMode.LOOP) {
@@ -667,27 +678,26 @@ class SamplerEngine(
             voiceIndex++
         }
         nextVoiceStartOrder++
-        selectedVoice.start(pad, outputSampleRate, startOrder = nextVoiceStartOrder)
+        selectedVoice.start(
+            pad,
+            outputSampleRate,
+            startOrder = nextVoiceStartOrder,
+            ownership = ownership,
+        )
     }
 
     private fun releasePadVoices(
         padIndex: Int,
         playMode: PadPlayMode? = null,
         frames: Int,
-    ) {
-        var index = 0
-        while (index < voices.size) {
-            val voice = voices[index]
-            if (
-                voice.active &&
-                voice.padIndex == padIndex &&
-                (playMode == null || voice.playMode == playMode)
-            ) {
-                voice.release(frames)
-            }
-            index++
-        }
-    }
+        ownership: Long? = null,
+    ) = releaseMatchingPadVoices(
+        voices = voices,
+        padIndex = padIndex,
+        playMode = playMode,
+        frames = frames,
+        ownership = ownership,
+    )
 
     private fun releaseChokeGroup(chokeGroup: Int, frames: Int) {
         var index = 0
@@ -699,7 +709,7 @@ class SamplerEngine(
     }
 
     private sealed interface EngineCommand {
-        data class Trigger(val padIndex: Int) : EngineCommand
+        data class Trigger(val padIndex: Int, val ownership: Long) : EngineCommand
         data class StartPadLoop(
             val padIndex: Int,
             val sourceStopGeneration: Long,
@@ -707,7 +717,7 @@ class SamplerEngine(
         data class StopPad(val padIndex: Int) : EngineCommand
         data class BeginScratch(val padIndex: Int, val voice: ScratchVoice) : EngineCommand
         data object EndScratch : EngineCommand
-        data class Release(val padIndex: Int) : EngineCommand
+        data class Release(val padIndex: Int, val ownership: Long?) : EngineCommand
         data class Preview(val pad: PadSnapshot) : EngineCommand
         data class PlaySource(val source: PadSnapshot, val generation: Long) : EngineCommand
         data class StopSource(val generation: Long) : EngineCommand
@@ -766,6 +776,8 @@ class SamplerEngine(
             private set
         var startOrder: Long = 0L
             private set
+        var ownership: Long = PadVoiceOwnership.NONE
+            private set
         private var audioId: Long? = null
         private var samples: ShortArray = EMPTY_SAMPLES
         private var startFrame = 0
@@ -800,7 +812,12 @@ class SamplerEngine(
         internal val liveGain: Float
             get() = gain
 
-        fun start(pad: PadSnapshot, outputSampleRate: Int, startOrder: Long = 0L) {
+        fun start(
+            pad: PadSnapshot,
+            outputSampleRate: Int,
+            startOrder: Long = 0L,
+            ownership: Long = PadVoiceOwnership.NONE,
+        ) {
             require(pad.endFrame > pad.startFrame) { "Playback range must not be empty" }
             require(pad.audio.samples.isNotEmpty()) { "Playback audio must not be empty" }
             active = true
@@ -809,6 +826,7 @@ class SamplerEngine(
             playMode = pad.playMode
             chokeGroup = pad.chokeGroup
             this.startOrder = startOrder
+            this.ownership = ownership
             audioId = pad.audio.id
             samples = pad.audio.samples
             startFrame = pad.startFrame
@@ -831,6 +849,7 @@ class SamplerEngine(
             playMode = PadPlayMode.ONE_SHOT
             chokeGroup = 0
             startOrder = 0L
+            ownership = PadVoiceOwnership.NONE
             audioId = null
             samples = EMPTY_SAMPLES
             startFrame = 0

@@ -500,9 +500,9 @@ class DesktopSamplerController(
 
     private fun triggerPlayerPad(pad: PadModel, forceLoop: Boolean = false): Long =
         synchronized(padTriggerOwnership) {
-            val ownership = padTriggerOwnership.acquire(pad.globalIndex)
             player.triggerPad(pad, forceLoop)
-            ownership
+            // A failed Java Sound open must not supersede an older audible GATE owner.
+            padTriggerOwnership.acquire(pad.globalIndex)
         }
     override fun previewPad(index: Int) {
         stopCompetingPlayback()

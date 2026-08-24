@@ -333,6 +333,24 @@ private fun PerformancePad(
         pad.isAssigned &&
         pad.playMode == PadPlayMode.GATE &&
         !captureMode
+    val useOwnedGatePress = pad.isAssigned &&
+        pad.playMode == PadPlayMode.GATE &&
+        !captureMode
+    val triggerOwnedGate = {
+        onTriggerWithOwnership?.invoke() ?: run {
+            localGateOwnership += 1L
+            onTrigger()
+            localGateOwnership
+        }
+    }
+    val releaseOwnedGate = { ownership: Long ->
+        if (onReleaseIfOwned != null) {
+            onReleaseIfOwned(ownership)
+        } else if (localGateOwnership == ownership) {
+            localGateOwnership += 1L
+            onRelease()
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -355,21 +373,8 @@ private fun PerformancePad(
                     detectDeferredGateGestures(
                         onPressedChange = { pressed = it },
                         onSelect = onSelect,
-                        onTrigger = {
-                            onTriggerWithOwnership?.invoke() ?: run {
-                                localGateOwnership += 1L
-                                onTrigger()
-                                localGateOwnership
-                            }
-                        },
-                        onRelease = { ownership ->
-                            if (onReleaseIfOwned != null) {
-                                onReleaseIfOwned(ownership)
-                            } else if (localGateOwnership == ownership) {
-                                localGateOwnership += 1L
-                                onRelease()
-                            }
-                        },
+                        onTrigger = triggerOwnedGate,
+                        onRelease = releaseOwnedGate,
                         onLongPress = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onSelect()
@@ -402,17 +407,28 @@ private fun PerformancePad(
                             null
                         },
                         onPress = {
+                            var pressOwnership = PadTriggerOwnership.NONE
                             pressed = true
                             try {
                                 if (!deferPadActionUntilTap) {
                                     onSelect()
                                     if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
-                                        onTrigger()
+                                        if (useOwnedGatePress) {
+                                            pressOwnership = triggerOwnedGate()
+                                        } else {
+                                            onTrigger()
+                                        }
                                     }
                                 }
                                 tryAwaitRelease()
                             } finally {
-                                if (!deferPadActionUntilTap && pad.isAssigned) onRelease()
+                                if (!deferPadActionUntilTap && pad.isAssigned) {
+                                    if (useOwnedGatePress) {
+                                        releaseOwnedGate(pressOwnership)
+                                    } else {
+                                        onRelease()
+                                    }
+                                }
                                 pressed = false
                             }
                         },

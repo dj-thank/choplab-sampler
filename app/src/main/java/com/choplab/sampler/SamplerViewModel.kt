@@ -149,7 +149,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         playbackSilencer = PlaybackSilencer(engine::stopAllPlayback),
     )
     private val productionSession = ProductionSession(maxHistoryEntries = MAX_HISTORY_ENTRIES)
-    private val padTriggerOwnership = PadTriggerOwnership()
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
     private var autosaveJob: Job? = null
@@ -1225,7 +1224,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
             PerformancePadPressAction.TRIGGER_AND_RECORD_STEP -> {
                 if (!preparePlaybackStart()) return null
-                val ownership = triggerEnginePad(globalIndex)
+                val ownership = triggerEnginePad(globalIndex) ?: return null
                 val step = liveRecordingStep(engine.currentStep)
                 commitEdit { current ->
                     val currentPad = current.pads.getOrNull(globalIndex) ?: return@commitEdit current
@@ -1239,32 +1238,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun releasePad(globalIndex: Int) {
-        synchronized(padTriggerOwnership) {
-            padTriggerOwnership.invalidate(globalIndex)
-            engine.releasePad(globalIndex)
-        }
+        engine.releasePad(globalIndex)
     }
 
     override fun releasePadIfOwned(index: Int, ownership: Long) {
-        synchronized(padTriggerOwnership) {
-            if (padTriggerOwnership.releaseIfCurrent(index, ownership)) {
-                engine.releasePad(index)
-            }
-        }
+        engine.releasePadIfOwned(index, ownership)
     }
 
-    private fun triggerEnginePad(globalIndex: Int): Long =
-        synchronized(padTriggerOwnership) {
-            val ownership = padTriggerOwnership.acquire(globalIndex)
-            engine.triggerPad(globalIndex)
-            ownership
-        }
+    private fun triggerEnginePad(globalIndex: Int): Long? = engine.triggerPad(globalIndex)
 
     private fun startEnginePadLoop(globalIndex: Int) {
-        synchronized(padTriggerOwnership) {
-            padTriggerOwnership.acquire(globalIndex)
-            engine.startPadLoop(globalIndex)
-        }
+        engine.startPadLoop(globalIndex)
     }
 
     override fun stopSourceForWorkspaceChange() {

@@ -23,6 +23,7 @@ import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -539,6 +540,27 @@ class DesktopSamplerControllerTest {
             assertTrue(engine.releasedPads.isEmpty())
 
             controller.releasePad(padIndex)
+            assertEquals(listOf(padIndex), engine.releasedPads)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedDesktopTriggerDoesNotSupersedeAnOlderGateOwner() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
+            val padIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val olderOwnership = controller.triggerPadWithOwnership(padIndex)
+            engine.failNextTrigger = true
+
+            assertFailsWith<IllegalStateException> {
+                controller.triggerPadWithOwnership(padIndex)
+            }
+            controller.releasePadIfOwned(padIndex, olderOwnership)
+
             assertEquals(listOf(padIndex), engine.releasedPads)
         } finally {
             controller.close()

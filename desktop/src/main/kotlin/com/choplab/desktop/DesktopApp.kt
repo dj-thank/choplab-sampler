@@ -55,7 +55,9 @@ fun main(args: Array<String>) = application {
     val state by controller.state.collectAsState()
     val padKeyOwner = remember { DesktopPadKeyOwner() }
     val closeApplication = {
-        padKeyOwner.releaseAll().forEach { controller.releasePad(it.padIndex) }
+        padKeyOwner.releaseAll().forEach {
+            controller.releasePadIfOwned(it.padIndex, it.ownership)
+        }
         spotify.close()
         audioDiagnostics.close()
         controller.close()
@@ -98,7 +100,8 @@ fun main(args: Array<String>) = application {
                         false
                     } else {
                         controller.selectPlayablePad(action.padIndex)
-                        controller.triggerPad(action.padIndex)
+                        val ownership = controller.triggerPadWithOwnership(action.padIndex)
+                        padKeyOwner.bindOwnership(event.key, ownership)
                         true
                     }
                 }
@@ -107,7 +110,7 @@ fun main(args: Array<String>) = application {
                     if (action == null) {
                         false
                     } else {
-                        controller.releasePad(action.padIndex)
+                        controller.releasePadIfOwned(action.padIndex, action.ownership)
                         true
                     }
                 }
@@ -118,7 +121,9 @@ fun main(args: Array<String>) = application {
         DisposableEffect(window, padKeyOwner) {
             val focusListener = object : WindowAdapter() {
                 override fun windowLostFocus(event: WindowEvent) {
-                    padKeyOwner.releaseAll().forEach { controller.releasePad(it.padIndex) }
+                    padKeyOwner.releaseAll().forEach {
+                        controller.releasePadIfOwned(it.padIndex, it.ownership)
+                    }
                 }
             }
             window.addWindowFocusListener(focusListener)

@@ -518,6 +518,42 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
+    fun normalTextGatePointerUpCannotCutANewerControllerTrigger() {
+        val padActions = mutableListOf<String>()
+        lateinit var controller: SamplerDeckController
+        setGateDeck(
+            fontScale = 1f,
+            onPadAction = { padActions += it },
+            onControllerReady = { controller = it },
+        )
+
+        val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val gate = gatePad()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            gate.performTouchInput { down(center) }
+            composeRule.runOnIdle { controller.triggerPad(gateIndex) }
+            gate.performTouchInput { up() }
+            composeRule.waitForIdle()
+
+            composeRule.runOnIdle {
+                assertEquals(2, padActions.count { it == "triggerPad" })
+                assertEquals(
+                    "Normal-layout GATE key-up must conditionally release its exact owner",
+                    0,
+                    padActions.count { it == "releasePad" },
+                )
+                controller.releasePad(gateIndex)
+            }
+            composeRule.runOnIdle {
+                assertEquals(1, padActions.count { it == "releasePad" })
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
     fun largeTextGateUsesTheInitiatingPointerForQuickAndActivatedRelease() {
         val padActions = mutableListOf<String>()
         setLargeTextGateDeck(onPadAction = { padActions += it })
@@ -985,9 +1021,19 @@ class FirstScreenFlowDeviceTest {
     private fun setLargeTextGateDeck(
         onPadAction: (String) -> Unit,
         onControllerReady: (SamplerDeckController) -> Unit = {},
+    ) = setGateDeck(
+        fontScale = 2f,
+        onPadAction = onPadAction,
+        onControllerReady = onControllerReady,
+    )
+
+    private fun setGateDeck(
+        fontScale: Float,
+        onPadAction: (String) -> Unit,
+        onControllerReady: (SamplerDeckController) -> Unit = {},
     ) {
         val state = setPristineDeck(
-            fontScale = 2f,
+            fontScale = fontScale,
             onPadAction = onPadAction,
             onControllerReady = onControllerReady,
         )
