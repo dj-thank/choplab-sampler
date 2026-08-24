@@ -282,8 +282,11 @@ def preflight_zip_directory(
             f"{archive_label}: central directory metadata exceeds the "
             f"{total_scan_limit}-byte total content scan limit before parsing"
         ]
-    if central_directory_offset + central_directory_size > directory_offset:
+    claimed_directory_end = central_directory_offset + central_directory_size
+    if claimed_directory_end > directory_offset:
         return [f"{archive_label}: central directory bounds are invalid"]
+    if claimed_directory_end < directory_offset:
+        return [f"{archive_label}: archive contains unclaimed prefix bytes"]
 
     central_directory_start = directory_offset - central_directory_size
     try:
@@ -308,6 +311,7 @@ def preflight_zip_directory(
 
     record_offset = 0
     parsed_entry_count = 0
+    minimum_local_header_offset: int | None = None
     while record_offset < len(central_directory):
         if (
             record_offset + ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER.size
@@ -324,6 +328,16 @@ def preflight_zip_directory(
         if record[0] != ZIP_CENTRAL_DIRECTORY_ENTRY_SIGNATURE:
             return [f"{archive_label}: central directory entry signature is invalid"]
         filename_length, extra_length, comment_length = record[10:13]
+        local_header_offset = record[16]
+        if local_header_offset == ZIP64_UINT32_SENTINEL:
+            return [
+                f"{archive_label}: ZIP64 local-header offset exceeds bounded scan policy"
+            ]
+        minimum_local_header_offset = (
+            local_header_offset
+            if minimum_local_header_offset is None
+            else min(minimum_local_header_offset, local_header_offset)
+        )
         record_offset += (
             ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER.size
             + filename_length
@@ -343,6 +357,10 @@ def preflight_zip_directory(
             f"{archive_label}: central directory contains {parsed_entry_count} entries "
             f"but its end record declares {entry_count}"
         ]
+    if minimum_local_header_offset not in {None, 0}:
+        return [f"{archive_label}: archive contains unclaimed prefix bytes"]
+    if parsed_entry_count == 0 and central_directory_offset != 0:
+        return [f"{archive_label}: empty archive contains unclaimed prefix bytes"]
     return []
 
 
@@ -422,6 +440,20 @@ def scan_zip(
                 original_position: int | None = None
                 local_name = b""
                 local_extra = b""
+                local_header_fields: tuple[
+                    bytes,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                ] | None = None
+                local_header_valid = False
                 try:
                     if stream is None:
                         raise ValueError("archive stream is unavailable")
@@ -433,11 +465,13 @@ def scan_zip(
                     fields = ZIP_LOCAL_FILE_HEADER.unpack(header)
                     if fields[0] != ZIP_LOCAL_FILE_SIGNATURE:
                         raise ValueError("invalid local file header signature")
+                    local_header_fields = fields
                     name_length, extra_length = fields[-2:]
                     local_name = stream.read(name_length)
                     local_extra = stream.read(extra_length)
                     if len(local_name) != name_length or len(local_extra) != extra_length:
                         raise ValueError("truncated local file header metadata")
+                    local_header_valid = True
                 except (OSError, ValueError, struct.error) as error:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: local header metadata "
@@ -448,6 +482,7 @@ def scan_zip(
                         try:
                             stream.seek(original_position)
                         except (OSError, ValueError):
+                            local_header_valid = False
                             findings.append(
                                 f"{archive_label}: archive entry {name!r}: local header "
                                 "stream position restore failed"
@@ -463,6 +498,55 @@ def scan_zip(
                     local_extra,
                 ):
                     break
+                if local_header_valid and local_header_fields is not None:
+                    filename_encoding = (
+                        "utf-8" if info.flag_bits & 0x800 else "cp437"
+                    )
+                    try:
+                        central_name = info.orig_filename.encode(filename_encoding)
+                    except UnicodeEncodeError:
+                        local_header_valid = False
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: central filename "
+                            "cannot be reconstructed for local-header validation"
+                        )
+                    if local_header_valid and local_name != central_name:
+                        local_header_valid = False
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: local header "
+                            "filename does not match central directory"
+                        )
+
+                    local_flags = local_header_fields[2]
+                    local_compression = local_header_fields[3]
+                    if local_flags != info.flag_bits:
+                        local_header_valid = False
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: local header "
+                            "flags do not match central directory"
+                        )
+                    if local_compression != info.compress_type:
+                        local_header_valid = False
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: local header "
+                            "compression does not match central directory"
+                        )
+                    if not local_flags & 0x08:
+                        local_crc = local_header_fields[6]
+                        local_compressed_size = local_header_fields[7]
+                        local_file_size = local_header_fields[8]
+                        if (
+                            local_crc != info.CRC
+                            or local_compressed_size != info.compress_size
+                            or local_file_size != info.file_size
+                        ):
+                            local_header_valid = False
+                            findings.append(
+                                f"{archive_label}: archive entry {name!r}: local header "
+                                "CRC or sizes do not match central directory"
+                            )
+                if not local_header_valid:
+                    continue
                 if info.is_dir():
                     if info.file_size:
                         findings.append(

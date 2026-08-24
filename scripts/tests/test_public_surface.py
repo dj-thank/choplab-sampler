@@ -190,6 +190,59 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("local header extra field" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_zip_content_scan_rejects_mismatched_local_filename(self) -> None:
+        token = "github_pat_" + "a" * 24
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "mismatched-name.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("notes.txt", token)
+
+            archive_bytes = bytearray(archive_path.read_bytes())
+            central_offset = archive_bytes.index(b"PK\x01\x02")
+            central_name_offset = central_offset + 46
+            archive_bytes[central_name_offset : central_name_offset + 9] = b"image.bin"
+            archive_path.write_bytes(archive_bytes)
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(
+            any("filename does not match central directory" in item for item in findings)
+        )
+
+    def test_zip_content_scan_rejects_mismatched_local_sizes(self) -> None:
+        token = "github_pat_" + "a" * 24
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "mismatched-size.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("notes.txt", token)
+
+            archive_bytes = bytearray(archive_path.read_bytes())
+            central_offset = archive_bytes.index(b"PK\x01\x02")
+            archive_bytes[central_offset + 16 : central_offset + 28] = b"\x00" * 12
+            archive_path.write_bytes(archive_bytes)
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(
+            any("CRC or sizes do not match central directory" in item for item in findings)
+        )
+
+    def test_zip_content_scan_rejects_unclaimed_prefix_and_trailing_bytes(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w") as archive:
+            archive.writestr("notes.txt", "safe")
+        archive_bytes = candidate.getvalue()
+
+        prefix_findings = scan_zip(BytesIO(token + archive_bytes), label="prefixed.zip")
+        trailing_findings = scan_zip(
+            BytesIO(archive_bytes + token),
+            label="trailed.zip",
+        )
+
+        self.assertTrue(any("unclaimed prefix bytes" in item for item in prefix_findings))
+        self.assertTrue(
+            any("end-of-central-directory record not found" in item for item in trailing_findings)
+        )
+
     def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "many.zip"
