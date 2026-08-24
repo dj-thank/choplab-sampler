@@ -1,6 +1,19 @@
 # Project state
 
-## Current snapshot — 2026-08-24 constrained PAD gesture and semantics review repair
+## Current snapshot — 2026-08-24 fractional pattern-timing candidate
+
+This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged constrained PAD gesture repair, decode boundary and all earlier histories remain intact below.
+
+- Observed at: `2026-08-24T18:43+09:00`.
+- Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.
+- Reproduced defects: at 48 kHz / 92 BPM / 54% swing, old offline truncation started step 1 at frame 8,452 instead of realtime 8,453 and per-bar rounding made four bars 500,872 frames instead of 500,870. The first ceiling repair still accumulated a growing absolute `Double`, which is not IEEE-equivalent to realtime's carried countdown: at 120 BPM / 55% swing it scheduled step 3 at 18,600 instead of 18,601, and at 40 BPM / 56% swing it ended one bar at 288,000 instead of the next realtime boundary at 288,001.
+- Repair: shared `scheduledFrameAtOrAfter` defines the first whole-frame advance that is not earlier than a fractional countdown. Offline scheduling now performs realtime's add-step-length, ceiling-advance, subtract-advance recurrence and carries the resulting remainder through every step and bar.
+- Regression scope: shared exact/inexact ceiling coverage remains. End-to-end WAV tests fix the 92 BPM / 54% four-bar onsets and 500,870-frame length, the early 120 BPM / 55% step-3 boundary at 18,601, and the 40 BPM / 56% one-bar/header length at 288,001.
+- Prior exact-head evidence: remote head `786e2e76feb1e5cad544491b039431cd61befdb7` received a clean exact-head Codex re-review and passed Android, Windows, iOS, and supply-chain workflows. The current integration still requires its own hosted read-back.
+- Local evidence: Python policy tests 39/39, public-surface scan over 394 candidates, six Android XML parses, wrapper checksum/text policy, residual-schedule arithmetic (`step 3 = 18,601`, one bar `= 288,001`), exact equality of all four reviewed audio product/test files, and `git diff --check` passed. Gradle 9.7.1 is not cached, so Kotlin/Gradle execution remains hosted.
+- Gate ceiling: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Physical playback timing, audio perception, provider, public release and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 constrained PAD gesture and semantics review repair
 
 This snapshot records the bounded PR #62 review repair separately from the earlier exact APK and emulator receipts. It does not reuse those earlier binaries as proof of the new pointer behavior.
 
