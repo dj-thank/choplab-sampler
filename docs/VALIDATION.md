@@ -2,6 +2,15 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Desktop close-time autosave review repair candidate — 2026-08-24
+
+- Integration boundary: reachable product commit `2fa8ca72f4a7ffb826bc45f91b141afcf4743a24`, tree `010d965bec64a375d85bf8ebe2fc010f5d7ab880`, joins prior PR #64 head `28c13a2da58e4f3f66e26eb503d507208c32fa7b` with exact merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The product tree retains #66 fractional timing and #67 Desktop import sample-rate admission unchanged; the following evidence commit is documentation-only.
+- Review RED: close could capture the initial loading state while startup recovery still owned the single persistence executor. The queued close save could then supersede the recovered project. The repair owns the startup recovery `Future` and waits for its publication before invalidating project operations and capturing the close snapshot.
+- Deterministic regression: an existing revision-7 BPM 127 archive blocks startup recovery on the store while close begins. Close must remain waiting; after release, both primary and previous generations must contain BPM 127. The old order wrote stale initial BPM 92 as primary.
+- Hosted RED correction: exact prior head `28c13a2da58e4f3f66e26eb503d507208c32fa7b` passed Android, iOS and supply-chain workflows, but Windows run `32718029950` / job `97403336494` failed at `DesktopSamplerControllerTest.kt:539`. The file name assertion passed; the failing `projectLaunchTarget` oracle was invalid because archive serialization intentionally omits runtime launch routing and revision. The test now binds persisted source name, frame count and range instead.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS. Gradle 9.7.1 is not cached, so the focused Desktop tests and full Windows workflow require hosted read-back on the published exact head.
+- Gate: source/static latest-main integration plus revision-bound prior-head CI only. No packaged Windows execution, physical audio, power-loss or Human result is claimed.
+
 ## Desktop import sample-rate admission candidate — 2026-08-24
 
 - Source: reachable product commit `3ad2bd9eda0561b0f1cf304b477ca726edd1becc`, tree `8272a51c4b537dd06ec02e0ff780e574babe4d46`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; the final follow-up is documentation-only.

@@ -6,11 +6,13 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。最新review deltaはscroll内ONE SHOT/GATE arbitration、発火後cancellationのexact-once release、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsをreachable product/verification `5b9592f`で追加済み。`main@ae77cd9`のdecode上限も統合済み。static gateはPASS、hosted Gradle／device gestureが残る。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。最新review deltaはscroll内ONE SHOT/GATE arbitration、発火後cancellationのexact-once release、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsをreachable product/verification `5b9592f`で追加し、`main@6b645ca`へmerge済み。static gateはPASS、exact merged-main hosted/runtime read-backが残る。
 
 **独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
+
+**独立したDesktop永続化修正:** 到達可能なproduct checkpoint `2fa8ca7`（tree `010d965`、prior PR head `28c13a2`＋`main@3de1cc5`）は、window/controller close時に最終autosaveを失う競合とstartup recoveryをstale初期snapshotが上書きするreview競合を修正する限定delta。closeはstartup recoveryとadmitted project publicationを順にdrainして最新snapshotを取得し、close-time autosave待機前にtransport／scratch／recorder／playerを停止する。scheduled workは一度だけflush、successful running workは重複送信せず待ち、failed latest workは一度retry、新revisionは旧成功work後に一度だけ追随保存する。#66 timingと#67 Desktop import境界を保持し、上記画面planの選択、archive schema、三世代recovery policyは変更しない。
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
