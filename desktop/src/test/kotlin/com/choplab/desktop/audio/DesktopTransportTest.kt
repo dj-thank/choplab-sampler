@@ -30,6 +30,23 @@ class DesktopTransportTest {
     }
 
     @Test
+    fun nonFiniteTempoUsesSharedDefaultsInsteadOfCollapsingToOneNanosecond() {
+        val expectedLong = DesktopTransportTiming.stepDurationNanos(0, 92f, 50f)
+        val expectedShort = DesktopTransportTiming.stepDurationNanos(1, 92f, 50f)
+
+        assertEquals(
+            expectedLong,
+            DesktopTransportTiming.stepDurationNanos(0, Float.NaN, Float.POSITIVE_INFINITY),
+        )
+        assertEquals(
+            expectedShort,
+            DesktopTransportTiming.stepDurationNanos(1, Float.NaN, Float.NEGATIVE_INFINITY),
+        )
+        assertTrue(expectedLong > 100_000_000L)
+        assertEquals(expectedLong, expectedShort)
+    }
+
+    @Test
     fun startBarrierPublishesStateBeforeStepZero() {
         val statePublished = AtomicBoolean(false)
         val stepZeroSawPublishedState = AtomicBoolean(false)

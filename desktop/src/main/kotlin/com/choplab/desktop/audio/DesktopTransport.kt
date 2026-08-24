@@ -1,5 +1,6 @@
 package com.choplab.desktop.audio
 
+import com.choplab.sampler.audio.SamplerDspPrimitives
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 
@@ -38,8 +39,8 @@ class DesktopTransport(
     }
 
     fun updateTempo(bpm: Float, swing: Float) {
-        this.bpm = bpm.coerceIn(40f, 240f)
-        this.swing = swing.coerceIn(50f, 75f)
+        this.bpm = SamplerDspPrimitives.bpm(bpm)
+        this.swing = SamplerDspPrimitives.swing(swing)
     }
 
     fun stop() {
@@ -76,8 +77,8 @@ class DesktopTransport(
 }
 object DesktopTransportTiming {
     fun stepDurationNanos(step: Int, bpm: Float, swing: Float): Long {
-        val safeBpm = bpm.coerceIn(40f, 240f)
-        val safeSwing = swing.coerceIn(50f, 75f)
+        val safeBpm = SamplerDspPrimitives.bpm(bpm)
+        val safeSwing = SamplerDspPrimitives.swing(swing)
         val straight = 60.0 / safeBpm / 4.0
         val ratio = if (step % 2 == 0) safeSwing / 50.0 else 2.0 - safeSwing / 50.0
         return (straight * ratio * 1_000_000_000.0).toLong().coerceAtLeast(1L)
