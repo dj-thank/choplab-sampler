@@ -28,4 +28,17 @@ class Pcm16ArrayBuilderTest {
         assertEquals(3, builder.toArray().size)
         assertThrows(IllegalStateException::class.java) { builder.append(0f) }
     }
+
+    @Test
+    fun decodedPcmTightensItsStreamingLimitWhenOutputRateChanges() {
+        val builder = Pcm16ArrayBuilder(initialCapacity = 1, maximumSize = 3)
+        builder.append(0f)
+        builder.append(0f)
+
+        builder.updateMaximumSize(2)
+
+        assertEquals(2, builder.size)
+        assertThrows(IllegalStateException::class.java) { builder.append(0f) }
+        assertThrows(IllegalStateException::class.java) { builder.updateMaximumSize(1) }
+    }
 }

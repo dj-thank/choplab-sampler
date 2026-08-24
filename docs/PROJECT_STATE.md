@@ -29,6 +29,21 @@ This snapshot is the current product behavior anchor for first entry and shared 
 - Gate ceiling: `LOCAL_PASS` plus scoped API 36 emulator runtime evidence. The physical Pixel was not connected, so current physical `DEVICE_PASS`, touch feel, TalkBack speech, listening/latency, recording, route loss, provider, binary Release and `HUMAN_GO` are not inferred.
 - Architecture: [`ADR-0005`](architecture/ADR-0005-guided-first-screen-flow.md) fixes guided entry, constrained body scrolling and adaptive chrome. No project-schema or audio-rendering migration was introduced.
 
+## Previous snapshot — 2026-08-24 sample-rate-bounded decode rebased candidate
+
+This snapshot records a focused follow-up to the bounded audio-import milestone. It changes import admission only; release checksum hardening and the other merged-main histories remain intact below.
+
+- Product source: reachable integration commit `8279ea4f7e04cfec2c41440e65f4a40bc4d68451`, tree `f6a5bc3844317169edf1100e79da1ea08b46c524`, joining the original PR head with `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. This immutable product commit contains both the decode change and merged #63 checksum policy; the later evidence commit is documentation-only.
+- Documentation boundary: subsequent docs-only commits describe this product source without changing its runtime bytes. Resolve the exact final documentation HEAD/tree from Git; do not substitute that moving docs identity for the product anchor above.
+- Historical pre-rebase receipt: `9f01f42beb4e37ef5d4f66606af5917f8620f2ea`, tree `1071acbd11593cab3eb1b7531857a9d9f7bb8c12`, remains reachable in the original PR lineage and binds only its original local evidence.
+- Import policy: the materialized mono-frame limit is now `min(30,000,000, sampleRate × 600)`. At 8 kHz the largest accepted source is 4,800,000 frames; at 48 kHz it is 28,800,000 frames. Higher sample rates still stop at the global 30,000,000-frame memory ceiling.
+- Streaming enforcement: Android initializes the builder from the declared rate, tightens it again when `MediaCodec` publishes the effective output format, and revalidates the completed PCM. Desktop applies the same effective ceiling to both declared-length and unknown-length streams, then performs the same post-decode validation.
+- Regression scope: shared arithmetic tests accept the exact 8 kHz and 48 kHz ten-minute boundaries and reject the next frame without allocating those buffers. Android tests cover a late tighter output-rate boundary; Desktop tests cover unknown-length acceptance and rejection at a small injected streaming ceiling.
+- Historical local evidence: at `9f01f42` / tree `1071acb`, `scripts/doctor.sh` found Java 17 and a clean Git worktree but no Android SDK/ADB; the public-surface scan passed 389 candidates and `git diff --check` passed.
+- Fresh integrated-tree evidence: on a docs-only descendant of product `8279ea4`, Python policy tests passed 39/39, the public-surface scan passed 394 candidates and `git diff --check` passed. `scripts/doctor.sh` confirmed Java 17/Git and the expected absent Android SDK/ADB. The #63 manifest writer and checksum regression files are byte-identical to integrated `main@a930da4`.
+- Blocked executable gate: the focused shared/Android/Desktop Gradle command could not download uncached Gradle 9.7.1 because the distribution host is unreachable. No new Gradle, device or audio result is claimed.
+- Gate ceiling: source/static evidence only. Hosted Android/Windows/shared CI must execute the focused suites before this delta may inherit `LOCAL_PASS`; no device, audio-quality, provider, public-release or `HUMAN_GO` evidence is inferred.
+
 ## Previous snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
 - Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.

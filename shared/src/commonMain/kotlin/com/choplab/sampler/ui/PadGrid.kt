@@ -179,6 +179,7 @@ private fun PerformancePad(
             .pointerInput(
                 pad.globalIndex,
                 pad.isAssigned,
+                pad.playMode,
                 captureMode,
                 sourcePhase,
                 deferPadActionUntilTap,

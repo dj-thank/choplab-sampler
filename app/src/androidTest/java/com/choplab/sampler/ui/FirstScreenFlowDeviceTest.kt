@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
@@ -157,8 +158,12 @@ class FirstScreenFlowDeviceTest {
         composeRule.onNode(hasContentDescription("デモを試す", substring = true))
             .performScrollTo()
             .performClick()
+        composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み。再生モード ONE SHOT", substring = true),
+        ).assertIsDisplayed()
         composeRule.runOnIdle {
             val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            // This in-place mode change must restart the existing pointer-input handler.
             state.value = state.value.copy(
                 pads = state.value.pads.map { pad ->
                     if (pad.globalIndex == gateIndex) pad.copy(playMode = PadPlayMode.GATE) else pad

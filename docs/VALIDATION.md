@@ -23,6 +23,17 @@
 - GitHub/product lineage: PR #52 merged to `main@495ddc9`; all four merged-main workflows passed. The closeout source is a new bounded follow-up and needs its own PR/main read-back before provider promotion.
 - Gate: `LOCAL_PASS` plus scoped API 36 emulator runtime. Physical Pixel `DEVICE_PASS`, listening, recording, route loss, complete TalkBack speech, provider closeout artifact, binary Release and `HUMAN_GO` remain unclaimed.
 
+## Sample-rate-bounded streaming decode candidate — 2026-08-24
+
+- Product source: reachable integration commit `8279ea4f7e04cfec2c41440e65f4a40bc4d68451`, tree `f6a5bc3844317169edf1100e79da1ea08b46c524`, joining the original PR head with `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. Later documentation commits are tracked separately and do not change these product bytes.
+- Historical pre-rebase receipt: `9f01f42beb4e37ef5d4f66606af5917f8620f2ea`, tree `1071acbd11593cab3eb1b7531857a9d9f7bb8c12`, remains the revision boundary for its original local checks only.
+- Contract: imported mono PCM is bounded by `min(30,000,000, sampleRate × 600)` frames. Exact 8 kHz / 4,800,000 and 48 kHz / 28,800,000 boundaries are accepted; the next frame is rejected. The arithmetic tests do not materialize multi-million-frame buffers.
+- Adapter coverage: Android updates the streaming builder when the decoder output rate becomes authoritative and revalidates accepted PCM; Desktop applies the effective limit before known-length allocation, during unknown-length streaming, and after decode.
+- Historical checks: at `9f01f42` / tree `1071acb`, the public-surface scan passed 389 candidates and `git diff --check` passed; `scripts/doctor.sh` confirmed Java 17/Git and reported the expected absent Android SDK/ADB.
+- Integrated-tree checks: on a docs-only descendant of product `8279ea4`, Python policy tests passed 39/39, `python3 scripts/check_public_surface.py` passed 394 candidates, and `git diff --check` passed. `scripts/doctor.sh` confirmed Java 17/Git and the expected absent Android SDK/ADB. `scripts/write_release_manifest.py` and `scripts/tests/test_write_release_manifest.py` match integrated `main@a930da4`, so #63 checksum enforcement is retained unchanged.
+- Blocked local execution: the focused shared/Android/Desktop Gradle command could not provision uncached Gradle 9.7.1 because the distribution host is unreachable. The focused test sources are present, but no new Gradle result is claimed; hosted CI is required.
+- Gate: source/static evidence only. Device import, codec variance, physical memory pressure, audio quality, provider/public and Human gates remain unclaimed.
+
 ## Release checksum sidecar hardening candidate — 2026-08-24
 
 - The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
