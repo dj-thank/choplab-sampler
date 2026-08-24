@@ -83,7 +83,10 @@ class FirstScreenFlowDeviceTest {
         assertTrue("Large-text PAD width must remain at least 48 dp", bounds.width >= minimumTargetPx - 1f)
         assertTrue("Large-text PAD height must remain at least 48 dp", bounds.height >= minimumTargetPx - 1f)
         composeRule.onNode(
-            hasContentDescription("再生モード ONE SHOT。素材タイプ DRM", substring = true),
+            hasContentDescription(
+                "PAD 01 割り当て済み。再生モード ONE SHOT。素材タイプ DRM",
+                substring = true,
+            ),
         ).assertIsDisplayed()
 
         composeRule.onNode(hasContentDescription("並べる詳細", substring = true))
