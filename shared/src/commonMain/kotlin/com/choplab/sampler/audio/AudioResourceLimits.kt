@@ -15,6 +15,26 @@ object AudioResourceLimits {
     const val MAX_MOBILE_PROJECT_PCM_BYTES = 192L * 1024L * 1024L
     const val MAX_DESKTOP_PROJECT_PCM_BYTES = 384L * 1024L * 1024L
 
+    /**
+     * Maximum mono PCM frames that may be materialized for an imported source.
+     *
+     * The global frame ceiling bounds memory at high sample rates, while the
+     * sample-rate-derived ceiling keeps the advertised ten-minute limit true at
+     * low sample rates even when duration metadata is missing or inaccurate.
+     */
+    fun maxDecodedMonoFrames(sampleRate: Int): Int {
+        require(sampleRate > 0) { "sampleRate must be positive" }
+        val durationFrames = sampleRate.toLong() * MAX_IMPORT_DURATION_SECONDS
+        return minOf(MAX_DECODED_MONO_FRAMES.toLong(), durationFrames).toInt()
+    }
+
+    fun requireDecodedMonoFrameCount(frameCount: Long, sampleRate: Int) {
+        require(frameCount > 0L) { "Decoded audio must contain at least one frame" }
+        require(frameCount <= maxDecodedMonoFrames(sampleRate).toLong()) {
+            "音声が長すぎます。10分以内の音声を使用してください"
+        }
+    }
+
     fun requireImportFileSize(sizeBytes: Long?) {
         if (sizeBytes == null || sizeBytes < 0L) return
         require(sizeBytes <= MAX_IMPORT_FILE_BYTES) {
