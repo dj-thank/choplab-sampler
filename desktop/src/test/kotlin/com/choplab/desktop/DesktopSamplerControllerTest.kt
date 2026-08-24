@@ -1035,6 +1035,7 @@ class DesktopSamplerControllerTest {
             assertEquals(recoveredAudio.name, controller.state.value.currentAudio?.name)
             assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
             assertEquals(listOf(recoveredAudio.name), engine.loadedAudioNames)
+            val deviceFailureStatus = controller.state.value.statusMessage
 
             val playbackResult = runCatching {
                 controller.playSourceFrom(0)
@@ -1044,7 +1045,7 @@ class DesktopSamplerControllerTest {
             assertTrue(playbackResult.isSuccess)
             assertEquals(0, engine.playFromCalls)
             assertFalse(controller.state.value.sourcePlaying)
-            assertTrue(controller.state.value.statusMessage.contains("Windowsの出力デバイスを確認"))
+            assertEquals(deviceFailureStatus, controller.state.value.statusMessage)
         } finally {
             controller.close()
             directory.deleteRecursively()
