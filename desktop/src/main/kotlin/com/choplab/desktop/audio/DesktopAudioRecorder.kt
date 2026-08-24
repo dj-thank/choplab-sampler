@@ -19,7 +19,10 @@ internal class DesktopTargetLineRecorder(
     private val lineFactory: () -> DesktopCaptureLine,
     private val threadName: String,
 ) : DesktopAudioRecorder {
+    private val lifecycleLock = Any()
     private val running = AtomicBoolean(false)
+    private var starting = false
+    private var stopRequested = false
     @Volatile private var line: TargetDataLine? = null
     @Volatile private var worker: Thread? = null
     @Volatile private var outputFile: File? = null
@@ -28,13 +31,16 @@ internal class DesktopTargetLineRecorder(
     override val isRecording: Boolean
         get() = running.get()
 
-    @Synchronized
     override fun start(file: File): Result<Unit> {
-        if (running.get() || worker?.isAlive == true) {
-            return Result.failure(IllegalStateException("録音の停止処理中です"))
+        synchronized(lifecycleLock) {
+            if (starting || running.get() || worker?.isAlive == true) {
+                return Result.failure(IllegalStateException("録音の停止処理中です"))
+            }
+            starting = true
+            stopRequested = false
         }
         var acquiredLine: TargetDataLine? = null
-        return runCatching {
+        val result = runCatching {
             val capture = lineFactory()
             val target = capture.line
             acquiredLine = target
@@ -46,34 +52,54 @@ internal class DesktopTargetLineRecorder(
             file.parentFile?.mkdirs()
             target.open(format)
             target.start()
-            line = target
-            outputFile = file
-            failure = null
-            running.set(true)
             val recordingWorker = Thread({ record(target, format, file) }, threadName).apply { isDaemon = true }
-            worker = recordingWorker
-            recordingWorker.start()
+            synchronized(lifecycleLock) {
+                check(!stopRequested) { "録音の開始はキャンセルされました" }
+                line = target
+                outputFile = file
+                failure = null
+                running.set(true)
+                worker = recordingWorker
+                try {
+                    recordingWorker.start()
+                } catch (throwable: Throwable) {
+                    worker = null
+                    line = null
+                    outputFile = null
+                    running.set(false)
+                    throw throwable
+                }
+            }
         }.onFailure {
-            running.set(false)
+            synchronized(lifecycleLock) {
+                running.set(false)
+                line = null
+                worker = null
+                outputFile = null
+                failure = null
+            }
             runCatching { acquiredLine?.close() }
-            line = null
-            worker = null
-            outputFile = null
-            failure = null
             runCatching { file.delete() }
         }
+        synchronized(lifecycleLock) { starting = false }
+        return result
     }
 
     override fun stop(): Result<File> {
-        running.set(false)
-        line?.let { runCatching { it.stop() }; runCatching { it.close() } }
-        val activeWorker = worker
+        val (activeLine, activeWorker) = synchronized(lifecycleLock) {
+            stopRequested = true
+            running.set(false)
+            line to worker
+        }
+        activeLine?.let { runCatching { it.stop() }; runCatching { it.close() } }
         if (activeWorker != null && activeWorker !== Thread.currentThread()) {
             runCatching { activeWorker.join(STOP_TIMEOUT_MS) }
         }
         val timedOut = activeWorker?.isAlive == true
-        if (!timedOut) worker = null
-        line = null
+        synchronized(lifecycleLock) {
+            if (!timedOut && worker === activeWorker) worker = null
+            if (line === activeLine) line = null
+        }
         val file = outputFile
         val error = failure
         return when {
