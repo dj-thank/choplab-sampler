@@ -1083,9 +1083,9 @@ class FirstScreenFlowDeviceTest {
             onPadAction = onPadAction,
             onControllerReady = onControllerReady,
         )
-        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
-            .performScrollTo()
-            .performClick()
+        val demo = composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+        if (fontScale >= 1.2f) demo.performScrollTo()
+        demo.performClick()
         composeRule.runOnIdle {
             val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             state.value = state.value.copy(

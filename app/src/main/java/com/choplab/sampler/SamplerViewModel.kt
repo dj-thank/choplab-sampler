@@ -65,6 +65,7 @@ import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.canRequestStop
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.completeAutosaveRecoveryWithoutProject
+import com.choplab.sampler.model.confirmRecordingSessionStarted
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.endRecordingSession
@@ -412,23 +413,34 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         ) ?: return
         val operation = microphoneSourceCapture.begin()
         val file = captureTempFiles.create("microphone")
-        val result = microphoneRecorder.start(file) { message ->
-            captureTempFiles.deleteOwned(file)
-            viewModelScope.launch {
-                projectOperations.completeIfCurrent(operation) {
-                    applyRecorderFailure(RecordingKind.SOURCE_MICROPHONE, message)
+        val result = microphoneRecorder.start(
+            file = file,
+            onStarted = {
+                viewModelScope.launch {
+                    projectOperations.completeIfCurrent(operation) {
+                        val state = mutableUiState.value
+                        val started = confirmRecordingSessionStarted(
+                            state,
+                            RecordingKind.SOURCE_MICROPHONE,
+                        )
+                        if (started.recordingSession != state.recordingSession) {
+                            mutableUiState.value = started.copy(
+                                statusMessage = "マイク素材を録音中です。STOPすると新しい波形へ切り替わります",
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        result.onSuccess {
-            projectOperations.completeIfCurrent(operation) {
-                mutableUiState.update {
-                    observeRecordingSession(it, RecordingKind.SOURCE_MICROPHONE).copy(
-                        statusMessage = "マイク素材を録音中です。STOPすると新しい波形へ切り替わります",
-                    )
+            },
+            onFailure = { message ->
+                captureTempFiles.deleteOwned(file)
+                viewModelScope.launch {
+                    projectOperations.completeIfCurrent(operation) {
+                        applyRecorderFailure(RecordingKind.SOURCE_MICROPHONE, message)
+                    }
                 }
-            }
-        }.onFailure { throwable ->
+            },
+        )
+        result.onFailure { throwable ->
             captureTempFiles.deleteOwned(file)
             microphoneSourceCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
@@ -491,37 +503,48 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         ) ?: return
         val operation = vocalCapture.begin()
         val file = captureTempFiles.create("vocal")
-        microphoneRecorder.start(file) { message ->
-            captureTempFiles.deleteOwned(file)
-            viewModelScope.launch {
-                projectOperations.completeIfCurrent(operation) {
-                    finishVocalRecordingFailure(
-                        message = message,
-                        cleanupOwner = VocalFailureCleanupOwner.RECORDER_CALLBACK,
-                    )
-                }
-            }
-        }.onSuccess {
-            projectOperations.completeIfCurrent(operation) {
-                val beatLoopReady = !recordingPolicy.allowBeatLoopDuringRecording ||
-                    preparePlaybackStart(allowDuringRecording = true)
-                if (!beatLoopReady) {
-                    stopVocalOverdubRecording()
-                    setStatus("他のアプリが音声を使用中のため、ボーカル録音を停止します")
-                } else {
-                    if (recordingPolicy.allowBeatLoopDuringRecording) {
-                        startEnginePadLoop(loopPadIndex)
+        microphoneRecorder.start(
+            file = file,
+            onStarted = {
+                viewModelScope.launch {
+                    projectOperations.completeIfCurrent(operation) {
+                        val state = mutableUiState.value
+                        val started = confirmRecordingSessionStarted(
+                            state,
+                            RecordingKind.VOCAL_OVERDUB,
+                        )
+                        if (started.recordingSession != state.recordingSession) {
+                            val beatLoopReady = !recordingPolicy.allowBeatLoopDuringRecording ||
+                                preparePlaybackStart(allowDuringRecording = true)
+                            if (!beatLoopReady) {
+                                stopVocalOverdubRecording()
+                                setStatus("他のアプリが音声を使用中のため、ボーカル録音を停止します")
+                            } else {
+                                if (recordingPolicy.allowBeatLoopDuringRecording) {
+                                    startEnginePadLoop(loopPadIndex)
+                                }
+                                mutableUiState.value = started.copy(
+                                    loopingPadIndex = loopPadIndex,
+                                    loopPlayheadFrame = loopPad.startFrame,
+                                    statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
+                                )
+                            }
+                        }
                     }
-                    mutableUiState.update {
-                        observeRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
-                            loopingPadIndex = loopPadIndex,
-                            loopPlayheadFrame = loopPad.startFrame,
-                            statusMessage = "声を録音中 — ヘッドホン推奨 / もう一度押すとテイクを保存",
+                }
+            },
+            onFailure = { message ->
+                captureTempFiles.deleteOwned(file)
+                viewModelScope.launch {
+                    projectOperations.completeIfCurrent(operation) {
+                        finishVocalRecordingFailure(
+                            message = message,
+                            cleanupOwner = VocalFailureCleanupOwner.RECORDER_CALLBACK,
                         )
                     }
                 }
-            }
-        }.onFailure { throwable ->
+            },
+        ).onFailure { throwable ->
             captureTempFiles.deleteOwned(file)
             vocalCapture.discard(operation)
             projectOperations.completeIfCurrent(operation) {
@@ -891,7 +914,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         autosaveJob?.cancel()
         engine.stopAllPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
-        runCatching { microphoneRecorder.stop().onSuccess(captureTempFiles::deleteOwned) }
+        runCatching {
+            microphoneRecorder.stopAsync { result ->
+                result.onSuccess(captureTempFiles::deleteOwned)
+            }
+        }
         runCatching {
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))
@@ -2236,7 +2263,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
-        runCatching { microphoneRecorder.stop().onSuccess(captureTempFiles::deleteOwned) }
+        runCatching {
+            microphoneRecorder.stopAsync { result ->
+                result.onSuccess(captureTempFiles::deleteOwned)
+            }
+        }
         runCatching {
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))
