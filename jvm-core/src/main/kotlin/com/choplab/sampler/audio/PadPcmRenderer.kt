@@ -18,7 +18,15 @@ object PadPcmRenderer {
             sourceSampleRate = audio.sampleRate,
             outputSampleRate = outputSampleRate,
         )
-        val frameCount = ceil((end - start) / sourceStep).toInt().coerceAtLeast(1)
+        val frameCount = (
+            if (pad.reverse) {
+                // Reverse starts at the last included frame, not the exclusive end.
+                // Count only positions that remain inside the range, as the realtime cursor does.
+                (floor((end - start - 1) / sourceStep) + 1.0).toInt()
+            } else {
+                ceil((end - start) / sourceStep).toInt()
+            }
+        ).coerceAtLeast(1)
         val result = ShortArray(frameCount)
         var filterState = 0f
         val gain = SamplerDspPrimitives.gain(pad.gain)

@@ -1,6 +1,7 @@
 package com.choplab.sampler.audio
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -28,6 +29,43 @@ class PadPcmRendererTest {
         val reverse = PadPcmRenderer.render(PadModel(0, audio, 0, audio.frameCount, gain = 1f, reverse = true))
 
         assertTrue(abs(forward[200].toInt() - reverse[reverse.lastIndex - 200].toInt()) < 32)
+    }
+
+    @Test
+    fun reverseResamplingStopsAtTheSameFrameAsTheRealtimeCursor() {
+        val startFrame = 100
+        val endFrame = 164
+        val outputSampleRate = 60_000
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = startFrame,
+            endFrame = endFrame,
+            gain = 1f,
+            reverse = true,
+        )
+        val sourceStep = SamplerDspPrimitives.sourceStep(
+            pitchSemitones = pad.pitchSemitones,
+            sourceSampleRate = audio.sampleRate,
+            outputSampleRate = outputSampleRate,
+        )
+        val cursor = VoicePlaybackCursor(
+            startFrame = startFrame,
+            endFrame = endFrame,
+            reverse = true,
+            playMode = PadPlayMode.ONE_SHOT,
+        )
+        var realtimeFrameCount = 0
+        while (!cursor.finished) {
+            realtimeFrameCount++
+            cursor.advance(sourceStep)
+        }
+
+        val rendered = PadPcmRenderer.render(pad, outputSampleRate)
+
+        assertEquals(79, realtimeFrameCount)
+        assertEquals(realtimeFrameCount, rendered.size)
+        assertTrue(rendered.last() != 0.toShort())
     }
 
     @Test
