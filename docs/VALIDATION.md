@@ -62,13 +62,14 @@
 - GitHub/product lineage: PR #52 merged to `main@495ddc9`; all four merged-main workflows passed. The closeout source is a new bounded follow-up and needs its own PR/main read-back before provider promotion.
 - Gate: `LOCAL_PASS` plus scoped API 36 emulator runtime. Physical Pixel `DEVICE_PASS`, listening, recording, route loss, complete TalkBack speech, provider closeout artifact, binary Release and `HUMAN_GO` remain unclaimed.
 
-## Sample-rate-bounded streaming decode candidate — 2026-08-24
+## Sample-rate-bounded streaming decode merged-main receipt — 2026-08-24
 
-## Sample-rate-bounded streaming decode merged-main candidate — 2026-08-24
-
-- Merged-main source: PR #61 at `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`; pre-merge product `8279ea4f7e04cfec2c41440e65f4a40bc4d68451`, tree `f6a5bc3844317169edf1100e79da1ea08b46c524`.
-- Contract: imported mono PCM is bounded by `min(30,000,000, sampleRate × 600)` frames, including Android effective-rate and Desktop unknown-length paths.
-- Provider read-back: the exact PR head passed all four hosted workflows and clean exact-head review before merge.
+- Observed at: `2026-08-24T20:39+09:00` through the GitHub PR, review and workflow read-back surfaces.
+- Lineage: PR #61 exact head `ff8c0eda19dbef444f4ef4cd1f21587b4a4680f0`, base `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`, was squash-merged as `main@ae77cd92d3ee14baecc01f4862c639328bae43bb` at `2026-08-24T18:55:48+09:00`. Reachable pre-merge product `8279ea4f7e04cfec2c41440e65f4a40bc4d68451`, tree `f6a5bc3844317169edf1100e79da1ea08b46c524`, remains the immutable product anchor.
+- Contract: imported mono PCM is bounded by `min(30,000,000, sampleRate × 600)` frames. Android reapplies the limit when the effective output rate becomes authoritative; Desktop applies it before known-length allocation, during unknown-length streaming and after decode.
+- Negative boundaries: shared tests accept 8 kHz / 4,800,000 and 48 kHz / 28,800,000 frames and reject 4,800,001 / 28,800,001. Desktop fixtures reject a known oversized stream before payload read and an unknown-length stream at the builder boundary; the arithmetic fixtures do not allocate multi-million-frame buffers.
+- Provider receipt: exact head `ff8c0eda19` received clean Codex review comment `5393291604`. Workflow runs `32711516254` (Android), `32711516241` (Windows), `32711516209` (iOS), and `32711516257` (supply chain) all completed successfully on that exact head before merge.
+- Gate boundary: this receipt proves hosted compilation/tests and supply-chain policy only. Device import, codec/provider variance, physical memory pressure, audio quality, public binary release and Human acceptance remain unclaimed.
 
 ## Release checksum sidecar hardening candidate — 2026-08-24
 
