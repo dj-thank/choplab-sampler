@@ -1,16 +1,28 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Desktop recorder startup cancellation candidate
+## Current snapshot — 2026-08-24 reverse PAD resampling tail candidate
 
-This snapshot records one bounded Desktop capture-lifecycle correction on exact merged main. It changes only the `TargetDataLine` recorder and its host regression; audio format, recording limits, controller behavior, project schema and previously merged import/transport behavior are unchanged.
+This snapshot records one bounded JVM PAD-rendering correction on the exact main that merged Desktop recorder startup cancellation. It changes host/offline PCM frame counting and one focused JVM regression only; Android realtime code, forward playback, DSP controls, project schema and Java Sound ownership are unchanged.
+
+- Observed at: `2026-08-24`.
+- Source state: reachable product commit `6bb8045775e24c229b42a88d67be0815df231b74`, tree `f2f9912c049c899f685a3ab89cdc31ae0cadbb2a`, directly advancing merged `main@a0b356c2e5820b7f9a8288ebcdd555c19e0cb6b5`; the later evidence commit is documentation-only. Runtime/test blobs are `c564487b5bdcc03fcb039823d07b7b79dfe2181e` / `7c38837f9123821235c7a5752034e9586b2a13a8`.
+- Reproduced defect: `PadPcmRenderer` allocated every direction from `ceil(rangeLength / sourceStep)`, but reverse playback starts at `endFrame - 1`, not at the exclusive end. With 64 source frames resampled from 48 to 60 kHz (`sourceStep=0.8`), only 79 reverse positions are valid; the old 80-frame array broke out at position 99.8 and retained one synthetic trailing zero.
+- Repair: reverse frame count is `floor((rangeLength - 1) / sourceStep) + 1`, while the existing forward count remains unchanged. Every allocated reverse frame now maps to an in-range position and the result stops on the same frame as the realtime `VoicePlaybackCursor`.
+- Focused regression: the 48→60 kHz fixture advances the realtime cursor and requires 79 frames, an equal host-render length and a nonzero last valid PCM sample. The old implementation returned 80 and left the last element zero.
+- Fresh local checks: arithmetic reproduction, Python policy 39/39, public-surface current/history over 395 candidates, conflict-marker scan and `git diff --check` PASS. Uncached Gradle 9.7.1 is unavailable in the sandbox, so hosted JVM/Windows execution is required.
+- Gate ceiling: source/static candidate only. Hosted JVM compilation/tests, exact-head clean review and all required PR workflows must pass before merge; audible reverse-tail quality, physical Windows output, public artifacts and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 Desktop recorder startup cancellation merged
+
+This snapshot records one bounded Desktop capture-lifecycle correction now merged as PR #73. It changes only the `TargetDataLine` recorder and its host regression; audio format, recording limits, controller behavior, project schema and previously merged import/transport behavior are unchanged.
 
 - Observed at: `2026-08-24T21:42+09:00`.
-- Source state: reachable product repair `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6`, tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad`, advancing exact-base candidate head `2fecbaeba7745815bf48763dc52dd3197863b73c` on merged `main@dfcd9d8871f34ca5ed125c9a1113c6a4dd612887`; the later evidence commit is documentation-only.
+- Source state: merged `main@a0b356c2e5820b7f9a8288ebcdd555c19e0cb6b5`, tree `6c00c73d23ac419f12162f3f465812136b403252`; product repair `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6` / tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad` remains the runtime/test anchor.
 - Reproduced defect: `stop()` could run while `TargetDataLine.start()` was blocked, observe no published line or worker, and return. Startup could then publish `running=true` and launch the capture worker after that stop/close request, leaving recording active without a corresponding live session owner.
 - Repair: one lifecycle lock now protects `starting`, a latched stop request, the opened startup line and final line/worker publication. STOP atomically claims and clears a pending line, then closes it outside the lock to unblock native start; startup cleanup closes the line only when it still owns that exact reference. A start that wins publishes and starts its worker inside the same boundary so stop observes the exact active resources. Cancellation clears temporary state and deletes the incomplete WAV.
 - Deterministic regression: a proxy line blocks inside `TargetDataLine.start()`, and only its `close()` releases that gate. The test issues stop and requires a failed start with `録音の開始はキャンセルされました`, zero `read` calls, exact-once open/start/close, idle recorder state and removal of the partial output.
-- Fresh local checks: `doctor.sh` PASS with expected Android SDK/ADB warnings; Python policy 39/39, public-surface current/history over 395 candidates and `git diff --check` PASS. `validate_project.sh` passed its static phases, but uncached Gradle 9.7.1 could not be downloaded because the sandbox network is unreachable, so hosted Windows execution is required.
-- Gate ceiling: source/static candidate only. Hosted Desktop compilation/tests/packaging and clean exact-head review are required; physical Windows microphone timing, audio contents/quality, device removal, publication and `HUMAN_GO` remain unclaimed.
+- Hosted evidence: exact head `a1cc5a7e832f2faf11b64c03ed1100453d1a9daa` received clean Codex review comment `5395404451`, had zero unresolved threads, and passed Android `32728698800`, Windows `32728698763`, iOS `32728698759` and supply-chain `32728698801` before expected-head squash merge.
+- Gate ceiling: merged source and hosted CI only. Physical Windows microphone timing, audio contents/quality, device removal, publication and `HUMAN_GO` remain unclaimed.
 
 ## Previous snapshot — 2026-08-24 shared Android/Desktop import-name latest-main integration
 
