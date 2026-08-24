@@ -97,7 +97,8 @@ class DesktopSamplerController(
     )
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
     private val projectOperations = ProjectOperationEpoch()
-    private val transport = DesktopTransport(::onTransportStep)
+    internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
+    private val transport = DesktopTransport(::onTransportStep) { worker -> transportWorkerStarter(worker) }
     private val scratch = DesktopScratchPlayer()
     private val playbackMonitor = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "ChopLab-Windows-Playback-Monitor").apply { isDaemon = true }
@@ -941,7 +942,7 @@ class DesktopSamplerController(
 
     private fun nextProjectLaunchRevision(): Long = projectLaunchRevision.incrementAndGet()
 
-    private fun resumeAfterScratch(target: ScratchReturnTarget): Boolean {
+    internal fun resumeAfterScratch(target: ScratchReturnTarget): Boolean {
         val current = mutableState.value
         if (!scratchReturnTargetIsValid(target, current)) return false
         return when (target) {
@@ -979,6 +980,7 @@ class DesktopSamplerController(
         disarmRecording: Boolean = false,
     ): Boolean {
         val current = mutableState.value
+        val recordArmedBeforeStart = current.recordArmed
         return runCatching {
             transport.start(current.bpm, current.swing) {
                 mutableState.update {
@@ -995,6 +997,7 @@ class DesktopSamplerController(
             mutableState.update {
                 it.copy(
                     transportPlaying = false,
+                    recordArmed = if (disarmRecording) recordArmedBeforeStart else it.recordArmed,
                     currentStep = -1,
                     statusMessage = "$failurePrefix: ${error.message ?: error.javaClass.simpleName}",
                 )

@@ -12,6 +12,7 @@ import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.persistence.AtomicProjectStore
@@ -71,6 +72,29 @@ class DesktopSamplerControllerTest {
             assertEquals(1, engine.triggered.count { it.first.globalIndex == stepZeroPad })
             assertFalse(controller.state.value.transportPlaying)
             assertEquals(-1, controller.state.value.currentStep)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedTransportRestartAfterScratchRestoresRecordArm() {
+        val controller = controller()
+        try {
+            val stepZeroPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.clearAllPattern()
+            controller.selectPad(stepZeroPad)
+            controller.toggleStep(0)
+            controller.toggleRecordArm()
+            controller.transportWorkerStarter = { error("test transport start unavailable") }
+
+            val resumed = controller.resumeAfterScratch(ScratchReturnTarget.Transport)
+
+            assertFalse(resumed)
+            assertTrue(controller.state.value.recordArmed)
+            assertFalse(controller.state.value.transportPlaying)
+            assertEquals(-1, controller.state.value.currentStep)
+            assertTrue(controller.state.value.statusMessage.startsWith("スクラッチ後のビート再開失敗"))
         } finally {
             controller.close()
         }

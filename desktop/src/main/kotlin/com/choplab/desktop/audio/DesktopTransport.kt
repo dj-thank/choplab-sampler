@@ -6,6 +6,7 @@ import java.util.concurrent.locks.LockSupport
 /** Single-owner 16-step transport for the Windows Java Sound adapter. */
 class DesktopTransport(
     private val onStep: (Int) -> Unit,
+    private val startWorker: (Thread) -> Unit = Thread::start,
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
     @Volatile private var bpm = 92f
@@ -28,7 +29,7 @@ class DesktopTransport(
             beforeFirstStep()
             val transportThread = Thread(::runLoop, "ChopLab-Windows-Transport").apply { isDaemon = true }
             worker = transportThread
-            transportThread.start()
+            startWorker(transportThread)
         } catch (throwable: Throwable) {
             running.set(false)
             worker = null
