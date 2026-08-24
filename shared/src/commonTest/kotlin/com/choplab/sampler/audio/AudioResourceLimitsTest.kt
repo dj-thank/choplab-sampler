@@ -8,6 +8,29 @@ import kotlin.test.assertTrue
 
 class AudioResourceLimitsTest {
     @Test
+    fun decodedFrameLimitCombinesTenMinutesWithGlobalMemoryCeiling() {
+        assertEquals(4_800_000, AudioResourceLimits.maxDecodedMonoFrames(sampleRate = 8_000))
+        assertEquals(28_800_000, AudioResourceLimits.maxDecodedMonoFrames(sampleRate = 48_000))
+        assertEquals(
+            AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
+            AudioResourceLimits.maxDecodedMonoFrames(sampleRate = 96_000),
+        )
+    }
+
+    @Test
+    fun decodedFrameCountAcceptsTenMinuteBoundaryAndRejectsNextFrame() {
+        AudioResourceLimits.requireDecodedMonoFrameCount(frameCount = 4_800_000, sampleRate = 8_000)
+        AudioResourceLimits.requireDecodedMonoFrameCount(frameCount = 28_800_000, sampleRate = 48_000)
+
+        assertFailsWith<IllegalArgumentException> {
+            AudioResourceLimits.requireDecodedMonoFrameCount(frameCount = 4_800_001, sampleRate = 8_000)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AudioResourceLimits.requireDecodedMonoFrameCount(frameCount = 28_800_001, sampleRate = 48_000)
+        }
+    }
+
+    @Test
     fun maximumRecordingBytesMatchTenMinutesOfPcm16() {
         assertEquals(
             57_600_000L,

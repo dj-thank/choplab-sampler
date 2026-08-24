@@ -62,6 +62,30 @@ class DesktopWavDecoderTest {
         }
     }
 
+    @Test
+    fun acceptsUnknownLengthStreamAtExactStreamingBoundary() {
+        val bytes = pcm16LittleEndian(1, 2)
+        val monoFormat = AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED,
+            8_000f,
+            16,
+            1,
+            2,
+            8_000f,
+            false,
+        )
+        val stream = AudioInputStream(
+            ByteArrayInputStream(bytes),
+            monoFormat,
+            AudioSystem.NOT_SPECIFIED.toLong(),
+        )
+
+        val audio = DesktopWavDecoder.readMono("unknown.wav", stream, maximumFrames = 2)
+
+        assertContentEquals(shortArrayOf(1, 2), audio.samples)
+        assertEquals(8_000, audio.sampleRate)
+    }
+
     private fun pcm16LittleEndian(vararg samples: Short): ByteArray =
         ByteBuffer.allocate(samples.size * Short.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)

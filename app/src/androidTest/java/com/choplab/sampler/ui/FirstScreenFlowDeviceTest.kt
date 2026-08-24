@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
@@ -143,36 +144,18 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
-    fun largeTextGateSwipeCancelsBeforeActivationAndHoldReleasesOnPointerUp() {
+    fun largeTextGateModeChangeRestartsArbitrationAndHoldReleasesOnPointerUp() {
         val padActions = mutableListOf<Pair<String, Long>>()
-        val state = setPristineDeck(
-            fontScale = 2f,
+        setLargeTextGateDeck(
             onPadAction = { padActions += it to composeRule.mainClock.currentTime },
         )
 
-        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
-            .performScrollTo()
-            .performClick()
-        composeRule.runOnIdle {
-            val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
-            state.value = state.value.copy(
-                pads = state.value.pads.map { pad ->
-                    if (pad.globalIndex == gateIndex) pad.copy(playMode = PadPlayMode.GATE) else pad
-                },
-            )
-            padActions.clear()
-        }
-
-        val gatePad = composeRule.onNode(
-            hasContentDescription("PAD 01 割り当て済み", substring = true),
-        ).performScrollTo()
-        val topBeforeSwipe = gatePad.fetchSemanticsNode().boundsInRoot.top
-        gatePad.performTouchInput { swipeUp(durationMillis = 600) }
+        val swipePad = gatePad().performScrollTo()
+        val topBeforeSwipe = swipePad.fetchSemanticsNode().boundsInRoot.top
+        swipePad.performTouchInput { swipeUp(durationMillis = 80) }
         composeRule.waitForIdle()
 
-        val topAfterSwipe = composeRule.onNode(
-            hasContentDescription("PAD 01 割り当て済み", substring = true),
-        ).fetchSemanticsNode().boundsInRoot.top
+        val topAfterSwipe = gatePad().fetchSemanticsNode().boundsInRoot.top
         assertTrue(
             "The swipe should move the large-text GATE workspace",
             topAfterSwipe < topBeforeSwipe - 1f,
@@ -184,22 +167,109 @@ class FirstScreenFlowDeviceTest {
             )
         }
 
-        composeRule.onNode(
-            hasContentDescription("PAD 01 割り当て済み", substring = true),
-        ).performScrollTo().performTouchInput { longClick() }
-        composeRule.waitForIdle()
+        val heldGatePad = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            heldGatePad.performTouchInput { down(center) }
+            composeRule.mainClock.advanceTimeBy(200)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad"),
+                    padActions.map { it.first },
+                )
+            }
 
-        composeRule.runOnIdle {
-            assertEquals(
-                listOf("selectPlayablePad", "triggerPad", "releasePad"),
-                padActions.map { it.first },
-            )
-            val triggerTime = padActions.first { it.first == "triggerPad" }.second
-            val releaseTime = padActions.first { it.first == "releasePad" }.second
-            assertTrue(
-                "A deferred GATE hold must not trigger and release in one frame",
-                releaseTime > triggerTime,
-            )
+            heldGatePad.performTouchInput { up() }
+            composeRule.waitForIdle()
+
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    padActions.map { it.first },
+                )
+                val triggerTime = padActions.first { it.first == "triggerPad" }.second
+                val releaseTime = padActions.first { it.first == "releasePad" }.second
+                assertTrue(
+                    "A deferred GATE hold must not trigger and release in one frame",
+                    releaseTime > triggerTime,
+                )
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun largeTextShortGateTapKeepsAnAudiblePreviewInterval() {
+        val padActions = mutableListOf<Pair<String, Long>>()
+        setLargeTextGateDeck(
+            onPadAction = { padActions += it to composeRule.mainClock.currentTime },
+        )
+
+        val shortGatePad = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            shortGatePad.performTouchInput {
+                down(center)
+                up()
+            }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad"),
+                    padActions.map { it.first },
+                )
+            }
+
+            composeRule.mainClock.advanceTimeBy(96)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    padActions.map { it.first },
+                )
+                val triggerTime = padActions.first { it.first == "triggerPad" }.second
+                val releaseTime = padActions.first { it.first == "releasePad" }.second
+                assertTrue(
+                    "A short GATE preview must remain active for at least 80 ms",
+                    releaseTime - triggerTime >= 80L,
+                )
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun largeTextGateLongPressRecompositionReleasesTriggerOwnershipExactlyOnce() {
+        val padActions = mutableListOf<Pair<String, Long>>()
+        setLargeTextGateDeck(
+            onPadAction = { padActions += it to composeRule.mainClock.currentTime },
+        )
+
+        val heldGatePad = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            heldGatePad.performTouchInput { down(center) }
+            composeRule.mainClock.advanceTimeBy(600)
+            composeRule.waitForIdle()
+
+            composeRule.onNode(hasText("切り位置", substring = true)).assertIsDisplayed()
+            composeRule.runOnIdle {
+                val actionNames = padActions.map { it.first }
+                assertEquals(1, actionNames.count { it == "triggerPad" })
+                assertEquals(1, actionNames.count { it == "releasePad" })
+                assertTrue(
+                    "Opening trim must release after the triggered GATE",
+                    actionNames.indexOf("releasePad") > actionNames.indexOf("triggerPad"),
+                )
+            }
+
+            // The grid disappeared while the injected pointer was held; cancel the shared injector state.
+            composeRule.onRoot().performTouchInput { cancel() }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
         }
     }
 
@@ -252,6 +322,31 @@ class FirstScreenFlowDeviceTest {
 
         composeRule.runOnIdle {
             assertEquals(listOf("selectPad", "capturePad"), padActions)
+        }
+
+        composeRule.runOnIdle { padActions.clear() }
+        val heldEmptyPad = composeRule.onNode(
+            hasContentDescription("PAD 01 空", substring = true),
+        ).performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            heldEmptyPad.performTouchInput { down(center) }
+            composeRule.mainClock.advanceTimeBy(600)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertTrue(
+                    "Holding an empty CHOP pad must still wait for pointer-up",
+                    padActions.isEmpty(),
+                )
+            }
+
+            heldEmptyPad.performTouchInput { up() }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(listOf("selectPad", "capturePad"), padActions)
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
         }
     }
 
@@ -335,6 +430,25 @@ class FirstScreenFlowDeviceTest {
         }
         return state
     }
+
+    private fun setLargeTextGateDeck(onPadAction: (String) -> Unit) {
+        val state = setPristineDeck(fontScale = 2f, onPadAction = onPadAction)
+        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            state.value = state.value.copy(
+                pads = state.value.pads.map { pad ->
+                    if (pad.globalIndex == gateIndex) pad.copy(playMode = PadPlayMode.GATE) else pad
+                },
+            )
+        }
+    }
+
+    private fun gatePad() = composeRule.onNode(
+        hasContentDescription("PAD 01 割り当て済み", substring = true),
+    )
 
     private fun noOpController(
         onEnsurePlayablePadSelected: () -> Unit,
