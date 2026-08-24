@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Guided first-screen constrained-flow closeout — 2026-08-24
+
+- Product source: `codex/choplab-screen-flow-closeout@07f8dcf3c2b0fe17c1e1d8ed3d135728c18f0c96`, tree `dcd5969bf72ceab1facbceb43c3fe63a9df99b4d`, base merged main `495ddc9` / tree `6a6ae6e`.
+- Review repair: normal compact-landscape CAPTURE now scrolls; large-text BEAT quick/detail use explicit waveform/PAD heights and bounded body scroll. At 200%, compact bank/timeline labels stay complete, compact PADs retain one non-overlapping identity label while full role/state remains in semantics, and shortened visible EDIT keeps its full accessibility label.
+- Deterministic instrumentation: `FirstScreenFlowDeviceTest` renders a pristine in-memory CAPTURE fixture, gives its proxy stable object methods, fixes starter-only launch semantics explicitly, measures the PAD button semantics rather than an inner text glyph and traverses demo → QUICK → STEPS without touching autosave or retained projects. These two tests validate shared deck composition/semantics only; they are not MainActivity, real controller or platform-adapter E2E.
+- RED evidence: the first closeout device run failed both tests on proxy `equals`; the next exposed missing CAPTURE launch intent; the next correctly rejected inner-text width as a PAD target. All three test defects were repaired before acceptance.
+- Local gates: clean 191-task gate plus final 184-task cross-platform gate PASS. Shared host 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0. Lint debug/release errors 0, warnings 7. Project validation, 23 Python policy tests, 389-candidate public-surface scan and release identity `0.17.0 (27)` PASS.
+- Final artifacts: debug APK 32,452,040 / `F766D047F74BED45B5E44515230F2104403BCBFF1CA2936CBBBD23B354739EA3`; androidTest APK 10,960,156 / `BDD527A21A0D5F9B1A80D9D6330D7C750C03BA722DDB2AA582F7F9CC7324BD67`; unsigned release APK 24,061,044 / `7CDB6C80ED5B6FD62FA60FD8147841C5AA09FB2BA3DCFC8DC4842FB1107392D0`; Windows app-image 405 files / 176,497,058 / digest `0954c0cec3daf8df91c489cc542c2fc8f6e5ebaf306a601e3ab5d14561cfd6d4`.
+- API 36 emulator: exact final APKs installed data-preservingly; full suite `OK (8 tests)`, fatal/ANR 0. Separately, the production MainActivity and real Android controller were cold-launched and manually navigated without recording: accepted closeout captures cover normal compact-landscape CAPTURE start/end, 200% BEAT initial/physical-scroll and 200% detailed STEPS. This manual slice proves rendered wiring/navigation, not audio behavior or a general automated E2E. Settings were restored; no uninstall, clear-data, recording or audio capture occurred.
+- GitHub/product lineage: PR #52 merged to `main@495ddc9`; all four merged-main workflows passed. The closeout source is a new bounded follow-up and needs its own PR/main read-back before provider promotion.
+- Gate: `LOCAL_PASS` plus scoped API 36 emulator runtime. Physical Pixel `DEVICE_PASS`, listening, recording, route loss, complete TalkBack speech, provider closeout artifact, binary Release and `HUMAN_GO` remain unclaimed.
+
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 
 - Product source: `codex/choplab-screen-flow@43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`, base `3cc4cd5`; dirty canonical checkout untouched.
