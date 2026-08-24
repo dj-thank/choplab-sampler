@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Desktop close-time autosave review repair candidate — 2026-08-24
+
+- Integration boundary: reachable product commit `51c9d952bed9f0a61c406bb9d86347b8030029b4`, tree `c23f55fa76157b39c9ecebeb84ea54ac267380d6`, joins prior exact PR #64 head `2d2fedabb2bd00d484ac61365cb27f28c505f7c8` with merged `main@333088147cdc77932efc41b90a08eb37e1c1cf42`. The product tree retains #66 fractional timing, #67 Desktop import sample-rate admission, #68 Android realtime terminal-sample retirement and #70 Android import-name persistence unchanged; the following evidence commit is documentation-only.
+- Review RED: close could capture the initial loading state while startup recovery still owned the single persistence executor. The queued close save could then supersede the recovered project. The repair owns the startup recovery `Future` and waits for its publication before invalidating project operations and capturing the close snapshot.
+- Deterministic regression: an existing revision-7 BPM 127 archive blocks startup recovery on the store while close begins. Close must remain waiting; after release, both primary and previous generations must contain BPM 127. The old order wrote stale initial BPM 92 as primary.
+- Exact-head review follow-up: recovery records success/failure independently from autosave work. Close suppresses an unchanged failure placeholder, while a later edit/revision can still own persistence. Recovered PCM hydration is scheduled through the project-operation boundary only if close has not claimed shutdown.
+- Additional regressions: the blocked BPM 127 recovery includes source PCM and requires zero engine loads after close claims the lifecycle. A corrupt primary archive is restored after the recovery error becomes visible; close must preserve the exact bytes as primary and create no previous generation.
+- Hosted RED correction: exact prior head `28c13a2da58e4f3f66e26eb503d507208c32fa7b` passed Android, iOS and supply-chain workflows, but Windows run `32718029950` / job `97403336494` failed at `DesktopSamplerControllerTest.kt:539`. The file name assertion passed; the failing `projectLaunchTarget` oracle was invalid because archive serialization intentionally omits runtime launch routing and revision. The test now binds persisted source name, frame count and range instead.
+- Prior integrated GREEN: superseded exact head `2d2fedabb2bd00d484ac61365cb27f28c505f7c8` passed Android run `32721088511`, Windows run `32721088425`, iOS run `32721088403` and supply-chain run `32721088445`.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS after integrating exact `main@333088147cdc77932efc41b90a08eb37e1c1cf42`. Gradle 9.7.1 is not cached, so the focused Desktop tests and full Windows workflow require hosted read-back on the published exact head.
+- Gate: source/static latest-main integration plus revision-bound prior-head CI only. No current-head packaged Windows execution, physical audio, power-loss or Human result is claimed.
+
 ## Android import-name persistence integrated candidate — 2026-08-24
 
 - Product source: reachable integration commit `b7364eeab02cccdde260d65337cf9a403f9a6a5d`, tree `dae6252f28c70f56f817c1d5d4e18374de882ea4`, with parents prior reviewed head `caea87f823d96f091f8515dd0eb3e86f18d9d27e` and merged `main@2786c3722a9e56fa299d2a88f009d882545b0768`; the final follow-up is documentation-only.
