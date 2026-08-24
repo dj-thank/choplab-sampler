@@ -12,17 +12,17 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**直近の統合保守:** Desktop recorder開始取消はblocking `TargetDataLine.start()`中のSTOPにpending lineをclaim/closeさせ、late worker公開とcapture readを阻止する限定lifecycle修正として、exact head `a1cc5a7`のclean reviewと全4 CI成功後にPR #73 / `main@a0b356c`へ統合済み。物理microphone timingと音質は別gate。
+**直近の統合保守:** Desktop recorder開始取消修正はPR #73 / `main@a0b356c`へ統合済み。blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeし、late worker公開・readを禁止する。exact headはclean review・threads 0・4 workflows PASS、物理microphoneは別gate。
+
+**独立したreverse PAD末尾修正:** exact-base `main@a0b356c`起点のproduct `1b8b424` / tree `614c93f`で、逆one-shot/gateのcount/renderだけをrealtime cursor advanceへ統一する。48→60 kHzの旧末尾無音（80→79）と8→48 kHzの1/12-step丸め（12）を固定し、allocation前count＋resetでtrim-copyを回避。review報告の2-frame / pitch −5でLOOP/Windows forceLoopはmain同一のdirect position・3-element有限render境界を保持し、Desktop playheadを変えない。arbitrary-pitch loop位相は別horizon。hosted JVM/Windows CIとexact reviewがmerge gate。
 
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
-
-**独立release-policy delta:** merged `main@a0b356c`を保持するreachable policy product `53a2e3f` / tree `3c90b33`は、公開面scanをcurrent／reachable-history ZIP memberと両metadata copyへ拡張する小規模修正。bounded EOCD/central/local/data-descriptor preflightがbyte 0からcentral directoryまで完全・連続なrecord所有、metadata一致と圧縮stream完全消費を要求し、forged count、interior gap、trailing compressed data、compressed-only directory payloadを拒否する。現行symlinkは追跡せずtarget文字列を検査し、byte-preserving scanとNUL-safe per-parent raw path/blob履歴でnewline path、ZIP alias／merge-resultを列挙してtree/symlink/gitlinkをblob capへ含めない。entry/member/archive/圧縮率と履歴blob materializationをboundedにし、binary/audio本文とstructured scan後のraw containerはtext再scanしない。merged #65/#68/#70/#71/#73 bytesを保持し、Python 65/65・current/history scanはPASS。新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 
 **独立したAndroid import名境界修正:** merged `main@2786c37`を統合したproduct `b7364ee` / tree `dae6252`で、provider／URI由来のblankまたは240 UTF-16単位超の表示名をdecode公開前にarchive-compatibleへ正規化する。切断後のblank再評価とsurrogate pair分断防止をarchive round-trip regressionへ固定し、merged #68 runtime/test/docs、PCM bytes、schema、provider I/Oや上記画面planは変更しない。hosted Android CIがmerge gate。
 
-**直近の統合保守:** shared／Desktop import名境界修正は、Android名規則をshared production seamへ移し、Desktop `File.name`にも同じ非空・240 UTF-16単位・post-truncate-blank fallback・surrogate-safe契約を適用して、exact head `f7ebd01`のclean reviewと全4 CI成功後にPR #71 / `main@dfcd9d8`へsquash merge済み。実provider/filesystem autosaveは別gate。
+**独立したshared／Desktop import名境界修正:** integration product `e0d3fa1` / tree `1558c4a`はprior clean headとmerged `main@3072eed`を統合し、上記Android名規則をshared production seamへ移してDesktop `File.name`にも同じ非空・240 UTF-16単位・post-truncate-blank fallback・surrogate-safe契約を適用する。#65 transport blobsと#68 runtime/testをexact保持し、shared common contractとDesktop archive read-back回帰を追加。旧headは全CI／clean review PASS、最新main headのhosted再実行がmerge gate。
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 

@@ -1,6 +1,6 @@
 # Release security and repository controls
 
-Updated: 2026-08-24
+Updated: 2026-08-21
 
 This document separates controls enforced by committed source from controls that require a GitHub repository administrator. Do not report an administrator control as complete until its setting has been read back from GitHub.
 
@@ -10,7 +10,7 @@ This document separates controls enforced by committed source from controls that
 
 A `v*` run of `.github/workflows/release.yml`:
 
-1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; current and historical ZIP blobs first bound and parse their central/local records, require one contiguous byte-ownership chain through every declared compressed span and data descriptor, verify both metadata copies and complete decompressor consumption, and reject unclaimed regions, trailing compressed data or directory entries with either compressed or uncompressed payload before suffix classification; it then scans bounded non-binary member bytes and both metadata copies without extraction, scans current symlink targets without following them, enumerates regular-file `.zip` path/blob versions through NUL-delimited per-parent merge history before blob deduplication, and fails closed above documented entry-count, member, archive, compression-ratio, historical-blob and historical-byte limits;
+1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
 4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
