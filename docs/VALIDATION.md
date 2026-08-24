@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Fractional pattern-frame timing candidate — 2026-08-24
+
+- Product source: reachable latest-main implementation `d8fe61c2b908fe8be8c6c73d307337f3e4a3f096`, tree `1a67bcc8ac2caeefb323528b0d9db06144d8b094`, integrated with `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. Its four audio product/test files preserve the exact reviewed remote product `9ba20191b90332ed011f1fdce97be3bf24aab2d8`; the later evidence commit is documentation-only.
+- RED arithmetic: 48 kHz / 92 BPM / swing 54% gives exact step-1 deadline 8,452.1739 frames. Realtime's fractional countdown fires at 8,453; old offline truncation fired at 8,452. Old per-bar ceiling produced 500,872 frames for four bars versus `ceil(exact continuous duration)` = 500,870.
+- Review RED arithmetic: absolute-deadline addition is not IEEE-equivalent to realtime's carried residual. At 48 kHz / 120 BPM / 55% swing, absolute accumulation schedules step 3 at 18,600 while realtime fires at 18,601. At 40 BPM / 56% swing, it reports a 288,000-frame bar while the next realtime step-0 boundary is 288,001.
+- Contract/fix: shared `scheduledFrameAtOrAfter` applies ceiling to a non-negative finite countdown. `PatternRenderer` mirrors realtime's operation order by adding one step length to the carried residual, advancing by its ceiling, and subtracting that integer advance before the next step; bar boundaries do not reset the remainder.
+- Regression sources: shared exact/fractional quantization test; end-to-end JVM-core WAV tests for 92 BPM / 54% event frames 8,453 / 133,670 / 258,887 / 384,105 and 500,870-frame length, 120 BPM / 55% step 3 at 18,601, and 40 BPM / 56% one-bar data/header length 288,001.
+- Prior exact-head evidence: remote PR head `786e2e76feb1e5cad544491b039431cd61befdb7` received a clean exact-head Codex re-review. Workflow runs `32709089277` (Android), `32709089257` (Windows), `32709089274` (iOS), and `32709089251` (supply chain) all completed successfully.
+- Latest-main static gates: Python policy 39/39 PASS; public-surface 394 candidates PASS; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper text policy matched; residual-schedule arithmetic fixed step 3 at 18,601 and one bar at 288,001; all four audio product/test files equal the exact reviewed tree; `git diff --check` PASS. Gradle 9.7.1 is not cached, so the integrated commit requires fresh hosted execution before merge.
+- Gate: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Physical audio timing/listening and Human acceptance remain separate.
+
 ## Release checksum sidecar hardening candidate — 2026-08-24
 
 - The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
