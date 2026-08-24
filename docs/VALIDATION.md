@@ -10,6 +10,14 @@
 - Current-container checks: `git diff --check` PASS; Python policy suite 39/39 PASS; public-surface scan 394 candidates PASS; all six Android XML files parse successfully.
 - Environment boundary: this Linux container has no Android SDK or cached Gradle distribution and cannot reach `services.gradle.org`; the focused Gradle unit/androidTest compile command stopped while downloading Gradle 9.7.1, so fresh exact-product compilation/instrumentation is not claimed. Hosted PR CI must pass before merge or gate promotion. The artifact/runtime evidence in the later closeout section remains bound to `43d8ace` and is not proof for `c21b6be`.
 
+## Desktop import sample-rate admission candidate — 2026-08-24
+
+- Source: reachable product commit `3ad2bd9eda0561b0f1cf304b477ca726edd1becc`, tree `8272a51c4b537dd06ec02e0ff780e574babe4d46`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; squash-merged by PR #67 as `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`.
+- Contract: Desktop WAV import accepts finite sample rates from 8,000 through `ProjectLimits.MAX_SAMPLE_RATE` (192,000 Hz), matching Android and the project archive. Unsupported rates fail before decoding, state replacement and autosave admission.
+- Regression: exact 192 kHz validation succeeds. An `AudioInputStream` declaring 192,001 Hz over a fail-on-read payload throws `IllegalArgumentException`, and the payload read count remains zero.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS. The uncached Gradle 9.7.1 distribution is unavailable in this container, so hosted `:desktop:test` was the executable gate before merge.
+- Gate: merged source plus provider CI; no audible, physical Windows, archive recovery or Human result is claimed.
+
 ## Fractional pattern-frame timing repair merged via PR #66 — 2026-08-24
 
 - Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joined the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; exact final PR #66 head `7e5130f77b9c1fdd481f8226cbb3c44b71eaa9c0` was squash-merged as `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`.

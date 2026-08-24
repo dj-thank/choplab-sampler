@@ -5,8 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +43,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -63,8 +70,73 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SliceRange
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+
+/**
+ * Keeps a single vertical drag unconsumed so an enclosing CHOP scroller can own it. Waveform
+ * transforms begin only after horizontal single-pointer intent or multi-pointer transform slop.
+ */
+private suspend fun PointerInputScope.detectWaveformTransformGestures(
+    onGesture: (centroid: Offset, pan: Offset, zoom: Float) -> Unit,
+) {
+    awaitEachGesture {
+        var cumulativeZoom = 1f
+        var cumulativePan = Offset.Zero
+        var transformClaimed = false
+        val touchSlop = viewConfiguration.touchSlop
+
+        awaitFirstDown(requireUnconsumed = false)
+        do {
+            val event = awaitPointerEvent()
+            val canceled = event.changes.any { it.isConsumed }
+            if (!canceled) {
+                val zoomChange = event.calculateZoom()
+                val panChange = event.calculatePan()
+
+                if (!transformClaimed) {
+                    cumulativeZoom *= zoomChange
+                    cumulativePan += panChange
+                    val multiPointer = event.changes.count { it.pressed } >= 2
+                    val zoomMotion =
+                        abs(1f - cumulativeZoom) * event.calculateCentroidSize(useCurrent = false)
+                    val horizontalMotion = abs(cumulativePan.x)
+                    val verticalMotion = abs(cumulativePan.y)
+
+                    transformClaimed = if (multiPointer) {
+                        zoomMotion > touchSlop || cumulativePan.getDistance() > touchSlop
+                    } else {
+                        horizontalMotion > touchSlop && horizontalMotion > verticalMotion
+                    }
+
+                    if (
+                        !multiPointer &&
+                        verticalMotion > touchSlop &&
+                        verticalMotion >= horizontalMotion
+                    ) {
+                        // Stop observing this gesture without consuming its movement. The ancestor
+                        // verticalScroll sees this same Main-pass change and can claim it.
+                        return@awaitEachGesture
+                    }
+                }
+
+                if (transformClaimed) {
+                    val centroid = event.calculateCentroid(useCurrent = false)
+                    if (
+                        centroid != Offset.Unspecified &&
+                        (zoomChange != 1f || panChange != Offset.Zero)
+                    ) {
+                        onGesture(centroid, panChange, zoomChange)
+                    }
+                    event.changes.forEach { change ->
+                        if (change.positionChanged()) change.consume()
+                    }
+                }
+            }
+        } while (!canceled && event.changes.any { it.pressed })
+    }
+}
 
 @Composable
 fun WaveformEditor(
@@ -198,8 +270,8 @@ fun WaveformEditor(
                         )
                     }
                     .pointerInput(audio.id, visibleStart, visibleFrames) {
-                        detectTransformGestures { centroid, pan, zoomChange, _ ->
-                            if (canvasSize.width <= 0) return@detectTransformGestures
+                        detectWaveformTransformGestures { centroid, pan, zoomChange ->
+                            if (canvasSize.width <= 0) return@detectWaveformTransformGestures
                             val focusFrame = waveformFrameAtX(
                                 centroid.x,
                                 canvasSize.width.toFloat(),

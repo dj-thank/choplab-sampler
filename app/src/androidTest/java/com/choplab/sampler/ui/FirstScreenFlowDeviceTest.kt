@@ -3,6 +3,7 @@ package com.choplab.sampler.ui
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
@@ -252,6 +253,111 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
+    fun largeTextGateRetriggerIsNotCutByAnOlderPreviewRelease() {
+        val padActions = mutableListOf<Pair<String, Long>>()
+        setLargeTextGateDeck(
+            onPadAction = { padActions += it to composeRule.mainClock.currentTime },
+        )
+
+        val gate = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            gate.performTouchInput {
+                down(center)
+                up()
+            }
+            composeRule.mainClock.advanceTimeBy(40)
+            gate.performTouchInput {
+                down(center)
+                up()
+            }
+            composeRule.waitForIdle()
+
+            composeRule.runOnIdle {
+                assertEquals(2, padActions.count { it.first == "triggerPad" })
+                assertEquals(0, padActions.count { it.first == "releasePad" })
+            }
+
+            // The first tap's 80 ms timer has elapsed, but its stale generation must not release
+            // the voice started by the second tap 40 ms later.
+            composeRule.mainClock.advanceTimeBy(48)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(0, padActions.count { it.first == "releasePad" })
+            }
+
+            composeRule.mainClock.advanceTimeBy(48)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(1, padActions.count { it.first == "releasePad" })
+                val secondTriggerTime = padActions.filter { it.first == "triggerPad" }[1].second
+                val releaseTime = padActions.single { it.first == "releasePad" }.second
+                assertTrue(
+                    "The newest retrigger must retain its complete 80 ms preview",
+                    releaseTime - secondTriggerTime >= 80L,
+                )
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun largeTextGateClaimsMovementAfterActivationUntilPhysicalPointerUp() {
+        val padActions = mutableListOf<Pair<String, Long>>()
+        setLargeTextGateDeck(
+            onPadAction = { padActions += it to composeRule.mainClock.currentTime },
+        )
+
+        val gate = gatePad().performScrollTo()
+        val topBeforeHold = gate.fetchSemanticsNode().boundsInRoot.top
+        val dragDistance = gate.fetchSemanticsNode().boundsInRoot.height * 0.4f
+        composeRule.mainClock.autoAdvance = false
+        try {
+            gate.performTouchInput { down(center) }
+            composeRule.mainClock.advanceTimeBy(200)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad"),
+                    padActions.map { it.first },
+                )
+            }
+
+            gate.performTouchInput {
+                moveBy(Offset(0f, -dragDistance), delayMillis = 64)
+            }
+            composeRule.waitForIdle()
+
+            val topAfterMove = gatePad().fetchSemanticsNode().boundsInRoot.top
+            assertEquals(
+                "Movement after delayed GATE activation must not scroll the parent",
+                topBeforeHold,
+                topAfterMove,
+                1f,
+            )
+            composeRule.runOnIdle {
+                assertEquals(
+                    "An activated GATE must remain owned until physical up",
+                    listOf("selectPlayablePad", "triggerPad"),
+                    padActions.map { it.first },
+                )
+            }
+
+            gate.performTouchInput { up() }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    padActions.map { it.first },
+                )
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
     fun largeTextGateLongPressRecompositionReleasesTriggerOwnershipExactlyOnce() {
         val padActions = mutableListOf<Pair<String, Long>>()
         setLargeTextGateDeck(
@@ -358,6 +464,45 @@ class FirstScreenFlowDeviceTest {
         } finally {
             composeRule.mainClock.autoAdvance = true
         }
+    }
+
+    @Test
+    fun largeTextChopVerticalSwipeStartingOnWaveformReachesParentScroller() {
+        val audio = PcmAudio(
+            id = 100L,
+            name = "waveform-scroll-source.wav",
+            samples = ShortArray(4_800),
+            sampleRate = 48_000,
+        )
+        setDeck(
+            initialState = SamplerUiState(
+                currentAudio = audio,
+                rangeEndFrame = audio.frameCount,
+                sourcePlaying = true,
+                projectLaunchTarget = ProjectLaunchTarget.CHOP,
+            ),
+            fontScale = 2f,
+            onPadAction = {},
+        )
+
+        val waveform = composeRule.onNode(
+            hasContentDescription("音声波形", substring = true),
+        ).performScrollTo()
+        val pad = composeRule.onNode(
+            hasContentDescription("PAD 01 空", substring = true),
+        )
+        val padTopBeforeSwipe = pad.fetchSemanticsNode().boundsInRoot.top
+
+        waveform.performTouchInput { swipeUp(durationMillis = 600) }
+        composeRule.waitForIdle()
+
+        val padTopAfterSwipe = composeRule.onNode(
+            hasContentDescription("PAD 01 空", substring = true),
+        ).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(
+            "A vertical single-pointer waveform drag must move the large-text CHOP workspace",
+            padTopAfterSwipe < padTopBeforeSwipe - 1f,
+        )
     }
 
     @Test
