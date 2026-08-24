@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,11 @@ class ReleaseManifestTest(unittest.TestCase):
             "ChopLab-v0.16.2-sbom.cdx.json": b"{}",
         }.items():
             (self.directory / name).write_bytes(content)
+            digest = hashlib.sha256(content).hexdigest()
+            (self.directory / f"{name}.sha256").write_text(
+                f"{digest}  {name}\n",
+                encoding="utf-8",
+            )
 
     def write(self, **overrides: object) -> dict[str, object]:
         values: dict[str, object] = {
@@ -47,6 +53,42 @@ class ReleaseManifestTest(unittest.TestCase):
         (self.directory / "ChopLab-v0.16.2-android.apk").unlink()
 
         with self.assertRaisesRegex(ValueError, "exactly one android"):
+            self.write()
+
+    def test_rejects_missing_required_checksum_sidecar(self) -> None:
+        (self.directory / "ChopLab-v0.16.2-ios-simulator.app.zip.sha256").unlink()
+
+        with self.assertRaisesRegex(ValueError, "Missing checksum sidecar"):
+            self.write()
+
+    def test_rejects_checksum_mismatch(self) -> None:
+        sidecar = self.directory / "ChopLab-v0.16.2-windows-app-image.zip.sha256"
+        sidecar.write_text(
+            f"{'0' * 64}  ChopLab-v0.16.2-windows-app-image.zip\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "Checksum mismatch"):
+            self.write()
+
+    def test_rejects_sidecar_that_declares_another_asset(self) -> None:
+        sidecar = self.directory / "ChopLab-v0.16.2-android.apk.sha256"
+        digest = hashlib.sha256(b"android").hexdigest()
+        sidecar.write_text(
+            f"{digest}  ChopLab-v0.16.2-ios-simulator.app.zip\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "filename mismatch"):
+            self.write()
+
+    def test_rejects_orphan_checksum_sidecar(self) -> None:
+        (self.directory / "orphan.bin.sha256").write_text(
+            f"{'0' * 64}  orphan.bin\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "no published target"):
             self.write()
 
     def test_rejects_tag_version_mismatch(self) -> None:

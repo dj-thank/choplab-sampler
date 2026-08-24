@@ -16,6 +16,7 @@ EXPECTED_BINARY_PATTERNS = {
     "ios_simulator": re.compile(r"^ChopLab-v[^/]+-ios-simulator\.app\.zip$"),
     "windows": re.compile(r"^ChopLab-v[^/]+-windows-app-image\.zip$"),
 }
+EXPECTED_SBOM_PATTERN = re.compile(r"^ChopLab-v[^/]+-sbom\.cdx\.json$")
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,52 @@ def validate_expected_binaries(assets: list[ReleaseAsset], version: str) -> None
             )
 
 
+def validate_checksum_sidecars(
+    directory: Path,
+    assets: list[ReleaseAsset],
+    version: str,
+) -> None:
+    assets_by_name = {asset.name: asset for asset in assets}
+    expected_prefix = f"ChopLab-v{version}-"
+    required_names = {
+        asset.name
+        for asset in assets
+        if any(pattern.fullmatch(asset.name) for pattern in EXPECTED_BINARY_PATTERNS.values())
+    }
+    sbom_names = sorted(
+        asset.name for asset in assets if EXPECTED_SBOM_PATTERN.fullmatch(asset.name)
+    )
+    if len(sbom_names) != 1:
+        raise ValueError(f"Expected exactly one release SBOM, found {len(sbom_names)}: {sbom_names}")
+    if not sbom_names[0].startswith(expected_prefix):
+        raise ValueError(
+            f"SBOM version mismatch: expected prefix {expected_prefix!r}, found {sbom_names[0]!r}"
+        )
+    required_names.add(sbom_names[0])
+
+    sidecars = sorted(path for path in directory.iterdir() if path.is_file() and path.name.endswith(SHA256_SUFFIX))
+    sidecars_by_target = {path.name[: -len(SHA256_SUFFIX)]: path for path in sidecars}
+    missing = sorted(name for name in required_names if name not in sidecars_by_target)
+    if missing:
+        raise ValueError(f"Missing checksum sidecar(s): {missing}")
+
+    for target_name, sidecar in sidecars_by_target.items():
+        asset = assets_by_name.get(target_name)
+        if asset is None:
+            raise ValueError(f"Checksum sidecar has no published target: {sidecar.name}")
+        text = sidecar.read_text(encoding="utf-8-sig").strip()
+        match = re.fullmatch(r"([0-9a-fA-F]{64})[ \t]+(?:\*)?([^\r\n]+)", text)
+        if match is None:
+            raise ValueError(f"Malformed checksum sidecar: {sidecar.name}")
+        declared_digest, declared_name = match.groups()
+        if declared_name != target_name:
+            raise ValueError(
+                f"Checksum sidecar filename mismatch: {sidecar.name} declares {declared_name!r}"
+            )
+        if declared_digest.lower() != asset.sha256:
+            raise ValueError(f"Checksum mismatch for {target_name}")
+
+
 def write_manifest(
     *,
     directory: Path,
@@ -87,6 +134,7 @@ def write_manifest(
     output.parent.mkdir(parents=True, exist_ok=True)
     assets = collect_assets(directory, output)
     validate_expected_binaries(assets, version)
+    validate_checksum_sidecars(directory, assets, version)
     payload: dict[str, object] = {
         "schema_version": 1,
         "product": "ChopLab",
