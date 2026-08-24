@@ -14,7 +14,9 @@
 
 **直近の統合保守:** Desktop recorder開始取消修正はPR #73 / `main@a0b356c`へ統合済み。blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeし、late worker公開・readを禁止する。exact headはclean review・threads 0・4 workflows PASS、物理microphoneは別gate。
 
-**独立したreverse PAD末尾修正:** exact-base `main@a0b356c`起点のproduct `1b8b424` / tree `614c93f`で、逆one-shot/gateのcount/renderだけをrealtime cursor advanceへ統一する。48→60 kHzの旧末尾無音（80→79）と8→48 kHzの1/12-step丸め（12）を固定し、allocation前count＋resetでtrim-copyを回避。review報告の2-frame / pitch −5でLOOP/Windows forceLoopはmain同一のdirect position・3-element有限render境界を保持し、Desktop playheadを変えない。arbitrary-pitch loop位相は別horizon。hosted JVM/Windows CIとexact reviewがmerge gate。
+**独立release-policy delta:** merged `main@029500a`を統合したproduct `92a2899` / tree `337b9f7`で、bounded EOCD/central/local/data-descriptor parserが完全・連続なrecord所有を検証し、signed/signatureless descriptorを中央CRC/sizeと構造境界で判別する。独立raw decoderはstored/deflate/BZIP2/LZMAの完全入力消費とexact出力size/CRCを要求し、trailing data、forged短縮出力、compressed-only directory payloadを拒否する。current symlinkは追跡せず、NUL-safe per-parent履歴列挙へentry/member/archive/圧縮率/materialization capを適用。Python 68/68・current/history 396 PASS、exact hosted CI／reviewがmerge gate。
+
+**直近の統合保守:** reverse PAD末尾修正はexact head `556cd0f`のclean review・threads 0・全4 CI成功後にPR #74 / `main@029500a`へ統合済み。product `1b8b424`は逆one-shot/gateだけをrealtime cursor advanceへ統一し、LOOP/Windows forceLoopの従来境界とDesktop playheadを保持する。実機listeningは別gate。
 
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
