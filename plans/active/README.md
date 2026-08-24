@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。最新review deltaはscroll内PADのcompleted-tap arbitrationとcompact LOOP/DRM/VOX semanticsを reachable product `0a7d340` で追加済み。static gateはPASS、hosted Gradle／device gesture実行とGitHub read-backが残る。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。最新review deltaはscroll内PADのcompleted-tap arbitrationとcompact LOOP/DRM/VOX semanticsを reachable product/verification `8a87a40` で追加済み。static gateはPASS、hosted Gradle／device gesture実行とGitHub read-backが残る。
 
 **独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
 

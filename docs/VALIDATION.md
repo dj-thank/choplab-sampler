@@ -4,7 +4,7 @@
 
 ## Constrained PAD gesture and semantics review repair — 2026-08-24
 
-- Product source: `codex/choplab-screen-flow-closeout@0a7d340958fffa733f7e40deff98eff4e261e99a`, tree `5d7fb0e99131b50f5154ee71b9ae6e3eb788aaac`, integrating original PR #62 head `457831cc395c163e06f2820cb58be796d9eb4c8f` with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`; the later evidence commit is documentation-only.
+- Product/verification source: `codex/choplab-screen-flow-closeout@8a87a40adc5a51e8f2e8af14e404220726f3bcc0`, tree `c9adfb506e0b859d49ca636ce8f3a9b8580c4dc3`, integrating original PR #62 head `457831cc395c163e06f2820cb58be796d9eb4c8f` with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`; the later evidence commit is documentation-only.
 - Review contract: large-text BEAT uses completed-tap PAD actions inside its vertical scroll body. A real pointer swipe from a PAD must move the body without selecting, triggering or releasing that PAD; a real pointer tap still dispatches the ordered `selectPlayablePad → triggerPad → releasePad` path. Non-scroll performance remains press-down driven.
 - Accessibility contract: assigned PAD semantics always expose play mode plus content kind. Focused assertions bind the compact visual indicators `LOOP`, `DRM` and `VOX`, while the large-text Compose fixture checks the actual DRM description and unchanged 48 dp PAD bounds.
 - Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 34 tests; `python3 scripts/check_public_surface.py` passed 394 candidates; `git diff --check` passed.
