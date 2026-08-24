@@ -48,6 +48,7 @@ interface SamplerDeckController {
     fun clearSelectedPad()
     fun fillSelectedPadPattern(grid: RepeatGrid)
     fun clearSelectedPadPattern()
+    fun createQuickSketch() = dispatch(ProductionCommand.CreateQuickSketch)
     fun toggleStep(step: Int)
     fun clearAllPattern()
     fun toggleBeatLoopControl()

@@ -517,6 +517,7 @@ private fun PerformanceWorkspace(
             onOpenDetails = onOpenDetails,
             onContinueToBeat = onContinueToBeat,
             onOpenLayerStudio = onOpenLayerStudio,
+            viewModel = viewModel,
         )
     }
 }
@@ -587,6 +588,7 @@ private fun LandscapePerformanceWorkspace(
                 onOpenDetails = onOpenDetails,
                 onContinueToBeat = onContinueToBeat,
                 onOpenLayerStudio = onOpenLayerStudio,
+                viewModel = viewModel,
             )
         }
         PadGrid(
@@ -679,6 +681,7 @@ private fun ChopNextActionRow(
     onOpenDetails: () -> Unit,
     onContinueToBeat: () -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    viewModel: SamplerDeckController,
 ) {
     ProductionDock(
         height = height,
@@ -687,6 +690,10 @@ private fun ChopNextActionRow(
         handlers = mapOf(
             ProductionDockIntent.OPEN_BEAT to onContinueToBeat,
             ProductionDockIntent.OPEN_PAD_EDIT to onOpenDetails,
+            ProductionDockIntent.CREATE_QUICK_SKETCH to {
+                viewModel.stopSourceForWorkspaceChange()
+                viewModel.createQuickSketch()
+            },
             ProductionDockIntent.OPEN_ADD to { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             ProductionDockIntent.OPEN_SCRATCH to { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
         ),

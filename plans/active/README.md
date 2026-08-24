@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。ユーザーが次のdecision boundaryとして画面・導線を最優先に選択した。pristine first entry、large-text workflow chrome、Android/Windowsのselected PAD/bank/page coherenceを、fresh screenshotとfocused testから改善する。
+**現在の実装plan:** `quick-sketch-20260825.md`。current main `8fa1dac`から、素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHを選択した。Bank Aに既存PAD/stepがあれば完全no-op、B/C/Dとstarter drumsを保持し、一つのUndo/autosave単位として`LOCAL_PASS`を目標にする。
+
+**直前の画面・導線plan:** `first-screen-flow-20260824.md`。pristine first entry、large-text workflow chrome、Android/Windowsのselected PAD/bank/page coherenceはPR #52としてmainへ統合済み。現在のQUICK SKETCHのbaseline入力として保全する。
 
 **独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
 
