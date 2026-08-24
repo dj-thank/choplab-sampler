@@ -13,9 +13,9 @@ A `v*` run of `.github/workflows/release.yml`:
 1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
-4. builds a non-debuggable release APK and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
+4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
 5. compiles the declared Kotlin/Native iOS Simulator framework, runs the Swift tests, and verifies embedded iOS version/build metadata;
-6. tests and packages the Windows app-image and verifies its embedded product version;
+6. runs the shared common-source contract on a Desktop JVM host, tests and packages the Windows app-image, and verifies its embedded product version;
 7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files;
 8. creates GitHub artifact provenance and SBOM attestations for the runnable files;
 9. creates a new prerelease once, without `--clobber` or another asset-replacement path.

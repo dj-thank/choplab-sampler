@@ -150,6 +150,7 @@ jobs:
         run: |
           ./scripts/validate_project.sh
           ./gradlew --stacktrace \
+            :shared:testAndroidHostTest \
             :app:testDebugUnitTest \
             :app:lintRelease \
             :app:assembleRelease \
@@ -296,7 +297,7 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :jvm-core:test :desktop:test :desktop:packageWindows
+        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:packageWindows
 
       - name: Test data-preserving Windows user install
         shell: pwsh

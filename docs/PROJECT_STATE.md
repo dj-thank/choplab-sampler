@@ -1,13 +1,22 @@
-Warning: truncated output (original token count: 43508)
-Total output lines: 1075
+Warning: truncated output (original token count: 43867)
+Total output lines: 1084
 
 # Project state
 
 ## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
-- Source boundary: isolated `codex/release-checksum-sidecars` branch based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; exact candidate commit/tree and hosted workflow identities are recorded after integration.
+- Source boundary: isolated `codex/release-checksum-sidecars` branch updated onto merged `main@364ccde764b88f0bb79e10b8aaeb8284a5c069cc`; exact candidate commit/tree and hosted workflow identities are recorded after integration.
 - Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
 - Scope: release policy and its Python regression tests only. Product/audio/UI bytes, signing configuration, tags, and Releases are unchanged. Current-container policy gates are run before PR publication; hosted CI is required before promotion.
+
+## Previous snapshot — 2026-08-24 desktop recorder startup cleanup candidate
+
+- Observed at: `2026-08-24T16:36+09:00`.
+- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the other worktrees remain untouched.
+- Recorder lifecycle: after a Windows `TargetDataLine` is acquired, every setup failure now closes that exact local line before clearing recorder state. In particular, an exception from `TargetDataLine.start()` after a successful `open()` cannot leak the native capture line or leave a stale output/worker/failure reference.
+- Regression scope: a deterministic proxy line exercises successful `open`, failing `start`, exact-once `close`, idle state, temporary-WAV deletion, and inert follow-up `stop` / `close`, without opening recording hardware.
+- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
+- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
 
 ## Previous snapshot — 2026-08-24 guided first-screen local candidate
 
@@ -285,15 +294,7 @@ Primary Android guidance and fixed revisions of Oboe, platform-samples, Now in A
 
 Archive validation now has an independent literal schema-1 fixture, a deterministic 256-input malformed corpus, a 1,000-small-entry rejection case, and a declared-PCM expansion case above the 512 MiB project budget. ZIP inflation is bounded by the manifest's audio-count/frame-count contract, the absolute PCM budget, and exact WAV/raw entry sizes; a ratio-only rejection is intentionally avoided because a legitimate silent WAV is also extremely compressible. Schema 1–5 compatibility remains covered.
 
-Transient tests now require markers near four known onset frames and cover silence, short input, slice limits, and minimum-distance clustering. Pattern rendering now has independent PCM observations for vocal duration, continuous loops, straight versus swung event frames, reverse, pitch, gain, and tone instead of relying only on non-zero output and length. `SamplerEngine.Voice` precomputes its low-pass coefficient at start/live-control updates rather than running `pow`/`exp` per sample; bypass continuously tracks the current sample so re-enabling the filter does not resume stale state. These are LOCAL deterministic and cost-structure claims, not physical xrun, latency, or audio-quality evidence.
-
-## New-project wording and recovery disclosure — 2026-08-16
-
-The former `RESET ALL / 完全リセット` copy overstated what the recoverable autosave design does: starting fresh empties the current production state, while up to three verified app-private generations remain available for corruption recovery under PROJ-004. The action is now named `NEW PROJECT / 新しい制作を始める`, its second press says exactly that the production state will be emptied, and the privacy policy discloses the bounded recovery retention. No autosave, project, or exported user file is deleted by this wording correction. This is a LOCAL specification-truth fix, not a secure-erasure claim.
-
-## Compact portrait and scratch accessibility — 2026-08-16
-
-The phone-first portrait layout now keeps header, mode, primary control, page selector, PAD edit/stepper, Layer Studio, scratch selector, and compact waveform-control rows at a 48 dp minimum on 360 dp-class widths. Large Android font scales no longer cause compact machine-button typography to shrink from its normal `sp` value. The scratch platter now publishes a stopped/active state plus explicit start, stop, left, and right accessibility actions wit…13508 tokens truncated…elected PAD A-04 looped with a visible loop playhead, KEY was changed live and returned, and Scratch remained directly reachable. The app process stayed alive and the scoped fatal/ANR query returned zero matches. Runtime captures are under `work/v0111-final/`.
+Transient tests now require markers near four known onset frames and cover silence, short input, slice limits, and minimum-distance clustering. Pattern rendering now has independent PCM observations for vocal duration, continuous loops, straight versus swung event frames, reverse, pitch, gain, and tone instead of relying only on non-zero output and length. `SamplerEngine.Voice` precomputes its low-pass coefficient at start/live-control updates rather than running `pow`/`…13867 tokens truncated…elected PAD A-04 looped with a visible loop playhead, KEY was changed live and returned, and Scratch remained directly reachable. The app process stayed alive and the scoped fatal/ANR query returned zero matches. Runtime captures are under `work/v0111-final/`.
 
 PR [#22](https://github.com/dj-thank/choplab-sampler/pull/22) merged as `755c30ffced5db408d89e37cf80c4caf53f02896`. Branch run `31530032522`, PR run `31530071852`, main run `31530374176`, tag verification `31530698604`, and release run `31530698633` all passed. Annotated tag `v0.11.1-preview.1` peels to that merge commit and the [public prerelease](https://github.com/dj-thank/choplab-sampler/releases/tag/v0.11.1-preview.1) is available. Anonymous HTTP checks returned 200 for the repository, Release page, and direct APK route.
 
