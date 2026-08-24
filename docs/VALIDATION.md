@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Fractional pattern-frame timing candidate — 2026-08-24
+
+- Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.
+- RED arithmetic: 48 kHz / 92 BPM / swing 54% gives exact step-1 deadline 8,452.1739 frames. Realtime's fractional countdown fires at 8,453; old offline truncation fired at 8,452. Old per-bar ceiling produced 500,872 frames for four bars versus `ceil(exact continuous duration)` = 500,870.
+- Review RED arithmetic: absolute-deadline addition is not IEEE-equivalent to realtime's carried residual. At 48 kHz / 120 BPM / 55% swing, absolute accumulation schedules step 3 at 18,600 while realtime fires at 18,601. At 40 BPM / 56% swing, it reports a 288,000-frame bar while the next realtime step-0 boundary is 288,001.
+- Contract/fix: shared `scheduledFrameAtOrAfter` applies ceiling to a non-negative finite countdown. `PatternRenderer` mirrors realtime's operation order by adding one step length to the carried residual, advancing by its ceiling, and subtracting that integer advance before the next step; bar boundaries do not reset the remainder.
+- Regression sources: shared exact/fractional quantization test; end-to-end JVM-core WAV tests for 92 BPM / 54% event frames 8,453 / 133,670 / 258,887 / 384,105 and 500,870-frame length, 120 BPM / 55% step 3 at 18,601, and 40 BPM / 56% one-bar data/header length 288,001.
+- Prior exact-head evidence: remote PR head `786e2e76feb1e5cad544491b039431cd61befdb7` received a clean exact-head Codex re-review. Workflow runs `32709089277` (Android), `32709089257` (Windows), `32709089274` (iOS), and `32709089251` (supply chain) all completed successfully.
+- Latest-main static gates: Python policy 39/39 PASS; public-surface 394 candidates PASS; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper text policy matched; residual-schedule arithmetic fixed step 3 at 18,601 and one bar at 288,001; all four audio product/test files equal the exact reviewed tree; `git diff --check` PASS. Gradle 9.7.1 is not cached, so the integrated commit requires fresh hosted execution before merge.
+- Gate: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Physical audio timing/listening and Human acceptance remain separate.
+
 ## Constrained PAD gesture and semantics review repair — 2026-08-24
 
 - Product/verification source: reachable commit `5b9592ff27608166a99fe77af0876ad1d6b917f5`, tree `97569b6a07fb74f9ee5b59101c0ea27059259a1b`, integrating exact prior PR #62 head `9a844c667e7372df970004aa1583ffbc3c6d6ceb` with merged `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`; the later evidence commit is documentation-only.

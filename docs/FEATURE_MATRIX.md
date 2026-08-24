@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Pattern event/frame timing parity | 🧪 latest-main source / prior hosted head | realtime fractional countdownとoffline WAVをshared ceiling＋carried-residual契約へ統一。48 kHz / 92 BPM / swing 54%の4-bar境界に加え、120 BPM / 55%のstep 3 = 18,601と40 BPM / 56%の1-bar長 = 288,001をWAV回帰で固定。PR #66旧exact headは全CIと再reviewがPASSし、最新main統合headのhosted再実行待ち |
 | Decode duration / memory境界 | 🧪 source / hosted CI待ち | shared policyを`min(30,000,000, sampleRate × 600秒)`へ統一。8 kHz=4,800,000、48 kHz=28,800,000の境界と+1拒否をallocation-free arithmetic testで固定し、Androidのoutput-format変更後builderとDesktopのknown/unknown-length streamingにも適用。現sandboxではGradle distributionを利用できず実行結果は未昇格 |
 | Pattern/master full-bar parity | ✅ product anchor / scoped device | product bytes `ecc6c54`。single PAD / step 0 / one barのrealtime Voice+master expectedとoffline WAVを全frame比較。REDはframe 402でoffline末尾sample欠落61、mix-before-retire修正後max delta≤1。Android 229、exact `DB08…` Pixel、全PR/main CI PASS。docs-only source main、polyphony/stereo/listeningは別 |
 | Realtime / offline / Windows audio parity | ✅ main / scoped device | shared pitch/tone/gain/fade/limiter/swing/NaN policy。Android Voiceとhost PAD PCM最大差1、shared両host25、merged-main Windows daily install `0.17.0-802a667d39cb`。polyphony/stereo/listeningは次段階 |
