@@ -1,6 +1,16 @@
 # Project state
 
-## Current snapshot — 2026-08-24 fractional pattern-timing candidate
+## Current snapshot — 2026-08-24 bounded ZIP member secret scan
+
+This snapshot records a repository-policy hardening delta only. It does not change product, audio, UI, device, provider or release bytes.
+
+- Source state: reachable product/policy commit `5e3e30e468efdd930bfda224a2aa6a27c34411fb`, tree `f12d47fee52d8fda73bd0a83b88dfc34f74cedef`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; the later evidence commit is documentation-only.
+- Archive policy: every non-binary ZIP member is read without extraction and scanned for the existing secret patterns. Reads fail closed above 512 KiB per member, 4 MiB total or a 100:1 declared compression ratio. Known binary, nested-archive, signing and audio suffixes are not decoded as text; their existing name policy remains active.
+- Regression scope: UTF-8 BOM text under a safe `.txt` name is rejected; per-member, aggregate and compression limits are direct fixtures; binary and audio bytes containing token-shaped ASCII do not produce a content match.
+- Fresh local checks: focused public-surface tests 8/8, complete Python policy suite 43/43, current-tree public scan 394 candidates and `git diff --check` PASS. `scripts/doctor.sh` found Java 17 but no Android SDK/ADB. `scripts/validate_project.sh` passed the public and executable-mode gates, then could not create the Gradle wrapper cache under the sandboxed `/root/.gradle`; no Gradle result is claimed.
+- Gate ceiling: source/static policy evidence only. Hosted CI and merged-main read-back remain required; no administrator secret-scanning setting, binary Release, device or `HUMAN_GO` evidence is inferred.
+
+## Previous snapshot — 2026-08-24 fractional pattern-timing candidate
 
 This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged constrained PAD gesture repair, decode boundary and all earlier histories remain intact below.
 

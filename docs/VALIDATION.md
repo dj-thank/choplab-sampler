@@ -2,6 +2,13 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Bounded ZIP member secret scan — 2026-08-24
+
+- Product/policy source: reachable commit `5e3e30e468efdd930bfda224a2aa6a27c34411fb`, tree `f12d47fee52d8fda73bd0a83b88dfc34f74cedef`, based directly on `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; this section is in a later documentation-only commit.
+- Contract: safe-named UTF-8 ZIP member text is scanned with the same secret patterns as ordinary repository files. Members are read directly without extraction and fail closed beyond 512 KiB per member, 4 MiB aggregate or a 100:1 declared compression ratio. Known binary/audio/signing/nested-archive suffixes are not text-decoded, while their path policy remains unchanged.
+- Tests: focused public-surface policy 8/8 and complete Python policy 43/43 passed. Fixtures cover UTF-8 BOM secret content, per-member/aggregate/compression limits and binary/audio false-positive exclusion.
+- Static gate: `python3 scripts/check_public_surface.py` passed 394 candidates and `git diff --check` passed. `scripts/validate_project.sh` passed its public/executable-mode phases, then stopped because the sandbox cannot create the Gradle wrapper cache under `/root/.gradle`; this Python-only delta claims no Gradle, device, provider, public-release or Human result.
+
 ## Fractional pattern-frame timing candidate — 2026-08-24
 
 - Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.

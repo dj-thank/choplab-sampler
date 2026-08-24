@@ -1,6 +1,6 @@
 # Release security and repository controls
 
-Updated: 2026-08-21
+Updated: 2026-08-24
 
 This document separates controls enforced by committed source from controls that require a GitHub repository administrator. Do not report an administrator control as complete until its setting has been read back from GitHub.
 
@@ -10,7 +10,7 @@ This document separates controls enforced by committed source from controls that
 
 A `v*` run of `.github/workflows/release.yml`:
 
-1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets;
+1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; public-candidate ZIPs additionally scan bounded non-binary UTF-8 member content without extraction, failing closed above the documented member, aggregate or compression-ratio limits;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
 4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
