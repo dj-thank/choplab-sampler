@@ -33,10 +33,12 @@ class DeckLayoutPolicyTest {
         assertTrue(metrics.workspaceHeightAfterProductionDock(820) >= 600)
         assertEquals(1, metrics.workflowRows)
         assertEquals(false, metrics.largeText)
+        assertEquals(false, metrics.focusedCaptureNeedsScroll)
+        assertEquals(false, metrics.beatWorkspaceNeedsScroll)
     }
 
     @Test
-    fun largeTextAddsSpaceForTwoWorkflowRowsWithoutEliminatingTheWorkspace() {
+    fun largeTextUsesTwoWorkflowRowsAndScrollableTouchSafeBeatBody() {
         val medium = resolveDeckLayout(widthDp = 412, heightDp = 820, fontScale = 1.3f)
         val largest = resolveDeckLayout(widthDp = 360, heightDp = 640, fontScale = 2f)
 
@@ -46,6 +48,9 @@ class DeckLayoutPolicyTest {
             assertTrue(metrics.headerHeightDp >= 60)
             assertTrue(metrics.modeBarHeightDp >= 96)
             assertTrue(metrics.statusHeightDp >= 64)
+            assertEquals(true, metrics.focusedCaptureNeedsScroll)
+            assertEquals(true, metrics.beatWorkspaceNeedsScroll)
+            assertTrue(metrics.beatPadGridHeightDp >= 4 * 48 + 3 * metrics.gapDp)
         }
         assertTrue(medium.workspaceHeightAfterProductionDock(820) >= 480)
         assertTrue(largest.workspaceHeightAfterProductionDock(640) >= 300)
@@ -62,6 +67,8 @@ class DeckLayoutPolicyTest {
             performanceWorkspaceLayout(metrics),
         )
         assertEquals(false, metrics.showStatusStrip)
+        assertEquals(true, metrics.focusedCaptureNeedsScroll)
+        assertEquals(false, metrics.beatWorkspaceNeedsScroll)
         assertEquals(3, metrics.gapDp)
         assertTrue(metrics.waveformHeightDp <= 128)
         assertTrue(320 - metrics.fixedChromeHeightDp >= 230)
