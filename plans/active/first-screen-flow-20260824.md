@@ -75,6 +75,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 16:08 JST — Three GitHub review threads reproduced: normal compact-landscape CAPTURE clipping, collapsed 200% BEAT quick/detail workspaces and autosave-dependent first-screen instrumentation. Source repair `8736430` plus direct large-text navigation coverage is complete.
 - [x] 2026-08-24 16:08 JST — Review-repair static gates PASS: diff check, 23 Python tests and 389-candidate public-surface scan. Fresh Gradle/AVD proof is delegated to hosted PR CI because this container lacks the Android SDK/cached Gradle and cannot download the distribution.
 - [x] 2026-08-24 16:17 JST — PR #52 merged at `495ddc9`; two later review findings were reproduced and fixed in follow-up product commit `0d73984`: large-text CHOP uses a touch-safe bounded-scroll stack, and compact-landscape status remains visible in the header.
+- [x] 2026-08-24 16:20 JST — Follow-up PR #53 opened for all five review repairs; review replies are posted and hosted checks are the remaining integration gate.
 - [ ] Independent review, GitHub integration and closeout.
 
 ## Discoveries
