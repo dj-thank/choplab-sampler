@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
                 var pendingAction by rememberSaveable { mutableStateOf(PendingPermissionAction.NONE) }
 
                 val importLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.OpenDocument(),
+                    contract = AudioOpenDocumentContract(),
                 ) { uri ->
                     uri ?: return@rememberLauncherForActivityResult
                     runCatching {
@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
 
                 SamplerScreen(
                     state = state,
-                    onImportAudio = { importLauncher.launch(arrayOf("audio/*")) },
+                    onImportAudio = { importLauncher.launch(Unit) },
                     onToggleMicrophoneRecording = {
                         if (state.microphoneRecording) {
                             samplerViewModel.stopMicrophoneRecording()

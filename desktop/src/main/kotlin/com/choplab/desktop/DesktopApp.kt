@@ -34,6 +34,7 @@ import java.awt.Frame
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.io.File
+import javax.swing.JFileChooser
 
 fun main(args: Array<String>) = application {
     val startupFile = remember {
@@ -130,7 +131,7 @@ fun main(args: Array<String>) = application {
         MenuBar {
             Menu("ファイル") {
                 Item(
-                    "WAVを読み込む",
+                    "音声を読み込む（WAV）",
                     shortcut = KeyShortcut(Key.O, ctrl = true),
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { chooseWav(controller) },
@@ -228,12 +229,20 @@ fun main(args: Array<String>) = application {
 }
 
 private fun chooseWav(controller: DesktopSamplerController) {
-    val dialog = FileDialog(null as Frame?, "ChopLabで開くWAV", FileDialog.LOAD).apply {
-        filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
-        isVisible = true
+    val chooser = JFileChooser().apply {
+        dialogTitle = "ChopLabで音声を開く（Windows版はWAV）"
+        fileSelectionMode = JFileChooser.FILES_ONLY
+        isMultiSelectionEnabled = false
+        isAcceptAllFileFilterUsed = false
+        fileFilter = DesktopAudioImportPolicy.fileFilter
     }
-    val file = dialog.file ?: return
-    runCatching { controller.loadWav(File(dialog.directory, file)) }
+    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return
+    val file = chooser.selectedFile ?: return
+    if (!DesktopAudioImportPolicy.accepts(file)) {
+        controller.setStatus("Windows版ではWAV音声を選んでください")
+        return
+    }
+    runCatching { controller.loadWav(file) }
         .onFailure { controller.setStatus("WAV読込失敗: ${it.message ?: it.javaClass.simpleName}") }
 }
 
