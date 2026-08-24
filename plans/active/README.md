@@ -14,6 +14,8 @@
 
 **独立audio保守delta:** merged `main@3260f5c`からのAndroid realtime PAD terminal-sample修正は、product `eabd063` / tree `54df8ea`で返却sampleをmixしてからpooled Voiceをretireする。#66 timing source/tests/docsを保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 
+**独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
+
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。

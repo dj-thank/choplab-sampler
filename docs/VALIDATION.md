@@ -13,6 +13,14 @@
 - Local prerequisite ceiling: `./scripts/validate_project.sh` passed its public-surface/executable checks, then could not create the Gradle distribution lock's parent directory under the default cache. With a writable task-local cache, `./gradlew :app:testDebugUnitTest --offline --no-daemon --max-workers=1 --no-watch-fs` could not fetch the uncached Gradle 9.7.1 distribution because the network is unreachable. No Kotlin/Gradle PASS is claimed locally.
 - Gate: source/static candidate. Hosted Android CI is required before `LOCAL_PASS`; device listening, audio quality/latency, provider/public release and Human evidence remain separate.
 
+## Desktop import sample-rate admission candidate — 2026-08-24
+
+- Source: reachable product commit `3ad2bd9eda0561b0f1cf304b477ca726edd1becc`, tree `8272a51c4b537dd06ec02e0ff780e574babe4d46`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; the final follow-up is documentation-only.
+- Contract: Desktop WAV import accepts finite sample rates from 8,000 through `ProjectLimits.MAX_SAMPLE_RATE` (192,000 Hz), matching Android and the project archive. Unsupported rates fail before decoding, state replacement and autosave admission.
+- Regression: exact 192 kHz validation succeeds. An `AudioInputStream` declaring 192,001 Hz over a fail-on-read payload throws `IllegalArgumentException`, and the payload read count remains zero.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS. The uncached Gradle 9.7.1 distribution is unavailable in this container, so hosted `:desktop:test` is required before merge.
+- Gate: source/static candidate only; no audible, physical Windows, archive recovery, provider or Human result is claimed.
+
 ## Fractional pattern-frame timing candidate — 2026-08-24
 
 - Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.
