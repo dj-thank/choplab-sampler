@@ -266,6 +266,7 @@ fun OtohiroiDeck(
                         stage = stage,
                         height = metrics.headerHeightDp.dp,
                         largeText = metrics.largeText,
+                        showInlineStatus = metrics.showInlineHeaderStatus,
                         onStopAll = viewModel::stopAllSounds,
                         onStopRecording = viewModel::stopActiveRecording,
                     )
@@ -442,6 +443,7 @@ private fun PerformanceWorkspace(
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
+    val scrollState = rememberScrollState()
     val sourcePhase = state.sourceUiPhase()
     val presentation = chopSessionPresentation(
         sourcePhase = sourcePhase,
@@ -463,7 +465,11 @@ private fun PerformanceWorkspace(
         return
     }
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = if (metrics.performanceWorkspaceNeedsScroll) {
+            Modifier.fillMaxSize().verticalScroll(scrollState)
+        } else {
+            Modifier.fillMaxSize()
+        },
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
         ChopCoachRow(
@@ -508,7 +514,13 @@ private fun PerformanceWorkspace(
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
             gap = gap,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = if (metrics.performanceWorkspaceNeedsScroll) {
+                Modifier
+                    .fillMaxWidth()
+                    .height(metrics.touchSafePadGridHeightDp.dp)
+            } else {
+                Modifier.weight(1f).fillMaxWidth()
+            },
         )
         ChopNextActionRow(
             state = state,
@@ -735,6 +747,7 @@ private fun MachineHeader(
     stage: WorkflowStage,
     height: Dp,
     largeText: Boolean,
+    showInlineStatus: Boolean,
     onStopAll: () -> Unit,
     onStopRecording: () -> Unit,
 ) {
@@ -766,7 +779,18 @@ private fun MachineHeader(
                 letterSpacing = if (largeText) 1.sp else 1.5.sp,
                 maxLines = 1,
             )
-            if (machineHeaderShowsCaption(fontScale)) {
+            if (showInlineStatus) {
+                Text(
+                    recording?.statusLabel ?: state.statusMessage,
+                    color = if (recording != null) DeckLamp else DeckGreen,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 7.sp,
+                    lineHeight = 8.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else if (machineHeaderShowsCaption(fontScale)) {
                 Text(
                     "${stage.label} / ${stage.caption}",
                     color = Color(0xFF9C906F),
