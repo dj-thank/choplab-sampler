@@ -139,18 +139,23 @@ object PatternRenderer : PatternRenderService {
         bars: Int,
     ): PatternFrameSchedule {
         val eventFrames = IntArray(SamplerConfig.STEP_COUNT * bars)
-        var exactFrame = 0.0
+        var eventFrame = 0
+        var framesUntilNextStep = 0.0
         var eventIndex = 0
         repeat(bars) {
             repeat(SamplerConfig.STEP_COUNT) { step ->
-                eventFrames[eventIndex++] =
-                    SamplerDspPrimitives.scheduledFrameAtOrAfter(exactFrame)
-                exactFrame += SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
+                eventFrames[eventIndex++] = eventFrame
+                framesUntilNextStep +=
+                    SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
+                val frameAdvance =
+                    SamplerDspPrimitives.scheduledFrameAtOrAfter(framesUntilNextStep)
+                eventFrame += frameAdvance
+                framesUntilNextStep -= frameAdvance.toDouble()
             }
         }
         return PatternFrameSchedule(
             eventFrames = eventFrames,
-            totalFrames = SamplerDspPrimitives.scheduledFrameAtOrAfter(exactFrame).coerceAtLeast(1),
+            totalFrames = eventFrame.coerceAtLeast(1),
         )
     }
 

@@ -163,6 +163,63 @@ class PatternRendererTest {
     }
 
     @Test
+    fun carriedCountdownDoesNotCollapseToRoundedAbsoluteDeadline() {
+        val sampleRate = 48_000
+        val hit = ShortArray(64) { 16_000 }
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = PcmAudio(name = "carried-countdown-hit", samples = hit, sampleRate = sampleRate),
+            startFrame = 0,
+            endFrame = hit.size,
+        )
+        val pads = List(SamplerConfig.PAD_COUNT) { if (it == 0) pad else PadModel(it) }
+        val file = File.createTempFile("choplab-carried-countdown", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = pads,
+                activeSteps = setOf(stepKey(0, 3)),
+                bpm = 120f,
+                swing = 55f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            val pcm = readPcm16(file)
+
+            assertEquals(96_000, summary.frameCount)
+            assertEquals(0, pcm[18_600].toInt())
+            assertEquals(0, pcm[18_601].toInt())
+            assertTrue(kotlin.math.abs(pcm[18_602].toInt()) > 100)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun wavLengthEndsAtTheNextRealtimeBarBoundary() {
+        val file = File.createTempFile("choplab-carried-countdown-length", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = List(SamplerConfig.PAD_COUNT) { PadModel(it) },
+                activeSteps = emptySet(),
+                bpm = 40f,
+                swing = 56f,
+                bars = 1,
+                outputSampleRate = 48_000,
+            )
+
+            assertEquals(288_001, summary.frameCount)
+            assertEquals(summary.frameCount, readPcm16(file).size)
+            assertEquals(summary.frameCount * Short.SIZE_BYTES, littleEndianInt(file.readBytes(), 40))
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun reversePitchGainAndToneChangeIndependentPcmObservations() {
         val sampleRate = 8_000
         val rising = ShortArray(512) { frame -> (2_000 + frame * 40).coerceAtMost(22_000).toShort() }

@@ -91,8 +91,9 @@ object SamplerDspPrimitives {
      * First whole output frame that is not earlier than an exact transport deadline.
      *
      * The realtime engine reaches this boundary through its fractional countdown.
-     * Offline scheduling must use the same ceiling rule instead of truncating a
-     * fractional deadline to the preceding frame.
+     * Offline scheduling must use the same ceiling rule and carry the quantization
+     * remainder into the next step instead of truncating a fractional deadline or
+     * independently summing absolute deadlines.
      */
     fun scheduledFrameAtOrAfter(exactFrame: Double): Int {
         require(exactFrame.isFinite() && exactFrame >= 0.0) {
