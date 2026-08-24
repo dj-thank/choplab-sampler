@@ -77,10 +77,16 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 16:17 JST — PR #52 merged at `495ddc9`; later review repairs are bound to reachable product commit `c650d00`: large-text CHOP uses a touch-safe bounded-scroll stack, compact-landscape status remains visible in the header, and the complete shared source blob is preserved.
 - [x] 2026-08-24 16:20 JST — Follow-up PR opened for all five review repairs; review replies are posted and hosted checks are the remaining integration gate.
 - [x] 2026-08-24 16:43 JST — Hosted Android compile/unit/lint/APK gates passed; instrumentation exposed the test proxy returning null from `equals`. The proxy now implements identity `equals`/`hashCode`/`toString`; refreshed device execution is pending.
-- [x] 2026-08-24 — Review follow-up rebased onto `main@a930da4`, retaining PRs #54/#55/#56/#57/#59/#60/#63; 39 Python tests, 394-candidate public-surface scan, six XML parses and diff checks pass locally.
-- [x] 2026-08-24 — Review thread `3841779683` and all five exact-head follow-ups are repaired at reachable product `dfe52d7` / tree `ef1ce32`: large-text CHOP/ONE SHOT commit on completed tap, held empty CHOP captures on pointer-up, GATE activates after a 120 ms scroll window, short taps retain 80 ms, node cancellation releases exactly once, play-mode changes restart arbitration, pre-activation parent swipes dispatch zero controller calls, and normal PADs retain press-down playback.
-- [ ] Run hosted Android unit/androidTest compilation and the three focused pointer regressions; local Gradle 9.7.1 acquisition is blocked by the unavailable distribution host.
-- [ ] Independent review, GitHub integration and closeout.
+- [x] 2026-08-24 16:45 JST — PR #52 merged to `main@495ddc9`; final PR and merged-main Android/Windows/iOS/Supply checks PASS; provider Windows artifact `9510151389` installed data-preservingly.
+- [x] 2026-08-24 16:45 JST — Post-merge review fixes normal compact-landscape CAPTURE, 200% BEAT quick/detail and autosave-independent instrumentation. Three device-test defects were caught RED and repaired; exact final instrumentation is `OK (8 tests)`.
+- [x] 2026-08-24 16:45 JST — Closeout source `07f8dcf` / tree `dcd5969`: clean 191-task plus final 184-task gate, policy, exact artifacts, physical-swipe visuals and independent re-review complete.
+- [x] 2026-08-24 18:20 JST — PR #62 reachable review repair source `c569604` / tree `4e7250f`: PAD-started vertical swipes cancel before selection/playback, GATE retains a real hold after scroll arbitration, compact LOOP/DRM/VOX remain in full semantics, and focused real-pointer/unit regressions cover each path.
+- [x] 2026-08-24 18:39 JST — Follow-up product `4e8b62f` / tree `6ff0b00` integrates `main@a930da4` and gives every triggered deferred GATE exact-one release when TRIM recomposition cancels its pointer-input node; the real-pointer regression also preserves zero actions for an 80 ms parent-cancelled pre-activation swipe.
+- [x] 2026-08-24 19:00 JST — CI located the missing Compose Test `longClick` import, and exact-head review located stale pointer routing after an in-place ONE SHOT→GATE update. Product `5b9592f` / tree `97569b6` imports the established API, keys pointer input by `pad.playMode`, makes the existing fixture prove the transition explicitly, and integrates decode-limit `main@ae77cd9` while retaining both evidence snapshots.
+- [x] 2026-08-24 — Exact PR #62 head `0e94698` received clean review and four green workflows, then squash-merged as `main@6b645ca`.
+- [x] 2026-08-24 — Review thread `3841779683` and all five later PR #58 follow-ups are repaired at reachable product `dfe52d7` / tree `ef1ce32`: large-text CHOP/ONE SHOT commit on completed tap, held empty CHOP captures on pointer-up, GATE activates after a 120 ms scroll window, short taps retain 80 ms, node cancellation releases exactly once, play-mode changes restart arbitration, pre-activation parent swipes dispatch zero controller calls, and normal PADs retain press-down playback.
+- [ ] Integrate those PR #58 repairs with `main@6b645ca`, then run hosted Android unit/androidTest and exact-head review; local Gradle 9.7.1 acquisition is blocked by the unavailable distribution host.
+- [ ] Resolve review threads and close out PR #58 only after exact-head review and required workflows pass.
 
 ## Discoveries
 
@@ -98,9 +104,12 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 
 - Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
 - Review-repair source: reachable commit `dfe52d72946e0deefa64eed02539178a03558c0a`, tree `ef1ce320740fc1254023efe5aa2ef648ec38792e`, integrating base `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`; the final follow-up commit only binds documentation to this source. Static policy, public-surface, XML and diff gates pass; hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
+- A `pointerInput` block retains the values captured when its keys were last changed. `pad.playMode` must therefore be a key so Undo/Redo or another in-place ONE SHOT/GATE update cannot keep stale routing.
+- Compact large-text cells can intentionally omit secondary captions only when semantics independently enumerate both play mode and content kind; PAD assignment alone is not a complete accessible role description.
+- Merged PR #62 source: reachable commit `5b9592ff27608166a99fe77af0876ad1d6b917f5`, tree `97569b6a07fb74f9ee5b59101c0ea27059259a1b`; exact head `0e94698625f676573d42e74c52bf2394e1f24fd3` passed review and all four workflows before merge as `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
-- Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
-- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
+- Instrumentation: API 36 `OK (8 tests)` after exact data-preserving APK installs。first-screen 2本はin-memory shared-deck fixtureであり、production MainActivity/controller wiringは別のmanual cold-launch/navigation captureに限定する。
+- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/` and `closeout/`.
 - Pixel 9a: disconnected; no physical-device gate promotion.
 - A Windows CopyFromScreen capture was invalid at 200% DPI/off-screen placement; PrintWindow produced the accepted full-window evidence.
 
@@ -111,6 +120,8 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - 2026-08-24 — Extend bounded body scrolling to compact-landscape CAPTURE and large-text BEAT quick/detail while retaining normal-text fixed/responsive layouts and fixed global chrome.
 - 2026-08-24 — Use the same bounded large-text body policy for CHOP and preserve compact-landscape status in the fixed header instead of restoring a space-consuming status strip.
 - 2026-08-24 — Commit CHOP/ONE SHOT on completed tap inside large-text scroll bodies; let held empty CHOP pads complete at pointer-up; give GATE a bounded 120 ms parent-cancel window, an 80 ms short preview and cancellation-safe ownership through release; preserve press-down performance everywhere else.
+- 2026-08-24 — Restart a PAD's pointer-input coroutine when `playMode` changes; displayed mode and captured gesture routing must advance together.
+- 2026-08-24 — Treat play mode and content kind as semantic PAD identity even when compact layout hides their secondary visual caption.
 - 2026-08-24 — Keep existing loaded-source workspaces unchanged unless fresh post-implementation screenshots show a regression.
 
 ## Validation log

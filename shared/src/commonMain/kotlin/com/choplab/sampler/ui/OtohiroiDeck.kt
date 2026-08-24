@@ -1501,6 +1501,7 @@ private fun SelectedPadQuickEditor(
     viewModel: SamplerDeckController,
 ) {
     val pad = state.selectedPadModel()
+    val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1557,7 +1558,8 @@ private fun SelectedPadQuickEditor(
             }
             if (onOpenDetails != null) {
                 MachineButton(
-                    label = "音を整える\nPAD EDIT",
+                    label = if (largeText) "調整\nEDIT" else "音を整える\nPAD EDIT",
+                    contentLabel = "音を整える\nPAD EDIT",
                     onClick = onOpenDetails,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
@@ -2137,6 +2139,7 @@ private fun SequenceWorkspace(
                 selectedBank = state.selectedBank,
                 height = metrics.controlHeightDp.dp,
                 onSelectBank = viewModel::selectPlayableBank,
+                compactLabels = metrics.largeText,
             )
             ArrangementWaveformTimeline(
                 pad = state.loopingPadIndex?.let(state.pads::get) ?: state.selectedPadModel(),
@@ -2306,10 +2309,15 @@ private fun BeatChopSurface(
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             BeginnerCoachBar(
-                text = arrangeQuickGuidance(state.selectedPadModel(), compact = false),
+                text = arrangeQuickGuidance(state.selectedPadModel(), compact = metrics.largeText),
                 modifier = Modifier.fillMaxWidth().height(
-                    if (metrics.density == DeckDensity.COMPACT) 24.dp else 28.dp,
+                    when {
+                        metrics.largeText -> 48.dp
+                        metrics.density == DeckDensity.COMPACT -> 24.dp
+                        else -> 28.dp
+                    },
                 ),
+                multiLine = metrics.largeText,
             )
             timeline(
                 if (metrics.beatWorkspaceNeedsScroll) {
@@ -2322,6 +2330,7 @@ private fun BeatChopSurface(
                 selectedBank = state.selectedBank,
                 height = metrics.controlHeightDp.dp,
                 onSelectBank = viewModel::selectPlayableBank,
+                compactLabels = metrics.largeText,
             )
             PadPageStrip(
                 state = state,
@@ -2362,6 +2371,7 @@ private fun BeatChopSurface(
 private fun BeginnerCoachBar(
     text: String,
     modifier: Modifier = Modifier,
+    multiLine: Boolean = false,
 ) {
     Row(
         modifier = modifier
@@ -2384,7 +2394,8 @@ private fun BeginnerCoachBar(
             fontFamily = DeckFont,
             fontWeight = FontWeight.Bold,
             fontSize = 9.sp,
-            maxLines = 1,
+            lineHeight = if (multiLine) 10.sp else 11.sp,
+            maxLines = if (multiLine) 2 else 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -4016,6 +4027,7 @@ private fun MachineButton(
     enabled: Boolean = true,
     active: Boolean? = null,
     compact: Boolean = false,
+    contentLabel: String? = null,
 ) {
     val fontScale = LocalDensity.current.fontScale
     val interactionSource = remember { MutableInteractionSource() }
@@ -4044,7 +4056,7 @@ private fun MachineButton(
             )
             .semantics {
                 role = Role.Button
-                contentDescription = label
+                contentDescription = contentLabel ?: label
                 active?.let { this.selected = it }
             },
     ) {

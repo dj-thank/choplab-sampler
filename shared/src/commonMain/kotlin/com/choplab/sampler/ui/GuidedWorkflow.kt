@@ -321,7 +321,8 @@ fun bankSwitchLabel(bankIndex: Int, selected: Boolean, compact: Boolean): String
     val role = bankRoleFor(bankIndex)
     val marker = if (selected) "● " else ""
     return if (compact) {
-        "$marker${role.letter}\n${role.englishLabel}"
+        val compactEnglishLabel = if (bankIndex == 2) "SHOTS" else role.englishLabel
+        "$marker${role.letter}\n$compactEnglishLabel"
     } else {
         "$marker${role.letter} ${role.japaneseLabel}\n${role.englishLabel}"
     }
