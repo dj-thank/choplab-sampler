@@ -324,20 +324,20 @@ class FirstScreenFlowDeviceTest {
                 assertEquals(0, padActions.count { it.first == "releasePad" })
             }
 
-            // The first tap's 80 ms timer has elapsed, but its stale generation must not release
-            // the voice started by the second tap 40 ms later.
+            // The first tap's 80 ms timer releases only its exact voice. The newer voice remains
+            // independently owned until its own minimum preview elapses.
             composeRule.mainClock.advanceTimeBy(48)
             composeRule.waitForIdle()
             composeRule.runOnIdle {
-                assertEquals(0, padActions.count { it.first == "releasePad" })
+                assertEquals(1, padActions.count { it.first == "releasePad" })
             }
 
             composeRule.mainClock.advanceTimeBy(48)
             composeRule.waitForIdle()
             composeRule.runOnIdle {
-                assertEquals(1, padActions.count { it.first == "releasePad" })
+                assertEquals(2, padActions.count { it.first == "releasePad" })
                 val secondTriggerTime = padActions.filter { it.first == "triggerPad" }[1].second
-                val releaseTime = padActions.single { it.first == "releasePad" }.second
+                val releaseTime = padActions.filter { it.first == "releasePad" }[1].second
                 assertTrue(
                     "The newest retrigger must retain its complete 80 ms preview",
                     releaseTime - secondTriggerTime >= 80L,
@@ -503,14 +503,14 @@ class FirstScreenFlowDeviceTest {
             composeRule.runOnIdle {
                 assertEquals(2, padActions.count { it == "triggerPad" })
                 assertEquals(
-                    "The pointer timer must not release a newer keyboard/controller trigger",
-                    0,
+                    "The pointer timer must release only its exact voice",
+                    1,
                     padActions.count { it == "releasePad" },
                 )
                 controller.releasePad(gateIndex)
             }
             composeRule.runOnIdle {
-                assertEquals(1, padActions.count { it == "releasePad" })
+                assertEquals(2, padActions.count { it == "releasePad" })
             }
         } finally {
             composeRule.mainClock.autoAdvance = true
@@ -539,14 +539,14 @@ class FirstScreenFlowDeviceTest {
             composeRule.runOnIdle {
                 assertEquals(2, padActions.count { it == "triggerPad" })
                 assertEquals(
-                    "Normal-layout GATE key-up must conditionally release its exact owner",
-                    0,
+                    "Normal-layout GATE pointer-up must release its exact old voice",
+                    1,
                     padActions.count { it == "releasePad" },
                 )
                 controller.releasePad(gateIndex)
             }
             composeRule.runOnIdle {
-                assertEquals(1, padActions.count { it == "releasePad" })
+                assertEquals(2, padActions.count { it == "releasePad" })
             }
         } finally {
             composeRule.mainClock.autoAdvance = true
@@ -717,6 +717,52 @@ class FirstScreenFlowDeviceTest {
             }
         } finally {
             composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun chopGatePointerUpReleasesOnlyItsVoiceAfterANewerControllerTrigger() {
+        val padActions = mutableListOf<String>()
+        lateinit var controller: SamplerDeckController
+        val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val starter = BuiltInDrumKits.installStarterKit(SamplerUiState())
+        val source = requireNotNull(starter.pads[gateIndex].audio)
+        setDeck(
+            initialState = starter.copy(
+                currentAudio = source,
+                rangeEndFrame = source.frameCount,
+                sourcePlaying = false,
+                projectLaunchTarget = ProjectLaunchTarget.CHOP,
+                selectedBank = SamplerConfig.DRUM_BANK_INDEX,
+                selectedPad = gateIndex,
+                pads = starter.pads.map { pad ->
+                    if (pad.globalIndex == gateIndex) pad.copy(playMode = PadPlayMode.GATE) else pad
+                },
+            ),
+            fontScale = 1f,
+            onPadAction = { padActions += it },
+            onControllerReady = { controller = it },
+        )
+
+        val gate = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み。再生モード GATE", substring = true),
+        )
+        gate.performTouchInput { down(center) }
+        composeRule.runOnIdle { controller.triggerPad(gateIndex) }
+        gate.performTouchInput { up() }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(2, padActions.count { it == "triggerPad" })
+            assertEquals(
+                "CHOP must route physical GATE release through its exact ownership callback",
+                1,
+                padActions.count { it == "releasePad" },
+            )
+            controller.releasePad(gateIndex)
+        }
+        composeRule.runOnIdle {
+            assertEquals(2, padActions.count { it == "releasePad" })
         }
     }
 
@@ -1058,7 +1104,13 @@ class FirstScreenFlowDeviceTest {
         onEnsurePlayablePadSelected: () -> Unit,
         onPadAction: (String) -> Unit,
     ): SamplerDeckController {
-        val triggerOwnership = PadTriggerOwnership()
+        var nextTriggerOwnership = 0L
+        val activeOwnerships = mutableMapOf<Int, MutableSet<Long>>()
+        fun acquireOwnership(index: Int): Long {
+            nextTriggerOwnership += 1L
+            activeOwnerships.getOrPut(index, ::mutableSetOf) += nextTriggerOwnership
+            return nextTriggerOwnership
+        }
         val handler = java.lang.reflect.InvocationHandler { proxy, method, arguments ->
             when (method.name) {
                 "equals" -> proxy === arguments?.firstOrNull()
@@ -1076,19 +1128,19 @@ class FirstScreenFlowDeviceTest {
                     null
                 }
                 SamplerDeckController::triggerPad.name -> {
-                    triggerOwnership.acquire((requireNotNull(arguments)[0] as Number).toInt())
+                    acquireOwnership((requireNotNull(arguments)[0] as Number).toInt())
                     onPadAction("triggerPad")
                     null
                 }
                 SamplerDeckController::triggerPadWithOwnership.name -> {
-                    val ownership = triggerOwnership.acquire(
+                    val ownership = acquireOwnership(
                         (requireNotNull(arguments)[0] as Number).toInt(),
                     )
                     onPadAction("triggerPad")
                     ownership
                 }
                 SamplerDeckController::releasePad.name -> {
-                    triggerOwnership.invalidate((requireNotNull(arguments)[0] as Number).toInt())
+                    activeOwnerships.remove((requireNotNull(arguments)[0] as Number).toInt())
                     onPadAction("releasePad")
                     null
                 }
@@ -1096,7 +1148,7 @@ class FirstScreenFlowDeviceTest {
                     val callArguments = requireNotNull(arguments)
                     val padIndex = (callArguments[0] as Number).toInt()
                     val ownership = (callArguments[1] as Number).toLong()
-                    if (triggerOwnership.releaseIfCurrent(padIndex, ownership)) {
+                    if (activeOwnerships[padIndex]?.remove(ownership) == true) {
                         onPadAction("releasePad")
                     }
                     null
