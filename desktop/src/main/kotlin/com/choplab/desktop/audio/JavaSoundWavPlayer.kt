@@ -11,6 +11,10 @@ import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.Clip
 import javax.sound.sampled.LineEvent
 
+internal fun interface DesktopClipFactory {
+    fun create(): Clip
+}
+
 /**
  * Java Sound engine for the Windows deck.
  *
@@ -18,7 +22,11 @@ import javax.sound.sampled.LineEvent
  * destroys the loaded source. PAD PCM is rendered with the shared JVM voice
  * controls before it reaches a Clip.
  */
-class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
+class JavaSoundWavPlayer internal constructor(
+    private val clipFactory: DesktopClipFactory,
+) : DesktopSamplerAudioEngine {
+    constructor() : this(DesktopClipFactory { AudioSystem.getClip() })
+
     private var sourceClip: Clip? = null
     private var sourceOriginalFrames: Int = 0
     private val activeVoices = mutableListOf<ActiveVoice>()
@@ -96,12 +104,17 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         val clip = createClip(renderDesktopPadPcm(pad, mode), audio.sampleRate)
         val voice = ActiveVoice(pad, mode, clip)
         activeVoices += voice
-        clip.addLineListener { event ->
-            if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
-                synchronized(this) { closeVoice(voice) }
+        try {
+            clip.addLineListener { event ->
+                if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
+                    synchronized(this) { closeVoice(voice) }
+                }
             }
+            if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
+        } catch (failure: Throwable) {
+            closeVoice(voice)
+            throw failure
         }
-        if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
     }
 
     @Synchronized
@@ -145,9 +158,14 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
             bytes[index * 2 + 1] = (sample shr 8).toByte()
         }
         val format = AudioFormat(sampleRate.toFloat(), 16, 1, true, false)
-        val clip = AudioSystem.getClip()
-        AudioInputStream(ByteArrayInputStream(bytes), format, samples.size.toLong()).use(clip::open)
-        return clip
+        val clip = clipFactory.create()
+        return try {
+            AudioInputStream(ByteArrayInputStream(bytes), format, samples.size.toLong()).use(clip::open)
+            clip
+        } catch (failure: Throwable) {
+            runCatching { clip.close() }
+            throw failure
+        }
     }
 
     private fun replaceSource(newClip: Clip) {
@@ -163,7 +181,7 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     }
 
     private fun closeVoice(voice: ActiveVoice) {
-        activeVoices.remove(voice)
+        if (!activeVoices.remove(voice)) return
         runCatching { voice.clip.stop() }
         runCatching { voice.clip.close() }
     }
