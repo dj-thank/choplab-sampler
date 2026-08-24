@@ -4,7 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Android / Windows取込名・autosave境界 | 🧪 latest-main source / hosted CI待ち | product `7ff0456` / tree `deed3fa`（merged `main@3330881`）でarchive-compatible名規則をsharedへ集約。Androidのprovider/URI/final fallback契約を保持し、Desktop `File.name`もPCM公開前に非空・最大240 UTF-16単位へ正規化する。切断後blank再評価、surrogate pair分断防止、shared common contract、両platformのexact archive round trip回帰を含む。実provider/filesystem autosaveは未確認 |
+| Android取込名 / autosave境界 | 🧪 latest-main source / hosted CI待ち | integrated product `b7364ee` / tree `dae6252`で、provider `DISPLAY_NAME`、URI fallback、最終`sample`をproject/archiveと同じ非空・最大240 UTF-16単位へdecode公開前に正規化。切断後が空白だけならfallbackを再評価し、surrogate pairも分断しない。exact archive round trip回帰を含み、merged #68 runtime/test blobsは不変。実provider/device autosaveは未確認 |
 | Pattern event/frame timing parity | 🧪 latest-main source / prior hosted head | realtime fractional countdownとoffline WAVをshared ceiling＋carried-residual契約へ統一。48 kHz / 92 BPM / swing 54%の4-bar境界に加え、120 BPM / 55%のstep 3 = 18,601と40 BPM / 56%の1-bar長 = 288,001をWAV回帰で固定。PR #66旧exact headは全CIと再reviewがPASSし、最新main統合headのhosted再実行待ち |
 | Android realtime PAD terminal retirement | 🧪 source/static / hosted CI待ち | product `5dd3d66` / tree `c6a7e9b`、merged `main@3de1cc5`統合済み。pooled PAD voiceの返却sampleをmixしてからfinished slotをdeactivateする。既存parity fixtureで403 frames、terminal PCM `-61`、retire後inactiveを固定。callback追加は既存Voice＋primitiveだけでallocation/lock/I/Oなし。Python 39/39・public 394・diff PASS、Gradle 9.7.1未cacheのためhosted Android gate待ち |
 | Decode duration / memory境界 | 🧪 source / hosted CI待ち | import sample rateはproject/archive契約と同じ8–192 kHzに限定し、Desktopは192 kHzを受理、192,001 Hz以上をpayload読込前に拒否。shared frame policyは`min(30,000,000, sampleRate × 600秒)`で、8 kHz=4,800,000、48 kHz=28,800,000の境界と+1拒否をallocation-free arithmetic testに固定。Androidのoutput-format変更後builderとDesktopのknown/unknown-length streamingにも適用。現sandboxではGradle distributionを利用できず実行結果は未昇格 |
@@ -60,6 +60,7 @@
 | 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |
 | Android再生割り込み安全性 | ✅ emulator/local | 全audible startをmedia/music audio focusで統一。Home、focus loss/transient/duck、出力切替ではengine silenceをfocus解放より先に一箇所で強制し、反復割り込みは一度だけ停止、録音のみの割り込みは再生へ触れない。gainでは自動再開しない。回転は再生継続、source seek/KEY retargetはfocus所有中のみ。端末音声録音はbackgroundで継続し、MIC/VOICEは安全停止。実機route-loss／通話競合は未確認 |
 | Swing | ✅ | 50–75% |
+| Windows transportの先頭step | 🧪 latest-main source / prior hosted head | `transportPlaying/currentStep`をworker開始前のreadiness barrierで公開し、通常開始とScratch復帰でstep 0破棄レースを共通排除。barrier順序、単一step-0 PADのexact-once hit、worker-start失敗時のrecord-arm復元をhost regression化。PR #65旧exact headは全CIと再reviewがPASSし、最新main統合headのhosted再実行待ち |
 | Pattern export | ✅ | 4 bars mono WAV |
 | Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは32-PAD page対応schema 5/WAVで保存し、schema 1–4（旧4×16配置を含む）を移行読込 |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
