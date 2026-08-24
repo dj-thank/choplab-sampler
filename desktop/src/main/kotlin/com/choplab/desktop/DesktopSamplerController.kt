@@ -69,8 +69,8 @@ import kotlinx.coroutines.flow.update
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -111,7 +111,7 @@ class DesktopSamplerController(
         Thread(task, "ChopLab-Windows-Project-IO").apply { isDaemon = true }
     }
     private val autosaveLifecycleLock = Any()
-    private var autosaveFuture: ScheduledFuture<*>? = null
+    private var autosaveWork: AutosaveWork? = null
     private var closed = false
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
@@ -851,12 +851,53 @@ class DesktopSamplerController(
         val snapshot = mutableState.value
         synchronized(autosaveLifecycleLock) {
             if (closed) return
-            autosaveFuture?.cancel(false)
-            autosaveFuture = persistenceExecutor.schedule(
-                { persistAutosave(store, snapshot) },
-                autosaveDelayMillis.coerceAtLeast(0L),
-                TimeUnit.MILLISECONDS,
+            autosaveWork
+                ?.takeIf { it.phase == AutosavePhase.SCHEDULED }
+                ?.let { pending ->
+                    if (pending.future?.cancel(false) == true) {
+                        pending.phase = AutosavePhase.CANCELLED
+                    }
+                }
+            autosaveWork = enqueueAutosaveLocked(
+                store = store,
+                snapshot = snapshot,
+                delayMillis = autosaveDelayMillis.coerceAtLeast(0L),
             )
+        }
+    }
+
+    private fun enqueueAutosaveLocked(
+        store: AtomicProjectStore,
+        snapshot: SamplerUiState,
+        delayMillis: Long,
+    ): AutosaveWork {
+        val work = AutosaveWork(snapshot)
+        work.future = persistenceExecutor.schedule(
+            { executeAutosave(store, work) },
+            delayMillis,
+            TimeUnit.MILLISECONDS,
+        )
+        return work
+    }
+
+    private fun executeAutosave(store: AtomicProjectStore, work: AutosaveWork) {
+        // Future.cancel(false) can succeed after its callable starts. Publish RUNNING
+        // under the lifecycle lock before touching the store so close waits this body.
+        val admitted = synchronized(autosaveLifecycleLock) {
+            if (work.phase != AutosavePhase.SCHEDULED) {
+                false
+            } else {
+                work.phase = AutosavePhase.RUNNING
+                true
+            }
+        }
+        if (!admitted) return
+        try {
+            persistAutosave(store, work.snapshot)
+        } finally {
+            synchronized(autosaveLifecycleLock) {
+                work.phase = AutosavePhase.COMPLETED
+            }
         }
     }
 
@@ -868,14 +909,28 @@ class DesktopSamplerController(
         }
     }
 
-    private fun flushAutosaveOnClose(pending: ScheduledFuture<*>?, snapshot: SamplerUiState) {
+    private fun flushAutosaveOnClose(pending: AutosaveWork?, snapshot: SamplerUiState) {
         val store = autosaveStore ?: return
-        val future = pending ?: return
-        val completion = if (future.cancel(false)) {
-            persistenceExecutor.submit { persistAutosave(store, snapshot) }
-        } else {
-            future
+        val completion = synchronized(autosaveLifecycleLock) {
+            when (pending?.phase) {
+                AutosavePhase.SCHEDULED -> {
+                    if (pending.future?.cancel(false) == true) {
+                        pending.phase = AutosavePhase.CANCELLED
+                        enqueueAutosaveLocked(store, snapshot, delayMillis = 0L).also {
+                            autosaveWork = it
+                        }.future
+                    } else {
+                        pending.future
+                    }
+                }
+                AutosavePhase.RUNNING -> pending.future
+                AutosavePhase.COMPLETED,
+                AutosavePhase.CANCELLED,
+                null,
+                -> null
+            }
         }
+        if (completion == null) return
         try {
             completion.get()
         } catch (interrupted: InterruptedException) {
@@ -1043,23 +1098,41 @@ class DesktopSamplerController(
     }
 
     override fun close() {
-        projectOperations.invalidate()
-        ioExecutor.shutdownNow()
-        val pendingAutosave = synchronized(autosaveLifecycleLock) {
+        val closeRequest = synchronized(autosaveLifecycleLock) {
             if (closed) return
             closed = true
-            (autosaveFuture to mutableState.value).also { autosaveFuture = null }
+            AutosaveCloseRequest(autosaveWork, mutableState.value)
         }
-        flushAutosaveOnClose(pendingAutosave.first, pendingAutosave.second)
-        scratchIdleFuture?.cancel(false)
-        persistenceExecutor.shutdownNow()
+        projectOperations.invalidate()
+        ioExecutor.shutdownNow()
         playbackMonitor.shutdownNow()
+        stopCompetingPlayback()
         transport.close()
         scratch.close()
         microphone.close()
         systemAudio.close()
         player.close()
+        flushAutosaveOnClose(closeRequest.pending, closeRequest.snapshot)
+        persistenceExecutor.shutdownNow()
     }
+
+    private enum class AutosavePhase {
+        SCHEDULED,
+        RUNNING,
+        COMPLETED,
+        CANCELLED,
+    }
+
+    private class AutosaveWork(
+        val snapshot: SamplerUiState,
+        var phase: AutosavePhase = AutosavePhase.SCHEDULED,
+        var future: ScheduledFuture<*>? = null,
+    )
+
+    private data class AutosaveCloseRequest(
+        val pending: AutosaveWork?,
+        val snapshot: SamplerUiState,
+    )
 
     companion object {
         internal fun defaultAutosaveStore(): AtomicProjectStore {

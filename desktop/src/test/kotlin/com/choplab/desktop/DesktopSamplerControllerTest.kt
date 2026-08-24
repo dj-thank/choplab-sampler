@@ -18,6 +18,7 @@ import com.choplab.sampler.persistence.AtomicProjectStore
 import java.nio.file.Files
 import java.io.File
 import com.choplab.sampler.ui.WorkflowStage
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -365,6 +366,87 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun closeWaitsForTheRunningAutosaveWithoutWritingTheSameSnapshotTwice() {
+        val directory = Files.createTempDirectory("choplab-controller-running-autosave").toFile()
+        val store = AtomicProjectStore(directory)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            synchronized(store) {
+                controller.setBpm(143f)
+                awaitAutosaveBlockedOnStore()
+
+                closeThread = thread(name = "ChopLab-Test-Close") { controller.close() }
+                awaitThreadWaiting(closeThread)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(143f, store.load()?.bpm)
+            assertTrue(directory.resolve("autosave.choplab").isFile)
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
+            assertFalse(directory.resolve("autosave.previous2.choplab").exists())
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeStopsLiveIoBeforeWaitingForTheRunningAutosave() {
+        val directory = Files.createTempDirectory("choplab-controller-close-order").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine()
+        val microphone = FakeRecorder()
+        val systemAudio = FakeRecorder()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = microphone,
+            systemAudio = systemAudio,
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            synchronized(store) {
+                controller.setBpm(144f)
+                awaitAutosaveBlockedOnStore()
+                controller.toggleMicrophoneRecording()
+                controller.toggleTransport()
+                engine.stopAllCalls = 0
+
+                closeThread = thread(name = "ChopLab-Test-Ordered-Close") { controller.close() }
+                awaitCondition {
+                    microphone.closeCalls == 1 && systemAudio.closeCalls == 1 && engine.closeCalls == 1
+                }
+                awaitThreadWaiting(closeThread)
+
+                assertFalse(microphone.isRecording)
+                assertEquals(1, microphone.closeCalls)
+                assertEquals(1, systemAudio.closeCalls)
+                assertEquals(1, engine.stopAllCalls)
+                assertEquals(1, engine.closeCalls)
+                assertFalse(controller.state.value.transportPlaying)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(144f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sourceRecordingRoutesTheProductionToChopAfterDecode() {
         val recorder = FakeRecorder()
         val controller = DesktopSamplerController(
@@ -505,6 +587,14 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    private fun awaitAutosaveBlockedOnStore() = awaitCondition {
+        Thread.getAllStackTraces().keys.any { thread ->
+            thread.name == "ChopLab-Windows-Autosave" && thread.state == Thread.State.BLOCKED
+        }
+    }
+
+    private fun awaitThreadWaiting(thread: Thread) = awaitCondition { thread.state == Thread.State.WAITING }
+
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
@@ -512,6 +602,8 @@ class DesktopSamplerControllerTest {
         val stoppedPads = mutableListOf<Int>()
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
+        @Volatile var stopAllCalls: Int = 0
+        @Volatile var closeCalls: Int = 0
         override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
         override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
         override fun seekSource(frame: Int) { sourcePosition = frame }
@@ -533,8 +625,13 @@ class DesktopSamplerControllerTest {
             }
             stoppedPads += index
         }
-        override fun stopAll() { isSourcePlaying = false }
-        override fun close() = Unit
+        override fun stopAll() {
+            isSourcePlaying = false
+            stopAllCalls++
+        }
+        override fun close() {
+            closeCalls++
+        }
     }
 
     private class FakeRecorder : DesktopAudioRecorder {
@@ -542,6 +639,7 @@ class DesktopSamplerControllerTest {
         val lastOutput: File?
             get() = output
         var failStop: Boolean = false
+        @Volatile var closeCalls: Int = 0
         override var isRecording: Boolean = false
             private set
 
@@ -572,6 +670,7 @@ class DesktopSamplerControllerTest {
 
         override fun close() {
             isRecording = false
+            closeCalls++
         }
     }
 }
