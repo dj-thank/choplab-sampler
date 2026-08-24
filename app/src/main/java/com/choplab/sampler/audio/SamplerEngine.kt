@@ -371,14 +371,15 @@ class SamplerEngine(
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
                         if (voice.active) {
-                            val value = voice.render(outputSampleRate)
-                            if (voice.finished) {
-                                voice.deactivate()
-                            } else {
-                                if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
-                                    latestLoopFrame = voice.currentFrame
-                                }
-                                monoMix += value
+                            val monitorsLoop = voice.padIndex == monitoredLoopPad &&
+                                voice.playMode == PadPlayMode.LOOP
+                            monoMix = mixVoiceSampleAndRetire(
+                                voice = voice,
+                                outputSampleRate = outputSampleRate,
+                                monoMix = monoMix,
+                            )
+                            if (monitorsLoop && voice.active) {
+                                latestLoopFrame = voice.currentFrame
                             }
                         }
                         voiceIndex++
@@ -952,6 +953,17 @@ class SamplerEngine(
         const val SOURCE_SCRATCH_PAD_INDEX = -3
         const val SCRATCH_SMOOTHING = 0.025
     }
+}
+
+/** Mixes the sample returned by a pooled voice before retiring its finished slot. */
+internal fun mixVoiceSampleAndRetire(
+    voice: SamplerEngine.Voice,
+    outputSampleRate: Int,
+    monoMix: Float,
+): Float {
+    val mixed = monoMix + voice.render(outputSampleRate)
+    if (voice.finished) voice.deactivate()
+    return mixed
 }
 
 /**
