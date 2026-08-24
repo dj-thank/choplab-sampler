@@ -54,25 +54,25 @@ object DesktopWavDecoder {
         }
         val sampleRate = stream.format.sampleRate.toInt()
         require(sampleRate >= 8_000) { "音声のサンプルレートが不正です" }
+        val effectiveMaximumFrames = minOf(
+            maximumFrames,
+            AudioResourceLimits.maxDecodedMonoFrames(sampleRate),
+        )
 
         val knownFrames = stream.frameLength
         if (knownFrames != AudioSystem.NOT_SPECIFIED.toLong()) {
-            require(knownFrames in 1..maximumFrames.toLong()) {
+            require(knownFrames in 1..effectiveMaximumFrames.toLong()) {
                 "展開後の音声が大きすぎます。10分以内の音声を使用してください"
-            }
-            val durationSeconds = knownFrames.toDouble() / sampleRate.toDouble()
-            require(durationSeconds <= AudioResourceLimits.MAX_IMPORT_DURATION_SECONDS) {
-                "音声が長すぎます。10分以内の音声を使用してください"
             }
         }
 
         val builder = BoundedMonoPcmBuilder(
             initialCapacity = knownFrames
-                .takeIf { it in 1..maximumFrames.toLong() }
+                .takeIf { it in 1..effectiveMaximumFrames.toLong() }
                 ?.toInt()
                 ?.coerceAtMost(INITIAL_CAPACITY_LIMIT)
                 ?: DEFAULT_INITIAL_CAPACITY,
-            maximumSize = maximumFrames,
+            maximumSize = effectiveMaximumFrames,
         )
         val frameBytes = channels * Short.SIZE_BYTES
         val bufferSize = (STREAM_BUFFER_BYTES / frameBytes).coerceAtLeast(1) * frameBytes
@@ -104,9 +104,7 @@ object DesktopWavDecoder {
 
         val samples = builder.toArray()
         require(samples.isNotEmpty()) { "音声データを展開できませんでした" }
-        require(samples.size.toDouble() / sampleRate <= AudioResourceLimits.MAX_IMPORT_DURATION_SECONDS) {
-            "音声が長すぎます。10分以内の音声を使用してください"
-        }
+        AudioResourceLimits.requireDecodedMonoFrameCount(samples.size.toLong(), sampleRate)
         return PcmAudio(name = name, samples = samples, sampleRate = sampleRate)
     }
 
