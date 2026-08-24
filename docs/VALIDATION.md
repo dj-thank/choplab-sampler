@@ -10,6 +10,17 @@
 - Latest-main static gates: Python policy 39/39 PASS; public-surface 394 candidates PASS; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper text policy matched; all four Desktop product/test files equal the exact reviewed tree; `git diff --check` PASS. The local Gradle 9.7.1 distribution remains unavailable, so the integrated commit requires fresh hosted execution before merge.
 - Gate: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Physical Windows audio, real scheduling latency, device loss, packaging, provider, publication, and `HUMAN_GO` remain unclaimed.
 
+## Android realtime PAD terminal-sample retirement candidate — 2026-08-24
+
+- Product source: reachable integration commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`, with parents prior reviewed PR head `72dbaaa1b79d1c0f92b4213c65f915908b3e894e` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The later evidence commit changes documentation only.
+- Main preservation: `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt` retain the exact original product blobs `de686ba` / `9d51556`; merged #66 timing and merged #67 Desktop import-boundary source/tests/docs are retained.
+- Contract: for each active pooled PAD voice, the Android callback mixes the float returned by `Voice.render()` before deactivating a voice that became finished in that call. Existing loop-frame publication remains limited to a still-active monitored LOOP voice.
+- Regression: `SamplerEngineVoiceTest.runtimeMixesFinalReturnedPadSampleBeforeRetirement` uses the established reverse/pitch/tone fixture and requires 403 frames, terminal limited PCM `-61`, then `active=false` and `finished=true`.
+- Realtime review: `mixVoiceSampleAndRetire` uses only the existing `Voice`, primitive arguments and a primitive return. No collection, lambda, lock, I/O, log, UI call or native transition was added to the callback.
+- Local PASS: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` ran 39/39; `python3 scripts/check_public_surface.py` scanned 394 candidates; `git diff --check` passed. A separate deterministic numeric reproduction confirmed 403 frames and terminal PCM `-61`.
+- Local prerequisite ceiling: `./scripts/validate_project.sh` passed its public-surface/executable checks, then could not create the Gradle distribution lock's parent directory under the default cache. With a writable task-local cache, `./gradlew :app:testDebugUnitTest --offline --no-daemon --max-workers=1 --no-watch-fs` could not fetch the uncached Gradle 9.7.1 distribution because the network is unreachable. No Kotlin/Gradle PASS is claimed locally.
+- Gate: source/static candidate. Hosted Android CI is required before `LOCAL_PASS`; device listening, audio quality/latency, provider/public release and Human evidence remain separate.
+
 ## Desktop import sample-rate admission candidate — 2026-08-24
 
 - Source: reachable product commit `3ad2bd9eda0561b0f1cf304b477ca726edd1becc`, tree `8272a51c4b537dd06ec02e0ff780e574babe4d46`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; the final follow-up is documentation-only.
