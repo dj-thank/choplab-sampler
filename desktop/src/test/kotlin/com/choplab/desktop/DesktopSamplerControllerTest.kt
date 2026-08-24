@@ -525,19 +525,24 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
-    fun newerKeyboardTriggerRejectsAnOlderPointerPreviewRelease() {
+    fun olderPointerReleaseClosesOnlyItsVoiceAfterANewerTrigger() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
         try {
             controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
             val padIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(padIndex)
+            controller.toggleSelectedPadPlayMode()
+            assertEquals(PadPlayMode.GATE, controller.state.value.pads[padIndex].playMode)
 
             val pointerOwnership = controller.triggerPadWithOwnership(padIndex)
-            controller.triggerPad(padIndex)
+            val newerOwnership = controller.triggerPadWithOwnership(padIndex)
             controller.releasePadIfOwned(padIndex, pointerOwnership)
 
             assertEquals(2, engine.triggered.count { it.first.globalIndex == padIndex })
+            assertNotEquals(pointerOwnership, newerOwnership)
             assertTrue(engine.releasedPads.isEmpty())
+            assertEquals(listOf(padIndex to pointerOwnership), engine.releasedOwnedPads)
 
             controller.releasePad(padIndex)
             assertEquals(listOf(padIndex), engine.releasedPads)
@@ -553,6 +558,9 @@ class DesktopSamplerControllerTest {
         try {
             controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
             val padIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(padIndex)
+            controller.toggleSelectedPadPlayMode()
+            assertEquals(PadPlayMode.GATE, controller.state.value.pads[padIndex].playMode)
             val olderOwnership = controller.triggerPadWithOwnership(padIndex)
             engine.failNextTrigger = true
 
@@ -561,7 +569,8 @@ class DesktopSamplerControllerTest {
             }
             controller.releasePadIfOwned(padIndex, olderOwnership)
 
-            assertEquals(listOf(padIndex), engine.releasedPads)
+            assertTrue(engine.releasedPads.isEmpty())
+            assertEquals(listOf(padIndex to olderOwnership), engine.releasedOwnedPads)
         } finally {
             controller.close()
         }
@@ -580,7 +589,9 @@ class DesktopSamplerControllerTest {
         var sourcePosition: Int = 0
         val triggered = CopyOnWriteArrayList<Pair<PadModel, Boolean>>()
         val releasedPads = CopyOnWriteArrayList<Int>()
+        val releasedOwnedPads = CopyOnWriteArrayList<Pair<Int, Long>>()
         val stoppedPads = mutableListOf<Int>()
+        private var nextVoiceOwnership: Long = 0L
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
         override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
@@ -589,15 +600,20 @@ class DesktopSamplerControllerTest {
         override fun sourceFramePosition(): Int = sourcePosition
         override fun padFramePosition(index: Int): Int? = null
         override fun stop() { isSourcePlaying = false }
-        override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
+        override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
             if (failNextTrigger) {
                 failNextTrigger = false
                 error("test output unavailable")
             }
             triggered += pad to forceLoop
+            nextVoiceOwnership += 1L
+            return nextVoiceOwnership
         }
         override fun releasePad(index: Int) {
             releasedPads += index
+        }
+        override fun releasePadIfOwned(index: Int, ownership: Long) {
+            releasedOwnedPads += index to ownership
         }
         override fun stopPad(index: Int) {
             if (failNextStopPad) {

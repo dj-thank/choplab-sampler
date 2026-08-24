@@ -21,6 +21,7 @@ import javax.sound.sampled.LineEvent
 class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     private var sourceClip: Clip? = null
     private var sourceOriginalFrames: Int = 0
+    private var nextVoiceOwnership: Long = 0L
     private val activeVoices = mutableListOf<ActiveVoice>()
 
     override val isSourcePlaying: Boolean
@@ -85,8 +86,8 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     }
 
     @Synchronized
-    override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
-        if (!pad.isAssigned) return
+    override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
+        if (!pad.isAssigned) return 0L
         if (pad.chokeGroup > 0) {
             activeVoices.filter { it.pad.chokeGroup == pad.chokeGroup }.toList().forEach(::closeVoice)
         }
@@ -94,20 +95,38 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         val audio = requireNotNull(pad.audio)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
         val clip = createClip(renderDesktopPadPcm(pad, mode), audio.sampleRate)
-        val voice = ActiveVoice(pad, mode, clip)
-        activeVoices += voice
-        clip.addLineListener { event ->
-            if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
-                synchronized(this) { closeVoice(voice) }
+        val voice = ActiveVoice(pad, mode, acquireVoiceOwnership(), clip)
+        try {
+            activeVoices += voice
+            clip.addLineListener { event ->
+                if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
+                    synchronized(this) { closeVoice(voice) }
+                }
             }
+            if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
+        } catch (failure: Throwable) {
+            closeVoice(voice)
+            throw failure
         }
-        if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
+        return voice.ownership
     }
 
     @Synchronized
     override fun releasePad(index: Int) {
         activeVoices
             .filter { it.pad.globalIndex == index && it.mode == PadPlayMode.GATE }
+            .toList()
+            .forEach(::closeVoice)
+    }
+
+    @Synchronized
+    override fun releasePadIfOwned(index: Int, ownership: Long) {
+        activeVoices
+            .filter {
+                it.pad.globalIndex == index &&
+                    it.mode == PadPlayMode.GATE &&
+                    it.ownership == ownership
+            }
             .toList()
             .forEach(::closeVoice)
     }
@@ -162,6 +181,13 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         return (progress * clip.frameLength).toInt().coerceIn(0, clip.frameLength)
     }
 
+    private fun acquireVoiceOwnership(): Long {
+        do {
+            nextVoiceOwnership = if (nextVoiceOwnership == Long.MAX_VALUE) 1L else nextVoiceOwnership + 1L
+        } while (activeVoices.any { it.ownership == nextVoiceOwnership })
+        return nextVoiceOwnership
+    }
+
     private fun closeVoice(voice: ActiveVoice) {
         activeVoices.remove(voice)
         runCatching { voice.clip.stop() }
@@ -171,6 +197,7 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     private data class ActiveVoice(
         val pad: PadModel,
         val mode: PadPlayMode,
+        val ownership: Long,
         val clip: Clip,
     )
 }

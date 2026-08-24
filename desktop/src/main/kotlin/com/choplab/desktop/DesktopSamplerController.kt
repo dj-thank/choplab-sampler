@@ -62,7 +62,6 @@ import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadS
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
-import com.choplab.sampler.ui.PadTriggerOwnership
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,7 +96,6 @@ class DesktopSamplerController(
         ),
     )
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
-    private val padTriggerOwnership = PadTriggerOwnership()
     private val projectOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     private val transport = DesktopTransport(
@@ -465,7 +463,7 @@ class DesktopSamplerController(
     }
 
     override fun triggerPadWithOwnership(index: Int): Long =
-        triggerPadAndReturnOwnership(index) ?: PadTriggerOwnership.NONE
+        triggerPadAndReturnOwnership(index) ?: 0L
 
     private fun triggerPadAndReturnOwnership(index: Int): Long? {
         val pad = mutableState.value.pads.getOrNull(index)
@@ -484,26 +482,15 @@ class DesktopSamplerController(
     }
 
     override fun releasePad(index: Int) {
-        synchronized(padTriggerOwnership) {
-            padTriggerOwnership.invalidate(index)
-            player.releasePad(index)
-        }
+        player.releasePad(index)
     }
 
     override fun releasePadIfOwned(index: Int, ownership: Long) {
-        synchronized(padTriggerOwnership) {
-            if (padTriggerOwnership.releaseIfCurrent(index, ownership)) {
-                player.releasePad(index)
-            }
-        }
+        if (ownership != 0L) player.releasePadIfOwned(index, ownership)
     }
 
     private fun triggerPlayerPad(pad: PadModel, forceLoop: Boolean = false): Long =
-        synchronized(padTriggerOwnership) {
-            player.triggerPad(pad, forceLoop)
-            // A failed Java Sound open must not supersede an older audible GATE owner.
-            padTriggerOwnership.acquire(pad.globalIndex)
-        }
+        player.triggerPad(pad, forceLoop)
     override fun previewPad(index: Int) {
         stopCompetingPlayback()
         triggerPad(index)
