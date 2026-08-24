@@ -29,8 +29,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         source_archive = workflow.index("git archive --format=zip")
         source_upload = workflow.index("name: choplab-source-snapshot")
 
-        self.assertLess(policy_tests, public_scan)
-        self.assertLess(public_scan, source_archive)
+        self.assertLess(public_scan, policy_tests)
+        self.assertLess(policy_tests, source_archive)
         self.assertLess(source_archive, source_upload)
 
 
