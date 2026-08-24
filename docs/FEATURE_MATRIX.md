@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Decode duration / memory境界 | 🧪 source / hosted CI待ち | shared policyを`min(30,000,000, sampleRate × 600秒)`へ統一。8 kHz=4,800,000、48 kHz=28,800,000の境界と+1拒否をallocation-free arithmetic testで固定し、Androidのoutput-format変更後builderとDesktopのknown/unknown-length streamingにも適用。現sandboxではGradle distributionを利用できず実行結果は未昇格 |
 | Pattern/master full-bar parity | ✅ product anchor / scoped device | product bytes `ecc6c54`。single PAD / step 0 / one barのrealtime Voice+master expectedとoffline WAVを全frame比較。REDはframe 402でoffline末尾sample欠落61、mix-before-retire修正後max delta≤1。Android 229、exact `DB08…` Pixel、全PR/main CI PASS。docs-only source main、polyphony/stereo/listeningは別 |
 | Realtime / offline / Windows audio parity | ✅ main / scoped device | shared pitch/tone/gain/fade/limiter/swing/NaN policy。Android Voiceとhost PAD PCM最大差1、shared両host25、merged-main Windows daily install `0.17.0-802a667d39cb`。polyphony/stereo/listeningは次段階 |
 | ProductionSession / 履歴・復旧の全体整合 | ✅ main / scoped device | shared history/revision/plan transactionとverified disk revision引継ぎ。Android/Windows source/recording/reset/open/recovery/editを一本化し、PR #47/main/Pixel PASS。物理recovery操作は未確認 |
@@ -56,7 +57,6 @@
 | 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |
 | Android再生割り込み安全性 | ✅ emulator/local | 全audible startをmedia/music audio focusで統一。Home、focus loss/transient/duck、出力切替ではengine silenceをfocus解放より先に一箇所で強制し、反復割り込みは一度だけ停止、録音のみの割り込みは再生へ触れない。gainでは自動再開しない。回転は再生継続、source seek/KEY retargetはfocus所有中のみ。端末音声録音はbackgroundで継続し、MIC/VOICEは安全停止。実機route-loss／通話競合は未確認 |
 | Swing | ✅ | 50–75% |
-| Windows transportの先頭step | 🧪 latest-main source / prior hosted head | `transportPlaying/currentStep`をworker開始前のreadiness barrierで公開し、通常開始とScratch復帰でstep 0破棄レースを共通排除。barrier順序、単一step-0 PADのexact-once hit、worker-start失敗時のrecord-arm復元をhost regression化。PR #65旧exact headは全CIと再reviewがPASSし、最新main統合headのhosted再実行待ち |
 | Pattern export | ✅ | 4 bars mono WAV |
 | Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは32-PAD page対応schema 5/WAVで保存し、schema 1–4（旧4×16配置を含む）を移行読込 |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
