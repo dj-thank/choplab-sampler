@@ -92,8 +92,8 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         }
         if (forceLoop) stopPad(pad.globalIndex)
         val audio = requireNotNull(pad.audio)
-        val clip = createClip(PadPcmRenderer.render(pad), audio.sampleRate)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
+        val clip = createClip(renderDesktopPadPcm(pad, mode), audio.sampleRate)
         val voice = ActiveVoice(pad, mode, clip)
         activeVoices += voice
         clip.addLineListener { event ->
@@ -173,4 +173,9 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         val mode: PadPlayMode,
         val clip: Clip,
     )
+}
+
+internal fun renderDesktopPadPcm(pad: PadModel, mode: PadPlayMode): ShortArray {
+    val renderingPad = if (pad.playMode == mode) pad else pad.copy(playMode = mode)
+    return PadPcmRenderer.render(renderingPad)
 }
