@@ -451,6 +451,131 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
+    fun largeTextGateRejectsAQuickHorizontalDragReleasedOutsideThePad() {
+        val padActions = mutableListOf<String>()
+        setLargeTextGateDeck(onPadAction = { padActions += it })
+
+        val gate = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            gate.performTouchInput {
+                down(center)
+                moveBy(Offset(width, 0f), delayMillis = 40)
+                up()
+            }
+            composeRule.waitForIdle()
+            composeRule.mainClock.advanceTimeBy(200)
+            composeRule.waitForIdle()
+
+            composeRule.runOnIdle {
+                assertTrue(
+                    "A displaced pre-activation release must not trigger or record a PAD",
+                    padActions.isEmpty(),
+                )
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun largeTextGateDeferredReleaseCannotCutANewerControllerTrigger() {
+        val padActions = mutableListOf<String>()
+        lateinit var controller: SamplerDeckController
+        setLargeTextGateDeck(
+            onPadAction = { padActions += it },
+            onControllerReady = { controller = it },
+        )
+
+        val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val gate = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            gate.performTouchInput {
+                down(center)
+                up()
+            }
+            composeRule.mainClock.advanceTimeBy(40)
+            composeRule.runOnIdle { controller.triggerPad(gateIndex) }
+            composeRule.mainClock.advanceTimeBy(96)
+            composeRule.waitForIdle()
+
+            composeRule.runOnIdle {
+                assertEquals(2, padActions.count { it == "triggerPad" })
+                assertEquals(
+                    "The pointer timer must not release a newer keyboard/controller trigger",
+                    0,
+                    padActions.count { it == "releasePad" },
+                )
+                controller.releasePad(gateIndex)
+            }
+            composeRule.runOnIdle {
+                assertEquals(1, padActions.count { it == "releasePad" })
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
+    fun largeTextGateUsesTheInitiatingPointerForQuickAndActivatedRelease() {
+        val padActions = mutableListOf<String>()
+        setLargeTextGateDeck(onPadAction = { padActions += it })
+
+        val gate = gatePad().performScrollTo()
+        composeRule.mainClock.autoAdvance = false
+        try {
+            gate.performTouchInput {
+                down(0, center)
+                down(1, center + Offset(8f, 0f))
+                up(0)
+            }
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad"),
+                    padActions,
+                )
+            }
+            composeRule.mainClock.advanceTimeBy(96)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(1, padActions.count { it == "releasePad" })
+            }
+            composeRule.onRoot().performTouchInput { cancel() }
+
+            composeRule.runOnIdle { padActions.clear() }
+            val activatedGate = gatePad().performScrollTo()
+            activatedGate.performTouchInput { down(0, center) }
+            composeRule.mainClock.advanceTimeBy(136)
+            composeRule.waitForIdle()
+            activatedGate.performTouchInput {
+                down(1, center + Offset(8f, 0f))
+                up(0)
+            }
+            composeRule.mainClock.advanceTimeBy(96)
+            composeRule.waitForIdle()
+
+            composeRule.runOnIdle {
+                assertEquals(
+                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    padActions,
+                )
+            }
+            composeRule.mainClock.advanceTimeBy(400)
+            composeRule.waitForIdle()
+            assertTrue(
+                "A remaining secondary pointer must not inherit trim ownership",
+                composeRule.onAllNodes(hasText("切り位置", substring = true))
+                    .fetchSemanticsNodes().isEmpty(),
+            )
+            composeRule.onRoot().performTouchInput { cancel() }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test
     fun largeTextGateLongPressRecompositionReleasesTriggerOwnershipExactlyOnce() {
         val padActions = mutableListOf<Pair<String, Long>>()
         setLargeTextGateDeck(
@@ -648,6 +773,57 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
+    fun twoPointerWaveformRotationCancelsTapWithoutChangingItsCentroidOrScale() {
+        val waveformActions = mutableListOf<String>()
+        val audio = PcmAudio(
+            id = 102L,
+            name = "waveform-rotation-source.wav",
+            samples = ShortArray(4_800),
+            sampleRate = 48_000,
+        )
+        setDeck(
+            initialState = SamplerUiState(
+                currentAudio = audio,
+                rangeEndFrame = audio.frameCount,
+                sourcePlaying = true,
+                projectLaunchTarget = ProjectLaunchTarget.CHOP,
+            ),
+            fontScale = 1f,
+            onPadAction = { waveformActions += it },
+        )
+
+        val waveform = composeRule.onNode(
+            hasContentDescription("音声波形", substring = true),
+        )
+        waveform.performTouchInput {
+            val radius = minOf(width, height) * 0.22f
+            down(0, center - Offset(radius, 0f))
+            down(1, center + Offset(radius, 0f))
+            updatePointerTo(0, center - Offset(0f, radius))
+            updatePointerTo(1, center + Offset(0f, radius))
+            move(160)
+            up(0)
+            up(1)
+        }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertTrue(
+                "A rotation-only two-pointer gesture must consume movement and cancel tap",
+                waveformActions.isEmpty(),
+            )
+        }
+
+        waveform.performTouchInput {
+            down(center)
+            up()
+        }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertEquals(listOf("playSourceFrom"), waveformActions)
+        }
+    }
+
+    @Test
     fun normalTextBeatPadStillTriggersOnPressDown() {
         val padActions = mutableListOf<String>()
         setPristineDeck(onPadAction = { padActions += it })
@@ -745,18 +921,21 @@ class FirstScreenFlowDeviceTest {
     private fun setPristineDeck(
         fontScale: Float = 1f,
         onPadAction: (String) -> Unit = {},
+        onControllerReady: (SamplerDeckController) -> Unit = {},
     ): MutableState<SamplerUiState> = setDeck(
         initialState = BuiltInDrumKits.installStarterKit(SamplerUiState()).copy(
             projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
         ),
         fontScale = fontScale,
         onPadAction = onPadAction,
+        onControllerReady = onControllerReady,
     )
 
     private fun setDeck(
         initialState: SamplerUiState,
         fontScale: Float,
         onPadAction: (String) -> Unit,
+        onControllerReady: (SamplerDeckController) -> Unit = {},
     ): MutableState<SamplerUiState> {
         val state = mutableStateOf(initialState)
         val controller = noOpController(
@@ -765,6 +944,7 @@ class FirstScreenFlowDeviceTest {
             },
             onPadAction = onPadAction,
         )
+        onControllerReady(controller)
         composeRule.setContent {
             val baseDensity = LocalDensity.current
             CompositionLocalProvider(
@@ -788,8 +968,15 @@ class FirstScreenFlowDeviceTest {
         return state
     }
 
-    private fun setLargeTextGateDeck(onPadAction: (String) -> Unit) {
-        val state = setPristineDeck(fontScale = 2f, onPadAction = onPadAction)
+    private fun setLargeTextGateDeck(
+        onPadAction: (String) -> Unit,
+        onControllerReady: (SamplerDeckController) -> Unit = {},
+    ) {
+        val state = setPristineDeck(
+            fontScale = 2f,
+            onPadAction = onPadAction,
+            onControllerReady = onControllerReady,
+        )
         composeRule.onNode(hasContentDescription("デモを試す", substring = true))
             .performScrollTo()
             .performClick()
@@ -811,6 +998,7 @@ class FirstScreenFlowDeviceTest {
         onEnsurePlayablePadSelected: () -> Unit,
         onPadAction: (String) -> Unit,
     ): SamplerDeckController {
+        val triggerOwnership = PadTriggerOwnership()
         val handler = java.lang.reflect.InvocationHandler { proxy, method, arguments ->
             when (method.name) {
                 "equals" -> proxy === arguments?.firstOrNull()
@@ -823,10 +1011,34 @@ class FirstScreenFlowDeviceTest {
                 SamplerDeckController::selectPad.name,
                 SamplerDeckController::selectPlayablePad.name,
                 SamplerDeckController::capturePad.name,
-                SamplerDeckController::triggerPad.name,
-                SamplerDeckController::releasePad.name,
                 SamplerDeckController::playSourceFrom.name -> {
                     onPadAction(method.name)
+                    null
+                }
+                SamplerDeckController::triggerPad.name -> {
+                    triggerOwnership.acquire((requireNotNull(arguments)[0] as Number).toInt())
+                    onPadAction("triggerPad")
+                    null
+                }
+                SamplerDeckController::triggerPadWithOwnership.name -> {
+                    val ownership = triggerOwnership.acquire(
+                        (requireNotNull(arguments)[0] as Number).toInt(),
+                    )
+                    onPadAction("triggerPad")
+                    ownership
+                }
+                SamplerDeckController::releasePad.name -> {
+                    triggerOwnership.invalidate((requireNotNull(arguments)[0] as Number).toInt())
+                    onPadAction("releasePad")
+                    null
+                }
+                SamplerDeckController::releasePadIfOwned.name -> {
+                    val callArguments = requireNotNull(arguments)
+                    val padIndex = (callArguments[0] as Number).toInt()
+                    val ownership = (callArguments[1] as Number).toLong()
+                    if (triggerOwnership.releaseIfCurrent(padIndex, ownership)) {
+                        onPadAction("releasePad")
+                    }
                     null
                 }
                 else -> null

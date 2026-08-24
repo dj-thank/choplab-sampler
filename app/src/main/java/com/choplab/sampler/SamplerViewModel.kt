@@ -118,6 +118,7 @@ import com.choplab.sampler.model.transientAnalysisStillCurrent
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
 import com.choplab.sampler.ui.SamplerDeckController
+import com.choplab.sampler.ui.PadTriggerOwnership
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -148,6 +149,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         playbackSilencer = PlaybackSilencer(engine::stopAllPlayback),
     )
     private val productionSession = ProductionSession(maxHistoryEntries = MAX_HISTORY_ENTRIES)
+    private val padTriggerOwnership = PadTriggerOwnership()
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
     private var autosaveJob: Job? = null
@@ -509,7 +511,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     setStatus("他のアプリが音声を使用中のため、ボーカル録音を停止します")
                 } else {
                     if (recordingPolicy.allowBeatLoopDuringRecording) {
-                        engine.startPadLoop(loopPadIndex)
+                        startEnginePadLoop(loopPadIndex)
                     }
                     mutableUiState.update {
                         observeRecordingSession(it, RecordingKind.VOCAL_OVERDUB).copy(
@@ -1161,18 +1163,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         handlePadPress(globalIndex, PadSurfaceMode.PERFORMANCE)
     }
 
+    override fun triggerPadWithOwnership(index: Int): Long =
+        handlePadPress(index, PadSurfaceMode.PERFORMANCE) ?: PadTriggerOwnership.NONE
+
     /** Preview is a single-voice audition: retriggering never stacks two previews. */
     override fun previewPad(globalIndex: Int) {
         val pad = mutableUiState.value.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) return
         stopCompetingPlayback()
         if (!preparePlaybackStart()) return
-        engine.triggerPad(globalIndex)
+        triggerEnginePad(globalIndex)
     }
 
-    private fun handlePadPress(globalIndex: Int, surfaceMode: PadSurfaceMode) {
+    private fun handlePadPress(globalIndex: Int, surfaceMode: PadSurfaceMode): Long? {
         val state = mutableUiState.value
-        val pad = state.pads.getOrNull(globalIndex) ?: return
+        val pad = state.pads.getOrNull(globalIndex) ?: return null
         when (
             resolvePadPressAction(
                 sourcePlaying = state.sourcePlaying,
@@ -1184,11 +1189,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         ) {
             PadPressAction.CAPTURE_CHOP -> {
                 assignLiveChop(globalIndex)
-                return
+                return null
             }
             PadPressAction.BLOCKED_DURING_RECORDING -> {
                 setStatus("${recordingKindLabel(state.recordingSession)}中はPADを鳴らしません。STOPしてから操作してください")
-                return
+                return null
             }
             PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION -> {
                 setStatus(
@@ -1198,26 +1203,29 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         "元曲の停止処理中です。停止してからPADを叩いてください"
                     },
                 )
-                return
+                return null
             }
-            PadPressAction.SELECT_ONLY -> return
+            PadPressAction.SELECT_ONLY -> return null
             PadPressAction.PLAY_ASSIGNED -> Unit
         }
-        when (
+        return when (
             resolvePerformancePadPressAction(
                 pad = pad,
                 recordArmed = state.recordArmed,
                 transportPlaying = state.transportPlaying,
             )
         ) {
-            PerformancePadPressAction.TOGGLE_LOOP -> toggleBeatLoop(globalIndex)
+            PerformancePadPressAction.TOGGLE_LOOP -> {
+                toggleBeatLoop(globalIndex)
+                null
+            }
             PerformancePadPressAction.TRIGGER_ONLY -> {
-                if (!preparePlaybackStart()) return
-                engine.triggerPad(globalIndex)
+                if (!preparePlaybackStart()) return null
+                triggerEnginePad(globalIndex)
             }
             PerformancePadPressAction.TRIGGER_AND_RECORD_STEP -> {
-                if (!preparePlaybackStart()) return
-                engine.triggerPad(globalIndex)
+                if (!preparePlaybackStart()) return null
+                val ownership = triggerEnginePad(globalIndex)
                 val step = liveRecordingStep(engine.currentStep)
                 commitEdit { current ->
                     val currentPad = current.pads.getOrNull(globalIndex) ?: return@commitEdit current
@@ -1225,12 +1233,38 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     current.copy(activeSteps = updated)
                 }
                 syncPattern()
+                ownership
             }
         }
     }
 
     override fun releasePad(globalIndex: Int) {
-        engine.releasePad(globalIndex)
+        synchronized(padTriggerOwnership) {
+            padTriggerOwnership.invalidate(globalIndex)
+            engine.releasePad(globalIndex)
+        }
+    }
+
+    override fun releasePadIfOwned(index: Int, ownership: Long) {
+        synchronized(padTriggerOwnership) {
+            if (padTriggerOwnership.releaseIfCurrent(index, ownership)) {
+                engine.releasePad(index)
+            }
+        }
+    }
+
+    private fun triggerEnginePad(globalIndex: Int): Long =
+        synchronized(padTriggerOwnership) {
+            val ownership = padTriggerOwnership.acquire(globalIndex)
+            engine.triggerPad(globalIndex)
+            ownership
+        }
+
+    private fun startEnginePadLoop(globalIndex: Int) {
+        synchronized(padTriggerOwnership) {
+            padTriggerOwnership.acquire(globalIndex)
+            engine.startPadLoop(globalIndex)
+        }
     }
 
     override fun stopSourceForWorkspaceChange() {
@@ -1553,9 +1587,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         changedPads.forEach(engine::updatePad)
         syncPattern()
-        engine.startPadLoop(globalIndex)
+        startEnginePadLoop(globalIndex)
         state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-            .forEach { engine.triggerPad(it.globalIndex) }
+            .forEach { triggerEnginePad(it.globalIndex) }
         mutableUiState.update {
             it.copy(
                 pendingSourceCommand = pendingSourceCommandAfterStopRequest(it.sourcePlaying),
@@ -2049,9 +2083,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             is ScratchReturnTarget.PadLoop -> {
                 val pad = state.pads[target.padIndex]
                 if (!preparePlaybackStart()) return false
-                engine.startPadLoop(target.padIndex)
+                startEnginePadLoop(target.padIndex)
                 state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-                    .forEach { engine.triggerPad(it.globalIndex) }
+                    .forEach { triggerEnginePad(it.globalIndex) }
                 mutableUiState.update {
                     it.copy(
                         loopingPadIndex = target.padIndex,

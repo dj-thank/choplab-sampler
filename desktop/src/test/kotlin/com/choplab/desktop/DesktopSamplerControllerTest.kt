@@ -523,6 +523,28 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test
+    fun newerKeyboardTriggerRejectsAnOlderPointerPreviewRelease() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
+            val padIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+
+            val pointerOwnership = controller.triggerPadWithOwnership(padIndex)
+            controller.triggerPad(padIndex)
+            controller.releasePadIfOwned(padIndex, pointerOwnership)
+
+            assertEquals(2, engine.triggered.count { it.first.globalIndex == padIndex })
+            assertTrue(engine.releasedPads.isEmpty())
+
+            controller.releasePad(padIndex)
+            assertEquals(listOf(padIndex), engine.releasedPads)
+        } finally {
+            controller.close()
+        }
+    }
+
     private fun awaitCondition(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 2_000_000_000L
         while (!condition()) {
@@ -535,6 +557,7 @@ class DesktopSamplerControllerTest {
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = CopyOnWriteArrayList<Pair<PadModel, Boolean>>()
+        val releasedPads = CopyOnWriteArrayList<Int>()
         val stoppedPads = mutableListOf<Int>()
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
@@ -551,7 +574,9 @@ class DesktopSamplerControllerTest {
             }
             triggered += pad to forceLoop
         }
-        override fun releasePad(index: Int) = Unit
+        override fun releasePad(index: Int) {
+            releasedPads += index
+        }
         override fun stopPad(index: Int) {
             if (failNextStopPad) {
                 failNextStopPad = false

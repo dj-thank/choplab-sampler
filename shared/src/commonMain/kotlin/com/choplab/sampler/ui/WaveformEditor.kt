@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
@@ -73,6 +74,7 @@ import com.choplab.sampler.model.SliceRange
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.PI
 
 /**
  * Keeps a single vertical drag unconsumed so an enclosing CHOP scroller can own it. Waveform
@@ -85,6 +87,7 @@ private suspend fun PointerInputScope.detectWaveformTransformGestures(
     awaitEachGesture {
         var cumulativeZoom = 1f
         var cumulativePan = Offset.Zero
+        var cumulativeRotation = 0f
         var transformClaimed = false
         val touchSlop = viewConfiguration.touchSlop
 
@@ -95,18 +98,25 @@ private suspend fun PointerInputScope.detectWaveformTransformGestures(
             if (!canceled) {
                 val zoomChange = event.calculateZoom()
                 val panChange = event.calculatePan()
+                val rotationChange = event.calculateRotation()
 
                 if (!transformClaimed) {
                     cumulativeZoom *= zoomChange
                     cumulativePan += panChange
+                    cumulativeRotation += rotationChange
                     val multiPointer = event.changes.count { it.pressed } >= 2
+                    val centroidSize = event.calculateCentroidSize(useCurrent = false)
                     val zoomMotion =
-                        abs(1f - cumulativeZoom) * event.calculateCentroidSize(useCurrent = false)
+                        abs(1f - cumulativeZoom) * centroidSize
+                    val rotationMotion =
+                        abs(cumulativeRotation * PI.toFloat() * centroidSize / 180f)
                     val horizontalMotion = abs(cumulativePan.x)
                     val verticalMotion = abs(cumulativePan.y)
 
                     transformClaimed = if (multiPointer) {
-                        zoomMotion > touchSlop || cumulativePan.getDistance() > touchSlop
+                        zoomMotion > touchSlop ||
+                            rotationMotion > touchSlop ||
+                            cumulativePan.getDistance() > touchSlop
                     } else {
                         horizontalMotion > touchSlop && horizontalMotion > verticalMotion
                     }

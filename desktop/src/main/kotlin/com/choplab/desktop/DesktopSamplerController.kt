@@ -62,6 +62,7 @@ import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadS
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
+import com.choplab.sampler.ui.PadTriggerOwnership
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,6 +97,7 @@ class DesktopSamplerController(
         ),
     )
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
+    private val padTriggerOwnership = PadTriggerOwnership()
     private val projectOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     private val transport = DesktopTransport(
@@ -260,7 +262,7 @@ class DesktopSamplerController(
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
             val loopPlaybackFailure = if (loopPad != null) {
                 stopAllSounds()
-                runCatching { player.triggerPad(loopPad, forceLoop = true) }.exceptionOrNull()
+                runCatching { triggerPlayerPad(loopPad, forceLoop = true) }.exceptionOrNull()
             } else {
                 null
             }
@@ -459,19 +461,49 @@ class DesktopSamplerController(
     }
 
     override fun triggerPad(index: Int) {
+        triggerPadAndReturnOwnership(index)
+    }
+
+    override fun triggerPadWithOwnership(index: Int): Long =
+        triggerPadAndReturnOwnership(index) ?: PadTriggerOwnership.NONE
+
+    private fun triggerPadAndReturnOwnership(index: Int): Long? {
         val pad = mutableState.value.pads.getOrNull(index)
         if (pad?.isAssigned == true) {
-            player.triggerPad(pad)
+            val ownership = triggerPlayerPad(pad)
             val beforeRecord = mutableState.value
             if (beforeRecord.recordArmed && beforeRecord.transportPlaying && beforeRecord.currentStep >= 0) {
                 commitEdit { it.copy(activeSteps = it.activeSteps + stepKey(index, it.currentStep)) }
             }
             mutableState.update { it.copy(selectedPad = index, statusMessage = "PAD ${index + 1}を再生中です") }
+            return ownership
         } else {
             selectPad(index)
+            return null
         }
     }
-    override fun releasePad(index: Int) = player.releasePad(index)
+
+    override fun releasePad(index: Int) {
+        synchronized(padTriggerOwnership) {
+            padTriggerOwnership.invalidate(index)
+            player.releasePad(index)
+        }
+    }
+
+    override fun releasePadIfOwned(index: Int, ownership: Long) {
+        synchronized(padTriggerOwnership) {
+            if (padTriggerOwnership.releaseIfCurrent(index, ownership)) {
+                player.releasePad(index)
+            }
+        }
+    }
+
+    private fun triggerPlayerPad(pad: PadModel, forceLoop: Boolean = false): Long =
+        synchronized(padTriggerOwnership) {
+            val ownership = padTriggerOwnership.acquire(pad.globalIndex)
+            player.triggerPad(pad, forceLoop)
+            ownership
+        }
     override fun previewPad(index: Int) {
         stopCompetingPlayback()
         triggerPad(index)
@@ -699,10 +731,10 @@ class DesktopSamplerController(
             loopPad = pads[index]
             current.copy(pads = pads)
         }
-        player.triggerPad(loopPad, forceLoop = true)
+        triggerPlayerPad(loopPad, forceLoop = true)
         mutableState.value.pads
             .filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-            .forEach(player::triggerPad)
+            .forEach { triggerPlayerPad(it) }
         mutableState.update {
             it.copy(
                 loopingPadIndex = index,
@@ -792,7 +824,7 @@ class DesktopSamplerController(
         val current = mutableState.value
         if (current.loopingPadIndex == selected && current.pads[selected].isAssigned) {
             player.stopPad(selected)
-            player.triggerPad(current.pads[selected], forceLoop = true)
+            triggerPlayerPad(current.pads[selected], forceLoop = true)
         }
     }
 
@@ -906,7 +938,7 @@ class DesktopSamplerController(
         mutableState.update { current -> if (current.transportPlaying) current.copy(currentStep = step) else current }
         val audible = snapshot.activeSteps.audibleStepKeys(snapshot.pads)
         snapshot.pads.forEach { pad ->
-            if (stepKey(pad.globalIndex, step) in audible) player.triggerPad(pad)
+            if (stepKey(pad.globalIndex, step) in audible) triggerPlayerPad(pad)
         }
     }
 
@@ -958,9 +990,9 @@ class DesktopSamplerController(
             is ScratchReturnTarget.PadLoop -> {
                 val pad = current.pads[target.padIndex]
                 runCatching {
-                    player.triggerPad(pad, forceLoop = true)
+                    triggerPlayerPad(pad, forceLoop = true)
                     current.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-                        .forEach { player.triggerPad(it, forceLoop = false) }
+                        .forEach { triggerPlayerPad(it, forceLoop = false) }
                 }.onSuccess {
                     mutableState.update {
                         it.copy(

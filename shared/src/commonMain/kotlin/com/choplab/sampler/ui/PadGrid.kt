@@ -74,32 +74,17 @@ private enum class DeferredGateDecision {
 
 /**
  * Arbitrates a GATE press against an ancestor scroll before activation, then owns every remaining
- * pointer change through the physical up event. Short-tap releases use a generation token so an
- * older preview cannot stop a newer retrigger of the same pad.
+ * pointer change through the initiating pointer's physical up event. The controller-issued
+ * ownership token prevents a delayed release from stopping a newer trigger from any input source.
  */
 private suspend fun PointerInputScope.detectDeferredGateGestures(
     onPressedChange: (Boolean) -> Unit,
     onSelect: () -> Unit,
-    onTrigger: () -> Unit,
-    onRelease: () -> Unit,
+    onTrigger: () -> Long,
+    onRelease: (Long) -> Unit,
     onLongPress: () -> Unit,
 ) = coroutineScope {
     val gestureScope = this
-    var gateGeneration = 0L
-
-    fun acquireGate(): Long {
-        val generation = ++gateGeneration
-        onSelect()
-        onTrigger()
-        return generation
-    }
-
-    fun releaseGateIfCurrent(generation: Long) {
-        if (gateGeneration == generation) {
-            gateGeneration++
-            onRelease()
-        }
-    }
 
     awaitEachGesture {
         val down = awaitFirstDown()
@@ -109,10 +94,26 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
             val decision = withTimeoutOrNull(SCROLL_GATE_ACTIVATION_DELAY_MILLIS) {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Main)
-                    if (event.changes.all { !it.pressed }) {
-                        return@withTimeoutOrNull DeferredGateDecision.RELEASED
-                    }
                     if (event.changes.any { it.isConsumed }) {
+                        return@withTimeoutOrNull DeferredGateDecision.CANCELED
+                    }
+                    val primaryChange = event.changes.firstOrNull { it.id == down.id }
+                        ?: return@withTimeoutOrNull DeferredGateDecision.CANCELED
+                    val displaced =
+                        (primaryChange.position - down.position).getDistance() >
+                            viewConfiguration.touchSlop
+                    val outsidePad = primaryChange.position.x < 0f ||
+                        primaryChange.position.y < 0f ||
+                        primaryChange.position.x >= size.width ||
+                        primaryChange.position.y >= size.height
+                    if (!primaryChange.pressed) {
+                        return@withTimeoutOrNull if (displaced || outsidePad) {
+                            DeferredGateDecision.CANCELED
+                        } else {
+                            DeferredGateDecision.RELEASED
+                        }
+                    }
+                    if (displaced || outsidePad) {
                         return@withTimeoutOrNull DeferredGateDecision.CANCELED
                     }
 
@@ -128,22 +129,24 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
             when (decision) {
                 DeferredGateDecision.CANCELED -> Unit
                 DeferredGateDecision.RELEASED -> {
-                    val generation = acquireGate()
+                    onSelect()
+                    val ownership = onTrigger()
                     // Keep receiving new gestures while this preview is audible. If a newer tap
-                    // retriggers first, only that newest generation is allowed to release the pad.
+                    // or another input retriggers first, the controller rejects this old token.
                     gestureScope.launch {
                         try {
                             delay(SCROLL_GATE_MINIMUM_PREVIEW_MILLIS)
                         } finally {
-                            releaseGateIfCurrent(generation)
+                            onRelease(ownership)
                         }
                     }
                 }
                 null -> {
-                    val generation = acquireGate()
+                    onSelect()
+                    val ownership = onTrigger()
                     // Start the minimum-preview clock at the actual trigger, not at pointer-up.
-                    // The waiter below can survive into the next gesture, where the generation
-                    // token prevents its eventual release from cutting a newer retrigger.
+                    // The waiter below can survive into the next gesture; controller ownership
+                    // prevents it from cutting a newer touch, keyboard or programmatic trigger.
                     val minimumPreview = gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
                         delay(SCROLL_GATE_MINIMUM_PREVIEW_MILLIS)
                     }
@@ -167,7 +170,7 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                                 // Activation settled ownership. Consume at Main before the parent
                                 // can turn later movement into a scroll/cancellation.
                                 event.changes.forEach { it.consume() }
-                                if (event.changes.all { !it.pressed }) {
+                                if (primaryChange == null || !primaryChange.pressed) {
                                     return@withTimeoutOrNull true
                                 }
                             }
@@ -181,8 +184,9 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                             // retain ownership until the actual pointer-up just as a long tap does.
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Main)
+                                val primaryChange = event.changes.firstOrNull { it.id == down.id }
                                 event.changes.forEach { it.consume() }
-                                if (event.changes.all { !it.pressed }) break
+                                if (primaryChange == null || !primaryChange.pressed) break
                             }
                         }
                         releasedByPhysicalUp = true
@@ -196,14 +200,14 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                                 try {
                                     minimumPreview.join()
                                 } finally {
-                                    releaseGateIfCurrent(generation)
+                                    onRelease(ownership)
                                 }
                             }
                         } else {
                             // Pointer-input replacement/cancellation after activation still releases
-                            // exactly once; a superseded preview generation cannot cut a retrigger.
+                            // exactly once; a superseded ownership token cannot cut a retrigger.
                             minimumPreview.cancel()
-                            releaseGateIfCurrent(generation)
+                            onRelease(ownership)
                         }
                     }
                 }
@@ -220,6 +224,8 @@ fun PadGrid(
     selectedPad: Int,
     onTrigger: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    onTriggerWithOwnership: ((Int) -> Long)? = null,
+    onReleaseIfOwned: ((Int, Long) -> Unit)? = null,
     onSelect: (Int) -> Unit,
     onLongPress: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -267,6 +273,12 @@ fun PadGrid(
                             deferPadActionUntilTap = deferPadActionUntilTap,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
+                            onTriggerWithOwnership = onTriggerWithOwnership?.let { trigger ->
+                                { trigger(pad.globalIndex) }
+                            },
+                            onReleaseIfOwned = onReleaseIfOwned?.let { release ->
+                                { ownership -> release(pad.globalIndex, ownership) }
+                            },
                             onSelect = { onSelect(pad.globalIndex) },
                             onLongPress = { onLongPress(pad.globalIndex) },
                             modifier = Modifier.size(geometry.cellSize.dp),
@@ -288,11 +300,14 @@ private fun PerformancePad(
     deferPadActionUntilTap: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
+    onTriggerWithOwnership: (() -> Long)?,
+    onReleaseIfOwned: ((Long) -> Unit)?,
     onSelect: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
+    var localGateOwnership by remember(pad.globalIndex) { mutableStateOf(0L) }
     val haptics = LocalHapticFeedback.current
     val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val shape = RoundedCornerShape(9.dp)
@@ -340,8 +355,21 @@ private fun PerformancePad(
                     detectDeferredGateGestures(
                         onPressedChange = { pressed = it },
                         onSelect = onSelect,
-                        onTrigger = onTrigger,
-                        onRelease = onRelease,
+                        onTrigger = {
+                            onTriggerWithOwnership?.invoke() ?: run {
+                                localGateOwnership += 1L
+                                onTrigger()
+                                localGateOwnership
+                            }
+                        },
+                        onRelease = { ownership ->
+                            if (onReleaseIfOwned != null) {
+                                onReleaseIfOwned(ownership)
+                            } else if (localGateOwnership == ownership) {
+                                localGateOwnership += 1L
+                                onRelease()
+                            }
+                        },
                         onLongPress = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onSelect()

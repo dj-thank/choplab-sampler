@@ -3,6 +3,40 @@ package com.choplab.sampler.ui
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.RepeatGrid
+import com.choplab.sampler.model.SamplerConfig
+
+/**
+ * Runtime-only PAD trigger ownership shared by touch, keyboard and other controller entry points.
+ * A delayed release may close a GATE voice only while its token is still the newest trigger for
+ * that PAD. Controllers remain responsible for serializing calls on their UI/control thread.
+ */
+class PadTriggerOwnership(
+    private val padCount: Int = SamplerConfig.PAD_COUNT,
+) {
+    private val generations = LongArray(padCount)
+
+    fun acquire(padIndex: Int): Long {
+        if (padIndex !in 0 until padCount) return NONE
+        val next = generations[padIndex] + 1L
+        generations[padIndex] = next
+        return next
+    }
+
+    fun releaseIfCurrent(padIndex: Int, ownership: Long): Boolean {
+        if (padIndex !in 0 until padCount || ownership == NONE) return false
+        if (generations[padIndex] != ownership) return false
+        generations[padIndex] = ownership + 1L
+        return true
+    }
+
+    fun invalidate(padIndex: Int) {
+        acquire(padIndex)
+    }
+
+    companion object {
+        const val NONE: Long = Long.MIN_VALUE
+    }
+}
 
 /**
  * Deep UI seam shared by Android, Windows and iPhone.
@@ -30,6 +64,8 @@ interface SamplerDeckController {
     fun capturePad(index: Int)
     fun triggerPad(index: Int)
     fun releasePad(index: Int)
+    fun triggerPadWithOwnership(index: Int): Long
+    fun releasePadIfOwned(index: Int, ownership: Long)
     fun playSourceFrom(frame: Int)
     fun seekSourcePlayback(frame: Int)
     fun toggleSourcePlayback()
