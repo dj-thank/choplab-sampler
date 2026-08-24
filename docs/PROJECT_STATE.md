@@ -1,16 +1,10 @@
 # Project state
 
-## Current snapshot — 2026-08-24 fractional pattern-timing candidate
+## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
-This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged iOS import/recording exclusion, recorder cleanup and guided first-screen evidence remain previous snapshots below.
-
-- Observed at: `2026-08-24T08:48:38Z`.
-- Source state: PR branch `codex/offline-frame-quantization`, reachable product commit `9ba20191b90332ed011f1fdce97be3bf24aab2d8`, tree `4b573298631a695a5d2dae0a3e6a51149b1927ae`, integrating the original candidate with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`. The integration retains main's count-resilient AVD summary parser; the later evidence commit is documentation-only.
-- Reproduced defects: at 48 kHz / 92 BPM / 54% swing, old offline truncation started step 1 at frame 8,452 instead of realtime 8,453 and per-bar rounding made four bars 500,872 frames instead of 500,870. The first ceiling repair still accumulated a growing absolute `Double`, which is not IEEE-equivalent to realtime's carried countdown: at 120 BPM / 55% swing it scheduled step 3 at 18,600 instead of 18,601, and at 40 BPM / 56% swing it ended one bar at 288,000 instead of the next realtime boundary at 288,001.
-- Repair: shared `scheduledFrameAtOrAfter` defines the first whole-frame advance that is not earlier than a fractional countdown. Offline scheduling now performs realtime's add-step-length, ceiling-advance, subtract-advance recurrence and carries the resulting remainder through every step and bar.
-- Regression scope: shared exact/inexact ceiling coverage remains. End-to-end WAV tests fix the 92 BPM / 54% four-bar onsets and 500,870-frame length, the early 120 BPM / 55% step-3 boundary at 18,601, and the 40 BPM / 56% one-bar/header length at 288,001.
-- Local evidence: `scripts/doctor.sh` found Java 17 and a clean branch but no Android SDK/ADB. After the review repair, Python policy tests 34/34, the public-surface scan over 394 candidates, the residual-schedule arithmetic oracle and `git diff --check` passed. `validate_project.sh` passed its public-surface and executable-mode phases, then the Gradle wrapper could not create/use a Gradle 9.7.1 distribution in this sandbox; no Kotlin/Gradle test pass is claimed locally.
-- Gate ceiling: source/static evidence only until hosted shared/JVM-core/Android tests pass. Physical playback timing, audio perception, provider, public release and `HUMAN_GO` remain unclaimed.
+- Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.
+- Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
+- Scope: release policy and its Python regression tests only. Product/audio/UI bytes, signing configuration, tags, and Releases are unchanged. Current-container policy gates are run before PR publication; hosted CI is required before promotion.
 
 ## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 

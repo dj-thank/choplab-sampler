@@ -2,15 +2,11 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Fractional pattern-frame timing candidate — 2026-08-24
+## Release checksum sidecar hardening candidate — 2026-08-24
 
-- Product source: reachable implementation `codex/offline-frame-quantization@9ba20191b90332ed011f1fdce97be3bf24aab2d8`, tree `4b573298631a695a5d2dae0a3e6a51149b1927ae`, integrating the original candidate with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`; the later evidence commit is documentation-only.
-- RED arithmetic: 48 kHz / 92 BPM / swing 54% gives exact step-1 deadline 8,452.1739 frames. Realtime's fractional countdown fires at 8,453; old offline truncation fired at 8,452. Old per-bar ceiling produced 500,872 frames for four bars versus `ceil(exact continuous duration)` = 500,870.
-- Review RED arithmetic: absolute-deadline addition is not IEEE-equivalent to realtime's carried residual. At 48 kHz / 120 BPM / 55% swing, absolute accumulation schedules step 3 at 18,600 while realtime fires at 18,601. At 40 BPM / 56% swing, it reports a 288,000-frame bar while the next realtime step-0 boundary is 288,001.
-- Contract/fix: shared `scheduledFrameAtOrAfter` applies ceiling to a non-negative finite countdown. `PatternRenderer` mirrors realtime's operation order by adding one step length to the carried residual, advancing by its ceiling, and subtracting that integer advance before the next step; bar boundaries do not reset the remainder.
-- Regression sources: shared exact/fractional quantization test; end-to-end JVM-core WAV tests for 92 BPM / 54% event frames 8,453 / 133,670 / 258,887 / 384,105 and 500,870-frame length, 120 BPM / 55% step 3 at 18,601, and 40 BPM / 56% one-bar data/header length 288,001.
-- Static checks after review repair: Python policy 34/34 PASS; public-surface 394 candidates PASS; residual-schedule arithmetic oracle PASS; `git diff --check` PASS; Java 17/Git available. `validate_project.sh` passed public-surface and executable modes, then stopped because the sandbox has no usable Gradle 9.7.1 distribution; Kotlin/Gradle execution remains hosted.
-- Gate: source/static evidence only; hosted shared/JVM-core/Android checks are required. Physical audio timing/listening and Human acceptance remain separate.
+- The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
+- Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
+- Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
 
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 
