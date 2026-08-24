@@ -2,6 +2,14 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Desktop recorder startup cleanup candidate — 2026-08-24
+
+- Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.
+- Regression contract: the injected `TargetDataLine` accepts `open`, throws from `start`, is closed exactly once even after later `stop` / `close`, leaves `isRecording=false`, deletes the owned partial WAV, and cannot return stale output. The fixture does not open audio hardware.
+- Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 23 tests; `python3 scripts/check_public_surface.py` passed 390 candidates; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper UTF-8 policy matched; `git diff --check` passed.
+- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopAudioRecorderTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. `./scripts/validate_project.sh` reached and passed the public-surface phase, then stopped at the same Gradle prerequisite. Hosted `:desktop:test` is the required executable proof.
+- Gate: source/static candidate only. Physical Windows input, actual WAV content, route loss, audio quality, provider, publication, and `HUMAN_GO` remain unclaimed.
+
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 
 - Product source: `codex/choplab-screen-flow@43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`, base `3cc4cd5`; dirty canonical checkout untouched.
