@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import bz2
+import lzma
 import re
 import struct
 import subprocess
 import sys
 import zipfile
+import zlib
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 
@@ -87,6 +90,7 @@ ZIP_CENTRAL_DIRECTORY_ENTRY_SIGNATURE = b"PK\x01\x02"
 ZIP_MAX_COMMENT_LENGTH = (1 << 16) - 1
 ZIP64_UINT16_SENTINEL = (1 << 16) - 1
 ZIP64_UINT32_SENTINEL = (1 << 32) - 1
+ZIP_MEMBER_INPUT_CHUNK = 64 * 1024
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -181,6 +185,156 @@ def decode_text_for_secret_scan(content: bytes) -> str:
     # Credential patterns are ASCII. Replacement decoding preserves those bytes
     # even when unrelated malformed bytes appear elsewhere in safe-named text.
     return content.decode("utf-8-sig", errors="replace")
+
+
+def read_verified_zip_member(
+    stream: object,
+    info: zipfile.ZipInfo,
+    *,
+    payload_offset: int,
+    output_limit: int,
+    compressed_input_limit: int,
+) -> bytes:
+    """Decode exactly one declared payload without trusting ZipExtFile's size cap."""
+    if info.file_size > output_limit:
+        raise ValueError("declared uncompressed size exceeds the member scan limit")
+    if info.compress_size > compressed_input_limit:
+        raise ValueError("declared compressed payload exceeds the input scan limit")
+
+    output = bytearray()
+
+    def remaining_output_with_probe() -> int:
+        return info.file_size - len(output) + 1
+
+    def append_output(content: bytes) -> None:
+        if len(output) + len(content) > info.file_size:
+            raise ValueError("decompressed output exceeds declared uncompressed size")
+        output.extend(content)
+
+    decompressor: object | None
+    lzma_header = bytearray()
+    if info.compress_type == zipfile.ZIP_STORED:
+        decompressor = None
+    elif info.compress_type == zipfile.ZIP_DEFLATED:
+        decompressor = zlib.decompressobj(-15)
+    elif info.compress_type == zipfile.ZIP_BZIP2:
+        decompressor = bz2.BZ2Decompressor()
+    elif info.compress_type == zipfile.ZIP_LZMA:
+        decompressor = None
+    else:
+        raise NotImplementedError(
+            f"compression method {info.compress_type} is not supported"
+        )
+
+    def feed_compressed(content: bytes) -> None:
+        nonlocal decompressor
+        if info.compress_type == zipfile.ZIP_DEFLATED:
+            pending = content
+            while pending:
+                assert decompressor is not None
+                before = len(pending)
+                append_output(
+                    decompressor.decompress(
+                        pending,
+                        remaining_output_with_probe(),
+                    )
+                )
+                pending = decompressor.unconsumed_tail
+                if pending and len(pending) >= before:
+                    raise ValueError("deflate decompressor made no input progress")
+            return
+
+        if info.compress_type == zipfile.ZIP_LZMA and decompressor is None:
+            lzma_header.extend(content)
+            if len(lzma_header) < 4:
+                return
+            properties_size = struct.unpack_from("<H", lzma_header, 2)[0]
+            if properties_size != 5:
+                raise ValueError("invalid ZIP LZMA property length")
+            header_size = 4 + properties_size
+            if len(lzma_header) < header_size:
+                return
+            properties = bytes(lzma_header[4:header_size])
+            property_code = properties[0]
+            if property_code >= 9 * 5 * 5:
+                raise ValueError("invalid ZIP LZMA filter properties")
+            literal_context_bits = property_code % 9
+            remainder = property_code // 9
+            literal_position_bits = remainder % 5
+            position_bits = remainder // 5
+            decompressor = lzma.LZMADecompressor(
+                format=lzma.FORMAT_RAW,
+                filters=[
+                    {
+                        "id": lzma.FILTER_LZMA1,
+                        "dict_size": int.from_bytes(properties[1:], "little"),
+                        "lc": literal_context_bits,
+                        "lp": literal_position_bits,
+                        "pb": position_bits,
+                    }
+                ],
+            )
+            content = bytes(lzma_header[header_size:])
+            lzma_header.clear()
+
+        if decompressor is None:
+            return
+        append_output(
+            decompressor.decompress(
+                content,
+                remaining_output_with_probe(),
+            )
+        )
+        while not decompressor.needs_input and not decompressor.eof:
+            before = len(output)
+            append_output(
+                decompressor.decompress(
+                    b"",
+                    remaining_output_with_probe(),
+                )
+            )
+            if len(output) == before and not decompressor.needs_input:
+                raise ValueError("decompressor made no output progress")
+
+    stream.seek(payload_offset)
+    compressed_remaining = info.compress_size
+    while compressed_remaining:
+        chunk = stream.read(min(compressed_remaining, ZIP_MEMBER_INPUT_CHUNK))
+        if not chunk:
+            raise ValueError("declared compressed payload is truncated")
+        compressed_remaining -= len(chunk)
+        if info.compress_type == zipfile.ZIP_STORED:
+            append_output(chunk)
+            continue
+        if decompressor is not None and getattr(decompressor, "eof", False):
+            raise ValueError(
+                "declared compressed payload contains trailing or unconsumed data"
+            )
+        feed_compressed(chunk)
+        if decompressor is not None and (
+            getattr(decompressor, "unused_data", b"") or
+            (getattr(decompressor, "eof", False) and compressed_remaining)
+        ):
+            raise ValueError(
+                "declared compressed payload contains trailing or unconsumed data"
+            )
+
+    if info.compress_type != zipfile.ZIP_STORED:
+        if decompressor is None:
+            raise ValueError("compressed payload is missing its decoder metadata")
+        if info.compress_type == zipfile.ZIP_DEFLATED:
+            append_output(decompressor.flush(remaining_output_with_probe()))
+        if not getattr(decompressor, "eof", False):
+            raise ValueError("declared compressed payload ended before stream EOF")
+        if getattr(decompressor, "unused_data", b""):
+            raise ValueError(
+                "declared compressed payload contains trailing or unconsumed data"
+            )
+    if len(output) != info.file_size:
+        raise ValueError("decompressed output does not match declared uncompressed size")
+    if (zlib.crc32(output) & ZIP64_UINT32_SENTINEL) != info.CRC:
+        raise ValueError("decompressed output CRC does not match central directory")
+    return bytes(output)
 
 
 def preflight_zip_directory(
@@ -408,6 +562,15 @@ def scan_zip(
         with zipfile.ZipFile(source) as archive:
             entries = archive.infolist()
             claimed_ranges: list[tuple[int, int]] = []
+            ordered_local_offsets = sorted({info.header_offset for info in entries})
+            next_record_offsets = {
+                offset: (
+                    ordered_local_offsets[index + 1]
+                    if index + 1 < len(ordered_local_offsets)
+                    else archive.start_dir
+                )
+                for index, offset in enumerate(ordered_local_offsets)
+            }
             if len(entries) > entry_count_limit:
                 findings.append(
                     f"{archive_label}: archive contains {len(entries)} entries, exceeding "
@@ -461,6 +624,7 @@ def scan_zip(
                     int,
                 ] | None = None
                 local_header_valid = False
+                local_payload_offset: int | None = None
                 local_record_end: int | None = None
                 try:
                     if stream is None:
@@ -479,7 +643,8 @@ def scan_zip(
                     local_extra = stream.read(extra_length)
                     if len(local_name) != name_length or len(local_extra) != extra_length:
                         raise ValueError("truncated local file header metadata")
-                    payload_end = stream.tell() + info.compress_size
+                    local_payload_offset = stream.tell()
+                    payload_end = local_payload_offset + info.compress_size
                     local_record_end = payload_end
                     if fields[2] & 0x08:
                         stream.seek(payload_end)
@@ -487,24 +652,51 @@ def scan_zip(
                             len(ZIP_DATA_DESCRIPTOR_SIGNATURE)
                             + ZIP_DATA_DESCRIPTOR.size
                         )
-                        descriptor_offset = 0
-                        if descriptor.startswith(ZIP_DATA_DESCRIPTOR_SIGNATURE):
-                            descriptor_offset = len(ZIP_DATA_DESCRIPTOR_SIGNATURE)
-                        required_size = descriptor_offset + ZIP_DATA_DESCRIPTOR.size
-                        if len(descriptor) < required_size:
-                            raise ValueError("truncated ZIP data descriptor")
-                        descriptor_values = ZIP_DATA_DESCRIPTOR.unpack_from(
-                            descriptor,
-                            descriptor_offset,
-                        )
-                        if descriptor_values != (
+                        expected_descriptor = (
                             info.CRC,
                             info.compress_size,
                             info.file_size,
+                        )
+                        descriptor_sizes: list[int] = []
+                        if (
+                            len(descriptor) >= ZIP_DATA_DESCRIPTOR.size
+                            and ZIP_DATA_DESCRIPTOR.unpack_from(descriptor, 0)
+                            == expected_descriptor
                         ):
+                            descriptor_sizes.append(ZIP_DATA_DESCRIPTOR.size)
+                        signed_descriptor_size = (
+                            len(ZIP_DATA_DESCRIPTOR_SIGNATURE)
+                            + ZIP_DATA_DESCRIPTOR.size
+                        )
+                        if (
+                            len(descriptor) >= signed_descriptor_size
+                            and descriptor.startswith(ZIP_DATA_DESCRIPTOR_SIGNATURE)
+                            and ZIP_DATA_DESCRIPTOR.unpack_from(
+                                descriptor,
+                                len(ZIP_DATA_DESCRIPTOR_SIGNATURE),
+                            )
+                            == expected_descriptor
+                        ):
+                            descriptor_sizes.append(signed_descriptor_size)
+                        if not descriptor_sizes:
                             raise ValueError(
                                 "ZIP data descriptor does not match central directory"
                             )
+                        if len(descriptor_sizes) > 1:
+                            next_record_offset = next_record_offsets.get(
+                                info.header_offset,
+                                archive.start_dir,
+                            )
+                            boundary_matches = [
+                                size
+                                for size in descriptor_sizes
+                                if payload_end + size == next_record_offset
+                            ]
+                            if len(boundary_matches) != 1:
+                                raise ValueError("ZIP data descriptor layout is ambiguous")
+                            required_size = boundary_matches[0]
+                        else:
+                            required_size = descriptor_sizes[0]
                         local_record_end += required_size
                     local_header_valid = True
                 except (OSError, ValueError, struct.error) as error:
@@ -593,10 +785,22 @@ def scan_zip(
                     continue
                 if entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES:
                     continue
+                if local_payload_offset is None:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: local payload "
+                        "offset is unavailable"
+                    )
+                    continue
                 if info.file_size > member_scan_limit:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: exceeds "
                         f"{member_scan_limit}-byte member content scan limit"
+                    )
+                    continue
+                if info.compress_size > total_scan_limit:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: exceeds "
+                        f"{total_scan_limit}-byte compressed payload scan limit"
                     )
                     continue
                 compressed_size = max(info.compress_size, 1)
@@ -613,45 +817,45 @@ def scan_zip(
                     )
                     break
 
+                member_stream = archive.fp
+                member_stream_position: int | None = None
                 try:
-                    with archive.open(info) as member:
-                        content = member.read(member_scan_limit + 1)
-                        compressed_bytes_remaining = getattr(
-                            member,
-                            "_compress_left",
-                            0,
-                        )
-                        decompressor = getattr(member, "_decompressor", None)
-                        trailing_compressed_data = bool(compressed_bytes_remaining)
-                        if decompressor is not None:
-                            trailing_compressed_data = trailing_compressed_data or bool(
-                                getattr(decompressor, "unused_data", b"")
-                            )
-                            trailing_compressed_data = trailing_compressed_data or bool(
-                                getattr(decompressor, "unconsumed_tail", b"")
-                            )
-                            if hasattr(decompressor, "eof"):
-                                trailing_compressed_data = (
-                                    trailing_compressed_data or not decompressor.eof
-                                )
-                except (NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile) as error:
+                    if member_stream is None:
+                        raise ValueError("archive stream is unavailable")
+                    member_stream_position = member_stream.tell()
+                    content = read_verified_zip_member(
+                        member_stream,
+                        info,
+                        payload_offset=local_payload_offset,
+                        output_limit=member_scan_limit,
+                        compressed_input_limit=total_scan_limit,
+                    )
+                except (
+                    EOFError,
+                    NotImplementedError,
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    lzma.LZMAError,
+                    struct.error,
+                    zipfile.BadZipFile,
+                    zlib.error,
+                ) as error:
+                    detail = f": {error}" if str(error) else ""
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: content scan failed "
-                        f"({type(error).__name__})"
+                        f"({type(error).__name__}{detail})"
                     )
                     continue
-                if trailing_compressed_data:
-                    findings.append(
-                        f"{archive_label}: archive entry {name!r}: declared compressed "
-                        "payload contains trailing or unconsumed data"
-                    )
-                    continue
-                if len(content) > member_scan_limit:
-                    findings.append(
-                        f"{archive_label}: archive entry {name!r}: exceeded "
-                        f"{member_scan_limit}-byte member content scan limit while reading"
-                    )
-                    continue
+                finally:
+                    if member_stream is not None and member_stream_position is not None:
+                        try:
+                            member_stream.seek(member_stream_position)
+                        except (OSError, ValueError):
+                            findings.append(
+                                f"{archive_label}: archive entry {name!r}: member stream "
+                                "position restore failed"
+                            )
                 if scanned_bytes + len(content) > total_scan_limit:
                     findings.append(
                         f"{archive_label}: archive content exceeded "

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 import zipfile
+import zlib
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
@@ -77,6 +78,23 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings = scan_zip(archive_path, compression_ratio_limit=2)
 
         self.assertTrue(any("compression scan limit" in item for item in findings))
+
+    def test_zip_content_scan_accepts_supported_safe_compression_methods(self) -> None:
+        for compression in (
+            zipfile.ZIP_STORED,
+            zipfile.ZIP_DEFLATED,
+            zipfile.ZIP_BZIP2,
+            zipfile.ZIP_LZMA,
+        ):
+            with self.subTest(compression=compression):
+                candidate = BytesIO()
+                with zipfile.ZipFile(candidate, "w", compression) as archive:
+                    archive.writestr("notes.txt", b"safe text")
+
+                self.assertEqual(
+                    [],
+                    scan_zip(BytesIO(candidate.getvalue()), label="supported.zip"),
+                )
 
     def test_zip_content_scan_does_not_treat_binary_or_audio_bytes_as_text(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -309,6 +327,73 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(
             any("compressed payload contains trailing" in item for item in findings)
         )
+
+    def test_zip_content_scan_rejects_output_beyond_declared_size(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", b"safe" + token)
+        archive_bytes = bytearray(candidate.getvalue())
+        central_offset = archive_bytes.index(b"PK\x01\x02")
+        safe_crc = zlib.crc32(b"safe") & 0xFFFFFFFF
+        archive_bytes[14:18] = safe_crc.to_bytes(4, "little")
+        archive_bytes[22:26] = (4).to_bytes(4, "little")
+        archive_bytes[central_offset + 16 : central_offset + 20] = safe_crc.to_bytes(
+            4,
+            "little",
+        )
+        archive_bytes[central_offset + 24 : central_offset + 28] = (4).to_bytes(
+            4,
+            "little",
+        )
+
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            self.assertEqual(b"safe", archive.read("notes.txt"))
+            self.assertIsNone(archive.testzip())
+        findings = scan_zip(BytesIO(archive_bytes), label="size-truncated-output.zip")
+
+        self.assertTrue(
+            any("output exceeds declared uncompressed size" in item for item in findings)
+        )
+
+    def test_zip_content_scan_accepts_signatureless_descriptor_crc_collision(self) -> None:
+        payload = bytes.fromhex("ac0a7ad5")
+        descriptor_signature_crc = 0x08074B50
+        self.assertEqual(descriptor_signature_crc, zlib.crc32(payload) & 0xFFFFFFFF)
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("notes.txt", payload)
+        archive_bytes = bytearray(candidate.getvalue())
+        central_offset = archive_bytes.index(b"PK\x01\x02")
+        archive_bytes[6:8] = (
+            int.from_bytes(archive_bytes[6:8], "little") | 0x08
+        ).to_bytes(2, "little")
+        archive_bytes[14:26] = b"\x00" * 12
+        archive_bytes[central_offset + 8 : central_offset + 10] = (
+            int.from_bytes(
+                archive_bytes[central_offset + 8 : central_offset + 10],
+                "little",
+            )
+            | 0x08
+        ).to_bytes(2, "little")
+        descriptor = (
+            descriptor_signature_crc.to_bytes(4, "little")
+            + len(payload).to_bytes(4, "little")
+            + len(payload).to_bytes(4, "little")
+        )
+        archive_bytes[central_offset:central_offset] = descriptor
+        central_offset += len(descriptor)
+        end_record_offset = archive_bytes.index(b"PK\x05\x06", central_offset)
+        archive_bytes[
+            end_record_offset + 16 : end_record_offset + 20
+        ] = central_offset.to_bytes(4, "little")
+
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            self.assertEqual(payload, archive.read("notes.txt"))
+            self.assertIsNone(archive.testzip())
+        findings = scan_zip(BytesIO(archive_bytes), label="descriptor-collision.zip")
+
+        self.assertEqual([], findings)
 
     def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
         with TemporaryDirectory() as directory:
