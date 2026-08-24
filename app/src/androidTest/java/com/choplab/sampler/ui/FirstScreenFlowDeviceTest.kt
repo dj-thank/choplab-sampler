@@ -114,11 +114,17 @@ class FirstScreenFlowDeviceTest {
     }
 
     private fun noOpController(onEnsurePlayablePadSelected: () -> Unit): SamplerDeckController {
-        val handler = java.lang.reflect.InvocationHandler { _, method, _ ->
-            if (method.name == SamplerDeckController::ensurePlayablePadSelected.name) {
-                onEnsurePlayablePadSelected()
+        val handler = java.lang.reflect.InvocationHandler { proxy, method, arguments ->
+            when (method.name) {
+                "equals" -> proxy === arguments?.firstOrNull()
+                "hashCode" -> System.identityHashCode(proxy)
+                "toString" -> "NoOpSamplerDeckController"
+                SamplerDeckController::ensurePlayablePadSelected.name -> {
+                    onEnsurePlayablePadSelected()
+                    null
+                }
+                else -> null
             }
-            null
         }
         return Proxy.newProxyInstance(
             SamplerDeckController::class.java.classLoader,
