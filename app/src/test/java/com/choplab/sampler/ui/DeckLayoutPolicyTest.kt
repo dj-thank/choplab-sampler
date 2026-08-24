@@ -69,6 +69,21 @@ class DeckLayoutPolicyTest {
     }
 
     @Test
+    fun largeTextCompactLandscapeKeepsEveryActionRowAtLeastFortyEightDp() {
+        listOf(1.3f, 2f).forEach { fontScale ->
+            val metrics = resolveDeckLayout(widthDp = 640, heightDp = 360, fontScale = fontScale)
+
+            assertEquals(DeckOrientation.LANDSCAPE, metrics.orientation)
+            assertEquals(DeckDensity.COMPACT, metrics.density)
+            assertTrue(metrics.largeText)
+            assertEquals(2, metrics.workflowRows)
+            assertTrue(metrics.controlHeightDp >= 48)
+            assertTrue(metrics.modeBarHeightDp >= 48 * 2 + metrics.gapDp)
+            assertTrue(metrics.productionDockHeightDp >= 48)
+        }
+    }
+
+    @Test
     fun portraitKeepsTheFullWidthStackedPerformanceDeck() {
         val metrics = resolveDeckLayout(widthDp = 412, heightDp = 820)
 

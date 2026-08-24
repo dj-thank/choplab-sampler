@@ -61,7 +61,7 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int, fontScale: Float = 1f): DeckL
     val workflowRows = if (largeText) 2 else 1
 
     return if (compact) {
-        val primaryControlHeight = if (orientation == DeckOrientation.PORTRAIT) 48 else 40
+        val primaryControlHeight = if (orientation == DeckOrientation.PORTRAIT || largeText) 48 else 40
         DeckLayoutMetrics(
             orientation = orientation,
             density = DeckDensity.COMPACT,
