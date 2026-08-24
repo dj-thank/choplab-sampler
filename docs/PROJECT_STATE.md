@@ -1,6 +1,17 @@
 # Project state
 
-## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
+## Current snapshot — 2026-08-24 desktop transport step-zero ordering candidate
+
+- Observed at: `2026-08-24T18:35+09:00`.
+- Source state: reachable latest-main product commit `551663f4aad25139eede4686d1b467c436eabf64`, tree `408d4350bbccb3edb208e55e6ae1ce0dc595aa28`, integrated with `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. It preserves the exact reviewed PR #65 product content from reachable remote product `262894ce1b2d0c89fccfb7047374efad60c6869b`; the later evidence commit is documentation-only.
+- Root cause: the Windows transport worker could synchronously reach `onTransportStep(0)` after `Thread.start()` but before `DesktopSamplerController` published `transportPlaying=true`. The controller then rejected the callback as stale, delaying audible playback until step 1 while the UI already showed step 0.
+- Repair: `DesktopTransport.start` now executes a caller readiness barrier before starting its worker. Normal start and scratch-return start publish playing/current-step state through one controller helper, so Java's thread-start happens-before boundary makes step 0 observable exactly once rather than scheduler-dependent. If worker startup then fails, scratch return restores the pre-start recording arm instead of leaving the callback's provisional disarm behind.
+- Regression scope: a transport test records that the readiness barrier precedes step 0; one controller test uses one audible step-0 PAD and verifies one hit plus coherent stop state, while another injects worker-start failure after the scratch-return callback and requires the recording arm to survive. Tests use fake audio only and do not open Java Sound hardware.
+- Prior exact-head evidence: remote head `2c7d27226d4c0aa7edc22173cfac6b18615d7c68` received a clean exact-head Codex re-review and passed Android, Windows, iOS, and supply-chain workflows. The latest-main integration still requires its own hosted read-back.
+- Fresh local checks: Python policy tests 39/39, public-surface scan over 394 candidates, six Android XML parses, wrapper checksum/UTF-8 policy, exact equality of all four reviewed Desktop product/test files, and `git diff --check` passed. The focused Gradle tests could not run because Gradle 9.7.1 is not cached; hosted `:desktop:test` remains required for this integrated head.
+- Gate ceiling: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Windows scheduling beyond the deterministic contract, audible timing/latency, device removal, provider, public artifact, and Human acceptance are not inferred.
+
+## Previous snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
 - Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.
 - Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
@@ -11,7 +22,7 @@
 This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
 
 - Observed at: `2026-08-24T16:37+09:00`.
-- Source state: branch product commit `6ceb4d26c862f4cfe645ec23029a466c6ebe27a5`, tree `a9abb15ef1fb3f81d5104ece0a9d341ee2a7383d`, based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the canonical checkout remains untouched.
+- Source state: branch product commit `6ceb4d26c862f4cfe645ec23029a466c6ebe27a5`, tree `a9abb15ef1fb3f81d5104ece0a9d341ee2a7383d`, based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; subsequently integrated as PR #60 at `main@5430d0d91a4e19ca02170d0143378a5d7917776b`.
 - Import ownership: `SamplerStore` rejects a file-import result while recording before staging or replacing any source. The import button is disabled for the same state, so UI and store admission agree.
 - Non-destructive picker outcome: cancellation and provider failure update a distinct status without calling `stopAll`; the current source and any active recording remain owned by their existing lifecycle. A late successful picker result cannot replace the recording source.
 - Focused tests: new MainActor store tests bind recording admission and prove cancellation/error preserve an already imported source name. Existing source repository tests continue to cover bounded copy and promotion.
@@ -21,11 +32,11 @@ This snapshot records a bounded iOS preview safety correction. It does not promo
 ## Previous snapshot — 2026-08-24 desktop recorder startup cleanup candidate
 
 - Observed at: `2026-08-24T16:36+09:00`.
-- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the other worktrees remain untouched.
+- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; subsequently integrated as PR #59 at `main@364ccde764b88f0bb79e10b8aaeb8284a5c069cc`.
 - Recorder lifecycle: after a Windows `TargetDataLine` is acquired, every setup failure now closes that exact local line before clearing recorder state. In particular, an exception from `TargetDataLine.start()` after a successful `open()` cannot leak the native capture line or leave a stale output/worker/failure reference.
 - Regression scope: a deterministic proxy line exercises successful `open`, failing `start`, exact-once `close`, idle state, temporary-WAV deletion, and inert follow-up `stop` / `close`, without opening recording hardware.
-- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
-- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
+- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused local Gradle test was blocked by the uncached distribution; merge/provider evidence remains revision-bound separately.
+- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred from the local receipt.
 
 ## Previous snapshot — 2026-08-24 guided first-screen local candidate
 
