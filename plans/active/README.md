@@ -14,7 +14,7 @@
 
 **直近の統合保守:** Desktop recorder開始取消修正はPR #73 / `main@a0b356c`へ統合済み。blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeし、late worker公開・readを禁止する。exact headはclean review・threads 0・4 workflows PASS、物理microphoneは別gate。
 
-**独立したreverse PAD末尾修正:** exact-base `main@a0b356c`起点のproduct `830e12a` / tree `6d9f921`で、逆one-shot/gateのcount/renderをrealtime cursor advanceへ統一し、LOOPはfull-range cycleを保持する。48→60 kHzの旧末尾無音（80→79）、8→48 kHzの1/12-step丸め（12）、2-frame reverse one-shot/LOOP（3/4）を固定。allocation前count＋resetでtrim-copyを避け、Android callbackやforward経路を変えない限定audio parity delta。hosted JVM/Windows CIとexact reviewがmerge gate。
+**独立したreverse PAD末尾修正:** exact-base `main@a0b356c`起点のproduct `f2d4952` / tree `6e40fe6`で、逆one-shot/gateのcount/renderをrealtime cursor advanceへ統一し、LOOP/Windows forceLoopはfull-range cycleを保持する。48→60 kHzの旧末尾無音（80→79）、8→48 kHzの1/12-step丸め（12）、2-frame reverse one-shot/LOOP/forceLoop（3/4/4）を固定。allocation前count＋resetでtrim-copyを避け、Android callbackやforward経路を変えない限定audio parity delta。hosted JVM/Windows CIとexact reviewがmerge gate。
 
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
