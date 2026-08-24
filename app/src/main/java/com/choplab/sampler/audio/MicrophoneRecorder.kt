@@ -38,6 +38,7 @@ internal fun interface RecorderInputFactory {
 
 class MicrophoneRecorder internal constructor(
     private val inputFactory: RecorderInputFactory = RecorderInputFactory { createAndroidRecorderInput() },
+    private val startupStopTimeoutMillis: Long = 2_000L,
 ) {
     constructor() : this(RecorderInputFactory { createAndroidRecorderInput() })
 
@@ -58,7 +59,11 @@ class MicrophoneRecorder internal constructor(
         get() = running.get()
 
     @SuppressLint("MissingPermission")
-    fun start(file: File, onFailure: (String) -> Unit = {}): Result<Unit> {
+    fun start(
+        file: File,
+        onStarted: () -> Unit = {},
+        onFailure: (String) -> Unit = {},
+    ): Result<Unit> {
         val startup = synchronized(lifecycleLock) {
             if (startCallActive || stopInProgress || worker?.isAlive == true) {
                 return Result.failure(IllegalStateException("マイク録音の停止処理中です"))
@@ -68,126 +73,143 @@ class MicrophoneRecorder internal constructor(
             }
             stopRequested = false
             startCallActive = true
+            failureMessage = null
+            deleteOutputWhenStopped = false
+            outputFile = file
             CountDownLatch(1).also { startupFinished = it }
         }
 
-        failureMessage = null
-        deleteOutputWhenStopped = false
-        outputFile = file
-
-        var recorder: RecorderInput? = null
-        var createdWorker: Thread? = null
-        return runCatching {
-            file.parentFile?.mkdirs()
-            val candidate = inputFactory.create()
-            recorder = candidate
-            val admitted = synchronized(lifecycleLock) {
-                if (stopRequested || !running.get()) {
-                    false
-                } else {
-                    startingInput = candidate
-                    true
+        val startupThread = Thread({
+            var recorder: RecorderInput? = null
+            var createdWorker: Thread? = null
+            runCatching {
+                file.parentFile?.mkdirs()
+                val candidate = inputFactory.create()
+                recorder = candidate
+                val admitted = synchronized(lifecycleLock) {
+                    if (stopRequested || !running.get()) {
+                        false
+                    } else {
+                        startingInput = candidate
+                        true
+                    }
                 }
-            }
-            if (!admitted) {
-                candidate.release()
-                error("マイク録音の開始はキャンセルされました")
-            }
+                if (!admitted) {
+                    candidate.release()
+                    error("マイク録音の開始はキャンセルされました")
+                }
 
-            candidate.startRecording()
-            if (candidate.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                error("マイク録音を開始できません")
-            }
+                candidate.startRecording()
+                if (candidate.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    error("マイク録音を開始できません")
+                }
 
-            val recordingWorker = Thread({
-                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
-                val bufferFrames = max(
-                    AudioRecord.getMinBufferSize(
-                        MICROPHONE_SAMPLE_RATE,
-                        AudioFormat.CHANNEL_IN_MONO,
-                        AudioFormat.ENCODING_PCM_16BIT,
-                    ) / Short.SIZE_BYTES,
-                    2_048,
-                )
-                val buffer = ShortArray(bufferFrames)
-                val budget = RecordingBudget(
-                    sampleRate = MICROPHONE_SAMPLE_RATE,
-                    channelCount = 1,
-                )
+                val recordingWorker = Thread({
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+                    val bufferFrames = max(
+                        AudioRecord.getMinBufferSize(
+                            MICROPHONE_SAMPLE_RATE,
+                            AudioFormat.CHANNEL_IN_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT,
+                        ) / Short.SIZE_BYTES,
+                        2_048,
+                    )
+                    val buffer = ShortArray(bufferFrames)
+                    val budget = RecordingBudget(
+                        sampleRate = MICROPHONE_SAMPLE_RATE,
+                        channelCount = 1,
+                    )
 
-                try {
-                    WavFileWriter(file, MICROPHONE_SAMPLE_RATE, 1).use { writer ->
-                        while (running.get()) {
-                            val read = candidate.read(buffer)
-                            when {
-                                read > 0 -> {
-                                    val requestedBytes = read * Short.SIZE_BYTES
-                                    val decision = budget.decide(
-                                        requestedBytes = requestedBytes,
-                                        usableSpaceBytes = file.usableSpace.coerceAtLeast(0L),
-                                    )
-                                    if (decision.writableBytes > 0) {
-                                        val writableSamples = decision.writableBytes / Short.SIZE_BYTES
-                                        writer.writePcm16(buffer, writableSamples)
-                                        budget.commit(decision.writableBytes)
-                                    }
-                                    when (decision.stopAfterWrite) {
-                                        RecordingStopReason.DURATION_LIMIT -> {
-                                            running.set(false)
-                                            break
+                    try {
+                        WavFileWriter(file, MICROPHONE_SAMPLE_RATE, 1).use { writer ->
+                            while (running.get()) {
+                                val read = candidate.read(buffer)
+                                when {
+                                    read > 0 -> {
+                                        val requestedBytes = read * Short.SIZE_BYTES
+                                        val decision = budget.decide(
+                                            requestedBytes = requestedBytes,
+                                            usableSpaceBytes = file.usableSpace.coerceAtLeast(0L),
+                                        )
+                                        if (decision.writableBytes > 0) {
+                                            val writableSamples = decision.writableBytes / Short.SIZE_BYTES
+                                            writer.writePcm16(buffer, writableSamples)
+                                            budget.commit(decision.writableBytes)
                                         }
-                                        RecordingStopReason.LOW_DISK ->
-                                            error("録音用の空き容量が不足しています")
-                                        null -> Unit
+                                        when (decision.stopAfterWrite) {
+                                            RecordingStopReason.DURATION_LIMIT -> {
+                                                running.set(false)
+                                                break
+                                            }
+                                            RecordingStopReason.LOW_DISK ->
+                                                error("録音用の空き容量が不足しています")
+                                            null -> Unit
+                                        }
                                     }
+                                    read == AudioRecord.ERROR_DEAD_OBJECT ->
+                                        error("マイクとの接続が切れました")
+                                    read < 0 && running.get() -> error("マイク読み取りエラー: $read")
                                 }
-                                read == AudioRecord.ERROR_DEAD_OBJECT ->
-                                    error("マイクとの接続が切れました")
-                                read < 0 && running.get() -> error("マイク読み取りエラー: $read")
                             }
                         }
+                    } catch (throwable: Throwable) {
+                        failureMessage = throwable.message ?: "マイク録音中にエラーが発生しました"
+                        deleteOutputWhenStopped = true
+                        runCatching { onFailure(failureMessage!!) }
+                    } finally {
+                        running.set(false)
+                        runCatching { candidate.stop() }
+                        runCatching { candidate.release() }
+                        if (deleteOutputWhenStopped) runCatching { file.delete() }
+                        synchronized(lifecycleLock) {
+                            if (audioRecord === candidate) audioRecord = null
+                            if (worker === Thread.currentThread()) worker = null
+                        }
                     }
-                } catch (throwable: Throwable) {
-                    failureMessage = throwable.message ?: "マイク録音中にエラーが発生しました"
-                    deleteOutputWhenStopped = true
-                    onFailure(failureMessage!!)
-                } finally {
-                    running.set(false)
-                    runCatching { candidate.stop() }
-                    runCatching { candidate.release() }
-                    if (deleteOutputWhenStopped) runCatching { file.delete() }
-                    synchronized(lifecycleLock) {
-                        if (audioRecord === candidate) audioRecord = null
-                        if (worker === Thread.currentThread()) worker = null
+                }, "ChopLab-Microphone")
+                createdWorker = recordingWorker
+                synchronized(lifecycleLock) {
+                    check(startingInput === candidate && !stopRequested && running.get()) {
+                        "マイク録音の開始はキャンセルされました"
                     }
+                    startingInput = null
+                    audioRecord = candidate
+                    worker = recordingWorker
+                    recordingWorker.start()
                 }
-            }, "ChopLab-Microphone")
-            createdWorker = recordingWorker
-            synchronized(lifecycleLock) {
-                check(startingInput === candidate && !stopRequested && running.get()) {
-                    "マイク録音の開始はキャンセルされました"
+            }.onFailure { throwable ->
+                running.set(false)
+                deleteOutputWhenStopped = true
+                val ownedInput = synchronized(lifecycleLock) {
+                    val ownsStartingInput = startingInput === recorder
+                    val ownsActiveInput = audioRecord === recorder
+                    if (ownsStartingInput) startingInput = null
+                    if (ownsActiveInput) audioRecord = null
+                    if (worker === createdWorker) worker = null
+                    recorder.takeIf { ownsStartingInput || ownsActiveInput }
                 }
-                startingInput = null
-                audioRecord = candidate
-                worker = recordingWorker
-                recordingWorker.start()
+                runCatching { ownedInput?.stop() }
+                runCatching { ownedInput?.release() }
+                failureMessage = throwable.message
+                runCatching { file.delete() }
+                runCatching {
+                    onFailure(throwable.message ?: "マイク録音を開始できません")
+                }
+            }.also {
+                synchronized(lifecycleLock) {
+                    startCallActive = false
+                    startup.countDown()
+                }
+            }.onSuccess {
+                runCatching { onStarted() }
             }
-        }.onFailure { throwable ->
+        }, "ChopLab-Microphone-Startup").apply { isDaemon = true }
+
+        return runCatching { startupThread.start() }.onFailure { throwable ->
             running.set(false)
             deleteOutputWhenStopped = true
-            val ownedInput = synchronized(lifecycleLock) {
-                val ownsStartingInput = startingInput === recorder
-                val ownsActiveInput = audioRecord === recorder
-                if (ownsStartingInput) startingInput = null
-                if (ownsActiveInput) audioRecord = null
-                if (worker === createdWorker) worker = null
-                recorder.takeIf { ownsStartingInput || ownsActiveInput }
-            }
-            runCatching { ownedInput?.stop() }
-            runCatching { ownedInput?.release() }
             failureMessage = throwable.message
             runCatching { file.delete() }
-        }.also {
             synchronized(lifecycleLock) {
                 startCallActive = false
                 startup.countDown()
@@ -208,9 +230,12 @@ class MicrophoneRecorder internal constructor(
             startupFinished to pending
         }
         return try {
-            runCatching { pendingInput?.stop() }
-            runCatching { pendingInput?.release() }
-            startup.await(2_000L, TimeUnit.MILLISECONDS)
+            pendingInput?.let(::releasePendingRecorderInput)
+            if (!startup.await(startupStopTimeoutMillis.coerceAtLeast(1L), TimeUnit.MILLISECONDS)) {
+                deleteOutputWhenStopped = true
+                runCatching { outputFile?.delete() }
+                return Result.failure(IllegalStateException("マイク録音の開始取消に時間がかかっています"))
+            }
             val wasRunning = audioRecord != null || worker != null
             val activeWorker = worker
             if (!wasRunning && activeWorker == null) {
@@ -242,6 +267,18 @@ class MicrophoneRecorder internal constructor(
             }
         } finally {
             synchronized(lifecycleLock) { stopInProgress = false }
+        }
+    }
+
+    private fun releasePendingRecorderInput(input: RecorderInput) {
+        runCatching {
+            Thread(
+                { runCatching { input.release() } },
+                "ChopLab-Microphone-StartupCancel",
+            ).apply {
+                isDaemon = true
+                start()
+            }
         }
     }
 
