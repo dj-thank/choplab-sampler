@@ -3,6 +3,7 @@ package com.choplab.desktop.audio
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectLimits
+import com.choplab.sampler.model.persistableAudioDisplayName
 import java.io.File
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
@@ -103,7 +104,11 @@ object DesktopWavDecoder {
         val samples = builder.toArray()
         require(samples.isNotEmpty()) { "音声データを展開できませんでした" }
         AudioResourceLimits.requireDecodedMonoFrameCount(samples.size.toLong(), sampleRate)
-        return PcmAudio(name = name, samples = samples, sampleRate = sampleRate)
+        return PcmAudio(
+            name = persistableAudioDisplayName(name, null),
+            samples = samples,
+            sampleRate = sampleRate,
+        )
     }
 
     internal fun validateSampleRate(sampleRate: Float): Int {

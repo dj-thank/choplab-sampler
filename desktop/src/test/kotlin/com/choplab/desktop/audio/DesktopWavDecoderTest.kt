@@ -1,7 +1,10 @@
 package com.choplab.desktop.audio
 
 import com.choplab.sampler.model.ProjectLimits
+import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.persistence.ProjectArchiveCodec
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -38,6 +41,33 @@ class DesktopWavDecoderTest {
         assertEquals("stereo.wav", audio.name)
         assertEquals(48_000, audio.sampleRate)
         assertContentEquals(shortArrayOf(0, Short.MAX_VALUE, Short.MIN_VALUE), audio.samples)
+    }
+
+    @Test
+    fun boundsDecodedNameBeforeProjectArchiveReadBack() {
+        val bytes = pcm16LittleEndian(1, -2)
+        val monoFormat = AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED,
+            8_000f,
+            16,
+            1,
+            2,
+            8_000f,
+            false,
+        )
+        val stream = AudioInputStream(ByteArrayInputStream(bytes), monoFormat, 2)
+        val sourceName = " ".repeat(ProjectLimits.MAX_ASSET_NAME_CHARS) + "take.wav"
+
+        val audio = DesktopWavDecoder.readMono(sourceName, stream, maximumFrames = 2)
+        val archive = ByteArrayOutputStream()
+        ProjectArchiveCodec.write(
+            SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount),
+            archive,
+        )
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(archive.toByteArray()))
+
+        assertEquals("sample", audio.name)
+        assertEquals(audio.name, restored.currentAudio?.name)
     }
 
     @Test
