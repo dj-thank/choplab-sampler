@@ -112,14 +112,14 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 
 ## Validation evidence
 
-- Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
-- Review-repair source: reachable two-parent commit `c2e3aeea8d3cae18372b5ed99917eb95beb8d283`, tree `ec8702bc0f9350f90427a9d83a630105acb95dbe`, integrating exact `main@333088147cdc77932efc41b90a08eb37e1c1cf42`; the final follow-up commit only binds documentation to this source. Static policy 39/39, public-surface 394, six XML parses, exact #68/#70 blob preservation and diff checks pass. Hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
+- Historical product label: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`. It is outside the current PR/main ancestry and is retained only as externally unverifiable historical context, not current gate proof.
+- Review-repair source: reachable two-parent commit `c2e3aeea8d3cae18372b5ed99917eb95beb8d283`, tree `ec8702bc0f9350f90427a9d83a630105acb95dbe`, integrating exact `main@333088147cdc77932efc41b90a08eb37e1c1cf42`; the final follow-up commit only binds documentation to this source. Static policy 39/39, public-surface 394, six XML parses, exact #68/#70 blob preservation and diff checks pass. Hosted compile/runtime checks are pending; the out-of-ancestry 43d8ace report is externally unverifiable historical context and supplies no current proof.
 - A `pointerInput` block retains the values captured when its keys were last changed. `pad.playMode` must therefore be a key so Undo/Redo or another in-place ONE SHOT/GATE update cannot keep stale routing.
 - Compact large-text cells can intentionally omit secondary captions only when semantics independently enumerate both play mode and content kind; PAD assignment alone is not a complete accessible role description.
 - Merged PR #62 source: reachable commit `5b9592ff27608166a99fe77af0876ad1d6b917f5`, tree `97569b6a07fb74f9ee5b59101c0ea27059259a1b`; exact head `0e94698625f676573d42e74c52bf2394e1f24fd3` passed review and all four workflows before merge as `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`.
-- Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
-- Instrumentation: API 36 `OK (8 tests)` after exact data-preserving APK installs。first-screen 2本はin-memory shared-deck fixtureであり、production MainActivity/controller wiringは別のmanual cold-launch/navigation captureに限定する。
-- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/` and `closeout/`.
+- Historical Gradle report: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0. Its out-of-ancestry source makes it externally unverifiable here and it supplies no current gate.
+- Historical instrumentation report: API 36 `OK (8 tests)` after exact data-preserving APK installs。first-screen 2本はin-memory shared-deck fixtureであり、production MainActivity/controller wiringは別のmanual cold-launch/navigation captureに限定する。このreportもcurrent source proofには再利用しない。
+- Historical visual labels: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/` and `closeout/`; neither is current revision proof.
 - Pixel 9a: disconnected; no physical-device gate promotion.
 - A Windows CopyFromScreen capture was invalid at 200% DPI/off-screen placement; PrintWindow produced the accepted full-window evidence.
 
