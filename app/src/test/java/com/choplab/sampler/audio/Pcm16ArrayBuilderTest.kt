@@ -53,6 +53,13 @@ class Pcm16ArrayBuilderTest {
     fun decodedAudioNameStaysPersistableWithoutSplittingUnicode() {
         assertEquals("fallback.wav", persistableAudioDisplayName("  ", "fallback.wav"))
         assertEquals("sample", persistableAudioDisplayName("\t", null))
+        assertEquals(
+            "fallback.wav",
+            persistableAudioDisplayName(
+                " ".repeat(ProjectLimits.MAX_ASSET_NAME_CHARS) + "x",
+                "fallback.wav",
+            ),
+        )
 
         val providerName = "a".repeat(ProjectLimits.MAX_ASSET_NAME_CHARS - 1) +
             "\uD83C\uDFB5.wav"

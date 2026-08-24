@@ -36,20 +36,22 @@ internal fun persistableAudioDisplayName(
     preferredName: String?,
     fallbackName: String?,
 ): String {
-    val candidate = preferredName?.takeIf { it.isNotBlank() }
-        ?: fallbackName?.takeIf { it.isNotBlank() }
-        ?: "sample"
     val limit = ProjectLimits.MAX_ASSET_NAME_CHARS
-    if (candidate.length <= limit) return candidate
+    fun bounded(candidate: String?): String? {
+        if (candidate.isNullOrBlank()) return null
+        if (candidate.length <= limit) return candidate
 
-    var endIndex = limit
-    if (
-        Character.isHighSurrogate(candidate[endIndex - 1]) &&
-        Character.isLowSurrogate(candidate[endIndex])
-    ) {
-        endIndex--
+        var endIndex = limit
+        if (
+            Character.isHighSurrogate(candidate[endIndex - 1]) &&
+            Character.isLowSurrogate(candidate[endIndex])
+        ) {
+            endIndex--
+        }
+        return candidate.substring(0, endIndex).takeIf { it.isNotBlank() }
     }
-    return candidate.substring(0, endIndex)
+
+    return bounded(preferredName) ?: bounded(fallbackName) ?: "sample"
 }
 
 class AudioDecoder(private val context: Context) {
