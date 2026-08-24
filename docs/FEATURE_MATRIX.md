@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Windows録音開始中のSTOP | 🧪 source/static / hosted CI待ち | product repair `27283f8` / tree `4ffc5f7`（exact-base `main@dfcd9d8`）で、blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeしてnative startを解除し、復帰後のworker公開とcapture readを阻止する。latch regressionはcloseによるgate解除、open/start/close各1回、read 0、一時WAV削除、idle stateを固定。実microphone/device timingと音質は未確認 |
 | Android / Windows取込名・autosave境界 | 🧪 latest-main source / prior hosted head | integration product `e0d3fa1` / tree `1558c4a`（merged `main@3072eed`）でarchive-compatible名規則をsharedへ集約。Androidのprovider/URI/final fallback契約を保持し、Desktop `File.name`もPCM公開前に非空・最大240 UTF-16単位へ正規化する。切断後blank再評価、surrogate pair分断防止、shared common contract、両platformのarchive round trip回帰を含む。旧exact headは全CIとclean reviewがPASS、最新main headのhosted再実行待ち。実provider/filesystem autosaveは未確認 |
 | Pattern event/frame timing parity | 🧪 latest-main source / prior hosted head | realtime fractional countdownとoffline WAVをshared ceiling＋carried-residual契約へ統一。48 kHz / 92 BPM / swing 54%の4-bar境界に加え、120 BPM / 55%のstep 3 = 18,601と40 BPM / 56%の1-bar長 = 288,001をWAV回帰で固定。PR #66旧exact headは全CIと再reviewがPASSし、最新main統合headのhosted再実行待ち |
 | Android realtime PAD terminal retirement | 🧪 source/static / hosted CI待ち | product `5dd3d66` / tree `c6a7e9b`、merged `main@3de1cc5`統合済み。pooled PAD voiceの返却sampleをmixしてからfinished slotをdeactivateする。既存parity fixtureで403 frames、terminal PCM `-61`、retire後inactiveを固定。callback追加は既存Voice＋primitiveだけでallocation/lock/I/Oなし。Python 39/39・public 394・diff PASS、Gradle 9.7.1未cacheのためhosted Android gate待ち |

@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 shared Android/Desktop import-name latest-main integration
+## Current snapshot — 2026-08-24 Desktop recorder startup cancellation candidate
+
+This snapshot records one bounded Desktop capture-lifecycle correction on exact merged main. It changes only the `TargetDataLine` recorder and its host regression; audio format, recording limits, controller behavior, project schema and previously merged import/transport behavior are unchanged.
+
+- Observed at: `2026-08-24T21:42+09:00`.
+- Source state: reachable product repair `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6`, tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad`, advancing exact-base candidate head `2fecbaeba7745815bf48763dc52dd3197863b73c` on merged `main@dfcd9d8871f34ca5ed125c9a1113c6a4dd612887`; the later evidence commit is documentation-only.
+- Reproduced defect: `stop()` could run while `TargetDataLine.start()` was blocked, observe no published line or worker, and return. Startup could then publish `running=true` and launch the capture worker after that stop/close request, leaving recording active without a corresponding live session owner.
+- Repair: one lifecycle lock now protects `starting`, a latched stop request, the opened startup line and final line/worker publication. STOP atomically claims and clears a pending line, then closes it outside the lock to unblock native start; startup cleanup closes the line only when it still owns that exact reference. A start that wins publishes and starts its worker inside the same boundary so stop observes the exact active resources. Cancellation clears temporary state and deletes the incomplete WAV.
+- Deterministic regression: a proxy line blocks inside `TargetDataLine.start()`, and only its `close()` releases that gate. The test issues stop and requires a failed start with `録音の開始はキャンセルされました`, zero `read` calls, exact-once open/start/close, idle recorder state and removal of the partial output.
+- Fresh local checks: `doctor.sh` PASS with expected Android SDK/ADB warnings; Python policy 39/39, public-surface current/history over 395 candidates and `git diff --check` PASS. `validate_project.sh` passed its static phases, but uncached Gradle 9.7.1 could not be downloaded because the sandbox network is unreachable, so hosted Windows execution is required.
+- Gate ceiling: source/static candidate only. Hosted Desktop compilation/tests/packaging and clean exact-head review are required; physical Windows microphone timing, audio contents/quality, device removal, publication and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 shared Android/Desktop import-name latest-main integration
 
 This snapshot records one bounded Desktop data-loss prevention follow-up integrated with the main that merged transport step-zero ordering. It moves the reviewed Android naming rule to shared production code and applies it to Desktop decode before PCM enters project state; audio bytes, archive schema, provider/filesystem I/O and #65 transport behavior are unchanged.
 

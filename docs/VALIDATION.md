@@ -2,6 +2,15 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Desktop recorder startup cancellation candidate — 2026-08-24
+
+- Product source: reachable repair `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6`, tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad`, advancing exact-base candidate `2fecbaeba7745815bf48763dc52dd3197863b73c` on merged `main@dfcd9d8871f34ca5ed125c9a1113c6a4dd612887`; the later evidence commit changes documentation only. Runtime/test blobs are `3dec52b4598e3222503cbdc3abeade543e22e046` / `eea213f8716d92fe63f3f13d8180da94b3399657`.
+- RED contract: while `TargetDataLine.start()` blocks, the previous recorder has not published `line`, `worker`, `outputFile` or `running=true`. Concurrent `stop()` therefore returns without affecting startup, after which start can launch a late capture worker.
+- Repair contract: after `open()`, startup publishes a separate pending line under the recorder lifecycle lock. `stop()` latches cancellation and atomically claims/clears that reference, then closes it outside the lock to unblock `TargetDataLine.start()`. Startup cleanup closes only a pending line it still owns, preventing a duplicate close. Final active-resource publication and worker start remain in the same critical section, so whichever operation wins is observable to the other.
+- Deterministic regression: a proxy line and two latches hold the starter thread inside `TargetDataLine.start()`, and proxy `close()` is the only normal gate release. After stop wins, that close must finish the starter with the exact cancellation error, zero payload reads, open/start/close counts of 1/1/1, `isRecording=false` and no output file.
+- Local PASS: `./scripts/doctor.sh`; Python policy tests 39/39; public-surface current/history over 395 candidates; tracked executable policy; `git diff --check`. `./scripts/validate_project.sh` passed its public-surface/executable phases, then both it and focused `:shared:desktopTest :jvm-core:test :desktop:test` were blocked before Gradle execution because the uncached 9.7.1 distribution could not be downloaded in the network-restricted sandbox.
+- Gate: source/static candidate. Hosted Windows compilation/test/package plus exact-head clean review are required. No physical capture timing, audio quality/content, device-removal, provider, public release or Human result is claimed.
+
 ## Shared Android/Desktop import-name latest-main integration — 2026-08-24
 
 - Product source: reachable integration `e0d3fa1df5862bcfa038812bb12ecf6d2c45911e`, tree `1558c4a2331e8ef3a7b2809b38f264e671c188a6`, with parents prior exact PR head `d2c99fc2d4bb9c84bf6366a7f2568cca88294422` and merged `main@3072eedd84b357f4ccd22c611dcc7b7f22f92874`; the final follow-up is documentation-only.
