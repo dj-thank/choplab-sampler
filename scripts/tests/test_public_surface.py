@@ -80,6 +80,32 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("audio asset", findings[0])
         self.assertNotIn("secret-shaped content", findings[0])
 
+    def test_zip_content_scan_reads_archive_and_entry_comments(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "comments.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.comment = token
+                info = zipfile.ZipInfo("docs/notes.txt")
+                info.comment = token
+                archive.writestr(info, "safe")
+
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("archive comment" in item for item in findings))
+        self.assertTrue(any("docs/notes.txt' comment" in item for item in findings))
+
+    def test_zip_content_scan_checks_tokens_before_control_character_filtering(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "controlled.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("docs/notes.txt", token + b"\x00")
+
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
     def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "many.zip"
@@ -142,8 +168,22 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return f"{object_id} docs/removed.zip\n".encode("ascii")
-            if arguments == ["cat-file", "-t", object_id]:
-                return b"blob\n"
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                "*.zip",
+            ]:
+                return (
+                    f":000000 100644 {'0' * 40} {object_id} A\0"
+                    "docs/removed.zip\0"
+                ).encode("ascii")
             if arguments == ["cat-file", "-s", object_id]:
                 return f"{len(archive_bytes)}\n".encode("ascii")
             if arguments == ["cat-file", "blob", object_id]:
@@ -164,6 +204,90 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("docs/removed.zip" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_history_scan_keeps_zip_alias_when_rev_list_uses_another_path(self) -> None:
+        object_id = "b" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("docs/notes.txt", "github_pat_" + "b" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{object_id} copies/archive.dat\n".encode("ascii")
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                "*.zip",
+            ]:
+                return (
+                    f":000000 100644 {'0' * 40} {object_id} A\0"
+                    "docs/removed.zip\0"
+                ).encode("ascii")
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("docs/removed.zip" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_history_zip_limit_ignores_zip_named_tree_hints(self) -> None:
+        tree_hints = "".join(
+            f"{index:040x} directories/safe-{index}.zip\n" for index in range(129)
+        ).encode("ascii")
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return tree_hints
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                "*.zip",
+            ]:
+                return b""
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertEqual([], findings)
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (

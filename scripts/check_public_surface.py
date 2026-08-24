@@ -103,6 +103,53 @@ def historical_paths() -> list[PurePosixPath]:
     return [path for _, path in historical_objects()]
 
 
+def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
+    """Return every blob version ever reachable through a path ending in .zip.
+
+    `rev-list --objects` provides only one path hint for a shared object, so a blob
+    reachable as both `copy.dat` and `removed.zip` cannot be selected reliably from
+    that output. Raw history records retain the path paired with each old/new blob.
+    """
+    raw = run_git(
+        [
+            "log",
+            "--all",
+            "--format=",
+            "--raw",
+            "--no-abbrev",
+            "--no-renames",
+            "--root",
+            "-z",
+            "--",
+            "*.zip",
+        ]
+    )
+    fields = raw.split(b"\0")
+    if fields and not fields[-1]:
+        fields.pop()
+    if len(fields) % 2:
+        raise RuntimeError("unexpected NUL-delimited git raw history output")
+
+    candidates: dict[str, PurePosixPath] = {}
+    for index in range(0, len(fields), 2):
+        header = fields[index].decode("ascii", errors="replace").strip().split()
+        path = PurePosixPath(fields[index + 1].decode("utf-8", errors="replace"))
+        if path.suffix.lower() != ".zip":
+            continue
+        if len(header) != 5 or not header[0].startswith(":"):
+            raise RuntimeError("unexpected git raw history record")
+
+        old_mode = header[0][1:]
+        new_mode, old_id, new_id = header[1:4]
+        for mode, object_id in ((old_mode, old_id), (new_mode, new_id)):
+            if mode in {"000000", "040000", "160000"}:
+                continue
+            if object_id == "0" * 40:
+                continue
+            candidates.setdefault(object_id, path)
+    return list(candidates.items())
+
+
 def suspicious_path(path: PurePosixPath) -> str | None:
     lower = path.as_posix().lower()
     name = path.name.lower()
@@ -117,21 +164,11 @@ def suspicious_path(path: PurePosixPath) -> str | None:
     return None
 
 
-def decode_probable_text(content: bytes) -> str | None:
+def decode_text_for_secret_scan(content: bytes) -> str | None:
     try:
-        decoded = content.decode("utf-8-sig")
+        return content.decode("utf-8-sig")
     except UnicodeDecodeError:
         return None
-    if "\x00" in decoded:
-        return None
-    controls = sum(
-        1
-        for character in decoded
-        if not character.isprintable() and character not in "\t\n\r\f"
-    )
-    if decoded and controls * 100 > len(decoded):
-        return None
-    return decoded
 
 
 def scan_zip(
@@ -156,12 +193,41 @@ def scan_zip(
                 )
                 return findings
 
+            archive_comment = archive.comment
+            if scanned_bytes + len(archive_comment) > total_scan_limit:
+                findings.append(
+                    f"{archive_label}: archive comments exceed "
+                    f"{total_scan_limit}-byte total content scan limit"
+                )
+                return findings
+            scanned_bytes += len(archive_comment)
+            archive_comment_text = decode_text_for_secret_scan(archive_comment)
+            if archive_comment_text is not None:
+                findings.extend(
+                    scan_text(f"{archive_label}: archive comment", archive_comment_text)
+                )
+
             for info in entries:
                 name = info.filename
                 entry = PurePosixPath(name)
                 reason = suspicious_path(entry)
                 if reason:
                     findings.append(f"{archive_label}: archive entry {name!r}: {reason}")
+                if scanned_bytes + len(info.comment) > total_scan_limit:
+                    findings.append(
+                        f"{archive_label}: archive comments exceed "
+                        f"{total_scan_limit}-byte total content scan limit"
+                    )
+                    break
+                scanned_bytes += len(info.comment)
+                entry_comment_text = decode_text_for_secret_scan(info.comment)
+                if entry_comment_text is not None:
+                    findings.extend(
+                        scan_text(
+                            f"{archive_label}: archive entry {name!r} comment",
+                            entry_comment_text,
+                        )
+                    )
                 if info.is_dir():
                     if info.file_size:
                         findings.append(
@@ -213,7 +279,7 @@ def scan_zip(
                     )
                     break
                 scanned_bytes += len(content)
-                text = decode_probable_text(content)
+                text = decode_text_for_secret_scan(content)
                 if text is not None:
                     member_label = f"{archive_label}: archive entry {name!r}"
                     findings.extend(scan_text(member_label, text))
@@ -233,13 +299,10 @@ def scan_text(label: str, content: str) -> list[str]:
 
 
 def scan_historical_zip_blobs(
-    objects: list[tuple[str, PurePosixPath]],
+    candidates_list: list[tuple[str, PurePosixPath]],
 ) -> list[str]:
     findings: list[str] = []
-    candidates: dict[str, PurePosixPath] = {}
-    for object_id, path in objects:
-        if path.suffix.lower() == ".zip":
-            candidates.setdefault(object_id, path)
+    candidates = dict(candidates_list)
 
     if len(candidates) > HISTORICAL_ZIP_BLOB_COUNT_LIMIT:
         findings.append(
@@ -250,8 +313,6 @@ def scan_historical_zip_blobs(
 
     scanned_container_bytes = 0
     for object_id, path in list(candidates.items())[:HISTORICAL_ZIP_BLOB_COUNT_LIMIT]:
-        if run_git(["cat-file", "-t", object_id]).strip() != b"blob":
-            continue
         size = int(run_git(["cat-file", "-s", object_id]).strip())
         archive_label = f"git history ZIP {path} ({object_id[:12]})"
         if size > HISTORICAL_ZIP_CONTAINER_LIMIT:
@@ -283,7 +344,7 @@ def scan_history() -> list[str]:
         reason = suspicious_path(path)
         if reason:
             findings.append(f"git history path {path}: {reason}")
-    findings.extend(scan_historical_zip_blobs(objects))
+    findings.extend(scan_historical_zip_blobs(historical_zip_objects()))
 
     # A textual patch includes every textual addition/deletion reachable from all
     # refs without checking out or materializing historical files. Binary payloads
