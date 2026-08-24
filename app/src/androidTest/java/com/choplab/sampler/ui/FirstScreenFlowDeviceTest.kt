@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
@@ -89,12 +90,48 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
     }
 
+    @Test
+    fun largeTextChopKeepsPadTargetAndPrimaryActionReachable() {
+        val audio = PcmAudio(
+            id = 42L,
+            name = "device-fixture.wav",
+            samples = ShortArray(48_000),
+            sampleRate = 48_000,
+        )
+        setDeck(
+            initialState = SamplerUiState(
+                currentAudio = audio,
+                projectLaunchTarget = ProjectLaunchTarget.CHOP,
+            ),
+            fontScale = 2f,
+        )
+
+        composeRule.onNode(hasContentDescription("チョップ開始", substring = true))
+            .performScrollTo()
+            .assertIsDisplayed()
+        val pad = composeRule.onNode(hasContentDescription("PAD 01 空", substring = true))
+            .performScrollTo()
+        pad.assertIsDisplayed()
+        val minimumTargetPx = 48f * composeRule.density.density
+        val bounds = pad.fetchSemanticsNode().boundsInRoot
+        assertTrue("Large-text Chop PAD width must remain at least 48 dp", bounds.width >= minimumTargetPx - 1f)
+        assertTrue("Large-text Chop PAD height must remain at least 48 dp", bounds.height >= minimumTargetPx - 1f)
+    }
+
     private fun setPristineDeck(fontScale: Float = 1f): MutableState<SamplerUiState> {
-        val state = mutableStateOf(
-            BuiltInDrumKits.installStarterKit(SamplerUiState()).copy(
+        return setDeck(
+            initialState = BuiltInDrumKits.installStarterKit(SamplerUiState()).copy(
                 projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
             ),
+            fontScale = fontScale,
         )
+    }
+
+    private fun setDeck(
+        initialState: SamplerUiState,
+        fontScale: Float,
+    ): MutableState<SamplerUiState> {
+        val state = mutableStateOf(initialState)
         val controller = noOpController {
             state.value = ensurePlayablePadSelectedState(state.value)
         }
