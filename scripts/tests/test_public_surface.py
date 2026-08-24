@@ -178,7 +178,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 "--root",
                 "-z",
                 "--",
-                "*.zip",
+                ":(icase,glob)**/*.zip",
             ]:
                 return (
                     f":000000 100644 {'0' * 40} {object_id} A\0"
@@ -225,11 +225,11 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 "--root",
                 "-z",
                 "--",
-                "*.zip",
+                ":(icase,glob)**/*.zip",
             ]:
                 return (
                     f":000000 100644 {'0' * 40} {object_id} A\0"
-                    "docs/removed.zip\0"
+                    "docs/removed.ZIP\0"
                 ).encode("ascii")
             if arguments == ["cat-file", "-s", object_id]:
                 return f"{len(archive_bytes)}\n".encode("ascii")
@@ -249,7 +249,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
             findings = scan_history()
 
-        self.assertTrue(any("docs/removed.zip" in item for item in findings))
+        self.assertTrue(any("docs/removed.ZIP" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_history_zip_limit_ignores_zip_named_tree_hints(self) -> None:
@@ -270,7 +270,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 "--root",
                 "-z",
                 "--",
-                "*.zip",
+                ":(icase,glob)**/*.zip",
             ]:
                 return b""
             if arguments == [

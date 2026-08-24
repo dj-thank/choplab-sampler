@@ -121,7 +121,7 @@ def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
             "--root",
             "-z",
             "--",
-            "*.zip",
+            ":(icase,glob)**/*.zip",
         ]
     )
     fields = raw.split(b"\0")
