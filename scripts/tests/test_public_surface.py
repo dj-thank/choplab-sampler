@@ -106,6 +106,39 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_zip_content_scan_preserves_ascii_tokens_beside_malformed_bytes(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        malformed_text = token + b"\xff"
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "malformed.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.comment = malformed_text
+                info = zipfile.ZipInfo("docs/notes.txt")
+                info.comment = malformed_text
+                archive.writestr(info, malformed_text)
+
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("archive comment" in item for item in findings))
+        self.assertTrue(any("docs/notes.txt' comment" in item for item in findings))
+        self.assertTrue(
+            any("docs/notes.txt'" in item and "comment" not in item for item in findings)
+        )
+
+    def test_zip_content_scan_reads_bounded_entry_extra_fields(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "extra.zip"
+            info = zipfile.ZipInfo("docs/notes.txt")
+            info.extra = b"\xfe\xca" + len(token).to_bytes(2, "little") + token
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(info, "safe")
+
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("extra field" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
     def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "many.zip"
@@ -171,6 +204,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             if arguments == [
                 "log",
                 "--all",
+                "-m",
                 "--format=",
                 "--raw",
                 "--no-abbrev",
@@ -218,6 +252,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             if arguments == [
                 "log",
                 "--all",
+                "-m",
                 "--format=",
                 "--raw",
                 "--no-abbrev",
@@ -263,6 +298,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             if arguments == [
                 "log",
                 "--all",
+                "-m",
                 "--format=",
                 "--raw",
                 "--no-abbrev",
@@ -288,6 +324,93 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings = scan_history()
 
         self.assertEqual([], findings)
+
+    def test_history_zip_scan_excludes_zip_named_symlink_blobs(self) -> None:
+        object_id = "c" * 40
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{object_id} releases/latest.zip\n".encode("ascii")
+            if arguments == [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                ":(icase,glob)**/*.zip",
+            ]:
+                return (
+                    f":000000 120000 {'0' * 40} {object_id} A\0"
+                    "releases/latest.zip\0"
+                ).encode("ascii")
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertEqual([], findings)
+
+    def test_history_scan_reads_zip_created_only_by_merge_result(self) -> None:
+        object_id = "d" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("docs/notes.txt", "github_pat_" + "d" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{object_id} unrelated/archive.dat\n".encode("ascii")
+            if arguments == [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                ":(icase,glob)**/*.zip",
+            ]:
+                return (
+                    f":000000 100644 {'0' * 40} {object_id} A\0"
+                    "merge-only.zip\0"
+                ).encode("ascii")
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("merge-only.zip" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (

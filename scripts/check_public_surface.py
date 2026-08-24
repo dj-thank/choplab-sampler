@@ -114,6 +114,7 @@ def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
         [
             "log",
             "--all",
+            "-m",
             "--format=",
             "--raw",
             "--no-abbrev",
@@ -142,7 +143,7 @@ def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
         old_mode = header[0][1:]
         new_mode, old_id, new_id = header[1:4]
         for mode, object_id in ((old_mode, old_id), (new_mode, new_id)):
-            if mode in {"000000", "040000", "160000"}:
+            if mode not in {"100644", "100755"}:
                 continue
             if object_id == "0" * 40:
                 continue
@@ -164,11 +165,10 @@ def suspicious_path(path: PurePosixPath) -> str | None:
     return None
 
 
-def decode_text_for_secret_scan(content: bytes) -> str | None:
-    try:
-        return content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return None
+def decode_text_for_secret_scan(content: bytes) -> str:
+    # Credential patterns are ASCII. Replacement decoding preserves those bytes
+    # even when unrelated malformed bytes appear elsewhere in safe-named text.
+    return content.decode("utf-8-sig", errors="replace")
 
 
 def scan_zip(
@@ -183,6 +183,19 @@ def scan_zip(
     findings: list[str] = []
     scanned_bytes = 0
     archive_label = label or str(source)
+
+    def scan_metadata(metadata_label: str, content: bytes) -> bool:
+        nonlocal scanned_bytes
+        if scanned_bytes + len(content) > total_scan_limit:
+            findings.append(
+                f"{archive_label}: archive metadata exceeds "
+                f"{total_scan_limit}-byte total content scan limit"
+            )
+            return False
+        scanned_bytes += len(content)
+        findings.extend(scan_text(metadata_label, decode_text_for_secret_scan(content)))
+        return True
+
     try:
         with zipfile.ZipFile(source) as archive:
             entries = archive.infolist()
@@ -193,19 +206,11 @@ def scan_zip(
                 )
                 return findings
 
-            archive_comment = archive.comment
-            if scanned_bytes + len(archive_comment) > total_scan_limit:
-                findings.append(
-                    f"{archive_label}: archive comments exceed "
-                    f"{total_scan_limit}-byte total content scan limit"
-                )
+            if not scan_metadata(
+                f"{archive_label}: archive comment",
+                archive.comment,
+            ):
                 return findings
-            scanned_bytes += len(archive_comment)
-            archive_comment_text = decode_text_for_secret_scan(archive_comment)
-            if archive_comment_text is not None:
-                findings.extend(
-                    scan_text(f"{archive_label}: archive comment", archive_comment_text)
-                )
 
             for info in entries:
                 name = info.filename
@@ -213,21 +218,16 @@ def scan_zip(
                 reason = suspicious_path(entry)
                 if reason:
                     findings.append(f"{archive_label}: archive entry {name!r}: {reason}")
-                if scanned_bytes + len(info.comment) > total_scan_limit:
-                    findings.append(
-                        f"{archive_label}: archive comments exceed "
-                        f"{total_scan_limit}-byte total content scan limit"
-                    )
+                if not scan_metadata(
+                    f"{archive_label}: archive entry {name!r} comment",
+                    info.comment,
+                ):
                     break
-                scanned_bytes += len(info.comment)
-                entry_comment_text = decode_text_for_secret_scan(info.comment)
-                if entry_comment_text is not None:
-                    findings.extend(
-                        scan_text(
-                            f"{archive_label}: archive entry {name!r} comment",
-                            entry_comment_text,
-                        )
-                    )
+                if not scan_metadata(
+                    f"{archive_label}: archive entry {name!r} extra field",
+                    info.extra,
+                ):
+                    break
                 if info.is_dir():
                     if info.file_size:
                         findings.append(
@@ -280,9 +280,8 @@ def scan_zip(
                     break
                 scanned_bytes += len(content)
                 text = decode_text_for_secret_scan(content)
-                if text is not None:
-                    member_label = f"{archive_label}: archive entry {name!r}"
-                    findings.extend(scan_text(member_label, text))
+                member_label = f"{archive_label}: archive entry {name!r}"
+                findings.extend(scan_text(member_label, text))
     except (OSError, zipfile.BadZipFile) as error:
         findings.append(
             f"{archive_label}: archive content scan failed ({type(error).__name__})"
