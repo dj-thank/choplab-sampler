@@ -12,7 +12,9 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**独立保守delta:** reachable integration product `08fb123`（tree `dc9a9e8`、`main@3330881`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `0a9def1`の全CI／再review PASSを保持し、merged #68 realtime PADと#70 Android import-name bytesも維持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
+**直近の統合保守:** Desktop transportのworker-before-state競合は、worker開始前readiness barrier、step-0 exact-once、worker-start失敗時record-arm復元としてPR #65 / `main@3072eed`へ統合済み。現在のDesktop永続化productはそのsource/tests/docsを保持する。
+
+**独立したDesktop永続化修正:** reachable integration product `99bd386`（tree `dec79d1`、`main@3072eed`統合済み）は、window/controller close時に最終autosaveを失う競合、startup recoveryをstale初期snapshotが上書きする競合、復元失敗placeholderの誤保存、close後の不要なPCM hydrate、復元hydrateによる後発user操作の無効化、復元device failureの不可視化を修正する限定delta。recoveryは公開前に取得したproject-operation ownershipをhydrateまで再利用し、後発user load/openを優先する。closeはstartup state、admitted hydrate／project publicationを順にdrainして最新snapshotを取得し、close-time autosave待機前にtransport／scratch／recorder／playerを停止する。failed recoveryは後続editがない限り保存せず、scheduled workは一度だけflush、successful running workは重複送信せず待ち、failed latest workは一度retry、新revisionは旧成功work後に一度だけ追随保存する。#65 transport readiness、#66 timing、#67 Desktop import境界、#68 realtime terminal sample、#70 Android import名境界を保持し、上記画面planの選択、archive schema、三世代recovery policyは変更しない。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 
