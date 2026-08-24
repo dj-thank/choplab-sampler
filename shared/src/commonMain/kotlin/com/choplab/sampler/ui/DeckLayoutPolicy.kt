@@ -35,7 +35,7 @@ data class DeckLayoutMetrics(
         get() = orientation != DeckOrientation.LANDSCAPE || density != DeckDensity.COMPACT
 
     val showInlineHeaderStatus: Boolean
-        get() = largeText && !showStatusStrip
+        get() = !showStatusStrip
 
     val focusedCaptureNeedsScroll: Boolean
         get() = largeText ||

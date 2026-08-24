@@ -71,7 +71,7 @@ class DeckLayoutPolicyTest {
             performanceWorkspaceLayout(metrics),
         )
         assertEquals(false, metrics.showStatusStrip)
-        assertEquals(false, metrics.showInlineHeaderStatus)
+        assertEquals(true, metrics.showInlineHeaderStatus)
         assertEquals(true, metrics.focusedCaptureNeedsScroll)
         assertEquals(false, metrics.beatWorkspaceNeedsScroll)
         assertEquals(false, metrics.performanceWorkspaceNeedsScroll)
