@@ -4,10 +4,11 @@
 
 ## Bounded ZIP member secret scan — 2026-08-24
 
-- Product/policy source: reachable commit `5e3e30e468efdd930bfda224a2aa6a27c34411fb`, tree `f12d47fee52d8fda73bd0a83b88dfc34f74cedef`, based directly on `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; this section is in a later documentation-only commit.
-- Contract: safe-named UTF-8 ZIP member text is scanned with the same secret patterns as ordinary repository files. Members are read directly without extraction and fail closed beyond 512 KiB per member, 4 MiB aggregate or a 100:1 declared compression ratio. Known binary/audio/signing/nested-archive suffixes are not text-decoded, while their path policy remains unchanged.
-- Tests: focused public-surface policy 8/8 and complete Python policy 43/43 passed. Fixtures cover UTF-8 BOM secret content, per-member/aggregate/compression limits and binary/audio false-positive exclusion.
-- Static gate: `python3 scripts/check_public_surface.py` passed 394 candidates and `git diff --check` passed. `scripts/validate_project.sh` passed its public/executable-mode phases, then stopped because the sandbox cannot create the Gradle wrapper cache under `/root/.gradle`; this Python-only delta claims no Gradle, device, provider, public-release or Human result.
+- Product/policy source: reachable integration commit `cbd6d9bbbbb8fe335d04b3eb2bf8d7bec744a643`, tree `004a396003a2ce616884f56ed8e610cc5ad218f0`, with parents prior PR head `bfc16cb1e952727a093576fe84c26ae0ed37400a` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`; this section is in a later documentation-only commit.
+- Contract: safe-named UTF-8 ZIP member text in the current tree and reachable historical ZIP blobs is scanned with the ordinary secret patterns. The scanner rejects more than 4,096 entries before member opening, payload-bearing directory entries, members above 512 KiB, archives above 4 MiB scanned text and declared compression above 100:1. History is capped at 128 unique ZIP blobs, 16 MiB each and 64 MiB aggregate; exceeding any cap fails the gate.
+- Binary boundary: binary/audio/signing/nested-archive suffixes remain excluded from text decoding while path policy is preserved. A handled ZIP returns before ordinary whole-file text scanning, so excluded member bytes cannot trigger through a UTF-8-decodable stored container.
+- Tests: focused public-surface policy 12/12 and complete Python policy 47/47 passed. Fixtures cover historical ZIP content, UTF-8 BOM secrets, entry/member/archive/compression bounds, payload-bearing directory entries, raw-container exclusion and binary/audio false-positive exclusion.
+- Static gate: both `python3 scripts/check_public_surface.py` and `python3 scripts/check_public_surface.py --history` passed 394 candidates, including the two known reachable historical ZIP blobs; conflict-marker scan and `git diff --check` passed. This Python-only delta claims no Gradle, device, provider, public-release or Human result, and exact-head hosted CI remains required.
 
 ## Desktop import sample-rate admission candidate — 2026-08-24
 

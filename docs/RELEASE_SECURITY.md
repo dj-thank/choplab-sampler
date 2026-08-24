@@ -10,7 +10,7 @@ This document separates controls enforced by committed source from controls that
 
 A `v*` run of `.github/workflows/release.yml`:
 
-1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; public-candidate ZIPs additionally scan bounded non-binary UTF-8 member content without extraction, failing closed above the documented member, aggregate or compression-ratio limits;
+1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; current and historical ZIP blobs additionally scan bounded non-binary UTF-8 member content without extraction, failing closed above documented entry-count, member, archive, compression-ratio, historical-blob and historical-byte limits, and rejecting directory-marked payloads;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
 4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;

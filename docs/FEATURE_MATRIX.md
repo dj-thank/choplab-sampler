@@ -16,7 +16,7 @@
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
 | iOS 16 preview | 🧪 local policy / GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。録音中の新規importはUI/store双方で拒否し、picker取消/失敗は録音・既存Sourceを停止/置換しないMainActor回帰を追加。Swift/Simulator実行と署名なし`.app.zip`はmacOS CI境界。 |
 | Windows / Android / iOS 公開preview | ✅ existing preview / v0.17 source tag / binary blocked | `v0.16.0-preview.1`の三平台公開とread-backは既存PASS。`v0.17.0` sourceはPR #45、`main@ab68d2d`、annotated tagとWindows/iOS tag artifactsまで確認済み。stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。署名済みiOS実機IPAは未提供。 |
-| 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ZIPはentry名に加えて非binary UTF-8本文を非展開で検査し、512 KiB/member、4 MiB合計、100:1圧縮率を越える検査対象を拒否。binary/audioは本文誤検知を避けつつ既存の名前denylistを維持。Windows CIはcheckout直後の未変更treeをscanし、policy tests後にsource snapshotを作成・uploadする。 |
+| 公開面の資格情報・音源境界 | 🧪 latest-main policy / hosted CI待ち | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。current treeとreachable historyのZIP blobも非展開で検査し、4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率に加え履歴blob数／container合計を制限。payload付きdirectory entryを拒否し、binary/audio本文とZIP container raw bytesはtext再scanしない。product `cbd6d9b` / tree `004a396`、Python 47/47・current/history scan PASS、exact hosted CI待ち。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ current local | AndroidとWindowsの停止後decodeが波形を読込み、fresh launch revisionでCHOPへ遷移してPAD割当／16-step制作へ続く。実録音内容は今回取得していない |
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示。CHOPと通常BEATは同じ4×4演奏面を共有し、詳細sequencerだけを二次面へ分離 |

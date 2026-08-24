@@ -12,7 +12,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**独立release-policy delta:** `main@3260f5c`上のreachable `5e3e30e`は、公開面scanをZIP entry名だけでなくbounded UTF-8本文へ拡張する小規模修正。512 KiB/member、4 MiB合計、100:1圧縮率でfail-closedにし、binary/audio本文はdecodeせず名前denylistを維持する。新しいproduct ExecPlanは選択せず、hosted CI／main read-back前はsource/static candidate扱いとする。
+**独立release-policy delta:** `main@3de1cc5`を統合したreachable product `cbd6d9b` / tree `004a396`は、公開面scanをcurrent／reachable-history ZIP本文へ拡張する小規模修正。4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率と履歴blob materializationをboundedにし、payload付きdirectory entryを拒否する。binary/audio本文とstructured scan後のraw containerはtext再scanしない。Python 47/47・current/history scanはPASS、新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
