@@ -507,6 +507,75 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun closeInvalidatesLoadBeforeCapturingItsPublishedProject() {
+        val directory = Files.createTempDirectory("choplab-controller-close-load").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val source = directory.resolve("close-race.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(64) { it.toShort() })
+        }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            controller.loadWav(source)
+            engine.awaitBlockedLoad()
+            assertEquals(null, controller.state.value.currentAudio)
+
+            closeThread = thread(name = "ChopLab-Test-Load-Close") { controller.close() }
+            awaitCondition { closeThread.state == Thread.State.BLOCKED }
+            engine.releaseBlockedLoad()
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(source.name, store.load()?.currentAudio?.name)
+            assertEquals(ProjectLaunchTarget.CHOP, store.load()?.projectLaunchTarget)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeRetriesTheLatestAutosaveAfterATransientStoreFailure() {
+        val root = Files.createTempDirectory("choplab-controller-close-retry").toFile()
+        val blockedDirectory = root.resolve("autosave-target").apply {
+            writeText("not a directory")
+        }
+        val store = AtomicProjectStore(blockedDirectory)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(149f)
+            awaitCondition { controller.state.value.statusMessage.startsWith("自動保存失敗:") }
+            assertTrue(blockedDirectory.delete())
+            assertTrue(blockedDirectory.mkdir())
+
+            controller.close()
+
+            assertEquals(149f, store.load()?.bpm)
+            assertFalse(blockedDirectory.resolve("autosave.previous.choplab").exists())
+        } finally {
+            controller.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sourceRecordingRoutesTheProductionToChopAfterDecode() {
         val recorder = FakeRecorder()
         val controller = DesktopSamplerController(

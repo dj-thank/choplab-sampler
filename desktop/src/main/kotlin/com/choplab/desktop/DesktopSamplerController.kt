@@ -896,7 +896,7 @@ class DesktopSamplerController(
         }
         if (!admitted) return
         try {
-            persistAutosave(store, work.snapshot.state)
+            work.savedSuccessfully = persistAutosave(store, work.snapshot.state)
         } finally {
             synchronized(autosaveLifecycleLock) {
                 work.phase = AutosavePhase.COMPLETED
@@ -904,13 +904,16 @@ class DesktopSamplerController(
         }
     }
 
-    private fun persistAutosave(store: AtomicProjectStore, snapshot: SamplerUiState) {
-        runCatching { store.save(snapshot) }.onFailure { error ->
+    private fun persistAutosave(store: AtomicProjectStore, snapshot: SamplerUiState): Boolean =
+        runCatching {
+            store.save(snapshot)
+            true
+        }.getOrElse { error ->
             mutableState.update { current ->
                 current.copy(statusMessage = "自動保存失敗: ${error.message ?: error.javaClass.simpleName}")
             }
+            false
         }
-    }
 
     private fun flushAutosaveOnClose(request: AutosaveCloseRequest) {
         val store = autosaveStore ?: return
@@ -934,7 +937,11 @@ class DesktopSamplerController(
                     snapshot = request.snapshot,
                     delayMillis = 0L,
                 ).also { autosaveWork = it }
-                null -> null
+                null -> enqueueAutosaveLocked(
+                    store = store,
+                    snapshot = request.snapshot,
+                    delayMillis = 0L,
+                ).also { autosaveWork = it }
             }
         }
         awaitAutosave(workToAwait)
@@ -943,7 +950,8 @@ class DesktopSamplerController(
         // then lose scheduling admission because close has already claimed the lifecycle.
         // Wait for the older body first, then persist the newer owned revision exactly once.
         val followUpRequired = workToAwait != null &&
-            request.snapshot.revision > workToAwait.snapshot.revision
+            (!workToAwait.savedSuccessfully ||
+                request.snapshot.revision > workToAwait.snapshot.revision)
         if (!followUpRequired) return
         val followUp = synchronized(autosaveLifecycleLock) {
             enqueueAutosaveLocked(
@@ -1124,9 +1132,14 @@ class DesktopSamplerController(
     }
 
     override fun close() {
-        val closeRequest = synchronized(autosaveLifecycleLock) {
+        synchronized(autosaveLifecycleLock) {
             if (closed) return
             closed = true
+        }
+        // completeIfCurrent owns the project-operation monitor for its entire publication.
+        // Invalidate and wait for any admitted completion before taking the close snapshot.
+        projectOperations.invalidate()
+        val closeRequest = synchronized(autosaveLifecycleLock) {
             AutosaveCloseRequest(
                 pending = autosaveWork,
                 snapshot = AutosaveSnapshot(
@@ -1135,7 +1148,6 @@ class DesktopSamplerController(
                 ),
             )
         }
-        projectOperations.invalidate()
         ioExecutor.shutdownNow()
         playbackMonitor.shutdownNow()
         stopCompetingPlayback()
@@ -1164,6 +1176,7 @@ class DesktopSamplerController(
         val snapshot: AutosaveSnapshot,
         var phase: AutosavePhase = AutosavePhase.SCHEDULED,
         var future: ScheduledFuture<*>? = null,
+        var savedSuccessfully: Boolean = false,
     )
 
     private data class AutosaveCloseRequest(
