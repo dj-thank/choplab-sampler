@@ -2,6 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Shared Android/Desktop import-name latest-main integration — 2026-08-24
+
+- Product source: reachable integration `e0d3fa1df5862bcfa038812bb12ecf6d2c45911e`, tree `1558c4a2331e8ef3a7b2809b38f264e671c188a6`, with parents prior exact PR head `d2c99fc2d4bb9c84bf6366a7f2568cca88294422` and merged `main@3072eedd84b357f4ccd22c611dcc7b7f22f92874`; the final follow-up is documentation-only.
+- Main preservation: #65 `DesktopSamplerController.kt` / `DesktopTransport.kt` / corresponding tests remain exact blobs `5bc74ba` / `c92613c` / `10b3600` / `073696e`; #68 runtime/tests remain `de686ba` / `9d51556`. #70 Android provider/URI selection and its archive regression are preserved through the shared helper.
+- Contract: Android and Desktop names published with decoded PCM are nonblank and at most `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Preferred candidates retain priority, a bounded whitespace-only prefix re-enters fallback selection, and a valid surrogate pair is never split at the boundary.
+- Regression: shared common tests bind the portable rule. Desktop `readMono` receives a name whose first 240 units are whitespace, returns `sample`, and its `SamplerUiState` round trips through `ProjectArchiveCodec`; the existing Android surrogate/archive regression calls the same shared function.
+- Prior exact-head provider evidence: `d2c99fc` passed clean Codex review, Android `32724477061`, Windows `32724477012`, iOS `32724476941` and supply-chain `32724476968`, with review threads 0. Main then advanced, so those receipts are not promoted to the integration head.
+- Latest-main local PASS: Python policy 39/39, public-surface 395 candidates, exact six product blobs plus #65/#68 preservation, conflict-marker scan and `git diff --check`. Uncached Gradle 9.7.1 remains unreachable locally; no fresh Kotlin/Gradle PASS is claimed.
+- Gate: source/static latest-main integration plus prior-head hosted evidence only. Fresh hosted Android/Windows/shared execution and clean exact-head review are required; filesystem/provider imports, recovery, playback, publication and Human evidence remain separate.
+
 ## Desktop transport step-zero ordering candidate — 2026-08-24
 
 - Product source: reachable integration product `08fb123888fb840496d34e4ba7a586013e1305f6`, tree `dc9a9e8563e18168c5d20af9084ffaab01f0f742`, with parents prior exact PR head `5d630c8a769e4b840bba9914f59bc0ec1c705638` and merged `main@333088147cdc77932efc41b90a08eb37e1c1cf42`. It is a candidate, not a merged-main revision; its four Desktop product/test blobs remain exact, and merged #66 timing, #67 Desktop import-boundary, #68 realtime PAD retirement and #70 Android import-name source/tests/docs are retained.
