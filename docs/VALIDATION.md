@@ -2,6 +2,15 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Fractional pattern-frame timing candidate — 2026-08-24
+
+- Product source: rebased implementation `codex/render-frame-quantization@f0a36d9a39f5c3ce53d94ea75d1e07a56fad9c66`, tree `850cf9c829d1e1adb30963c0a08afbab723851d8`, base `main@5430d0d91a4e19ca02170d0143378a5d7917776b`.
+- RED arithmetic: 48 kHz / 92 BPM / swing 54% gives exact step-1 deadline 8,452.1739 frames. Realtime's fractional countdown fires at 8,453; old offline truncation fired at 8,452. Old per-bar ceiling produced 500,872 frames for four bars versus `ceil(exact continuous duration)` = 500,870.
+- Contract/fix: shared `scheduledFrameAtOrAfter` applies ceiling to non-negative finite exact deadlines. `PatternRenderer` accumulates the same fractional step lengths continuously across bars, schedules each event at the shared boundary, and derives total WAV frames from the final accumulated deadline.
+- Regression sources: shared exact/fractional quantization test; end-to-end JVM-core WAV test for event frames 8,453 / 133,670 / 258,887 / 384,105 and exact four-bar length 500,870.
+- Static checks after rebase: Python policy 26/26 PASS; public-surface 392 candidates PASS; `git diff --check origin/main..HEAD` PASS; `git diff --name-only origin/main..HEAD` contains no `ios/` path; Java 17/Git available. Gradle execution is not claimed because the sandbox has no usable Gradle 9.7.1 distribution.
+- Gate: source/static evidence only; hosted shared/JVM-core/Android checks are required. Physical audio timing/listening and Human acceptance remain separate.
+
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 
 - Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.

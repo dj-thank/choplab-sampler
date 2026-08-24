@@ -17,7 +17,8 @@ Create allocation-free `SamplerDspPrimitives` in shared commonMain for:
 - tone-filter coefficient;
 - forward/reverse boundary envelope;
 - saturating soft limiter;
-- swung step duration.
+- swung step duration;
+- exact transport deadline to first-not-earlier whole-frame quantization.
 
 All existing renderers delegate these numeric rules. Voice ownership, cursor lifecycle, command queues, native/audio device handles and file output remain in their current modules.
 
@@ -29,6 +30,7 @@ Invalid values use explicit safe neutral values: pitch 0, tone bypass, gain sile
 - The realtime callback gains no allocation, lock or I/O.
 - Offline rendering removes one exponential calculation per active voice per sample.
 - A direct realtime/host PCM oracle can detect drift before a shared voice kernel or native engine is introduced.
+- Offline events and total WAV length retain fractional timing across bar boundaries instead of truncating each event or rounding every bar independently.
 - This does not yet prove full-pattern/master equality, physical audio quality, latency or native-engine parity.
 
 ## Rejected alternatives

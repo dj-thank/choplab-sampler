@@ -139,6 +139,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 - audio frame単位で次stepまでの残りframeをカウント
 - BPMから16分音符長を算出
 - Swing値により偶数stepを長く、奇数stepを短くするが、2 step合計長は一定
+- fractionalなstep deadlineは、その時刻より前ではない最初の整数frame（ceiling）で発火する
 - step onsetで該当PAD voiceを開始
 
 ## 7. オフライン書き出し
@@ -146,7 +147,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 `PatternRenderer`
 
 - リアルタイムengineと同じPitch/Tone/Gain/Reverse/Choke/limiterロジック
-- 4 bars × 16 stepsのevent frameを先に計算
+- 4 bars × 16 stepsのexact deadlineをbar間で連続加算し、shared ceiling policyでevent frameと最終frame数を一度だけ量子化
 - 48 kHz mono PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 

@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 iOS import/recording exclusion local candidate
+## Current snapshot — 2026-08-24 fractional pattern-timing candidate
+
+This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged iOS import/recording exclusion, recorder cleanup and guided first-screen evidence remain previous snapshots below.
+
+- Observed at: `2026-08-24T08:05:20Z`.
+- Source state: isolated branch `codex/render-frame-quantization`, rebased implementation commit `f0a36d9a39f5c3ce53d94ea75d1e07a56fad9c66`, tree `850cf9c829d1e1adb30963c0a08afbab723851d8`, based on `main@5430d0d91a4e19ca02170d0143378a5d7917776b`. Other worktrees were not modified.
+- Reproduced defect: at 48 kHz / 92 BPM / 54% swing, realtime's fractional countdown starts step 1 at frame 8,453, while offline `Double.toInt()` scheduled it at 8,452. Per-bar ceiling also made a four-bar export 500,872 frames instead of the continuous realtime boundary at 500,870.
+- Repair: shared `scheduledFrameAtOrAfter` defines the first whole output frame that is not earlier than an exact deadline. Offline scheduling now accumulates exact step lengths continuously across all bars, quantizes every event with that ceiling rule, and quantizes total length once after the final bar.
+- Regression scope: the shared test fixes exact/inexact deadline behavior. The end-to-end WAV test fixes step-1 starts at frames 8,453 / 133,670 / 258,887 / 384,105 and four-bar length 500,870, detecting both an early first event and cross-bar drift.
+- Local evidence: `scripts/doctor.sh` found Java 17 and a clean branch but no Android SDK/ADB. After rebase, Python policy tests 26/26, the public-surface scan over 392 candidates, `git diff --check origin/main..HEAD`, and the negative iOS-diff check passed. The Gradle wrapper could not create/use a Gradle 9.7.1 distribution in this sandbox; no Kotlin/Gradle test pass is claimed locally.
+- Gate ceiling: source/static evidence only until hosted shared/JVM-core/Android tests pass. Physical playback timing, audio perception, provider, public release and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 
 This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
 

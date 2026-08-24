@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| Pattern event/frame timing parity | 🧪 source / hosted CI待ち | realtime fractional countdownとoffline WAVをshared ceiling契約へ統一。48 kHz / 92 BPM / swing 54%で旧offline step 1は8,452（realtime 8,453）、旧4-bar長は500,872（連続境界500,870）だった。新focused WAV testは全4 barのonsetとframe countを固定。現sandboxではGradle未実行 |
 | Pattern/master full-bar parity | ✅ product anchor / scoped device | product bytes `ecc6c54`。single PAD / step 0 / one barのrealtime Voice+master expectedとoffline WAVを全frame比較。REDはframe 402でoffline末尾sample欠落61、mix-before-retire修正後max delta≤1。Android 229、exact `DB08…` Pixel、全PR/main CI PASS。docs-only source main、polyphony/stereo/listeningは別 |
 | Realtime / offline / Windows audio parity | ✅ main / scoped device | shared pitch/tone/gain/fade/limiter/swing/NaN policy。Android Voiceとhost PAD PCM最大差1、shared両host25、merged-main Windows daily install `0.17.0-802a667d39cb`。polyphony/stereo/listeningは次段階 |
 | ProductionSession / 履歴・復旧の全体整合 | ✅ main / scoped device | shared history/revision/plan transactionとverified disk revision引継ぎ。Android/Windows source/recording/reset/open/recovery/editを一本化し、PR #47/main/Pixel PASS。物理recovery操作は未確認 |

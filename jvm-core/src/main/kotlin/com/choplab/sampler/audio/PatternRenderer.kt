@@ -7,7 +7,6 @@ import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.stepKey
 import java.io.File
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.floor
 
 data class PatternRenderSummary(
@@ -52,9 +51,8 @@ object PatternRenderer : PatternRenderService {
 
         val safeBpm = SamplerDspPrimitives.bpm(bpm)
         val safeSwing = SamplerDspPrimitives.swing(swing)
-        val stepStarts = calculateStepStarts(outputSampleRate, safeBpm, safeSwing)
-        val barFrames = ceil(stepStarts.last()).toInt().coerceAtLeast(1)
-        val totalFrames = barFrames * bars
+        val frameSchedule = calculateFrameSchedule(outputSampleRate, safeBpm, safeSwing, bars)
+        val totalFrames = frameSchedule.totalFrames
 
         val events = HashMap<Int, MutableList<PadSnapshot>>()
         pads.asSequence()
@@ -66,9 +64,8 @@ object PatternRenderer : PatternRenderService {
             .mapNotNull(PadSnapshot::from)
             .forEach { vocal -> events.getOrPut(0) { mutableListOf() } += vocal }
         repeat(bars) { bar ->
-            val barOffset = bar * barFrames
             repeat(SamplerConfig.STEP_COUNT) { step ->
-                val eventFrame = (barOffset + stepStarts[step]).toInt().coerceIn(0, totalFrames - 1)
+                val eventFrame = frameSchedule.eventFrames[bar * SamplerConfig.STEP_COUNT + step]
                 repeat(SamplerConfig.PAD_COUNT) { padIndex ->
                     if (
                         pads[padIndex].playMode != PadPlayMode.LOOP &&
@@ -135,18 +132,32 @@ object PatternRenderer : PatternRenderService {
         )
     }
 
-    private fun calculateStepStarts(
+    private fun calculateFrameSchedule(
         sampleRate: Int,
         bpm: Float,
         swing: Float,
-    ): DoubleArray {
-        val starts = DoubleArray(SamplerConfig.STEP_COUNT + 1)
-        repeat(SamplerConfig.STEP_COUNT) { step ->
-            val length = SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
-            starts[step + 1] = starts[step] + length
+        bars: Int,
+    ): PatternFrameSchedule {
+        val eventFrames = IntArray(SamplerConfig.STEP_COUNT * bars)
+        var exactFrame = 0.0
+        var eventIndex = 0
+        repeat(bars) {
+            repeat(SamplerConfig.STEP_COUNT) { step ->
+                eventFrames[eventIndex++] =
+                    SamplerDspPrimitives.scheduledFrameAtOrAfter(exactFrame)
+                exactFrame += SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
+            }
         }
-        return starts
+        return PatternFrameSchedule(
+            eventFrames = eventFrames,
+            totalFrames = SamplerDspPrimitives.scheduledFrameAtOrAfter(exactFrame).coerceAtLeast(1),
+        )
     }
+
+    private data class PatternFrameSchedule(
+        val eventFrames: IntArray,
+        val totalFrames: Int,
+    )
 
     private data class PadSnapshot(
         val audioSamples: ShortArray,
