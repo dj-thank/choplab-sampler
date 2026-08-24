@@ -992,6 +992,54 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun sourcePlayDuringRecoveredAudioHydrationReportsPendingThenSucceeds() {
+        val directory = Files.createTempDirectory("choplab-recovery-hydration-play").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "pending-recovery-hydration.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            engine.awaitBlockedLoad()
+
+            controller.playSourceFrom(0)
+
+            assertEquals(0, engine.playFromCalls)
+            assertFalse(controller.state.value.sourcePlaying)
+            assertEquals("音声の再生を準備しています", controller.state.value.statusMessage)
+
+            engine.releaseBlockedLoad()
+            awaitCondition { controller.state.value.statusMessage == "前回の自動保存を復元しました" }
+
+            controller.playSourceFrom(0)
+
+            assertEquals(1, engine.playFromCalls)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun failedUserLoadDuringStartupFallsBackToRecoveredProject() {
         val directory = Files.createTempDirectory("choplab-recovery-failed-user-load").toFile()
         val store = AtomicProjectStore(directory)

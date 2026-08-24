@@ -136,6 +136,8 @@ class DesktopSamplerController(
     @Volatile private var closePlayerAfterSourceLoad = false
     private var sourcePlayerClosed = false
     @Volatile private var sourcePlaybackReady = false
+    @Volatile private var sourcePlaybackPending = false
+    @Volatile private var sourcePlaybackPendingRestoreStatus: String? = null
     @Volatile private var sourcePlaybackError: String? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
@@ -415,6 +417,8 @@ class DesktopSamplerController(
         recoveryOperations.invalidate()
         stopCompetingPlayback()
         sourcePlaybackReady = false
+        sourcePlaybackPending = false
+        sourcePlaybackPendingRestoreStatus = null
         sourcePlaybackError = null
         mutableState.value = productionSession.replaceProject(freshProductionState()).state
         scheduleAutosave()
@@ -910,6 +914,8 @@ class DesktopSamplerController(
             // observer may synchronously apply pitch and load the source while publication
             // is in progress; clearing after publication would erase that newer readiness.
             sourcePlaybackReady = false
+            sourcePlaybackPending = next.currentAudio != null
+            sourcePlaybackPendingRestoreStatus = next.currentAudio?.let { next.statusMessage }
             sourcePlaybackError = null
         }
         mutableState.value = next
@@ -1205,17 +1211,37 @@ class DesktopSamplerController(
                 return SourcePcmLoadResult(applied = false)
             }
             sourcePlaybackReady = false
+            if (audio != null && !sourcePlaybackPending) {
+                sourcePlaybackPendingRestoreStatus = mutableState.value.statusMessage
+            }
+            sourcePlaybackPending = audio != null
             sourcePlaybackError = null
-            if (audio == null) return SourcePcmLoadResult(applied = true)
+            if (audio == null) {
+                sourcePlaybackPending = false
+                sourcePlaybackPendingRestoreStatus = null
+                return SourcePcmLoadResult(applied = true)
+            }
             val failure = runCatching { player.loadPcm(audio, pitchSemitones) }.exceptionOrNull()
             if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) {
                 return SourcePcmLoadResult(applied = false, failure = failure)
             }
             if (failure == null) {
                 sourcePlaybackReady = true
+                val restoreStatus = sourcePlaybackPendingRestoreStatus
+                if (restoreStatus != null) {
+                    mutableState.update { current ->
+                        if (current.statusMessage == SOURCE_PLAYBACK_PENDING_MESSAGE) {
+                            current.copy(statusMessage = restoreStatus)
+                        } else {
+                            current
+                        }
+                    }
+                }
             } else {
                 sourcePlaybackError = sourcePlaybackFailureMessage(failure)
             }
+            sourcePlaybackPending = false
+            sourcePlaybackPendingRestoreStatus = null
             return SourcePcmLoadResult(applied = true, failure = failure)
         } finally {
             if (closePlayerAfterSourceLoad) closeSourcePlayerLocked()
@@ -1227,6 +1253,12 @@ class DesktopSamplerController(
 
     private fun sourcePlaybackIsReady(): Boolean {
         if (sourcePlaybackReady) return true
+        if (sourcePlaybackPending) {
+            mutableState.update {
+                it.copy(sourcePlaying = false, statusMessage = SOURCE_PLAYBACK_PENDING_MESSAGE)
+            }
+            return false
+        }
         mutableState.update {
             it.copy(
                 sourcePlaying = false,
@@ -1239,6 +1271,8 @@ class DesktopSamplerController(
 
     private fun publishSourcePlaybackFailure(error: Throwable) {
         sourcePlaybackReady = false
+        sourcePlaybackPending = false
+        sourcePlaybackPendingRestoreStatus = null
         sourcePlaybackError = sourcePlaybackFailureMessage(error)
         mutableState.update {
             it.copy(sourcePlaying = false, statusMessage = requireNotNull(sourcePlaybackError))
@@ -1498,6 +1532,8 @@ class DesktopSamplerController(
     )
 
     companion object {
+        private const val SOURCE_PLAYBACK_PENDING_MESSAGE = "音声の再生を準備しています"
+
         internal fun defaultAutosaveStore(): AtomicProjectStore {
             val root = System.getenv("LOCALAPPDATA")
                 ?.takeIf(String::isNotBlank)
