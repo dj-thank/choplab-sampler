@@ -147,7 +147,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 `PatternRenderer`
 
 - リアルタイムengineと同じPitch/Tone/Gain/Reverse/Choke/limiterロジック
-- 4 bars × 16 stepsのexact deadlineをbar間で連続加算し、shared ceiling policyでevent frameと最終frame数を一度だけ量子化
+- realtimeと同じfractional countdown残差をbar間でも持ち越し、step長を加算→ceilingで整数frameを進行→量子化残差を次stepへ渡す
 - 48 kHz mono PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 
