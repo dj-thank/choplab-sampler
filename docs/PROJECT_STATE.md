@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
+## Current snapshot — 2026-08-24 Desktop close-time autosave local candidate
+
+This snapshot records one bounded Desktop persistence correction. It does not change the project archive, the three-generation recovery policy, Android lifecycle or release checksum policy.
+
+- Observed at: `2026-08-24T09:22:53Z`.
+- Source state: branch `codex/desktop-autosave-close`, reachable product commit `6ffba6450ddb8d1da0278258c97e20eb39a649af`, tree `555bda5caa35629137fc0f01ad9d064467361863`, integrated with merged `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. The base includes the #63 release checksum-sidecar hardening and #57 count-resilient AVD summary parser; other worktrees remain untouched.
+- Reproduced defects: closing inside the 900 ms debounce window could lose the last edit. In addition, `Future.cancel(false)` may report success after an autosave body has started, so close could enqueue the same snapshot twice and rotate the recovery generations unnecessarily; close also waited for persistence before stopping live audio resources.
+- Repair: the controller explicitly tracks autosave work as `SCHEDULED`, `RUNNING`, `COMPLETED` or `CANCELLED`. Close captures an immutable project snapshot first, stops transport, scratch, recorders and player, then either replaces scheduled work with one immediate save or waits for the existing running save without resubmitting it. Repeated close remains idempotent.
+- Regression: the original 60-second-debounce test still requires immediate close to recover BPM 137. A blocked running save now proves BPM 143 is written exactly once by requiring only the primary generation, and a second blocked-save test proves live resources stop while close is still waiting for persistence.
+- Fresh local evidence: 39 Python policy tests, public-surface scan over 394 candidates and `git diff --check` pass. The Gradle 9.7.1 distribution is not cached and its host is unreachable from this Linux environment, so the focused Desktop tests, full JVM gate and packaged Windows runtime remain hosted/local-machine verification boundaries.
+- Gate ceiling: source/static local evidence only; provider CI, Windows app-image execution, power-loss behavior and `HUMAN_GO` are not inferred.
+
+## Previous snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
 - Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.
 - Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
@@ -26,18 +38,6 @@ This snapshot records a bounded iOS preview safety correction. It does not promo
 - Regression scope: a deterministic proxy line exercises successful `open`, failing `start`, exact-once `close`, idle state, temporary-WAV deletion, and inert follow-up `stop` / `close`, without opening recording hardware.
 - Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
 - Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
-
-## Previous snapshot — 2026-08-24 Desktop close-time autosave local candidate
-
-This snapshot records one bounded Desktop persistence correction. It does not change the project archive, recovery generations or Android lifecycle.
-
-- Observed at: `2026-08-24T17:05+09:00`.
-- Source state: branch `codex/desktop-autosave-close`, rebased product commit `a30a3a66d61a325bfff790c72bc17798b8bbdec1`, tree `63e3117a5f2ef1e6d04f6eff563be6cdceb37e3c`, based on merged `main@5430d0d91a4e19ca02170d0143378a5d7917776b`. Other worktrees remain untouched.
-- Reproduced defect: Desktop project edits schedule a 900 ms delayed autosave, but controller close cancelled that future and immediately stopped the persistence executor. Closing inside the debounce window could therefore restore the previous generation on next launch.
-- Repair: autosave scheduling and close now share one lifecycle lock. Close rejects later schedules, immediately persists the latest state when a delayed future can be cancelled, or waits for the already-running save before shutting the executor down. Repeated close is idempotent.
-- Regression: a focused controller test uses a 60-second debounce, edits BPM, closes immediately and requires the shared `AtomicProjectStore` to recover BPM 137.
-- Rebased local evidence: 26 Python policy tests, public-surface scan over 392 candidates and `git diff --check` PASS on `main@5430d0d`. The Gradle 9.7.1 distribution is not cached and outbound download is blocked in this Linux environment, so the new Desktop test, full JVM gate and packaged Windows runtime remain hosted/local-machine verification boundaries.
-- Gate ceiling: source/static local evidence only; provider CI, Windows app-image execution, power-loss behavior and `HUMAN_GO` are not inferred.
 
 ## Previous snapshot — 2026-08-24 guided first-screen local candidate
 
