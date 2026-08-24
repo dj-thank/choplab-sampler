@@ -10,6 +10,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.sampler.audio.BuiltInDrumKits
@@ -17,6 +19,7 @@ import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.ui.theme.ChopLabTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -79,6 +82,9 @@ class FirstScreenFlowDeviceTest {
         val bounds = selectedPad.fetchSemanticsNode().boundsInRoot
         assertTrue("Large-text PAD width must remain at least 48 dp", bounds.width >= minimumTargetPx - 1f)
         assertTrue("Large-text PAD height must remain at least 48 dp", bounds.height >= minimumTargetPx - 1f)
+        composeRule.onNode(
+            hasContentDescription("再生モード ONE SHOT。素材タイプ DRM", substring = true),
+        ).assertIsDisplayed()
 
         composeRule.onNode(hasContentDescription("並べる詳細", substring = true))
             .performScrollTo()
@@ -89,15 +95,67 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
     }
 
-    private fun setPristineDeck(fontScale: Float = 1f): MutableState<SamplerUiState> {
+    @Test
+    fun largeTextSwipeStartingOnPadScrollsWithoutSelectingOrPlayingIt() {
+        val padActions = mutableListOf<String>()
+        setPristineDeck(fontScale = 2f, onPadAction = { padActions += it })
+
+        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasContentDescription("PAD 01 割り当て済み", substring = true),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        val pad = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo()
+        val topBeforeSwipe = pad.fetchSemanticsNode().boundsInRoot.top
+        composeRule.runOnIdle { padActions.clear() }
+
+        pad.performTouchInput { swipeUp(durationMillis = 600) }
+        composeRule.waitForIdle()
+
+        val topAfterSwipe = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).fetchSemanticsNode().boundsInRoot.top
+        assertTrue("The swipe should move the large-text workspace", topAfterSwipe < topBeforeSwipe - 1f)
+        composeRule.runOnIdle { assertTrue("A scroll gesture must not dispatch PAD actions", padActions.isEmpty()) }
+
+        val tappedPad = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo()
+        tappedPad.performTouchInput {
+            down(center)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                padActions,
+            )
+        }
+    }
+
+    private fun setPristineDeck(
+        fontScale: Float = 1f,
+        onPadAction: (String) -> Unit = {},
+    ): MutableState<SamplerUiState> {
         val state = mutableStateOf(
             BuiltInDrumKits.installStarterKit(SamplerUiState()).copy(
                 projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
             ),
         )
-        val controller = noOpController {
-            state.value = ensurePlayablePadSelectedState(state.value)
-        }
+        val controller = noOpController(
+            onEnsurePlayablePadSelected = {
+                state.value = ensurePlayablePadSelectedState(state.value)
+            },
+            onPadAction = onPadAction,
+        )
         composeRule.setContent {
             val baseDensity = LocalDensity.current
             CompositionLocalProvider(
@@ -121,7 +179,10 @@ class FirstScreenFlowDeviceTest {
         return state
     }
 
-    private fun noOpController(onEnsurePlayablePadSelected: () -> Unit): SamplerDeckController {
+    private fun noOpController(
+        onEnsurePlayablePadSelected: () -> Unit,
+        onPadAction: (String) -> Unit,
+    ): SamplerDeckController {
         val handler = java.lang.reflect.InvocationHandler { proxy, method, arguments ->
             when (method.name) {
                 "equals" -> proxy === arguments?.firstOrNull()
@@ -129,6 +190,12 @@ class FirstScreenFlowDeviceTest {
                 "toString" -> "NoOpSamplerDeckController"
                 SamplerDeckController::ensurePlayablePadSelected.name -> {
                     onEnsurePlayablePadSelected()
+                    null
+                }
+                SamplerDeckController::selectPlayablePad.name,
+                SamplerDeckController::triggerPad.name,
+                SamplerDeckController::releasePad.name -> {
+                    onPadAction(method.name)
                     null
                 }
                 else -> null

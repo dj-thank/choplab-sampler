@@ -33,9 +33,11 @@ internal class DesktopTargetLineRecorder(
         if (running.get() || worker?.isAlive == true) {
             return Result.failure(IllegalStateException("録音の停止処理中です"))
         }
+        var acquiredLine: TargetDataLine? = null
         return runCatching {
             val capture = lineFactory()
             val target = capture.line
+            acquiredLine = target
             val format = capture.format
             require(format.sampleSizeInBits == 16 && !format.isBigEndian) {
                 "PCM-16 little-endian形式が必要です"
@@ -53,8 +55,11 @@ internal class DesktopTargetLineRecorder(
             recordingWorker.start()
         }.onFailure {
             running.set(false)
-            runCatching { line?.close() }
+            runCatching { acquiredLine?.close() }
             line = null
+            worker = null
+            outputFile = null
+            failure = null
             runCatching { file.delete() }
         }
     }

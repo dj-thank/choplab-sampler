@@ -17,6 +17,27 @@ This snapshot is the current product behavior anchor for first entry and shared 
 - Gate ceiling: `LOCAL_PASS` plus scoped API 36 emulator runtime evidence. The physical Pixel was not connected, so current physical `DEVICE_PASS`, touch feel, TalkBack speech, listening/latency, recording, route loss, provider, binary Release and `HUMAN_GO` are not inferred.
 - Architecture: [`ADR-0005`](architecture/ADR-0005-guided-first-screen-flow.md) fixes guided entry, constrained body scrolling and adaptive chrome. No project-schema or audio-rendering migration was introduced.
 
+## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
+
+This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
+
+- Observed at: `2026-08-24T16:37+09:00`.
+- Source state: branch product commit `6ceb4d26c862f4cfe645ec23029a466c6ebe27a5`, tree `a9abb15ef1fb3f81d5104ece0a9d341ee2a7383d`, based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the canonical checkout remains untouched.
+- Import ownership: `SamplerStore` rejects a file-import result while recording before staging or replacing any source. The import button is disabled for the same state, so UI and store admission agree.
+- Non-destructive picker outcome: cancellation and provider failure update a distinct status without calling `stopAll`; the current source and any active recording remain owned by their existing lifecycle. A late successful picker result cannot replace the recording source.
+- Focused tests: new MainActor store tests bind recording admission and prove cancellation/error preserve an already imported source name. Existing source repository tests continue to cover bounded copy and promotion.
+- Local evidence: 23 Python policy tests, public-surface scan over 390 candidates and `git diff --check` PASS. Linux has no Xcode/Simulator, and the Gradle wrapper distribution was unavailable locally, so Swift compilation, Simulator execution, microphone behavior and audible output remain for hosted macOS/device verification.
+- Gate ceiling: source-level local policy evidence only; no `DEVICE_PASS`, signed iOS build, recording-quality, route-loss or `HUMAN_GO` claim.
+
+## Previous snapshot — 2026-08-24 desktop recorder startup cleanup candidate
+
+- Observed at: `2026-08-24T16:36+09:00`.
+- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the other worktrees remain untouched.
+- Recorder lifecycle: after a Windows `TargetDataLine` is acquired, every setup failure now closes that exact local line before clearing recorder state. In particular, an exception from `TargetDataLine.start()` after a successful `open()` cannot leak the native capture line or leave a stale output/worker/failure reference.
+- Regression scope: a deterministic proxy line exercises successful `open`, failing `start`, exact-once `close`, idle state, temporary-WAV deletion, and inert follow-up `stop` / `close`, without opening recording hardware.
+- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
+- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
+
 ## Previous snapshot — 2026-08-24 global optimization source/device/daily-install closeout
 
 This snapshot is the current product and source-state truth. Four bounded optimization phases and their docs-only closeout are merged; no implementation plan is selected beyond the next explicit product/audio decision.

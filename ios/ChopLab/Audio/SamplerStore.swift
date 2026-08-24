@@ -25,7 +25,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private let engine = AVAudioEngine()
     private let sourcePlayer = AVAudioPlayerNode()
     private var padPlayers: [AVAudioPlayerNode] = []
-    private let sourceRepository = SourceFileRepository()
+    private let sourceRepository: SourceFileRepository
     private var sourceFile: AVAudioFile?
     private var activeSourceURL: URL?
     private var recorder: AVAudioRecorder?
@@ -33,7 +33,8 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var playbackLease = PlaybackLease()
     private var padRanges = Array(repeating: SliceRange(start: 0, end: 1), count: 16)
 
-    override init() {
+    init(sourceRepository: SourceFileRepository = SourceFileRepository()) {
+        self.sourceRepository = sourceRepository
         super.init()
         engine.attach(sourcePlayer)
         engine.connect(sourcePlayer, to: engine.mainMixerNode, format: nil)
@@ -51,11 +52,35 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
         sourceRepository.purgeOrphans(keeping: nil)
     }
 
-    func importSource(from url: URL) {
-        _ = replaceSource(
+    @discardableResult
+    func importSource(from url: URL) -> Bool {
+        guard SourceImportPolicy.admission(isRecording: isRecording) == .allowed else {
+            statusMessage = "録音中は音源を変更できません。録音を停止してから読み込んでください"
+            return false
+        }
+        return replaceSource(
             from: url,
             displayName: url.deletingPathExtension().lastPathComponent
         )
+    }
+
+    func reportImportPickerCancellation() {
+        if isRecording {
+            statusMessage = "録音中。音源の読み込みはキャンセルされました"
+        } else {
+            statusMessage = "音源の読み込みをキャンセルしました"
+        }
+    }
+
+    func reportImportPickerFailure(_ error: Error) {
+        let cocoaError = error as NSError
+        guard cocoaError.domain != NSCocoaErrorDomain ||
+                cocoaError.code != CocoaError.Code.userCancelled.rawValue else {
+            reportImportPickerCancellation()
+            return
+        }
+        let prefix = isRecording ? "録音中。音源を選べませんでした" : "音源を選べませんでした"
+        statusMessage = "\(prefix): \(error.localizedDescription)"
     }
 
     func playSource() {

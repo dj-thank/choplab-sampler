@@ -2206,6 +2206,7 @@ private fun BeatChopSurface(
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPlayablePad,
             onLongPress = onOpenPadTrim,
+            deferPadActionUntilTap = metrics.beatWorkspaceNeedsScroll,
             gap = gap,
             modifier = modifier,
         )

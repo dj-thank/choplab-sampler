@@ -68,6 +68,7 @@ fun PadGrid(
     modifier: Modifier = Modifier,
     captureMode: Boolean = false,
     sourcePhase: SourceUiPhase = SourceUiPhase.STOPPED,
+    deferPadActionUntilTap: Boolean = false,
     gap: Dp = 6.dp,
     columns: Int = 4,
 ) {
@@ -106,6 +107,7 @@ fun PadGrid(
                             selected = pad.globalIndex == selectedPad,
                             captureMode = captureMode,
                             sourcePhase = sourcePhase,
+                            deferPadActionUntilTap = deferPadActionUntilTap,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
                             onSelect = { onSelect(pad.globalIndex) },
@@ -126,6 +128,7 @@ private fun PerformancePad(
     selected: Boolean,
     captureMode: Boolean,
     sourcePhase: SourceUiPhase,
+    deferPadActionUntilTap: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
     onSelect: () -> Unit,
@@ -164,10 +167,25 @@ private fun PerformancePad(
                 color = if (selected) DeckLamp else Color.Black,
                 shape = shape,
             )
-            .pointerInput(pad.globalIndex, pad.isAssigned, captureMode, sourcePhase) {
+            .pointerInput(
+                pad.globalIndex,
+                pad.isAssigned,
+                captureMode,
+                sourcePhase,
+                deferPadActionUntilTap,
+            ) {
                 detectTapGestures(
                     onTap = {
-                        if (deferDestructiveCapture) onTrigger()
+                        if (deferPadActionUntilTap) {
+                            // The scroll parent cancels before onTap, so a drag cannot select or sound a PAD.
+                            onSelect()
+                            if (captureMode || pad.isAssigned) {
+                                onTrigger()
+                                if (pad.isAssigned) onRelease()
+                            }
+                        } else if (deferDestructiveCapture) {
+                            onTrigger()
+                        }
                     },
                     onLongPress = {
                         if (pad.isAssigned) {
@@ -179,13 +197,15 @@ private fun PerformancePad(
                     onPress = {
                         pressed = true
                         try {
-                            onSelect()
-                            if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
-                                onTrigger()
+                            if (!deferPadActionUntilTap) {
+                                onSelect()
+                                if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
+                                    onTrigger()
+                                }
                             }
                             tryAwaitRelease()
                         } finally {
-                            if (pad.isAssigned) onRelease()
+                            if (!deferPadActionUntilTap && pad.isAssigned) onRelease()
                             pressed = false
                         }
                     },
@@ -283,6 +303,24 @@ fun padAccessibilityDescription(
 ): String = buildString {
     append("PAD %02d".format(pad.indexInBank + 1))
     append(if (pad.isAssigned) " 割り当て済み" else " 空")
+    if (pad.isAssigned) {
+        append("。再生モード ")
+        append(
+            when (pad.playMode) {
+                PadPlayMode.ONE_SHOT -> "ONE SHOT"
+                PadPlayMode.GATE -> "GATE"
+                PadPlayMode.LOOP -> "LOOP"
+            },
+        )
+        append("。素材タイプ ")
+        append(
+            when (pad.contentKind) {
+                PadContentKind.SAMPLE -> "SAMPLE"
+                PadContentKind.DRUM -> "DRM"
+                PadContentKind.VOCAL -> "VOX"
+            },
+        )
+    }
     if (pad.isAssigned && captureMode && sourcePhase == SourceUiPhase.PLAYING) {
         append("。タップで現在位置を上書き。長押しで微調整")
     } else if (pad.isAssigned) {
