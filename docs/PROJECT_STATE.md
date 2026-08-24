@@ -2,8 +2,8 @@
 
 ## Current snapshot — 2026-08-24 desktop transport step-zero ordering candidate
 
-- Observed at: `2026-08-24T18:35+09:00`.
-- Source state: reachable product commit `5b754db4a2d4649bd82c52ce32fc6faeb7118d0b`, tree `c25a95a8ca4bcec4ba86ca7b5b68529abe285a3b`, with main-side parent `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`. This candidate is not yet merged into main. It preserves the exact reviewed PR #65 Desktop product/test bytes; the later evidence commit is documentation-only.
+- Observed at: `2026-08-24T19:57+09:00`.
+- Source state: reachable product commit `48c1ae31bd0f2451b9ab3a23b53af4fdfcbd5ad4`, tree `692f4ced751a9c75c99abbb8be8532749d7d61bf`, with main-side parent `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`. This candidate is not yet merged into main. It preserves the exact reviewed PR #65 Desktop product/test bytes and merged #66 timing source; the later evidence commit is documentation-only.
 - Root cause: the Windows transport worker could synchronously reach `onTransportStep(0)` after `Thread.start()` but before `DesktopSamplerController` published `transportPlaying=true`. The controller then rejected the callback as stale, delaying audible playback until step 1 while the UI already showed step 0.
 - Repair: `DesktopTransport.start` now executes a caller readiness barrier before starting its worker. Normal start and scratch-return start publish playing/current-step state through one controller helper, so Java's thread-start happens-before boundary makes step 0 observable exactly once rather than scheduler-dependent. If worker startup then fails, scratch return restores the pre-start recording arm instead of leaving the callback's provisional disarm behind.
 - Regression scope: a transport test records that the readiness barrier precedes step 0; one controller test uses one audible step-0 PAD and verifies one hit plus coherent stop state, while another injects worker-start failure after the scratch-return callback and requires the recording arm to survive. Tests use fake audio only and do not open Java Sound hardware.
