@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.update
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -112,6 +113,7 @@ class DesktopSamplerController(
     }
     private val autosaveLifecycleLock = Any()
     private var autosaveWork: AutosaveWork? = null
+    private var startupRecoveryFuture: Future<*>? = null
     private var closed = false
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
@@ -120,7 +122,7 @@ class DesktopSamplerController(
 
     init {
         if (autosaveStore != null && recoverAutosaveOnStart) {
-            recoverAutosave()
+            startupRecoveryFuture = recoverAutosave()
         } else {
             mutableState.value = freshProductionState()
         }
@@ -964,19 +966,29 @@ class DesktopSamplerController(
     }
 
     private fun awaitAutosave(work: AutosaveWork?) {
-        val completion = work?.future ?: return
-        try {
-            completion.get()
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-        } catch (_: Exception) {
-            // persistAutosave reports store failures through state; close remains best-effort.
-        }
+        awaitPersistenceTask(work?.future)
     }
 
-    private fun recoverAutosave() {
-        val store = autosaveStore ?: return
-        persistenceExecutor.execute {
+    private fun awaitPersistenceTask(completion: Future<*>?) {
+        if (completion == null) return
+        var interrupted = false
+        while (true) {
+            try {
+                completion.get()
+                break
+            } catch (_: InterruptedException) {
+                interrupted = true
+            } catch (_: Exception) {
+                // Persistence tasks report their own failures through state.
+                break
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
+    }
+
+    private fun recoverAutosave(): Future<*> {
+        val store = requireNotNull(autosaveStore)
+        return persistenceExecutor.submit {
             runCatching { store.loadWithRevision() }
                 .onSuccess { recovered ->
                     if (recovered == null) {
@@ -1132,10 +1144,14 @@ class DesktopSamplerController(
     }
 
     override fun close() {
-        synchronized(autosaveLifecycleLock) {
+        val recoveryToAwait = synchronized(autosaveLifecycleLock) {
             if (closed) return
             closed = true
+            startupRecoveryFuture
         }
+        // Recovery owns the persistence executor before any close-time save. Wait for
+        // its state publication so an initial loading snapshot cannot supersede it.
+        awaitPersistenceTask(recoveryToAwait)
         // completeIfCurrent owns the project-operation monitor for its entire publication.
         // Invalidate and wait for any admitted completion before taking the close snapshot.
         projectOperations.invalidate()

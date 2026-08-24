@@ -535,8 +535,12 @@ class DesktopSamplerControllerTest {
             closeThread.join(2_000L)
 
             assertFalse(closeThread.isAlive)
-            assertEquals(source.name, store.load()?.currentAudio?.name)
-            assertEquals(ProjectLaunchTarget.CHOP, store.load()?.projectLaunchTarget)
+            val recovered = requireNotNull(store.load())
+            assertEquals(source.name, recovered.currentAudio?.name)
+            assertEquals(64, recovered.currentAudio?.frameCount)
+            assertEquals(64, recovered.rangeEndFrame)
+            // Launch target/revision are runtime routing hints and intentionally are
+            // not fields in the project archive; ProjectArchiveCodecTest binds that.
         } finally {
             engine.releaseBlockedLoad()
             controller.close()
@@ -647,6 +651,45 @@ class DesktopSamplerControllerTest {
             assertEquals(139f, store.load()?.bpm)
         } finally {
             controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeWaitsForStartupRecoveryBeforeCapturingTheAutosave() {
+        val directory = Files.createTempDirectory("choplab-close-startup-recovery").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 127f), revision = 7L)
+        var controller: DesktopSamplerController? = null
+        lateinit var closeThread: Thread
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    FakeAudioEngine(),
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 0L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+                assertTrue(created.state.value.isLoading)
+
+                closeThread = thread(name = "ChopLab-Test-Recovery-Close") { created.close() }
+                awaitThreadWaiting(closeThread)
+                assertTrue(closeThread.isAlive)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(127f, store.load()?.bpm)
+            assertEquals(
+                127f,
+                DesktopProjectFiles.load(directory.resolve("autosave.previous.choplab")).bpm,
+            )
+        } finally {
+            controller?.close()
             directory.deleteRecursively()
         }
     }

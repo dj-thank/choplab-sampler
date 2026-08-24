@@ -2,6 +2,7 @@ package com.choplab.sampler.audio
 
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.pow
 
@@ -84,6 +85,22 @@ object SamplerDspPrimitives {
         } else {
             straightSixteenth * (2.0 - longRatio)
         }
+    }
+
+    /**
+     * First whole output frame that is not earlier than an exact transport deadline.
+     *
+     * The realtime engine reaches this boundary through its fractional countdown.
+     * Offline scheduling must use the same ceiling rule and carry the quantization
+     * remainder into the next step instead of truncating a fractional deadline or
+     * independently summing absolute deadlines.
+     */
+    fun scheduledFrameAtOrAfter(exactFrame: Double): Int {
+        require(exactFrame.isFinite() && exactFrame >= 0.0) {
+            "exactFrame must be finite and non-negative"
+        }
+        require(exactFrame <= Int.MAX_VALUE.toDouble()) { "exactFrame is too large" }
+        return ceil(exactFrame).toInt()
     }
 
     const val DEFAULT_BPM = 92f

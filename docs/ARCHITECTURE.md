@@ -46,7 +46,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 5. PCM float/8/16/24/32-bitを内部PCM-16へ正規化
 6. 微小なDC offsetを除去
 
-展開可能なmono frame数は `min(30,000,000, sampleRate × 600秒)` です。duration metadataが欠落・不正確でもAndroid/Windowsのstreaming builderが同じ上限で停止し、8 kHzでは4,800,000 frames、48 kHzでは28,800,000 framesまでを受理します。高sample-rateでは30,000,000-frameの全体memory ceilingを優先し、巨大ファイルによるメモリ枯渇を抑えます。
+import sample rateはproject/archive契約と同じ8–192 kHzです。AndroidとWindowsはこの範囲外をproject stateへ公開する前に拒否します。展開可能なmono frame数は `min(30,000,000, sampleRate × 600秒)` です。duration metadataが欠落・不正確でもAndroid/Windowsのstreaming builderが同じ上限で停止し、8 kHzでは4,800,000 frames、48 kHzでは28,800,000 framesまでを受理します。高sample-rateでは30,000,000-frameの全体memory ceilingを優先し、巨大ファイルによるメモリ枯渇を抑えます。
 
 ### 3.2 マイク
 
@@ -139,6 +139,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 - audio frame単位で次stepまでの残りframeをカウント
 - BPMから16分音符長を算出
 - Swing値により偶数stepを長く、奇数stepを短くするが、2 step合計長は一定
+- fractionalなstep deadlineは、その時刻より前ではない最初の整数frame（ceiling）で発火する
 - step onsetで該当PAD voiceを開始
 
 ## 7. オフライン書き出し
@@ -146,7 +147,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 `PatternRenderer`
 
 - リアルタイムengineと同じPitch/Tone/Gain/Reverse/Choke/limiterロジック
-- 4 bars × 16 stepsのevent frameを先に計算
+- realtimeと同じfractional countdown残差をbar間でも持ち越し、step長を加算→ceilingで整数frameを進行→量子化残差を次stepへ渡す
 - 48 kHz mono PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 

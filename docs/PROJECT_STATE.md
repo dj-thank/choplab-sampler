@@ -1,16 +1,29 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Desktop close-time autosave review repair candidate
+## Current snapshot — 2026-08-24 Desktop import sample-rate admission candidate
 
-This snapshot records one bounded Desktop persistence correction. It does not change the project archive, the three-generation recovery policy, Android lifecycle or release checksum policy.
+This snapshot records one bounded Desktop decoder admission correction. It changes neither decoded PCM shape nor the project archive schema.
 
-- Observed at: `2026-08-24T10:39:28Z`.
-- Source state: reachable product commit `599e756fcd5fb5f0c3091dcf3dece2fb94b9167e`, tree `61ed25f22b9034c11e1f502c5f1ec360971f4a78`, integrates merged `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`, including #62 constrained PAD gesture and semantics repair. The final follow-up is documentation-only and binds this immutable source; other worktrees remain untouched.
-- Reproduced defects: closing inside the 900 ms debounce window could lose the last edit. In addition, `Future.cancel(false)` may report success after an autosave body has started, so close could enqueue the same snapshot twice and rotate recovery generations unnecessarily; close also waited for persistence before stopping live audio resources. An admitted `loadWav` completion could remain blocked before state publication while close captured the old state, and a transient store failure was still treated as completed, preventing an equal-revision close retry.
-- Repair: the controller explicitly tracks autosave work as `SCHEDULED`, `RUNNING`, `COMPLETED` or `CANCELLED`, and each work owns immutable state, ProductionSession revision and save-success outcome. Close first claims the lifecycle, invalidates project operations and waits for any already admitted publication before capturing state. It then stops transport, scratch, recorders and player before persistence wait, replaces scheduled work or awaits running work, retries an unsuccessful latest save once, and writes a close-owned snapshot when no work exists. A strictly newer close revision still receives one follow-up after an older successful body. Repeated close remains idempotent.
-- Regression: the original 60-second-debounce test still requires immediate close to recover BPM 137. A blocked running save proves BPM 143 is written exactly once by requiring only the primary generation, and a second blocked-save test proves live resources stop while close is still waiting. The asynchronous project-open race requires newer BPM 151 after an older BPM 143 save. A separate `loadWav` race blocks inside `player.loadPcm` before publication and requires the published CHOP source on disk after close; a deterministic file-versus-directory failure then clears and requires close to retry BPM 149 without rotating a backup.
-- Fresh local evidence: 39 Python policy tests, public-surface scan over 394 candidates and `git diff --check` pass. The Gradle 9.7.1 distribution is not cached and its host is unreachable from this Linux environment, so the focused Desktop tests, full JVM gate and packaged Windows runtime remain hosted/local-machine verification boundaries.
-- Gate ceiling: source/static local evidence only; provider CI, Windows app-image execution, power-loss behavior and `HUMAN_GO` are not inferred.
+- Observed at: `2026-08-24T19:49+09:00`.
+- Source state: reachable product commit `3ad2bd9eda0561b0f1cf304b477ca726edd1becc`, tree `8272a51c4b537dd06ec02e0ff780e574babe4d46`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`. The final follow-up is documentation-only and binds this immutable source.
+- Reproduced defect: Java Sound could expose a finite source rate above the shared 192 kHz project ceiling. Desktop decoded and published that PCM, but the archive codec later rejected the same state, so autosave/manual save could fail only after the user had edited an unsupported project.
+- Repair: both the external `decode` boundary and the internal streaming reader use one validator backed by `ProjectLimits.MAX_SAMPLE_RATE`. Exact 192 kHz remains accepted; 192,001 Hz and higher, sub-8 kHz and non-finite rates fail before PCM payload materialization or state publication.
+- Regression: a focused Desktop test accepts the exact shared ceiling. A second test wraps an unsupported 192,001 Hz stream in a fail-on-read source and requires `IllegalArgumentException` with zero payload reads.
+- Fresh local checks: Python policy suite 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS. The Gradle distribution is unavailable in this container, so hosted Desktop compilation/tests remain the executable gate.
+- Gate ceiling: source/static candidate only. No Windows import, audio-quality, archive recovery, physical device, provider or `HUMAN_GO` evidence is inferred.
+
+## Previous snapshot — 2026-08-24 fractional pattern-timing candidate
+
+This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged constrained PAD gesture repair, decode boundary and all earlier histories remain intact below.
+
+- Observed at: `2026-08-24T18:43+09:00`.
+- Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.
+- Reproduced defects: at 48 kHz / 92 BPM / 54% swing, old offline truncation started step 1 at frame 8,452 instead of realtime 8,453 and per-bar rounding made four bars 500,872 frames instead of 500,870. The first ceiling repair still accumulated a growing absolute `Double`, which is not IEEE-equivalent to realtime's carried countdown: at 120 BPM / 55% swing it scheduled step 3 at 18,600 instead of 18,601, and at 40 BPM / 56% swing it ended one bar at 288,000 instead of the next realtime boundary at 288,001.
+- Repair: shared `scheduledFrameAtOrAfter` defines the first whole-frame advance that is not earlier than a fractional countdown. Offline scheduling now performs realtime's add-step-length, ceiling-advance, subtract-advance recurrence and carries the resulting remainder through every step and bar.
+- Regression scope: shared exact/inexact ceiling coverage remains. End-to-end WAV tests fix the 92 BPM / 54% four-bar onsets and 500,870-frame length, the early 120 BPM / 55% step-3 boundary at 18,601, and the 40 BPM / 56% one-bar/header length at 288,001.
+- Prior exact-head evidence: remote head `786e2e76feb1e5cad544491b039431cd61befdb7` received a clean exact-head Codex re-review and passed Android, Windows, iOS, and supply-chain workflows. The current integration still requires its own hosted read-back.
+- Local evidence: Python policy tests 39/39, public-surface scan over 394 candidates, six Android XML parses, wrapper checksum/text policy, residual-schedule arithmetic (`step 3 = 18,601`, one bar `= 288,001`), exact equality of all four reviewed audio product/test files, and `git diff --check` passed. Gradle 9.7.1 is not cached, so Kotlin/Gradle execution remains hosted.
+- Gate ceiling: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Physical playback timing, audio perception, provider, public release and `HUMAN_GO` remain unclaimed.
 
 ## Previous snapshot — 2026-08-24 constrained PAD gesture and semantics review repair
 
