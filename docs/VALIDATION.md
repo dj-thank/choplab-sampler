@@ -10,6 +10,16 @@
 - Tests: focused public-surface policy 12/12 and complete Python policy 47/47 passed. Fixtures cover historical ZIP content, UTF-8 BOM secrets, entry/member/archive/compression bounds, payload-bearing directory entries, raw-container exclusion and binary/audio false-positive exclusion.
 - Static gate: both `python3 scripts/check_public_surface.py` and `python3 scripts/check_public_surface.py --history` passed 394 candidates, including the two known reachable historical ZIP blobs; conflict-marker scan and `git diff --check` passed. This Python-only delta claims no Gradle, device, provider, public-release or Human result, and exact-head hosted CI remains required.
 
+## Android import-name persistence integrated candidate — 2026-08-24
+
+- Product source: reachable integration commit `b7364eeab02cccdde260d65337cf9a403f9a6a5d`, tree `dae6252f28c70f56f817c1d5d4e18374de882ea4`, with parents prior reviewed head `caea87f823d96f091f8515dd0eb3e86f18d9d27e` and merged `main@2786c3722a9e56fa299d2a88f009d882545b0768`; the final follow-up is documentation-only.
+- Main preservation: merged #68 `SamplerEngine.kt` / `SamplerEngineVoiceTest.kt` blobs remain exact `de686ba` / `9d51556`; reviewed import-name runtime/test blobs remain exact `2da4fa2` / `4ba02e5`.
+- Contract: every display name published by Android decode is nonblank and no longer than `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Provider `DISPLAY_NAME` remains preferred; blank values and a whitespace-only bounded prefix fall back to the URI segment and then `sample`. Bounding does not split a valid surrogate pair.
+- Regression: an overlong name whose first 240 units are whitespace falls back to `fallback.wav`; a supplementary character straddling code-unit 240 is removed intact, remains nonblank and round trips exactly through `ProjectArchiveCodec`.
+- Prior-head provider evidence: exact `caea87f` received a clean Codex re-review; Android run `32721144140` and supply-chain run `32721144052` passed. The integrated head requires its own hosted read-back.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, exact four-blob preservation and `git diff --check` PASS. Uncached Gradle 9.7.1 is unavailable locally, so no Kotlin test pass is claimed for the integrated tree.
+- Gate: source/static latest-main integration plus prior-head hosted evidence only; hosted Android CI must pass before merge. No device/provider import, autosave recovery, audible output, publication or Human result is claimed.
+
 ## Android realtime PAD terminal-sample retirement candidate — 2026-08-24
 
 - Product source: reachable integration commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`, with parents prior reviewed PR head `72dbaaa1b79d1c0f92b4213c65f915908b3e894e` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The later evidence commit changes documentation only.
