@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceを統合し、PR #62はcompact-landscape CAPTURE、large-text BEAT、autosave非依存instrumentation、ONE SHOT/GATE arbitration、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsを`main@6b645ca`へ統合済み。follow-up product `5484dbd` / tree `ea54509`はlarge-text CHOP、inline status、空CHOP hold、80 ms short-GATE previewを含む5件の追加review repairを同じmainへ統合済み。static gateはPASSし、hosted CI・exact-head review・thread closeout待ち。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceを統合し、PR #62はcompact-landscape CAPTURE、large-text BEAT、autosave非依存instrumentation、ONE SHOT/GATE arbitration、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsを統合済み。PR #66のfractional timingを含む`main@3260f5c`をmain-side parentに持つfollow-up product `c21b6be` / tree `55aaa4d`は、large-text CHOP、inline status、空CHOP hold、80 ms short-GATE previewを含む5件の追加review repairを保持する。static gateはPASSし、hosted CI・exact-head review・thread closeout待ち。
 
 **独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
 
