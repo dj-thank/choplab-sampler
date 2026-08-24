@@ -1,6 +1,13 @@
 package com.choplab.sampler.audio
 
+import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectLimits
+import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.persistence.ProjectArchiveCodec
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -40,5 +47,31 @@ class Pcm16ArrayBuilderTest {
         assertEquals(2, builder.size)
         assertThrows(IllegalStateException::class.java) { builder.append(0f) }
         assertThrows(IllegalStateException::class.java) { builder.updateMaximumSize(1) }
+    }
+
+    @Test
+    fun decodedAudioNameStaysPersistableWithoutSplittingUnicode() {
+        assertEquals("fallback.wav", persistableAudioDisplayName("  ", "fallback.wav"))
+        assertEquals("sample", persistableAudioDisplayName("\t", null))
+
+        val providerName = "a".repeat(ProjectLimits.MAX_ASSET_NAME_CHARS - 1) +
+            "\uD83C\uDFB5.wav"
+        val persistedName = persistableAudioDisplayName(providerName, null)
+        val audio = PcmAudio(
+            name = persistedName,
+            samples = shortArrayOf(1, -2),
+            sampleRate = 8_000,
+        )
+        val archive = ByteArrayOutputStream()
+
+        ProjectArchiveCodec.write(
+            SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount),
+            archive,
+        )
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(archive.toByteArray()))
+
+        assertEquals(ProjectLimits.MAX_ASSET_NAME_CHARS - 1, persistedName.length)
+        assertFalse(Character.isHighSurrogate(persistedName.last()))
+        assertEquals(persistedName, restored.currentAudio?.name)
     }
 }

@@ -8,6 +8,7 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectLimits
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -29,6 +30,26 @@ internal fun validateDecodedAudioFormat(sampleRate: Int, channelCount: Int): Dec
         "対応できないチャンネル数です: $channelCount"
     }
     return DecodedAudioFormat(sampleRate, channelCount)
+}
+
+internal fun persistableAudioDisplayName(
+    preferredName: String?,
+    fallbackName: String?,
+): String {
+    val candidate = preferredName?.takeIf { it.isNotBlank() }
+        ?: fallbackName?.takeIf { it.isNotBlank() }
+        ?: "sample"
+    val limit = ProjectLimits.MAX_ASSET_NAME_CHARS
+    if (candidate.length <= limit) return candidate
+
+    var endIndex = limit
+    if (
+        Character.isHighSurrogate(candidate[endIndex - 1]) &&
+        Character.isLowSurrogate(candidate[endIndex])
+    ) {
+        endIndex--
+    }
+    return candidate.substring(0, endIndex)
 }
 
 class AudioDecoder(private val context: Context) {
@@ -272,8 +293,11 @@ class AudioDecoder(private val context: Context) {
     }
 
     private fun resolveDisplayName(uri: Uri): String {
-        if (uri.scheme == "file") return uri.lastPathSegment ?: "recording.wav"
-        return runCatching {
+        val fallbackName = uri.lastPathSegment
+        if (uri.scheme == "file") {
+            return persistableAudioDisplayName(fallbackName, "recording.wav")
+        }
+        val providerName = runCatching {
             context.contentResolver.query(
                 uri,
                 arrayOf(OpenableColumns.DISPLAY_NAME),
@@ -283,7 +307,8 @@ class AudioDecoder(private val context: Context) {
             )?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             }
-        }.getOrNull() ?: uri.lastPathSegment ?: "sample"
+        }.getOrNull()
+        return persistableAudioDisplayName(providerName, fallbackName)
     }
 
     private fun removeTinyDcOffset(samples: ShortArray) {
