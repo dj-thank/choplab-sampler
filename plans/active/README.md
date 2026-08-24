@@ -6,11 +6,13 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。最新review deltaはscroll内ONE SHOT/GATE arbitration、発火後cancellationのexact-once release、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsをreachable product/verification `5b9592f`で追加済み。`main@ae77cd9`のdecode上限も統合済み。static gateはPASS、hosted Gradle／device gestureが残る。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceをmainへ統合し、PR #62 closeoutでcompact-landscape CAPTURE、large-text BEAT quick/detail、autosave非依存instrumentationを修復した。scroll内ONE SHOT/GATE arbitration、発火後cancellationのexact-once release、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsは`main@6b645ca`、fractional pattern timingはPR #66として`main@3260f5c`へ統合済み。exact merged-main runtime read-backは別gate。
 
-**独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
+**直近の統合保守:** iOS import/recording exclusionは録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-upとしてPR #60 / `main@5430d0d`へ統合済み。macOS CIと物理録音は別gateのまま。
 
-**独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
+**直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
+
+**独立保守delta:** reachable integration product `08fb123`（tree `dc9a9e8`、`main@3330881`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `0a9def1`の全CI／再review PASSを保持し、merged #68 realtime PADと#70 Android import-name bytesも維持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 

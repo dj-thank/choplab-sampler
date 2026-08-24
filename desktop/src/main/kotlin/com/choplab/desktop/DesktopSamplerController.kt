@@ -97,7 +97,11 @@ class DesktopSamplerController(
     )
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
     private val projectOperations = ProjectOperationEpoch()
-    private val transport = DesktopTransport(::onTransportStep)
+    internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
+    private val transport = DesktopTransport(
+        startWorker = { worker -> transportWorkerStarter(worker) },
+        onStep = ::onTransportStep,
+    )
     private val scratch = DesktopScratchPlayer()
     private val playbackMonitor = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "ChopLab-Windows-Playback-Monitor").apply { isDaemon = true }
@@ -714,8 +718,10 @@ class DesktopSamplerController(
             mutableState.update { it.copy(transportPlaying = false, currentStep = -1, statusMessage = "ビートを停止しました") }
         } else {
             stopCompetingPlayback()
-            transport.start(state.bpm, state.swing)
-            mutableState.update { it.copy(transportPlaying = true, currentStep = 0, statusMessage = "ビートを再生中です") }
+            startTransport(
+                statusMessage = "ビートを再生中です",
+                failurePrefix = "ビート再生開始失敗",
+            )
         }
     }
     override fun toggleRecordArm() = mutableState.update { it.copy(recordArmed = !it.recordArmed) }
@@ -939,26 +945,16 @@ class DesktopSamplerController(
 
     private fun nextProjectLaunchRevision(): Long = projectLaunchRevision.incrementAndGet()
 
-    private fun resumeAfterScratch(target: ScratchReturnTarget): Boolean {
+    internal fun resumeAfterScratch(target: ScratchReturnTarget): Boolean {
         val current = mutableState.value
         if (!scratchReturnTargetIsValid(target, current)) return false
         return when (target) {
             ScratchReturnTarget.None -> false
-            ScratchReturnTarget.Transport -> {
-                runCatching { transport.start(current.bpm, current.swing) }
-                    .onSuccess {
-                        mutableState.update {
-                            it.copy(
-                                transportPlaying = true,
-                                recordArmed = false,
-                                currentStep = 0,
-                                statusMessage = "スクラッチからビート再生へ戻りました",
-                            )
-                        }
-                    }
-                    .onFailure { setStatus("スクラッチ後のビート再開失敗: ${it.message ?: it.javaClass.simpleName}") }
-                    .isSuccess
-            }
+            ScratchReturnTarget.Transport -> startTransport(
+                statusMessage = "スクラッチからビート再生へ戻りました",
+                failurePrefix = "スクラッチ後のビート再開失敗",
+                disarmRecording = true,
+            )
             is ScratchReturnTarget.PadLoop -> {
                 val pad = current.pads[target.padIndex]
                 runCatching {
@@ -979,6 +975,37 @@ class DesktopSamplerController(
                 }.isSuccess
             }
         }
+    }
+
+    private fun startTransport(
+        statusMessage: String,
+        failurePrefix: String,
+        disarmRecording: Boolean = false,
+    ): Boolean {
+        val current = mutableState.value
+        val recordArmedBeforeStart = current.recordArmed
+        return runCatching {
+            transport.start(current.bpm, current.swing) {
+                mutableState.update {
+                    it.copy(
+                        transportPlaying = true,
+                        recordArmed = if (disarmRecording) false else it.recordArmed,
+                        currentStep = 0,
+                        statusMessage = statusMessage,
+                    )
+                }
+            }
+        }.onFailure { error ->
+            transport.stop()
+            mutableState.update {
+                it.copy(
+                    transportPlaying = false,
+                    recordArmed = if (disarmRecording) recordArmedBeforeStart else it.recordArmed,
+                    currentStep = -1,
+                    statusMessage = "$failurePrefix: ${error.message ?: error.javaClass.simpleName}",
+                )
+            }
+        }.isSuccess
     }
 
     private fun observePlaybackPosition() {
