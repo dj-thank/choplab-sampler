@@ -134,6 +134,7 @@ The user-visible result is a preview build that fails closed instead of silently
 - [x] 2026-08-24 follow-up — corrected the low-sample-rate duration bypass with a shared `min(global frames, sampleRate × 600)` policy and applied it to Android/Desktop known, unknown and post-decode boundaries. Local Gradle execution is explicitly deferred to hosted CI because the sandbox has no usable wrapper distribution.
 - [x] 2026-08-24 follow-up — aligned Desktop import admission with the shared/archive 8–192 kHz contract. Exact 192 kHz remains accepted, while 192,001 Hz is rejected before the streaming reader touches payload bytes; hosted Desktop CI is the executable gate.
 - [x] 2026-08-24 follow-up — aligned Android imported display names with archive admission before state publication. Blank names and whitespace-only bounded prefixes receive a stable fallback, overlong names are bounded to 240 UTF-16 code units without splitting a surrogate pair, and an archive round-trip regression binds the persistence seam. Product `b7364ee` integrates exact merged `main@2786c37`; hosted Android CI is the executable gate.
+- [x] 2026-08-24 follow-up — moved the reviewed Android display-name rule to shared production code and applied it to Desktop `File.name` before PCM publication. Shared common tests bind candidate priority, post-truncation blank fallback and surrogate safety; a Desktop archive read-back regression binds the data-loss seam. Product `7ff0456` / tree `deed3fa` is based on merged `main@3330881`; hosted Android and Windows CI are the executable gates.
 - [x] Milestone 3 implementation and focused tests.
 - [ ] Milestone 4 shared-DSP extraction/equivalence work; resource and lifecycle seams are complete, but this larger refactor remains deferred.
 - [ ] Milestone 5 administrative read-back; source-controlled scanning, SBOM, CODEOWNERS, security policy, and autosave durability are implemented.
@@ -155,6 +156,8 @@ The user-visible result is a preview build that fails closed instead of silently
 - 2026-08-21 — Prefer focused seam extraction over a high-risk wholesale rewrite of the 100k-line Android ViewModel and 150k-line shared UI file.
 
 ## Validation log
+
+- Shared Android/Desktop import-name product `7ff0456` / tree `deed3fa` — common contract plus Android and Desktop archive-boundary regressions preserve #70 behavior and close the unbounded Desktop name path. Python policy 39/39, public-surface 395 candidates, conflict-marker scan and `git diff --check` PASS. Uncached Gradle 9.7.1 could not be downloaded locally; hosted Android/Windows execution remains required.
 
 - Android import-name integration `b7364ee` / tree `dae6252` — reviewed runtime/test blobs `2da4fa2` / `4ba02e5` are preserved on exact merged `main@2786c37`; #68 runtime/test blobs remain exact `de686ba` / `9d51556`. Python policy 39/39, public-surface 394 candidates and `git diff --check` PASS. Prior exact head `caea87f` passed Codex re-review, Android and supply-chain, but the latest-main integration requires fresh hosted CI.
 

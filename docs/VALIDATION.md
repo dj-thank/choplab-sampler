@@ -2,6 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Shared Android/Desktop import-name persistence candidate — 2026-08-24
+
+- Product source: reachable commit `7ff0456ffc73125af55770ac836184dceac68084`, tree `deed3fa610fc65097f3a848c59f97b159effc91e`, based directly on merged `main@333088147cdc77932efc41b90a08eb37e1c1cf42`; the final follow-up is documentation-only.
+- Main preservation: the Android provider/URI selection and archive regression merged in #70 are unchanged except for importing their implementation from shared production code. Desktop sample-rate/duration admission remains unchanged.
+- Contract: Android and Desktop names published with decoded PCM are nonblank and at most `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Preferred candidates retain priority, a bounded whitespace-only prefix re-enters fallback selection, and a valid surrogate pair is never split at the boundary.
+- Regression: shared common tests bind the portable rule. Desktop `readMono` receives a name whose first 240 units are whitespace, returns `sample`, and the resulting `SamplerUiState` round trips exactly through `ProjectArchiveCodec`; the existing Android surrogate/archive regression now exercises the same shared function.
+- Local PASS: Python policy 39/39, public-surface scan 395 candidates, conflict-marker scan and `git diff --check`.
+- Local prerequisite ceiling: `./scripts/doctor.sh` found Java 17/Git and reported the expected absent Android SDK/ADB. `./scripts/validate_project.sh` passed public-surface/executable policy before its default unwritable Gradle cache failed; the focused task-local Gradle command then confirmed the 9.7.1 distribution host is unreachable. No Kotlin/Gradle PASS is claimed locally.
+- Gate: source/static candidate only. Hosted Android and Windows/shared test runs are required before merge; physical filesystem/provider imports, autosave recovery, playback, publication and Human evidence remain separate.
+
 ## Android import-name persistence integrated candidate — 2026-08-24
 
 - Product source: reachable integration commit `b7364eeab02cccdde260d65337cf9a403f9a6a5d`, tree `dae6252f28c70f56f817c1d5d4e18374de882ea4`, with parents prior reviewed head `caea87f823d96f091f8515dd0eb3e86f18d9d27e` and merged `main@2786c3722a9e56fa299d2a88f009d882545b0768`; the final follow-up is documentation-only.

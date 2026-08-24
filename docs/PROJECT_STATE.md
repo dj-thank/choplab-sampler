@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Android import-name persistence integrated candidate
+## Current snapshot — 2026-08-24 shared Android/Desktop import-name persistence candidate
+
+This snapshot records one bounded Desktop data-loss prevention follow-up on the exact main that merged Android import-name admission. It moves the already reviewed Android naming rule to shared production code and applies it to Desktop decode before PCM enters project state; audio bytes, archive schema and provider/filesystem I/O are unchanged.
+
+- Observed at: `2026-08-24T20:51+09:00`.
+- Product source: reachable commit `7ff0456ffc73125af55770ac836184dceac68084`, tree `deed3fa610fc65097f3a848c59f97b159effc91e`, based directly on merged `main@333088147cdc77932efc41b90a08eb37e1c1cf42`; the later evidence commit is documentation-only.
+- Reproduced defect: `DesktopWavDecoder` published unbounded `File.name` values into `PcmAudio`, while `ProjectArchiveCodec` rejects blank asset names and names above 240 UTF-16 code units during read-back. A Desktop import could therefore succeed, then make both atomic autosave verification and manual-save verification fail.
+- Repair: `persistableAudioDisplayName` now lives in shared model production code. Android keeps the same provider/URI/final fallback behavior merged in #70, while Desktop bounds its file name with the same nonblank, post-truncation fallback and surrogate-pair contract before returning decoded PCM.
+- Regression: shared common tests bind candidate priority, the whitespace-only bounded-prefix fallback and surrogate-safe truncation. The Desktop decoder test feeds a 240-space prefix plus visible suffix, requires the stable `sample` fallback, then round trips the exact decoded state through `ProjectArchiveCodec`; the existing Android archive regression remains intact through the shared seam.
+- Fresh local checks: Python policy suite 39/39, public-surface scan 395 candidates, conflict-marker scan and `git diff --check` PASS. The uncached Gradle 9.7.1 distribution cannot be downloaded in this sandbox, so shared Android-host/Desktop and platform tests remain hosted gates.
+- Gate ceiling: source/static candidate only. Hosted Android/Windows compilation and tests, real filesystem/provider imports, autosave recovery, device playback, public release and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 Android import-name persistence integrated candidate
 
 This snapshot records one bounded Android import-admission correction on the exact main that merged realtime PAD terminal-sample retirement. It changes only the display name published with decoded PCM; audio bytes, provider I/O, archive schema and #68 callback behavior are unchanged.
 
