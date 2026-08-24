@@ -2,6 +2,19 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Guided first screen and coherent workflow candidate — 2026-08-24
+
+- Product source: `codex/choplab-screen-flow@c1532345838b90b19e071bdea8a1554b4000a015`, tree `559bbaa995f5db1b73c00f344b91f2ad411d136e`, base `3cc4cd5`; dirty canonical checkout untouched.
+- Design contract: pristine CAPTURE is an explicit own-audio/project/recording choice surface with a named DUSTY JAZZ demo route. Font scale 1.2+ uses a simplified header, two-row stage strip and multi-line status. Loaded, loading and recording safety surfaces are unchanged.
+- TDD: pure policy tests cover pristine/loaded/recording entry, SAVE-vs-WAV truth and 1.0/1.3/2.0 layout; Desktop regression proves playable-PAD selection moves PAD, bank and page together; Android instrumentation checks all first-entry CTAs, 48 dp bounds and demo transition to B DRUMS/B01.
+- Full clean Gradle gate: `:shared:testAndroidHostTest :shared:desktopTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — `BUILD SUCCESSFUL`, 184 tasks. Shared host 25/25, Android 233, JVM-core 52 and Desktop 77; failures/errors/skips 0. Lint debug/release errors 0, warnings 7.
+- Other local gates: configured `scripts/validate_project.sh` PASS; Python release/public policy 23 tests PASS; public-surface scan 388 candidates PASS; Android release identity `0.17.0 (27)` PASS and intentionally unsigned.
+- Android artifacts: debug APK 31,492,210 bytes / SHA-256 `CDB32DFC6C765C2DF3A6DFAFD593937E38737C2479CA36A26B08898B7DB31FCA`; androidTest APK 10,874,825 / `77608CADDEBF300E0720E54E7537FD71FA081D40C4F94E9082A52E1DBFAC325B`; unsigned release APK 24,061,044 / `87E53D821E26EB44248B5DECBAF22ACF9D4126C93A3DD3425F251C1CD56FDDED`.
+- Emulator runtime: exact debug/test APKs installed data-preservingly on dedicated API 36 `emulator-5592`; full suite `OK (7 tests)`. Font scale 1.0/1.3/2.0, constrained 360 × 640 dp / 2.0 before-and-after scroll and demo BEAT were captured from the exact APK; system size/density/font scale restored. No fatal/ANR signature was observed.
+- Windows artifact/runtime: app-image 405 files / 176,494,919 bytes / digest `c8c260c7e574f10bd4ed91f3b3dc585cdc0c2b2ed7e882f8e37970bc7cde4d29`; EXE 449,024 bytes / SHA-256 `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`. Isolated `LOCALAPPDATA` CAPTURE and demo BEAT windows responded; the demo showed B DRUMS/B-01/page 01–16 and the exact tracked process pair exited.
+- Evidence: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/final/` and `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/BASELINE_AUDIT.md`. Screenshots were visually inspected, not treated as test results by themselves.
+- Gate: `LOCAL_PASS` plus scoped emulator runtime. Physical Pixel `DEVICE_PASS`, listening, recording, route loss, complete TalkBack speech, provider/public binary Release and `HUMAN_GO` remain unclaimed.
+
 ## Windows daily-use v0.17.0 local candidate — 2026-08-24
 
 - Product source: `codex/choplab-desktop-daily-release@b6efbde30a0fc1d8ce8a944405b20422fc238782`, tree `9760029f723c55465004908899255a7ad1c165a3`, base `c4956cf`; dirty canonical checkout untouched.

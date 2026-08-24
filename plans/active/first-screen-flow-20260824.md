@@ -67,10 +67,10 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 
 - [x] 2026-08-24 14:15 JST — Current source/dirty boundary fixed; Product Design combined audit captured Android and Windows baseline states.
 - [x] 2026-08-24 14:15 JST — Selected explicit-entry + adaptive-large-text direction; strict lock and DAW dashboard rejected.
-- [ ] Focused RED tests.
-- [ ] Implementation and focused GREEN.
-- [ ] Full local and visual regression gate.
-- [ ] Scoped device/runtime gate.
+- [x] 2026-08-24 15:10 JST — Focused RED tests reproduced missing entry policy, large-text rows and Desktop bank/page coherence.
+- [x] 2026-08-24 15:10 JST — Shared entry/chrome policy, Desktop shared selection and focused GREEN complete at product commit `c153234`.
+- [x] 2026-08-24 15:10 JST — Full clean 184-task gate, policy gates, exact hashes and final Android/Windows visual regression PASS.
+- [x] 2026-08-24 15:10 JST — Exact API 36 debug/test APK data-preserving install and full seven-test instrumentation PASS; 360 × 640 dp / 200% scroll verified and emulator settings restored.
 - [ ] Independent review, GitHub integration and closeout.
 
 ## Discoveries
@@ -78,6 +78,15 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - Pristine starter is already export-ready with 16 assigned pads and 14 audible steps. The issue is silent context switching, not missing demo content.
 - At font scale 2.0, the current one-row strip and fixed header fail visibly despite pure tests asserting fixed compact 8/9 sp values.
 - Desktop `ensurePlayablePadSelected()` copies only `selectedPad`; Android calls the shared state helper that also synchronizes bank and page.
+- A 360 × 640 dp viewport at font scale 2.0 cannot show all first-entry choices simultaneously without shrinking text or targets. The selected bounded-scroll exception exposes the demo on one intentional swipe while header, workflow and status remain fixed.
+
+## Validation evidence
+
+- Product anchor: `c1532345838b90b19e071bdea8a1554b4000a015`, tree `559bbaa995f5db1b73c00f344b91f2ad411d136e`.
+- Gradle: 184 tasks PASS; shared 25/25, Android 233, JVM-core 52, Desktop 77; failures/errors/skips 0.
+- Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
+- Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/final/`.
+- Pixel 9a: disconnected; no physical-device gate promotion.
 - A Windows CopyFromScreen capture was invalid at 200% DPI/off-screen placement; PrintWindow produced the accepted full-window evidence.
 
 ## Decision log

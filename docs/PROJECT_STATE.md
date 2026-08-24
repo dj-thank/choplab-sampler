@@ -1,6 +1,21 @@
 # Project state
 
-## Current snapshot — 2026-08-24 global optimization source/device/daily-install closeout
+## Current snapshot — 2026-08-24 guided first-screen local candidate
+
+This snapshot is the current product behavior anchor for first entry and shared navigation. Moving GitHub `main` and hosted workflow identities are provider read-backs, while the immutable implementation claim is bound to the product commit below.
+
+- Observed at: `2026-08-24T15:10+09:00`.
+- Source state: isolated branch `codex/choplab-screen-flow`, product commit `c1532345838b90b19e071bdea8a1554b4000a015`, tree `559bbaa995f5db1b73c00f344b91f2ad411d136e`, based on `main@3cc4cd5c22afca08074f405b8a61658652b2aec1`. The dirty canonical checkout remains untouched.
+- First entry: a pristine project now leads with own audio, previous project and recording choices, and names the included `DUSTY JAZZデモ` as a separate playable route. Loaded/loading/recording states retain their waveform and safety controls.
+- Shared navigation: `入れる → チョップ → ビート → 保存` remains the only workflow model. Font scale 1.2+ uses a simplified header, a two-by-two stage strip and multi-line status; the first-entry body alone may scroll on constrained enlarged-text screens.
+- Desktop correction: BEAT entry delegates to the shared playable-PAD transition, so PAD `B-01`, BANK B and page `01–16` remain coherent.
+- Fresh local gate: clean 184-task Gradle run PASS; shared Android host 25, shared Desktop 25, Android unit 233, JVM-core 52 and Desktop 77 tests; failures/errors/skips 0. Debug/release Lint errors 0, warnings 7; project/Python/public-surface policy gates PASS.
+- Exact local artifacts: debug APK 31,492,210 bytes / SHA-256 `CDB32DFC6C765C2DF3A6DFAFD593937E38737C2479CA36A26B08898B7DB31FCA`; androidTest APK 10,874,825 bytes / `77608CADDEBF300E0720E54E7537FD71FA081D40C4F94E9082A52E1DBFAC325B`; unsigned release APK 24,061,044 bytes / `87E53D821E26EB44248B5DECBAF22ACF9D4126C93A3DD3425F251C1CD56FDDED`; Windows app-image 405 files / 176,494,919 bytes / digest `c8c260c7e574f10bd4ed91f3b3dc585cdc0c2b2ed7e882f8e37970bc7cde4d29`, EXE SHA-256 `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Runtime evidence: the exact debug/test APKs passed seven API 36 instrumentation tests after data-preserving `install -r --no-streaming`. Fresh 100%, 130%, 200%, constrained 360 × 640 dp / 200% scroll and demo BEAT captures passed visual inspection. The exact packaged Windows EXE produced fresh CAPTURE and demo BEAT captures; B DRUMS / B-01 / 01–16 aligned and the exact tracked process tree exited cleanly.
+- Gate ceiling: `LOCAL_PASS` plus scoped API 36 emulator runtime evidence. The physical Pixel was not connected, so current physical `DEVICE_PASS`, touch feel, TalkBack speech, listening/latency, recording, route loss, provider, binary Release and `HUMAN_GO` are not inferred.
+- Architecture: [`ADR-0005`](architecture/ADR-0005-guided-first-screen-flow.md) fixes the guided-entry and adaptive-chrome boundary. No project-schema or audio-rendering migration was introduced.
+
+## Previous snapshot — 2026-08-24 global optimization source/device/daily-install closeout
 
 This snapshot is the current product and source-state truth. Four bounded optimization phases and their docs-only closeout are merged; no implementation plan is selected beyond the next explicit product/audio decision.
 
