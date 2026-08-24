@@ -12,6 +12,20 @@ This snapshot records a repository-policy hardening delta only. It does not chan
 - Fresh local checks: focused public-surface tests 16/16, complete Python policy suite 51/51, current-tree and reachable-history public scans over 394 candidates, conflict-marker scan and `git diff --check` PASS. Both known reachable historical ZIP blobs were included and passed. This Python-only delta requires fresh hosted CI; no Gradle, device, provider, public-release or Human result is claimed.
 - Gate ceiling: source/static policy evidence only. Hosted CI and merged-main read-back remain required; no administrator secret-scanning setting, binary Release, device or `HUMAN_GO` evidence is inferred.
 
+## Previous snapshot — 2026-08-24 shared Android/Desktop import-name latest-main integration
+
+This snapshot records one bounded Desktop data-loss prevention follow-up integrated with the main that merged transport step-zero ordering. It moves the reviewed Android naming rule to shared production code and applies it to Desktop decode before PCM enters project state; audio bytes, archive schema, provider/filesystem I/O and #65 transport behavior are unchanged.
+
+- Observed at: `2026-08-24T21:10+09:00`.
+- Source state: reachable integration product `e0d3fa1df5862bcfa038812bb12ecf6d2c45911e`, tree `1558c4a2331e8ef3a7b2809b38f264e671c188a6`, with parents prior clean PR head `d2c99fc2d4bb9c84bf6366a7f2568cca88294422` and merged `main@3072eedd84b357f4ccd22c611dcc7b7f22f92874`; the later evidence commit is documentation-only.
+- Main preservation: #65 controller/transport/test blobs remain exact `5bc74ba` / `c92613c` / `10b3600` / `073696e`; #68 runtime/test blobs remain exact `de686ba` / `9d51556`. The #70 provider/URI name-selection behavior and archive regression remain intact through the shared seam.
+- Reproduced defect: `DesktopWavDecoder` published unbounded `File.name` values into `PcmAudio`, while `ProjectArchiveCodec` rejects blank asset names and names above 240 UTF-16 code units during read-back. A Desktop import could therefore succeed, then make atomic autosave and manual-save verification fail.
+- Repair: `persistableAudioDisplayName` now lives in shared model production code. Android retains provider/URI/final fallback priority; Desktop applies the same nonblank, post-truncation fallback and surrogate-pair contract before returning decoded PCM.
+- Regression: shared common tests bind candidate priority, whitespace-only bounded-prefix fallback and surrogate-safe truncation. Desktop feeds a 240-space prefix plus visible suffix, requires `sample`, and round trips the decoded state through `ProjectArchiveCodec`; the existing Android archive regression now exercises the same shared function.
+- Prior exact-head evidence: `d2c99fc` received a clean Codex review with zero threads and passed Android `32724477061`, Windows `32724477012`, iOS `32724476941` and supply-chain `32724476968`. Those receipts predate merged #65 and do not replace fresh hosted execution for this integration.
+- Fresh local checks: Python policy 39/39, public-surface 395 candidates, exact product/main blob comparisons, conflict-marker scan and `git diff --check` PASS. Gradle 9.7.1 remains unavailable locally, so fresh hosted Android/Windows/shared execution is required.
+- Gate ceiling: source/static latest-main integration plus revision-bound prior-head evidence only. Real filesystem/provider imports, autosave recovery, device playback, publication and `HUMAN_GO` remain unclaimed.
+
 ## Previous snapshot — 2026-08-24 desktop transport step-zero ordering merged-main read-back
 
 - Observed at: `2026-08-24T20:47+09:00`.

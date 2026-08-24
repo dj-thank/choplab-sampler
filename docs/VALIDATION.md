@@ -10,6 +10,16 @@
 - Tests: focused public-surface policy 16/16 and complete Python policy 51/51 passed. Fixtures additionally cover shared non-ZIP path hints, ZIP-named tree-hint exclusion, archive/member comments and control-containing token text, alongside the prior historical/member/limit/binary boundaries.
 - Static gate: both `python3 scripts/check_public_surface.py` and `python3 scripts/check_public_surface.py --history` passed 394 candidates, including the two known reachable historical ZIP blobs; conflict-marker scan and `git diff --check` passed. This Python-only delta claims no Gradle, device, provider, public-release or Human result, and exact-head hosted CI remains required.
 
+## Shared Android/Desktop import-name latest-main integration — 2026-08-24
+
+- Product source: reachable integration `e0d3fa1df5862bcfa038812bb12ecf6d2c45911e`, tree `1558c4a2331e8ef3a7b2809b38f264e671c188a6`, with parents prior exact PR head `d2c99fc2d4bb9c84bf6366a7f2568cca88294422` and merged `main@3072eedd84b357f4ccd22c611dcc7b7f22f92874`; the final follow-up is documentation-only.
+- Main preservation: #65 `DesktopSamplerController.kt` / `DesktopTransport.kt` / corresponding tests remain exact blobs `5bc74ba` / `c92613c` / `10b3600` / `073696e`; #68 runtime/tests remain `de686ba` / `9d51556`. #70 Android provider/URI selection and its archive regression are preserved through the shared helper.
+- Contract: Android and Desktop names published with decoded PCM are nonblank and at most `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Preferred candidates retain priority, a bounded whitespace-only prefix re-enters fallback selection, and a valid surrogate pair is never split at the boundary.
+- Regression: shared common tests bind the portable rule. Desktop `readMono` receives a name whose first 240 units are whitespace, returns `sample`, and its `SamplerUiState` round trips through `ProjectArchiveCodec`; the existing Android surrogate/archive regression calls the same shared function.
+- Prior exact-head provider evidence: `d2c99fc` passed clean Codex review, Android `32724477061`, Windows `32724477012`, iOS `32724476941` and supply-chain `32724476968`, with review threads 0. Main then advanced, so those receipts are not promoted to the integration head.
+- Latest-main local PASS: Python policy 39/39, public-surface 395 candidates, exact six product blobs plus #65/#68 preservation, conflict-marker scan and `git diff --check`. Uncached Gradle 9.7.1 remains unreachable locally; no fresh Kotlin/Gradle PASS is claimed.
+- Gate: source/static latest-main integration plus prior-head hosted evidence only. Fresh hosted Android/Windows/shared execution and clean exact-head review are required; filesystem/provider imports, recovery, playback, publication and Human evidence remain separate.
+
 ## Desktop transport step-zero ordering merged-main read-back — 2026-08-24
 
 - Product source: squash-merged `main@3072eedd84b357f4ccd22c611dcc7b7f22f92874` from exact PR #65 head `4c8f2c6c42f059b685f9c46f37f6bd7e3be4e9fe`; pre-merge integration product `08fb123888fb840496d34e4ba7a586013e1305f6`, tree `dc9a9e8563e18168c5d20af9084ffaab01f0f742`. Its four Desktop product/test blobs and merged #66/#67/#68/#70 source, tests and documentation are retained.
