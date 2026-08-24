@@ -80,13 +80,12 @@ def validate_checksum_sidecars(
     sbom_names = sorted(
         asset.name for asset in assets if EXPECTED_SBOM_PATTERN.fullmatch(asset.name)
     )
-    if len(sbom_names) != 1:
-        raise ValueError(f"Expected exactly one release SBOM, found {len(sbom_names)}: {sbom_names}")
-    if not sbom_names[0].startswith(expected_prefix):
+    expected_sbom_name = f"{expected_prefix}sbom.cdx.json"
+    if sbom_names != [expected_sbom_name]:
         raise ValueError(
-            f"SBOM version mismatch: expected prefix {expected_prefix!r}, found {sbom_names[0]!r}"
+            f"Expected exact release SBOM {expected_sbom_name!r}, found: {sbom_names}"
         )
-    required_names.add(sbom_names[0])
+    required_names.add(expected_sbom_name)
 
     sidecars = sorted(path for path in directory.iterdir() if path.is_file() and path.name.endswith(SHA256_SUFFIX))
     sidecars_by_target = {path.name[: -len(SHA256_SUFFIX)]: path for path in sidecars}

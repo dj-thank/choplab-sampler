@@ -61,6 +61,21 @@ class ReleaseManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing checksum sidecar"):
             self.write()
 
+    def test_rejects_sbom_with_text_after_the_exact_version(self) -> None:
+        original = self.directory / "ChopLab-v0.16.2-sbom.cdx.json"
+        original_sidecar = self.directory / "ChopLab-v0.16.2-sbom.cdx.json.sha256"
+        extra = self.directory / "ChopLab-v0.16.2-extra-sbom.cdx.json"
+        extra_sidecar = self.directory / "ChopLab-v0.16.2-extra-sbom.cdx.json.sha256"
+        original.rename(extra)
+        original_sidecar.rename(extra_sidecar)
+        extra_sidecar.write_text(
+            f"{hashlib.sha256(b'{}').hexdigest()}  {extra.name}\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "Expected exact release SBOM"):
+            self.write()
+
     def test_rejects_checksum_mismatch(self) -> None:
         sidecar = self.directory / "ChopLab-v0.16.2-windows-app-image.zip.sha256"
         sidecar.write_text(
