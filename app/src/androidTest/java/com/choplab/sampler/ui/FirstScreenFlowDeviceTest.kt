@@ -15,7 +15,9 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.ui.theme.ChopLabTheme
@@ -141,6 +143,43 @@ class FirstScreenFlowDeviceTest {
                 listOf("selectPlayablePad", "triggerPad", "releasePad"),
                 padActions,
             )
+        }
+    }
+
+    @Test
+    fun largeTextGateHoldStartsAfterScrollArbitrationAndReleasesOnPointerUp() {
+        val padActions = mutableListOf<Pair<String, Long>>()
+        val state = setPristineDeck(
+            fontScale = 2f,
+            onPadAction = { padActions += it to composeRule.mainClock.currentTime },
+        )
+
+        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            state.value = state.value.copy(
+                pads = state.value.pads.map { pad ->
+                    if (pad.globalIndex == gateIndex) pad.copy(playMode = PadPlayMode.GATE) else pad
+                },
+            )
+            padActions.clear()
+        }
+
+        composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み。再生モード GATE", substring = true),
+        ).performScrollTo().performTouchInput { longClick() }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                padActions.map { it.first },
+            )
+            val triggerTime = padActions.first { it.first == "triggerPad" }.second
+            val releaseTime = padActions.first { it.first == "releasePad" }.second
+            assertTrue("A deferred GATE hold must not trigger and release in one frame", releaseTime > triggerTime)
         }
     }
 
