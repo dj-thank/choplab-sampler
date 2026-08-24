@@ -23,6 +23,7 @@ internal class DesktopTargetLineRecorder(
     private val running = AtomicBoolean(false)
     private var starting = false
     private var stopRequested = false
+    private var startingLine: TargetDataLine? = null
     @Volatile private var line: TargetDataLine? = null
     @Volatile private var worker: Thread? = null
     @Volatile private var outputFile: File? = null
@@ -40,6 +41,7 @@ internal class DesktopTargetLineRecorder(
             stopRequested = false
         }
         var acquiredLine: TargetDataLine? = null
+        var startingLinePublished = false
         val result = runCatching {
             val capture = lineFactory()
             val target = capture.line
@@ -51,10 +53,16 @@ internal class DesktopTargetLineRecorder(
             require(format.channels in 1..2) { "モノラルまたはステレオ録音が必要です" }
             file.parentFile?.mkdirs()
             target.open(format)
+            synchronized(lifecycleLock) {
+                check(!stopRequested) { "録音の開始はキャンセルされました" }
+                startingLine = target
+                startingLinePublished = true
+            }
             target.start()
             val recordingWorker = Thread({ record(target, format, file) }, threadName).apply { isDaemon = true }
             synchronized(lifecycleLock) {
-                check(!stopRequested) { "録音の開始はキャンセルされました" }
+                check(!stopRequested && startingLine === target) { "録音の開始はキャンセルされました" }
+                startingLine = null
                 line = target
                 outputFile = file
                 failure = null
@@ -67,18 +75,27 @@ internal class DesktopTargetLineRecorder(
                     line = null
                     outputFile = null
                     running.set(false)
+                    startingLine = target
                     throw throwable
                 }
             }
         }.onFailure {
-            synchronized(lifecycleLock) {
+            val lineToClose = synchronized(lifecycleLock) {
+                val target = acquiredLine
+                val ownedStartingLine = when {
+                    target == null -> null
+                    startingLine === target -> target.also { startingLine = null }
+                    !startingLinePublished -> target
+                    else -> null
+                }
                 running.set(false)
                 line = null
                 worker = null
                 outputFile = null
                 failure = null
+                ownedStartingLine
             }
-            runCatching { acquiredLine?.close() }
+            runCatching { lineToClose?.close() }
             runCatching { file.delete() }
         }
         synchronized(lifecycleLock) { starting = false }
@@ -86,12 +103,19 @@ internal class DesktopTargetLineRecorder(
     }
 
     override fun stop(): Result<File> {
-        val (activeLine, activeWorker) = synchronized(lifecycleLock) {
+        val (pendingLine, activeResources) = synchronized(lifecycleLock) {
             stopRequested = true
             running.set(false)
-            line to worker
+            val pending = startingLine
+            startingLine = null
+            pending to (line to worker)
         }
-        activeLine?.let { runCatching { it.stop() }; runCatching { it.close() } }
+        val (activeLine, activeWorker) = activeResources
+        pendingLine?.let { runCatching { it.close() } }
+        activeLine?.takeUnless { it === pendingLine }?.let {
+            runCatching { it.stop() }
+            runCatching { it.close() }
+        }
         if (activeWorker != null && activeWorker !== Thread.currentThread()) {
             runCatching { activeWorker.join(STOP_TIMEOUT_MS) }
         }

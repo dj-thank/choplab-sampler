@@ -27,10 +27,13 @@ class DesktopAudioRecorderTest {
                 "open" -> null
                 "start" -> {
                     startEntered.countDown()
-                    check(allowStartToReturn.await(2, TimeUnit.SECONDS)) { "test start gate timed out" }
+                    check(allowStartToReturn.await(10, TimeUnit.SECONDS)) { "test start gate timed out" }
                     null
                 }
-                "close" -> null
+                "close" -> {
+                    allowStartToReturn.countDown()
+                    null
+                }
                 else -> error("Unexpected TargetDataLine call: ${method.name}")
             }
         } as TargetDataLine
@@ -53,7 +56,6 @@ class DesktopAudioRecorderTest {
             assertTrue(startEntered.await(2, TimeUnit.SECONDS))
 
             val stopResult = recorder.stop()
-            allowStartToReturn.countDown()
             starter.join(TimeUnit.SECONDS.toMillis(2))
 
             val result = checkNotNull(startResult.get())
