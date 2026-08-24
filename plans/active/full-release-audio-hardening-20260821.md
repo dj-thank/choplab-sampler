@@ -133,6 +133,7 @@ The user-visible result is a preview build that fails closed instead of silently
 - [x] Milestone 2 implementation and focused tests.
 - [x] 2026-08-24 follow-up — corrected the low-sample-rate duration bypass with a shared `min(global frames, sampleRate × 600)` policy and applied it to Android/Desktop known, unknown and post-decode boundaries. Local Gradle execution is explicitly deferred to hosted CI because the sandbox has no usable wrapper distribution.
 - [x] 2026-08-24 follow-up — aligned Desktop import admission with the shared/archive 8–192 kHz contract. Exact 192 kHz remains accepted, while 192,001 Hz is rejected before the streaming reader touches payload bytes; hosted Desktop CI is the executable gate.
+- [x] 2026-08-24 follow-up — aligned Android imported display names with archive admission before state publication. Blank provider/URI names receive a stable fallback, overlong names are bounded to 240 UTF-16 code units without splitting a surrogate pair, and a focused archive round-trip regression binds the persistence seam; hosted Android CI is the executable gate.
 - [x] Milestone 3 implementation and focused tests.
 - [ ] Milestone 4 shared-DSP extraction/equivalence work; resource and lifecycle seams are complete, but this larger refactor remains deferred.
 - [ ] Milestone 5 administrative read-back; source-controlled scanning, SBOM, CODEOWNERS, security policy, and autosave durability are implemented.
@@ -154,6 +155,8 @@ The user-visible result is a preview build that fails closed instead of silently
 - 2026-08-21 — Prefer focused seam extraction over a high-risk wholesale rewrite of the 100k-line Android ViewModel and 150k-line shared UI file.
 
 ## Validation log
+
+- Android import-name follow-up `930bc4f` / tree `4a933bf` — blank and overlong provider/URI names are canonicalized before `PcmAudio` publication; a supplementary character straddling the archive limit is removed intact and the result round trips through `ProjectArchiveCodec`. Python policy 39/39, public-surface 394 candidates and `git diff --check` PASS. Gradle 9.7.1 was unavailable locally, so no Android test-pass promotion is claimed before hosted CI.
 
 - Follow-up implementation `9f01f42` / tree `1071acb` — allocation-free shared arithmetic tests cover exact 8 kHz and 48 kHz boundaries plus next-frame rejection; Android and Desktop focused tests cover effective streaming-limit changes and unknown-duration streams. Public-surface 389 candidates and `git diff --check` PASS. Gradle wrapper provisioning was unavailable locally, so no test-pass promotion is claimed before hosted CI.
 

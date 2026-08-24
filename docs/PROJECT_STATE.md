@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Desktop import sample-rate admission candidate
+## Current snapshot — 2026-08-24 Android import-name persistence candidate
+
+This snapshot records one bounded Android import-admission correction. It changes only the display name published with decoded PCM; audio bytes, decoder/provider I/O and the project archive schema are unchanged.
+
+- Observed at: `2026-08-24T20:09+09:00`.
+- Source state: reachable product commit `930bc4f56bb6bbb2548c60054245e617d24ce992`, tree `4a933bf9382b54fdb8c44cd5ff03b135dc23c8d4`, based directly on merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The final follow-up is documentation-only and binds this immutable source.
+- Reproduced defect: Android accepted a blank or arbitrarily long provider `DISPLAY_NAME` into `PcmAudio`, while `ProjectArchiveCodec` rejects blank asset names and names above `ProjectLimits.MAX_ASSET_NAME_CHARS` (240 UTF-16 code units). Import could therefore appear successful and only fail at autosave/manual save after later edits.
+- Repair: the Android decoder now canonicalizes both provider and URI fallback names before publishing PCM. A blank preferred name falls back to a nonblank URI segment and ultimately `sample`; long names are bounded to the shared archive limit without retaining an unmatched high surrogate at the boundary.
+- Regression: the focused Android unit test covers blank fallback, all-blank fallback, and a surrogate pair straddling code-unit 240, then writes and reads the resulting `PcmAudio` through `ProjectArchiveCodec` and requires the exact bounded name to round trip.
+- Fresh local checks: Python policy suite 39/39, public-surface scan 394 candidates and `git diff --check` PASS. `scripts/validate_project.sh` passed its policy phases but could not create the sandboxed default Gradle cache; a writable offline cache then confirmed that Gradle 9.7.1 is not cached and its distribution host is unreachable. Hosted Android compilation/tests remain the executable gate.
+- Gate ceiling: source/static candidate only. No provider-specific naming, device import, autosave recovery, audio-quality, public release or `HUMAN_GO` evidence is inferred.
+
+## Previous snapshot — 2026-08-24 Desktop import sample-rate admission candidate
 
 This snapshot records one bounded Desktop decoder admission correction. It changes neither decoded PCM shape nor the project archive schema.
 
