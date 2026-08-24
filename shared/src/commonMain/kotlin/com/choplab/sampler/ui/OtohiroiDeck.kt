@@ -1186,7 +1186,7 @@ private fun FocusedCaptureEntry(
             }
             if (entry.starterDemoAvailable) {
                 MachinePanel(
-                    modifier = Modifier.fillMaxWidth().height(if (metrics.largeText) 148.dp else 108.dp),
+                    modifier = Modifier.fillMaxWidth().height(if (metrics.largeText) 172.dp else 108.dp),
                 ) {
                     if (metrics.largeText) {
                         Column(
