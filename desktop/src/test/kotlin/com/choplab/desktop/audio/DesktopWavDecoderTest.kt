@@ -1,6 +1,8 @@
 package com.choplab.desktop.audio
 
+import com.choplab.sampler.model.ProjectLimits
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.sound.sampled.AudioFormat
@@ -86,6 +88,39 @@ class DesktopWavDecoderTest {
         assertEquals(8_000, audio.sampleRate)
     }
 
+    @Test
+    fun acceptsTheExactProjectSampleRateCeiling() {
+        assertEquals(
+            ProjectLimits.MAX_SAMPLE_RATE,
+            DesktopWavDecoder.validateSampleRate(ProjectLimits.MAX_SAMPLE_RATE.toFloat()),
+        )
+    }
+
+    @Test
+    fun rejectsUnsupportedSampleRateBeforeReadingPayload() {
+        val source = FailOnReadInputStream()
+        val unsupportedFormat = AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED,
+            (ProjectLimits.MAX_SAMPLE_RATE + 1).toFloat(),
+            16,
+            1,
+            2,
+            (ProjectLimits.MAX_SAMPLE_RATE + 1).toFloat(),
+            false,
+        )
+        val stream = AudioInputStream(
+            source,
+            unsupportedFormat,
+            AudioSystem.NOT_SPECIFIED.toLong(),
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            DesktopWavDecoder.readMono("unsupported.wav", stream, maximumFrames = 1)
+        }
+
+        assertEquals(0, source.readCalls)
+    }
+
     private fun pcm16LittleEndian(vararg samples: Short): ByteArray =
         ByteBuffer.allocate(samples.size * Short.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)
@@ -94,4 +129,14 @@ class DesktopWavDecoderTest {
 
     private fun pcm16LittleEndian(vararg samples: Int): ByteArray =
         pcm16LittleEndian(*samples.map(Int::toShort).toShortArray())
+
+    private class FailOnReadInputStream : InputStream() {
+        var readCalls: Int = 0
+            private set
+
+        override fun read(): Int {
+            readCalls++
+            error("Unsupported-rate payload must not be read")
+        }
+    }
 }

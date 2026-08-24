@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 fractional pattern-timing candidate
+## Current snapshot — 2026-08-24 Desktop import sample-rate admission candidate
+
+This snapshot records one bounded Desktop decoder admission correction. It changes neither decoded PCM shape nor the project archive schema.
+
+- Observed at: `2026-08-24T19:45+09:00`.
+- Source state: the final documentation-only follow-up binds the reachable product commit/tree and its merged-main parent.
+- Reproduced defect: Java Sound could expose a finite source rate above the shared 192 kHz project ceiling. Desktop decoded and published that PCM, but the archive codec later rejected the same state, so autosave/manual save could fail only after the user had edited an unsupported project.
+- Repair: both the external `decode` boundary and the internal streaming reader use one validator backed by `ProjectLimits.MAX_SAMPLE_RATE`. Exact 192 kHz remains accepted; 192,001 Hz and higher, sub-8 kHz and non-finite rates fail before PCM payload materialization or state publication.
+- Regression: a focused Desktop test accepts the exact shared ceiling. A second test wraps an unsupported 192,001 Hz stream in a fail-on-read source and requires `IllegalArgumentException` with zero payload reads.
+- Fresh local checks: Python policy suite, public-surface scan and `git diff --check` are required before publication. The Gradle distribution is unavailable in this container, so hosted Desktop compilation/tests remain the executable gate.
+- Gate ceiling: source/static candidate only. No Windows import, audio-quality, archive recovery, physical device, provider or `HUMAN_GO` evidence is inferred.
+
+## Previous snapshot — 2026-08-24 fractional pattern-timing candidate
 
 This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged constrained PAD gesture repair, decode boundary and all earlier histories remain intact below.
 
