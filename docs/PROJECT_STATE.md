@@ -1,16 +1,10 @@
 # Project state
 
-## Current snapshot — 2026-08-24 sample-rate-bounded decode candidate
+## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
-This snapshot records a focused follow-up to the bounded audio-import milestone. It changes import admission only; the guided first-screen behavior and its earlier evidence remain the previous product snapshot below.
-
-- Observed at: `2026-08-24T07:38:55Z`.
-- Source state: branch implementation commit `9f01f42beb4e37ef5d4f66606af5917f8620f2ea`, tree `1071acbd11593cab3eb1b7531857a9d9f7bb8c12`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`. The canonical checkout was not modified.
-- Import policy: the materialized mono-frame limit is now `min(30,000,000, sampleRate × 600)`. At 8 kHz the largest accepted source is 4,800,000 frames; at 48 kHz it is 28,800,000 frames. Higher sample rates still stop at the global 30,000,000-frame memory ceiling.
-- Streaming enforcement: Android initializes the builder from the declared rate, tightens it again when `MediaCodec` publishes the effective output format, and revalidates the completed PCM. Desktop applies the same effective ceiling to both declared-length and unknown-length streams, then performs the same post-decode validation.
-- Regression scope: shared arithmetic tests accept the exact 8 kHz and 48 kHz ten-minute boundaries and reject the next frame without allocating those buffers. Android tests cover a late tighter output-rate boundary; Desktop tests cover unknown-length acceptance and rejection at a small injected streaming ceiling.
-- Local evidence: `scripts/doctor.sh` found Java 17 and a clean Git worktree but no Android SDK/ADB. `python3 scripts/check_public_surface.py` passed over 389 candidates and `git diff --check` passed. The focused Gradle command and `scripts/validate_project.sh` reached the wrapper but could not create/use a Gradle 9.7.1 distribution in this sandbox; no Gradle-test pass is claimed locally.
-- Gate ceiling: source/static evidence only. Hosted Android/Windows/shared CI must execute the focused suites before this delta may inherit `LOCAL_PASS`; no device, audio-quality, provider, public-release or `HUMAN_GO` evidence is inferred.
+- Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.
+- Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
+- Scope: release policy and its Python regression tests only. Product/audio/UI bytes, signing configuration, tags, and Releases are unchanged. Current-container policy gates are run before PR publication; hosted CI is required before promotion.
 
 ## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 

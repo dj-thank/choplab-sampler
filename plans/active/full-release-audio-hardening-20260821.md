@@ -131,7 +131,6 @@ The user-visible result is a preview build that fails closed instead of silently
 - [x] 2026-08-21 — Mapped release, audio import/recording, project archive, iOS, OAuth, KMP, CI, and governance seams.
 - [x] Milestone 1 source implementation and focused tests; final-APK inspection now permits the AndroidX profile installer receiver only when it retains the platform `android.permission.DUMP` guard.
 - [x] Milestone 2 implementation and focused tests.
-- [x] 2026-08-24 follow-up — corrected the low-sample-rate duration bypass with a shared `min(global frames, sampleRate × 600)` policy and applied it to Android/Desktop known, unknown and post-decode boundaries. Local Gradle execution is explicitly deferred to hosted CI because the sandbox has no usable wrapper distribution.
 - [x] Milestone 3 implementation and focused tests.
 - [ ] Milestone 4 shared-DSP extraction/equivalence work; resource and lifecycle seams are complete, but this larger refactor remains deferred.
 - [ ] Milestone 5 administrative read-back; source-controlled scanning, SBOM, CODEOWNERS, security policy, and autosave durability are implemented.
@@ -153,8 +152,6 @@ The user-visible result is a preview build that fails closed instead of silently
 - 2026-08-21 — Prefer focused seam extraction over a high-risk wholesale rewrite of the 100k-line Android ViewModel and 150k-line shared UI file.
 
 ## Validation log
-
-- Follow-up implementation `9f01f42` / tree `1071acb` — allocation-free shared arithmetic tests cover exact 8 kHz and 48 kHz boundaries plus next-frame rejection; Android and Desktop focused tests cover effective streaming-limit changes and unknown-duration streams. Public-surface 389 candidates and `git diff --check` PASS. Gradle wrapper provisioning was unavailable locally, so no test-pass promotion is claimed before hosted CI.
 
 - Baseline source mapping — 2026-08-21 — GitHub read-back at commit `9a4e9edc`; no fresh build claim.
 - PR head `d871baf` — Supply-chain policy run 32468989684 PASS; Windows run 32468989763 PASS; iOS run 32468989677 PASS. Android compilation, tests, lint, and release assembly passed, then final-APK inspection exposed the missing guarded-receiver policy case.

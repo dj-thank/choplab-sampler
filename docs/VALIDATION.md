@@ -2,14 +2,11 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Sample-rate-bounded streaming decode candidate — 2026-08-24
+## Release checksum sidecar hardening candidate — 2026-08-24
 
-- Product source: branch implementation commit `9f01f42beb4e37ef5d4f66606af5917f8620f2ea`, tree `1071acbd11593cab3eb1b7531857a9d9f7bb8c12`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.
-- Contract: imported mono PCM is bounded by `min(30,000,000, sampleRate × 600)` frames. Exact 8 kHz / 4,800,000 and 48 kHz / 28,800,000 boundaries are accepted; the next frame is rejected. The arithmetic tests do not materialize multi-million-frame buffers.
-- Adapter coverage: Android updates the streaming builder when the decoder output rate becomes authoritative and revalidates accepted PCM; Desktop applies the effective limit before known-length allocation, during unknown-length streaming, and after decode.
-- Static checks: `python3 scripts/check_public_surface.py` PASS (389 candidates); `git diff --check` PASS. `scripts/doctor.sh` confirmed Java 17/Git and reported the expected absent Android SDK/ADB.
-- Blocked local execution: `./gradlew :shared:desktopTest :app:testDebugUnitTest :desktop:test --no-daemon` and `./scripts/validate_project.sh` could not provision the Gradle 9.7.1 distribution in this sandbox. The focused test sources are present, but no Gradle result is claimed; hosted CI is required.
-- Gate: source/static evidence only. Device import, codec variance, physical memory pressure, audio quality, provider/public and Human gates remain unclaimed.
+- The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
+- Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
+- Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
 
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 
