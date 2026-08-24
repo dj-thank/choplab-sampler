@@ -156,7 +156,7 @@ The user-visible result is a preview build that fails closed instead of silently
 
 ## Validation log
 
-- Android import-name follow-up `930bc4f` / tree `4a933bf` — blank and overlong provider/URI names are canonicalized before `PcmAudio` publication; a supplementary character straddling the archive limit is removed intact and the result round trips through `ProjectArchiveCodec`. Python policy 39/39, public-surface 394 candidates and `git diff --check` PASS. Gradle 9.7.1 was unavailable locally, so no Android test-pass promotion is claimed before hosted CI.
+- Android import-name follow-up `a2cb6b2` / tree `e25b773` — blank and overlong provider/URI names are canonicalized before `PcmAudio` publication; a whitespace-only bounded prefix re-enters fallback, a supplementary character straddling the archive limit is removed intact, and the result round trips through `ProjectArchiveCodec`. Python policy 39/39, public-surface 394 candidates and `git diff --check` PASS. Gradle 9.7.1 was unavailable locally, so no Android test-pass promotion is claimed before hosted CI.
 
 - Follow-up implementation `9f01f42` / tree `1071acb` — allocation-free shared arithmetic tests cover exact 8 kHz and 48 kHz boundaries plus next-frame rejection; Android and Desktop focused tests cover effective streaming-limit changes and unknown-duration streams. Public-surface 389 candidates and `git diff --check` PASS. Gradle wrapper provisioning was unavailable locally, so no test-pass promotion is claimed before hosted CI.
 

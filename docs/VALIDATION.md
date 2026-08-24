@@ -4,9 +4,9 @@
 
 ## Android import-name persistence candidate — 2026-08-24
 
-- Source: reachable product commit `930bc4f56bb6bbb2548c60054245e617d24ce992`, tree `4a933bf9382b54fdb8c44cd5ff03b135dc23c8d4`, based directly on merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`; the final follow-up is documentation-only.
+- Source: reachable product commit `a2cb6b27ccf10f17af1bcd3c30969ef212e2977c`, tree `e25b77382985229ef4ddccbd231524549963033d`, based on the two-commit candidate rooted directly at merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`; the final follow-up is documentation-only.
 - Contract: every display name published by Android decode is nonblank and no longer than `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Provider `DISPLAY_NAME` remains preferred; blank values fall back to the URI segment and then `sample`. Bounding never leaves a high surrogate without its low-surrogate pair.
-- Regression: a name whose supplementary character straddles code-unit 240 is shortened before that pair, remains nonblank, and round trips exactly through `ProjectArchiveCodec`; blank preferred and fallback values also produce persistable names.
+- Regression: a name whose supplementary character straddles code-unit 240 is shortened before that pair, remains nonblank, and round trips exactly through `ProjectArchiveCodec`; blank inputs and an overlong input whose first 240 units are whitespace both fall back to persistable names.
 - Local evidence: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 39/39; `python3 scripts/check_public_surface.py` passed 394 candidates; `git diff --check` passed. `scripts/validate_project.sh` reached Gradle after its policy phases but the default cache is sandbox-inaccessible; a writable offline cache could not provision uncached Gradle 9.7.1, so no Kotlin compilation/test pass is claimed locally.
 - Gate: source/static candidate only; hosted Android unit/lint/build checks are required before merge. No device/provider import, autosave recovery, audible output, publication or Human result is claimed.
 
