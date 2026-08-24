@@ -132,6 +132,7 @@ The user-visible result is a preview build that fails closed instead of silently
 - [x] Milestone 1 source implementation and focused tests; final-APK inspection now permits the AndroidX profile installer receiver only when it retains the platform `android.permission.DUMP` guard.
 - [x] Milestone 2 implementation and focused tests.
 - [x] 2026-08-24 follow-up — corrected the low-sample-rate duration bypass with a shared `min(global frames, sampleRate × 600)` policy and applied it to Android/Desktop known, unknown and post-decode boundaries. Local Gradle execution is explicitly deferred to hosted CI because the sandbox has no usable wrapper distribution.
+- [x] 2026-08-24 follow-up — aligned Desktop import admission with the shared/archive 8–192 kHz contract. Exact 192 kHz remains accepted, while 192,001 Hz is rejected before the streaming reader touches payload bytes; hosted Desktop CI is the executable gate.
 - [x] Milestone 3 implementation and focused tests.
 - [ ] Milestone 4 shared-DSP extraction/equivalence work; resource and lifecycle seams are complete, but this larger refactor remains deferred.
 - [ ] Milestone 5 administrative read-back; source-controlled scanning, SBOM, CODEOWNERS, security policy, and autosave durability are implemented.
