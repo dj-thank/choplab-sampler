@@ -24,7 +24,8 @@
 | DJスクラッチ | 🧪 local/emulator | 元曲slice/S-Eまたは選択PADをpointer-downから直接所有し、左右を正逆速度へ変換。微小ノイズdead zone、px/s正規化、120ms idle無音、方向／倍率／playhead表示をhost test＋API 36 emulatorで確認。解除時は直前の有効なBeat loop/transportへ一度だけ復帰し、再開対象なしでは停止。TalkBack操作を公開。物理実機の連続操作感・クリック音・読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
-| スクロールなし操作 | ✅ preview | portraitは上下固定、landscapeのCHOP/通常BEATは波形／操作＋4×4 PADをresponsive配置。360dp級portraitのheader/mode/control/page/PAD編集/stepper/Layer/Scratch/波形compact操作は48dp以上で、文字拡大時もcompact文字のsp値を縮めない。16-step全セルの48dp化はresponsive再設計待ち。画面全体のscroll containerはなく、TRIMのSTART/END数値ホイールだけが意図したbounded scroll inputを使う |
+| 初期画面とデモ導線 | ✅ current local / API 36 emulator | pristine CAPTUREは空波形より先に`曲を読み込む / 制作を開く / MIC / DEVICE`を提示し、starterを`DUSTY JAZZデモ`として明示。Android/Windowsのデモ遷移はB DRUMS・B-01・01–16で一致。final exact APK 7 instrumentation testsと両platformのfresh captureを確認。物理touch/TalkBack/Humanは未確認 |
+| 固定操作面とlarge-text例外 | ✅ current local / emulator | 通常portraitとperformance画面は固定、landscapeのCHOP/通常BEATはresponsive配置。font scale 1.2+はheaderを簡素化し4工程を2×2、statusを複数行化。初期入力面だけはconstrained portrait/landscapeで全CTAへ到達するbounded vertical scrollを許可。640 × 360 dp / 200%でstage 49dp、demo 59dpを実測。16-step全セルの48dp化はresponsive再設計待ち |
 | 曲を流しながらPADで刻む | 🧪 local/emulator | source再生中のCapture PADは空／割当済みにかかわらず現在位置を刻む。割当済みA01は旧音を鳴らさず現在素材へ上書きし、旧loop/scratch実行参照も解除 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
