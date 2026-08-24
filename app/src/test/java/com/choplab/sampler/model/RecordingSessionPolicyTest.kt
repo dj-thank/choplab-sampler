@@ -121,6 +121,32 @@ class RecordingSessionPolicyTest {
     }
 
     @Test
+    fun lateNativeStartConfirmationCannotUndoStopOrRecreateIdleSession() {
+        val starting = beginRecordingSession(
+            SamplerUiState(),
+            RecordingKind.SOURCE_MICROPHONE,
+        )
+        val recording = confirmRecordingSessionStarted(
+            starting,
+            RecordingKind.SOURCE_MICROPHONE,
+        )
+        val stopping = stopRecordingSession(starting, RecordingKind.SOURCE_MICROPHONE)
+
+        assertEquals(
+            RecordingPhase.RECORDING,
+            recording.recordingSession.activePhaseFor(RecordingKind.SOURCE_MICROPHONE),
+        )
+        assertEquals(
+            stopping,
+            confirmRecordingSessionStarted(stopping, RecordingKind.SOURCE_MICROPHONE),
+        )
+        assertEquals(
+            SamplerUiState(),
+            confirmRecordingSessionStarted(SamplerUiState(), RecordingKind.SOURCE_MICROPHONE),
+        )
+    }
+
+    @Test
     fun lateWorkerFailureCannotFinishAStopOwnedByAnotherCoroutine() {
         val recording = SamplerUiState(
             recordingSession = RecordingSession.Active(

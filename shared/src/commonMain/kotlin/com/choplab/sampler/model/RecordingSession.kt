@@ -82,6 +82,22 @@ fun observeRecordingSession(state: SamplerUiState, kind: RecordingKind): Sampler
         }
     }
 
+/**
+ * Confirms a locally requested recorder only after its native startup succeeds.
+ * Unlike a service observation, a late callback cannot recreate an idle session or undo STOPPING.
+ */
+fun confirmRecordingSessionStarted(state: SamplerUiState, kind: RecordingKind): SamplerUiState =
+    when (val session = state.recordingSession) {
+        RecordingSession.Idle -> state
+        is RecordingSession.Active -> if (
+            session.kind == kind && session.phase == RecordingPhase.STARTING
+        ) {
+            state.copy(recordingSession = session.copy(phase = RecordingPhase.RECORDING))
+        } else {
+            state
+        }
+    }
+
 fun stopRecordingSession(state: SamplerUiState, kind: RecordingKind): SamplerUiState =
     when (val session = state.recordingSession) {
         RecordingSession.Idle -> state
