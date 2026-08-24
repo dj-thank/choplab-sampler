@@ -198,6 +198,17 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 archive.writestr("second.txt", b"")
                 archive.writestr("third.txt", b"")
 
+            archive_bytes = bytearray(archive_path.read_bytes())
+            end_record_offset = archive_bytes.rindex(b"PK\x05\x06")
+            archive_bytes[end_record_offset + 8 : end_record_offset + 10] = (1).to_bytes(
+                2,
+                "little",
+            )
+            archive_bytes[
+                end_record_offset + 10 : end_record_offset + 12
+            ] = (1).to_bytes(2, "little")
+            archive_path.write_bytes(archive_bytes)
+
             with patch(
                 "scripts.check_public_surface.zipfile.ZipFile",
                 side_effect=AssertionError("ZipFile must not be constructed"),
@@ -205,7 +216,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 findings = scan_zip(archive_path, entry_count_limit=2)
 
         self.assertEqual(1, len(findings))
-        self.assertIn("3 entries", findings[0])
+        self.assertIn("at least 3 entries", findings[0])
         self.assertIn("2-entry content scan limit", findings[0])
 
     def test_public_zip_is_not_rescanned_as_one_text_container(self) -> None:

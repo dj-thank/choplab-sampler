@@ -80,7 +80,8 @@ ZIP_LOCAL_FILE_HEADER = struct.Struct("<4s5H3L2H")
 ZIP_LOCAL_FILE_SIGNATURE = b"PK\x03\x04"
 ZIP_END_OF_CENTRAL_DIRECTORY = struct.Struct("<4s4H2LH")
 ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = b"PK\x05\x06"
-ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER_SIZE = 46
+ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER = struct.Struct("<4s6H3L5H2L")
+ZIP_CENTRAL_DIRECTORY_ENTRY_SIGNATURE = b"PK\x01\x02"
 ZIP_MAX_COMMENT_LENGTH = (1 << 16) - 1
 ZIP64_UINT16_SENTINEL = (1 << 16) - 1
 ZIP64_UINT32_SENTINEL = (1 << 32) - 1
@@ -274,7 +275,7 @@ def preflight_zip_directory(
             f"the {entry_count_limit}-entry content scan limit"
         ]
     maximum_directory_size = (
-        ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER_SIZE * entry_count + total_scan_limit
+        ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER.size * entry_count + total_scan_limit
     )
     if central_directory_size > maximum_directory_size:
         return [
@@ -283,6 +284,65 @@ def preflight_zip_directory(
         ]
     if central_directory_offset + central_directory_size > directory_offset:
         return [f"{archive_label}: central directory bounds are invalid"]
+
+    central_directory_start = directory_offset - central_directory_size
+    try:
+        if isinstance(source, BytesIO):
+            original_position = source.tell()
+            try:
+                source.seek(central_directory_start)
+                central_directory = source.read(central_directory_size)
+            finally:
+                source.seek(original_position)
+        else:
+            with Path(source).open("rb") as stream:
+                stream.seek(central_directory_start)
+                central_directory = stream.read(central_directory_size)
+    except (OSError, ValueError) as error:
+        return [
+            f"{archive_label}: central directory preflight failed "
+            f"({type(error).__name__})"
+        ]
+    if len(central_directory) != central_directory_size:
+        return [f"{archive_label}: central directory is truncated"]
+
+    record_offset = 0
+    parsed_entry_count = 0
+    while record_offset < len(central_directory):
+        if (
+            record_offset + ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER.size
+            > len(central_directory)
+        ):
+            return [f"{archive_label}: central directory entry header is truncated"]
+        try:
+            record = ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER.unpack_from(
+                central_directory,
+                record_offset,
+            )
+        except struct.error:
+            return [f"{archive_label}: central directory entry header is invalid"]
+        if record[0] != ZIP_CENTRAL_DIRECTORY_ENTRY_SIGNATURE:
+            return [f"{archive_label}: central directory entry signature is invalid"]
+        filename_length, extra_length, comment_length = record[10:13]
+        record_offset += (
+            ZIP_CENTRAL_DIRECTORY_ENTRY_HEADER.size
+            + filename_length
+            + extra_length
+            + comment_length
+        )
+        if record_offset > len(central_directory):
+            return [f"{archive_label}: central directory entry metadata is truncated"]
+        parsed_entry_count += 1
+        if parsed_entry_count > entry_count_limit:
+            return [
+                f"{archive_label}: archive contains at least {parsed_entry_count} "
+                f"entries, exceeding the {entry_count_limit}-entry content scan limit"
+            ]
+    if parsed_entry_count != entry_count:
+        return [
+            f"{archive_label}: central directory contains {parsed_entry_count} entries "
+            f"but its end record declares {entry_count}"
+        ]
     return []
 
 
