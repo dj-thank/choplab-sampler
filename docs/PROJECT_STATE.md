@@ -1,6 +1,12 @@
 # Project state
 
-## Current snapshot — 2026-08-24 iOS import/recording exclusion local candidate
+## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
+
+- Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.
+- Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
+- Scope: release policy and its Python regression tests only. Product/audio/UI bytes, signing configuration, tags, and Releases are unchanged. Current-container policy gates are run before PR publication; hosted CI is required before promotion.
+
+## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 
 This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
 
