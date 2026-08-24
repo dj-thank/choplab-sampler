@@ -10,6 +10,14 @@
 - Tests: focused public-surface policy 21/21 and complete Python policy 56/56 passed. Fixtures additionally cover malformed-byte-adjacent tokens, central extra fields, a local-header-only extra field with a safe central copy, ZIP-named symlinks and merge-result-only archives, alongside the prior alias/tree/comment/control/member/limit/binary boundaries.
 - Static gate: both `python3 scripts/check_public_surface.py` and `python3 scripts/check_public_surface.py --history` passed 395 candidates, including the two known reachable historical ZIP blobs; conflict-marker scan and `git diff --check` passed. This Python-only delta claims no Gradle, device, provider, public-release or Human result, and exact-head hosted CI remains required.
 
+## Desktop recorder startup cancellation merged-main read-back — 2026-08-24
+
+- Product source: squash-merged `main@a0b356c2e5820b7f9a8288ebcdd555c19e0cb6b5` from exact PR #73 head `a1cc5a7e832f2faf11b64c03ed1100453d1a9daa`, tree `6c00c73d23ac419f12162f3f465812136b403252`; reviewed repair `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6`, tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad`. Runtime/test blobs are exact `3dec52b4598e3222503cbdc3abeade543e22e046` / `eea213f8716d92fe63f3f13d8180da94b3399657`.
+- Contract: after `open()`, startup publishes a separate pending line under the recorder lifecycle lock. `stop()` latches cancellation and atomically claims/clears that reference, then closes it outside the lock to unblock `TargetDataLine.start()`. Startup cleanup closes only a pending line it still owns, preventing a duplicate close or late worker publication.
+- Regression: a proxy line and two latches hold the starter thread inside `TargetDataLine.start()`, and proxy `close()` is the only normal gate release. Stop must finish the starter with the exact cancellation error, zero payload reads, open/start/close counts of 1/1/1, `isRecording=false` and no output file.
+- Exact merge evidence: clean Codex review comment `5395404451`, zero threads and successful Android `32728698800`, Windows `32728698763`, iOS `32728698759` and supply-chain `32728698801` workflows were bound to exact head `a1cc5a7e83` before expected-head squash merge.
+- Gate: merged source plus exact-head hosted compilation/test evidence. No physical capture timing, audio quality/content, device-removal, provider, public release or Human result is claimed.
+
 ## Shared Android/Desktop import-name merged-main read-back — 2026-08-24
 
 - Product source: squash-merged `main@dfcd9d8871f34ca5ed125c9a1113c6a4dd612887` from exact PR #71 head `f7ebd012b15012a4621c1377db81d58f730257a1`; pre-merge integration product `e0d3fa1df5862bcfa038812bb12ecf6d2c45911e`, tree `1558c4a2331e8ef3a7b2809b38f264e671c188a6`.

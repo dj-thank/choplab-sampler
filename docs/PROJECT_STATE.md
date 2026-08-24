@@ -12,6 +12,18 @@ This snapshot records a repository-policy hardening delta only. It does not chan
 - Fresh local checks: focused public-surface tests 21/21, complete Python policy suite 56/56, current-tree and reachable-history public scans over 395 candidates, conflict-marker scan and `git diff --check` PASS. Both known reachable historical ZIP blobs were included and passed. This Python-only delta requires fresh hosted CI; no Gradle, device, provider, public-release or Human result is claimed.
 - Gate ceiling: source/static policy evidence only. Hosted CI and merged-main read-back remain required; no administrator secret-scanning setting, binary Release, device or `HUMAN_GO` evidence is inferred.
 
+## Previous snapshot — 2026-08-24 Desktop recorder startup cancellation merged-main read-back
+
+This snapshot records one bounded Desktop capture-lifecycle correction. It changes only the `TargetDataLine` recorder and its host regression; audio format, recording limits, controller behavior, project schema and previously merged import/transport behavior are unchanged.
+
+- Observed at: `2026-08-24T21:53+09:00`.
+- Source state: squash-merged `main@a0b356c2e5820b7f9a8288ebcdd555c19e0cb6b5` from exact PR #73 head `a1cc5a7e832f2faf11b64c03ed1100453d1a9daa`, tree `6c00c73d23ac419f12162f3f465812136b403252`; its reviewed product repair is `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6`, tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad`.
+- Reproduced defect: `stop()` could run while `TargetDataLine.start()` was blocked, observe no published line or worker, and return. Startup could then publish `running=true` and launch the capture worker after that stop/close request, leaving recording active without a corresponding live session owner.
+- Repair: one lifecycle lock protects `starting`, a latched stop request, the opened startup line and final line/worker publication. STOP atomically claims and clears a pending line, then closes it outside the lock to unblock native start; startup cleanup closes the line only while it owns that exact reference. Cancellation clears temporary state and deletes the incomplete WAV.
+- Deterministic regression: a proxy line blocks inside `TargetDataLine.start()`, and only its `close()` releases that gate. The test requires failed stop/start, zero `read` calls, exact-once open/start/close, idle recorder state and removal of the partial output.
+- Exact merge evidence: exact head `a1cc5a7e83` received clean Codex review comment `5395404451` with zero threads; Android `32728698800`, Windows `32728698763`, iOS `32728698759` and supply-chain `32728698801` all completed successfully before expected-head squash merge.
+- Gate ceiling: merged source plus exact-head hosted compilation/test evidence. Physical Windows microphone timing, audio contents/quality, device removal, publication and `HUMAN_GO` remain unclaimed.
+
 ## Previous snapshot — 2026-08-24 shared Android/Desktop import-name merged-main read-back
 
 This snapshot records one bounded Desktop data-loss prevention follow-up integrated with the main that merged transport step-zero ordering. It moves the reviewed Android naming rule to shared production code and applies it to Desktop decode before PCM enters project state; audio bytes, archive schema, provider/filesystem I/O and #65 transport behavior are unchanged.

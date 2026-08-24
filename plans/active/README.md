@@ -12,6 +12,8 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
+**直近の統合保守:** Desktop recorder開始取消はblocking `TargetDataLine.start()`中のSTOPにpending lineをclaim/closeさせ、late worker公開とcapture readを阻止する限定lifecycle修正として、exact head `a1cc5a7`のclean reviewと全4 CI成功後にPR #73 / `main@a0b356c`へ統合済み。物理microphone timingと音質は別gate。
+
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
 **独立release-policy delta:** merged `main@dfcd9d8`を保持するreachable policy product `a38738c` / tree `621b787`は、公開面scanをcurrent／reachable-history ZIP member、archive comment、central filename/comment/extra、local-header filename/extraへ拡張する小規模修正。byte-preserving scanとcase-insensitive per-parent raw path/blob履歴でZIP alias／merge-resultを列挙し、tree/symlink/gitlinkをblob capへ含めず、4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率と履歴blob materializationをboundedにする。payload付きdirectory entryを拒否し、binary/audio本文とstructured scan後のraw containerはtext再scanしない。merged #65/#68/#70/#71 bytesを保持し、Python 56/56・current/history scanはPASS。新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
