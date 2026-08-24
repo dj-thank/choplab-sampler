@@ -78,7 +78,7 @@ Offline WAV export retains every realtime PAD sample for a single pattern event 
 ## Post-completion correction — 2026-08-24
 
 - A later audit of merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc` found that this completed oracle exercised `SamplerEngine.Voice` directly, not the production Android pooled-PAD mixer. The callback still retired a newly finished PAD voice before adding that call's returned sample.
-- The bounded follow-up product commit `eabd06361252a6efca4d821de4010463529b8b59`, tree `54df8ea48f33eaecc5738fb6926e4d8ca3e98a31`, corrects the realtime ordering and binds the same terminal fixture at 403 frames / PCM `-61`. It preserves the merged #66 timing implementation and does not change the historical PR #49 offline bytes or evidence.
+- The bounded follow-up originated at product `eabd063` and is integrated with latest merged main in product commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`. It corrects the realtime ordering, binds the same terminal fixture at 403 frames / PCM `-61`, preserves the merged #66 timing and #67 Desktop import boundary, and does not change the historical PR #49 offline bytes or evidence.
 - This addendum is source/static evidence until the follow-up's hosted Android gate passes; no prior Pixel or listening receipt is reused for the new runtime bytes.
 
 ## Discoveries

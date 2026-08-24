@@ -4,8 +4,8 @@
 
 ## Android realtime PAD terminal-sample retirement candidate — 2026-08-24
 
-- Product source: reachable commit `eabd06361252a6efca4d821de4010463529b8b59`, tree `54df8ea48f33eaecc5738fb6926e4d8ca3e98a31`, direct parent merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`. The later evidence commit changes documentation only.
-- Main preservation: before documentation, `git diff --name-only origin/main...HEAD` named only `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt`; merged #66 timing source/tests/docs are retained.
+- Product source: reachable integration commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`, with parents prior reviewed PR head `72dbaaa1b79d1c0f92b4213c65f915908b3e894e` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The later evidence commit changes documentation only.
+- Main preservation: `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt` retain the exact original product blobs `de686ba` / `9d51556`; merged #66 timing and merged #67 Desktop import-boundary source/tests/docs are retained.
 - Contract: for each active pooled PAD voice, the Android callback mixes the float returned by `Voice.render()` before deactivating a voice that became finished in that call. Existing loop-frame publication remains limited to a still-active monitored LOOP voice.
 - Regression: `SamplerEngineVoiceTest.runtimeMixesFinalReturnedPadSampleBeforeRetirement` uses the established reverse/pitch/tone fixture and requires 403 frames, terminal limited PCM `-61`, then `active=false` and `finished=true`.
 - Realtime review: `mixVoiceSampleAndRetire` uses only the existing `Voice`, primitive arguments and a primitive return. No collection, lambda, lock, I/O, log, UI call or native transition was added to the callback.
