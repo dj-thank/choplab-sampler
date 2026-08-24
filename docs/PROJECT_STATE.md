@@ -2,7 +2,7 @@
 
 ## Current snapshot — 2026-08-24 release checksum sidecar hardening candidate
 
-- Source boundary: isolated `codex/release-checksum-sidecars` branch updated onto merged `main@364ccde764b88f0bb79e10b8aaeb8284a5c069cc`; exact candidate commit/tree and hosted workflow identities are recorded after integration.
+- Source boundary: integrated executable candidate `77630cdb56e54f1f217a107bdce3d2d307000871`, tree `1d8f23de24e19c8d2b88571a16e0146dbcdbaeb2`, with direct merged-main parent `5430d0d91a4e19ca02170d0143378a5d7917776b`. Later commits on this PR only bind documentation to that immutable candidate; hosted workflow identities are recorded after integration.
 - Publication policy: release manifest creation now validates every `.sha256` sidecar and requires byte-matching sidecars for the three runnable platform archives plus the release-bound CycloneDX SBOM. Missing, malformed, cross-named, mismatched, and orphan checksum files fail before attestation and `gh release create`.
 - Scope: release policy and its Python regression tests only. Product/audio/UI bytes, signing configuration, tags, and Releases are unchanged. Current-container policy gates are run before PR publication; hosted CI is required before promotion.
 
