@@ -14,6 +14,8 @@
 
 **独立audio保守delta:** Android realtime PAD terminal-sample修正はproduct `5dd3d66` / tree `c6a7e9b`からPR #68で`main@2786c372`へ統合済み。返却sampleをmixしてからpooled Voiceをretireし、#66 timingと#67 Desktop import境界を保持する。PR #58 product `ba473e0`もexact runtime/test blobs、403-frame / PCM `-61` regression、allocation-free callback契約を保持する。Python 39/39・public 394・diffはPASS、current PR hosted Android gate待ち。
 
+**独立したAndroid import名境界修正:** merged `main@2786c37`を統合したproduct `b7364ee` / tree `dae6252`で、provider／URI由来のblankまたは240 UTF-16単位超の表示名をdecode公開前にarchive-compatibleへ正規化する。切断後のblank再評価とsurrogate pair分断防止をarchive round-trip regressionへ固定し、merged #68 runtime/test/docs、PCM bytes、schema、provider I/Oや上記画面planは変更しない。hosted Android CIがmerge gate。
+
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`）はPR #67で`main@3de1cc5`へ統合済み。Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、PR #58 productもそのexact source/testを保持する。
 
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。

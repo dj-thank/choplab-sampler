@@ -482,6 +482,7 @@ private fun PerformanceWorkspace(
             state = state,
             viewModel = viewModel,
             condensed = true,
+            allowVerticalDragPassThrough = metrics.performanceWorkspaceNeedsScroll,
             waveformTapOverride = viewModel::playSourceFrom,
             modifier = Modifier
                 .fillMaxWidth()
@@ -3662,6 +3663,7 @@ private fun SourceEditorWaveform(
     modifier: Modifier,
     condensed: Boolean = false,
     selectSliceOnly: Boolean = false,
+    allowVerticalDragPassThrough: Boolean = false,
     waveformTapOverride: ((Int) -> Unit)? = null,
 ) {
     val audio = state.currentAudio
@@ -3700,6 +3702,7 @@ private fun SourceEditorWaveform(
                 compactViewportControls = !condensed,
                 showTimeReadout = !condensed,
                 showInteractionHint = !condensed || selectSliceOnly,
+                allowVerticalDragPassThrough = allowVerticalDragPassThrough,
                 modifier = Modifier.fillMaxSize(),
             )
         }

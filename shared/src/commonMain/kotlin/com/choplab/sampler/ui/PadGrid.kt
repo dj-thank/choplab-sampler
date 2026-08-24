@@ -56,6 +56,7 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.bankRoleFor
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -140,6 +141,14 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                 }
                 null -> {
                     val generation = acquireGate()
+                    // Start the minimum-preview clock at the actual trigger, not at pointer-up.
+                    // The waiter below can survive into the next gesture, where the generation
+                    // token prevents its eventual release from cutting a newer retrigger.
+                    val minimumPreview = gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        delay(SCROLL_GATE_MINIMUM_PREVIEW_MILLIS)
+                    }
+                    var releasedByPhysicalUp = false
+                    var longPressEligible = true
                     try {
                         val remainingLongPressMillis =
                             (viewConfiguration.longPressTimeoutMillis -
@@ -147,6 +156,14 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                         val releasedBeforeLongPress = withTimeoutOrNull(remainingLongPressMillis) {
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Main)
+                                val primaryChange = event.changes.firstOrNull { it.id == down.id }
+                                if (
+                                    primaryChange != null &&
+                                    (primaryChange.position - down.position).getDistance() >
+                                    viewConfiguration.touchSlop
+                                ) {
+                                    longPressEligible = false
+                                }
                                 // Activation settled ownership. Consume at Main before the parent
                                 // can turn later movement into a scroll/cancellation.
                                 event.changes.forEach { it.consume() }
@@ -156,7 +173,10 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                             }
                         }
                         if (releasedBeforeLongPress == null) {
-                            onLongPress()
+                            // Movement does not surrender GATE ownership, but it does disqualify
+                            // the stationary long-press action so dragging off a held PAD cannot
+                            // unexpectedly replace the grid with TRIM.
+                            if (longPressEligible) onLongPress()
                             // The callback normally replaces this node with TRIM. If it does not,
                             // retain ownership until the actual pointer-up just as a long tap does.
                             while (true) {
@@ -165,10 +185,26 @@ private suspend fun PointerInputScope.detectDeferredGateGestures(
                                 if (event.changes.all { !it.pressed }) break
                             }
                         }
+                        releasedByPhysicalUp = true
                     } finally {
-                        // Pointer-input replacement/cancellation after activation still releases
-                        // exactly once; a superseded short-preview generation cannot cut a retrigger.
-                        releaseGateIfCurrent(generation)
+                        if (releasedByPhysicalUp) {
+                            // A release just beyond the 120 ms activation boundary must still get
+                            // the same 80 ms audible minimum measured from its actual trigger.
+                            // UNDISTPATCHED enters the finally-protected waiter before this gesture
+                            // can hand control back to a replacement pointer-input node.
+                            gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                try {
+                                    minimumPreview.join()
+                                } finally {
+                                    releaseGateIfCurrent(generation)
+                                }
+                            }
+                        } else {
+                            // Pointer-input replacement/cancellation after activation still releases
+                            // exactly once; a superseded preview generation cannot cut a retrigger.
+                            minimumPreview.cancel()
+                            releaseGateIfCurrent(generation)
+                        }
                     }
                 }
             }

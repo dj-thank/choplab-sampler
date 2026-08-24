@@ -79,6 +79,7 @@ import kotlin.math.roundToInt
  * transforms begin only after horizontal single-pointer intent or multi-pointer transform slop.
  */
 private suspend fun PointerInputScope.detectWaveformTransformGestures(
+    allowVerticalDragPassThrough: Boolean,
     onGesture: (centroid: Offset, pan: Offset, zoom: Float) -> Unit,
 ) {
     awaitEachGesture {
@@ -115,9 +116,15 @@ private suspend fun PointerInputScope.detectWaveformTransformGestures(
                         verticalMotion > touchSlop &&
                         verticalMotion >= horizontalMotion
                     ) {
-                        // Stop observing this gesture without consuming its movement. The ancestor
-                        // verticalScroll sees this same Main-pass change and can claim it.
-                        return@awaitEachGesture
+                        if (allowVerticalDragPassThrough) {
+                            // Stop observing this gesture without consuming its movement. The
+                            // large-text CHOP verticalScroll sees this Main-pass change and claims it.
+                            return@awaitEachGesture
+                        }
+                        // With no scroll ancestor, claim the vertical drag as a no-op transform.
+                        // Consuming its movement cancels the sibling tap detector, preventing a
+                        // drag in normal CHOP or PAD trim from seeking or moving a boundary on up.
+                        transformClaimed = true
                     }
                 }
 
@@ -163,6 +170,7 @@ fun WaveformEditor(
     maximumZoom: Float = 32f,
     zoomFocusFrame: Int? = null,
     viewportResetKey: Any? = null,
+    allowVerticalDragPassThrough: Boolean = false,
     readoutColor: Color? = null,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
@@ -269,8 +277,15 @@ fun WaveformEditor(
                             },
                         )
                     }
-                    .pointerInput(audio.id, visibleStart, visibleFrames) {
-                        detectWaveformTransformGestures { centroid, pan, zoomChange ->
+                    .pointerInput(
+                        audio.id,
+                        visibleStart,
+                        visibleFrames,
+                        allowVerticalDragPassThrough,
+                    ) {
+                        detectWaveformTransformGestures(
+                            allowVerticalDragPassThrough = allowVerticalDragPassThrough,
+                        ) { centroid, pan, zoomChange ->
                             if (canvasSize.width <= 0) return@detectWaveformTransformGestures
                             val focusFrame = waveformFrameAtX(
                                 centroid.x,
