@@ -78,7 +78,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 16:20 JST — Follow-up PR opened for all five review repairs; review replies are posted and hosted checks are the remaining integration gate.
 - [x] 2026-08-24 16:43 JST — Hosted Android compile/unit/lint/APK gates passed; instrumentation exposed the test proxy returning null from `equals`. The proxy now implements identity `equals`/`hashCode`/`toString`; refreshed device execution is pending.
 - [x] 2026-08-24 — Review follow-up rebased onto `main@a930da4`, retaining PRs #54/#55/#56/#57/#59/#60/#63; 39 Python tests, 394-candidate public-surface scan, six XML parses and diff checks pass locally.
-- [x] 2026-08-24 — Review thread `3841779683` repaired at reachable product `4c6fd0f` / tree `1acbbe2`: only large-text CHOP/BEAT scroll-body PADs defer actions to completed tap; parent swipes dispatch zero controller calls and normal PADs retain press-down playback.
+- [x] 2026-08-24 — Review threads `3841779683` / GATE follow-up repaired at reachable product `6313e40` / tree `224b3ff`: large-text CHOP/ONE SHOT commit on completed tap, GATE activates after a 120 ms scroll window and releases at real pointer-up, pre-activation parent swipes dispatch zero controller calls, and normal PADs retain press-down playback.
 - [ ] Run hosted Android unit/androidTest compilation and the three focused pointer regressions; local Gradle 9.7.1 acquisition is blocked by the unavailable distribution host.
 - [ ] Independent review, GitHub integration and closeout.
 
@@ -92,12 +92,12 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - A real-activity first-screen test is nondeterministic after data-preserving installs because autosave may correctly restore CHOP or BEAT. The new in-memory shared-deck fixture is deterministic and never touches retained user projects.
 - A 640 × 360 dp / large-text CHOP split cannot fit its fixed left-side rows even before allocating waveform space. The large-text policy therefore switches CHOP to the same explicit-height stacked scroll boundary while normal landscape remains split.
 - Compact landscape intentionally omits the separate status strip; large text also hides the original bank/BPM header label. A dedicated inline-header status policy is required so recording and transient feedback never disappear.
-- A PAD `onPress` runs before its parent resolves scroll touch slop. In the two bounded large-text PAD bodies, model/audio actions therefore belong to completed `onTap`; visual pressed state may begin sooner, but a consumed drag must dispatch no controller action.
+- A PAD `onPress` runs before its parent resolves scroll touch slop. In the two bounded large-text PAD bodies, CHOP/ONE SHOT model/audio actions therefore belong to completed `onTap`. Performance GATE waits 120 ms for parent cancellation, then begins while the pointer is still held and releases only at the actual pointer-up; a shorter completed tap remains an intentional preview. Visual pressed state may begin sooner, but a drag consumed before activation dispatches no controller action.
 
 ## Validation evidence
 
 - Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
-- Review-repair source: reachable commit `4c6fd0f3858f90c1d6c3571fc3da606f3ce207fd`, tree `1acbbe202b0c2791d66e6bfdb16514061e1dc165`, retaining base `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`; the final follow-up commit only binds documentation to this source. Static policy, public-surface, XML and diff gates pass; hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
+- Review-repair source: reachable commit `36f9f8ea4ead522676238b73a26aaf278c42f15f`, tree `224b3ffd663d82d101864c1d71f802ce03c76ea3`, integrating base `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`; the final follow-up commit only binds documentation to this source. Static policy, public-surface, XML and diff gates pass; hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
 - Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
 - Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
@@ -110,7 +110,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - 2026-08-24 — Permit a large-text-only two-row stage strip and scrollable first-entry body. Fixed-console identity does not justify clipped accessibility content.
 - 2026-08-24 — Extend bounded body scrolling to compact-landscape CAPTURE and large-text BEAT quick/detail while retaining normal-text fixed/responsive layouts and fixed global chrome.
 - 2026-08-24 — Use the same bounded large-text body policy for CHOP and preserve compact-landscape status in the fixed header instead of restoring a space-consuming status strip.
-- 2026-08-24 — Defer PAD model/audio actions to completed tap only inside large-text CHOP/BEAT scroll bodies; preserve press-down performance everywhere else.
+- 2026-08-24 — Commit CHOP/ONE SHOT on completed tap inside large-text scroll bodies; give GATE a bounded 120 ms parent-cancel window followed by a real hold through pointer-up; preserve press-down performance everywhere else.
 - 2026-08-24 — Keep existing loaded-source workspaces unchanged unless fresh post-implementation screenshots show a regression.
 
 ## Validation log
