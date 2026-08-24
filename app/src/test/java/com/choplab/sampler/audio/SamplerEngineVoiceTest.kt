@@ -241,6 +241,52 @@ class SamplerEngineVoiceTest {
     }
 
     @Test
+    fun runtimeMixesFinalReturnedPadSampleBeforeRetirement() {
+        val sampleRate = 8_000
+        val audio = PcmAudio(
+            name = "terminal-sample.wav",
+            samples = ShortArray(512) { frame ->
+                when {
+                    frame % 5 == 0 -> 12_000
+                    frame % 3 == 0 -> -9_000
+                    else -> (frame * 29 - 6_000).coerceIn(-12_000, 12_000).toShort()
+                }
+            },
+            sampleRate = sampleRate,
+        )
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = 16,
+            endFrame = 496,
+            pitchSemitones = 3f,
+            tone = 0.35f,
+            gain = 0.7f,
+            reverse = true,
+        )
+        val voice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(pad), sampleRate)
+        var renderedFrames = 0
+        var terminalMix = 0f
+
+        while (voice.active) {
+            terminalMix = mixVoiceSampleAndRetire(
+                voice = voice,
+                outputSampleRate = sampleRate,
+                monoMix = 0f,
+            )
+            renderedFrames++
+        }
+
+        val terminalPcm = (
+            SamplerDspPrimitives.softLimit(terminalMix).coerceIn(-1f, 1f) * Short.MAX_VALUE
+        ).toInt()
+        assertEquals(403, renderedFrames)
+        assertEquals(-61, terminalPcm)
+        assertFalse(voice.active)
+        assertTrue(voice.finished)
+    }
+
+    @Test
     fun realtimeSnapshotNeutralizesNonFinitePadControls() {
         val audio = PcmAudio(
             name = "non-finite.wav",

@@ -2,13 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Android import-name persistence candidate — 2026-08-24
+## Android realtime PAD terminal-sample retirement candidate — 2026-08-24
 
-- Source: reachable product commit `a2cb6b27ccf10f17af1bcd3c30969ef212e2977c`, tree `e25b77382985229ef4ddccbd231524549963033d`, based on the two-commit candidate rooted directly at merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`; the final follow-up is documentation-only.
-- Contract: every display name published by Android decode is nonblank and no longer than `ProjectLimits.MAX_ASSET_NAME_CHARS` UTF-16 code units. Provider `DISPLAY_NAME` remains preferred; blank values fall back to the URI segment and then `sample`. Bounding never leaves a high surrogate without its low-surrogate pair.
-- Regression: a name whose supplementary character straddles code-unit 240 is shortened before that pair, remains nonblank, and round trips exactly through `ProjectArchiveCodec`; blank inputs and an overlong input whose first 240 units are whitespace both fall back to persistable names.
-- Local evidence: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 39/39; `python3 scripts/check_public_surface.py` passed 394 candidates; `git diff --check` passed. `scripts/validate_project.sh` reached Gradle after its policy phases but the default cache is sandbox-inaccessible; a writable offline cache could not provision uncached Gradle 9.7.1, so no Kotlin compilation/test pass is claimed locally.
-- Gate: source/static candidate only; hosted Android unit/lint/build checks are required before merge. No device/provider import, autosave recovery, audible output, publication or Human result is claimed.
+- Product source: reachable integration commit `5dd3d6613fcc99577996a28fabb06e7f7615b02f`, tree `c6a7e9b9cfdaa1f109da6fe0b568424c406e9170`, with parents prior reviewed PR head `72dbaaa1b79d1c0f92b4213c65f915908b3e894e` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`. The later evidence commit changes documentation only.
+- Main preservation: `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt` retain the exact original product blobs `de686ba` / `9d51556`; merged #66 timing and merged #67 Desktop import-boundary source/tests/docs are retained.
+- Contract: for each active pooled PAD voice, the Android callback mixes the float returned by `Voice.render()` before deactivating a voice that became finished in that call. Existing loop-frame publication remains limited to a still-active monitored LOOP voice.
+- Regression: `SamplerEngineVoiceTest.runtimeMixesFinalReturnedPadSampleBeforeRetirement` uses the established reverse/pitch/tone fixture and requires 403 frames, terminal limited PCM `-61`, then `active=false` and `finished=true`.
+- Realtime review: `mixVoiceSampleAndRetire` uses only the existing `Voice`, primitive arguments and a primitive return. No collection, lambda, lock, I/O, log, UI call or native transition was added to the callback.
+- Local PASS: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` ran 39/39; `python3 scripts/check_public_surface.py` scanned 394 candidates; `git diff --check` passed. A separate deterministic numeric reproduction confirmed 403 frames and terminal PCM `-61`.
+- Local prerequisite ceiling: `./scripts/validate_project.sh` passed its public-surface/executable checks, then could not create the Gradle distribution lock's parent directory under the default cache. With a writable task-local cache, `./gradlew :app:testDebugUnitTest --offline --no-daemon --max-workers=1 --no-watch-fs` could not fetch the uncached Gradle 9.7.1 distribution because the network is unreachable. No Kotlin/Gradle PASS is claimed locally.
+- Gate: source/static candidate. Hosted Android CI is required before `LOCAL_PASS`; device listening, audio quality/latency, provider/public release and Human evidence remain separate.
 
 ## Desktop import sample-rate admission candidate — 2026-08-24
 
