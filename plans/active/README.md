@@ -12,7 +12,7 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**独立保守delta:** reachable integration product `3e2cd38`（tree `01d1062`、`main@3de1cc5`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `1c4bf4c`の全CI／再review PASSを保持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
+**独立保守delta:** reachable integration product `d8a2b63`（tree `365cf12`、`main@2786c37`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `0a9def1`の全CI／再review PASSを保持し、merged #68 realtime PAD bytesも維持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 
