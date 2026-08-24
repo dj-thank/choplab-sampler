@@ -91,9 +91,9 @@ class PadPcmRendererTest {
     }
 
     @Test
-    fun reverseLoopKeepsTheLegacyRenderBoundary() {
+    fun reverseLoopKeepsTheLegacyNonIntegralRenderBoundary() {
         val oneShot = PadPcmRenderer.render(
-            PadModel(0, audio, 100, 102, pitchSemitones = -12f, reverse = true),
+            PadModel(0, audio, 100, 102, pitchSemitones = -5f, reverse = true),
         )
         val loop = PadPcmRenderer.render(
             PadModel(
@@ -101,14 +101,15 @@ class PadPcmRendererTest {
                 audio = audio,
                 startFrame = 100,
                 endFrame = 102,
-                pitchSemitones = -12f,
+                pitchSemitones = -5f,
                 reverse = true,
                 playMode = PadPlayMode.LOOP,
             ),
         )
 
-        assertEquals(3, oneShot.size)
-        assertEquals(4, loop.size)
+        assertEquals(2, oneShot.size)
+        assertEquals(3, loop.size)
+        // Bind main's direct-position boundary instead of introducing a wrapped cursor here.
         assertEquals(0.toShort(), loop.last())
     }
 
