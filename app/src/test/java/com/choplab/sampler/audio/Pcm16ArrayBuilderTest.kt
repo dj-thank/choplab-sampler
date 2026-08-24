@@ -3,6 +3,7 @@ package com.choplab.sampler.audio
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectLimits
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.persistableAudioDisplayName
 import com.choplab.sampler.persistence.ProjectArchiveCodec
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream

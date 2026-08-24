@@ -6,17 +6,21 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceを統合し、PR #62はcompact-landscape CAPTURE、large-text BEAT、autosave非依存instrumentation、ONE SHOT/GATE arbitration、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsを統合済み。PR #70までの`main@33308814`をmain-side parentに持つfollow-up product `c2e3aee` / tree `ec8702b`は、large-text CHOP、inline status、空CHOP holdに加え、actual-trigger基準の80 ms GATE preview、activation後のpointer ownershipとmovement時TRIM抑止、retrigger-safe release、scroll-context限定の波形vertical pass-throughを保持する。#67のDesktop import、#68のrealtime terminal sample、#70のAndroid import名境界もexact source/testで維持する。static gateはPASSし、hosted CI・exact-head review・thread closeout待ち。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52でfirst entryとDesktop coherenceを統合し、PR #62はcompact-landscape CAPTURE、large-text BEAT、autosave非依存instrumentation、ONE SHOT/GATE arbitration、mode変更時のpointer再起動、compact LOOP/DRM/VOX semanticsを統合済み。PR #65/#70までを含む`main@3072eedd`をmain-side parentに持つfollow-up product `79c2a8b` / tree `ba39013`は、large-text CHOP、inline status、空CHOP holdに加え、actual-trigger基準の80 ms GATE preview、activation後のpointer ownershipとmovement時TRIM抑止、retrigger-safe release、scroll-context限定の波形vertical pass-throughを保持する。#65のDesktop transport readiness、#67のDesktop import、#68のrealtime terminal sample、#70のAndroid import名境界もexact source/testで維持する。static gateはPASSし、hosted CI・exact-head review・thread closeout待ち。
 
-**独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
+**直近の統合保守:** iOS import/recording exclusionは録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-upとしてPR #60 / `main@5430d0d`へ統合済み。macOS CIと物理録音は別gateのまま。
 
-**独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
+**直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**独立audio保守delta:** Android realtime PAD terminal-sample修正はproduct `5dd3d66` / tree `c6a7e9b`からPR #68でmainへ統合済み。返却sampleをmixしてからpooled Voiceをretireし、#66 timingと#67 Desktop import境界を保持する。PR #58 product `c2e3aee`もexact runtime/test blobs、403-frame / PCM `-61` regression、allocation-free callback契約を保持する。Python 39/39・public 394・diffはPASS、current PR hosted Android gate待ち。
+**直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
-**独立したAndroid import名境界修正:** product `b7364ee` / tree `dae6252`はPR #70で`main@33308814`へ統合済み。provider／URI由来のblankまたは240 UTF-16単位超の表示名をdecode公開前にarchive-compatibleへ正規化し、切断後のblank再評価とsurrogate pair分断防止をarchive round-trip regressionへ固定する。PR #58 product `c2e3aee`はそのexact source/test/docsとmerged #68を保持する。current PR hosted Android CIが残る。
+**独立audio保守delta:** Android realtime PAD terminal-sample修正はproduct `5dd3d66` / tree `c6a7e9b`からPR #68でmainへ統合済み。返却sampleをmixしてからpooled Voiceをretireし、#66 timingと#67 Desktop import境界を保持する。PR #58 product `79c2a8b`もexact runtime/test blobs、403-frame / PCM `-61` regression、allocation-free callback契約を保持する。Python 39/39・public 394・diffはPASS、current PR hosted Android gate待ち。
 
-**独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`）はPR #67で`main@3de1cc5`へ統合済み。Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、PR #58 productもそのexact source/testを保持する。
+**独立したAndroid import名境界修正:** product `b7364ee` / tree `dae6252`はPR #70でmainへ統合済み。provider／URI由来のblankまたは240 UTF-16単位超の表示名をdecode公開前にarchive-compatibleへ正規化し、切断後のblank再評価とsurrogate pair分断防止をarchive round-trip regressionへ固定する。PR #58 product `79c2a8b`は`main@3072eedd`上でそのexact source/test/docsとmerged #65/#68を保持する。current PR hosted Android CIが残る。
+
+**独立したshared／Desktop import名境界修正:** integration product `e0d3fa1` / tree `1558c4a`はprior clean headとmerged `main@3072eed`を統合し、上記Android名規則をshared production seamへ移してDesktop `File.name`にも同じ非空・240 UTF-16単位・post-truncate-blank fallback・surrogate-safe契約を適用する。#65 transport blobsと#68 runtime/testをexact保持し、shared common contractとDesktop archive read-back回帰を追加。旧headは全CI／clean review PASS、最新main headのhosted再実行がmerge gate。
+
+**独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 
