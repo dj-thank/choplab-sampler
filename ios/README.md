@@ -7,6 +7,8 @@ The app is a native SwiftUI + AVFoundation implementation with:
 - user-selected audio copied into the app's private Application Support directory;
 - 16 PAD playback with per-PAD normalized chop ranges;
 - source playback, recording, `ALL STOP`, and a local BPM control;
+- recording-owned source safety: import is disabled and rejected while recording,
+  while picker cancellation or provider failure leaves recording and the current source intact;
 - no bundled user/third-party audio, credentials, signing keys, or network upload.
 
 ## Build locally on macOS

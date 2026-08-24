@@ -12,6 +12,18 @@ This snapshot records a focused follow-up to the bounded audio-import milestone.
 - Local evidence: `scripts/doctor.sh` found Java 17 and a clean Git worktree but no Android SDK/ADB. `python3 scripts/check_public_surface.py` passed over 389 candidates and `git diff --check` passed. The focused Gradle command and `scripts/validate_project.sh` reached the wrapper but could not create/use a Gradle 9.7.1 distribution in this sandbox; no Gradle-test pass is claimed locally.
 - Gate ceiling: source/static evidence only. Hosted Android/Windows/shared CI must execute the focused suites before this delta may inherit `LOCAL_PASS`; no device, audio-quality, provider, public-release or `HUMAN_GO` evidence is inferred.
 
+## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
+
+This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
+
+- Observed at: `2026-08-24T16:37+09:00`.
+- Source state: branch product commit `6ceb4d26c862f4cfe645ec23029a466c6ebe27a5`, tree `a9abb15ef1fb3f81d5104ece0a9d341ee2a7383d`, based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the canonical checkout remains untouched.
+- Import ownership: `SamplerStore` rejects a file-import result while recording before staging or replacing any source. The import button is disabled for the same state, so UI and store admission agree.
+- Non-destructive picker outcome: cancellation and provider failure update a distinct status without calling `stopAll`; the current source and any active recording remain owned by their existing lifecycle. A late successful picker result cannot replace the recording source.
+- Focused tests: new MainActor store tests bind recording admission and prove cancellation/error preserve an already imported source name. Existing source repository tests continue to cover bounded copy and promotion.
+- Local evidence: 23 Python policy tests, public-surface scan over 390 candidates and `git diff --check` PASS. Linux has no Xcode/Simulator, and the Gradle wrapper distribution was unavailable locally, so Swift compilation, Simulator execution, microphone behavior and audible output remain for hosted macOS/device verification.
+- Gate ceiling: source-level local policy evidence only; no `DEVICE_PASS`, signed iOS build, recording-quality, route-loss or `HUMAN_GO` claim.
+
 ## Previous snapshot — 2026-08-24 desktop recorder startup cleanup candidate
 
 - Observed at: `2026-08-24T16:36+09:00`.

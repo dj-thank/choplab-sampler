@@ -175,3 +175,14 @@ struct PlaybackLease {
         generation == candidate
     }
 }
+
+enum SourceImportAdmission: Equatable {
+    case allowed
+    case rejectedWhileRecording
+}
+
+enum SourceImportPolicy {
+    static func admission(isRecording: Bool) -> SourceImportAdmission {
+        isRecording ? .rejectedWhileRecording : .allowed
+    }
+}
