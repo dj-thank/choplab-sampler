@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52/#62のscreen-flowを基礎に、exact `main@4f56a69`を第二親へ統合したproduct `3b5dd59` / tree `4985a8c`がcurrent executable anchor。従来のpointer/rotation修復に加え、normal BEAT touch、stopped-source CHOP touchとDesktop keyboardもpaired ownershipへ統一する。CHOP assigned GATEはcapture seamを迂回してownership callbackへ進む。Androidはmailbox受理後だけtokenを発行し、sequencer/touch voiceを同じlock-free sequenceで識別してexact voiceだけreleaseする。Desktopはaudio start成功後にtokenをactive voiceへ保持し、stale physical releaseも新しいvoiceを残して自voiceだけcloseする。#65 transport、#67 import rate、#68 terminal sample、#71 import名、#73/#75 recorder取消と#74 reverse non-loop rendererを維持する。predecessor `17a959a`のAndroid instrumentationだけがnormal-font fixtureの不可能なscroll requestで失敗し、current fixtureはlarge textだけscrollする。Python 39/39・public 398・XML/diff PASSでfresh hosted CI・exact-head review待ち。threadは未解決のまま保持する。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52/#62のscreen-flowを基礎に、exact `main@4f56a69`を第二親へ統合したproduct `3b5dd59` / tree `4985a8c`がcurrent executable anchor。従来のpointer/rotation修復に加え、normal BEAT touch、stopped-source CHOP touchとDesktop keyboardもpaired ownershipへ統一する。CHOP assigned GATEはcapture seamを迂回してownership callbackへ進む。Androidはmailbox受理後だけtokenを発行し、sequencer/touch voiceを同じlock-free sequenceで識別してexact voiceだけreleaseする。Desktopはaudio start成功後にtokenをactive voiceへ保持し、stale physical releaseも新しいvoiceを残して自voiceだけcloseする。#65 transport、#67 import rate、#68 terminal sample、#71 import名、#73/#75 recorder取消と#74 reverse non-loop rendererを維持する。predecessor `17a959a`のAndroid instrumentationだけがnormal-font fixtureの不可能なscroll requestで失敗し、current fixtureはlarge textだけscrollする。Python 39/39・exact-head public 399・XML/diff PASSでfresh hosted CI・exact-head re-review待ち。review threadは31/31解決済み。
 
 **直近の統合保守:** iOS import/recording exclusionは録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-upとしてPR #60 / `main@5430d0d`へ統合済み。macOS CIと物理録音は別gateのまま。
 
@@ -20,7 +20,7 @@
 
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。
 
-**独立audio保守delta:** Android realtime PAD terminal-sample修正はproduct `5dd3d66` / tree `c6a7e9b`からPR #68でmainへ統合済み。PR #58 product `3b5dd59`はその処理とexact parity testを保持し、runtimeへallocation-free per-voice ownership filterだけを追加する。Python 39/39・public 398・diffはPASS、current PR hosted Android gate待ち。
+**独立audio保守delta:** Android realtime PAD terminal-sample修正はproduct `5dd3d66` / tree `c6a7e9b`からPR #68でmainへ統合済み。PR #58 product `3b5dd59`はその処理とexact parity testを保持し、runtimeへallocation-free per-voice ownership filterだけを追加する。Python 39/39・exact-head public 399・diffはPASS、current PR hosted Android gate待ち。
 
 **独立したAndroid import名境界修正:** product `b7364ee` / tree `dae6252`はPR #70でmainへ統合され、その契約はPR #71のshared seamへ移行済み。PR #58 product `3b5dd59`はexact `main@4f56a69`を統合し、#71 exact source/test/docsとmerged #65/#68/#73/#74/#75を保持する。current PR hosted Android CIが残る。
 
