@@ -1,6 +1,7 @@
 package com.choplab.sampler.audio
 
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -28,6 +29,88 @@ class PadPcmRendererTest {
         val reverse = PadPcmRenderer.render(PadModel(0, audio, 0, audio.frameCount, gain = 1f, reverse = true))
 
         assertTrue(abs(forward[200].toInt() - reverse[reverse.lastIndex - 200].toInt()) < 32)
+    }
+
+    @Test
+    fun reverseResamplingStopsAtTheSameFrameAsTheRealtimeCursor() {
+        val startFrame = 100
+        val endFrame = 164
+        val outputSampleRate = 60_000
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = startFrame,
+            endFrame = endFrame,
+            gain = 1f,
+            reverse = true,
+        )
+        val sourceStep = SamplerDspPrimitives.sourceStep(
+            pitchSemitones = pad.pitchSemitones,
+            sourceSampleRate = audio.sampleRate,
+            outputSampleRate = outputSampleRate,
+        )
+        val cursor = VoicePlaybackCursor(
+            startFrame = startFrame,
+            endFrame = endFrame,
+            reverse = true,
+            playMode = PadPlayMode.ONE_SHOT,
+        )
+        var realtimeFrameCount = 0
+        while (!cursor.finished) {
+            realtimeFrameCount++
+            cursor.advance(sourceStep)
+        }
+
+        val rendered = PadPcmRenderer.render(pad, outputSampleRate)
+
+        assertEquals(79, realtimeFrameCount)
+        assertEquals(realtimeFrameCount, rendered.size)
+        assertTrue(rendered.last() != 0.toShort())
+    }
+
+    @Test
+    fun reverseOneShotUsesCursorRoundingAtTheStartBoundary() {
+        val shortAudio = PcmAudio(
+            name = "short",
+            samples = shortArrayOf(8_000, 16_000),
+            sampleRate = 8_000,
+        )
+        val rendered = PadPcmRenderer.render(
+            PadModel(
+                globalIndex = 0,
+                audio = shortAudio,
+                startFrame = 0,
+                endFrame = 2,
+                pitchSemitones = -12f,
+                reverse = true,
+            ),
+            outputSampleRate = 48_000,
+        )
+
+        assertEquals(12, rendered.size)
+    }
+
+    @Test
+    fun reverseLoopKeepsTheLegacyNonIntegralRenderBoundary() {
+        val oneShot = PadPcmRenderer.render(
+            PadModel(0, audio, 100, 102, pitchSemitones = -5f, reverse = true),
+        )
+        val loop = PadPcmRenderer.render(
+            PadModel(
+                globalIndex = 0,
+                audio = audio,
+                startFrame = 100,
+                endFrame = 102,
+                pitchSemitones = -5f,
+                reverse = true,
+                playMode = PadPlayMode.LOOP,
+            ),
+        )
+
+        assertEquals(2, oneShot.size)
+        assertEquals(3, loop.size)
+        // Bind main's direct-position boundary instead of introducing a wrapped cursor here.
+        assertEquals(0.toShort(), loop.last())
     }
 
     @Test
