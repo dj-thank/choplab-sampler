@@ -1,11 +1,21 @@
 # Project state
 
-## Current snapshot — 2026-08-24 iOS import/recording exclusion local candidate
+## Current snapshot — 2026-08-24 desktop transport step-zero ordering candidate
+
+- Observed at: `2026-08-24T17:21+09:00`.
+- Source state: branch `codex/choplab-desktop-transport-step0`, product commit `d83308fd4730b530d11aa157b39225f1e2262ff0`, tree `6f628c89c2aede3de0dc1e164877e5a23c4e5ed5`, based on `main@5430d0d91a4e19ca02170d0143378a5d7917776b`; other worktrees remain untouched.
+- Root cause: the Windows transport worker could synchronously reach `onTransportStep(0)` after `Thread.start()` but before `DesktopSamplerController` published `transportPlaying=true`. The controller then rejected the callback as stale, delaying audible playback until step 1 while the UI already showed step 0.
+- Repair: `DesktopTransport.start` now executes a caller readiness barrier before starting its worker. Normal start and scratch-return start publish playing/current-step state through one controller helper, so Java's thread-start happens-before boundary makes step 0 observable exactly once rather than scheduler-dependent.
+- Regression scope: a transport test records that the readiness barrier precedes step 0; a controller test uses one audible step-0 PAD and verifies one hit plus coherent stop state. Tests use fake audio only and do not open Java Sound hardware.
+- Fresh local checks: Python policy tests 26/26, public-surface scan over 392 candidates, six Android XML parses, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle tests could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required.
+- Gate ceiling: source/static candidate only. Windows scheduling beyond the deterministic contract, audible timing/latency, device removal, provider, public artifact, and Human acceptance are not inferred.
+
+## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 
 This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
 
 - Observed at: `2026-08-24T16:37+09:00`.
-- Source state: branch product commit `6ceb4d26c862f4cfe645ec23029a466c6ebe27a5`, tree `a9abb15ef1fb3f81d5104ece0a9d341ee2a7383d`, based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the canonical checkout remains untouched.
+- Source state: branch product commit `6ceb4d26c862f4cfe645ec23029a466c6ebe27a5`, tree `a9abb15ef1fb3f81d5104ece0a9d341ee2a7383d`, based on merged `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; subsequently integrated as PR #60 at `main@5430d0d91a4e19ca02170d0143378a5d7917776b`.
 - Import ownership: `SamplerStore` rejects a file-import result while recording before staging or replacing any source. The import button is disabled for the same state, so UI and store admission agree.
 - Non-destructive picker outcome: cancellation and provider failure update a distinct status without calling `stopAll`; the current source and any active recording remain owned by their existing lifecycle. A late successful picker result cannot replace the recording source.
 - Focused tests: new MainActor store tests bind recording admission and prove cancellation/error preserve an already imported source name. Existing source repository tests continue to cover bounded copy and promotion.
@@ -15,11 +25,11 @@ This snapshot records a bounded iOS preview safety correction. It does not promo
 ## Previous snapshot — 2026-08-24 desktop recorder startup cleanup candidate
 
 - Observed at: `2026-08-24T16:36+09:00`.
-- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; the other worktrees remain untouched.
+- Source state: branch product commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, based on `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; subsequently integrated as PR #59 at `main@364ccde764b88f0bb79e10b8aaeb8284a5c069cc`.
 - Recorder lifecycle: after a Windows `TargetDataLine` is acquired, every setup failure now closes that exact local line before clearing recorder state. In particular, an exception from `TargetDataLine.start()` after a successful `open()` cannot leak the native capture line or leave a stale output/worker/failure reference.
 - Regression scope: a deterministic proxy line exercises successful `open`, failing `start`, exact-once `close`, idle state, temporary-WAV deletion, and inert follow-up `stop` / `close`, without opening recording hardware.
-- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
-- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
+- Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused local Gradle test was blocked by the uncached distribution; merge/provider evidence remains revision-bound separately.
+- Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred from the local receipt.
 
 ## Previous snapshot — 2026-08-24 guided first-screen local candidate
 
