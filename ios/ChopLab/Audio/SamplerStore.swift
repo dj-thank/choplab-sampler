@@ -2,6 +2,14 @@ import AVFoundation
 import Combine
 import Foundation
 
+protocol RecordingPermissionSession {
+    var recordPermission: AVAudioSession.RecordPermission { get }
+
+    func requestRecordPermission(_ response: @escaping (Bool) -> Void)
+}
+
+extension AVAudioSession: RecordingPermissionSession {}
+
 @MainActor
 final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     let pads = PadGridPolicy.cells()
@@ -26,15 +34,21 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private let sourcePlayer = AVAudioPlayerNode()
     private var padPlayers: [AVAudioPlayerNode] = []
     private let sourceRepository: SourceFileRepository
+    private let recordingPermissionSession: RecordingPermissionSession
     private var sourceFile: AVAudioFile?
     private var activeSourceURL: URL?
     private var recorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var recordingPermissionLease = RecordingPermissionLease()
     private var playbackLease = PlaybackLease()
     private var padRanges = Array(repeating: SliceRange(start: 0, end: 1), count: 16)
 
-    init(sourceRepository: SourceFileRepository = SourceFileRepository()) {
+    init(
+        sourceRepository: SourceFileRepository = SourceFileRepository(),
+        recordingPermissionSession: RecordingPermissionSession = AVAudioSession.sharedInstance()
+    ) {
         self.sourceRepository = sourceRepository
+        self.recordingPermissionSession = recordingPermissionSession
         super.init()
         engine.attach(sourcePlayer)
         engine.connect(sourcePlayer, to: engine.mainMixerNode, format: nil)
@@ -163,16 +177,21 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func startRecording() {
-        let session = AVAudioSession.sharedInstance()
+        let permissionGeneration = recordingPermissionLease.begin()
+        let session = recordingPermissionSession
         switch session.recordPermission {
         case .granted:
             beginRecording()
         case .denied:
             statusMessage = "録音権限が必要です。設定から許可してください"
         case .undetermined:
+            statusMessage = "録音権限を確認しています"
             session.requestRecordPermission { [weak self] granted in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self,
+                          self.recordingPermissionLease.consume(permissionGeneration) else {
+                        return
+                    }
                     if granted {
                         self.beginRecording()
                     } else {
@@ -186,6 +205,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func stopRecording() {
+        recordingPermissionLease.invalidate()
         guard isRecording else { return }
         let activeRecorder = recorder
         activeRecorder?.delegate = nil
@@ -220,6 +240,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func stopAll() {
+        recordingPermissionLease.invalidate()
         recorder?.delegate = nil
         recorder?.stop()
         recorder = nil
@@ -355,5 +376,24 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
             try? FileManager.default.removeItem(at: recordingURL)
         }
         recordingURL = nil
+    }
+}
+
+struct RecordingPermissionLease {
+    private(set) var generation: UInt64 = 0
+
+    mutating func begin() -> UInt64 {
+        generation &+= 1
+        return generation
+    }
+
+    mutating func consume(_ candidate: UInt64) -> Bool {
+        guard candidate == generation else { return false }
+        generation &+= 1
+        return true
+    }
+
+    mutating func invalidate() {
+        generation &+= 1
     }
 }
