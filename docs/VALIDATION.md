@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Android realtime PAD terminal-sample retirement candidate — 2026-08-24
+
+- Product source: reachable commit `eabd06361252a6efca4d821de4010463529b8b59`, tree `54df8ea48f33eaecc5738fb6926e4d8ca3e98a31`, direct parent merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`. The later evidence commit changes documentation only.
+- Main preservation: before documentation, `git diff --name-only origin/main...HEAD` named only `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt`; merged #66 timing source/tests/docs are retained.
+- Contract: for each active pooled PAD voice, the Android callback mixes the float returned by `Voice.render()` before deactivating a voice that became finished in that call. Existing loop-frame publication remains limited to a still-active monitored LOOP voice.
+- Regression: `SamplerEngineVoiceTest.runtimeMixesFinalReturnedPadSampleBeforeRetirement` uses the established reverse/pitch/tone fixture and requires 403 frames, terminal limited PCM `-61`, then `active=false` and `finished=true`.
+- Realtime review: `mixVoiceSampleAndRetire` uses only the existing `Voice`, primitive arguments and a primitive return. No collection, lambda, lock, I/O, log, UI call or native transition was added to the callback.
+- Local PASS: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` ran 39/39; `python3 scripts/check_public_surface.py` scanned 394 candidates; `git diff --check` passed. A separate deterministic numeric reproduction confirmed 403 frames and terminal PCM `-61`.
+- Local prerequisite ceiling: `./scripts/validate_project.sh` passed its public-surface/executable checks, then could not create the Gradle distribution lock's parent directory under the default cache. With a writable task-local cache, `./gradlew :app:testDebugUnitTest --offline --no-daemon --max-workers=1 --no-watch-fs` could not fetch the uncached Gradle 9.7.1 distribution because the network is unreachable. No Kotlin/Gradle PASS is claimed locally.
+- Gate: source/static candidate. Hosted Android CI is required before `LOCAL_PASS`; device listening, audio quality/latency, provider/public release and Human evidence remain separate.
+
 ## Fractional pattern-frame timing candidate — 2026-08-24
 
 - Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.

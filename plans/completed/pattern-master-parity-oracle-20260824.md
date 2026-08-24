@@ -75,11 +75,17 @@ Offline WAV export retains every realtime PAD sample for a single pattern event 
 - [x] 2026-08-24 review follow-up — rebased onto `main@8fa1dac`, retained the count-resilient AVD result parser, and replaced absolute-deadline accumulation with realtime's carried-residual recurrence. Added early-event and terminal-WAV boundary regressions; remote exact head `786e2e7` then passed all hosted workflows and exact-head re-review.
 - [x] 2026-08-24 latest-main integration — preserved the four reviewed audio product/test files exactly in reachable product `0b75c71` / tree `18968b1` on `main@6b645ca`; fresh hosted execution remains required for the integrated head.
 
+## Post-completion correction — 2026-08-24
+
+- A later audit of merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc` found that this completed oracle exercised `SamplerEngine.Voice` directly, not the production Android pooled-PAD mixer. The callback still retired a newly finished PAD voice before adding that call's returned sample.
+- The bounded follow-up product commit `eabd06361252a6efca4d821de4010463529b8b59`, tree `54df8ea48f33eaecc5738fb6926e4d8ca3e98a31`, corrects the realtime ordering and binds the same terminal fixture at 403 frames / PCM `-61`. It preserves the merged #66 timing implementation and does not change the historical PR #49 offline bytes or evidence.
+- This addendum is source/static evidence until the follow-up's hosted Android gate passes; no prior Pixel or listening receipt is reused for the new runtime bytes.
+
 ## Discoveries
 
 - Primitive-level parity did not catch event-loop ordering; a voice can return a nonzero final sample and mark itself finished in the same call.
 - Boundary fade does not guarantee the cursor lands exactly on an envelope-zero frame for non-unity pitch ratios.
-- The existing offline loop treated `finished` as “returned no sample,” while realtime treats it as “this returned sample is last.”
+- The existing offline loop treated `finished` as “returned no sample,” while the direct realtime `Voice` oracle treated it as “this returned sample is last.” The production Android pooled-PAD mixer had the same ordering gap and required the later bounded follow-up above.
 - Event timing had a second independent mismatch: realtime retained fractional countdown remainder, while offline truncated event deadlines and rounded each bar separately. At 48 kHz / 92 BPM / 54% swing this moved the first step-1 hit one frame early and extended four bars by two frames.
 - Applying `ceil` to a continuously growing absolute `Double` still differs from the realtime countdown's floating-point operation order. The mismatch is observable in the first bar at 48 kHz / 120 BPM / 55% swing and can also change the terminal WAV length at 40 BPM / 56% swing.
 

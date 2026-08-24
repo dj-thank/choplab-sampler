@@ -1,6 +1,19 @@
 # Project state
 
-## Current snapshot — 2026-08-24 fractional pattern-timing candidate
+## Current snapshot — 2026-08-24 realtime PAD terminal-sample retirement candidate
+
+This snapshot records a bounded Android realtime mixer correction independently from the completed offline pattern/master repair. It is based on the exact merged fractional-timing main and preserves that timing implementation and evidence.
+
+- Observed at: `2026-08-24T19:50+09:00`.
+- Source state: reachable product commit `eabd06361252a6efca4d821de4010463529b8b59`, tree `54df8ea48f33eaecc5738fb6926e4d8ca3e98a31`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; the later evidence commit is documentation-only.
+- Integration boundary: before documentation, the product tree differed from merged #66 main only in `SamplerEngine.kt` and `SamplerEngineVoiceTest.kt`. The #66 carried-residual scheduler, timing tests and their documentation remain unchanged.
+- Runtime correction: the Android pooled-PAD mixer now adds the value returned by `Voice.render()` before deactivating a voice that became finished during that same call. Loop-monitor identity is captured before rendering and its frame is published only while the voice remains active, preserving the prior loop-state contract.
+- Realtime boundary: the callback helper accepts and returns primitives plus an existing pooled `Voice`; it performs no allocation, lock, I/O, logging, Android UI call or heavy JNI work.
+- Focused regression: the established reverse, pitched and filtered parity fixture reaches retirement after exactly 403 rendered frames. The final returned sample remains in the runtime mix as PCM `-61`, then the pool slot is inactive and finished.
+- Fresh local checks: Python policy suite 39/39, public-surface scan 394 candidates, deterministic float/PCM fixture reproduction and `git diff --check` PASS. `./scripts/doctor.sh` found Java 17/Git and reported the expected absent Android SDK/ADB. `./scripts/validate_project.sh` passed its public-surface and executable-mode phases, then the uncached Gradle 9.7.1 distribution could not be provisioned; the focused Android unit task reached the same network-unreachable prerequisite with a writable task-local cache.
+- Gate ceiling: source/static candidate only. Hosted Android compilation/unit tests, APK/device execution, audible terminal behavior, audio quality, latency, provider/public release and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 fractional pattern-timing candidate
 
 This snapshot records a focused realtime/offline timing correction. It changes pattern event quantization and exported frame count only; the merged constrained PAD gesture repair, decode boundary and all earlier histories remain intact below.
 
