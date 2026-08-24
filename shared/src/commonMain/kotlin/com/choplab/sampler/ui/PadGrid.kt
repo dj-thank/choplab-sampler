@@ -51,10 +51,15 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.bankRoleFor
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 
 private const val PAD_KEYS = "1234QWERASDFZXCV"
+private const val SCROLL_GATE_ACTIVATION_DELAY_MILLIS = 120L
 
 @Composable
 fun PadGrid(
@@ -67,6 +72,7 @@ fun PadGrid(
     modifier: Modifier = Modifier,
     captureMode: Boolean = false,
     sourcePhase: SourceUiPhase = SourceUiPhase.STOPPED,
+    deferPadActionUntilTap: Boolean = false,
     gap: Dp = 6.dp,
     columns: Int = 4,
 ) {
@@ -105,6 +111,7 @@ fun PadGrid(
                             selected = pad.globalIndex == selectedPad,
                             captureMode = captureMode,
                             sourcePhase = sourcePhase,
+                            deferPadActionUntilTap = deferPadActionUntilTap,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
                             onSelect = { onSelect(pad.globalIndex) },
@@ -125,6 +132,7 @@ private fun PerformancePad(
     selected: Boolean,
     captureMode: Boolean,
     sourcePhase: SourceUiPhase,
+    deferPadActionUntilTap: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
     onSelect: () -> Unit,
@@ -152,6 +160,10 @@ private fun PerformancePad(
         captureMode = captureMode,
         sourcePhase = sourcePhase,
     )
+    val deferGatePerformance = deferPadActionUntilTap &&
+        pad.isAssigned &&
+        pad.playMode == PadPlayMode.GATE &&
+        !captureMode
 
     BoxWithConstraints(
         modifier = modifier
@@ -162,10 +174,25 @@ private fun PerformancePad(
                 color = if (selected) DeckLamp else Color.Black,
                 shape = shape,
             )
-            .pointerInput(pad.globalIndex, pad.isAssigned, captureMode, sourcePhase) {
+            .pointerInput(
+                pad.globalIndex,
+                pad.isAssigned,
+                captureMode,
+                sourcePhase,
+                deferPadActionUntilTap,
+            ) {
                 detectTapGestures(
                     onTap = {
-                        if (deferDestructiveCapture) onTrigger()
+                        if (deferPadActionUntilTap && !deferGatePerformance) {
+                            // A parent-consumed drag cancels before onTap, so scrolling has no PAD side effects.
+                            onSelect()
+                            if (captureMode || pad.isAssigned) {
+                                onTrigger()
+                                if (pad.isAssigned) onRelease()
+                            }
+                        } else if (deferDestructiveCapture) {
+                            onTrigger()
+                        }
                     },
                     onLongPress = {
                         if (pad.isAssigned) {
@@ -177,13 +204,38 @@ private fun PerformancePad(
                     onPress = {
                         pressed = true
                         try {
-                            onSelect()
-                            if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
-                                onTrigger()
+                            if (deferGatePerformance) {
+                                coroutineScope {
+                                    var gateStarted = false
+                                    val delayedStart = launch {
+                                        // Let the scroll parent consume a drag before committing audio.
+                                        delay(SCROLL_GATE_ACTIVATION_DELAY_MILLIS)
+                                        onSelect()
+                                        onTrigger()
+                                        gateStarted = true
+                                    }
+                                    val released = tryAwaitRelease()
+                                    delayedStart.cancelAndJoin()
+                                    if (gateStarted) {
+                                        onRelease()
+                                    } else if (released) {
+                                        // A short completed tap remains an intentional preview.
+                                        onSelect()
+                                        onTrigger()
+                                        onRelease()
+                                    }
+                                }
+                            } else {
+                                if (!deferPadActionUntilTap) {
+                                    onSelect()
+                                    if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
+                                        onTrigger()
+                                    }
+                                }
+                                tryAwaitRelease()
                             }
-                            tryAwaitRelease()
                         } finally {
-                            if (pad.isAssigned) onRelease()
+                            if (!deferPadActionUntilTap && pad.isAssigned) onRelease()
                             pressed = false
                         }
                     },

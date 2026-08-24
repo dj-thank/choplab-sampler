@@ -12,9 +12,9 @@
 | Windows WASAPI endpoint | 🧪 local / current-device unavailable | JNA 5.19.1でMMDevice default/active/all-state endpointとmix formatをSTAからprobeし、native診断menuへ接続。現端末はJava Sound mixer 0、PnP AudioEndpoint present 0、MMDevice render/capture count 0、default `0x80070490`。adapter hardware presenceだけから音声利用可能とは主張しない |
 | Spotify OAuth / Connect UX | ✅ integrated local / exact-byte Android device receipt | Native `連携` menuのSpotify Connect panelからAuthorization Code with PKCE、dynamic-port `127.0.0.1` callback、memory-only token、明示的状態、cancel・late callback無効化、現在再生／保存済みライブラリ、pause/resume、境界別復帰案内を接続。Spotify Contentはメタデータ／再生制御のみ。Android device receiptはapp全体のexact bytes/instrumentationであり、実Spotify account/provider、物理音声品質、screen-reader speechを証明しない |
 | Spotify楽曲のMP3化 | — | Spotify Contentのdownload、stream ripping、録音、音声抽出、変換は設計上対象外。ChopLabへ渡せるのはユーザーが選んだローカル音源 |
-| iOS 16 preview | 🧪 GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。署名なしSimulator `.app.zip`まで。 |
+| iOS 16 preview | 🧪 local policy / GitHub macOS | SwiftUI + AVFoundation。ユーザー音源のローカル取込、16 PAD、PAD別範囲、録音、`ALL STOP`。録音中の新規importはUI/store双方で拒否し、picker取消/失敗は録音・既存Sourceを停止/置換しないMainActor回帰を追加。Swift/Simulator実行と署名なし`.app.zip`はmacOS CI境界。 |
 | Windows / Android / iOS 公開preview | ✅ existing preview / v0.17 source tag / binary blocked | `v0.16.0-preview.1`の三平台公開とread-backは既存PASS。`v0.17.0` sourceはPR #45、`main@ab68d2d`、annotated tagとWindows/iOS tag artifactsまで確認済み。stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。署名済みiOS実機IPAは未提供。 |
-| 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。ユーザー音源はReleaseへ同梱しない。 |
+| 公開面の資格情報・音源境界 | ✅ local / CI | `scripts/check_public_surface.py`が認証情報、署名素材、音源候補をfail-closedで検査。Windows CIはcheckout直後の未変更treeをscanし、policy testsの後にsource snapshotを作成・uploadする。ユーザー音源はReleaseへ同梱しない。 |
 | 流れている音楽を録音 | ✅ | Android Playback Capture。録音元が許可した音のみ |
 | 録音をそのままビート化 | ✅ current local | AndroidとWindowsの停止後decodeが波形を読込み、fresh launch revisionでCHOPへ遷移してPAD割当／16-step制作へ続く。実録音内容は今回取得していない |
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示。CHOPと通常BEATは同じ4×4演奏面を共有し、詳細sequencerだけを二次面へ分離 |
@@ -25,7 +25,7 @@
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
 | 初期画面とデモ導線 | ✅ current local / API 36 emulator | pristine CAPTUREは空波形より先に`曲を読み込む / 制作を開く / MIC / DEVICE`を提示し、starterを`DUSTY JAZZデモ`として明示。Android/Windowsのデモ遷移はB DRUMS・B-01・01–16で一致。final exact APK 7 instrumentation testsと両platformのfresh captureを確認。物理touch/TalkBack/Humanは未確認 |
-| 固定操作面とlarge-text例外 | 🧪 review repair / prior emulator | 通常文字のportrait/performance画面は固定、landscapeのCHOP/通常BEATはresponsive配置。font scale 1.2+はheaderを簡素化し4工程を2×2。CAPTUREはlarge textまたはcompact landscape、CHOPとBEAT quick/detail本体はlarge textで局所的なbounded vertical scrollを許可し、computed grid heightで4×4 PADの48dp targetを維持。status stripがないcompact landscapeではheader内に同等のfeedbackを残す。43d8aceの640 × 360 dp実測はstage 49dp/demo 59dp、reachable `c650d00` repairはhosted CI待ち |
+| 固定操作面とlarge-text例外 | 🧪 review repair / prior emulator | 通常文字のportrait/performance画面は固定、landscapeのCHOP/通常BEATはresponsive配置。font scale 1.2+はheaderを簡素化し4工程を2×2。CAPTUREはlarge textまたはcompact landscape、CHOPとBEAT quick/detail本体はlarge textで局所的なbounded vertical scrollを許可し、computed grid heightで4×4 PADの48dp targetを維持。scroll内PADのmodel/audio actionはcompleted tapまでdeferし、親がconsumeしたswipeはcontroller call 0、非scroll PADはpress-down発音を維持。status stripがないcompact landscapeではheader内に同等のfeedbackを残す。43d8aceの640 × 360 dp実測はstage 49dp/demo 59dp、reachable `4c6fd0f` repairはhosted CI待ち |
 | 曲を流しながらPADで刻む | 🧪 local/emulator | source再生中のCapture PADは空／割当済みにかかわらず現在位置を刻む。割当済みA01は旧音を鳴らさず現在素材へ上書きし、旧loop/scratch実行参照も解除 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
@@ -50,7 +50,7 @@
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
 | Choke group | ✅ | 1–4 |
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
-| マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない |
+| マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない。Windowsはlineの`open`成功後に`start`が失敗してもexact-once closeし、一時WAVと内部状態を破棄するhost regressionを含む |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。端末音声captureは世代付きsessionと2秒のstop/release境界を持ち、開始途中STOPと旧workerの新session破壊をLOCALで防止。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中の競合操作を遮断。現候補の実MediaProjection/AudioRecord再検証は未実施 |
 | 一時録音のprivacy cleanup | 🧪 local | app cacheのChopLab命名mic/system/vocal WAVだけを所有対象とし、decode成功・失敗・取消・無効化後に削除。異常終了残留は24時間後の起動時に限定清掃。SAF import、export、project、無関係cacheは削除対象外 |
 | 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |

@@ -10,12 +10,19 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.ui.theme.ChopLabTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -85,11 +92,227 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
     }
 
-    private fun setPristineDeck(fontScale: Float = 1f): MutableState<SamplerUiState> {
-        val state = mutableStateOf(BuiltInDrumKits.installStarterKit(SamplerUiState()))
-        val controller = noOpController {
-            state.value = ensurePlayablePadSelectedState(state.value)
+    @Test
+    fun largeTextOneShotBeatSwipeCancelsPadAndTapStillPlaysIt() {
+        val padActions = mutableListOf<String>()
+        setPristineDeck(fontScale = 2f, onPadAction = { padActions += it })
+
+        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasContentDescription("PAD 01 割り当て済み", substring = true),
+            ).fetchSemanticsNodes().isNotEmpty()
         }
+
+        val pad = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo()
+        val topBeforeSwipe = pad.fetchSemanticsNode().boundsInRoot.top
+        composeRule.runOnIdle { padActions.clear() }
+
+        pad.performTouchInput { swipeUp(durationMillis = 600) }
+        composeRule.waitForIdle()
+
+        val topAfterSwipe = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(
+            "The swipe should move the large-text BEAT workspace",
+            topAfterSwipe < topBeforeSwipe - 1f,
+        )
+        composeRule.runOnIdle {
+            assertTrue("A BEAT scroll gesture must not dispatch PAD actions", padActions.isEmpty())
+        }
+
+        composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo().performTouchInput {
+            down(center)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                padActions,
+            )
+        }
+    }
+
+    @Test
+    fun largeTextGateSwipeCancelsBeforeActivationAndHoldReleasesOnPointerUp() {
+        val padActions = mutableListOf<Pair<String, Long>>()
+        val state = setPristineDeck(
+            fontScale = 2f,
+            onPadAction = { padActions += it to composeRule.mainClock.currentTime },
+        )
+
+        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+            .performScrollTo()
+            .performClick()
+        composeRule.runOnIdle {
+            val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            state.value = state.value.copy(
+                pads = state.value.pads.map { pad ->
+                    if (pad.globalIndex == gateIndex) pad.copy(playMode = PadPlayMode.GATE) else pad
+                },
+            )
+            padActions.clear()
+        }
+
+        val gatePad = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo()
+        val topBeforeSwipe = gatePad.fetchSemanticsNode().boundsInRoot.top
+        gatePad.performTouchInput { swipeUp(durationMillis = 600) }
+        composeRule.waitForIdle()
+
+        val topAfterSwipe = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(
+            "The swipe should move the large-text GATE workspace",
+            topAfterSwipe < topBeforeSwipe - 1f,
+        )
+        composeRule.runOnIdle {
+            assertTrue(
+                "A GATE drag canceled before activation must dispatch no PAD action",
+                padActions.isEmpty(),
+            )
+        }
+
+        composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        ).performScrollTo().performTouchInput { longClick() }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                padActions.map { it.first },
+            )
+            val triggerTime = padActions.first { it.first == "triggerPad" }.second
+            val releaseTime = padActions.first { it.first == "releasePad" }.second
+            assertTrue(
+                "A deferred GATE hold must not trigger and release in one frame",
+                releaseTime > triggerTime,
+            )
+        }
+    }
+
+    @Test
+    fun largeTextChopSwipeStartingOnEmptyPadScrollsWithoutCapturingIt() {
+        val padActions = mutableListOf<String>()
+        val audio = PcmAudio(
+            id = 99L,
+            name = "gesture-source.wav",
+            samples = ShortArray(4_800),
+            sampleRate = 48_000,
+        )
+        setDeck(
+            initialState = SamplerUiState(
+                currentAudio = audio,
+                rangeEndFrame = audio.frameCount,
+                sourcePlaying = true,
+                projectLaunchTarget = ProjectLaunchTarget.CHOP,
+            ),
+            fontScale = 2f,
+            onPadAction = { padActions += it },
+        )
+
+        val pad = composeRule.onNode(
+            hasContentDescription("PAD 01 空", substring = true),
+        ).performScrollTo()
+        val topBeforeSwipe = pad.fetchSemanticsNode().boundsInRoot.top
+
+        pad.performTouchInput { swipeUp(durationMillis = 600) }
+        composeRule.waitForIdle()
+
+        val topAfterSwipe = composeRule.onNode(
+            hasContentDescription("PAD 01 空", substring = true),
+        ).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(
+            "The swipe should move the large-text CHOP workspace",
+            topAfterSwipe < topBeforeSwipe - 1f,
+        )
+        composeRule.runOnIdle {
+            assertTrue("A CHOP scroll gesture must not dispatch PAD actions", padActions.isEmpty())
+        }
+
+        composeRule.onNode(
+            hasContentDescription("PAD 01 空", substring = true),
+        ).performScrollTo().performTouchInput {
+            down(center)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(listOf("selectPad", "capturePad"), padActions)
+        }
+    }
+
+    @Test
+    fun normalTextBeatPadStillTriggersOnPressDown() {
+        val padActions = mutableListOf<String>()
+        setPristineDeck(onPadAction = { padActions += it })
+
+        composeRule.onNode(hasContentDescription("デモを試す", substring = true)).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasContentDescription("PAD 01 割り当て済み", substring = true),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        val pad = composeRule.onNode(
+            hasContentDescription("PAD 01 割り当て済み", substring = true),
+        )
+        composeRule.runOnIdle { padActions.clear() }
+
+        pad.performTouchInput {
+            down(center)
+            advanceEventTime(100)
+        }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertEquals(listOf("selectPlayablePad", "triggerPad"), padActions)
+        }
+
+        pad.performTouchInput { up() }
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                padActions,
+            )
+        }
+    }
+
+    private fun setPristineDeck(
+        fontScale: Float = 1f,
+        onPadAction: (String) -> Unit = {},
+    ): MutableState<SamplerUiState> = setDeck(
+        initialState = BuiltInDrumKits.installStarterKit(SamplerUiState()).copy(
+            projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
+        ),
+        fontScale = fontScale,
+        onPadAction = onPadAction,
+    )
+
+    private fun setDeck(
+        initialState: SamplerUiState,
+        fontScale: Float,
+        onPadAction: (String) -> Unit,
+    ): MutableState<SamplerUiState> {
+        val state = mutableStateOf(initialState)
+        val controller = noOpController(
+            onEnsurePlayablePadSelected = {
+                state.value = ensurePlayablePadSelectedState(state.value)
+            },
+            onPadAction = onPadAction,
+        )
         composeRule.setContent {
             val baseDensity = LocalDensity.current
             CompositionLocalProvider(
@@ -113,7 +336,10 @@ class FirstScreenFlowDeviceTest {
         return state
     }
 
-    private fun noOpController(onEnsurePlayablePadSelected: () -> Unit): SamplerDeckController {
+    private fun noOpController(
+        onEnsurePlayablePadSelected: () -> Unit,
+        onPadAction: (String) -> Unit,
+    ): SamplerDeckController {
         val handler = java.lang.reflect.InvocationHandler { proxy, method, arguments ->
             when (method.name) {
                 "equals" -> proxy === arguments?.firstOrNull()
@@ -121,6 +347,14 @@ class FirstScreenFlowDeviceTest {
                 "toString" -> "NoOpSamplerDeckController"
                 SamplerDeckController::ensurePlayablePadSelected.name -> {
                     onEnsurePlayablePadSelected()
+                    null
+                }
+                SamplerDeckController::selectPad.name,
+                SamplerDeckController::selectPlayablePad.name,
+                SamplerDeckController::capturePad.name,
+                SamplerDeckController::triggerPad.name,
+                SamplerDeckController::releasePad.name -> {
+                    onPadAction(method.name)
                     null
                 }
                 else -> null

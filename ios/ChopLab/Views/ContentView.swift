@@ -32,10 +32,11 @@ struct ContentView: View {
             case .success(let urls):
                 if let url = urls.first {
                     store.importSource(from: url)
+                } else {
+                    store.reportImportPickerCancellation()
                 }
             case .failure(let error):
-                store.stopAll()
-                _ = error
+                store.reportImportPickerFailure(error)
             }
         }
     }
@@ -66,7 +67,12 @@ struct ContentView: View {
                     showingImporter = true
                 }
                 .buttonStyle(.borderedProminent)
-                .accessibilityHint("ファイルアプリから音声を選びます")
+                .disabled(store.isRecording)
+                .accessibilityHint(
+                    store.isRecording
+                        ? "録音を停止すると音源を選べます"
+                        : "ファイルアプリから音声を選びます"
+                )
 
                 Button(store.isSourcePlaying ? "停止" : "曲を再生") {
                     if store.isSourcePlaying {

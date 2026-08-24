@@ -6,7 +6,11 @@
 
 ## Current selection
 
-**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52は`495ddc9`としてmerge済み。reachable follow-up product commit `c650d00`でcompact-landscape CAPTURE、large-text CHOP/BEAT、inline status、autosave非依存instrumentationまでGitHub reviewを補正した。hosted CIとreview thread closeout待ち。
+**現在の実装plan:** `first-screen-flow-20260824.md`。PR #52は`495ddc9`としてmerge済み。follow-upはPR #54/#55/#56/#57/#59/#60/#63を含む`main@a930da4`を維持し、reachable product commit `4c6fd0f`でcompact-landscape CAPTURE、large-text CHOP/BEAT、inline status、autosave非依存instrumentationに加え、scroll内PADのcompleted-tap arbitrationまでGitHub reviewを補正した。hosted CIとreview thread closeout待ち。
+
+**独立したiOS安全修正:** `6ceb4d2`は録音中のSource importをstore/UIで拒否し、picker取消/失敗を非破壊にする限定follow-up。この修正は上記Android/Windows planの選択を変更せず、macOS CIと物理録音は別gateのまま。
+
+**独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
 **次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 

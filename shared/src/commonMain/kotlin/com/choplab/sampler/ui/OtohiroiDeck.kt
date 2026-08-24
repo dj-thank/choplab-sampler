@@ -513,6 +513,7 @@ private fun PerformanceWorkspace(
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
+            deferPadActionUntilTap = metrics.performanceWorkspaceNeedsScroll,
             gap = gap,
             modifier = if (metrics.performanceWorkspaceNeedsScroll) {
                 Modifier
@@ -2227,6 +2228,7 @@ private fun BeatChopSurface(
             onRelease = viewModel::releasePad,
             onSelect = viewModel::selectPlayablePad,
             onLongPress = onOpenPadTrim,
+            deferPadActionUntilTap = metrics.beatWorkspaceNeedsScroll,
             gap = gap,
             modifier = modifier,
         )

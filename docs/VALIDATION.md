@@ -4,11 +4,25 @@
 
 ## Guided first-screen GitHub review repair — 2026-08-24
 
-- Product source: reachable follow-up commit `c650d00b51010afe62f74bad1d37f7afc1e79ed1`, tree `9e0470ad6e1811e93c3cfbdfd8645cb2519a6235`; PR #52 is merged at `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`. Subsequent PR commits are documentation-only anchor updates.
-- Review closure candidate: compact-landscape CAPTURE now opts into bounded scrolling; large-text CHOP plus BEAT quick/detailed bodies use stacked bounded-scroll compositions with explicit waveform and computed 48 dp-safe PAD-grid heights; compact-landscape large text exposes transient status in the fixed header when the separate strip is suppressed. Normal-text layouts retain their previous fixed/responsive paths.
-- Instrumentation isolation: `FirstScreenFlowDeviceTest` now renders a deterministic in-memory pristine state/controller seam and never launches autosave recovery, clears app data or mutates retained projects. Its added large-text case scrolls through the demo, verifies the selected PAD target and traverses both QUICK and STEPS bodies.
-- Current-container checks: `git diff --check` PASS; Python policy suite 23/23 PASS; public-surface scan 389 candidates PASS.
-- Environment boundary: this Linux container has no Android SDK or cached Gradle distribution and cannot reach `services.gradle.org`; fresh Gradle compilation/instrumentation is not claimed. Hosted PR CI must pass before merge or gate promotion. The artifact/runtime evidence in the next section remains bound to `43d8ace` and is not proof for `c650d00`.
+- Product source: reachable follow-up commit `4c6fd0f3858f90c1d6c3571fc3da606f3ce207fd`, tree `1acbbe202b0c2791d66e6bfdb16514061e1dc165`; PR #52 is merged at `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`, and the follow-up is rebased onto `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. The final follow-up commit is a documentation-only anchor update.
+- Review closure candidate: compact-landscape CAPTURE now opts into bounded scrolling; large-text CHOP plus BEAT quick/detailed bodies use stacked bounded-scroll compositions with explicit waveform and computed 48 dp-safe PAD-grid heights; only PADs in the large-text CHOP/BEAT scroll bodies defer model/audio actions until completed tap; compact-landscape large text exposes transient status in the fixed header when the separate strip is suppressed. Normal-text layouts retain their previous fixed/responsive and press-down paths.
+- Instrumentation isolation: `FirstScreenFlowDeviceTest` renders deterministic in-memory CAPTURE and CHOP states/controller seams and never launches autosave recovery, clears app data or mutates retained projects. Real pointer regressions require a PAD-origin CHOP or BEAT swipe to move its parent with zero controller calls, a completed tap to dispatch the expected ordered actions, and a non-scroll PAD to select and trigger before pointer-up. These new device tests are source coverage until hosted execution succeeds.
+- Current-container checks: `git diff --check` PASS; Python policy suite 39/39 PASS; public-surface scan 394 candidates PASS; all six Android XML files parse successfully.
+- Environment boundary: this Linux container has no Android SDK or cached Gradle distribution and cannot reach `services.gradle.org`; the focused Gradle unit/androidTest compile command stopped while downloading Gradle 9.7.1, so fresh compilation/instrumentation is not claimed. Hosted PR CI must pass before merge or gate promotion. The artifact/runtime evidence in the next section remains bound to `43d8ace` and is not proof for `4c6fd0f`.
+
+## Release checksum sidecar hardening candidate — 2026-08-24
+
+- The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
+- Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
+- Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
+
+## Desktop recorder startup cleanup candidate — 2026-08-24
+
+- Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.
+- Regression contract: the injected `TargetDataLine` accepts `open`, throws from `start`, is closed exactly once even after later `stop` / `close`, leaves `isRecording=false`, deletes the owned partial WAV, and cannot return stale output. The fixture does not open audio hardware.
+- Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 23 tests; `python3 scripts/check_public_surface.py` passed 390 candidates; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper UTF-8 policy matched; `git diff --check` passed.
+- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopAudioRecorderTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. `./scripts/validate_project.sh` reached and passed the public-surface phase, then stopped at the same Gradle prerequisite. Hosted `:desktop:test` is the required executable proof.
+- Gate: source/static candidate only. Physical Windows input, actual WAV content, route loss, audio quality, provider, publication, and `HUMAN_GO` remain unclaimed.
 
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 
