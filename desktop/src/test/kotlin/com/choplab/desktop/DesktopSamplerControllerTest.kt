@@ -35,6 +35,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
@@ -939,6 +940,62 @@ class DesktopSamplerControllerTest {
             assertTrue(controller?.state?.value?.sourcePlaying == true)
         } finally {
             recoveryObserver?.cancel()
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun resetRevokesRecoveredAudioHydrationAdmittedBeforeSourceLoad() {
+        val directory = Files.createTempDirectory("choplab-reset-recovery-hydration").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "discarded-recovery-hydration.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val engine = FakeAudioEngine()
+        val hydrationAdmitted = CountDownLatch(1)
+        val releaseHydration = CountDownLatch(1)
+        val saveBarrier = directory.resolve("reset-save-barrier.choplab")
+        var controller: DesktopSamplerController? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 60_000L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                created.recoveredHydrationAdmission = {
+                    hydrationAdmitted.countDown()
+                    check(releaseHydration.await(2L, TimeUnit.SECONDS)) {
+                        "Timed out holding admitted recovered hydration"
+                    }
+                }
+                awaitAutosaveBlockedOnStore()
+            }
+
+            assertTrue(hydrationAdmitted.await(2L, TimeUnit.SECONDS))
+            controller?.resetProject()
+            releaseHydration.countDown()
+            controller?.saveProject(saveBarrier)
+            awaitCondition(saveBarrier::isFile)
+
+            assertEquals(0, engine.loadPcmCalls)
+            assertNull(controller?.state?.value?.currentAudio)
+        } finally {
+            releaseHydration.countDown()
             controller?.close()
             directory.deleteRecursively()
         }

@@ -105,6 +105,7 @@ class DesktopSamplerController(
     private val statusOperations = ProjectOperationEpoch()
     private val sourceLoadOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
+    internal var recoveredHydrationAdmission: () -> Unit = {}
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
         onStep = ::onTransportStep,
@@ -413,6 +414,7 @@ class DesktopSamplerController(
         statusOperations.invalidate()
         projectOperations.invalidate()
         recoveryOperations.invalidate()
+        sourceLoadOperations.invalidate()
         stopCompetingPlayback()
         synchronized(sourcePlaybackStateLock) {
             sourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
@@ -1173,6 +1175,7 @@ class DesktopSamplerController(
             // Device opening must not run under the recovery epoch monitor: close and a
             // newer project action can revoke ownership without waiting for Windows audio.
             if (!recoveryOperations.isCurrent(recoveryOperation)) return@execute
+            recoveredHydrationAdmission()
             val loadResult = loadSourcePcmIfCurrent(
                 audio = audio,
                 pitchSemitones = hydration.pitchSemitones,
