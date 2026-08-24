@@ -21,6 +21,18 @@ This snapshot records a bounded iOS preview safety correction. It does not promo
 - Fresh local checks: Python policy tests 23/23, public-surface scan over 390 candidates, Android XML parse, wrapper checksum/UTF-8 policy, and `git diff --check` passed. The focused Gradle test could not run because Gradle 9.7.1 is not cached and this environment cannot reach the distribution host; hosted `:desktop:test` remains required before promotion.
 - Gate ceiling: source/static candidate only. No Windows capture hardware, audible recording, latency, device removal, provider, public artifact, or Human claim is inferred.
 
+## Previous snapshot — 2026-08-24 Desktop close-time autosave local candidate
+
+This snapshot records one bounded Desktop persistence correction. It does not change the project archive, recovery generations or Android lifecycle.
+
+- Observed at: `2026-08-24T17:05+09:00`.
+- Source state: branch `codex/desktop-autosave-close`, rebased product commit `a30a3a66d61a325bfff790c72bc17798b8bbdec1`, tree `63e3117a5f2ef1e6d04f6eff563be6cdceb37e3c`, based on merged `main@5430d0d91a4e19ca02170d0143378a5d7917776b`. Other worktrees remain untouched.
+- Reproduced defect: Desktop project edits schedule a 900 ms delayed autosave, but controller close cancelled that future and immediately stopped the persistence executor. Closing inside the debounce window could therefore restore the previous generation on next launch.
+- Repair: autosave scheduling and close now share one lifecycle lock. Close rejects later schedules, immediately persists the latest state when a delayed future can be cancelled, or waits for the already-running save before shutting the executor down. Repeated close is idempotent.
+- Regression: a focused controller test uses a 60-second debounce, edits BPM, closes immediately and requires the shared `AtomicProjectStore` to recover BPM 137.
+- Rebased local evidence: 26 Python policy tests, public-surface scan over 392 candidates and `git diff --check` PASS on `main@5430d0d`. The Gradle 9.7.1 distribution is not cached and outbound download is blocked in this Linux environment, so the new Desktop test, full JVM gate and packaged Windows runtime remain hosted/local-machine verification boundaries.
+- Gate ceiling: source/static local evidence only; provider CI, Windows app-image execution, power-loss behavior and `HUMAN_GO` are not inferred.
+
 ## Previous snapshot — 2026-08-24 guided first-screen local candidate
 
 This snapshot is the current product behavior anchor for first entry and shared navigation. Moving GitHub `main` and hosted workflow identities are provider read-backs, while the immutable implementation claim is bound to the product commit below.

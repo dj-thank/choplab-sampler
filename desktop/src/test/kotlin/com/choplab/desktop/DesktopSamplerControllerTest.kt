@@ -343,6 +343,28 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun closeFlushesTheLatestEditBeforeTheAutosaveDebounceExpires() {
+        val directory = Files.createTempDirectory("choplab-controller-close-autosave").toFile()
+        val store = AtomicProjectStore(directory)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(137f)
+
+            controller.close()
+
+            assertEquals(137f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sourceRecordingRoutesTheProductionToChopAfterDecode() {
         val recorder = FakeRecorder()
         val controller = DesktopSamplerController(

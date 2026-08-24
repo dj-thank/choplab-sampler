@@ -110,7 +110,9 @@ class DesktopSamplerController(
     private val ioExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "ChopLab-Windows-Project-IO").apply { isDaemon = true }
     }
-    @Volatile private var autosaveFuture: ScheduledFuture<*>? = null
+    private val autosaveLifecycleLock = Any()
+    private var autosaveFuture: ScheduledFuture<*>? = null
+    private var closed = false
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
     private val projectLaunchRevision = AtomicLong(0L)
@@ -847,18 +849,40 @@ class DesktopSamplerController(
     private fun scheduleAutosave() {
         val store = autosaveStore ?: return
         val snapshot = mutableState.value
-        autosaveFuture?.cancel(false)
-        autosaveFuture = persistenceExecutor.schedule(
-            {
-                runCatching { store.save(snapshot) }.onFailure { error ->
-                    mutableState.update { current ->
-                        current.copy(statusMessage = "自動保存失敗: ${error.message ?: error.javaClass.simpleName}")
-                    }
-                }
-            },
-            autosaveDelayMillis.coerceAtLeast(0L),
-            TimeUnit.MILLISECONDS,
-        )
+        synchronized(autosaveLifecycleLock) {
+            if (closed) return
+            autosaveFuture?.cancel(false)
+            autosaveFuture = persistenceExecutor.schedule(
+                { persistAutosave(store, snapshot) },
+                autosaveDelayMillis.coerceAtLeast(0L),
+                TimeUnit.MILLISECONDS,
+            )
+        }
+    }
+
+    private fun persistAutosave(store: AtomicProjectStore, snapshot: SamplerUiState) {
+        runCatching { store.save(snapshot) }.onFailure { error ->
+            mutableState.update { current ->
+                current.copy(statusMessage = "自動保存失敗: ${error.message ?: error.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private fun flushAutosaveOnClose(pending: ScheduledFuture<*>?, snapshot: SamplerUiState) {
+        val store = autosaveStore ?: return
+        val future = pending ?: return
+        val completion = if (future.cancel(false)) {
+            persistenceExecutor.submit { persistAutosave(store, snapshot) }
+        } else {
+            future
+        }
+        try {
+            completion.get()
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } catch (_: Exception) {
+            // persistAutosave reports store failures through state; close remains best-effort.
+        }
     }
 
     private fun recoverAutosave() {
@@ -1021,7 +1045,12 @@ class DesktopSamplerController(
     override fun close() {
         projectOperations.invalidate()
         ioExecutor.shutdownNow()
-        autosaveFuture?.cancel(false)
+        val pendingAutosave = synchronized(autosaveLifecycleLock) {
+            if (closed) return
+            closed = true
+            (autosaveFuture to mutableState.value).also { autosaveFuture = null }
+        }
+        flushAutosaveOnClose(pendingAutosave.first, pendingAutosave.second)
         scratchIdleFuture?.cancel(false)
         persistenceExecutor.shutdownNow()
         playbackMonitor.shutdownNow()
