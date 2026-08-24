@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 素材から8つの下書きを作る | ✅ current local | `143a969`のQUICK SKETCHは、Bank Aが完全に空でmarker/A-stepもない時だけ、選択範囲をzero-crossing-safeな8連続sliceへ分けてA01–A08とsteps 1/3/5/7/9/11/13/15へ一括配置。starter drumsとB/C/Dを保持し、一つのUndo/Redo/autosave単位。短いrange・既存A作業・録音/loadingは完全no-op。shared両host32、isolated Windows autosaveで7 markers/8 pads/8 melody stepsを確認。物理touch/音質/Humanは未確認 |
 | Pattern/master full-bar parity | ✅ product anchor / scoped device | product bytes `ecc6c54`。single PAD / step 0 / one barのrealtime Voice+master expectedとoffline WAVを全frame比較。REDはframe 402でoffline末尾sample欠落61、mix-before-retire修正後max delta≤1。Android 229、exact `DB08…` Pixel、全PR/main CI PASS。docs-only source main、polyphony/stereo/listeningは別 |
 | Realtime / offline / Windows audio parity | ✅ main / scoped device | shared pitch/tone/gain/fade/limiter/swing/NaN policy。Android Voiceとhost PAD PCM最大差1、shared両host25、merged-main Windows daily install `0.17.0-802a667d39cb`。polyphony/stereo/listeningは次段階 |
 | ProductionSession / 履歴・復旧の全体整合 | ✅ main / scoped device | shared history/revision/plan transactionとverified disk revision引継ぎ。Android/Windows source/recording/reset/open/recovery/editを一本化し、PR #47/main/Pixel PASS。物理recovery操作は未確認 |

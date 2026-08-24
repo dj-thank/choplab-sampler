@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Reversible Quick Sketch local candidate — 2026-08-25
+
+- Product source: `143a96919120273795805a6c1b95a203339cd4b9`, tree `707a40df56ebbdaff2f5c1688a4cd8dd13d20abc`, base `8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`.
+- TDD contract: fixed eight safe ranges, A01–A08 only, alternating steps `0,2,...,14`, all B/C/D pads and non-A steps preserved, strict no-op for existing A work/markers/short source/loading/recording, one ProductionSession Undo/Redo/persistence unit, and context-only four-slot dock action.
+- Full Gradle gate: `:shared:testAndroidHostTest :shared:desktopTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — `BUILD SUCCESSFUL`, 184 actionable tasks on final read-back. Shared host 32/32, Android 234, JVM-core 52, Desktop 78; failures/errors/skips 0. Lint errors 0, warnings 7.
+- Other gates: `scripts/validate_project.sh` PASS; Python policy 34 PASS; public-surface 397 candidates PASS; `git diff --check` PASS.
+- Windows prototype: an original generated sine fixture produced the context button, seven markers, eight A pads and eight melody steps in isolated app data; starter-drum keys remained. Exact launcher/UI PIDs were stopped. No user/Spotify/third-party audio, recording or real project was used.
+- Artifacts: debug APK `BB20B2C9…`, androidTest `77608CAD…`, unsigned release `6824CC90…`; exact size/hash and runtime evidence are in parent PAD `work/PAD_CHOPLAB_QUICK_SKETCH_LOCAL_RECEIPT_20260825.md`.
+- Review: Spec P0–P3 none. Standards source findings none; one closeout-document P2 repaired.
+- Gate: `LOCAL_PASS`. Device/audio/TalkBack/provider/public/Human boundaries remain unclaimed.
+
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 
 - Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.

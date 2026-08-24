@@ -54,9 +54,9 @@ After loading a legal local source, a user who has not yet placed melody materia
 
 - [x] 2026-08-25 — Framed opportunity, compared six directions and selected Quick Sketch.
 - [x] 2026-08-25 — Independent challenge accepted conditionally; added strict no-overwrite and boundary controls.
-- [ ] Reducer RED/GREEN.
-- [ ] Shared deck RED/GREEN.
-- [ ] Full local gate and review.
+- [x] 2026-08-25 — Reducer RED/GREEN on Desktop JVM and Android host.
+- [x] 2026-08-25 — Shared deck/policy RED/GREEN and isolated Windows runtime prototype.
+- [x] 2026-08-25 — Full local gate, public-surface checks, independent Spec/Standards review and revision-bound receipt.
 
 ## Discoveries
 
@@ -75,6 +75,11 @@ After loading a legal local source, a user who has not yet placed melody materia
 - `pwsh -NoProfile -File scripts/doctor.ps1` — clean Git/JDK 17; Android SDK env not configured.
 - `C:\Program Files\Git\bin\bash.exe scripts/validate_project.sh` — public surface and executable mode PASS; host Gradle validation launched.
 - `gradlew.bat :shared:desktopTest :jvm-core:test :desktop:test --no-daemon --max-workers=1 --no-watch-fs` — BUILD SUCCESSFUL.
+- Full 184-task Android/shared/JVM/Desktop gate — BUILD SUCCESSFUL; shared host 32/32, Android 234, JVM-core 52, Desktop 78, failures/errors/skips 0; Lint errors 0.
+- `python -m unittest discover -s scripts/tests -p 'test_*.py'` — 34 PASS.
+- `python scripts/check_public_surface.py` — PASS, 397 candidates.
+- Isolated Windows WAV launch/autosave — seven markers, A01–A08 contiguous ranges, eight melody steps and preserved starter drums; exact processes stopped.
+- Final reviews — Spec P0–P3 none; Standards source findings none, documentation P2 repaired.
 
 ## Risks and rollback
 

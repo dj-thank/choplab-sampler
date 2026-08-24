@@ -1,5 +1,20 @@
 # Project state
 
+## Current snapshot — 2026-08-25 reversible Quick Sketch local candidate
+
+This snapshot records one bounded cross-platform creative workflow. It does not promote a synthetic Windows prototype into physical-device or human musical-quality evidence.
+
+- Observed at: `2026-08-25T00:59:33.8483853+09:00`.
+- Product source: `codex/choplab-creative-improvement-20260825@143a96919120273795805a6c1b95a203339cd4b9`, tree `707a40df56ebbdaff2f5c1688a4cd8dd13d20abc`, based on `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`. The dirty canonical checkout and external surfaces remain untouched.
+- User outcome: an empty melody project with a loaded source offers `8つの下書き / QUICK SKETCH` in the existing four-slot CHOP dock. One action creates exactly eight contiguous zero-crossing-safe chops on A01–A08 and places them once each on alternating 16-step positions, while preserving starter drums and all B/C/D content.
+- Safety: any existing A PAD, A step, manual marker, loading/recording state, missing/short range or unsafe boundary rejects without a project mutation. The accepted sketch is one ProductionSession revision, Undo/Redo unit and autosave unit; the UI stops source playback before dispatch. No archive schema, audio callback or native engine changed.
+- Cross-platform contract: shared reducer and policy tests run on Android host and Desktop JVM. Android applies eight existing `RefreshPad` effects plus `RefreshPattern`; Desktop reads the committed pads/pattern on the next trigger/tick. Existing effect-failure feedback remains authoritative.
+- Fresh local gate: full Android/shared/JVM/Desktop task set `BUILD SUCCESSFUL` with 184 actionable tasks on final read-back. Shared Android host 32, shared Desktop 32, Android unit 234, JVM-core 52 and Desktop 78 tests; failures/errors/skips 0. Debug/release Lint errors 0, warnings 7. Python policy 34 PASS, configured project validation PASS, public-surface 397 candidates PASS and `git diff --check` PASS.
+- Runtime prototype: a generated four-second mono sine fixture—not user/Spotify/third-party audio—showed the context button and produced seven markers, A01–A08, and melody step keys `0,18,36,54,72,90,108,126` in an isolated Windows autosave while retaining starter-drum keys. Exact runtime processes were stopped and real projects were never opened.
+- Review: final Spec review P0–P3 none. Standards found no source issue; its sole P2 was missing closeout docs/plan state and is repaired by this snapshot, feature matrix, validation entry and completed plan.
+- Evidence: parent PAD `work/PAD_CHOPLAB_QUICK_SKETCH_LOCAL_RECEIPT_20260825.md` and `work/CHOPLAB_QUICK_SKETCH_EVIDENCE_20260825/`.
+- Gate ceiling: `LOCAL_PASS`. Physical touch, TalkBack speech, listening/click quality, latency, recording, device, provider, public release and `HUMAN_GO` remain unverified.
+
 ## Current snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 
 This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.

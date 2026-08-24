@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `quick-sketch-20260825.md`。current main `8fa1dac`から、素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHを選択した。Bank Aに既存PAD/stepがあれば完全no-op、B/C/Dとstarter drumsを保持し、一つのUndo/autosave単位として`LOCAL_PASS`を目標にする。
+**完了:** `../completed/quick-sketch-20260825.md`。current main `8fa1dac`から、素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHを実装した。Bank Aに既存PAD/stepがあれば完全no-op、B/C/Dとstarter drumsを保持し、一つのUndo/autosave単位として`LOCAL_PASS`を確認した。次の実装seamは未選択である。
 
 **直前の画面・導線plan:** `first-screen-flow-20260824.md`。pristine first entry、large-text workflow chrome、Android/Windowsのselected PAD/bank/page coherenceはPR #52としてmainへ統合済み。現在のQUICK SKETCHのbaseline入力として保全する。
 
