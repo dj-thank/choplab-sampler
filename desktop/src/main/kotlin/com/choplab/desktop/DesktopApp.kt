@@ -46,6 +46,7 @@ fun main(args: Array<String>) = application {
         DesktopSamplerController(
             player,
             recoverAutosaveOnStart = startupFile == null,
+            preserveAutosaveUntilInitialProjectReplacement = startupFile != null,
         )
     }
     val spotify = remember { SpotifyDesktopSession(controller::setStatus) }

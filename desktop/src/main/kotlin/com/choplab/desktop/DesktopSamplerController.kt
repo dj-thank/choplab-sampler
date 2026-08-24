@@ -74,6 +74,7 @@ import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * JVM shell for the shared deck. Audio/filesystem/permission work stays here;
@@ -86,6 +87,7 @@ class DesktopSamplerController(
     private val autosaveStore: AtomicProjectStore? = defaultAutosaveStore(),
     private val autosaveDelayMillis: Long = 900L,
     private val recoverAutosaveOnStart: Boolean = true,
+    private val preserveAutosaveUntilInitialProjectReplacement: Boolean = false,
 ) : SamplerDeckController, AutoCloseable {
     private val mutableState = MutableStateFlow(
         SamplerUiState(
@@ -101,6 +103,7 @@ class DesktopSamplerController(
     private val projectOperations = ProjectOperationEpoch()
     private val recoveryOperations = ProjectOperationEpoch()
     private val statusOperations = ProjectOperationEpoch()
+    private val sourceLoadOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
@@ -129,6 +132,9 @@ class DesktopSamplerController(
     private var startupRecoveryFailureRevision: Long? = null
     private var startupRecoveryDurableRevision: Long? = null
     private var closed = false
+    private val sourcePlaybackLoadLock = ReentrantLock()
+    @Volatile private var closePlayerAfterSourceLoad = false
+    private var sourcePlayerClosed = false
     @Volatile private var sourcePlaybackReady = false
     @Volatile private var sourcePlaybackError: String? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
@@ -683,7 +689,8 @@ class DesktopSamplerController(
         mutableState.value.currentAudio?.let { audio ->
             val loadFailure = loadSourcePcm(audio, pitch)
             if (loadFailure != null) {
-                setStatus(requireNotNull(sourcePlaybackError))
+                runCatching { player.stop() }
+                publishSourcePlaybackFailure(loadFailure)
             } else if (wasPlaying) {
                 val playbackFailure = runCatching { player.playFrom(frame) }.exceptionOrNull()
                 if (playbackFailure != null) publishSourcePlaybackFailure(playbackFailure)
@@ -980,6 +987,16 @@ class DesktopSamplerController(
     private fun flushAutosaveOnClose(request: AutosaveCloseRequest) {
         val store = autosaveStore ?: return
         if (
+            preserveAutosaveUntilInitialProjectReplacement &&
+            request.pending == null &&
+            request.snapshot.revision == 0L
+        ) {
+            // An explicit startup path owns the first project replacement. Until that
+            // replacement succeeds (or a real edit advances the revision), the fresh UI
+            // is only a placeholder and must not replace an existing autosave on close.
+            return
+        }
+        if (
             request.startupRecoveryOutcome == StartupRecoveryOutcome.FAILED &&
             request.pending == null &&
             request.snapshot.revision == request.startupRecoveryFailureRevision
@@ -1080,16 +1097,19 @@ class DesktopSamplerController(
                         mutableState.value = productionSession.replaceProject(freshProductionState()).state
                         scheduleFreshAutosave = true
                     }
-                    null
+                    RecoveredAudioHydration()
                 } else {
                     val restored = recovered.state
                     var audioToHydrate: PcmAudio? = null
+                    var sourceLoadOperation: Long? = null
                     recoveryOperations.completeIfCurrent(recoveryOperation) {
                         val transition = productionSession.replaceProject(
                             restored,
                             persistenceRequired = false,
                             recoveredRevision = recovered.revision,
                         )
+                        sourceLoadOperation = transition.state.currentAudio
+                            ?.let { sourceLoadOperations.begin() }
                         applyHistoryState(
                             restored = transition.state,
                             message = "前回の自動保存を復元しました",
@@ -1104,7 +1124,11 @@ class DesktopSamplerController(
                             startupRecoveryDurableRevision = transition.revision
                         }
                     }
-                    audioToHydrate
+                    RecoveredAudioHydration(
+                        audio = audioToHydrate,
+                        pitchSemitones = restored.masterPitchSemitones,
+                        sourceLoadOperation = sourceLoadOperation,
+                    )
                 }
             } catch (error: Throwable) {
                 recoveryOperations.completeIfCurrent(recoveryOperation) {
@@ -1117,7 +1141,7 @@ class DesktopSamplerController(
                     )
                 }
                 recoveryFailed = true
-                null
+                RecoveredAudioHydration()
             }
             if (!recoveryFailed) {
                 synchronized(autosaveLifecycleLock) {
@@ -1129,34 +1153,74 @@ class DesktopSamplerController(
         }
     }
 
-    private fun scheduleRecoveredAudioHydration(audio: PcmAudio?, recoveryOperation: Long) {
-        if (audio == null) return
+    private fun scheduleRecoveredAudioHydration(
+        hydration: RecoveredAudioHydration,
+        recoveryOperation: Long,
+    ) {
+        val audio = hydration.audio ?: return
+        val sourceLoadOperation = hydration.sourceLoadOperation ?: return
         synchronized(autosaveLifecycleLock) {
             if (closed) return
         }
         ioExecutor.execute {
-            recoveryOperations.completeIfCurrent(recoveryOperation) {
-                val hydrate = synchronized(autosaveLifecycleLock) { !closed }
-                if (hydrate) {
-                    val playbackFailure = loadSourcePcm(audio)
-                    if (playbackFailure != null) setStatus(requireNotNull(sourcePlaybackError))
-                }
+            // Device opening must not run under the recovery epoch monitor: close and a
+            // newer project action can revoke ownership without waiting for Windows audio.
+            if (!recoveryOperations.isCurrent(recoveryOperation)) return@execute
+            val loadResult = loadSourcePcmIfCurrent(
+                audio = audio,
+                pitchSemitones = hydration.pitchSemitones,
+                operation = sourceLoadOperation,
+            )
+            if (
+                loadResult.applied &&
+                loadResult.failure != null &&
+                recoveryOperations.isCurrent(recoveryOperation)
+            ) {
+                setStatus(requireNotNull(sourcePlaybackError))
             }
         }
     }
 
     private fun loadSourcePcm(audio: PcmAudio?, pitchSemitones: Float = 0f): Throwable? {
-        sourcePlaybackReady = false
-        sourcePlaybackError = null
-        if (audio == null) return null
-        val failure = runCatching { player.loadPcm(audio, pitchSemitones) }.exceptionOrNull()
-        if (failure == null) {
-            sourcePlaybackReady = true
-        } else {
-            sourcePlaybackError = sourcePlaybackFailureMessage(failure)
-        }
-        return failure
+        val operation = sourceLoadOperations.begin()
+        return loadSourcePcmIfCurrent(audio, pitchSemitones, operation).failure
     }
+
+    private fun loadSourcePcmIfCurrent(
+        audio: PcmAudio?,
+        pitchSemitones: Float,
+        operation: Long,
+    ): SourcePcmLoadResult {
+        try {
+            sourcePlaybackLoadLock.lockInterruptibly()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return SourcePcmLoadResult(applied = false)
+        }
+        try {
+            if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) {
+                return SourcePcmLoadResult(applied = false)
+            }
+            sourcePlaybackReady = false
+            sourcePlaybackError = null
+            if (audio == null) return SourcePcmLoadResult(applied = true)
+            val failure = runCatching { player.loadPcm(audio, pitchSemitones) }.exceptionOrNull()
+            if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) {
+                return SourcePcmLoadResult(applied = false, failure = failure)
+            }
+            if (failure == null) {
+                sourcePlaybackReady = true
+            } else {
+                sourcePlaybackError = sourcePlaybackFailureMessage(failure)
+            }
+            return SourcePcmLoadResult(applied = true, failure = failure)
+        } finally {
+            if (closePlayerAfterSourceLoad) closeSourcePlayerLocked()
+            sourcePlaybackLoadLock.unlock()
+        }
+    }
+
+    private fun controllerIsClosed(): Boolean = synchronized(autosaveLifecycleLock) { closed }
 
     private fun sourcePlaybackIsReady(): Boolean {
         if (sourcePlaybackReady) return true
@@ -1191,13 +1255,16 @@ class DesktopSamplerController(
         }
     }
 
-    private fun stopCompetingPlayback(preserveScratchReturn: Boolean = false) {
+    private fun stopCompetingPlayback(
+        preserveScratchReturn: Boolean = false,
+        stopAudioEngine: Boolean = true,
+    ) {
         if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         transport.stop()
         scratch.stop()
-        player.stopAll()
+        if (stopAudioEngine) player.stopAll()
         mutableState.update {
             it.copy(
                 transportPlaying = false,
@@ -1332,6 +1399,8 @@ class DesktopSamplerController(
             closed = true
             startupRecoveryFuture
         }
+        sourceLoadOperations.invalidate()
+        closePlayerAfterSourceLoad = true
         // Recovery owns the persistence executor before any close-time save. Wait for
         // its state publication so an initial loading snapshot cannot supersede it.
         awaitPersistenceTask(recoveryToAwait)
@@ -1354,17 +1423,30 @@ class DesktopSamplerController(
         }
         runCatching { ioExecutor.shutdownNow() }
         runCatching { playbackMonitor.shutdownNow() }
-        runCatching { stopCompetingPlayback() }
+        runCatching { stopCompetingPlayback(stopAudioEngine = false) }
         runCatching { transport.close() }
         runCatching { scratch.close() }
         runCatching { microphone.close() }
         runCatching { systemAudio.close() }
-        runCatching { player.close() }
+        if (sourcePlaybackLoadLock.tryLock()) {
+            try {
+                closeSourcePlayerLocked()
+            } finally {
+                sourcePlaybackLoadLock.unlock()
+            }
+        }
         try {
             flushAutosaveOnClose(closeRequest)
         } finally {
             runCatching { persistenceExecutor.shutdownNow() }
         }
+    }
+
+    private fun closeSourcePlayerLocked() {
+        if (sourcePlayerClosed) return
+        runCatching { player.stopAll() }
+        runCatching { player.close() }
+        sourcePlayerClosed = true
     }
 
     private enum class AutosavePhase {
@@ -1384,6 +1466,17 @@ class DesktopSamplerController(
     private data class AutosaveSnapshot(
         val state: SamplerUiState,
         val revision: Long,
+    )
+
+    private data class RecoveredAudioHydration(
+        val audio: PcmAudio? = null,
+        val pitchSemitones: Float = 0f,
+        val sourceLoadOperation: Long? = null,
+    )
+
+    private data class SourcePcmLoadResult(
+        val applied: Boolean,
+        val failure: Throwable? = null,
     )
 
     private class AutosaveWork(
