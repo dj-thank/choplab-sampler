@@ -11,6 +11,20 @@
 - Fresh local checks: Python policy tests 39/39, public-surface scan over 394 candidates, six Android XML parses, wrapper checksum/UTF-8 policy, exact equality of all four reviewed Desktop product/test files, and `git diff --check` passed. The focused Gradle tests could not run because Gradle 9.7.1 is not cached; hosted `:desktop:test` remains required for this integrated head.
 - Gate ceiling: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Windows scheduling beyond the deterministic contract, audible timing/latency, device removal, provider, public artifact, and Human acceptance are not inferred.
 
+## Previous snapshot — 2026-08-24 Android import-name persistence integrated candidate
+
+This snapshot records one bounded Android import-admission correction on the exact main that merged realtime PAD terminal-sample retirement. It changes only the display name published with decoded PCM; audio bytes, provider I/O, archive schema and #68 callback behavior are unchanged.
+
+- Observed at: `2026-08-24T20:30+09:00`.
+- Source state: reachable integration product commit `b7364eeab02cccdde260d65337cf9a403f9a6a5d`, tree `dae6252f28c70f56f817c1d5d4e18374de882ea4`, with parents prior reviewed PR head `caea87f823d96f091f8515dd0eb3e86f18d9d27e` and merged `main@2786c3722a9e56fa299d2a88f009d882545b0768`; the later evidence commit is documentation-only.
+- Main preservation: #68 runtime/test blobs remain exact `de686ba13d61b83d161e0480849ccef484fc03f6` / `9d515564f99cf2cd461604b60d2ba2131cc6f4be`, and its merged docs are retained below. The reviewed import-name product/test blobs remain exact `2da4fa2a90b0e4e60020202c88e1a4a14af6f4a8` / `4ba02e5520399eeb10636d02beeada72d1ef79c1`.
+- Reproduced defect: Android accepted a blank or arbitrarily long provider `DISPLAY_NAME` into `PcmAudio`, while `ProjectArchiveCodec` rejects blank asset names and names above `ProjectLimits.MAX_ASSET_NAME_CHARS` (240 UTF-16 code units). Import could therefore appear successful and only fail at autosave/manual save after later edits.
+- Repair: provider and URI fallback names are canonicalized before PCM publication. Blank names fall through to a nonblank URI segment and then `sample`; long names are bounded without splitting a surrogate pair, and a bounded whitespace-only prefix re-enters fallback.
+- Regression: the focused Android unit test covers blank inputs, the 240-spaces-plus-visible-character review case and a surrogate pair straddling code-unit 240, then requires the resulting `PcmAudio` name to round trip exactly through `ProjectArchiveCodec`.
+- Prior-head review/evidence: exact pre-integration head `caea87f` received a clean Codex re-review after the whitespace-boundary repair; its Android and supply-chain workflows passed. These receipts do not replace fresh hosted execution for the integrated head.
+- Fresh local checks: Python policy suite 39/39, public-surface scan 394 candidates, exact product/main blob comparisons and `git diff --check` PASS. Gradle 9.7.1 remains unavailable in the local sandbox, so hosted Android compilation/tests are the executable gate.
+- Gate ceiling: source/static latest-main integration plus revision-bound prior-head evidence only. No provider-specific naming, device import, autosave recovery, audible output, public release or `HUMAN_GO` evidence is inferred.
+
 ## Previous snapshot — 2026-08-24 realtime PAD terminal-sample retirement candidate
 
 This snapshot records a bounded Android realtime mixer correction independently from the completed offline pattern/master repair. It is based on the exact merged fractional-timing main and preserves that timing implementation and evidence.
