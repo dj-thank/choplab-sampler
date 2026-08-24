@@ -218,6 +218,61 @@ class RecorderWorkerStopTest {
     }
 
     @Test
+    fun asynchronousStopClaimsCancellationBeforeReturningToLifecycleCaller() {
+        val startEntered = CountDownLatch(1)
+        val releaseEntered = CountDownLatch(1)
+        val allowStart = CountDownLatch(1)
+        val allowRelease = CountDownLatch(1)
+        val stopCompleted = CountDownLatch(1)
+        val stopResult = AtomicReference<Result<java.io.File>>()
+        val fakeInput = object : RecorderInput {
+            override val recordingState: Int = AudioRecord.RECORDSTATE_RECORDING
+
+            override fun startRecording() {
+                startEntered.countDown()
+                allowStart.await()
+            }
+
+            override fun read(buffer: ShortArray): Int = 0
+            override fun stop() = Unit
+
+            override fun release() {
+                releaseEntered.countDown()
+                allowRelease.await()
+            }
+        }
+        val recorder = MicrophoneRecorder(RecorderInputFactory { fakeInput })
+        val output = Files.createTempFile("choplab-mic-lifecycle-stop", ".wav").toFile()
+
+        try {
+            assertTrue(recorder.start(output).isSuccess)
+            assertTrue(startEntered.await(1, TimeUnit.SECONDS))
+
+            val admitted = recorder.stopAsync { result ->
+                stopResult.set(result)
+                stopCompleted.countDown()
+            }
+
+            assertTrue("lifecycle cancellation must be admitted without waiting", admitted.isSuccess)
+            assertFalse("the stopped state must be visible before returning", recorder.isRecording)
+            assertTrue(releaseEntered.await(1, TimeUnit.SECONDS))
+            assertEquals(
+                "completion must remain asynchronous while native startup is blocked",
+                1L,
+                stopCompleted.count,
+            )
+
+            allowStart.countDown()
+            assertTrue(stopCompleted.await(1, TimeUnit.SECONDS))
+            assertTrue(stopResult.get().isFailure)
+        } finally {
+            allowStart.countDown()
+            allowRelease.countDown()
+            output.delete()
+        }
+    }
+
+    @Test
     fun liveWorkerAfterTimeoutIsNotReportedAsAFinishedRecording() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)

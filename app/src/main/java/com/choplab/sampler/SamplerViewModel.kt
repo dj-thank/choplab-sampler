@@ -913,7 +913,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         autosaveJob?.cancel()
         engine.stopAllPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
-        runCatching { microphoneRecorder.stop().onSuccess(captureTempFiles::deleteOwned) }
+        runCatching {
+            microphoneRecorder.stopAsync { result ->
+                result.onSuccess(captureTempFiles::deleteOwned)
+            }
+        }
         runCatching {
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))
@@ -2241,7 +2245,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
-        runCatching { microphoneRecorder.stop().onSuccess(captureTempFiles::deleteOwned) }
+        runCatching {
+            microphoneRecorder.stopAsync { result ->
+                result.onSuccess(captureTempFiles::deleteOwned)
+            }
+        }
         runCatching {
             val application = getApplication<Application>()
             application.startService(PlaybackCaptureService.stopIntent(application))

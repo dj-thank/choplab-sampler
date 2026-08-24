@@ -55,6 +55,11 @@ class MicrophoneRecorder internal constructor(
     @Volatile private var stopInProgress = false
     @Volatile private var startupFinished = CountDownLatch(0)
 
+    private data class StopClaim(
+        val startup: CountDownLatch,
+        val pendingInput: RecorderInput?,
+    )
+
     val isRecording: Boolean
         get() = running.get()
 
@@ -218,17 +223,47 @@ class MicrophoneRecorder internal constructor(
     }
 
     fun stop(): Result<File> {
-        val (startup, pendingInput) = synchronized(lifecycleLock) {
-            if (stopInProgress) {
-                return Result.failure(IllegalStateException("マイク録音の停止処理中です"))
-            }
+        val claim = claimStop().getOrElse { throwable ->
+            return Result.failure(throwable)
+        }
+        return completeStop(claim)
+    }
+
+    fun stopAsync(onComplete: (Result<File>) -> Unit = {}): Result<Unit> {
+        val claim = claimStop().getOrElse { throwable ->
+            return Result.failure(throwable)
+        }
+        val stopThread = Thread(
+            {
+                val result = completeStop(claim)
+                runCatching { onComplete(result) }
+            },
+            "ChopLab-Microphone-Stop",
+        ).apply { isDaemon = true }
+
+        return runCatching { stopThread.start() }.onFailure {
+            claim.pendingInput?.let(::releasePendingRecorderInput)
+            deleteOutputWhenStopped = true
+            runCatching { outputFile?.delete() }
+            synchronized(lifecycleLock) { stopInProgress = false }
+        }
+    }
+
+    private fun claimStop(): Result<StopClaim> = synchronized(lifecycleLock) {
+        if (stopInProgress) {
+            Result.failure(IllegalStateException("マイク録音の停止処理中です"))
+        } else {
             stopInProgress = true
             stopRequested = true
             running.set(false)
             val pending = startingInput
             startingInput = null
-            startupFinished to pending
+            Result.success(StopClaim(startupFinished, pending))
         }
+    }
+
+    private fun completeStop(claim: StopClaim): Result<File> {
+        val (startup, pendingInput) = claim
         return try {
             pendingInput?.let(::releasePendingRecorderInput)
             if (!startup.await(startupStopTimeoutMillis.coerceAtLeast(1L), TimeUnit.MILLISECONDS)) {
