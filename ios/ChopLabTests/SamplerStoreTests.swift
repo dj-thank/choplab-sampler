@@ -29,7 +29,11 @@ final class SamplerStoreTests: XCTestCase {
     @MainActor
     func testAllStopCancelsPendingRecordingPermissionCallback() async {
         let permissionSession = DeferredRecordingPermissionSession()
-        let store = makeStore(recordingPermissionSession: permissionSession)
+        let callbackFinished = expectation(description: "permission callback finished")
+        let store = makeStore(
+            recordingPermissionSession: permissionSession,
+            recordingPermissionCallbackDidFinish: callbackFinished.fulfill
+        )
 
         store.startRecording()
 
@@ -38,7 +42,7 @@ final class SamplerStoreTests: XCTestCase {
 
         store.stopAll()
         permissionSession.resolveNext(granted: true)
-        await Task.yield()
+        await fulfillment(of: [callbackFinished], timeout: 1)
 
         XCTAssertFalse(store.isRecording)
         XCTAssertEqual(store.statusMessage, "停止しました")
@@ -60,23 +64,41 @@ final class SamplerStoreTests: XCTestCase {
     @MainActor
     func testOnlyNewestRecordingPermissionRequestCanResolve() async {
         let permissionSession = DeferredRecordingPermissionSession()
-        let store = makeStore(recordingPermissionSession: permissionSession)
+        let callbacksFinished = expectation(description: "permission callbacks finished")
+        callbacksFinished.expectedFulfillmentCount = 2
+        let store = makeStore(
+            recordingPermissionSession: permissionSession,
+            recordingPermissionCallbackDidFinish: callbacksFinished.fulfill
+        )
 
         store.startRecording()
         store.startRecording()
         XCTAssertEqual(permissionSession.pendingRequestCount, 2)
 
         permissionSession.resolveNext(granted: true)
-        await Task.yield()
-
-        XCTAssertFalse(store.isRecording)
-        XCTAssertEqual(store.statusMessage, "録音権限を確認しています")
-
         permissionSession.resolveNext(granted: false)
-        await Task.yield()
+        await fulfillment(of: [callbacksFinished], timeout: 1)
 
         XCTAssertFalse(store.isRecording)
         XCTAssertEqual(store.statusMessage, "録音権限が許可されませんでした")
+    }
+
+    @MainActor
+    func testNewerSourceActionCancelsPendingRecordingPermissionCallback() async {
+        let permissionSession = DeferredRecordingPermissionSession()
+        let callbackFinished = expectation(description: "permission callback finished")
+        let store = makeStore(
+            recordingPermissionSession: permissionSession,
+            recordingPermissionCallbackDidFinish: callbackFinished.fulfill
+        )
+
+        store.startRecording()
+        store.playSource()
+        permissionSession.resolveNext(granted: true)
+        await fulfillment(of: [callbackFinished], timeout: 1)
+
+        XCTAssertFalse(store.isRecording)
+        XCTAssertEqual(store.statusMessage, "先に音源を読み込んでください")
     }
 
     @MainActor
@@ -109,13 +131,15 @@ final class SamplerStoreTests: XCTestCase {
 
     @MainActor
     private func makeStore(
-        recordingPermissionSession: RecordingPermissionSession = AVAudioSession.sharedInstance()
+        recordingPermissionSession: RecordingPermissionSession = AVAudioSession.sharedInstance(),
+        recordingPermissionCallbackDidFinish: @escaping () -> Void = {}
     ) -> SamplerStore {
         SamplerStore(
             sourceRepository: SourceFileRepository(
                 directory: root.appendingPathComponent("Sources", isDirectory: true)
             ),
-            recordingPermissionSession: recordingPermissionSession
+            recordingPermissionSession: recordingPermissionSession,
+            recordingPermissionCallbackDidFinish: recordingPermissionCallbackDidFinish
         )
     }
 

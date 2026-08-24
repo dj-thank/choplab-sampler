@@ -64,6 +64,7 @@ struct ContentView: View {
 
             HStack(spacing: 10) {
                 Button("音源を読み込む") {
+                    store.beginSourceImport()
                     showingImporter = true
                 }
                 .buttonStyle(.borderedProminent)

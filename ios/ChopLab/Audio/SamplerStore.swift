@@ -35,6 +35,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var padPlayers: [AVAudioPlayerNode] = []
     private let sourceRepository: SourceFileRepository
     private let recordingPermissionSession: RecordingPermissionSession
+    private let recordingPermissionCallbackDidFinish: () -> Void
     private var sourceFile: AVAudioFile?
     private var activeSourceURL: URL?
     private var recorder: AVAudioRecorder?
@@ -45,10 +46,12 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     init(
         sourceRepository: SourceFileRepository = SourceFileRepository(),
-        recordingPermissionSession: RecordingPermissionSession = AVAudioSession.sharedInstance()
+        recordingPermissionSession: RecordingPermissionSession = AVAudioSession.sharedInstance(),
+        recordingPermissionCallbackDidFinish: @escaping () -> Void = {}
     ) {
         self.sourceRepository = sourceRepository
         self.recordingPermissionSession = recordingPermissionSession
+        self.recordingPermissionCallbackDidFinish = recordingPermissionCallbackDidFinish
         super.init()
         engine.attach(sourcePlayer)
         engine.connect(sourcePlayer, to: engine.mainMixerNode, format: nil)
@@ -68,6 +71,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     @discardableResult
     func importSource(from url: URL) -> Bool {
+        recordingPermissionLease.invalidate()
         guard SourceImportPolicy.admission(isRecording: isRecording) == .allowed else {
             statusMessage = "録音中は音源を変更できません。録音を停止してから読み込んでください"
             return false
@@ -78,7 +82,12 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
         )
     }
 
+    func beginSourceImport() {
+        recordingPermissionLease.invalidate()
+    }
+
     func reportImportPickerCancellation() {
+        recordingPermissionLease.invalidate()
         if isRecording {
             statusMessage = "録音中。音源の読み込みはキャンセルされました"
         } else {
@@ -87,6 +96,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func reportImportPickerFailure(_ error: Error) {
+        recordingPermissionLease.invalidate()
         let cocoaError = error as NSError
         guard cocoaError.domain != NSCocoaErrorDomain ||
                 cocoaError.code != CocoaError.Code.userCancelled.rawValue else {
@@ -98,6 +108,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func playSource() {
+        recordingPermissionLease.invalidate()
         guard let file = sourceFile else {
             statusMessage = "先に音源を読み込んでください"
             return
@@ -127,6 +138,7 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     func playPad(_ pad: PadCell) {
+        recordingPermissionLease.invalidate()
         selectedPadID = pad.id
         guard let file = sourceFile, padPlayers.indices.contains(pad.id) else {
             statusMessage = "先に音源を読み込んでください"
@@ -188,8 +200,9 @@ final class SamplerStore: NSObject, ObservableObject, AVAudioRecorderDelegate {
             statusMessage = "録音権限を確認しています"
             session.requestRecordPermission { [weak self] granted in
                 Task { @MainActor in
-                    guard let self,
-                          self.recordingPermissionLease.consume(permissionGeneration) else {
+                    guard let self else { return }
+                    defer { self.recordingPermissionCallbackDidFinish() }
+                    guard self.recordingPermissionLease.consume(permissionGeneration) else {
                         return
                     }
                     if granted {
