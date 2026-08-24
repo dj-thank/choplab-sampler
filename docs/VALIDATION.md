@@ -4,11 +4,11 @@
 
 ## Guided first-screen GitHub review repair — 2026-08-24
 
-- Product source: follow-up branch `codex/choplab-screen-flow@0d73984a26eec50fbf8c74ca0c88f7e803b7f1d0`, tree `45d00f2c27d4f9225d7892776c55412604fbcd09`; PR #52 is merged at `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.
+- Product source: reachable follow-up commit `c650d00b51010afe62f74bad1d37f7afc1e79ed1`, tree `9e0470ad6e1811e93c3cfbdfd8645cb2519a6235`; PR #52 is merged at `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`. Subsequent PR commits are documentation-only anchor updates.
 - Review closure candidate: compact-landscape CAPTURE now opts into bounded scrolling; large-text CHOP plus BEAT quick/detailed bodies use stacked bounded-scroll compositions with explicit waveform and computed 48 dp-safe PAD-grid heights; compact-landscape large text exposes transient status in the fixed header when the separate strip is suppressed. Normal-text layouts retain their previous fixed/responsive paths.
 - Instrumentation isolation: `FirstScreenFlowDeviceTest` now renders a deterministic in-memory pristine state/controller seam and never launches autosave recovery, clears app data or mutates retained projects. Its added large-text case scrolls through the demo, verifies the selected PAD target and traverses both QUICK and STEPS bodies.
 - Current-container checks: `git diff --check` PASS; Python policy suite 23/23 PASS; public-surface scan 389 candidates PASS.
-- Environment boundary: this Linux container has no Android SDK or cached Gradle distribution and cannot reach `services.gradle.org`; fresh Gradle compilation/instrumentation is not claimed. Hosted PR CI must pass before merge or gate promotion. The artifact/runtime evidence in the next section remains bound to `43d8ace` and is not proof for `0d73984`.
+- Environment boundary: this Linux container has no Android SDK or cached Gradle distribution and cannot reach `services.gradle.org`; fresh Gradle compilation/instrumentation is not claimed. Hosted PR CI must pass before merge or gate promotion. The artifact/runtime evidence in the next section remains bound to `43d8ace` and is not proof for `c650d00`.
 
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 

@@ -74,7 +74,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 - [x] 2026-08-24 15:52 JST — Independent verifier's 40 dp compact-landscape finding reproduced RED, repaired to stage 49 dp / demo 59 dp, and re-observed on exact final APK.
 - [x] 2026-08-24 16:08 JST — Three GitHub review threads reproduced: normal compact-landscape CAPTURE clipping, collapsed 200% BEAT quick/detail workspaces and autosave-dependent first-screen instrumentation. Source repair `8736430` plus direct large-text navigation coverage is complete.
 - [x] 2026-08-24 16:08 JST — Review-repair static gates PASS: diff check, 23 Python tests and 389-candidate public-surface scan. Fresh Gradle/AVD proof is delegated to hosted PR CI because this container lacks the Android SDK/cached Gradle and cannot download the distribution.
-- [x] 2026-08-24 16:17 JST — PR #52 merged at `495ddc9`; two later review findings were reproduced and fixed in follow-up product commit `0d73984`: large-text CHOP uses a touch-safe bounded-scroll stack, and compact-landscape status remains visible in the header.
+- [x] 2026-08-24 16:17 JST — PR #52 merged at `495ddc9`; later review repairs are bound to reachable product commit `c650d00`: large-text CHOP uses a touch-safe bounded-scroll stack, compact-landscape status remains visible in the header, and the complete shared source blob is preserved.
 - [x] 2026-08-24 16:20 JST — Follow-up PR opened for all five review repairs; review replies are posted and hosted checks are the remaining integration gate.
 - [x] 2026-08-24 16:43 JST — Hosted Android compile/unit/lint/APK gates passed; instrumentation exposed the test proxy returning null from `equals`. The proxy now implements identity `equals`/`hashCode`/`toString`; refreshed device execution is pending.
 - [ ] Independent review, GitHub integration and closeout.
@@ -93,7 +93,7 @@ A first-time user sees four distinct entry choices—own audio, an existing proj
 ## Validation evidence
 
 - Product anchor: `43d8ace6aa43f3eb6e3b9dc01ea74604ee600705`, tree `798212c33d1dcc3eb52ea79fb20e13b87a9b2d9a`.
-- Review-repair source: `0d73984a26eec50fbf8c74ca0c88f7e803b7f1d0`, tree `45d00f2c27d4f9225d7892776c55412604fbcd09`; hosted compile/runtime checks pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
+- Review-repair source: reachable commit `c650d00b51010afe62f74bad1d37f7afc1e79ed1`, tree `9e0470ad6e1811e93c3cfbdfd8645cb2519a6235`; later commits only bind documentation to this source. Hosted compile/runtime checks are pending, so the exact 43d8ace artifacts remain historical rather than repair proof.
 - Gradle: clean 191 tasks plus final incremental 184 tasks PASS; shared 25/25, Android 234, JVM-core 52, Desktop 77; failures/errors/skips 0.
 - Instrumentation: API 36 `OK (7 tests)` after exact data-preserving APK installs.
 - Visuals: parent PAD `work/CHOPLAB_SCREEN_FLOW_AUDIT_20260824/accepted/`.
