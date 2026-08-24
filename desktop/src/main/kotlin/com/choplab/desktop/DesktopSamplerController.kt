@@ -146,7 +146,7 @@ class DesktopSamplerController(
                         val playbackFailure = runCatching { player.loadPcm(audio) }.exceptionOrNull()
                         val next = BuiltInDrumKits.installStarterKit(
                             SamplerUiState(
-                                statusMessage = playbackFailure?.let { "音声は読込済みですが再生機器を開けません: ${it.message}" }
+                                statusMessage = playbackFailure?.let(::sourcePlaybackFailureMessage)
                                     ?: "${file.name}を読み込みました。チョップで音を切ってください",
                                 currentAudio = audio,
                                 rangeEndFrame = audio.frameCount,
@@ -1005,41 +1005,52 @@ class DesktopSamplerController(
 
     private fun recoverAutosave(): Future<*> {
         val store = requireNotNull(autosaveStore)
+        // Startup recovery owns an operation epoch before the controller escapes its
+        // constructor. Reuse that epoch for hydration so a later user load/open wins.
+        val recoveryOperation = projectOperations.begin()
         return persistenceExecutor.submit {
             var scheduleFreshAutosave = false
             var recoveryFailed = false
             val recoveredAudio = try {
                 val recovered = store.loadWithRevision()
                 if (recovered == null) {
-                    mutableState.value = productionSession.replaceProject(freshProductionState()).state
-                    scheduleFreshAutosave = true
+                    projectOperations.completeIfCurrent(recoveryOperation) {
+                        mutableState.value = productionSession.replaceProject(freshProductionState()).state
+                        scheduleFreshAutosave = true
+                    }
                     null
                 } else {
                     val restored = recovered.state
-                    val transition = productionSession.replaceProject(
-                        restored,
-                        persistenceRequired = false,
-                        recoveredRevision = recovered.revision,
-                    )
-                    applyHistoryState(
-                        restored = transition.state,
-                        message = "前回の自動保存を復元しました",
-                        launchTarget = inferProjectLaunchTarget(
+                    var audioToHydrate: PcmAudio? = null
+                    projectOperations.completeIfCurrent(recoveryOperation) {
+                        val transition = productionSession.replaceProject(
                             restored,
-                            starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
-                        ),
-                        hydrateAudio = false,
-                    )
-                    transition.state.currentAudio
+                            persistenceRequired = false,
+                            recoveredRevision = recovered.revision,
+                        )
+                        applyHistoryState(
+                            restored = transition.state,
+                            message = "前回の自動保存を復元しました",
+                            launchTarget = inferProjectLaunchTarget(
+                                restored,
+                                starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
+                            ),
+                            hydrateAudio = false,
+                        )
+                        audioToHydrate = transition.state.currentAudio
+                    }
+                    audioToHydrate
                 }
             } catch (error: Throwable) {
                 synchronized(autosaveLifecycleLock) {
                     startupRecoveryOutcome = StartupRecoveryOutcome.FAILED
                     startupRecoveryFailureRevision = productionSession.revision
                 }
-                mutableState.value = SamplerUiState(
-                    statusMessage = "自動保存を復元できません: ${error.message ?: error.javaClass.simpleName}",
-                )
+                projectOperations.completeIfCurrent(recoveryOperation) {
+                    mutableState.value = SamplerUiState(
+                        statusMessage = "自動保存を復元できません: ${error.message ?: error.javaClass.simpleName}",
+                    )
+                }
                 recoveryFailed = true
                 null
             }
@@ -1048,23 +1059,29 @@ class DesktopSamplerController(
                     startupRecoveryOutcome = StartupRecoveryOutcome.SUCCEEDED
                 }
                 if (scheduleFreshAutosave) scheduleAutosave()
-                scheduleRecoveredAudioHydration(recoveredAudio)
+                scheduleRecoveredAudioHydration(recoveredAudio, recoveryOperation)
             }
         }
     }
 
-    private fun scheduleRecoveredAudioHydration(audio: PcmAudio?) {
+    private fun scheduleRecoveredAudioHydration(audio: PcmAudio?, recoveryOperation: Long) {
         if (audio == null) return
-        val operation = synchronized(autosaveLifecycleLock) {
+        synchronized(autosaveLifecycleLock) {
             if (closed) return
-            projectOperations.begin()
         }
         ioExecutor.execute {
-            projectOperations.completeIfCurrent(operation) {
-                player.loadPcm(audio)
+            projectOperations.completeIfCurrent(recoveryOperation) {
+                val hydrate = synchronized(autosaveLifecycleLock) { !closed }
+                if (hydrate) {
+                    runCatching { player.loadPcm(audio) }
+                        .onFailure { error -> setStatus(sourcePlaybackFailureMessage(error)) }
+                }
             }
         }
     }
+
+    private fun sourcePlaybackFailureMessage(error: Throwable): String =
+        "音声は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}"
 
     private fun onTransportStep(step: Int) {
         val snapshot = mutableState.value
