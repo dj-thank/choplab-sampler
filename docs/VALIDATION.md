@@ -2,6 +2,14 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Desktop import sample-rate admission candidate — 2026-08-24
+
+- Source: reachable product commit `3ad2bd9eda0561b0f1cf304b477ca726edd1becc`, tree `8272a51c4b537dd06ec02e0ff780e574babe4d46`, based directly on merged `main@3260f5cb560e2cbd2d245c7eee6f96ecb3540ddc`; the final follow-up is documentation-only.
+- Contract: Desktop WAV import accepts finite sample rates from 8,000 through `ProjectLimits.MAX_SAMPLE_RATE` (192,000 Hz), matching Android and the project archive. Unsupported rates fail before decoding, state replacement and autosave admission.
+- Regression: exact 192 kHz validation succeeds. An `AudioInputStream` declaring 192,001 Hz over a fail-on-read payload throws `IllegalArgumentException`, and the payload read count remains zero.
+- Local evidence: Python policy 39/39, public-surface scan 394 candidates, conflict-marker scan and `git diff --check` PASS. The uncached Gradle 9.7.1 distribution is unavailable in this container, so hosted `:desktop:test` is required before merge.
+- Gate: source/static candidate only; no audible, physical Windows, archive recovery, provider or Human result is claimed.
+
 ## Fractional pattern-frame timing candidate — 2026-08-24
 
 - Product source: reachable integration commit `0b75c71112cd004d9fa7ca34a6e916742c5d8825`, tree `18968b17b4c8a7d97e868dde4bc633e61e1da7c9`, joining the prior PR head with `main@6b645ca5005f905e93c572edfc1d375d4a6eeeb5`. Its four audio product/test files preserve the exact reviewed timing implementation; the later evidence commit is documentation-only.

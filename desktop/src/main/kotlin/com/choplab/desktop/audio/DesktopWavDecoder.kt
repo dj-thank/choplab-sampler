@@ -2,6 +2,7 @@ package com.choplab.desktop.audio
 
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.ProjectLimits
 import java.io.File
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
@@ -14,9 +15,7 @@ object DesktopWavDecoder {
         AudioResourceLimits.requireImportFileSize(file.length())
         AudioSystem.getAudioInputStream(file).use { source ->
             val sourceFormat = source.format
-            require(sourceFormat.sampleRate.isFinite() && sourceFormat.sampleRate >= 8_000f) {
-                "音声のサンプルレートが不正です"
-            }
+            validateSampleRate(sourceFormat.sampleRate)
             require(sourceFormat.channels in 1..8) { "音声のチャンネル数に対応していません" }
             val targetFormat = AudioFormat(
                 AudioFormat.Encoding.PCM_SIGNED,
@@ -52,8 +51,7 @@ object DesktopWavDecoder {
         require(stream.format.sampleSizeInBits == 16 && !stream.format.isBigEndian) {
             "PCM-16 little-endian形式が必要です"
         }
-        val sampleRate = stream.format.sampleRate.toInt()
-        require(sampleRate >= 8_000) { "音声のサンプルレートが不正です" }
+        val sampleRate = validateSampleRate(stream.format.sampleRate)
         val effectiveMaximumFrames = minOf(
             maximumFrames,
             AudioResourceLimits.maxDecodedMonoFrames(sampleRate),
@@ -106,6 +104,17 @@ object DesktopWavDecoder {
         require(samples.isNotEmpty()) { "音声データを展開できませんでした" }
         AudioResourceLimits.requireDecodedMonoFrameCount(samples.size.toLong(), sampleRate)
         return PcmAudio(name = name, samples = samples, sampleRate = sampleRate)
+    }
+
+    internal fun validateSampleRate(sampleRate: Float): Int {
+        require(
+            sampleRate.isFinite() &&
+                sampleRate >= 8_000f &&
+                sampleRate <= ProjectLimits.MAX_SAMPLE_RATE.toFloat(),
+        ) {
+            "音声のサンプルレートが不正です"
+        }
+        return sampleRate.toInt()
     }
 
     private const val STREAM_BUFFER_BYTES = 64 * 1024
