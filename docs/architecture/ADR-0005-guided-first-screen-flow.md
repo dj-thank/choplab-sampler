@@ -21,6 +21,8 @@ Keep the shared four-stage model `入れる → チョップ → ビート → �
 
 At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. The first-entry body scrolls when enlarged content or compact landscape height cannot fit. Large-text BEAT quick/detail bodies also use bounded scrolling with explicit waveform and 48 dp-safe PAD-grid heights; global chrome remains fixed. Normal text retains the one-row chrome and existing responsive BEAT composition.
 
+Within a scrollable BEAT body, PAD selection and playback commit only after the pointer gesture completes as a tap. A vertical drag canceled by the parent scroll sends no PAD model or audio action. Non-scroll PAD surfaces keep their direct press-down performance path.
+
 Both platform controllers use the shared `ensurePlayablePadSelected` state transition, which updates selected PAD, bank and page together.
 
 ## Consequences
@@ -29,7 +31,7 @@ Both platform controllers use the shared `ensurePlayablePadSelected` state trans
 - The demo keeps its existing pads, pattern and export readiness; no audio or project semantics change.
 - Large text preserves full action labels and 48 dp minimum targets instead of shrinking typography.
 - Constrained CAPTURE or large-text BEAT may require an intentional body scroll; global chrome and normal-text composition do not scroll.
-- When a 48 dp large-text PAD cannot fit its secondary DRM/VOX/key caption cleanly, the visible cell keeps its complete PAD identity and the full role/state remains in accessibility semantics.
+- When a 48 dp large-text PAD cannot fit its secondary LOOP/DRM/VOX/key caption cleanly, the visible cell keeps its complete PAD identity while accessibility semantics always state both play mode and content kind.
 - Android and Windows render the same entry and workflow policy while keeping platform I/O adapters separate.
 
 ## Rejected alternatives

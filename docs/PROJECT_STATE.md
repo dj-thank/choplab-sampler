@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 guided first-screen integrated and constrained-flow closeout
+## Current snapshot — 2026-08-24 constrained PAD gesture and semantics review repair
+
+This snapshot records the bounded PR #62 review repair separately from the earlier exact APK and emulator receipts. It does not reuse those earlier binaries as proof of the new pointer behavior.
+
+- Observed at: `2026-08-24T17:40+09:00`.
+- Source state: PR branch `codex/choplab-screen-flow-closeout`, reachable product commit `0a7d340958fffa733f7e40deff98eff4e261e99a`, tree `5d7fb0e99131b50f5154ee71b9ae6e3eb788aaac`, integrating original PR #62 head `457831cc395c163e06f2820cb58be796d9eb4c8f` with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`. The later evidence commit is documentation-only.
+- Pointer arbitration: only a PAD embedded in the large-text BEAT scroll body defers selection and playback until `detectTapGestures` confirms a completed tap. A parent-consumed vertical drag cancels before `onTap`, so it sends no `selectPlayablePad`, `triggerPad` or `releasePad`. Non-scroll PAD surfaces retain press-down triggering.
+- Accessibility truth: every assigned PAD description now includes both play mode and content kind. `LOOP`, `DRM` and `VOX` therefore remain available to accessibility services even when a compact 48 dp large-text cell omits its secondary visual caption.
+- Regression coverage: a real Compose pointer swipe begins on an assigned PAD, proves the workspace moved and asserts zero PAD-controller calls; a subsequent real touch tap asserts `select → trigger → release`. Focused host assertions cover LOOP, DRM and VOX descriptions, and the existing device fixture checks actual large-text DRM semantics and 48 dp bounds.
+- Fresh local checks: Python policy suite 34/34, public-surface scan 394 candidates and `git diff --check` PASS. Focused Android unit and androidTest compilation could not start because Gradle 9.7.1 is not cached and this environment cannot reach `services.gradle.org`; hosted Gradle and device execution remain required.
+- Gate ceiling: source/static candidate only. The prior closeout's exact APK/emulator evidence remains historical and does not prove this new gesture arbitration, TalkBack speech, touch feel, audio onset, provider checks or `HUMAN_GO`.
+
+## Previous snapshot — 2026-08-24 guided first-screen integrated and constrained-flow closeout
 
 This snapshot is the current product behavior anchor for first entry and shared navigation. Moving GitHub `main` and hosted workflow identities are provider read-backs, while the immutable implementation claim is bound to the product commit below.
 

@@ -2,6 +2,15 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Constrained PAD gesture and semantics review repair — 2026-08-24
+
+- Product source: `codex/choplab-screen-flow-closeout@0a7d340958fffa733f7e40deff98eff4e261e99a`, tree `5d7fb0e99131b50f5154ee71b9ae6e3eb788aaac`, integrating original PR #62 head `457831cc395c163e06f2820cb58be796d9eb4c8f` with `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`; the later evidence commit is documentation-only.
+- Review contract: large-text BEAT uses completed-tap PAD actions inside its vertical scroll body. A real pointer swipe from a PAD must move the body without selecting, triggering or releasing that PAD; a real pointer tap still dispatches the ordered `selectPlayablePad → triggerPad → releasePad` path. Non-scroll performance remains press-down driven.
+- Accessibility contract: assigned PAD semantics always expose play mode plus content kind. Focused assertions bind the compact visual indicators `LOOP`, `DRM` and `VOX`, while the large-text Compose fixture checks the actual DRM description and unchanged 48 dp PAD bounds.
+- Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 34 tests; `python3 scripts/check_public_surface.py` passed 394 candidates; `git diff --check` passed.
+- Blocked executable gate: `:app:testDebugUnitTest --tests com.choplab.sampler.ui.PadGridAccessibilityTest :app:compileDebugAndroidTestKotlin` could not acquire Gradle 9.7.1 because the distribution is not cached and `services.gradle.org` is unreachable. No APK, instrumentation, physical touch, TalkBack speech or audio evidence is claimed for this delta.
+- Gate: source/static candidate only; hosted Android unit/androidTest compilation and a device gesture run are required before promotion.
+
 ## Guided first-screen constrained-flow closeout — 2026-08-24
 
 - Product source: `codex/choplab-screen-flow-closeout@07f8dcf3c2b0fe17c1e1d8ed3d135728c18f0c96`, tree `dcd5969bf72ceab1facbceb43c3fe63a9df99b4d`, base merged main `495ddc9` / tree `6a6ae6e`.
