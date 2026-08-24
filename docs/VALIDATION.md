@@ -2,16 +2,19 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Sample-rate-bounded streaming decode candidate — 2026-08-24
+## Desktop transport step-zero ordering candidate — 2026-08-24
 
-- Product source: reachable integration commit `8279ea4f7e04cfec2c41440e65f4a40bc4d68451`, tree `f6a5bc3844317169edf1100e79da1ea08b46c524`, joining the original PR head with `main@a930da4cdaf1f5035b3ea21196f802801fa4c46f`. Later documentation commits are tracked separately and do not change these product bytes.
-- Historical pre-rebase receipt: `9f01f42beb4e37ef5d4f66606af5917f8620f2ea`, tree `1071acbd11593cab3eb1b7531857a9d9f7bb8c12`, remains the revision boundary for its original local checks only.
-- Contract: imported mono PCM is bounded by `min(30,000,000, sampleRate × 600)` frames. Exact 8 kHz / 4,800,000 and 48 kHz / 28,800,000 boundaries are accepted; the next frame is rejected. The arithmetic tests do not materialize multi-million-frame buffers.
-- Adapter coverage: Android updates the streaming builder when the decoder output rate becomes authoritative and revalidates accepted PCM; Desktop applies the effective limit before known-length allocation, during unknown-length streaming, and after decode.
-- Historical checks: at `9f01f42` / tree `1071acb`, the public-surface scan passed 389 candidates and `git diff --check` passed; `scripts/doctor.sh` confirmed Java 17/Git and reported the expected absent Android SDK/ADB.
-- Integrated-tree checks: on a docs-only descendant of product `8279ea4`, Python policy tests passed 39/39, `python3 scripts/check_public_surface.py` passed 394 candidates, and `git diff --check` passed. `scripts/doctor.sh` confirmed Java 17/Git and the expected absent Android SDK/ADB. `scripts/write_release_manifest.py` and `scripts/tests/test_write_release_manifest.py` match integrated `main@a930da4`, so #63 checksum enforcement is retained unchanged.
-- Blocked local execution: the focused shared/Android/Desktop Gradle command could not provision uncached Gradle 9.7.1 because the distribution host is unreachable. The focused test sources are present, but no new Gradle result is claimed; hosted CI is required.
-- Gate: source/static evidence only. Device import, codec variance, physical memory pressure, audio quality, provider/public and Human gates remain unclaimed.
+- Product source: reachable product `5b754db4a2d4649bd82c52ce32fc6faeb7118d0b`, tree `c25a95a8ca4bcec4ba86ca7b5b68529abe285a3b`, with main-side parent `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`. It is a candidate, not a merged-main revision; its four Desktop product/test files preserve the exact reviewed remote bytes.
+- Deterministic contract: `DesktopTransportTest.startBarrierPublishesStateBeforeStepZero` observes the readiness flag from the first worker callback and counts one step 0. `DesktopSamplerControllerTest.transportStartsWithEveryAudibleStepZeroHitExactlyOnce` reduces the pattern to one assigned drum at step 0, starts/stops transport, and requires one fake-engine hit plus stopped UI state. `failedTransportRestartAfterScratchRestoresRecordArm` injects a worker-start exception after the scratch-return readiness callback and requires stopped transport plus the original recording arm.
+- Prior exact-head evidence: remote PR head `2c7d27226d4c0aa7edc22173cfac6b18615d7c68` received a clean exact-head Codex re-review. Workflow runs `32709434503` (Android), `32709434580` (Windows), `32709434516` (iOS), and `32709434606` (supply chain) all completed successfully.
+- Latest-main static gates: Python policy 39/39 PASS; public-surface 394 candidates PASS; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper text policy matched; all four Desktop product/test files equal the exact reviewed tree; `git diff --check` PASS. The local Gradle 9.7.1 distribution remains unavailable, so the integrated commit requires fresh hosted execution before merge.
+- Gate: source/static latest-main integration plus revision-bound prior-head hosted evidence only. Physical Windows audio, real scheduling latency, device loss, packaging, provider, publication, and `HUMAN_GO` remain unclaimed.
+
+## Sample-rate-bounded streaming decode merged-main candidate — 2026-08-24
+
+- Merged-main source: PR #61 at `main@ae77cd92d3ee14baecc01f4862c639328bae43bb`; pre-merge product `8279ea4f7e04cfec2c41440e65f4a40bc4d68451`, tree `f6a5bc3844317169edf1100e79da1ea08b46c524`.
+- Contract: imported mono PCM is bounded by `min(30,000,000, sampleRate × 600)` frames, including Android effective-rate and Desktop unknown-length paths.
+- Provider read-back: the exact PR head passed all four hosted workflows and clean exact-head review before merge.
 
 ## Release checksum sidecar hardening candidate — 2026-08-24
 
@@ -21,11 +24,11 @@
 
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 
-- Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.
+- Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; integrated as PR #59 at `main@364ccde764b88f0bb79e10b8aaeb8284a5c069cc`.
 - Regression contract: the injected `TargetDataLine` accepts `open`, throws from `start`, is closed exactly once even after later `stop` / `close`, leaves `isRecording=false`, deletes the owned partial WAV, and cannot return stale output. The fixture does not open audio hardware.
 - Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 23 tests; `python3 scripts/check_public_surface.py` passed 390 candidates; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper UTF-8 policy matched; `git diff --check` passed.
-- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopAudioRecorderTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. `./scripts/validate_project.sh` reached and passed the public-surface phase, then stopped at the same Gradle prerequisite. Hosted `:desktop:test` is the required executable proof.
-- Gate: source/static candidate only. Physical Windows input, actual WAV content, route loss, audio quality, provider, publication, and `HUMAN_GO` remain unclaimed.
+- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopAudioRecorderTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. `./scripts/validate_project.sh` reached and passed the public-surface phase, then stopped at the same Gradle prerequisite. Hosted evidence must remain bound to its exact provider revision.
+- Gate: source/static candidate only. Physical Windows input, actual WAV content, route loss, audio quality, provider, publication, and `HUMAN_GO` remain unclaimed from this local receipt.
 
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 
