@@ -762,13 +762,21 @@ class FirstScreenFlowDeviceTest {
             )
         }
 
-        waveform.performTouchInput {
-            down(center)
-            up()
-        }
-        composeRule.waitForIdle()
-        composeRule.runOnIdle {
-            assertEquals(listOf("playSourceFrom"), waveformActions)
+        composeRule.mainClock.autoAdvance = false
+        try {
+            waveform.performTouchInput {
+                down(center)
+                up()
+            }
+            // Waveform taps also recognize double tap, so the single-tap callback is deliberately
+            // deferred until that window closes. Advance it explicitly instead of racing wall time.
+            composeRule.mainClock.advanceTimeBy(400)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(listOf("playSourceFrom"), waveformActions)
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
         }
     }
 
@@ -813,13 +821,19 @@ class FirstScreenFlowDeviceTest {
             )
         }
 
-        waveform.performTouchInput {
-            down(center)
-            up()
-        }
-        composeRule.waitForIdle()
-        composeRule.runOnIdle {
-            assertEquals(listOf("playSourceFrom"), waveformActions)
+        composeRule.mainClock.autoAdvance = false
+        try {
+            waveform.performTouchInput {
+                down(center)
+                up()
+            }
+            composeRule.mainClock.advanceTimeBy(400)
+            composeRule.waitForIdle()
+            composeRule.runOnIdle {
+                assertEquals(listOf("playSourceFrom"), waveformActions)
+            }
+        } finally {
+            composeRule.mainClock.autoAdvance = true
         }
     }
 
