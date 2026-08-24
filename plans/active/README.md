@@ -12,7 +12,7 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
-**独立保守delta:** reachable product `48c1ae3`（tree `692f4ce`、`main@3260f5c`）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact headの全CI／再review PASSを保持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
+**独立保守delta:** reachable integration product `3e2cd38`（tree `01d1062`、`main@3de1cc5`統合）のDesktop transport修正は、workerがcontrollerのplaying状態公開より先にstep 0を通知する競合を、worker開始前readiness barrierで排除する。PR #65旧exact head `1c4bf4c`の全CI／再review PASSを保持するが、まだmainへはマージされていない。新しいExecPlanは選択せず、上記のproduct decisionは変更しない。最新main統合headのhosted `:desktop:test`が完了するまではsource/static candidate扱いとする。
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
