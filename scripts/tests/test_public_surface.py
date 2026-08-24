@@ -139,6 +139,45 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("extra field" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_zip_content_scan_reads_local_header_only_extra_fields(self) -> None:
+        token = ("github_pat_" + "a" * 24).encode("ascii")
+        local_extra = b"\xfe\xca" + len(token).to_bytes(2, "little") + token
+        safe_payload = b"x" * len(token)
+        central_extra = (
+            b"\xfe\xca" + len(safe_payload).to_bytes(2, "little") + safe_payload
+        )
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "local-extra.zip"
+            candidate = BytesIO()
+            info = zipfile.ZipInfo("docs/notes.txt")
+            info.extra = local_extra
+            with zipfile.ZipFile(candidate, "w") as archive:
+                archive.writestr(info, "safe")
+
+            archive_bytes = bytearray(candidate.getvalue())
+            central_offset = archive_bytes.index(b"PK\x01\x02")
+            filename_length = int.from_bytes(
+                archive_bytes[central_offset + 28 : central_offset + 30], "little"
+            )
+            extra_length = int.from_bytes(
+                archive_bytes[central_offset + 30 : central_offset + 32], "little"
+            )
+            self.assertEqual(len(central_extra), extra_length)
+            central_extra_offset = central_offset + 46 + filename_length
+            archive_bytes[
+                central_extra_offset : central_extra_offset + extra_length
+            ] = central_extra
+            archive_path.write_bytes(archive_bytes)
+
+            with zipfile.ZipFile(archive_path) as archive:
+                stored_info = archive.infolist()[0]
+                self.assertNotIn(token, stored_info.extra)
+                self.assertEqual(b"safe", archive.read(stored_info))
+            findings = scan_zip(archive_path)
+
+        self.assertTrue(any("local header extra field" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
     def test_zip_content_scan_rejects_excessive_entry_count_before_reading(self) -> None:
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "many.zip"

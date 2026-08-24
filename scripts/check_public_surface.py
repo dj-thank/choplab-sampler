@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import struct
 import subprocess
 import sys
 import zipfile
@@ -75,6 +76,8 @@ SECRET_PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
 ]
+ZIP_LOCAL_FILE_HEADER = struct.Struct("<4s5H3L2H")
+ZIP_LOCAL_FILE_SIGNATURE = b"PK\x03\x04"
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -219,6 +222,11 @@ def scan_zip(
                 if reason:
                     findings.append(f"{archive_label}: archive entry {name!r}: {reason}")
                 if not scan_metadata(
+                    f"{archive_label}: archive entry {name!r} filename",
+                    name.encode("utf-8", errors="replace"),
+                ):
+                    break
+                if not scan_metadata(
                     f"{archive_label}: archive entry {name!r} comment",
                     info.comment,
                 ):
@@ -226,6 +234,52 @@ def scan_zip(
                 if not scan_metadata(
                     f"{archive_label}: archive entry {name!r} extra field",
                     info.extra,
+                ):
+                    break
+
+                stream = archive.fp
+                original_position: int | None = None
+                local_name = b""
+                local_extra = b""
+                try:
+                    if stream is None:
+                        raise ValueError("archive stream is unavailable")
+                    original_position = stream.tell()
+                    stream.seek(info.header_offset)
+                    header = stream.read(ZIP_LOCAL_FILE_HEADER.size)
+                    if len(header) != ZIP_LOCAL_FILE_HEADER.size:
+                        raise ValueError("truncated local file header")
+                    fields = ZIP_LOCAL_FILE_HEADER.unpack(header)
+                    if fields[0] != ZIP_LOCAL_FILE_SIGNATURE:
+                        raise ValueError("invalid local file header signature")
+                    name_length, extra_length = fields[-2:]
+                    local_name = stream.read(name_length)
+                    local_extra = stream.read(extra_length)
+                    if len(local_name) != name_length or len(local_extra) != extra_length:
+                        raise ValueError("truncated local file header metadata")
+                except (OSError, ValueError, struct.error) as error:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: local header metadata "
+                        f"scan failed ({type(error).__name__})"
+                    )
+                finally:
+                    if stream is not None and original_position is not None:
+                        try:
+                            stream.seek(original_position)
+                        except (OSError, ValueError):
+                            findings.append(
+                                f"{archive_label}: archive entry {name!r}: local header "
+                                "stream position restore failed"
+                            )
+
+                if not scan_metadata(
+                    f"{archive_label}: archive entry {name!r} local header filename",
+                    local_name,
+                ):
+                    break
+                if not scan_metadata(
+                    f"{archive_label}: archive entry {name!r} local header extra field",
+                    local_extra,
                 ):
                     break
                 if info.is_dir():
