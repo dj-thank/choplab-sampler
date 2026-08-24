@@ -2,21 +2,19 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Desktop transport step-zero ordering candidate — 2026-08-24
+## Release checksum sidecar hardening candidate — 2026-08-24
 
-- Product source: `codex/choplab-desktop-transport-step0@262894ce1b2d0c89fccfb7047374efad60c6869b`, tree `f42aaf3a737faded46f3052b42ee62e07fd33838`, descended from reachable initial candidate `b6fca6ba6f0bbfe357e9f245a030a384d6e3c0e2`, base `main@5430d0d91a4e19ca02170d0143378a5d7917776b`; the later evidence commit is documentation-only.
-- Deterministic contract: `DesktopTransportTest.startBarrierPublishesStateBeforeStepZero` observes the readiness flag from the first worker callback and counts one step 0. `DesktopSamplerControllerTest.transportStartsWithEveryAudibleStepZeroHitExactlyOnce` reduces the pattern to one assigned drum at step 0, starts/stops transport, and requires one fake-engine hit plus stopped UI state. `failedTransportRestartAfterScratchRestoresRecordArm` injects a worker-start exception after the scratch-return readiness callback and requires stopped transport plus the original recording arm.
-- Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 26 tests; `python3 scripts/check_public_surface.py` passed 392 candidates; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper UTF-8 policy matched; `git diff --check` passed.
-- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopTransportTest --tests com.choplab.desktop.DesktopSamplerControllerTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. Hosted `:desktop:test` is the required executable proof.
-- Gate: source/static candidate only. Physical Windows audio, real scheduling latency, device loss, packaging, provider, publication, and `HUMAN_GO` remain unclaimed.
+- The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
+- Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
+- Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
 
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 
-- Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`; integrated as PR #59 at `main@364ccde764b88f0bb79e10b8aaeb8284a5c069cc`.
+- Product source: branch commit `53f4bf5a62d23d9db63f538be3a06298eaf48936`, tree `d74f6314b4efd4a5604568e3c21395cfae42aaf6`, base `main@495ddc9dfac02a9e72160c637f65d2b53d6829ce`.
 - Regression contract: the injected `TargetDataLine` accepts `open`, throws from `start`, is closed exactly once even after later `stop` / `close`, leaves `isRecording=false`, deletes the owned partial WAV, and cannot return stale output. The fixture does not open audio hardware.
 - Static gates: `python3 -m unittest discover -s scripts/tests -p 'test_*.py'` passed 23 tests; `python3 scripts/check_public_surface.py` passed 390 candidates; six Android XML files parsed; wrapper SHA-256 `7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d` and wrapper UTF-8 policy matched; `git diff --check` passed.
-- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopAudioRecorderTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. `./scripts/validate_project.sh` reached and passed the public-surface phase, then stopped at the same Gradle prerequisite. Hosted evidence must remain bound to its exact provider revision.
-- Gate: source/static candidate only. Physical Windows input, actual WAV content, route loss, audio quality, provider, publication, and `HUMAN_GO` remain unclaimed from this local receipt.
+- Blocked local gate: `./gradlew :desktop:test --tests com.choplab.desktop.audio.DesktopAudioRecorderTest --no-daemon --max-workers=1 --no-watch-fs --console=plain` could not start because Gradle 9.7.1 is not cached and the distribution host is unreachable. `./scripts/validate_project.sh` reached and passed the public-surface phase, then stopped at the same Gradle prerequisite. Hosted `:desktop:test` is the required executable proof.
+- Gate: source/static candidate only. Physical Windows input, actual WAV content, route loss, audio quality, provider, publication, and `HUMAN_GO` remain unclaimed.
 
 ## Guided first screen and coherent workflow candidate — 2026-08-24
 
