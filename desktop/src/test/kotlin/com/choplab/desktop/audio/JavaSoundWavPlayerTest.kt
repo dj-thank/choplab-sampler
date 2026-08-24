@@ -5,6 +5,8 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import java.lang.reflect.Proxy
 import javax.sound.sampled.Clip
+import javax.sound.sampled.LineEvent
+import javax.sound.sampled.LineListener
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -27,8 +29,28 @@ class JavaSoundWavPlayerTest {
     }
 
     @Test
-    fun failedOneShotStartDoesNotRetainOrCloseTheVoiceTwice() {
-        val probe = ClipProbe(failOn = "start")
+    fun failedListenerRegistrationDoesNotRetainTheVoice() {
+        val probe = ClipProbe(failOn = "listener")
+        val player = JavaSoundWavPlayer(DesktopClipFactory { probe.clip })
+
+        val failure = assertFailsWith<IllegalStateException> {
+            player.triggerPad(testPad(), forceLoop = false)
+        }
+
+        assertEquals("listener failed", failure.message)
+        assertEquals(1, probe.openCount)
+        assertEquals(0, probe.startCount)
+        assertEquals(1, probe.stopCount)
+        assertEquals(1, probe.closeCount)
+
+        player.stopAll()
+        assertEquals(1, probe.stopCount)
+        assertEquals(1, probe.closeCount)
+    }
+
+    @Test
+    fun synchronousTerminalStopBeforeStartFailureClosesTheVoiceExactlyOnce() {
+        val probe = ClipProbe(failOn = "start-after-stop")
         val player = JavaSoundWavPlayer(DesktopClipFactory { probe.clip })
 
         val failure = assertFailsWith<IllegalStateException> {
@@ -115,11 +137,13 @@ class JavaSoundWavPlayerTest {
         var loopCount = 0
         var stopCount = 0
         var closeCount = 0
+        private var framePosition = 0
+        private var listener: LineListener? = null
 
         val clip: Clip = Proxy.newProxyInstance(
             Clip::class.java.classLoader,
             arrayOf(Clip::class.java),
-        ) { _, method, _ ->
+        ) { proxy, method, arguments ->
             when (method.name) {
                 "open" -> {
                     openCount++
@@ -128,7 +152,11 @@ class JavaSoundWavPlayerTest {
                 }
                 "start" -> {
                     startCount++
-                    if (failOn == "start") error("start failed")
+                    if (failOn == "start-after-stop") {
+                        framePosition = 4
+                        listener?.update(LineEvent(proxy as Clip, LineEvent.Type.STOP, framePosition.toLong()))
+                        error("start failed")
+                    }
                     null
                 }
                 "loop" -> {
@@ -144,8 +172,13 @@ class JavaSoundWavPlayerTest {
                     closeCount++
                     null
                 }
+                "addLineListener" -> {
+                    if (failOn == "listener") error("listener failed")
+                    listener = arguments?.single() as LineListener
+                    null
+                }
                 "getFrameLength" -> 4
-                "getFramePosition" -> 0
+                "getFramePosition" -> framePosition
                 "getLongFramePosition", "getMicrosecondLength", "getMicrosecondPosition" -> 0L
                 "getLevel" -> 0f
                 "isActive", "isControlSupported", "isOpen", "isRunning" -> false
