@@ -1,6 +1,18 @@
 # Project state
 
-## Current snapshot — 2026-08-24 Desktop recorder startup cancellation candidate
+## Current snapshot — 2026-08-24 Android microphone startup cancellation candidate
+
+This snapshot records one bounded Android microphone lifecycle correction on exact merged main. It changes only `MicrophoneRecorder` and its host regression; PCM format, duration/storage limits, project schema, ViewModel behavior and playback-capture service are unchanged.
+
+- Observed at: `2026-08-24T22:50+09:00`.
+- Source state: reachable product `8ffc1f4500e16630b7162c1b93464e81efa07bb4`, tree `4eee53d6e73925d45a124c12c1265e728badbc72`, based on squash-merged `main@a0b356c2e5820b7f9a8288ebcdd555c19e0cb6b5`; the later evidence commit is documentation-only. Merged #65/#68/#70/#71/#73 runtime, tests and documentation are retained.
+- Reproduced defect: startup published its `RecorderInput` and then called potentially blocking `AudioRecord.startRecording()` while holding the lifecycle lock. A concurrent STOP could not acquire that lock to publish cancellation or release the native input, so startup could remain blocked indefinitely and STOP could not enforce its bounded contract.
+- Repair: startup first publishes a separately owned pending input, calls the native start outside the lock, and only then atomically promotes the exact input to active worker ownership. STOP claims and clears a pending input under the lock, then calls `stop`/`release` outside it to unblock native startup. Exact-identity cleanup prevents double release, while explicit start-call and stop-in-progress guards reject a replacement generation until cancellation and shared-state cleanup have completed. A worker clears its active ownership only after recorder/file cleanup.
+- Deterministic regression: a fake input blocks in `startRecording()` until `release()`. STOP must invoke pending `stop`/`release` exactly once, unblock a failed start, prevent every worker `read`, delete the app-owned temporary WAV and keep `isRecording=false`; an attempted replacement start while cancellation is still unwinding must fail before a second input is created.
+- Fresh local checks: Python policy 39/39, public-surface scans over 395 current/history candidates, `git diff --check` and conflict-marker scan passed. Focused Gradle execution was attempted but could not create the sandbox-external Gradle wrapper cache, so no local Kotlin test result is claimed and exact-head hosted Android CI remains required.
+- Gate ceiling: source/static candidate only. Hosted Android compilation/unit/instrumentation evidence plus clean exact-head review are required; physical microphone blocking behavior, audio content/quality, device removal, publication and `HUMAN_GO` remain unclaimed.
+
+## Previous snapshot — 2026-08-24 Desktop recorder startup cancellation candidate
 
 This snapshot records one bounded Desktop capture-lifecycle correction on exact merged main. It changes only the `TargetDataLine` recorder and its host regression; audio format, recording limits, controller behavior, project schema and previously merged import/transport behavior are unchanged.
 

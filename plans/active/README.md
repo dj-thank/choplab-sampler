@@ -12,6 +12,8 @@
 
 **直近の統合保守:** Windows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにし、PR #59 / `main@364ccde`へ統合済み。
 
+**独立したAndroid microphone開始取消修正:** exact `main@a0b356c`上のproduct `8ffc1f4` / tree `4eee53d`で、blocking `AudioRecord.startRecording()`をlifecycle lock外へ移し、STOPがpending inputをclaimして`stop`/`release`できるようにする。exact-identity cleanupとstart/stop generation guardでlate worker、二重release、取消中replacementを阻止し、stop/release各1、read 0、一時WAV削除をlatch regressionへ固定する。既存planは再選択せず、hosted Android CIを実行gateとする。
+
 **独立したDesktop recorder開始取消修正:** exact-base `main@dfcd9d8`上のproduct repair `27283f8` / tree `4ffc5f7`で、blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeしてnative startを解除し、復帰後のcapture worker公開・readを禁止する。close駆動gate、open/start/close各1回、read 0、一時WAV削除をlatch regressionへ固定し、既存planを再選択しない限定lifecycle deltaとする。Python/public/diffはPASS、hosted Windows CIが実行gate。
 
 **直近の統合保守:** Desktop transport step-zero orderingはPR #65 / `main@3072eed`へ統合済み。worker開始前readiness barrier、controller readiness公開、scratch restart失敗時record-arm復元のruntime/test/docsを後続deltaもexact保持する。

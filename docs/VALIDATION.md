@@ -2,6 +2,15 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Android microphone startup cancellation candidate — 2026-08-24
+
+- Product source: reachable product `8ffc1f4500e16630b7162c1b93464e81efa07bb4`, tree `4eee53d6e73925d45a124c12c1265e728badbc72`, based on squash-merged `main@a0b356c2e5820b7f9a8288ebcdd555c19e0cb6b5`; the later evidence commit changes documentation only. Runtime/test blobs are exact `175c5399876d24537d691ea425d185a4ea3355a8` / `dbf577990c6176340bacc98ffee24b04ca6f40fc`.
+- RED contract: `MicrophoneRecorder.start()` previously held its lifecycle lock across `RecorderInput.startRecording()`. A blocking native start therefore prevented `stop()` from acquiring the same lock, latching cancellation or releasing the input that could unblock startup.
+- Repair contract: startup publishes `startingInput` under the lifecycle lock, performs native start outside it, then promotes only that exact still-owned input to `audioRecord` and worker. STOP atomically claims the pending reference before calling `stop`/`release` outside the lock. Identity checks prevent duplicate cleanup; `startCallActive` and `stopInProgress` prevent a replacement generation from overwriting shared result/file state while cancellation unwinds. Worker ownership is cleared only after recorder and file cleanup.
+- Deterministic regression: a latch-controlled fake cannot leave `startRecording()` until `release()`. The STOP path must release it without waiting for startup completion, produce failed start/stop results, keep read count zero, call stop/release 1/1, remove the temporary WAV and reject a replacement start before a second factory call.
+- Local PASS: Python policy 39/39, current/history public-surface scans over 395 candidates, conflict-marker scan and `git diff --check`. Focused `:app:testDebugUnitTest --tests com.choplab.sampler.audio.RecorderWorkerStopTest --offline` was attempted, but the wrapper could not create its sandbox-external Gradle cache; no local Gradle result is promoted.
+- Gate: source/static candidate. Exact-head hosted Android compile/unit/instrumentation and clean review are required. No physical microphone timing, audio quality/content, device-removal, publication or Human result is claimed.
+
 ## Desktop recorder startup cancellation candidate — 2026-08-24
 
 - Product source: reachable repair `27283f8bc6ace63a27a9ea84e60db2abee5b4bd6`, tree `4ffc5f746f60cc67b71c29bb1f8a5b5db1a227ad`, advancing exact-base candidate `2fecbaeba7745815bf48763dc52dd3197863b73c` on merged `main@dfcd9d8871f34ca5ed125c9a1113c6a4dd612887`; the later evidence commit changes documentation only. Runtime/test blobs are `3dec52b4598e3222503cbdc3abeade543e22e046` / `eea213f8716d92fe63f3f13d8180da94b3399657`.
