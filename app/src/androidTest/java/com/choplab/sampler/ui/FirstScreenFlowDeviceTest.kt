@@ -460,7 +460,7 @@ class FirstScreenFlowDeviceTest {
         try {
             gate.performTouchInput {
                 down(center)
-                moveBy(Offset(width, 0f), delayMillis = 40)
+                moveBy(Offset(width.toFloat(), 0f), delayMillis = 40)
                 up()
             }
             composeRule.waitForIdle()
