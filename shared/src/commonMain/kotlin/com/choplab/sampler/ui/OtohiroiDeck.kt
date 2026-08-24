@@ -1253,6 +1253,9 @@ private fun FocusedCaptureEntry(
                     }
                 }
             }
+            if (metrics.largeText) {
+                Spacer(Modifier.height(metrics.controlHeightDp.dp))
+            }
         }
     }
 }
