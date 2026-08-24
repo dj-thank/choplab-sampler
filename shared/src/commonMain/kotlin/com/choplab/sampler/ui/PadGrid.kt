@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -133,6 +134,7 @@ private fun PerformancePad(
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
+    val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val shape = RoundedCornerShape(9.dp)
     val bankRole = bankRoleFor(pad.bankIndex)
     val accent = bankRoleAccent(pad.bankIndex)
@@ -206,7 +208,10 @@ private fun PerformancePad(
                     }
                 }
             }
-            .padding(horizontal = 5.dp, vertical = 4.dp),
+            .padding(
+                horizontal = if (largeText) 2.dp else 5.dp,
+                vertical = if (largeText) 2.dp else 4.dp,
+            ),
     ) {
         val compact = maxHeight < 54.dp || maxWidth < 54.dp
         Text(
@@ -254,18 +259,20 @@ private fun PerformancePad(
                 }
             }
         }
-        Text(
-            text = when {
-                pad.playMode == PadPlayMode.LOOP -> "LOOP"
-                pad.contentKind == PadContentKind.DRUM -> "DRM"
-                pad.contentKind == PadContentKind.VOCAL -> "VOX"
-                else -> keyLabel
-            },
-            color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
-            fontFamily = FontFamily.Monospace,
-            fontSize = if (compact) 7.sp else 8.sp,
-            modifier = Modifier.align(Alignment.BottomEnd),
-        )
+        if (!(compact && largeText)) {
+            Text(
+                text = when {
+                    pad.playMode == PadPlayMode.LOOP -> "LOOP"
+                    pad.contentKind == PadContentKind.DRUM -> "DRM"
+                    pad.contentKind == PadContentKind.VOCAL -> "VOX"
+                    else -> keyLabel
+                },
+                color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
+                fontFamily = FontFamily.Monospace,
+                fontSize = if (compact) 7.sp else 8.sp,
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
+        }
     }
 }
 
