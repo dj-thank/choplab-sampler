@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 音声ファイルだけを表示する取込picker | ✅ current local | Androidは専用`OPEN_DOCUMENT + OPENABLE + audio/*` contractでAll Files base typeを除去し、選択後もMediaExtractorでaudio trackとresource上限を検証。MP3/AAC・M4A/FLAC/Ogg・Opus/WAV等はAndroid platform/container対応範囲。WindowsはAll Filesを無効化したWAV-only chooserと二重検証で、未実装MP3を偽表示しない。clean 191 tasks、compiled bytecode read-back、Windows実dialog確認。Pixel/provider固有表示は未確認 |
 | 素材から8つの下書きを作る | ✅ current local | `143a969`のQUICK SKETCHは、Bank Aが完全に空でmarker/A-stepもない時だけ、選択範囲をzero-crossing-safeな8連続sliceへ分けてA01–A08とsteps 1/3/5/7/9/11/13/15へ一括配置。starter drumsとB/C/Dを保持し、一つのUndo/Redo/autosave単位。短いrange・既存A作業・録音/loadingは完全no-op。shared両host32、isolated Windows autosaveで7 markers/8 pads/8 melody stepsを確認。物理touch/音質/Humanは未確認 |
 | Pattern/master full-bar parity | ✅ product anchor / scoped device | product bytes `ecc6c54`。single PAD / step 0 / one barのrealtime Voice+master expectedとoffline WAVを全frame比較。REDはframe 402でoffline末尾sample欠落61、mix-before-retire修正後max delta≤1。Android 229、exact `DB08…` Pixel、全PR/main CI PASS。docs-only source main、polyphony/stereo/listeningは別 |
 | Realtime / offline / Windows audio parity | ✅ main / scoped device | shared pitch/tone/gain/fade/limiter/swing/NaN policy。Android Voiceとhost PAD PCM最大差1、shared両host25、merged-main Windows daily install `0.17.0-802a667d39cb`。polyphony/stereo/listeningは次段階 |

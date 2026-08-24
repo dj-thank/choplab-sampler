@@ -1,5 +1,18 @@
 # Project state
 
+## Current snapshot — 2026-08-25 supported-audio picker local candidate
+
+This snapshot fixes platform picker truth. It does not claim that every document provider or physical device renders an identical picker.
+
+- Product source: `codex/choplab-creative-improvement-20260825@a72d4ea485ff786072a9e6d9d9d75a4800422f41`, tree `a16f2bcc57226f58e872d8c7cf14a756e28bf7ef`, parent `47e5637`.
+- Reproduced root cause: AndroidX `OpenDocument` put the requested `audio/*` only in `EXTRA_MIME_TYPES` while its base Intent type remained unrestricted. The JDK source states that AWT `FileDialog.filenameFilter` does not function on Microsoft Windows. Both paths could therefore present an All Files surface.
+- Android repair: a dedicated contract now emits `ACTION_OPEN_DOCUMENT + CATEGORY_OPENABLE + audio/*` as the authoritative type. The compiled class was read back with `javap`; it contains that exact action/category/type and no MIME-types extra. `MediaExtractor` still requires a decodable audio track and all existing duration/format/resource limits.
+- Windows repair: import now uses `JFileChooser` with All Files disabled and a single `音声ファイル（WAV）` filter, followed by the existing file/extension and WAV-content checks. MP3 is not advertised on Windows because the packaged implementation has no MP3 decoder. Android continues to accept MP3 and other platform-supported audio MIME types.
+- Fresh local gate: clean 191-task cross-platform build PASS. Shared Android host 32, shared Desktop 32, Android unit 234, JVM-core 52 and Desktop 79 tests; failures/errors/skips 0. New Android intent instrumentation test compiled into the test APK. Lint errors 0, warnings 7; Python 36 PASS; public-surface 401 PASS; diff check PASS.
+- Windows runtime: the exact candidate chooser showed only `音声ファイル（WAV）` and no All Files option in isolated app data; exact launcher/UI processes were stopped.
+- Evidence: parent PAD `work/PAD_CHOPLAB_AUDIO_PICKER_LOCAL_RECEIPT_20260825.md` and `work/CHOPLAB_AUDIO_PICKER_EVIDENCE_20260825/windows-wav-picker.png`.
+- Gate ceiling: `LOCAL_PASS`. The connected Pixel was not touched; physical Android picker/provider behavior, MP3 decode on that exact device, device audio, provider/public and `HUMAN_GO` remain unverified.
+
 ## Current snapshot — 2026-08-25 reversible Quick Sketch local candidate
 
 This snapshot records one bounded cross-platform creative workflow. It does not promote a synthetic Windows prototype into physical-device or human musical-quality evidence.

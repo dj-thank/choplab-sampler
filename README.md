@@ -20,6 +20,8 @@ Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー
 2. SHA-256を確認してから、Androidの設定で使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
 3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
 
+Androidの素材pickerは、providerが音声として公開するファイルだけを表示します。MP3、AAC/M4A、FLAC、Ogg/Vorbis/Opus、WAVなどは、Android platformと端末decoderが対応するcontainer/形式の範囲で読み込み、選択後も実際のaudio trackと長さ・メモリ上限を検証します。動画はpickerの対象にしません。
+
 ### iOS
 
 Releaseの`ChopLab-*-ios-simulator.app.zip`は、Apple署名を使わない **iOS Simulator用プレビュー** です。macOSとXcodeがある環境で展開し、起動済みSimulatorへ `xcrun simctl install booted ChopLab.app` でインストールします。iPhone/iPadへ直接インストールできるIPAではありません。実機版には利用者自身のApple Developer team、provisioning profile、署名が必要です。
@@ -29,6 +31,8 @@ Releaseの`ChopLab-*-ios-simulator.app.zip`は、Apple署名を使わない **iO
 ### Windows
 
 Releaseの`ChopLab-*-windows-app-image.zip`を展開し、同梱された`ChopLab/ChopLab.exe`を起動します。これはJDK runtimeを含むapp-imageで、単体EXEだけを取り出して実行する配布形式ではありません。現在のRelease previewはコード署名済みinstallerではありません。
+
+Windows版の素材取込は、実装済みdecoderに合わせてWAVだけを表示します。ファイルpickerの「すべてのファイル」は無効です。MP3等を選べるように見せて後から失敗させることはせず、Windows向けMP3 decoderを導入する場合は別の権利・供給網・decode上限レビューを通します。
 
 リリースAPKは現時点ではGitHub Actionsのデバッグ署名による開発プレビューです。端末によっては、別のビルドへ更新する前に既存版のアンインストールが必要です。アンインストール前に「完成」から`.choplab`制作ファイルを書き出してください。個人データを扱う前に、コードと権限要求を確認してください。
 

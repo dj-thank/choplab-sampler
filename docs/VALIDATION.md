@@ -2,6 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Supported-audio picker local candidate — 2026-08-25
+
+- Product source: `a72d4ea485ff786072a9e6d9d9d75a4800422f41`, tree `a16f2bcc57226f58e872d8c7cf14a756e28bf7ef`, parent `47e5637`.
+- RED: source-contract tests caught Android's unrestricted base MIME and Windows' ineffective AWT filename filter. Bundled AndroidX/JDK bytecode/source confirmed both root causes.
+- GREEN: Android compiled bytecode emits only `OPEN_DOCUMENT`, `OPENABLE`, and `audio/*`; Android instrumentation contract test assembled. Windows policy test accepts real `.wav` files only; runtime chooser has one WAV filter and no All Files option.
+- Clean Gradle gate: 191 actionable tasks PASS. Shared host 32/32, Android 234, JVM-core 52, Desktop 79; failures/errors/skips 0. Lint errors 0, warnings 7.
+- Other gates: Python 36 PASS, public-surface 401 PASS, `git diff --check` PASS.
+- Artifacts: debug APK `09997FF6…`, androidTest `BE647B4C…`, unsigned release `8C60AAAC…`; full size/hash and runtime evidence are in parent PAD `work/PAD_CHOPLAB_AUDIO_PICKER_LOCAL_RECEIPT_20260825.md`.
+- Gate: `LOCAL_PASS`; connected Pixel/device/provider/public/Human boundaries were not touched or promoted.
+
 ## Reversible Quick Sketch local candidate — 2026-08-25
 
 - Product source: `143a96919120273795805a6c1b95a203339cd4b9`, tree `707a40df56ebbdaff2f5c1688a4cd8dd13d20abc`, base `8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`.

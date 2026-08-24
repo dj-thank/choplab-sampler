@@ -15,6 +15,8 @@ The visible 4 × 4 PAD page is playable from the computer keyboard using `1234 /
 
 The desktop app supports user-selected WAV import, microphone recording, a driver-exposed Windows playback loopback such as `Stereo Mix`, PAD voice controls, 16-step transport, scratch, four-bar WAV export, Undo/Redo, manual `.choplab` save/open, and app-owned three-generation autosave. A loopback input is never silently replaced with a microphone; unsupported drivers return a visible error.
 
+Local source import on Windows is intentionally WAV-only. The chooser disables the All Files option and re-checks the selected file before the existing bounded WAV decoder. Android has a separate audio-MIME picker and platform decoder path; Windows does not advertise MP3 until a packaged, reviewed decoder exists.
+
 Use `診断 > Windows 音声エンドポイント` to run the JNA/WASAPI endpoint probe. It reports the current shared-mode render/capture formats when available and an explicit unavailable reason otherwise; it does not record audio.
 
 ## Spotify development login
