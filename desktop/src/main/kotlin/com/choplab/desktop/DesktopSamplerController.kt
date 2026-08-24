@@ -1046,9 +1046,8 @@ class DesktopSamplerController(
         // A project operation can publish a newer state while an older save is running,
         // then lose scheduling admission because close has already claimed the lifecycle.
         // Wait for the older body first, then persist the newer owned revision exactly once.
-        val followUpRequired = workToAwait != null &&
-            (!workToAwait.savedSuccessfully ||
-                request.snapshot.revision > workToAwait.snapshot.revision)
+        val followUpRequired = !workToAwait.savedSuccessfully ||
+            request.snapshot.revision > workToAwait.snapshot.revision
         if (!followUpRequired) return
         val followUp = synchronized(autosaveLifecycleLock) {
             enqueueAutosaveLocked(

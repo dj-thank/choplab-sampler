@@ -977,6 +977,7 @@ class DesktopSamplerControllerTest {
             closeThread = closing
 
             assertTrue(closeFinished.await(1L, TimeUnit.SECONDS))
+            closing.join(1_000L)
             assertFalse(closing.isAlive)
             awaitCondition { engine.closeCalls == 1 }
         } finally {
