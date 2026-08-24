@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 
 class JavaSoundWavPlayerTest {
     @Test
-    fun forceLoopRendersTheLoopCycleEvenWhenThePadIsOneShot() {
+    fun forceLoopKeepsTheLegacyRenderBoundaryWhenThePadIsOneShot() {
         val audio = PcmAudio(
             name = "short",
             samples = shortArrayOf(8_000, 16_000),
@@ -28,5 +28,6 @@ class JavaSoundWavPlayerTest {
 
         assertEquals(3, oneShot.size)
         assertEquals(4, forcedLoop.size)
+        assertEquals(0.toShort(), forcedLoop.last())
     }
 }

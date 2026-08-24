@@ -19,13 +19,13 @@ object PadPcmRenderer {
             sourceSampleRate = audio.sampleRate,
             outputSampleRate = outputSampleRate,
         )
-        val reverseCursor = if (pad.reverse) {
+        val reverseCursor = if (pad.reverse && pad.playMode != PadPlayMode.LOOP) {
             VoicePlaybackCursor(start, end, reverse = true, playMode = pad.playMode)
         } else {
             null
         }
         val fullRangeFrameCount = ceil((end - start) / sourceStep).toInt().coerceAtLeast(1)
-        val frameCount = if (reverseCursor != null && pad.playMode != PadPlayMode.LOOP) {
+        val frameCount = if (reverseCursor != null) {
             // Count and reset before allocation so duration and PCM use realtime's advance order.
             var count = 0
             while (!reverseCursor.finished) {
@@ -43,7 +43,12 @@ object PadPcmRenderer {
         val alpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
 
         for (outputFrame in result.indices) {
-            val position = reverseCursor?.position ?: (start + outputFrame * sourceStep)
+            val offset = outputFrame * sourceStep
+            val position = when {
+                reverseCursor != null -> reverseCursor.position
+                pad.reverse -> end - 1.0 - offset
+                else -> start + offset
+            }
             if (position < start || position >= end) break
             val lower = floor(position).toInt().coerceIn(start, end - 1)
             val upper = (lower + 1).coerceAtMost(end - 1)
