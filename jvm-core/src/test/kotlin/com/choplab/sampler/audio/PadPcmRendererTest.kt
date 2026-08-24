@@ -91,7 +91,7 @@ class PadPcmRendererTest {
     }
 
     @Test
-    fun reverseLoopKeepsTheFullRangeCycle() {
+    fun reverseLoopKeepsTheLegacyRenderBoundary() {
         val oneShot = PadPcmRenderer.render(
             PadModel(0, audio, 100, 102, pitchSemitones = -12f, reverse = true),
         )
@@ -109,6 +109,7 @@ class PadPcmRendererTest {
 
         assertEquals(3, oneShot.size)
         assertEquals(4, loop.size)
+        assertEquals(0.toShort(), loop.last())
     }
 
     @Test
