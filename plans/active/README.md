@@ -12,7 +12,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**独立release-policy delta:** `main@3de1cc5`を統合したreachable product `cbd6d9b` / tree `004a396`は、公開面scanをcurrent／reachable-history ZIP本文へ拡張する小規模修正。4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率と履歴blob materializationをboundedにし、payload付きdirectory entryを拒否する。binary/audio本文とstructured scan後のraw containerはtext再scanしない。Python 47/47・current/history scanはPASS、新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
+**独立release-policy delta:** `main@2786c37`を統合したreachable product `5722c97` / tree `f2c76a0`は、公開面scanをcurrent／reachable-history ZIP本文へ拡張する小規模修正。4096 entries、512 KiB/member、4 MiB/archive、100:1圧縮率と履歴blob materializationをboundedにし、payload付きdirectory entryを拒否する。binary/audio本文とstructured scan後のraw containerはtext再scanしない。merged #68 bytesを保持し、Python 47/47・current/history scanはPASS。新しいproduct ExecPlanは選択せず、exact hosted CI／main read-back前はsource/static candidate扱いとする。
 
 **独立audio保守delta:** merged `main@3de1cc5`を統合したAndroid realtime PAD terminal-sample修正は、product `5dd3d66` / tree `c6a7e9b`で返却sampleをmixしてからpooled Voiceをretireする。#66 timingと#67 Desktop import境界を保持し、既存offline pattern/master planは再選択せず、403-frame / PCM `-61`のfocused regressionとallocation-free callback契約だけを追加した。Python/public/diffはPASS、hosted Android unit gateまでsource/static candidate扱いとする。
 

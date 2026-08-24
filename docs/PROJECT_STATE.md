@@ -4,8 +4,8 @@
 
 This snapshot records a repository-policy hardening delta only. It does not change product, audio, UI, device, provider or release bytes.
 
-- Observed at: `2026-08-24T20:23+09:00`.
-- Source state: reachable integration product/policy commit `cbd6d9bbbbb8fe335d04b3eb2bf8d7bec744a643`, tree `004a396003a2ce616884f56ed8e610cc5ad218f0`, with parents prior PR head `bfc16cb1e952727a093576fe84c26ae0ed37400a` and merged `main@3de1cc5de2fc950ee7e24dfac29a2bc926cf1553`; the later evidence commit is documentation-only.
+- Observed at: `2026-08-24T20:34+09:00`.
+- Source state: reachable integration product/policy commit `5722c97b57aa8884f0dd1a9db535093bd1a172ae`, tree `f2c76a0b49bcc8239545806279c22560a6cd19d8`, with parents prior exact PR head `7b82eb320bce18886ed183dc8bc9747fed32e9ff` and merged `main@2786c3722a9e56fa299d2a88f009d882545b0768`; the later evidence commit is documentation-only. The reviewed policy/test blobs and merged #68 realtime PAD source/tests/docs are retained.
 - Archive policy: non-binary ZIP members in both the current tree and reachable historical ZIP blobs are scanned without extraction. The scanner fails closed above 4,096 entries, 512 KiB per member, 4 MiB per archive or a 100:1 declared compression ratio; historical materialization is separately capped at 128 blobs, 16 MiB each and 64 MiB aggregate. Directory-marked entries with payload are rejected before content handling.
 - Binary boundary: known binary, nested-archive, signing and audio suffixes are not decoded as text; their existing name policy remains active. After structured ZIP handling, container bytes are not rescanned as one UTF-8 document, preventing an excluded binary member from reappearing as a raw-container false positive.
 - Regression scope: UTF-8 BOM secret text, reachable removed ZIP blob content, entry/member/aggregate/compression limits, payload-bearing directory entries and UTF-8-decodable raw-container exclusion are direct fixtures. Binary and audio bytes containing token-shaped ASCII do not produce a content match.
