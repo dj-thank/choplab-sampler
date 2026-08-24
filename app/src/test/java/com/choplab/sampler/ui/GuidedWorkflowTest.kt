@@ -23,6 +23,7 @@ class GuidedWorkflowTest {
     fun chopSwitchLabelsExposeBankPageAndCurrentPad() {
         assertEquals("● A メロディー\nMELODY", bankSwitchLabel(0, selected = true, compact = false))
         assertEquals("B\nDRUMS", bankSwitchLabel(1, selected = false, compact = true))
+        assertEquals("C\nSHOTS", bankSwitchLabel(2, selected = false, compact = true))
         assertEquals(
             "● PAD 01–16\n選択 A-04 / 3音",
             padPageSwitchLabel(

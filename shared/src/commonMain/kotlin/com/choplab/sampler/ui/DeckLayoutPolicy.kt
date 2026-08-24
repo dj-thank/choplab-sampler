@@ -34,6 +34,16 @@ data class DeckLayoutMetrics(
     val showStatusStrip: Boolean
         get() = orientation != DeckOrientation.LANDSCAPE || density != DeckDensity.COMPACT
 
+    val focusedCaptureNeedsScroll: Boolean
+        get() = largeText ||
+            (orientation == DeckOrientation.LANDSCAPE && density == DeckDensity.COMPACT)
+
+    val beatWorkspaceNeedsScroll: Boolean
+        get() = largeText
+
+    val beatPadGridHeightDp: Int
+        get() = 4 * maxOf(48, controlHeightDp) + 3 * gapDp
+
     val fixedChromeHeightDp: Int
         get() = headerHeightDp + modeBarHeightDp +
             (if (showStatusStrip) statusHeightDp else 0) +

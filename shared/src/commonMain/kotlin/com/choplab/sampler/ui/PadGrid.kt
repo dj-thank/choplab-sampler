@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -51,10 +52,15 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.bankRoleFor
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 
 private const val PAD_KEYS = "1234QWERASDFZXCV"
+private const val SCROLL_GATE_ACTIVATION_DELAY_MILLIS = 120L
 
 @Composable
 fun PadGrid(
@@ -67,6 +73,7 @@ fun PadGrid(
     modifier: Modifier = Modifier,
     captureMode: Boolean = false,
     sourcePhase: SourceUiPhase = SourceUiPhase.STOPPED,
+    deferPadActionUntilTap: Boolean = false,
     gap: Dp = 6.dp,
     columns: Int = 4,
 ) {
@@ -105,6 +112,7 @@ fun PadGrid(
                             selected = pad.globalIndex == selectedPad,
                             captureMode = captureMode,
                             sourcePhase = sourcePhase,
+                            deferPadActionUntilTap = deferPadActionUntilTap,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
                             onSelect = { onSelect(pad.globalIndex) },
@@ -125,6 +133,7 @@ private fun PerformancePad(
     selected: Boolean,
     captureMode: Boolean,
     sourcePhase: SourceUiPhase,
+    deferPadActionUntilTap: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
     onSelect: () -> Unit,
@@ -133,6 +142,7 @@ private fun PerformancePad(
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
+    val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val shape = RoundedCornerShape(9.dp)
     val bankRole = bankRoleFor(pad.bankIndex)
     val accent = bankRoleAccent(pad.bankIndex)
@@ -152,6 +162,10 @@ private fun PerformancePad(
         captureMode = captureMode,
         sourcePhase = sourcePhase,
     )
+    val deferGatePerformance = deferPadActionUntilTap &&
+        pad.isAssigned &&
+        pad.playMode == PadPlayMode.GATE &&
+        !captureMode
 
     BoxWithConstraints(
         modifier = modifier
@@ -162,10 +176,26 @@ private fun PerformancePad(
                 color = if (selected) DeckLamp else Color.Black,
                 shape = shape,
             )
-            .pointerInput(pad.globalIndex, pad.isAssigned, captureMode, sourcePhase) {
+            .pointerInput(
+                pad.globalIndex,
+                pad.isAssigned,
+                pad.playMode,
+                captureMode,
+                sourcePhase,
+                deferPadActionUntilTap,
+            ) {
                 detectTapGestures(
                     onTap = {
-                        if (deferDestructiveCapture) onTrigger()
+                        if (deferPadActionUntilTap && !deferGatePerformance) {
+                            // The scroll parent cancels before onTap, so a drag cannot select or sound a PAD.
+                            onSelect()
+                            if (captureMode || pad.isAssigned) {
+                                onTrigger()
+                                if (pad.isAssigned) onRelease()
+                            }
+                        } else if (deferDestructiveCapture) {
+                            onTrigger()
+                        }
                     },
                     onLongPress = {
                         if (pad.isAssigned) {
@@ -177,13 +207,42 @@ private fun PerformancePad(
                     onPress = {
                         pressed = true
                         try {
-                            onSelect()
-                            if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
-                                onTrigger()
+                            if (deferGatePerformance) {
+                                var gateTriggered = false
+                                try {
+                                    coroutineScope {
+                                        val delayedStart = launch {
+                                            // Let the scroll parent consume a drag before committing audio.
+                                            delay(SCROLL_GATE_ACTIVATION_DELAY_MILLIS)
+                                            onSelect()
+                                            onTrigger()
+                                            gateTriggered = true
+                                        }
+                                        val released = tryAwaitRelease()
+                                        delayedStart.cancelAndJoin()
+                                        if (!gateTriggered && released) {
+                                            // A short completed tap remains an intentional preview.
+                                            onSelect()
+                                            onTrigger()
+                                            gateTriggered = true
+                                        }
+                                    }
+                                } finally {
+                                    // Opening trim replaces this pointerInput node. Once trigger ownership
+                                    // was acquired, cancellation must still release the GATE exactly once.
+                                    if (gateTriggered) onRelease()
+                                }
+                            } else {
+                                if (!deferPadActionUntilTap) {
+                                    onSelect()
+                                    if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
+                                        onTrigger()
+                                    }
+                                }
+                                tryAwaitRelease()
                             }
-                            tryAwaitRelease()
                         } finally {
-                            if (pad.isAssigned) onRelease()
+                            if (!deferPadActionUntilTap && pad.isAssigned) onRelease()
                             pressed = false
                         }
                     },
@@ -206,7 +265,10 @@ private fun PerformancePad(
                     }
                 }
             }
-            .padding(horizontal = 5.dp, vertical = 4.dp),
+            .padding(
+                horizontal = if (largeText) 2.dp else 5.dp,
+                vertical = if (largeText) 2.dp else 4.dp,
+            ),
     ) {
         val compact = maxHeight < 54.dp || maxWidth < 54.dp
         Text(
@@ -254,18 +316,20 @@ private fun PerformancePad(
                 }
             }
         }
-        Text(
-            text = when {
-                pad.playMode == PadPlayMode.LOOP -> "LOOP"
-                pad.contentKind == PadContentKind.DRUM -> "DRM"
-                pad.contentKind == PadContentKind.VOCAL -> "VOX"
-                else -> keyLabel
-            },
-            color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
-            fontFamily = FontFamily.Monospace,
-            fontSize = if (compact) 7.sp else 8.sp,
-            modifier = Modifier.align(Alignment.BottomEnd),
-        )
+        if (!(compact && largeText)) {
+            Text(
+                text = when {
+                    pad.playMode == PadPlayMode.LOOP -> "LOOP"
+                    pad.contentKind == PadContentKind.DRUM -> "DRM"
+                    pad.contentKind == PadContentKind.VOCAL -> "VOX"
+                    else -> keyLabel
+                },
+                color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
+                fontFamily = FontFamily.Monospace,
+                fontSize = if (compact) 7.sp else 8.sp,
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
+        }
     }
 }
 
@@ -276,6 +340,24 @@ fun padAccessibilityDescription(
 ): String = buildString {
     append("PAD %02d".format(pad.indexInBank + 1))
     append(if (pad.isAssigned) " 割り当て済み" else " 空")
+    if (pad.isAssigned) {
+        append("。再生モード ")
+        append(
+            when (pad.playMode) {
+                PadPlayMode.ONE_SHOT -> "ONE SHOT"
+                PadPlayMode.GATE -> "GATE"
+                PadPlayMode.LOOP -> "LOOP"
+            },
+        )
+        append("。素材タイプ ")
+        append(
+            when (pad.contentKind) {
+                PadContentKind.SAMPLE -> "SAMPLE"
+                PadContentKind.DRUM -> "DRM"
+                PadContentKind.VOCAL -> "VOX"
+            },
+        )
+    }
     if (pad.isAssigned && captureMode && sourcePhase == SourceUiPhase.PLAYING) {
         append("。タップで現在位置を上書き。長押しで微調整")
     } else if (pad.isAssigned) {

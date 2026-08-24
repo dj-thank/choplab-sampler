@@ -4,7 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
-| Pattern event/frame timing parity | 🧪 latest-main source / prior hosted head | realtime fractional countdownとoffline WAVをshared ceiling＋carried-residual契約へ統一。48 kHz / 92 BPM / swing 54%の4-bar境界に加え、120 BPM / 55%のstep 3 = 18,601と40 BPM / 56%の1-bar長 = 288,001をWAV回帰で固定。PR #66旧exact headは全CIと再reviewがPASSし、最新main統合headのhosted再実行待ち |
+| Decode duration / memory境界 | 🧪 source / hosted CI待ち | shared policyを`min(30,000,000, sampleRate × 600秒)`へ統一。8 kHz=4,800,000、48 kHz=28,800,000の境界と+1拒否をallocation-free arithmetic testで固定し、Androidのoutput-format変更後builderとDesktopのknown/unknown-length streamingにも適用。現sandboxではGradle distributionを利用できず実行結果は未昇格 |
 | Pattern/master full-bar parity | ✅ product anchor / scoped device | product bytes `ecc6c54`。single PAD / step 0 / one barのrealtime Voice+master expectedとoffline WAVを全frame比較。REDはframe 402でoffline末尾sample欠落61、mix-before-retire修正後max delta≤1。Android 229、exact `DB08…` Pixel、全PR/main CI PASS。docs-only source main、polyphony/stereo/listeningは別 |
 | Realtime / offline / Windows audio parity | ✅ main / scoped device | shared pitch/tone/gain/fade/limiter/swing/NaN policy。Android Voiceとhost PAD PCM最大差1、shared両host25、merged-main Windows daily install `0.17.0-802a667d39cb`。polyphony/stereo/listeningは次段階 |
 | ProductionSession / 履歴・復旧の全体整合 | ✅ main / scoped device | shared history/revision/plan transactionとverified disk revision引継ぎ。Android/Windows source/recording/reset/open/recovery/editを一本化し、PR #47/main/Pixel PASS。物理recovery操作は未確認 |
@@ -25,8 +25,8 @@
 | DJスクラッチ | 🧪 local/emulator | 元曲slice/S-Eまたは選択PADをpointer-downから直接所有し、左右を正逆速度へ変換。微小ノイズdead zone、px/s正規化、120ms idle無音、方向／倍率／playhead表示をhost test＋API 36 emulatorで確認。解除時は直前の有効なBeat loop/transportへ一度だけ復帰し、再開対象なしでは停止。TalkBack操作を公開。物理実機の連続操作感・クリック音・読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
-| 初期画面とデモ導線 | ✅ current local / API 36 emulator | pristine CAPTUREは空波形より先に`曲を読み込む / 制作を開く / MIC / DEVICE`を提示し、starterを`DUSTY JAZZデモ`として明示。Android/Windowsのデモ遷移はB DRUMS・B-01・01–16で一致。final exact APK 7 instrumentation testsと両platformのfresh captureを確認。物理touch/TalkBack/Humanは未確認 |
-| 固定操作面とlarge-text例外 | ✅ current local / emulator | 通常portraitとperformance画面は固定、landscapeのCHOP/通常BEATはresponsive配置。font scale 1.2+はheaderを簡素化し4工程を2×2、statusを複数行化。初期入力面だけはconstrained portrait/landscapeで全CTAへ到達するbounded vertical scrollを許可。640 × 360 dp / 200%でstage 49dp、demo 59dpを実測。16-step全セルの48dp化はresponsive再設計待ち |
+| 初期画面とデモ導線 | ✅ current local / API 36 emulator | pristine CAPTUREは空波形より先に`曲を読み込む / 制作を開く / MIC / DEVICE`を提示し、starterを`DUSTY JAZZデモ`として明示。Android/Windowsのデモ遷移はB DRUMS・B-01・01–16で一致。exact APK 8 testsのうちfirst-screen 2本はin-memory deck fixture。別のproduction MainActivity manual navigation/fresh captureで実配線を確認。物理touch/TalkBack/Humanは未確認 |
+| 固定操作面とlarge-text例外 | 🧪 current source / prior emulator | 通常portrait/performanceは固定、normal landscapeはresponsive。CAPTUREはlarge textまたはcompact landscape、BEAT quick/detailはlarge textで局所的にscrollし、global chromeは固定。scroll内ONE SHOTは完了tap、GATEは短いscroll判定後からpointer-upまたは発火後のgesture-node cancellationまでをexact-once releaseで保持し、mode変更時はpointer handlerを再起動、PAD起点のvertical swipeはcontroller action 0。48dp cellで隠れるLOOP/DRM/VOXはplayMode/contentKind semanticsへ常時保持。200%の到達性・48dpは前候補のemulator証跡であり、現gesture差分のdevice実行は未完了 |
 | 曲を流しながらPADで刻む | 🧪 local/emulator | source再生中のCapture PADは空／割当済みにかかわらず現在位置を刻む。割当済みA01は旧音を鳴らさず現在素材へ上書きし、旧loop/scratch実行参照も解除 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |

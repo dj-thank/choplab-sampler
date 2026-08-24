@@ -77,7 +77,7 @@ class AudioDecoder(private val context: Context) {
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
             val output = Pcm16ArrayBuilder(
                 initialCapacity = estimateInitialCapacity(durationUs, outputSampleRate),
-                maximumSize = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
+                maximumSize = AudioResourceLimits.maxDecodedMonoFrames(outputSampleRate),
             )
             val info = MediaCodec.BufferInfo()
             var inputEnded = false
@@ -122,6 +122,9 @@ class AudioDecoder(private val context: Context) {
                         ).also { decodedFormat ->
                             outputSampleRate = decodedFormat.sampleRate
                             outputChannels = decodedFormat.channelCount
+                            output.updateMaximumSize(
+                                AudioResourceLimits.maxDecodedMonoFrames(outputSampleRate),
+                            )
                         }
                         pcmEncoding = format.intOrDefault(
                             MediaFormat.KEY_PCM_ENCODING,
@@ -164,6 +167,10 @@ class AudioDecoder(private val context: Context) {
 
             val samples = output.toArray()
             if (samples.isEmpty()) error("音声データを展開できませんでした")
+            AudioResourceLimits.requireDecodedMonoFrameCount(
+                frameCount = samples.size.toLong(),
+                sampleRate = outputSampleRate,
+            )
 
             removeTinyDcOffset(samples)
             PcmAudio(
@@ -312,22 +319,31 @@ class AudioDecoder(private val context: Context) {
 
 internal class Pcm16ArrayBuilder(
     initialCapacity: Int,
-    private val maximumSize: Int,
+    maximumSize: Int,
 ) {
     init {
         require(maximumSize > 0) { "maximumSize must be positive" }
     }
 
     private var values = ShortArray(initialCapacity.coerceIn(1, maximumSize))
+    private var maximumSize = maximumSize
     var size: Int = 0
         private set
+
+    fun updateMaximumSize(maximumSize: Int) {
+        require(maximumSize > 0) { "maximumSize must be positive" }
+        check(size <= maximumSize) {
+            "展開後の音声が大きすぎます。10分以内の音声を使用してください"
+        }
+        this.maximumSize = maximumSize
+    }
 
     fun append(value: Float) {
         if (size >= maximumSize) {
             error("展開後の音声が大きすぎます。短い範囲に切った音声を使用してください")
         }
         if (size == values.size) {
-            val nextSize = minOf(maximumSize, values.size.toLong().times(2L).toInt())
+            val nextSize = minOf(maximumSize.toLong(), values.size.toLong() * 2L).toInt()
             values = values.copyOf(nextSize)
         }
         val normalized = value.coerceIn(-1f, 1f)
