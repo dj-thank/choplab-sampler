@@ -1123,6 +1123,22 @@ private fun FocusedCaptureEntry(
         idleLabel = "端末音声を録る\nDEVICE",
         stopLabel = "録音を止める\nDEVICE STOP",
     )
+    if (focusedCaptureEntryLayout(metrics) == FocusedCaptureEntryLayout.WIDE_SPLIT) {
+        WideFocusedCaptureEntry(
+            entry = entry,
+            state = state,
+            inputPolicy = inputPolicy,
+            microphoneControl = microphoneControl,
+            systemAudioControl = systemAudioControl,
+            gap = metrics.gapDp.dp,
+            onImportAudio = onImportAudio,
+            onOpenProject = onOpenProject,
+            onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+            onToggleSystemAudioRecording = onToggleSystemAudioRecording,
+            onTryStarterDemo = onTryStarterDemo,
+        )
+        return
+    }
     val scrollState = rememberScrollState()
     val gap = metrics.gapDp.dp
     val bodyModifier = if (metrics.largeText) {
@@ -1270,6 +1286,136 @@ private fun FocusedCaptureEntry(
             }
             if (metrics.largeText) {
                 Spacer(Modifier.height(metrics.controlHeightDp.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun WideFocusedCaptureEntry(
+    entry: CaptureEntryPresentation,
+    state: SamplerUiState,
+    inputPolicy: CaptureInputPolicy,
+    microphoneControl: RecordingControlPresentation,
+    systemAudioControl: RecordingControlPresentation,
+    gap: Dp,
+    onImportAudio: () -> Unit,
+    onOpenProject: () -> Unit,
+    onToggleMicrophoneRecording: () -> Unit,
+    onToggleSystemAudioRecording: () -> Unit,
+    onTryStarterDemo: () -> Unit,
+) {
+    MachinePanel(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            Text(
+                text = entry.title,
+                color = DeckGreen,
+                fontFamily = DeckFont,
+                fontWeight = FontWeight.Black,
+                fontSize = 17.sp,
+                maxLines = 1,
+            )
+            Text(
+                text = entry.guidance,
+                color = Color(0xFFE8DDBF),
+                fontFamily = DeckFont,
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1.25f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        NewSourceActionButton(
+                            state = state,
+                            label = "曲を読み込む\nLOAD AUDIO",
+                            onConfirm = onImportAudio,
+                            enabled = inputPolicy.fileEnabled,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                        MachineButton(
+                            label = "制作を開く\nOPEN PROJECT",
+                            onClick = onOpenProject,
+                            enabled = externalDocumentActionsEnabled(state),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                    }
+                    Text(
+                        text = "録音から始める",
+                        color = DeckLamp,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        NewSourceActionButton(
+                            state = state,
+                            label = microphoneControl.label,
+                            onConfirm = onToggleMicrophoneRecording,
+                            enabled = inputPolicy.microphoneEnabled && microphoneControl.enabled,
+                            active = microphoneControl.active,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                        NewSourceActionButton(
+                            state = state,
+                            label = systemAudioControl.label,
+                            onConfirm = onToggleSystemAudioRecording,
+                            enabled = inputPolicy.systemAudioEnabled && systemAudioControl.enabled,
+                            active = systemAudioControl.active,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                    }
+                }
+                if (entry.starterDemoAvailable) {
+                    MachinePanel(modifier = Modifier.weight(0.75f).fillMaxHeight()) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            Text(
+                                text = "すぐ試す  DUSTY JAZZデモ",
+                                color = DeckGreen,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = "PAD、ビート、保存を音入りで試せます",
+                                color = Color(0xFFE8DDBF),
+                                fontFamily = DeckFont,
+                                fontSize = 10.sp,
+                                maxLines = 2,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            MachineButton(
+                                label = "デモを試す\nTRY BEAT",
+                                onClick = onTryStarterDemo,
+                                active = true,
+                                modifier = Modifier.fillMaxWidth().height(112.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -3965,6 +4111,7 @@ private fun NewSourceActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     active: Boolean = false,
+    compact: Boolean = true,
 ) {
     if (requiresNewProjectConfirmation(state) && !active) {
         ConfirmActionButton(
@@ -3973,6 +4120,7 @@ private fun NewSourceActionButton(
             onConfirm = onConfirm,
             enabled = enabled,
             modifier = modifier,
+            compact = compact,
         )
     } else {
         MachineButton(
@@ -3981,7 +4129,7 @@ private fun NewSourceActionButton(
             enabled = enabled,
             active = active,
             modifier = modifier,
-            compact = true,
+            compact = compact,
         )
     }
 }
@@ -3993,6 +4141,7 @@ private fun ConfirmActionButton(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    compact: Boolean = true,
 ) {
     var armed by remember { mutableStateOf(false) }
     MachineButton(
@@ -4008,7 +4157,7 @@ private fun ConfirmActionButton(
         enabled = enabled,
         active = armed,
         modifier = modifier,
-        compact = true,
+        compact = compact,
     )
 }
 

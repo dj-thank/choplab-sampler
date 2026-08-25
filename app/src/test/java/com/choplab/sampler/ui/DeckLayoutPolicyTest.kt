@@ -84,6 +84,19 @@ class DeckLayoutPolicyTest {
     }
 
     @Test
+    fun onlyRegularNonLargeTextLandscapeUsesTheWideFirstEntry() {
+        val wide = resolveDeckLayout(widthDp = 1280, heightDp = 720, fontScale = 1f)
+        val compact = resolveDeckLayout(widthDp = 640, heightDp = 360, fontScale = 1f)
+        val largeText = resolveDeckLayout(widthDp = 1280, heightDp = 720, fontScale = 1.3f)
+        val portrait = resolveDeckLayout(widthDp = 720, heightDp = 1280, fontScale = 1f)
+
+        assertEquals(FocusedCaptureEntryLayout.WIDE_SPLIT, focusedCaptureEntryLayout(wide))
+        assertEquals(FocusedCaptureEntryLayout.STACKED, focusedCaptureEntryLayout(compact))
+        assertEquals(FocusedCaptureEntryLayout.STACKED, focusedCaptureEntryLayout(largeText))
+        assertEquals(FocusedCaptureEntryLayout.STACKED, focusedCaptureEntryLayout(portrait))
+    }
+
+    @Test
     fun portraitKeepsTheFullWidthStackedPerformanceDeck() {
         val metrics = resolveDeckLayout(widthDp = 412, heightDp = 820)
 

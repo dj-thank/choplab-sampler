@@ -15,6 +15,11 @@ enum class PerformanceWorkspaceLayout {
     SPLIT_PAD_GRID,
 }
 
+enum class FocusedCaptureEntryLayout {
+    STACKED,
+    WIDE_SPLIT,
+}
+
 data class DeckLayoutMetrics(
     val orientation: DeckOrientation,
     val density: DeckDensity,
@@ -97,4 +102,15 @@ fun performanceWorkspaceLayout(metrics: DeckLayoutMetrics): PerformanceWorkspace
         PerformanceWorkspaceLayout.SPLIT_PAD_GRID
     } else {
         PerformanceWorkspaceLayout.STACKED
+    }
+
+fun focusedCaptureEntryLayout(metrics: DeckLayoutMetrics): FocusedCaptureEntryLayout =
+    if (
+        metrics.orientation == DeckOrientation.LANDSCAPE &&
+        metrics.density == DeckDensity.REGULAR &&
+        !metrics.largeText
+    ) {
+        FocusedCaptureEntryLayout.WIDE_SPLIT
+    } else {
+        FocusedCaptureEntryLayout.STACKED
     }
