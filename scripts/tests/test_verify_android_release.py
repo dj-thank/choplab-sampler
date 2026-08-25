@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from scripts.verify_android_release import (
     VerificationError,
     android_tool_executable_names,
+    find_android_tool,
     normalize_fingerprint,
     parse_manifest,
+    read_apksigner_certificate_sha256,
     verify_manifest,
 )
 
@@ -40,6 +46,24 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
     def test_windows_tool_resolution_accepts_exe_build_tools(self) -> None:
         names = android_tool_executable_names("zipalign", platform="nt")
         self.assertIn("zipalign.exe", names)
+
+    def test_sdk_build_tools_take_precedence_over_ambient_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executable = "apksigner.exe" if os.name == "nt" else "apksigner"
+            expected = Path(temp_dir) / "build-tools" / "36.0.0" / executable
+            expected.parent.mkdir(parents=True)
+            expected.touch()
+
+            with (
+                mock.patch.dict(os.environ, {"ANDROID_SDK_ROOT": temp_dir}),
+                mock.patch(
+                    "scripts.verify_android_release.shutil.which",
+                    return_value="ambient/apksigner",
+                ) as which,
+            ):
+                self.assertEqual(str(expected), find_android_tool("apksigner"))
+
+            which.assert_not_called()
 
     def test_accepts_expected_release_surface(self) -> None:
         verify_manifest(
@@ -96,6 +120,27 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
     def test_normalizes_certificate_fingerprint(self) -> None:
         value = ":".join(["ab"] * 32)
         self.assertEqual("ab" * 32, normalize_fingerprint(value))
+
+    def test_reads_apksigner_certificate_from_stderr(self) -> None:
+        fingerprint = ":".join(["ab"] * 32)
+        self.assertEqual(
+            "ab" * 32,
+            read_apksigner_certificate_sha256(
+                "",
+                f"Signer #1 certificate SHA-256 digest: {fingerprint}\n",
+            ),
+        )
+
+    def test_accepts_duplicate_apksigner_certificate_across_streams(self) -> None:
+        fingerprint = "ab" * 32
+        line = f"Signer #1 certificate SHA-256 digest: {fingerprint}\n"
+        self.assertEqual(fingerprint, read_apksigner_certificate_sha256(line, line))
+
+    def test_rejects_conflicting_apksigner_certificates(self) -> None:
+        stdout = f"Signer #1 certificate SHA-256 digest: {'ab' * 32}\n"
+        stderr = f"Signer #1 certificate SHA-256 digest: {'cd' * 32}\n"
+        with self.assertRaisesRegex(VerificationError, "conflicting"):
+            read_apksigner_certificate_sha256(stdout, stderr)
 
 
 if __name__ == "__main__":

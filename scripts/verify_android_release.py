@@ -53,29 +53,31 @@ def android_tool_executable_names(name: str, *, platform: str = os.name) -> tupl
 
 def find_android_tool(name: str) -> str:
     executables = android_tool_executable_names(name)
+    sdk_root_text = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
+    candidates: list[Path] = []
+    if sdk_root_text:
+        sdk_root = Path(sdk_root_text)
+        if name == "apkanalyzer":
+            for executable in executables:
+                candidates.extend(
+                    [
+                        sdk_root / "cmdline-tools" / "latest" / "bin" / executable,
+                        sdk_root / "tools" / "bin" / executable,
+                    ]
+                )
+        for build_tools in sorted((sdk_root / "build-tools").glob("*"), reverse=True):
+            candidates.extend(build_tools / executable for executable in executables)
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+
     for executable in executables:
         found = shutil.which(executable)
         if found:
             return found
 
-    sdk_root_text = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
     if not sdk_root_text:
         raise VerificationError(f"Cannot find {name}; ANDROID_SDK_ROOT is not set")
-    sdk_root = Path(sdk_root_text)
-    candidates: list[Path] = []
-    if name == "apkanalyzer":
-        for executable in executables:
-            candidates.extend(
-                [
-                    sdk_root / "cmdline-tools" / "latest" / "bin" / executable,
-                    sdk_root / "tools" / "bin" / executable,
-                ]
-            )
-    for build_tools in sorted((sdk_root / "build-tools").glob("*"), reverse=True):
-        candidates.extend(build_tools / executable for executable in executables)
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
     raise VerificationError(f"Cannot find Android SDK tool: {name}")
 
 
@@ -203,6 +205,23 @@ def normalize_fingerprint(value: str) -> str:
     return normalized
 
 
+def read_apksigner_certificate_sha256(*outputs: str | None) -> str | None:
+    fingerprints = {
+        normalize_fingerprint(match.group(1))
+        for output in outputs
+        if output
+        for match in re.finditer(
+            r"Signer #1 certificate SHA-?256 digest:\s*([0-9a-fA-F:]+)",
+            output,
+        )
+    }
+    if not fingerprints:
+        return None
+    if len(fingerprints) != 1:
+        raise VerificationError("apksigner reported conflicting signer certificate SHA-256 values")
+    return next(iter(fingerprints))
+
+
 def verify_signature(
     apk: Path,
     *,
@@ -217,15 +236,11 @@ def verify_signature(
             raise VerificationError(f"Published APK signature verification failed: {detail}")
         return None
 
-    match = re.search(
-        r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F:]+)",
-        result.stdout,
-    )
-    if match is None:
+    actual = read_apksigner_certificate_sha256(result.stdout, result.stderr)
+    if actual is None:
         if require_signed or expected_cert_sha256:
             raise VerificationError("Could not read signer certificate SHA-256 from apksigner")
         return None
-    actual = normalize_fingerprint(match.group(1))
     if expected_cert_sha256 is not None:
         expected = normalize_fingerprint(expected_cert_sha256)
         if actual != expected:
