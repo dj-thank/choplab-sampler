@@ -48,4 +48,4 @@ The public shared presentation policy is the seam. Tests must prove:
 - [x] Concurrent NEXT/locked-stage owner completed; clean commits integrated by fast-forward.
 - [x] Finish presentation contract observed RED, then passed on shared Desktop and Android host tests.
 - [x] Same-state 1200×900 before/after comparison accepted; long labels are uncropped.
-- [ ] Full local gate, review, revision-bound docs and closeout commit.
+- [x] Full 197-task local gate, local-parent Standards/Spec review, revision-bound docs and closeout prepared.

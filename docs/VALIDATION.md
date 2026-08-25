@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Finish action truth UX — 2026-08-26
+
+- Product checkpoint: `c4f0ca429b944f1b30ec5ce1d4452e037a1715f4`, tree `ff2a26e2d8e4c13016e277eb3428c97b569e599e`, base `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`.
+- RED/GREEN: shared presentation tests first failed compilation because `FinishClearActionPresentation` and its policy did not exist. GREEN fixes the ready title/guidance and the exact two-press clear label/confirmation; existing Android `GuidedWorkflowTest` agrees.
+- UI/runtime: same self-created Quick Sketch production was captured before/after in a packaged Windows app with isolated app data. The title and `CLEAR STEPS` labels fit at 1200×900; `clearAllPattern`, readiness, document actions and Undo/Redo behavior are unchanged.
+- Full gate: 197 tasks PASS. Android 244, shared Android/Desktop 36/36, JVM-core 54 and Desktop 80; failures/errors/skips 0. Lint debug/release errors 0/warnings 7.
+- Artifacts: debug APK 31,541,362 / `AEE147DD589749A040BD6271E35C2F5783557980AB009919BD14081D2C99C2A9`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,093,812 / `D4CD3B59E022C1DEFAB9948E5A83FD18E447539885B081D4423C3FAD0236F822`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Other gates: CycloneDX 650 components / 651 dependencies; configured project validation PASS; Python policy 40; product public surface 412 / documentation-inclusive 413; `git diff --check` PASS. Local parent Standards/Spec findings 0/0.
+- Evidence: parent PAD `work/CHOPLAB_GOAL_UX_AUDIT_20260826/` contains accepted screenshots, comparison and review notes.
+- Gate: `LOCAL_PASS` plus scoped Windows visual evidence. Device, physical audio/touch, accessibility speech, provider/public and Human outcomes remain unclaimed.
+
 ## Workflow NEXT and locked-stage reasons — 2026-08-26
 
 - Product checkpoint: `a9f2245abd1673ce02b9a94f231b66d5fe87a4ea`, tree `05d84e34c62f83057ef28175ea2d4d3d9d7de96a`, base `8b9c00ba2a382705c3478c1ce8984225d30a6c8d`.

@@ -1,5 +1,18 @@
 # Project state
 
+## Current snapshot — 2026-08-26 Finish action truth UX
+
+This snapshot makes the SAVE stage describe the exact artifacts it preserves or removes. It is a shared presentation/copy change, not a persistence or audio-engine change.
+
+- Observed at: `2026-08-26T04:06:29+09:00`.
+- Product source: `codex/choplab-goal-ux-20260826@c4f0ca429b944f1b30ec5ce1d4452e037a1715f4`, tree `ff2a26e2d8e4c13016e277eb3428c97b569e599e`, based on integrated workflow-NEXT closeout `bbd6850`. The dirty canonical preservation checkout remains untouched.
+- UX truth: the ready headline is `制作を保存・書き出し`; guidance distinguishes automatic app-private recovery, optional portable project save and four-bar WAV export after playback confirmation. The destructive control is `ビート配置を消す / CLEAR STEPS` with `もう一度で配置を削除`.
+- Behavior boundary: the callback remains `clearAllPattern`. Source audio, PAD assignments, project files, autosave generations, Undo/Redo, WAV readiness and document-action admission are unchanged.
+- Visual evidence: fresh 1200×900 baseline/implementation captures use an isolated Windows app-data root and self-created WAV. `work/CHOPLAB_GOAL_UX_AUDIT_20260826/07-save-before-after.png` shows both longer labels uncropped.
+- Validation: focused RED/GREEN; clean full Gradle gate 197 tasks PASS. Android 244, shared Android/Desktop 36/36, JVM-core 54 and Desktop 80 tests; failures/errors/skips 0. Debug/release Lint errors 0/warnings 7; Android debug/androidTest/unsigned-release APK, Windows app-image and CycloneDX 650-component/651-dependency SBOM PASS. Configured validation, Python policy 40, product public-surface 412 / documentation-inclusive 413 and `git diff --check` PASS.
+- Reviews: local parent Standards and Spec passes found no unresolved issue. No child-model claim was made.
+- Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence. Physical touch, TalkBack/VoiceOver speech, audio usefulness, device/provider/public and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-26 workflow NEXT and locked-stage reasons
 
 This snapshot improves comprehension of the existing four-stage product without adding a tutorial modal, screen, scroll path, schema or audio-engine behavior.
