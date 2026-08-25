@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 4 integrated current local line:** `b6eed97`。regular landscapeのfirst entryを2×2 own-audio＋独立demo panelへし、stacked/wideのaction copyを一つのshared contractへ集約した。compact/portrait/large-textは保持し、456 tests / 190-task gate / same-state Windows visualで`LOCAL_PASS`。次はcompact/device/Human evidenceなしに追加copyやdesktop-only visualを開始しない。
+
 **統合済みcurrent local line:** `c660ce9`。workflow NEXT、document outcome truth、Finish action truthの三つを一つのclean branchへ統合し、453 tests / 190-task gateで`LOCAL_PASS`を再確認した。copy-only UXの4回目は開始せず、次はportfolioを再計算して非copy laneを一つだけ選ぶ。
 
 **完了:** `../completed/finish-action-truth-ux-20260826.md`。SAVE画面の見出しを制作保存＋WAV書出しの両目的へ揃え、実際にはpatternだけを消す操作を`ビート配置を消す / CLEAR STEPS`へ限定した。callback、schema、audio、project/autosave bytesは変えず、TDD、全197-task gate、同一Windows状態のbefore/afterで`LOCAL_PASS`を確認した。

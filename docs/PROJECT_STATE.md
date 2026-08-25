@@ -1,5 +1,19 @@
 # Project state
 
+## Current snapshot — 2026-08-26 wide first-entry integrated goal line
+
+This is the current integrated local line after the first non-copy `/goal` experiment. Earlier wave sections remain immutable evidence for their source revisions.
+
+- Observed at: `2026-08-26T04:39:53+09:00`.
+- Integrated product source: `codex/choplab-goal-ux-20260826@b6eed97215bac6c27d3bef66b0f1c8c0e2e0b569`, tree `8f65157dae53050f48dac1c733bbdeb21689c523`. It contains the prior three UX waves, wide-layout product `8b3751e`, shared Capture vocabulary `7d45164`, and wide closeout merge `b6eed97`. Dirty canonical preservation root remains untouched.
+- User-visible result: regular normal-text landscape uses a 2×2 own-audio action column with a separate optional DUSTY JAZZ demo panel. Compact landscape, portrait and large text remain stacked. The same 1200×900 pristine state visibly shortens the scan and preserves NEXT/document feedback.
+- Maintainability: stacked and wide compositions share one `CaptureEntryActionPresentation`; labels/demo guidance cannot silently drift between layouts. State policy, recording controls, callbacks and document admission were already shared and remain unchanged.
+- Current visual evidence: parent PAD `work/CHOPLAB_WIDE_CAPTURE_EVIDENCE_20260826/{01-baseline-empty,02-after-wide-empty,03-before-after}.png`. Runtime used isolated app data, no user audio/project or provider/device action, and exact processes closed gracefully.
+- Final integrated validation: full 190-task gate PASS. Android 248, shared Android/Desktop 37/37, JVM-core 54 and Desktop 80 tests; 456 total, failures/errors/skips 0. Lint errors 0/warnings 7; Android three APKs, Windows app-image, CycloneDX and public-surface 415 PASS.
+- Final artifacts: debug APK 32,560,016 / `317ECA6F5E4ADAB34F20F60DB799FC3AE8F5BEE4B639C26C963258408EBA0B7E`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E28538D965C3210E263B9D04E5FF8554D6ADE72A69D6C21BA17A791944A80FBE`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Reviews: fixed-point local parent Standards and Spec passes have no unresolved finding. Portfolio receipt: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE4_20260826.md`.
+- Gate ceiling: `LOCAL_PASS` plus scoped Windows visual. No additional desktop-only visual or copy lane should start before compact/device/Human evidence; physical audio/touch/speech, provider/public and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-26 continuous goal UX integration
 
 This is the current integrated local product line for the first three `/goal` UX waves. Individual sections below remain revision-bound evidence for each source branch.
