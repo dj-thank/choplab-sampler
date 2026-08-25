@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**完了:** `../completed/document-outcome-confidence-20260826.md`。音声取込、制作open/save、WAV exportのcancel/successをAndroid/Windowsで一つのtruthful contractへ揃え、外部fileとアプリ内制作／autosaveを区別した。path/bytes/schemaは不変、全local/package gateで`LOCAL_PASS`。copy-only proxyをこれ以上増やさず、次はvisual/device/Human comprehension evidenceまたは別laneの明示判断を待つ。
+**完了:** `../completed/wide-first-entry-ux-20260826.md`。current-run Windows auditで確認した最大化first-entryの巨大なdead canvasを、regular landscape限定の2-column own-audio/demo layoutへ修復した。compact/portrait/large-textは既存contractを保持し、before/after visualと全local/package gateで`LOCAL_PASS`。次はcompact/device/speech/Human evidenceなしに別のdesktop-only visualを増やさない。
+
+**直前の完了:** `../completed/document-outcome-confidence-20260826.md`。音声取込、制作open/save、WAV exportのcancel/successをAndroid/Windowsで一つのtruthful contractへ揃え、外部fileとアプリ内制作／autosaveを区別した。path/bytes/schemaは不変、全local/package gateで`LOCAL_PASS`。
 
 **直前の完了:** `../completed/workflow-next-action-ux-20260826.md`。既存4工程にNEXT 1–4／待機／録音停止の一意な次操作と、disabled工程の具体的prerequisiteを追加した。新screen/modal/scrollやstate mutationを増やさず、全local/package gateで`LOCAL_PASS`。
 
