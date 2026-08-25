@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 広いWindows初期画面を使い切る | ✅ current local / exact Windows visual | regular normal-text landscapeだけown-audio 4 actionsを2×2 left column、demoを独立right panelへ展開。最大化baselineの下半分を占めた説明のない空白を除去し、wide labelを8sp→10sp。compact 640×360、portrait、large-textはstackedを保持。current-run before/afterとWAV cancel flowをisolated app dataで確認。Narrator/Humanは未確認 |
 | 取込・open・保存・WAVの結果が分かる | ✅ current local | Android 4 activity-resultとWindows WAV/project dialogの取消を無言にせず、現在の制作／autosaveが保全されたことを表示。WAV成功は外部fileとアプリ内制作、project成功は外部保存先と安全コピーを区別。表示するfilenameはleafのみ、path/control/改行を除去し長さ制限。保存bytes/I/O/schemaは不変。Android 247、Desktop 80、Windows packageをLOCAL検証。実provider UI/Humanは未確認 |
 | 次にやること／押せない工程の理由 | ✅ current local | empty/demo/source/chop/PAD-only/loop/pattern/loading/recordingをpure policyで一つの`NEXT`へ分類。固定status stripが`NEXT 1 入れる → 2 チョップ → 3 ビート → 4 保存`または待機/録音停止を表示。disabled工程は具体的な日本語prerequisiteをscreen-reader stateへ公開し、enabled/navigation truthは不変。Android 244、shared 34/34、Windows packageをLOCAL検証。物理touch/TalkBack/Humanは未確認 |
 | PAD長押し後の見やすい切り位置表示 | ✅ current local / scoped AVD | `6befe11`で長押しPAD全体を最初からscreen-fitting表示。`max(1秒, PAD長×1.25)`で普通のchopは約80%、短いchopは周辺contextを保持。全体overviewにPAD/viewport/focusを表示し、500dp未満では省略。波形長押しの近い境界移動＋1秒focus、全既存controls、Revertを保持。reference contract 7 regions PASS、API36 initial `0–0.5秒`→表示`0–1.0秒`、instrumentation 2/2。物理touch/TalkBack/Human未確認 |

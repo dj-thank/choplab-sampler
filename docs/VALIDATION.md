@@ -21,6 +21,17 @@
 - Evidence: parent PAD `work/CHOPLAB_GOAL_UX_AUDIT_20260826/` contains accepted screenshots, comparison and review notes.
 - Gate: `LOCAL_PASS` plus scoped Windows visual evidence. Device, physical audio/touch, accessibility speech, provider/public and Human outcomes remain unclaimed.
 
+## Wide first-entry UX — 2026-08-26
+
+- Product checkpoint: `8b3751e5f56b9b2dd0b0c74f1003283064e45e5b`, tree `2dcbb42bc31c98778d1705182ecec5afbae01e90`, base `2bdf60d21252d490c4d50576375528e395b8f426`.
+- RED/GREEN: `FocusedCaptureEntryLayout` was missing and focused test failed compilation. GREEN proves wide only for regular normal-text landscape; compact 640×360, large-text landscape and portrait remain stacked.
+- Visual: current-run 3862×2110 baseline/after screenshots use isolated app data and the same pristine/cancel flow. After uses the full surface for 2×2 own-audio actions plus separate demo panel, retains WAV-only picker and cancel feedback, and closes exact runtime processes gracefully.
+- `scripts/validate_project.sh`: public-surface baseline 411, executable modes, JVM-core/Desktop 18 tasks, XML/wrapper checks PASS. Documentation-inclusive final public-surface 412 PASS.
+- Full gate: 190 tasks PASS. Android 248, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 31,574,130 / `3BB275F43AADF26C34004170F56794CF9D51E97481799FE05DE01D60BE9CD369`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `D8FB290F6F5858D7322B559E42BCAE10C539836482CDC42F9E0BA961DB114F4A`.
+- Windows verifier/ProductVersion, CycloneDX, Python 40 and `git diff --check` PASS.
+- Gate: `LOCAL_PASS` plus scoped Windows screenshot evidence; compact/device/speech/audio/provider/public/Human gates remain unclaimed.
+
 ## Document operation outcome confidence — 2026-08-26
 
 - Product checkpoint: `e2a76d80340dcad97856e5c39c1b74596cc2f42f`, tree `96c14bd39f82036bd8770e64628682a8f6c887aa`, base `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`.

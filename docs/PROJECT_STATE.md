@@ -26,6 +26,18 @@ This snapshot makes the SAVE stage describe the exact artifacts it preserves or 
 - Reviews: local parent Standards and Spec passes found no unresolved issue. No child-model claim was made.
 - Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence. Physical touch, TalkBack/VoiceOver speech, audio usefulness, device/provider/public and `HUMAN_GO` remain separate.
 
+## Current snapshot — 2026-08-26 wide first-entry UX
+
+This snapshot fixes an evidence-backed maximized-Windows layout problem without changing the compact, portrait or large-text contracts.
+
+- Product source: `codex/choplab-wide-capture-ux-20260826@8b3751e5f56b9b2dd0b0c74f1003283064e45e5b`, tree `2dcbb42bc31c98778d1705182ecec5afbae01e90`, based on document-outcome closeout `2bdf60d21252d490c4d50576375528e395b8f426`. Dirty canonical checkout remains untouched.
+- Current-run audit: maximized Windows baseline, WAV-only chooser and cancel feedback were captured under isolated app data. The baseline placed every first-entry action at the top and left more than half the window as unexplained black canvas; NEXT/cancel behavior itself was correct.
+- Layout policy: only regular landscape with normal text uses `WIDE_SPLIT`. Compact landscape (including 640×360), portrait and font scale 1.2+ remain stacked.
+- Wide surface: LOAD/OPEN and MIC/DEVICE fill a 2×2 own-audio column; optional DUSTY JAZZ demo owns a separate right panel. Wide actions use normal machine typography. Existing four stages, NEXT strip, document cancellation and all callbacks remain unchanged.
+- Visual read-back: same maximized viewport and pristine state after screenshot removes the whole-window dead region and retains cancel reassurance. Baseline/after evidence is in parent PAD `work/CHOPLAB_GOAL_WAVE3_AUDIT/`.
+- Validation: focused RED/GREEN; full 190 tasks. Android 248, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; APKs, Windows package, CycloneDX, configured validation, Python 40, public-surface baseline 411 and documentation-inclusive final 412 PASS.
+- Gate ceiling: `LOCAL_PASS` plus scoped exact-package Windows visual evidence. No compact/device screenshot, Narrator/TalkBack/VoiceOver speech, physical audio, provider/public or Human acceptance was run.
+
 ## Current snapshot — 2026-08-26 document operation outcome confidence
 
 This snapshot makes document dialog outcomes explicit across Android and Windows. It changes feedback copy, not the document bytes or persistence/rendering pipelines.

@@ -10,7 +10,9 @@
 
 **完了:** `../completed/finish-action-truth-ux-20260826.md`。SAVE画面の見出しを制作保存＋WAV書出しの両目的へ揃え、実際にはpatternだけを消す操作を`ビート配置を消す / CLEAR STEPS`へ限定した。callback、schema、audio、project/autosave bytesは変えず、TDD、全197-task gate、同一Windows状態のbefore/afterで`LOCAL_PASS`を確認した。
 
-**直前の完了:** `../completed/document-outcome-confidence-20260826.md`。音声取込、制作open/save、WAV exportのcancel/successをAndroid/Windowsで一つのtruthful contractへ揃え、外部fileとアプリ内制作／autosaveを区別した。path/bytes/schemaは不変、全local/package gateで`LOCAL_PASS`。このFinish真実修正を最後にcopy-only proxyを増やさず、次はvisual/device/Human comprehension evidenceまたは別laneを選ぶ。
+**完了:** `../completed/wide-first-entry-ux-20260826.md`。current-run Windows auditで確認した最大化first-entryの巨大なdead canvasを、regular landscape限定の2-column own-audio/demo layoutへ修復した。compact/portrait/large-textは既存contractを保持し、before/after visualと全local/package gateで`LOCAL_PASS`。次はcompact/device/speech/Human evidenceなしに別のdesktop-only visualを増やさない。
+
+**直前の完了:** `../completed/document-outcome-confidence-20260826.md`。音声取込、制作open/save、WAV exportのcancel/successをAndroid/Windowsで一つのtruthful contractへ揃え、外部fileとアプリ内制作／autosaveを区別した。path/bytes/schemaは不変、全local/package gateで`LOCAL_PASS`。Finish truthとwide entryを最後にcopy/desktop-only proxyを増やさず、次はHuman/device evidenceまたは別laneを選ぶ。
 
 **直前の完了:** `../completed/workflow-next-action-ux-20260826.md`。既存4工程にNEXT 1–4／待機／録音停止の一意な次操作と、disabled工程の具体的prerequisiteを追加した。新screen/modal/scrollやstate mutationを増やさず、全local/package gateで`LOCAL_PASS`。
 
