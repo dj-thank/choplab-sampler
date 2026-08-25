@@ -118,6 +118,8 @@ import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.transientAnalysisStillCurrent
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.persistence.ProjectArchiveCodec
+import com.choplab.sampler.ui.DocumentAction
+import com.choplab.sampler.ui.documentCompletionMessage
 import com.choplab.sampler.ui.SamplerDeckController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1774,7 +1776,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 mutableUiState.update {
                     it.copy(
                         isLoading = false,
-                        statusMessage = "WAV保存完了: ${summary.bars}小節 / ${"%.2f".format(summary.durationSeconds)}秒",
+                        statusMessage = documentCompletionMessage(
+                            action = DocumentAction.EXPORT_WAV,
+                            detail = "${summary.bars}小節 / ${"%.2f".format(summary.durationSeconds)}秒",
+                        ),
                     )
                 }
             }.onFailure { throwable ->
@@ -1816,7 +1821,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }.onSuccess {
                 mutableUiState.update {
-                    it.copy(isLoading = false, statusMessage = "検証済みプロジェクトを保存し、安全コピーも保持しました")
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = documentCompletionMessage(DocumentAction.SAVE_PROJECT),
+                    )
                 }
             }.onFailure { throwable ->
                 mutableUiState.update {

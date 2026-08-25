@@ -21,7 +21,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.choplab.sampler.audio.PlaybackInterruption
+import com.choplab.sampler.ui.DocumentAction
 import com.choplab.sampler.ui.SamplerScreen
+import com.choplab.sampler.ui.documentPickerCanceledMessage
 import com.choplab.sampler.ui.theme.ChopLabTheme
 
 class MainActivity : ComponentActivity() {
@@ -38,7 +40,10 @@ class MainActivity : ComponentActivity() {
                 val importLauncher = rememberLauncherForActivityResult(
                     contract = AudioOpenDocumentContract(),
                 ) { uri ->
-                    uri ?: return@rememberLauncherForActivityResult
+                    if (uri == null) {
+                        samplerViewModel.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
+                        return@rememberLauncherForActivityResult
+                    }
                     runCatching {
                         context.contentResolver.takePersistableUriPermission(
                             uri,
@@ -51,14 +56,20 @@ class MainActivity : ComponentActivity() {
                 val exportLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument("audio/wav"),
                 ) { uri ->
-                    uri ?: return@rememberLauncherForActivityResult
+                    if (uri == null) {
+                        samplerViewModel.setStatus(documentPickerCanceledMessage(DocumentAction.EXPORT_WAV))
+                        return@rememberLauncherForActivityResult
+                    }
                     samplerViewModel.exportPattern(uri)
                 }
 
                 val openProjectLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
                 ) { uri ->
-                    uri ?: return@rememberLauncherForActivityResult
+                    if (uri == null) {
+                        samplerViewModel.setStatus(documentPickerCanceledMessage(DocumentAction.OPEN_PROJECT))
+                        return@rememberLauncherForActivityResult
+                    }
                     runCatching {
                         context.contentResolver.takePersistableUriPermission(
                             uri,
@@ -71,7 +82,10 @@ class MainActivity : ComponentActivity() {
                 val saveProjectLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument("application/vnd.choplab.project"),
                 ) { uri ->
-                    uri ?: return@rememberLauncherForActivityResult
+                    if (uri == null) {
+                        samplerViewModel.setStatus(documentPickerCanceledMessage(DocumentAction.SAVE_PROJECT))
+                        return@rememberLauncherForActivityResult
+                    }
                     samplerViewModel.saveProject(uri)
                 }
 

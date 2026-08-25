@@ -63,6 +63,8 @@ import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadS
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
+import com.choplab.sampler.ui.DocumentAction
+import com.choplab.sampler.ui.documentCompletionMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -170,7 +172,16 @@ class DesktopSamplerController(
                 PatternRenderer.renderToWav(outputFile, snapshot.pads, snapshot.activeSteps, snapshot.bpm, snapshot.swing)
             }.onSuccess {
                 projectOperations.completeIfCurrent(operation) {
-                    mutableState.update { it.copy(isLoading = false, statusMessage = "${outputFile.name}を書き出しました") }
+                    mutableState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = documentCompletionMessage(
+                                action = DocumentAction.EXPORT_WAV,
+                                destinationName = outputFile.name,
+                                detail = "4小節",
+                            ),
+                        )
+                    }
                 }
             }.onFailure { error ->
                 projectOperations.completeIfCurrent(operation) {
@@ -215,7 +226,15 @@ class DesktopSamplerController(
             runCatching { DesktopProjectFiles.save(file, snapshot) }
                 .onSuccess { written ->
                     projectOperations.completeIfCurrent(operation) {
-                        mutableState.update { it.copy(isLoading = false, statusMessage = "${written.name}を保存しました") }
+                        mutableState.update {
+                            it.copy(
+                                isLoading = false,
+                                statusMessage = documentCompletionMessage(
+                                    action = DocumentAction.SAVE_PROJECT,
+                                    destinationName = written.name,
+                                ),
+                            )
+                        }
                     }
                 }
                 .onFailure { error ->
