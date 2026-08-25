@@ -52,7 +52,7 @@ Long-pressing an assigned PAD opens TRIM with that entire chop already visible a
 - [x] 2026-08-25 — RED unit/instrumentation compile failures observed.
 - [x] 2026-08-25 — PAD-fit, one-second floor, edge clamp, overview and accessibility policies implemented.
 - [x] 2026-08-25 — API 36 AVD initial state captured; two focused instrumentation tests PASS.
-- [ ] Final revision-bound docs, review and closeout.
+- [x] 2026-08-25 — Final 184-task read-back, revision-bound docs, output hashes and closeout receipt completed.
 
 ## Discoveries
 
@@ -71,7 +71,8 @@ Long-pressing an assigned PAD opens TRIM with that entire chop already visible a
 - `:app:testDebugUnitTest --tests '*PadTrimTest' ... :shared:desktopTest` — RED then PASS.
 - API 36 AVD manual state: A01 `0:00.000–0:00.500`, initial editable viewport `0:00.000–0:01.000`.
 - AVD instrumentation: initial focused context + waveform-long-press one-second focus, 2/2 PASS.
-- Clean full gate: 191 tasks PASS before compact-height adaptation; final incremental focused gate PASS after adaptation.
+- Clean full gate: 191 tasks PASS before compact-height adaptation; final 184-task full read-back and focused adaptive-height gate PASS after adaptation.
+- Python 36, final public-surface 406, UI contract validator and diff/debug-marker checks PASS.
 
 ## Risks and rollback
 

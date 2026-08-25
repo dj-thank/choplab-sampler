@@ -1,5 +1,19 @@
 # Project state
 
+## Current snapshot — 2026-08-25 image-guided screen-fitting precision trim
+
+This snapshot binds a screenshot/ImageGen-guided UI improvement to live shared Compose and pure viewport contracts. The generated image is not packaged and is not runtime proof.
+
+- Product source: `codex/choplab-creative-improvement-20260825@6befe1193a91d099bc8ecd5f736eb4d2fea64d24`, tree `71cd3941580e80346549bbad4af0669bc5739112`, parent `25792b9`.
+- Reference contract: user-supplied 570 × 1280 current screenshot plus one built-in ImageGen hierarchy candidate were mapped into 7 regions (`exact 4 / semantic 1 / adapted 2`). The contract validator passes with baseline, generated-candidate and implemented-AVD states.
+- User outcome: long-pressing an assigned PAD now opens TRIM with that chop already fitted. Visible frames are `max(1 second, ceil(PAD length × 1.25))`, capped by the source, so ordinary chops occupy about 80% while tiny chops keep useful context. Source-edge windows retain the same requested size where possible.
+- Visual hierarchy: a compact full-source overview shows the selected PAD, current editable viewport and focus line above the main waveform. At heights below 500dp it is omitted to preserve compact landscape editing space. No generated raster or fake state enters the product.
+- Existing interaction: waveform long-press still moves the nearer START/END boundary through the existing safe trim reducer and focuses a maximum one-second window. Tap, pinch/pan, viewport buttons, boundary wheels, precision choices, Preview, Revert, Source and Stop All remain.
+- AVD evidence: on dedicated API 36 AVD with a synthetic four-second WAV, A01 `0:00.000–0:00.500` initially opened at `0:00.000–0:01.000`; overview announced the same exact ranges. Two focused instrumentation tests for initial focus and waveform-long-press one-second focus passed. The tracked emulator was gracefully stopped and its lease read back `already-exited`.
+- Verification: clean 191-task gate PASS; final 184-task full read-back PASS. Shared Android host 32, shared Desktop 32, Android unit 238, JVM-core 52, Desktop 79, plus two focused AVD instrumentation tests; 435 total, failures/errors/skips 0. Lint errors 0, warnings 7; Python 36 PASS; final public-surface 406 PASS; UI validator/diff/debug-marker checks PASS.
+- Evidence: parent PAD `work/PAD_CHOPLAB_PRECISION_TRIM_IMAGEGEN_LOCAL_RECEIPT_20260825.md`; outputs `ChopLab-precision-trim-imagegen-target-20260825.png`, `ChopLab-precision-trim-implemented-20260825.png`, and `ChopLab-precision-trim-comparison-20260825.png`.
+- Gate ceiling: `LOCAL_PASS` plus scoped emulator interaction. Physical touch, TalkBack speech, physical audio quality/latency, provider/public and `HUMAN_GO` remain unverified.
+
 ## Current snapshot — 2026-08-25 supported-audio picker local candidate
 
 This snapshot fixes platform picker truth. It does not claim that every document provider or physical device renders an identical picker.

@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の実装plan:** `precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装・検証する。targetは`LOCAL_PASS` + scoped AVD evidenceで、physical device/provider/public/Humanは別gate。
+**完了:** `../completed/precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装した。`LOCAL_PASS` + scoped API 36 AVD evidenceを確認し、physical device/provider/public/Humanは別gateとして保持した。次の実装seamは未選択である。
 
 **直前の完了plan:** `../completed/quick-sketch-20260825.md`。素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHは`LOCAL_PASS`で完了済み。
 

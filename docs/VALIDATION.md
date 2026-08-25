@@ -2,6 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Image-guided screen-fitting precision trim — 2026-08-25
+
+- Product source: `6befe1193a91d099bc8ecd5f736eb4d2fea64d24`, tree `71cd3941580e80346549bbad4af0669bc5739112`, parent `25792b9`.
+- Reference workflow: original screenshot opened at 570 × 1280; built-in ImageGen candidate saved under parent `outputs/`; 7-region contract and readable brief under `docs/ui/`; exact prompt and hashes in the parent receipt.
+- RED/GREEN: missing initial-window policy failed compilation. Unit contracts then passed for 80% PAD fit, one-second floor, source-edge clamp, maximum zoom, overview semantics and compact-height threshold. Android instrumentation compiled and 2/2 focused tests passed on exact AVD serial `emulator-5592`.
+- Runtime capture: synthetic four-second WAV only. A01 selected range `0:00.000–0:00.500`, initial viewport `0:00.000–0:01.000`, overview `表示 1.0秒`; fresh 1080 × 2400 capture and normalized three-way comparison saved in parent `outputs/`.
+- Full local gate: clean 191 tasks PASS and final 184-task full read-back PASS. Shared hosts 32/32, Android 238, JVM-core 52, Desktop 79; failures/errors/skips 0. With two AVD instrumentation tests, total 435.
+- Other checks: Lint errors 0/warnings 7; Python 36 PASS; final public-surface 406 PASS; UI contract validator PASS; `git diff --check` PASS; debug marker scan empty.
+- Gate: `LOCAL_PASS` plus scoped AVD; physical device/audio/TalkBack/provider/public/Human gates not claimed.
+
 ## Supported-audio picker local candidate — 2026-08-25
 
 - Product source: `a72d4ea485ff786072a9e6d9d9d75a4800422f41`, tree `a16f2bcc57226f58e872d8c7cf14a756e28bf7ef`, parent `47e5637`.
