@@ -3495,6 +3495,7 @@ private fun FinishWorkspace(
     val audibleSteps = state.activeSteps.audibleStepKeys(state.pads).size
     val ready = state.activeSteps.hasAudiblePatternContent(state.pads)
     val readiness = finishReadinessPresentation(ready)
+    val clearAction = finishClearActionPresentation()
     val summary: @Composable (Modifier) -> Unit = { modifier ->
         MachinePanel(modifier = modifier) {
             Column(
@@ -3613,8 +3614,8 @@ private fun FinishWorkspace(
                     compact = true,
                 )
                 ConfirmActionButton(
-                    label = "全部消す\nCLEAR",
-                    confirmLabel = "もう一度で削除",
+                    label = clearAction.label,
+                    confirmLabel = clearAction.confirmLabel,
                     onConfirm = viewModel::clearAllPattern,
                     enabled = state.activeSteps.isNotEmpty(),
                     modifier = Modifier.weight(1f).fillMaxHeight(),

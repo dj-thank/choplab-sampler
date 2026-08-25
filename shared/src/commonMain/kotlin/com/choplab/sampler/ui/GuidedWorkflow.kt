@@ -240,8 +240,8 @@ data class FinishReadinessPresentation(
 fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentation =
     if (readyForWav) {
         FinishReadinessPresentation(
-            title = "ビートを書き出せます",
-            guidance = "操作は端末内へ自動保存。再生で確認し、4小節WAVにもできます。",
+            title = "制作を保存・書き出し",
+            guidance = "制作は端末内へ自動保存。必要なら制作ファイルを保存し、再生で確認して4小節WAVを書き出せます。",
         )
     } else {
         FinishReadinessPresentation(
@@ -249,6 +249,17 @@ fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentati
             guidance = "WAVはまだ準備中です。『ビート』で鳴らすマスを光らせてください。",
         )
     }
+
+data class FinishClearActionPresentation(
+    val label: String,
+    val confirmLabel: String,
+)
+
+fun finishClearActionPresentation(): FinishClearActionPresentation =
+    FinishClearActionPresentation(
+        label = "ビート配置を消す\nCLEAR STEPS",
+        confirmLabel = "もう一度で配置を削除",
+    )
 
 data class CaptureInputPolicy(
     val fileEnabled: Boolean,

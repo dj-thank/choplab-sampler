@@ -366,7 +366,7 @@ class GuidedWorkflowTest {
             finishReadinessPresentation(readyForWav = false),
         )
         assertEquals(
-            "ビートを書き出せます",
+            "制作を保存・書き出し",
             finishReadinessPresentation(readyForWav = true).title,
         )
     }
