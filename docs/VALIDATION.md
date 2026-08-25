@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Monophonic PAD retrigger and loop-session ownership — 2026-08-25
+
+- Product source: `be52047124cf502feec8275f8e74451d400872c8`, tree `6159ef8f08bd133ca23e0c9b6dddc7bfbc705da2`, parent `dfe9a223309cd4f439ffa348039428117161d2a1`.
+- RED/GREEN: missing same-PAD retire and vocal-companion policies first failed compilation; the offline repeated-event fixture then failed behaviorally because the second step was louder; a Windows controller negative path failed because loop stop left its companion vocal active. All became GREEN after one ownership policy and symmetric loop-session start/stop.
+- Negative controls: Android keeps a different PAD voice active; offline two-PAD same-frame energy remains greater than a single PAD; vocal companion selection includes another assigned vocal but excludes the loop owner and empty/non-vocal PADs.
+- Full local gate: clean 191 tasks PASS; exact product commit final read-back 184 tasks PASS. Shared Android host 34, shared Desktop 34, Android 239, JVM-core 54 and Desktop 80; failures/errors/skips 0.
+- Other checks: debug/release Lint errors 0/warnings 7; Python policy 36 PASS; public-surface 408 PASS; six XML files, executable modes, wrapper SHA-256/UTF-8 and `git diff --check` PASS. The configured shell script was not invoked because its no-`kotlinc` fallback lacks `--offline`; each component and the stronger full Gradle set were run separately without download.
+- Realtime inspection: compiled Android `startVoice` delegates to the fixed-array retire helper; neither method contains a `new` bytecode instruction. No callback allocation, blocking, I/O or logging was introduced.
+- Artifacts: debug APK 31,541,362 bytes / `14BE56FCFB703E38F1E7B44B3BE6AF22B398F7E3970D1EE4448D5B1F24D552FB`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,093,812 / `911C43FF695562699D45F6F30E6806ABF6350DBA9933C7E65602CD07542EDD11`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, app-image 405 files / 176,529,514 bytes.
+- Gate: `LOCAL_PASS`; no install, device, recording, real audio capture/listening, Spotify/provider, publication or Human gate was attempted.
+
 ## Image-guided screen-fitting precision trim — 2026-08-25
 
 - Product source: `6befe1193a91d099bc8ecd5f736eb4d2fea64d24`, tree `71cd3941580e80346549bbad4af0669bc5739112`, parent `25792b9`.

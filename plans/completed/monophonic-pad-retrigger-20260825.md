@@ -16,7 +16,8 @@
 
 1. LOOP対象がVOCAL PADの場合、loop本体の開始後に全VOCALを開始する旧経路が同じPADも再投入していた。
 2. 通常の同一PAD retriggerはvoice pool／Java Sound Clip／offline rendererで既存voiceを置換せず、長いONE SHOTが重なり得た。
-3. 新契約は `same PAD = replace/restart`、`different PAD = layer`。loop開始時のVOCAL companionからloop ownerを除外する。
+3. Windowsはloop owner停止時に開始時VOICE companionを止めず、長いtakeが残り得た。
+4. 新契約は `same PAD = replace/restart`、`different PAD = layer`。loop ownerと開始時VOICE companionsは一つのloop sessionとして対称に開始・停止する。
 
 ## TDD evidence
 
@@ -28,8 +29,8 @@
 
 ## Validation result
 
-- Clean full gate: 191 actionable tasks PASS。
-- Final read-back: 184 actionable tasks PASS。
+- Product source: `be52047124cf502feec8275f8e74451d400872c8`, tree `6159ef8f08bd133ca23e0c9b6dddc7bfbc705da2`, parent `dfe9a223309cd4f439ffa348039428117161d2a1`。
+- Clean full gate: 191 actionable tasks PASS。exact product commitでfinal 184-task read-backもPASS。
 - Shared Android host 34、shared Desktop 34、Android unit 239、JVM-core 54、Desktop 80。failures/errors/skips 0。
 - Debug/release Lint: errors 0、warnings 7。debug／androidTest／unsigned release APKとWindows app-imageをofflineでbuild。
 - Python policy 36 PASS、public-surface 408 PASS、Android XML 6 PASS、wrapper hash／UTF-8／executable mode／`git diff --check` PASS。
@@ -42,9 +43,9 @@
 - `app/.../SamplerViewModel.kt`, `SamplerEngine.kt`, voice tests
 - `desktop/.../DesktopSamplerController.kt`, `DesktopSamplerAudioEngine.kt`, `JavaSoundWavPlayer.kt`
 - `jvm-core/.../PatternRenderer.kt`, renderer tests
-- current plan, `docs/PROJECT_STATE.md`, `docs/FEATURE_MATRIX.md`, `docs/VALIDATION.md`
+- plan registry, `docs/PROJECT_STATE.md`, `docs/FEATURE_MATRIX.md`, `docs/VALIDATION.md`
 
 ## Stop / rollback
 
 - 異なるPADのレイヤー、choke、loop継続、offline timing/parityのいずれかが回帰したら統合を止める。
-- 単独product commitを通常の `git revert` で戻せる。schema migrationやデータ変換はない。
+- 単独product commit `be520471` を通常の `git revert` で戻せる。schema migrationやデータ変換はない。

@@ -1,5 +1,20 @@
 # Project state
 
+## Current snapshot — 2026-08-25 monophonic PAD retrigger and loop-session ownership
+
+This snapshot removes accidental duplicate audio without removing performance layering between different PADs. It is source/host evidence, not a physical listening claim.
+
+- Observed at: `2026-08-25T17:21:15.5921041+09:00`.
+- Product source: `codex/choplab-creative-improvement-20260825@be52047124cf502feec8275f8e74451d400872c8`, tree `6159ef8f08bd133ca23e0c9b6dddc7bfbc705da2`, parent `dfe9a223309cd4f439ffa348039428117161d2a1`.
+- Root cause: a selected VOCAL PAD was started once as the loop owner and again by the “play every vocal take at loop start” path. Long ONE SHOT retriggers also accumulated same-PAD voices in Android, Windows and offline WAV rendering. Windows loop stop did not stop the companion vocal takes it started.
+- Ownership contract: one physical PAD owns at most one live voice; retrigger restarts that PAD. Different PADs remain intentional layers. A loop owner is excluded from its vocal companions, and starting/stopping the loop owns the same companion set on Android and Windows.
+- Renderer parity: repeated events for one PAD replace its previous offline voice; an independent negative control proves two different PADs at the same event still sum as layers.
+- Realtime safety: the Android helper scans the fixed preallocated voice array and deactivates matching owners. Compiled `startVoice`/helper bytecode has no new-allocation instruction. Existing sequenced urgent Stop All and source/loop boundary remain unchanged.
+- Verification: clean 191-task gate and exact-commit 184-task read-back PASS. Shared Android host 34, shared Desktop 34, Android 239, JVM-core 54 and Desktop 80 tests; failures/errors/skips 0. Lint errors 0/warnings 7, Python 36 PASS, public-surface 408 PASS, XML/wrapper/mode/diff checks PASS.
+- Built artifacts: debug APK `14BE56FC…` (31,541,362 bytes), androidTest `37F3AEDB…`, unsigned release `911C43FF…`, Windows EXE `05BA3007…` in a 405-file app-image. They were built offline and were not installed or published.
+- iOS boundary: the preview already calls `stopPlayers()` before Source or PAD play and therefore owns one global audition voice; no Swift code changed and macOS/Simulator was not run.
+- Gate ceiling: `LOCAL_PASS`. Physical listening, click/pop quality, latency, device/route loss, recording, Spotify/provider, public release, accessibility speech and `HUMAN_GO` remain unverified.
+
 ## Current snapshot — 2026-08-25 image-guided screen-fitting precision trim
 
 This snapshot binds a screenshot/ImageGen-guided UI improvement to live shared Compose and pure viewport contracts. The generated image is not packaged and is not runtime proof.

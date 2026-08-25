@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `monophonic-pad-retrigger-20260825.md`。同じ物理PADを単声retriggerとし、VOICE PADがloop ownerとcompanion layerへ二重投入される経路をAndroid／Windows／offline WAVで統一して除く。異なるPADの意図的な重ね演奏は保持し、到達上限は`LOCAL_PASS`。
+**完了:** `../completed/monophonic-pad-retrigger-20260825.md`。同じ物理PADを単声retriggerとし、VOICE PADがloop ownerとcompanion layerへ二重投入される経路、Windowsでloop停止後にVOICE companionが残る経路、offline WAVのrepeated-event倍化を統一して除いた。異なるPADの意図的な重ね演奏は保持し、`LOCAL_PASS`を確認した。次の実装seamは未選択である。
 
 **直前の完了:** `../completed/precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装した。`LOCAL_PASS` + scoped API 36 AVD evidenceを確認し、physical device/provider/public/Humanは別gateとして保持した。
 
@@ -18,7 +18,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** (1) polyphony/choke/repeated-event oracle、(2) loop/vocal oracle、(3) stereo internal/export path、(4) audio parityを一旦止めてmulti-pattern/Song arrangement。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
+**次に選ぶ一つ:** (1) choke-group／複数PAD polyphonyのfull PCM oracle、(2) stereo internal/export path、(3) audio parityを一旦止めてmulti-pattern/Song arrangement。same-PAD repeated eventとloop/vocal ownerは今回完了した。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

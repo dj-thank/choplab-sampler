@@ -56,7 +56,7 @@
 | マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない。Windowsはlineの`open`成功後に`start`が失敗してもexact-once closeし、一時WAVと内部状態を破棄するhost regressionを含む |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。端末音声captureは世代付きsessionと2秒のstop/release境界を持ち、開始途中STOPと旧workerの新session破壊をLOCALで防止。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中の競合操作を遮断。現候補の実MediaProjection/AudioRecord再検証は未実施 |
 | 一時録音のprivacy cleanup | 🧪 local | app cacheのChopLab命名mic/system/vocal WAVだけを所有対象とし、decode成功・失敗・取消・無効化後に削除。異常終了残留は24時間後の起動時に限定清掃。SAF import、export、project、無関係cacheは削除対象外 |
-| 主再生モードの二重音防止 | ✅ local | 元曲、範囲preview、Beat loop、transport、PAD/source scratchの開始前に既存voiceを共通境界で停止。Beat音色レールはPAD選択だけを行い自動試聴せず、その後のLoopを一本で開始。Sample Layer/Scratchの明示的試聴と、通常PADによる意図的なドラム等の重ね演奏は維持 |
+| 主再生モード／同一PADの二重音防止 | ✅ current local | 元曲、preview、Beat loop、transport、scratchは既存の共通停止境界を維持。さらにAndroid／Windows／offline WAVで同一PAD retriggerを単声restartへ統一し、VOCAL loop ownerを開始時companionから除外。loop停止は同じcompanion setも止める。異なるPADの意図的な重ね演奏はnegative controlで保持。物理聴取とclick/pop品質は未確認 |
 | Android再生割り込み安全性 | ✅ emulator/local | 全audible startをmedia/music audio focusで統一。Home、focus loss/transient/duck、出力切替ではengine silenceをfocus解放より先に一箇所で強制し、反復割り込みは一度だけ停止、録音のみの割り込みは再生へ触れない。gainでは自動再開しない。回転は再生継続、source seek/KEY retargetはfocus所有中のみ。端末音声録音はbackgroundで継続し、MIC/VOICEは安全停止。実機route-loss／通話競合は未確認 |
 | Swing | ✅ | 50–75% |
 | Pattern export | ✅ | 4 bars mono WAV |
