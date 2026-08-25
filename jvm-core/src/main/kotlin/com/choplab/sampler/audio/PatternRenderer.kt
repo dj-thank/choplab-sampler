@@ -6,6 +6,7 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -62,8 +63,9 @@ object PatternRenderer : PatternRenderService {
             .filter { it.playMode == PadPlayMode.LOOP }
             .mapNotNull(PadSnapshot::from)
             .forEach { loop -> events.getOrPut(0) { mutableListOf() } += loop }
+        val frameZeroVocalPadIndices = frameZeroVocalPadIndicesForRender(pads)
         pads.asSequence()
-            .filter { it.contentKind == PadContentKind.VOCAL && it.playMode != PadPlayMode.LOOP }
+            .filter { it.globalIndex in frameZeroVocalPadIndices }
             .mapNotNull(PadSnapshot::from)
             .forEach { vocal -> events.getOrPut(0) { mutableListOf() } += vocal }
         repeat(bars) { bar ->
@@ -280,4 +282,27 @@ object PatternRenderer : PatternRenderService {
     private const val BUFFER_FRAMES = 4_096
     private const val MAX_POLYPHONY = 32
     private const val FAST_RELEASE_FRAMES = 48
+}
+
+/**
+ * Mirrors live loop-start ownership when one loop owner is unambiguous.
+ *
+ * With no loop or multiple assigned loops, export preserves the historical
+ * all-vocal behavior instead of silently choosing an owner the live UI cannot
+ * represent.
+ */
+internal fun frameZeroVocalPadIndicesForRender(pads: List<PadModel>): Set<Int> {
+    val loopOwnerIndex = pads.asSequence()
+        .filter { it.isAssigned && it.playMode == PadPlayMode.LOOP }
+        .map(PadModel::globalIndex)
+        .singleOrNull()
+    val vocalIndices = if (loopOwnerIndex == null) {
+        pads.asSequence()
+            .filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL && it.playMode != PadPlayMode.LOOP }
+            .map(PadModel::globalIndex)
+            .toList()
+    } else {
+        pads.vocalCompanionPadIndicesForLoopStart(loopOwnerIndex)
+    }
+    return vocalIndices.toCollection(linkedSetOf())
 }

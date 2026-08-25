@@ -15,6 +15,33 @@ import org.junit.Test
 
 class PatternRendererTest {
     @Test
+    fun noOrMultipleLoopOwnersPreserveAllNonLoopVocals() {
+        val audio = PcmAudio(
+            name = "ambiguous-loop-vocal",
+            samples = ShortArray(128) { 6_000 },
+            sampleRate = 8_000,
+        )
+        val vocal = PadModel(
+            globalIndex = 48,
+            audio = audio,
+            startFrame = 0,
+            endFrame = audio.frameCount,
+            contentKind = PadContentKind.VOCAL,
+            chokeGroup = 1,
+        )
+        val noLoopPads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == vocal.globalIndex) vocal else PadModel(index)
+        }
+        val multipleLoopPads = noLoopPads.toMutableList().apply {
+            this[0] = PadModel(0, audio, 0, audio.frameCount, playMode = PadPlayMode.LOOP, chokeGroup = 1)
+            this[1] = PadModel(1, audio, 0, audio.frameCount, playMode = PadPlayMode.LOOP, chokeGroup = 2)
+        }
+
+        assertEquals(setOf(vocal.globalIndex), frameZeroVocalPadIndicesForRender(noLoopPads))
+        assertEquals(setOf(vocal.globalIndex), frameZeroVocalPadIndicesForRender(multipleLoopPads))
+    }
+
+    @Test
     fun vocalTakeRendersOnceFromTheStartWithoutStepEvents() {
         val sampleRate = 8_000
         val vocal = ShortArray(2_000) { 12_000 }
