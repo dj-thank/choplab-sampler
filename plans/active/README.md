@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**完了:** `../completed/workflow-next-action-ux-20260826.md`。既存4工程にNEXT 1–4／待機／録音停止の一意な次操作と、disabled工程の具体的prerequisiteを追加した。新screen/modal/scrollやstate mutationを増やさず、全local/package gateで`LOCAL_PASS`。次の実装seamは未選択で、fallbackのexport completion UXはphysical/Human comprehension evidence後に再評価する。
+**完了:** `../completed/document-outcome-confidence-20260826.md`。音声取込、制作open/save、WAV exportのcancel/successをAndroid/Windowsで一つのtruthful contractへ揃え、外部fileとアプリ内制作／autosaveを区別した。path/bytes/schemaは不変、全local/package gateで`LOCAL_PASS`。copy-only proxyをこれ以上増やさず、次はvisual/device/Human comprehension evidenceまたは別laneの明示判断を待つ。
+
+**直前の完了:** `../completed/workflow-next-action-ux-20260826.md`。既存4工程にNEXT 1–4／待機／録音停止の一意な次操作と、disabled工程の具体的prerequisiteを追加した。新screen/modal/scrollやstate mutationを増やさず、全local/package gateで`LOCAL_PASS`。
 
 **直前の完了:** `../completed/android-signer-verifier-recovery-20260826.md`。既存`v0.17.0`で手動recoveryを必要にしたsigner digest解析境界を、SDK-owned tool優先、stdout/stderr双方の一意digest受理、競合fail-closedへ修復した。exact local signed APKと全release policyで`LOCAL_PASS`を確認した。外部rerun・新version公開は行っていない。
 

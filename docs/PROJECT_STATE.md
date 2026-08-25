@@ -1,5 +1,17 @@
 # Project state
 
+## Current snapshot — 2026-08-26 document operation outcome confidence
+
+This snapshot makes document dialog outcomes explicit across Android and Windows. It changes feedback copy, not the document bytes or persistence/rendering pipelines.
+
+- Product source: `codex/choplab-document-outcome-ux-20260826@e2a76d80340dcad97856e5c39c1b74596cc2f42f`, tree `96c14bd39f82036bd8770e64628682a8f6c887aa`, based on workflow-NEXT closeout `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`. Dirty canonical checkout remains untouched.
+- Prior gap: Android audio/open/save/export picker cancellation and Windows audio/export/project cancellation returned silently. Success copy differed by platform and did not consistently distinguish the exported file from the production retained in the app.
+- New contract: cancellation names the operation and preserved state. WAV success confirms the selected destination and retained production; project-save success confirms external destination plus app safety copy. Failures retain their existing actionable error paths.
+- Platform binding: all four Android nullable activity results and three Windows chooser/dialog families use the shared contract. Android/Windows save and export completion use the same presentation vocabulary.
+- Privacy: runtime display accepts only a sanitized leaf name; full path, control characters, extra lines and overlong labels are rejected/truncated. No path or outcome is added to project state, archive schema, autosave or receipts.
+- Validation: focused RED/GREEN; full 190-task gate. Android 247, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; APKs, Windows package and CycloneDX build PASS; configured validation, Python 40, public-surface baseline 410 and documentation-inclusive final 411 PASS.
+- Gate ceiling: `LOCAL_PASS`. Real document-provider UI/destination, Windows dialog visual result, screen-reader speech, Human confidence, provider/public and device gates remain unverified.
+
 ## Current snapshot — 2026-08-26 workflow NEXT and locked-stage reasons
 
 This snapshot improves comprehension of the existing four-stage product without adding a tutorial modal, screen, scroll path, schema or audio-engine behavior.
