@@ -263,6 +263,19 @@ class SourceWaveformDeviceTest {
         assertEquals("拡大表示。450から549フレーム。全体1000フレーム", waveform.viewportDescription())
     }
 
+    @Test
+    fun waveformCanOpenAlreadyFocusedOnTheLongPressedPadContext() {
+        setDeterministicWaveform(
+            initialFocusFrame = 500,
+            initialVisibleFrames = 400,
+        )
+
+        assertEquals(
+            "拡大表示。300から699フレーム。全体1000フレーム",
+            waveformNode().viewportDescription(),
+        )
+    }
+
     private fun setDeterministicWaveform(
         startFrame: Int = 100,
         endFrame: Int = 900,
@@ -274,6 +287,8 @@ class SourceWaveformDeviceTest {
         onWaveformTap: (Int) -> Unit = {},
         onWaveformLongPress: ((Int) -> Unit)? = null,
         longPressFocusFrames: Int? = null,
+        initialFocusFrame: Int? = null,
+        initialVisibleFrames: Int? = null,
     ) {
         val fixture = PcmAudio(
             id = 1L,
@@ -307,6 +322,8 @@ class SourceWaveformDeviceTest {
                     onWaveformTap = onWaveformTap,
                     onWaveformLongPress = onWaveformLongPress,
                     longPressFocusFrames = longPressFocusFrames,
+                    initialFocusFrame = initialFocusFrame,
+                    initialVisibleFrames = initialVisibleFrames,
                     canvasHeight = 220.dp,
                     showViewportControls = false,
                     showTimeReadout = false,

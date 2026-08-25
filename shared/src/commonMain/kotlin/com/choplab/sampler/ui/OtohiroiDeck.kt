@@ -103,6 +103,7 @@ import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nearestPadTrimBoundary
 import com.choplab.sampler.model.precisionTrimWindow
+import com.choplab.sampler.model.padTrimInitialWindow
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
@@ -1787,6 +1788,19 @@ private fun PadTrimEditor(
         )
     }
     val canRestore = pad.startFrame != entrySnapshot.startFrame || pad.endFrame != entrySnapshot.endFrame
+    val initialWindow = remember(
+        pad.globalIndex,
+        audio.id,
+        entryStartFrame,
+        entryEndFrame,
+    ) {
+        padTrimInitialWindow(
+            pad.copy(
+                startFrame = entryStartFrame,
+                endFrame = entryEndFrame,
+            ),
+        )
+    }
     var activeBoundaryName by rememberSaveable(pad.globalIndex, audio.id) {
         mutableStateOf(PadTrimBoundary.START.name)
     }
@@ -1812,123 +1826,147 @@ private fun PadTrimEditor(
         1_024f,
         audio.frameCount.toFloat() / focusWindow.length.coerceAtLeast(1) * 4f,
     ).coerceAtMost(audio.frameCount.toFloat().coerceAtLeast(1f))
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        BeginnerCoachBar(
-            text = "波形を長押し：近い境界を移動して、その場所を1秒拡大",
-            modifier = Modifier.fillMaxWidth().height(30.dp),
+    var visibleViewport by remember(pad.globalIndex, audio.id, initialWindow) {
+        mutableStateOf(
+            focusWaveformViewport(
+                frame = initialWindow.startFrame + initialWindow.length / 2,
+                totalFrames = audio.frameCount,
+                targetVisibleFrames = initialWindow.length,
+            ),
         )
-        MachinePanel(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            WaveformEditor(
-                audio = audio,
-                rangeStartFrame = pad.startFrame,
-                rangeEndFrame = pad.endFrame,
-                sliceMarkers = emptyList(),
-                activeSlice = SliceRange(pad.startFrame, pad.endFrame),
-                manualChopEnabled = false,
-                onRangeStartChange = viewModel::setSelectedPadStartFrame,
-                onRangeEndChange = viewModel::setSelectedPadEndFrame,
-                onSliceMarkerChange = { _, _ -> },
-                onWaveformTap = { frame ->
-                    val boundary = nearestPadTrimBoundary(frame, pad.startFrame, pad.endFrame)
+    }
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val showOverview = precisionTrimOverviewVisible(maxHeight.value.roundToInt())
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            BeginnerCoachBar(
+                text = "長押ししたPADを見やすく表示。波形長押しで近い境界を移動して1秒拡大",
+                modifier = Modifier.fillMaxWidth().height(if (showOverview) 30.dp else 24.dp),
+            )
+            if (showOverview) {
+                PrecisionTrimOverview(
+                    audio = audio,
+                    padRange = SliceRange(pad.startFrame, pad.endFrame),
+                    viewport = visibleViewport,
+                    focusFrame = precisionFocusFrame,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                )
+            }
+            MachinePanel(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                WaveformEditor(
+                    audio = audio,
+                    rangeStartFrame = pad.startFrame,
+                    rangeEndFrame = pad.endFrame,
+                    sliceMarkers = emptyList(),
+                    activeSlice = SliceRange(pad.startFrame, pad.endFrame),
+                    manualChopEnabled = false,
+                    onRangeStartChange = viewModel::setSelectedPadStartFrame,
+                    onRangeEndChange = viewModel::setSelectedPadEndFrame,
+                    onSliceMarkerChange = { _, _ -> },
+                    onWaveformTap = { frame ->
+                        val boundary = nearestPadTrimBoundary(frame, pad.startFrame, pad.endFrame)
+                        activeBoundaryName = boundary.name
+                        precisionFocusFrame = frame
+                        when (boundary) {
+                            PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(frame)
+                            PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(frame)
+                        }
+                    },
+                    onWaveformLongPress = { frame ->
+                        val focused = focusPadTrimAtFrame(pad, frame)
+                        activeBoundaryName = focused.boundary.name
+                        precisionFocusFrame = focused.pressedFrame
+                        when (focused.boundary) {
+                            PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(focused.pad.startFrame)
+                            PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(focused.pad.endFrame)
+                        }
+                    },
+                    longPressFocusFrames = focusWindow.length,
+                    initialFocusFrame = initialWindow.startFrame + initialWindow.length / 2,
+                    initialVisibleFrames = initialWindow.length,
+                    fillCanvas = true,
+                    showViewportControls = false,
+                    compactViewportControls = true,
+                    showTimeReadout = true,
+                    showInteractionHint = false,
+                    maximumZoom = precisionMaximumZoom,
+                    zoomFocusFrame = precisionFocusFrame,
+                    viewportResetKey = viewportResetRevision,
+                    onViewportChanged = { visibleViewport = it },
+                    readoutColor = Color(0xFFE8DDBF),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            PrecisionTrimControls(
+                pad = pad,
+                activeBoundary = activeBoundary,
+                precision = precision,
+                focusWindow = focusWindow,
+                onBoundarySelected = { boundary ->
                     activeBoundaryName = boundary.name
-                    precisionFocusFrame = frame
+                    precisionFocusFrame = when (boundary) {
+                        PadTrimBoundary.START -> pad.startFrame
+                        PadTrimBoundary.END -> pad.endFrame.coerceAtMost(audio.frameCount - 1)
+                    }
+                },
+                onPrecisionSelected = { precisionName = it.name },
+                onBoundaryTicks = { boundary, ticks ->
+                    activeBoundaryName = boundary.name
+                    val updated = stepPadTrimBoundary(pad, boundary, ticks, precision)
                     when (boundary) {
-                        PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(frame)
-                        PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(frame)
+                        PadTrimBoundary.START -> if (updated.startFrame != pad.startFrame) {
+                            viewModel.setSelectedPadStartFrame(updated.startFrame)
+                        }
+                        PadTrimBoundary.END -> if (updated.endFrame != pad.endFrame) {
+                            viewModel.setSelectedPadEndFrame(updated.endFrame)
+                        }
                     }
                 },
-                onWaveformLongPress = { frame ->
-                    val focused = focusPadTrimAtFrame(pad, frame)
-                    activeBoundaryName = focused.boundary.name
-                    precisionFocusFrame = focused.pressedFrame
-                    when (focused.boundary) {
-                        PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(focused.pad.startFrame)
-                        PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(focused.pad.endFrame)
-                    }
-                },
-                longPressFocusFrames = focusWindow.length,
-                fillCanvas = true,
-                showViewportControls = false,
-                compactViewportControls = true,
-                showTimeReadout = true,
-                showInteractionHint = false,
-                maximumZoom = precisionMaximumZoom,
-                zoomFocusFrame = precisionFocusFrame,
-                viewportResetKey = viewportResetRevision,
-                readoutColor = Color(0xFFE8DDBF),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().height(144.dp),
             )
-        }
-        PrecisionTrimControls(
-            pad = pad,
-            activeBoundary = activeBoundary,
-            precision = precision,
-            focusWindow = focusWindow,
-            onBoundarySelected = { boundary ->
-                activeBoundaryName = boundary.name
-                precisionFocusFrame = when (boundary) {
-                    PadTrimBoundary.START -> pad.startFrame
-                    PadTrimBoundary.END -> pad.endFrame.coerceAtMost(audio.frameCount - 1)
-                }
-            },
-            onPrecisionSelected = { precisionName = it.name },
-            onBoundaryTicks = { boundary, ticks ->
-                activeBoundaryName = boundary.name
-                val updated = stepPadTrimBoundary(pad, boundary, ticks, precision)
-                when (boundary) {
-                    PadTrimBoundary.START -> if (updated.startFrame != pad.startFrame) {
-                        viewModel.setSelectedPadStartFrame(updated.startFrame)
-                    }
-                    PadTrimBoundary.END -> if (updated.endFrame != pad.endFrame) {
-                        viewModel.setSelectedPadEndFrame(updated.endFrame)
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(144.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            MachineButton(
-                label = "調整したPADを聴く\nPREVIEW",
-                onClick = { viewModel.previewPad(pad.globalIndex) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "編集前へ戻す\nREVERT",
-                onClick = {
-                    viewModel.restoreSelectedPadTrim(entrySnapshot)
-                    activeBoundaryName = PadTrimBoundary.START.name
-                    precisionFocusFrame = entrySnapshot.startFrame +
-                        (entrySnapshot.endFrame - entrySnapshot.startFrame) / 2
-                    viewportResetRevision++
-                },
-                enabled = canRestore,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            MachineButton(
-                label = "元曲を再生/停止\nSOURCE",
-                onClick = viewModel::toggleSourcePlayback,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "すべて停止\nSTOP ALL",
-                onClick = viewModel::stopAllSounds,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                MachineButton(
+                    label = "調整したPADを聴く\nPREVIEW",
+                    onClick = { viewModel.previewPad(pad.globalIndex) },
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+                MachineButton(
+                    label = "編集前へ戻す\nREVERT",
+                    onClick = {
+                        viewModel.restoreSelectedPadTrim(entrySnapshot)
+                        activeBoundaryName = PadTrimBoundary.START.name
+                        precisionFocusFrame = entrySnapshot.startFrame +
+                            (entrySnapshot.endFrame - entrySnapshot.startFrame) / 2
+                        viewportResetRevision++
+                    },
+                    enabled = canRestore,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                MachineButton(
+                    label = "元曲を再生/停止\nSOURCE",
+                    onClick = viewModel::toggleSourcePlayback,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+                MachineButton(
+                    label = "すべて停止\nSTOP ALL",
+                    onClick = viewModel::stopAllSounds,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
         }
     }
 }

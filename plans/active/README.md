@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**完了:** `../completed/quick-sketch-20260825.md`。current main `8fa1dac`から、素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHを実装した。Bank Aに既存PAD/stepがあれば完全no-op、B/C/Dとstarter drumsを保持し、一つのUndo/autosave単位として`LOCAL_PASS`を確認した。次の実装seamは未選択である。
+**現在の実装plan:** `precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装・検証する。targetは`LOCAL_PASS` + scoped AVD evidenceで、physical device/provider/public/Humanは別gate。
+
+**直前の完了plan:** `../completed/quick-sketch-20260825.md`。素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHは`LOCAL_PASS`で完了済み。
 
 **直前の画面・導線plan:** `first-screen-flow-20260824.md`。pristine first entry、large-text workflow chrome、Android/Windowsのselected PAD/bank/page coherenceはPR #52としてmainへ統合済み。現在のQUICK SKETCHのbaseline入力として保全する。
 
