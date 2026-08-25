@@ -2,6 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## CHOKE loop-session ownership — 2026-08-26
+
+- Product checkpoint: `1853659ef56d40117e9f61d1c7f01a752ed02f33`, tree `e07a07c46500f14aaa09619f4463682a07890eef`, base `639d5132c12bd3efe0d0346731cef9fbdaca15ec`.
+- RED/GREEN: Desktop current code first left loop state after a matching CHOKE trigger. GREEN shared tests cover complete owner/companion stop plans, group-zero/different-group/same-owner/invalid controls and owner-wins-same-group-vocal selection. Desktop covers exact stops, requested trigger, ordinary polyphony and fail-closed stop failure.
+- Android/Windows binding: controllers issue the shared stop plan before trigger and clear loop/playhead runtime truth; no history/autosave mutation. Android commands retain serial engine ordering; Desktop rejects the trigger if a stop throws.
+- Full gate: 190 tasks PASS. Android 248, shared Android/Desktop 40/40, JVM-core 54, Desktop 84; 466 total, failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 32,560,016 / `D36C4C21C02CFA384D76BE17F683DADFBE647F7951BF061BC0BF03766F77032A`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E3EA26BDFEA2C4C4E0EF0CA6209095D88DCE8A7485B831653BD78C4D6C6AADE1`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Other gates: configured project validation, Python policy 40, product public-surface 416 / documentation-inclusive 417, CycloneDX and `git diff --check` PASS. Local parent Standards/Spec findings 0/0.
+- Gate: `LOCAL_PASS`; physical audio/fade/click quality, device/provider/public and Human outcomes remain unclaimed.
+
 ## Wide first-entry integrated goal head — 2026-08-26
 
 - Integrated product checkpoint: `b6eed97215bac6c27d3bef66b0f1c8c0e2e0b569`, tree `8f65157dae53050f48dac1c733bbdeb21689c523`; includes wide product `8b3751e`, shared Capture vocabulary `7d45164` and both closeout histories.

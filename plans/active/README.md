@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**wave 5 selected:** `choke-loop-session-ownership-20260826.md`。同じnonzero CHOKE groupのPAD triggerがBeat-loop ownerのvoiceだけを止め、controllerのloop stateとVOICE companionを残すcross-platform ownership defectを、shared stop planとAndroid/Windows wiringで閉じる。通常polyphony、別group、project/audio bytesは不変。targetは`LOCAL_PASS`。
+**wave 5 completed local:** `../completed/choke-loop-session-ownership-20260826.md`。同じnonzero CHOKE groupのPAD triggerがloop owner voiceだけを止めてcontroller state／VOICE companionを残す不具合と、同group companionがloop開始直後にownerをsilenceする不具合をshared ownership planで修復。通常polyphonyを保持し、466 tests / 190-task gateで`LOCAL_PASS`。
 
 **wave 4 integrated current local line:** `b6eed97`。regular landscapeのfirst entryを2×2 own-audio＋独立demo panelへし、stacked/wideのaction copyを一つのshared contractへ集約した。compact/portrait/large-textは保持し、456 tests / 190-task gate / same-state Windows visualで`LOCAL_PASS`。次はcompact/device/Human evidenceなしに追加copyやdesktop-only visualを開始しない。
 

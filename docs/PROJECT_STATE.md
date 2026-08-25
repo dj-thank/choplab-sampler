@@ -1,5 +1,20 @@
 # Project state
 
+## Current snapshot — 2026-08-26 CHOKE loop-session ownership
+
+This is the current local product truth for wave 5. It repairs controller-owned playback state and companion ownership without changing project or audio bytes.
+
+- Observed at: `2026-08-26T05:09:07+09:00`.
+- Product source: `codex/choplab-goal-ux-20260826@1853659ef56d40117e9f61d1c7f01a752ed02f33`, tree `e07a07c46500f14aaa09619f4463682a07890eef`, based on wave-4 closeout `639d513`. Dirty canonical preservation root remains untouched.
+- Defect: a PAD in the active Beat-loop owner's nonzero CHOKE group stopped the owner voice inside the engine but left controller loop state and owned vocal companions behind. Windows had no engine read-back; Android could later clear only the owner while companions/status remained.
+- New ownership truth: one shared pure transition plans every actually owned companion plus owner exactly once, clears loop/playhead truth, and both controllers issue those stops before the requested trigger. Group 0, different groups, same owner, invalid pads and unrelated polyphony are unchanged. Desktop stop failure rejects the trigger and keeps published loop truth.
+- Loop-start challenge: a vocal companion in the owner's same nonzero CHOKE group is no longer started, because it would immediately silence the owner. Group 0 or another group remains an intentional vocal layer.
+- Boundary: no project/history/autosave/schema/audio samples, UI copy/layout, realtime callback, provider/device/public or Human behavior changed.
+- Validation: full 190-task gate PASS. Android 248, shared Android/Desktop 40/40, JVM-core 54, Desktop 84; 466 total tests, failures/errors/skips 0. Lint errors 0/warnings 7; configured validation, Python policy 40, product public-surface 416 / documentation-inclusive 417 PASS.
+- Artifacts: debug APK 32,560,016 / `D36C4C21C02CFA384D76BE17F683DADFBE647F7951BF061BC0BF03766F77032A`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E3EA26BDFEA2C4C4E0EF0CA6209095D88DCE8A7485B831653BD78C4D6C6AADE1`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE5_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical click/pop quality, realtime fade perception, device/audio, provider/public and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-26 wide first-entry integrated goal line
 
 This is the current integrated local line after the first non-copy `/goal` experiment. Earlier wave sections remain immutable evidence for their source revisions.
