@@ -153,6 +153,10 @@ class DesktopSamplerControllerTest {
             controller.setSwing(64f)
             controller.saveProject(project)
             awaitCondition { project.isFile && !controller.state.value.isLoading }
+            assertEquals(
+                "session.choplab に制作を保存しました。アプリ内の安全コピーも保持しています",
+                controller.state.value.statusMessage,
+            )
             controller.setBpm(80f)
 
             controller.openProject(project)

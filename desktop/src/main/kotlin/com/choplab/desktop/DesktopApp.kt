@@ -27,6 +27,8 @@ import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.visiblePads
 import com.choplab.sampler.ui.OtohiroiDeck
+import com.choplab.sampler.ui.DocumentAction
+import com.choplab.sampler.ui.documentPickerCanceledMessage
 import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
 import java.awt.FileDialog
@@ -236,7 +238,10 @@ private fun chooseWav(controller: DesktopSamplerController) {
         isAcceptAllFileFilterUsed = false
         fileFilter = DesktopAudioImportPolicy.fileFilter
     }
-    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return
+    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
+        controller.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
+        return
+    }
     val file = chooser.selectedFile ?: return
     if (!DesktopAudioImportPolicy.accepts(file)) {
         controller.setStatus("Windows版ではWAV音声を選んでください")
@@ -252,7 +257,10 @@ private fun chooseExportWav(controller: DesktopSamplerController) {
         filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
         isVisible = true
     }
-    val selected = dialog.file ?: return
+    val selected = dialog.file ?: run {
+        controller.setStatus(documentPickerCanceledMessage(DocumentAction.EXPORT_WAV))
+        return
+    }
     val output = File(dialog.directory, selected).let { file ->
         if (file.extension.equals("wav", ignoreCase = true)) file else File(file.parentFile, "${file.nameWithoutExtension}.wav")
     }
@@ -270,7 +278,14 @@ private fun chooseProject(controller: DesktopSamplerController, mode: Int) {
         filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".choplab", ignoreCase = true) }
         isVisible = true
     }
-    val selected = dialog.file ?: return
+    val selected = dialog.file ?: run {
+        controller.setStatus(
+            documentPickerCanceledMessage(
+                if (saving) DocumentAction.SAVE_PROJECT else DocumentAction.OPEN_PROJECT,
+            ),
+        )
+        return
+    }
     val file = File(dialog.directory, selected)
     if (saving) controller.saveProject(file) else controller.openProject(file)
 }

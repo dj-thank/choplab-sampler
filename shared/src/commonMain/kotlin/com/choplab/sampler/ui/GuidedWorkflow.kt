@@ -92,6 +92,70 @@ fun workflowStageStateDescription(availability: WorkflowStageAvailability): Stri
         "まだ使えません。${availability.blockedReason ?: "準備が必要です"}"
     }
 
+enum class DocumentAction {
+    IMPORT_AUDIO,
+    OPEN_PROJECT,
+    SAVE_PROJECT,
+    EXPORT_WAV,
+}
+
+fun documentPickerCanceledMessage(action: DocumentAction): String = when (action) {
+    DocumentAction.IMPORT_AUDIO -> "音声の選択をキャンセルしました。現在の制作はそのままです"
+    DocumentAction.OPEN_PROJECT -> "制作を開くのをキャンセルしました。現在の制作はそのままです"
+    DocumentAction.SAVE_PROJECT -> "保存先の選択をキャンセルしました。アプリ内の自動保存は続きます"
+    DocumentAction.EXPORT_WAV -> "WAVの保存をキャンセルしました。制作はそのままです"
+}
+
+fun documentCompletionMessage(
+    action: DocumentAction,
+    destinationName: String? = null,
+    detail: String? = null,
+): String {
+    val safeName = safeDocumentDisplayText(destinationName, maxLength = 80)
+    val safeDetail = safeDocumentDisplayText(detail, maxLength = 48, stripPath = false)
+    val detailText = safeDetail?.let { "（$it）" }.orEmpty()
+    return when (action) {
+        DocumentAction.IMPORT_AUDIO ->
+            safeName?.let { "$it を読み込みました" } ?: "音声を読み込みました"
+        DocumentAction.OPEN_PROJECT ->
+            safeName?.let { "$it を開きました" } ?: "制作を開きました"
+        DocumentAction.SAVE_PROJECT -> if (safeName != null) {
+            "$safeName に制作を保存しました。アプリ内の安全コピーも保持しています"
+        } else {
+            "制作を選んだ保存先へ保存しました。アプリ内の安全コピーも保持しています"
+        }
+        DocumentAction.EXPORT_WAV -> if (safeName != null) {
+            "$safeName にWAVを書き出しました$detailText。制作はアプリ内に残っています"
+        } else {
+            "WAVを選んだ保存先に書き出しました$detailText。制作はアプリ内に残っています"
+        }
+    }
+}
+
+private fun safeDocumentDisplayText(
+    value: String?,
+    maxLength: Int,
+    stripPath: Boolean = true,
+): String? {
+    val firstLine = value
+        ?.substringBefore('\n')
+        ?.substringBefore('\r')
+        ?.substringBefore('\u0000')
+        ?.trim()
+        .orEmpty()
+    if (firstLine.isEmpty()) return null
+    val leaf = if (stripPath) {
+        firstLine.substringAfterLast('/').substringAfterLast('\\')
+    } else {
+        firstLine
+    }
+    return leaf
+        .filterNot { character -> character.code < 0x20 || character.code == 0x7F }
+        .take(maxLength)
+        .trim()
+        .takeIf(String::isNotEmpty)
+}
+
 data class WorkflowNextActionPresentation(
     val stage: WorkflowStage?,
     val title: String,

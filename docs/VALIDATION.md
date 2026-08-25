@@ -13,6 +13,17 @@
 - Evidence: parent PAD `work/CHOPLAB_GOAL_UX_AUDIT_20260826/` contains accepted screenshots, comparison and review notes.
 - Gate: `LOCAL_PASS` plus scoped Windows visual evidence. Device, physical audio/touch, accessibility speech, provider/public and Human outcomes remain unclaimed.
 
+## Document operation outcome confidence — 2026-08-26
+
+- Product checkpoint: `e2a76d80340dcad97856e5c39c1b74596cc2f42f`, tree `96c14bd39f82036bd8770e64628682a8f6c887aa`, base `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`.
+- RED/GREEN: shared cancel/completion contract first failed compilation. GREEN covers all four action cancellations, Android/no-name and Windows/leaf-name completion, external-file vs retained-project truth, full-path/control-character rejection and length bounds.
+- Platform source: four Android result callbacks plus Windows WAV/project dialogs report cancellation. Android/Windows save/export success calls the same shared contract; existing I/O and failure code is unchanged.
+- `scripts/validate_project.sh`: public-surface baseline 410, executable modes, JVM-core/Desktop 18 tasks, XML/wrapper checks PASS. Documentation-inclusive final public-surface 411 PASS.
+- Full gate: 190 tasks PASS. Android 247, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 31,541,362 / `05F90319795637C615A2AEC8FE500757FE11346A6A3674D7CEF479822E20F193`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `640F97E963BD1355B503952A4D2539DC2B8E38D78CD713713FF9BD4B920D8844`.
+- Windows verifier/ProductVersion and CycloneDX PASS. Python 40 and `git diff --check` PASS.
+- Gate: `LOCAL_PASS`; real provider/dialog destinations, device, screen-reader, public and Human gates remain unclaimed.
+
 ## Workflow NEXT and locked-stage reasons — 2026-08-26
 
 - Product checkpoint: `a9f2245abd1673ce02b9a94f231b66d5fe87a4ea`, tree `05d84e34c62f83057ef28175ea2d4d3d9d7de96a`, base `8b9c00ba2a382705c3478c1ce8984225d30a6c8d`.

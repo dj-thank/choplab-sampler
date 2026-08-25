@@ -328,6 +328,67 @@ class GuidedWorkflowTest {
     }
 
     @Test
+    fun canceledDocumentActionsSayWhatWasPreserved() {
+        assertEquals(
+            "音声の選択をキャンセルしました。現在の制作はそのままです",
+            documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO),
+        )
+        assertEquals(
+            "制作を開くのをキャンセルしました。現在の制作はそのままです",
+            documentPickerCanceledMessage(DocumentAction.OPEN_PROJECT),
+        )
+        assertEquals(
+            "保存先の選択をキャンセルしました。アプリ内の自動保存は続きます",
+            documentPickerCanceledMessage(DocumentAction.SAVE_PROJECT),
+        )
+        assertEquals(
+            "WAVの保存をキャンセルしました。制作はそのままです",
+            documentPickerCanceledMessage(DocumentAction.EXPORT_WAV),
+        )
+    }
+
+    @Test
+    fun completedDocumentActionsSeparateTheExternalFileFromTheRetainedProject() {
+        assertEquals(
+            "WAVを選んだ保存先に書き出しました（4小節 / 10.43秒）。制作はアプリ内に残っています",
+            documentCompletionMessage(
+                action = DocumentAction.EXPORT_WAV,
+                detail = "4小節 / 10.43秒",
+            ),
+        )
+        assertEquals(
+            "beat.wav にWAVを書き出しました（4小節）。制作はアプリ内に残っています",
+            documentCompletionMessage(
+                action = DocumentAction.EXPORT_WAV,
+                destinationName = "beat.wav",
+                detail = "4小節",
+            ),
+        )
+        assertEquals(
+            "制作を選んだ保存先へ保存しました。アプリ内の安全コピーも保持しています",
+            documentCompletionMessage(DocumentAction.SAVE_PROJECT),
+        )
+        assertEquals(
+            "session.choplab に制作を保存しました。アプリ内の安全コピーも保持しています",
+            documentCompletionMessage(
+                action = DocumentAction.SAVE_PROJECT,
+                destinationName = "session.choplab",
+            ),
+        )
+    }
+
+    @Test
+    fun documentCompletionCopyRejectsPathsAndControlCharacters() {
+        assertEquals(
+            "beat.wav にWAVを書き出しました。制作はアプリ内に残っています",
+            documentCompletionMessage(
+                action = DocumentAction.EXPORT_WAV,
+                destinationName = "C:\\private\\beat.wav\nsecret",
+            ),
+        )
+    }
+
+    @Test
     fun pristineStarterGetsAFocusedOwnAudioEntryAndAnExplicitDemoRoute() {
         val starter = BuiltInDrumKits.installStarterKit(SamplerUiState())
 
