@@ -13,6 +13,7 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activePhaseFor
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.hasAudiblePatternContent
 import com.choplab.sampler.model.inferProjectLaunchTarget
 
 enum class WorkflowStage(
@@ -45,11 +46,111 @@ fun initialWorkflowStage(state: SamplerUiState): WorkflowStage = when (
     ProjectLaunchTarget.BEAT -> WorkflowStage.BEAT
 }
 
-fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean = when (stage) {
-    WorkflowStage.CAPTURE -> true
-    WorkflowStage.CHOP -> state.currentAudio != null
-    WorkflowStage.BEAT -> state.pads.any(PadModel::isAssigned)
-    WorkflowStage.FINISH -> state.currentAudio != null || state.pads.any(PadModel::isAssigned)
+data class WorkflowStageAvailability(
+    val enabled: Boolean,
+    val blockedReason: String?,
+)
+
+fun workflowStageAvailability(
+    stage: WorkflowStage,
+    state: SamplerUiState,
+): WorkflowStageAvailability = when (stage) {
+    WorkflowStage.CAPTURE -> WorkflowStageAvailability(enabled = true, blockedReason = null)
+    WorkflowStage.CHOP -> if (state.currentAudio != null) {
+        WorkflowStageAvailability(enabled = true, blockedReason = null)
+    } else {
+        WorkflowStageAvailability(
+            enabled = false,
+            blockedReason = "曲を読み込むか録音すると使えます",
+        )
+    }
+    WorkflowStage.BEAT -> if (state.pads.any(PadModel::isAssigned)) {
+        WorkflowStageAvailability(enabled = true, blockedReason = null)
+    } else {
+        WorkflowStageAvailability(
+            enabled = false,
+            blockedReason = "チョップでPADに音を入れると使えます",
+        )
+    }
+    WorkflowStage.FINISH -> if (state.currentAudio != null || state.pads.any(PadModel::isAssigned)) {
+        WorkflowStageAvailability(enabled = true, blockedReason = null)
+    } else {
+        WorkflowStageAvailability(
+            enabled = false,
+            blockedReason = "音源か音の入ったPADを用意すると使えます",
+        )
+    }
+}
+
+fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean =
+    workflowStageAvailability(stage, state).enabled
+
+fun workflowStageStateDescription(availability: WorkflowStageAvailability): String =
+    if (availability.enabled) {
+        "利用できます"
+    } else {
+        "まだ使えません。${availability.blockedReason ?: "準備が必要です"}"
+    }
+
+data class WorkflowNextActionPresentation(
+    val stage: WorkflowStage?,
+    val title: String,
+    val guidance: String,
+)
+
+fun workflowNextActionPresentation(state: SamplerUiState): WorkflowNextActionPresentation {
+    if (state.isLoading) {
+        return WorkflowNextActionPresentation(
+            stage = null,
+            title = "NEXT 待つ",
+            guidance = "音声の読込が終わるまで待ちます",
+        )
+    }
+    val recording = state.recordingSession as? RecordingSession.Active
+    if (recording != null) {
+        return if (recording.phase == RecordingPhase.STOPPING) {
+            WorkflowNextActionPresentation(
+                stage = null,
+                title = "NEXT 待つ",
+                guidance = "録音の停止と保存が終わるまで待ちます",
+            )
+        } else {
+            WorkflowNextActionPresentation(
+                stage = null,
+                title = "NEXT 録音を止める",
+                guidance = "上の停止ボタンで録音を保存します",
+            )
+        }
+    }
+
+    val anyAssignedPad = state.pads.any(PadModel::isAssigned)
+    val sourceHasChop = state.currentAudio?.let { source ->
+        state.pads.any { pad -> pad.isAssigned && pad.audio?.id == source.id }
+    } ?: false
+    return when {
+        state.currentAudio == null && (
+            !anyAssignedPad || BuiltInDrumKits.isPristineStarterProduction(state)
+        ) -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.CAPTURE,
+            title = "NEXT 1 入れる",
+            guidance = "曲を読み込むか録音します",
+        )
+        state.currentAudio != null && !sourceHasChop -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.CHOP,
+            title = "NEXT 2 チョップ",
+            guidance = "曲を流し、空PADを押します",
+        )
+        !state.activeSteps.hasAudiblePatternContent(state.pads) -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.BEAT,
+            title = "NEXT 3 ビート",
+            guidance = "音ありPADをループするか、鳴るマスを置きます",
+        )
+        else -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.FINISH,
+            title = "NEXT 4 保存",
+            guidance = "再生で確認し、制作またはWAVを保存します",
+        )
+    }
 }
 
 fun reconcileWorkflowStage(stage: WorkflowStage, state: SamplerUiState): WorkflowStage =

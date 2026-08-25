@@ -55,6 +55,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
@@ -897,12 +898,14 @@ private fun WorkflowStageRow(
     ) {
         stages.forEach { stage ->
             val index = WorkflowStage.entries.indexOf(stage)
+            val availability = workflowStageAvailability(stage, state)
             WorkflowStageButton(
                 number = index + 1,
                 stage = stage,
                 selected = selected == stage,
                 compact = compact,
-                enabled = workflowStageEnabled(stage, state),
+                enabled = availability.enabled,
+                blockedReason = availability.blockedReason,
                 onClick = { onSelect(stage) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -917,6 +920,7 @@ private fun WorkflowStageButton(
     selected: Boolean,
     compact: Boolean,
     enabled: Boolean,
+    blockedReason: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -945,6 +949,9 @@ private fun WorkflowStageButton(
             .semantics {
                 role = Role.Tab
                 contentDescription = "工程$number ${stage.label} ${stage.caption}"
+                stateDescription = workflowStageStateDescription(
+                    WorkflowStageAvailability(enabled, blockedReason),
+                )
                 this.selected = selected
                 if (!enabled) disabled()
             },
@@ -3762,11 +3769,16 @@ private fun ConsoleStatusStrip(
     height: Dp,
     largeText: Boolean,
 ) {
+    val nextAction = workflowNextActionPresentation(state)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
             .background(DeckInk, RoundedCornerShape(5.dp))
+            .clearAndSetSemantics {
+                contentDescription = "現在 ${stage.label}。${nextAction.title}。" +
+                    "${nextAction.guidance}。状態: ${state.statusMessage}"
+            }
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -3777,13 +3789,11 @@ private fun ConsoleStatusStrip(
         )
         if (largeText) {
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics { contentDescription = "${stage.label}。${stage.guidance}。状態: ${state.statusMessage}" },
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = "${stage.label}  ${stage.guidance}",
+                    text = "${nextAction.title}  ${nextAction.guidance}",
                     color = DeckLamp,
                     fontFamily = DeckFont,
                     fontWeight = FontWeight.Black,
@@ -3802,22 +3812,21 @@ private fun ConsoleStatusStrip(
             }
         } else {
             Text(
-                text = stage.label,
+                text = nextAction.title,
                 color = DeckLamp,
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
                 fontSize = 8.sp,
             )
             Text(
-                text = "${stage.guidance}  /  ${state.statusMessage}",
+                text = "${nextAction.guidance}  /  ${state.statusMessage}",
                 color = Color(0xFFE8DDBF),
                 fontFamily = DeckFont,
                 fontSize = 8.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .weight(1f)
-                    .semantics { contentDescription = "状態: ${state.statusMessage}" },
+                    .weight(1f),
             )
         }
     }

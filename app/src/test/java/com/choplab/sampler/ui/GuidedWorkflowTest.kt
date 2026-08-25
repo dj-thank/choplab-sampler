@@ -199,6 +199,135 @@ class GuidedWorkflowTest {
     }
 
     @Test
+    fun lockedStagesExplainTheExactPrerequisite() {
+        val empty = SamplerUiState()
+
+        assertEquals(
+            WorkflowStageAvailability(
+                enabled = false,
+                blockedReason = "曲を読み込むか録音すると使えます",
+            ),
+            workflowStageAvailability(WorkflowStage.CHOP, empty),
+        )
+        assertEquals(
+            "チョップでPADに音を入れると使えます",
+            workflowStageAvailability(WorkflowStage.BEAT, empty).blockedReason,
+        )
+        assertEquals(
+            "音源か音の入ったPADを用意すると使えます",
+            workflowStageAvailability(WorkflowStage.FINISH, empty).blockedReason,
+        )
+        assertEquals(
+            WorkflowStageAvailability(enabled = true, blockedReason = null),
+            workflowStageAvailability(WorkflowStage.CAPTURE, empty),
+        )
+        assertEquals(
+            "まだ使えません。曲を読み込むか録音すると使えます",
+            workflowStageStateDescription(workflowStageAvailability(WorkflowStage.CHOP, empty)),
+        )
+    }
+
+    @Test
+    fun nextActionTracksTheSingleStepThatUnlocksProgress() {
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val empty = SamplerUiState()
+        val loaded = empty.copy(currentAudio = audio)
+        val pads = loaded.pads.toMutableList().also {
+            it[0] = PadModel(0, audio, 0, 50)
+        }
+        val playable = loaded.copy(pads = pads)
+        val exportReady = playable.copy(activeSteps = setOf(stepKey(0, 0)))
+
+        assertEquals(
+            WorkflowNextActionPresentation(
+                stage = WorkflowStage.CAPTURE,
+                title = "NEXT 1 入れる",
+                guidance = "曲を読み込むか録音します",
+            ),
+            workflowNextActionPresentation(empty),
+        )
+        assertEquals(
+            WorkflowStage.CAPTURE,
+            workflowNextActionPresentation(BuiltInDrumKits.installStarterKit(empty)).stage,
+        )
+        assertEquals(WorkflowStage.CHOP, workflowNextActionPresentation(loaded).stage)
+        assertEquals(
+            WorkflowStage.CHOP,
+            workflowNextActionPresentation(BuiltInDrumKits.installStarterKit(loaded)).stage,
+        )
+        assertEquals("曲を流し、空PADを押します", workflowNextActionPresentation(loaded).guidance)
+        assertEquals(WorkflowStage.BEAT, workflowNextActionPresentation(playable).stage)
+        assertEquals(WorkflowStage.FINISH, workflowNextActionPresentation(exportReady).stage)
+    }
+
+    @Test
+    fun loadingAndRecordingOwnTheNextActionInsteadOfCompetingWithNavigation() {
+        assertEquals(
+            WorkflowNextActionPresentation(
+                stage = null,
+                title = "NEXT 待つ",
+                guidance = "音声の読込が終わるまで待ちます",
+            ),
+            workflowNextActionPresentation(SamplerUiState(isLoading = true)),
+        )
+
+        val recording = SamplerUiState(
+            recordingSession = RecordingSession.Active(
+                kind = RecordingKind.SOURCE_MICROPHONE,
+                phase = RecordingPhase.RECORDING,
+            ),
+        )
+        assertEquals("NEXT 録音を止める", workflowNextActionPresentation(recording).title)
+        assertEquals("上の停止ボタンで録音を保存します", workflowNextActionPresentation(recording).guidance)
+
+        val stopping = recording.copy(
+            recordingSession = RecordingSession.Active(
+                kind = RecordingKind.SOURCE_MICROPHONE,
+                phase = RecordingPhase.STOPPING,
+            ),
+        )
+        assertEquals("NEXT 待つ", workflowNextActionPresentation(stopping).title)
+        assertEquals("録音の停止と保存が終わるまで待ちます", workflowNextActionPresentation(stopping).guidance)
+    }
+
+    @Test
+    fun padOnlyAndLoopProjectsDoNotGetSentBackToCapture() {
+        val audio = PcmAudio(1L, "pad.wav", ShortArray(100), 1_000)
+        val pads = SamplerUiState().pads.toMutableList().also {
+            it[0] = PadModel(0, audio, 0, 50)
+        }
+        val padOnly = SamplerUiState(pads = pads)
+
+        assertEquals(WorkflowStage.BEAT, workflowNextActionPresentation(padOnly).stage)
+        assertEquals(
+            WorkflowStage.FINISH,
+            workflowNextActionPresentation(
+                padOnly.copy(pads = pads.toMutableList().also { it[0] = it[0].copy(playMode = PadPlayMode.LOOP) }),
+            ).stage,
+        )
+    }
+
+    @Test
+    fun everyNextActionFitsTheBoundedStatusCopyBudget() {
+        val audio = PcmAudio(1L, "source.wav", ShortArray(100), 1_000)
+        val pads = SamplerUiState().pads.toMutableList().also {
+            it[0] = PadModel(0, audio, 0, 50)
+        }
+        val states = listOf(
+            SamplerUiState(),
+            SamplerUiState(isLoading = true),
+            SamplerUiState(currentAudio = audio),
+            SamplerUiState(currentAudio = audio, pads = pads),
+            SamplerUiState(currentAudio = audio, pads = pads, activeSteps = setOf(stepKey(0, 0))),
+        )
+
+        states.map(::workflowNextActionPresentation).forEach { presentation ->
+            assertTrue(presentation.title.length <= 12)
+            assertTrue(presentation.guidance.length <= 26)
+        }
+    }
+
+    @Test
     fun pristineStarterGetsAFocusedOwnAudioEntryAndAnExplicitDemoRoute() {
         val starter = BuiltInDrumKits.installStarterKit(SamplerUiState())
 
