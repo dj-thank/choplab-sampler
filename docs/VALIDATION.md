@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Workflow NEXT and locked-stage reasons — 2026-08-26
+
+- Product checkpoint: `a9f2245abd1673ce02b9a94f231b66d5fe87a4ea`, tree `05d84e34c62f83057ef28175ea2d4d3d9d7de96a`, base `8b9c00ba2a382705c3478c1ce8984225d30a6c8d`.
+- RED/GREEN: new availability/next-action tests first failed compilation. GREEN covers empty, starter demo, loaded source, source+starter, source chop, PAD-only, LOOP, export-ready, loading, recording and stopping states; locked reasons and bounded copy lengths are exact assertions.
+- UI integration: stage tabs retain their existing enabled Boolean and navigation behavior, adding state descriptions only. The fixed status strip now shows one NEXT action and uses merged semantics; no scroll/modal/screen was added.
+- `scripts/validate_project.sh`: public-surface baseline 409 PASS; executable modes PASS; JVM-core/Desktop 18 tasks PASS; XML/wrapper checks PASS. Documentation-inclusive final public-surface 410 and all Python policy 40 PASS.
+- Full gate: 190 tasks PASS. Android 244, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint debug/release errors 0/warnings 7.
+- Artifacts: debug APK 31,541,362 / `500B675B04A3D4DED7C88FB5F286AB6CBF2E571F99BB8DEAC7EED951FCCD21B4`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,093,812 / `3477E4CC631F2C1F8195FC388E4BD65216F6926638AA120E34F949BDFCA6A1CE`.
+- Windows verifier: ProductVersion `0.17.0`, EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630` PASS. CycloneDX build and `git diff --check` PASS.
+- Gate: `LOCAL_PASS`; physical visual/touch/speech/audio, provider/public and Human outcomes remain unclaimed.
+
 ## Android signer verifier recovery — 2026-08-26
 
 - Product checkpoint: `807ef56d53eb99a8fcf4c8e779b4486136563f4e`, tree `482fdd141336a1528bce66b049891b44494b7c68`, base `4978c4c715fdc7116364e748f0a34cb1c2964e48`.

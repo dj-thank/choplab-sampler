@@ -1,5 +1,17 @@
 # Project state
 
+## Current snapshot — 2026-08-26 workflow NEXT and locked-stage reasons
+
+This snapshot improves comprehension of the existing four-stage product without adding a tutorial modal, screen, scroll path, schema or audio-engine behavior.
+
+- Product source: isolated branch `codex/choplab-next-action-ux-20260826`, checkpoint `a9f2245abd1673ce02b9a94f231b66d5fe87a4ea`, tree `05d84e34c62f83057ef28175ea2d4d3d9d7de96a`, based on `8b9c00ba2a382705c3478c1ce8984225d30a6c8d`. Dirty canonical checkout remains untouched.
+- Constraint: unavailable workflow tabs previously exposed only disabled state. They did not say which prerequisite was missing, while the bottom strip repeated current-stage guidance rather than naming the single next unlock action.
+- New truth: empty/pristine demo → `NEXT 1 入れる`; loaded source without its own chop → `NEXT 2 チョップ`; playable PAD without audible pattern → `NEXT 3 ビート`; loop/vocal/audible pattern → `NEXT 4 保存`. Loading and recording own `NEXT 待つ` / `NEXT 録音を止める` so navigation never competes with a live operation.
+- Accessibility: each locked stage has a concrete Japanese `stateDescription`. The status strip uses one merged semantic announcement containing current stage, next action, guidance and runtime status, avoiding duplicate child announcements.
+- Negative controls: starter demo remains an explicit optional route instead of being misclassified as completed user work; source+starter still points to CHOP; PAD-only projects are not sent back to CAPTURE; loop content remains export-ready; fixed copy budgets prevent status-strip growth.
+- Validation: focused RED/Green tests; full 190-task local gate. Android unit 244, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; Android debug/androidTest/unsigned-release APK, Windows app-image and CycloneDX build PASS; configured validation baseline 409 and documentation-inclusive final public-surface 410 PASS; Python policy 40 PASS.
+- Gate ceiling: `LOCAL_PASS`. No device/emulator screenshot, touch, TalkBack/VoiceOver speech, OAuth/provider, GitHub/public, physical audio or Human acceptance was run.
+
 ## Current snapshot — 2026-08-26 Android signer verifier recovery
 
 This snapshot closes one local release-preparation failure exposed by the existing `v0.17.0` publication path. It does not re-observe GitHub, Spotify, Pixel or any other external gate.

@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 次にやること／押せない工程の理由 | ✅ current local | empty/demo/source/chop/PAD-only/loop/pattern/loading/recordingをpure policyで一つの`NEXT`へ分類。固定status stripが`NEXT 1 入れる → 2 チョップ → 3 ビート → 4 保存`または待機/録音停止を表示。disabled工程は具体的な日本語prerequisiteをscreen-reader stateへ公開し、enabled/navigation truthは不変。Android 244、shared 34/34、Windows packageをLOCAL検証。物理touch/TalkBack/Humanは未確認 |
 | PAD長押し後の見やすい切り位置表示 | ✅ current local / scoped AVD | `6befe11`で長押しPAD全体を最初からscreen-fitting表示。`max(1秒, PAD長×1.25)`で普通のchopは約80%、短いchopは周辺contextを保持。全体overviewにPAD/viewport/focusを表示し、500dp未満では省略。波形長押しの近い境界移動＋1秒focus、全既存controls、Revertを保持。reference contract 7 regions PASS、API36 initial `0–0.5秒`→表示`0–1.0秒`、instrumentation 2/2。物理touch/TalkBack/Human未確認 |
 | 音声ファイルだけを表示する取込picker | ✅ current local | Androidは専用`OPEN_DOCUMENT + OPENABLE + audio/*` contractでAll Files base typeを除去し、選択後もMediaExtractorでaudio trackとresource上限を検証。MP3/AAC・M4A/FLAC/Ogg・Opus/WAV等はAndroid platform/container対応範囲。WindowsはAll Filesを無効化したWAV-only chooserと二重検証で、未実装MP3を偽表示しない。clean 191 tasks、compiled bytecode read-back、Windows実dialog確認。Pixel/provider固有表示は未確認 |
 | 素材から8つの下書きを作る | ✅ current local | `143a969`のQUICK SKETCHは、Bank Aが完全に空でmarker/A-stepもない時だけ、選択範囲をzero-crossing-safeな8連続sliceへ分けてA01–A08とsteps 1/3/5/7/9/11/13/15へ一括配置。starter drumsとB/C/Dを保持し、一つのUndo/Redo/autosave単位。短いrange・既存A作業・録音/loadingは完全no-op。shared両host32、isolated Windows autosaveで7 markers/8 pads/8 melody stepsを確認。物理touch/音質/Humanは未確認 |

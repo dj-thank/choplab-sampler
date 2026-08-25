@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**完了:** `../completed/android-signer-verifier-recovery-20260826.md`。既存`v0.17.0`で手動recoveryを必要にしたsigner digest解析境界を、SDK-owned tool優先、stdout/stderr双方の一意digest受理、競合fail-closedへ修復した。exact local signed APKと全release policyで`LOCAL_PASS`を確認した。外部rerun・新version公開は行わず、次の実装seamは未選択である。
+**完了:** `../completed/workflow-next-action-ux-20260826.md`。既存4工程にNEXT 1–4／待機／録音停止の一意な次操作と、disabled工程の具体的prerequisiteを追加した。新screen/modal/scrollやstate mutationを増やさず、全local/package gateで`LOCAL_PASS`。次の実装seamは未選択で、fallbackのexport completion UXはphysical/Human comprehension evidence後に再評価する。
+
+**直前の完了:** `../completed/android-signer-verifier-recovery-20260826.md`。既存`v0.17.0`で手動recoveryを必要にしたsigner digest解析境界を、SDK-owned tool優先、stdout/stderr双方の一意digest受理、競合fail-closedへ修復した。exact local signed APKと全release policyで`LOCAL_PASS`を確認した。外部rerun・新version公開は行っていない。
 
 **直前の完了:** `../completed/monophonic-pad-retrigger-20260825.md`。同じ物理PADを単声retriggerとし、VOICE PADがloop ownerとcompanion layerへ二重投入される経路、Windowsでloop停止後にVOICE companionが残る経路、offline WAVのrepeated-event倍化を統一して除いた。異なるPADの意図的な重ね演奏は保持し、`LOCAL_PASS`を確認した。
 
