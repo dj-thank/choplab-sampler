@@ -1,12 +1,14 @@
 # ExecPlan registry
 
-更新: 2026-08-24
+更新: 2026-08-26
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**完了:** `../completed/monophonic-pad-retrigger-20260825.md`。同じ物理PADを単声retriggerとし、VOICE PADがloop ownerとcompanion layerへ二重投入される経路、Windowsでloop停止後にVOICE companionが残る経路、offline WAVのrepeated-event倍化を統一して除いた。異なるPADの意図的な重ね演奏は保持し、`LOCAL_PASS`を確認した。次の実装seamは未選択である。
+**完了:** `../completed/android-signer-verifier-recovery-20260826.md`。既存`v0.17.0`で手動recoveryを必要にしたsigner digest解析境界を、SDK-owned tool優先、stdout/stderr双方の一意digest受理、競合fail-closedへ修復した。exact local signed APKと全release policyで`LOCAL_PASS`を確認した。外部rerun・新version公開は行わず、次の実装seamは未選択である。
+
+**直前の完了:** `../completed/monophonic-pad-retrigger-20260825.md`。同じ物理PADを単声retriggerとし、VOICE PADがloop ownerとcompanion layerへ二重投入される経路、Windowsでloop停止後にVOICE companionが残る経路、offline WAVのrepeated-event倍化を統一して除いた。異なるPADの意図的な重ね演奏は保持し、`LOCAL_PASS`を確認した。
 
 **直前の完了:** `../completed/precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装した。`LOCAL_PASS` + scoped API 36 AVD evidenceを確認し、physical device/provider/public/Humanは別gateとして保持した。
 
@@ -28,7 +30,7 @@
 
 **直前の全体最適化tracer完了:** `../completed/global-production-session-20260824.md`。shared `ProductionCommand`の最初の6操作、Desktop/Android host parity tests、Windows/Pixel、PR #46、`main@41be2c2`、全PR/main CIまで完了。物理gesture/audio/recording/TalkBack/provider/Humanは別gate。
 
-**直前のsource統合・binary配布待ち:** `windows-desktop-daily-release-20260824.md`。Windows PAD keyboard、native commands、data-preserving install、依存更新をPR #45 / `main@ab68d2d` / annotated `v0.17.0`へ統合済み。Windows/iOS tag artifactsは検証済みだが、stable Android signing secrets不在のためbinary Releaseはfail-closedで未公開。
+**historical v0.17 source/release:** `windows-desktop-daily-release-20260824.md`。Windows PAD keyboard、native commands、data-preserving install、依存更新をPR #45 / `main@ab68d2d` / annotated `v0.17.0`へ統合し、そのexact tag bytesの三平台prereleaseは後続の既存署名recovery taskで公開・read-back済み。これは以後のproduct commitsを含まないため、次のbinary releaseは新versionを使い、旧tagを書き換えない。
 
 **直前の完了入力:** `../completed/session-integration-20260823.md`。product source `6914e3c`でfull release/audio hardening、Spotify metadata/control-only UX、Windows production continuityを一つのclean local candidateへ統合した。clean 184-task gate、226 Android / 49 JVM / 66 desktop、package／SBOM／public-surface／UI contract／runtime smokeがPASS。Android bytesとsource inputsはaccepted `8306ed2` Pixel receiptに完全一致するため、その非録音scopeだけ`DEVICE_PASS`。provider/public/Humanは別の明示task。
 

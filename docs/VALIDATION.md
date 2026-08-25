@@ -2,6 +2,16 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Android signer verifier recovery — 2026-08-26
+
+- Product checkpoint: `807ef56d53eb99a8fcf4c8e779b4486136563f4e`, tree `482fdd141336a1528bce66b049891b44494b7c68`, base `4978c4c715fdc7116364e748f0a34cb1c2964e48`.
+- RED/GREEN: the initial stderr-output contract could not import. The implemented parser now accepts one normalized digest from stdout and/or stderr, deduplicates identical lines, and rejects conflicting values. SDK-owned build-tools win over an ambient executable.
+- Focused/full policy: verifier 13 tests PASS; all Python release/public tests 40 PASS.
+- Exact artifact negative control: the existing local `v0.17.0` signed APK passed version `0.17.0 (27)`, manifest, permission/export, alignment, signature and expected-identity checks with identity output suppressed. No keystore or repository secret was read back or changed.
+- Project validation: final public-surface 409 PASS; executable modes PASS; JVM-core/Desktop 18 Gradle tasks PASS; Android XML, wrapper SHA-256 and wrapper UTF-8 policy PASS. Fresh Android unit/Lint/release APK/CycloneDX gate: 111 tasks PASS; Android unit 239, failures/errors/skips 0; unsigned release APK 24,093,812 bytes / `911C43FF695562699D45F6F30E6806ABF6350DBA9933C7E65602CD07542EDD11`; SBOM 650 components / 651 dependencies PASS. `git diff --check` PASS.
+- `doctor.sh` was not run because it invokes `adb devices`, which was explicitly outside this task's authority. JDK/SDK/tool resolution was exercised through validation and the exact-APK verifier without ADB.
+- Gate: `LOCAL_PASS`; no OAuth, provider, GitHub, device, publication or Human gate was run or promoted.
+
 ## Monophonic PAD retrigger and loop-session ownership — 2026-08-25
 
 - Product source: `be52047124cf502feec8275f8e74451d400872c8`, tree `6159ef8f08bd133ca23e0c9b6dddc7bfbc705da2`, parent `dfe9a223309cd4f439ffa348039428117161d2a1`.

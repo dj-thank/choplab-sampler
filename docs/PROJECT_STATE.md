@@ -1,5 +1,18 @@
 # Project state
 
+## Current snapshot — 2026-08-26 Android signer verifier recovery
+
+This snapshot closes one local release-preparation failure exposed by the existing `v0.17.0` publication path. It does not re-observe GitHub, Spotify, Pixel or any other external gate.
+
+- Observed at: `2026-08-26T01:30+09:00`.
+- Product source: isolated branch `codex/choplab-release-verifier-recovery-20260826`, code checkpoint `807ef56d53eb99a8fcf4c8e779b4486136563f4e`, tree `482fdd141336a1528bce66b049891b44494b7c68`, based on completed local product branch `4978c4c715fdc7116364e748f0a34cb1c2964e48`. The dirty canonical checkout remains untouched.
+- Reconciled release truth: local `v0.17.0` recovery assets resolve to tag commit `ab68d2d9eaf2e5b9021a131f9ecc34d5063825bf`; manifest, sidecars, APK signature verification, Windows metadata, iOS Simulator archive and SBOM remain internally consistent. Historical attempt 2 completed signing setup, tests, Lint, APK build and SBOM, then failed closed while parsing the signer digest.
+- Root cause boundary: the verifier trusted an ambient `PATH` tool before the configured SDK and searched only captured stdout. It now prefers the configured SDK-owned toolchain, reads stdout and stderr, accepts one unique normalized digest and rejects missing or conflicting values. Manifest, exported-component, alignment, signed-release and expected-certificate checks are unchanged.
+- Focused evidence: 13 verifier tests PASS; the new output-channel test was RED before implementation. Full Python policy is 40 PASS. Exact local `v0.17.0` APK verification passed with identity output suppressed.
+- Project validation: final public-surface 409 candidates, executable modes, JVM-core/Desktop 18 Gradle tasks, six Android XML files, wrapper checksum and UTF-8 policy PASS. A fresh Android unit/Lint/release APK/CycloneDX gate passed 111 tasks; Android unit 239 with failures/errors/skips 0, unsigned local release APK `911C43FF…`, and SBOM 650 components / 651 dependencies. `git diff --check` PASS.
+- History boundary: Windows v0.17 packaging/install receipts remain local or historical scope; Spotify is implemented as metadata/control-only but real authorization remains provider-blocked; Pixel evidence remains revision-bound scoped history. No OAuth, GitHub, ADB/device, signer/secret mutation, publication or Human action occurred.
+- Gate ceiling: `LOCAL_PASS` for this verifier slice. Hosted Actions, a newer-version release, current physical audio/route loss, TalkBack/VoiceOver speech, Spotify provider behavior and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-25 monophonic PAD retrigger and loop-session ownership
 
 This snapshot removes accidental duplicate audio without removing performance layering between different PADs. It is source/host evidence, not a physical listening claim.
