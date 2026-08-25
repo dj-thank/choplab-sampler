@@ -1123,9 +1123,11 @@ private fun FocusedCaptureEntry(
         idleLabel = "端末音声を録る\nDEVICE",
         stopLabel = "録音を止める\nDEVICE STOP",
     )
+    val actionCopy = captureEntryActionPresentation()
     if (focusedCaptureEntryLayout(metrics) == FocusedCaptureEntryLayout.WIDE_SPLIT) {
         WideFocusedCaptureEntry(
             entry = entry,
+            actionCopy = actionCopy,
             state = state,
             inputPolicy = inputPolicy,
             microphoneControl = microphoneControl,
@@ -1173,13 +1175,13 @@ private fun FocusedCaptureEntry(
             ) {
                 NewSourceActionButton(
                     state = state,
-                    label = "曲を読み込む\nLOAD AUDIO",
+                    label = actionCopy.loadAudioLabel,
                     onConfirm = onImportAudio,
                     enabled = inputPolicy.fileEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 MachineButton(
-                    label = "制作を開く\nOPEN PROJECT",
+                    label = actionCopy.openProjectLabel,
                     onClick = onOpenProject,
                     enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1187,7 +1189,7 @@ private fun FocusedCaptureEntry(
                 )
             }
             Text(
-                text = "録音から始める",
+                text = actionCopy.recordingSectionTitle,
                 color = DeckLamp,
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Bold,
@@ -1225,7 +1227,7 @@ private fun FocusedCaptureEntry(
                             verticalArrangement = Arrangement.spacedBy(gap),
                         ) {
                             Text(
-                                text = "すぐ試す  DUSTY JAZZデモ",
+                                text = actionCopy.starterDemoTitle,
                                 color = DeckGreen,
                                 fontFamily = DeckFont,
                                 fontWeight = FontWeight.Black,
@@ -1233,14 +1235,14 @@ private fun FocusedCaptureEntry(
                                 maxLines = 1,
                             )
                             Text(
-                                text = "PAD、ビート、保存を音入りで試せます",
+                                text = actionCopy.starterDemoGuidance,
                                 color = Color(0xFFE8DDBF),
                                 fontFamily = DeckFont,
                                 fontSize = 8.sp,
                                 maxLines = 2,
                             )
                             MachineButton(
-                                label = "デモを試す",
+                                label = actionCopy.starterDemoCompactActionLabel,
                                 onClick = onTryStarterDemo,
                                 active = true,
                                 modifier = Modifier.fillMaxWidth().height(64.dp),
@@ -1258,7 +1260,7 @@ private fun FocusedCaptureEntry(
                                 verticalArrangement = Arrangement.spacedBy(3.dp),
                             ) {
                                 Text(
-                                    text = "すぐ試す  DUSTY JAZZデモ",
+                                    text = actionCopy.starterDemoTitle,
                                     color = DeckGreen,
                                     fontFamily = DeckFont,
                                     fontWeight = FontWeight.Black,
@@ -1266,7 +1268,7 @@ private fun FocusedCaptureEntry(
                                     maxLines = 1,
                                 )
                                 Text(
-                                    text = "PAD、ビート、保存を音入りで試せます",
+                                    text = actionCopy.starterDemoGuidance,
                                     color = Color(0xFFE8DDBF),
                                     fontFamily = DeckFont,
                                     fontSize = 8.sp,
@@ -1274,7 +1276,7 @@ private fun FocusedCaptureEntry(
                                 )
                             }
                             MachineButton(
-                                label = "デモを試す\nTRY BEAT",
+                                label = actionCopy.starterDemoActionLabel,
                                 onClick = onTryStarterDemo,
                                 active = true,
                                 modifier = Modifier.width(170.dp).fillMaxHeight(),
@@ -1294,6 +1296,7 @@ private fun FocusedCaptureEntry(
 @Composable
 private fun WideFocusedCaptureEntry(
     entry: CaptureEntryPresentation,
+    actionCopy: CaptureEntryActionPresentation,
     state: SamplerUiState,
     inputPolicy: CaptureInputPolicy,
     microphoneControl: RecordingControlPresentation,
@@ -1339,14 +1342,14 @@ private fun WideFocusedCaptureEntry(
                     ) {
                         NewSourceActionButton(
                             state = state,
-                            label = "曲を読み込む\nLOAD AUDIO",
+                            label = actionCopy.loadAudioLabel,
                             onConfirm = onImportAudio,
                             enabled = inputPolicy.fileEnabled,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                             compact = false,
                         )
                         MachineButton(
-                            label = "制作を開く\nOPEN PROJECT",
+                            label = actionCopy.openProjectLabel,
                             onClick = onOpenProject,
                             enabled = externalDocumentActionsEnabled(state),
                             modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1354,7 +1357,7 @@ private fun WideFocusedCaptureEntry(
                         )
                     }
                     Text(
-                        text = "録音から始める",
+                        text = actionCopy.recordingSectionTitle,
                         color = DeckLamp,
                         fontFamily = DeckFont,
                         fontWeight = FontWeight.Bold,
@@ -1392,7 +1395,7 @@ private fun WideFocusedCaptureEntry(
                             verticalArrangement = Arrangement.spacedBy(gap),
                         ) {
                             Text(
-                                text = "すぐ試す  DUSTY JAZZデモ",
+                                text = actionCopy.starterDemoTitle,
                                 color = DeckGreen,
                                 fontFamily = DeckFont,
                                 fontWeight = FontWeight.Black,
@@ -1400,7 +1403,7 @@ private fun WideFocusedCaptureEntry(
                                 maxLines = 1,
                             )
                             Text(
-                                text = "PAD、ビート、保存を音入りで試せます",
+                                text = actionCopy.starterDemoGuidance,
                                 color = Color(0xFFE8DDBF),
                                 fontFamily = DeckFont,
                                 fontSize = 10.sp,
@@ -1408,7 +1411,7 @@ private fun WideFocusedCaptureEntry(
                             )
                             Spacer(Modifier.weight(1f))
                             MachineButton(
-                                label = "デモを試す\nTRY BEAT",
+                                label = actionCopy.starterDemoActionLabel,
                                 onClick = onTryStarterDemo,
                                 active = true,
                                 modifier = Modifier.fillMaxWidth().height(112.dp),

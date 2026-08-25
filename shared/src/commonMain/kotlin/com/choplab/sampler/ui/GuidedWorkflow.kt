@@ -296,6 +296,27 @@ fun captureEntryPresentation(state: SamplerUiState): CaptureEntryPresentation {
     )
 }
 
+data class CaptureEntryActionPresentation(
+    val loadAudioLabel: String,
+    val openProjectLabel: String,
+    val recordingSectionTitle: String,
+    val starterDemoTitle: String,
+    val starterDemoGuidance: String,
+    val starterDemoActionLabel: String,
+    val starterDemoCompactActionLabel: String,
+)
+
+fun captureEntryActionPresentation(): CaptureEntryActionPresentation =
+    CaptureEntryActionPresentation(
+        loadAudioLabel = "曲を読み込む\nLOAD AUDIO",
+        openProjectLabel = "制作を開く\nOPEN PROJECT",
+        recordingSectionTitle = "録音から始める",
+        starterDemoTitle = "すぐ試す  DUSTY JAZZデモ",
+        starterDemoGuidance = "PAD、ビート、保存を音入りで試せます",
+        starterDemoActionLabel = "デモを試す\nTRY BEAT",
+        starterDemoCompactActionLabel = "デモを試す",
+    )
+
 data class FinishReadinessPresentation(
     val title: String,
     val guidance: String,
