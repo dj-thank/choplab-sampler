@@ -25,6 +25,7 @@ import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.assignLiveChopToPad
+import com.choplab.sampler.model.chokeLoopSessionTransition
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.restorePadTrimSnapshot
@@ -477,6 +478,7 @@ class DesktopSamplerController(
     override fun triggerPad(index: Int) {
         val pad = mutableState.value.pads.getOrNull(index)
         if (pad?.isAssigned == true) {
+            if (!stopChokedLoopSessionBeforeTrigger(index)) return
             player.triggerPad(pad)
             val beforeRecord = mutableState.value
             if (beforeRecord.recordArmed && beforeRecord.transportPlaying && beforeRecord.currentStep >= 0) {
@@ -486,6 +488,23 @@ class DesktopSamplerController(
         } else {
             selectPad(index)
         }
+    }
+
+    private fun stopChokedLoopSessionBeforeTrigger(index: Int): Boolean {
+        val transition = mutableState.value.chokeLoopSessionTransition(index)
+        if (!transition.stopsLoopSession) return true
+        val stopFailure = runCatching {
+            transition.padIndicesToStop.forEach(player::stopPad)
+        }.exceptionOrNull()
+        if (stopFailure != null) {
+            setStatus(
+                "CHOKEでビートループを停止できないためPADを再生しませんでした: " +
+                    (stopFailure.message ?: stopFailure.javaClass.simpleName),
+            )
+            return false
+        }
+        mutableState.value = transition.state
+        return true
     }
     override fun releasePad(index: Int) = player.releasePad(index)
     override fun previewPad(index: Int) {

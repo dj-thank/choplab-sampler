@@ -62,6 +62,7 @@ import com.choplab.sampler.model.beginAutosaveRecovery
 import com.choplab.sampler.model.beginRecordingSession
 import com.choplab.sampler.model.beginSourceReplacement
 import com.choplab.sampler.model.canUsePatternSteps
+import com.choplab.sampler.model.chokeLoopSessionTransition
 import com.choplab.sampler.model.canRequestStop
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.completeAutosaveRecoveryWithoutProject
@@ -1216,11 +1217,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             PerformancePadPressAction.TOGGLE_LOOP -> toggleBeatLoop(globalIndex)
             PerformancePadPressAction.TRIGGER_ONLY -> {
                 if (!preparePlaybackStart()) return
-                engine.triggerPad(globalIndex)
+                triggerPerformancePad(globalIndex)
             }
             PerformancePadPressAction.TRIGGER_AND_RECORD_STEP -> {
                 if (!preparePlaybackStart()) return
-                engine.triggerPad(globalIndex)
+                triggerPerformancePad(globalIndex)
                 val step = liveRecordingStep(engine.currentStep)
                 commitEdit { current ->
                     val currentPad = current.pads.getOrNull(globalIndex) ?: return@commitEdit current
@@ -1230,6 +1231,17 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 syncPattern()
             }
         }
+    }
+
+    private fun triggerPerformancePad(globalIndex: Int) {
+        val transition = mutableUiState.value.chokeLoopSessionTransition(globalIndex)
+        if (transition.stopsLoopSession) {
+            transition.padIndicesToStop.forEach(engine::stopPad)
+            mutableUiState.value = transition.state.copy(
+                statusMessage = "CHOKE ${transition.chokeGroup}: ビートループを停止しました",
+            )
+        }
+        engine.triggerPad(globalIndex)
     }
 
     override fun releasePad(globalIndex: Int) {

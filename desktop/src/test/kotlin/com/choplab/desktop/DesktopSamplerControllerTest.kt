@@ -535,6 +535,145 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test
+    fun matchingChokeTriggerStopsPublishedLoopSessionBeforePlayingRequestedPad() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val loopPad = bankStart + 8
+            val requestedPad = bankStart + 9
+            assertEquals(1, controller.state.value.pads[loopPad].chokeGroup)
+            assertEquals(1, controller.state.value.pads[requestedPad].chokeGroup)
+
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            engine.stoppedPads.clear()
+            val triggerCountBeforeRequest = engine.triggered.size
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertEquals(-1, controller.state.value.loopPlayheadFrame)
+            assertEquals(listOf(loopPad), engine.stoppedPads)
+            assertEquals(triggerCountBeforeRequest + 1, engine.triggered.size)
+            assertEquals(requestedPad, engine.triggered.last().first.globalIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun matchingChokeTriggerStopsTheLoopOwnersVocalCompanionSet() {
+        val directory = Files.createTempDirectory("choplab-choke-loop-session").toFile()
+        val store = AtomicProjectStore(directory)
+        val audio = PcmAudio(
+            name = "choke-session.wav",
+            samples = ShortArray(256) { 6_000 },
+            sampleRate = 48_000,
+        )
+        val loopPad = 4
+        val vocalCompanion = 5
+        val requestedPad = 6
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                loopPad -> PadModel(index, audio, 0, audio.frameCount, chokeGroup = 1)
+                vocalCompanion -> PadModel(
+                    index,
+                    audio,
+                    0,
+                    audio.frameCount,
+                    contentKind = PadContentKind.VOCAL,
+                )
+                requestedPad -> PadModel(index, audio, 0, audio.frameCount, chokeGroup = 1)
+                else -> PadModel(index)
+            }
+        }
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeStartFrame = 0,
+                rangeEndFrame = audio.frameCount,
+                pads = pads,
+                selectedPad = loopPad,
+            ),
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            player = engine,
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            controller.toggleBeatLoopControl()
+            assertEquals(listOf(loopPad, vocalCompanion), engine.triggered.map { it.first.globalIndex })
+            engine.stoppedPads.clear()
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(listOf(vocalCompanion, loopPad), engine.stoppedPads)
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertEquals(requestedPad, engine.triggered.last().first.globalIndex)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun differentChokeGroupKeepsTheLoopSessionAndOrdinaryPolyphony() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val loopPad = bankStart + 8
+            val requestedPad = bankStart + 4
+            assertEquals(1, controller.state.value.pads[loopPad].chokeGroup)
+            assertEquals(0, controller.state.value.pads[requestedPad].chokeGroup)
+
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            engine.stoppedPads.clear()
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertEquals(requestedPad, engine.triggered.last().first.globalIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun chokeStopFailureKeepsLoopTruthAndRejectsTheRequestedTrigger() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val loopPad = bankStart + 8
+            val requestedPad = bankStart + 9
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val triggerCountBeforeRequest = engine.triggered.size
+            engine.failNextStopPad = true
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCountBeforeRequest, engine.triggered.size)
+            assertTrue(
+                controller.state.value.statusMessage.startsWith(
+                    "CHOKEでビートループを停止できないためPADを再生しませんでした:",
+                ),
+            )
+        } finally {
+            controller.close()
+        }
+    }
+
     private fun awaitCondition(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 2_000_000_000L
         while (!condition()) {
