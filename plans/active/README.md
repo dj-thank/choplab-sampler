@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**統合済みcurrent local line:** `c660ce9`。workflow NEXT、document outcome truth、Finish action truthの三つを一つのclean branchへ統合し、453 tests / 190-task gateで`LOCAL_PASS`を再確認した。copy-only UXの4回目は開始せず、次はportfolioを再計算して非copy laneを一つだけ選ぶ。
+
 **完了:** `../completed/finish-action-truth-ux-20260826.md`。SAVE画面の見出しを制作保存＋WAV書出しの両目的へ揃え、実際にはpatternだけを消す操作を`ビート配置を消す / CLEAR STEPS`へ限定した。callback、schema、audio、project/autosave bytesは変えず、TDD、全197-task gate、同一Windows状態のbefore/afterで`LOCAL_PASS`を確認した。
 
 **直前の完了:** `../completed/document-outcome-confidence-20260826.md`。音声取込、制作open/save、WAV exportのcancel/successをAndroid/Windowsで一つのtruthful contractへ揃え、外部fileとアプリ内制作／autosaveを区別した。path/bytes/schemaは不変、全local/package gateで`LOCAL_PASS`。このFinish真実修正を最後にcopy-only proxyを増やさず、次はvisual/device/Human comprehension evidenceまたは別laneを選ぶ。

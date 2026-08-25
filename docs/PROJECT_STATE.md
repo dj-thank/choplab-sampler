@@ -1,5 +1,18 @@
 # Project state
 
+## Current snapshot — 2026-08-26 continuous goal UX integration
+
+This is the current integrated local product line for the first three `/goal` UX waves. Individual sections below remain revision-bound evidence for each source branch.
+
+- Observed at: `2026-08-26T04:17:07+09:00`.
+- Integrated source: `codex/choplab-goal-ux-20260826@c660ce946764a5ef7d80e74fbbb8481d7f7b5d07`, tree `eb76832b79dec3491258744cc38584dcf7bc3955`. It combines workflow NEXT/locked reasons (`a9f2245`/`bbd6850`), document cancellation/completion truth (`e2a76d8`/`2bdf60d`) and Finish action truth (`c4f0ca4`/`e97ae36`). The dirty canonical preservation checkout remains untouched.
+- User-visible result: the fixed four-stage flow always names one next action; disabled stages explain their prerequisite; Android/Windows document cancellation and success distinguish external files from the retained Production; SAVE names both project preservation and WAV export; pattern clear no longer implies whole-project deletion.
+- Privacy/data boundary: document displays use sanitized bounded leaf names only. No I/O, archive schema, autosave, audio renderer/callback, Source/PAD/project bytes or destructive callback changed.
+- Integrated validation: full 190-task gate PASS. Android 247, shared Android/Desktop 36/36, JVM-core 54 and Desktop 80 tests; 453 total, failures/errors/skips 0. Debug/release Lint errors 0/warnings 7; Android three APKs, Windows app-image, CycloneDX and public-surface 413 PASS.
+- Integrated artifacts: debug APK 32,535,756 / `D21EF9D3A380D1CAA9781BB9F2C91E1E7E331C37B97BE7687B3F51A4A6D1153C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `264FF124462B9F02E4E8D491DF435CAB3513EE05548025F758D415D4D8628C0E`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence for the Finish state. No ADB/device, recording, physical audio/touch, TalkBack/VoiceOver speech, OAuth/provider, GitHub/public/release or Human action was performed.
+- Portfolio boundary: three local presentation/copy waves are now complete. Do not add a fourth copy-only experiment without Human/device evidence; the next local wave must recompute and select a non-copy product lane.
+
 ## Current snapshot — 2026-08-26 Finish action truth UX
 
 This snapshot makes the SAVE stage describe the exact artifacts it preserves or removes. It is a shared presentation/copy change, not a persistence or audio-engine change.

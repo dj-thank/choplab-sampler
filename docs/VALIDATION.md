@@ -2,6 +2,14 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Continuous goal UX integrated head — 2026-08-26
+
+- Integrated checkpoint: `c660ce946764a5ef7d80e74fbbb8481d7f7b5d07`, tree `eb76832b79dec3491258744cc38584dcf7bc3955`; merge parents preserve the completed document-outcome and Finish-action branches.
+- Combined focused tests after conflict resolution PASS. Conflicts were documentation ordering only; both revision-bound records were retained.
+- Full integrated gate: 190 tasks PASS. Android 247, shared Android/Desktop 36/36, JVM-core 54, Desktop 80; 453 total, failures/errors/skips 0. Lint debug/release errors 0/warnings 7; public-surface 413 PASS.
+- Integrated artifacts: debug APK 32,535,756 / `D21EF9D3A380D1CAA9781BB9F2C91E1E7E331C37B97BE7687B3F51A4A6D1153C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `264FF124462B9F02E4E8D491DF435CAB3513EE05548025F758D415D4D8628C0E`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Gate: integrated `LOCAL_PASS`; the scoped Finish screenshot remains visual evidence only. Device, provider/public, physical audio/accessibility and Human gates remain unclaimed.
+
 ## Finish action truth UX — 2026-08-26
 
 - Product checkpoint: `c4f0ca429b944f1b30ec5ce1d4452e037a1715f4`, tree `ff2a26e2d8e4c13016e277eb3428c97b569e599e`, base `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`.
