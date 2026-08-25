@@ -21,14 +21,15 @@ Both live engines enforce choke groups at the voice boundary. Android eventually
 
 1. A shared pure policy computes the complete stop plan only when the requested PAD and current loop owner share the same nonzero choke group and are different PADs.
 2. The stop plan includes all vocal companions from the existing loop-start ownership rule and the loop owner exactly once.
-3. Android and Windows stop that plan before the requested trigger and clear loop owner/playhead truth.
-4. Windows stop failure rejects the requested trigger and does not publish a false cleared state.
-5. Group 0, different groups, same owner, missing/unassigned PADs and ordinary different-PAD polyphony remain unchanged.
+3. A vocal companion in the loop owner's same nonzero choke group is not started, because it would immediately silence the owner; companions in group 0 or another group remain layers.
+4. Android and Windows stop the plan before the requested trigger and clear loop owner/playhead truth.
+5. Windows stop failure rejects the requested trigger and does not publish a false cleared state.
+6. Group 0, different groups, same owner, missing/unassigned PADs and ordinary different-PAD polyphony remain unchanged.
 
 ## Falsifiable checks
 
 - RED Desktop host test: current code leaves loop state and companions after a matching choke trigger.
-- Shared tests: matching plan plus group-0/different-group/same-owner/invalid negative controls.
+- Shared tests: matching plan, owner-wins-companion-choke challenge, plus group-0/different-group/same-owner/invalid negative controls.
 - Desktop tests: exact companion/owner stops, requested trigger, state clear; different group preserved; stop failure fail-closed.
 - Focused shared/Desktop tests, Android unit compile/tests, then the full cross-platform Gradle/lint/package/CycloneDX gate.
 - Python public/release policy, configured validation, public-surface and `git diff --check`.

@@ -33,6 +33,39 @@ class PlaybackLayeringPolicyTest {
     }
 
     @Test
+    fun loopOwnerWinsItsChokeGroupWhenSelectingVocalCompanions() {
+        val audio = PcmAudio(
+            name = "companion-choke.wav",
+            samples = ShortArray(128) { 7_000 },
+            sampleRate = 48_000,
+        )
+        val pads = listOf(
+            PadModel(4, audio, 0, audio.frameCount, chokeGroup = 1),
+            PadModel(
+                5,
+                audio,
+                0,
+                audio.frameCount,
+                contentKind = PadContentKind.VOCAL,
+                chokeGroup = 1,
+            ),
+            PadModel(
+                6,
+                audio,
+                0,
+                audio.frameCount,
+                contentKind = PadContentKind.VOCAL,
+                chokeGroup = 2,
+            ),
+        )
+
+        assertEquals(
+            listOf(6),
+            pads.vocalCompanionPadIndicesForLoopStart(loopPadIndex = 4),
+        )
+    }
+
+    @Test
     fun matchingChokeTriggerStopsTheLoopOwnerAndEveryOwnedVocalCompanion() {
         val audio = PcmAudio(
             name = "loop-session.wav",

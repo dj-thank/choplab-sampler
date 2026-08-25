@@ -9,16 +9,23 @@ fun samePadVoiceConflictsForRetrigger(activePadIndex: Int, requestedPadIndex: In
  *
  * The loop owner is excluded even when it is itself a vocal take. Otherwise the
  * same PAD would be started once as the loop and again as a companion layer.
+ * A vocal PAD in the owner's nonzero choke group is also excluded: starting it
+ * immediately after the owner would silence the loop the session was built on.
  */
-fun List<PadModel>.vocalCompanionPadIndicesForLoopStart(loopPadIndex: Int): List<Int> =
-    asSequence()
+fun List<PadModel>.vocalCompanionPadIndicesForLoopStart(loopPadIndex: Int): List<Int> {
+    val ownerChokeGroup = firstOrNull { it.globalIndex == loopPadIndex }
+        ?.chokeGroup
+        ?.takeIf { it > 0 }
+    return asSequence()
         .filter { pad ->
             pad.globalIndex != loopPadIndex &&
                 pad.isAssigned &&
-                pad.contentKind == PadContentKind.VOCAL
+                pad.contentKind == PadContentKind.VOCAL &&
+                (ownerChokeGroup == null || pad.chokeGroup != ownerChokeGroup)
         }
         .map(PadModel::globalIndex)
         .toList()
+}
 
 data class LoopSessionChokeTransition(
     val state: SamplerUiState,
