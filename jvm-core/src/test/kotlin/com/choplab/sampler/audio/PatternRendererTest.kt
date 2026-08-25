@@ -123,6 +123,54 @@ class PatternRendererTest {
     }
 
     @Test
+    fun repeatedEventRestartsTheSamePadInsteadOfDoublingItsVoice() {
+        val sampleRate = 8_000
+        val sustained = ShortArray(4_000) { 8_000 }
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = PcmAudio(name = "repeated-event", samples = sustained, sampleRate = sampleRate),
+            startFrame = 0,
+            endFrame = sustained.size,
+            gain = 0.5f,
+        )
+        val pcm = renderPcm(
+            pads = List(SamplerConfig.PAD_COUNT) { if (it == 0) pad else PadModel(it) },
+            activeSteps = setOf(stepKey(0, 0), stepKey(0, 1)),
+            sampleRate = sampleRate,
+            swing = 50f,
+        )
+
+        val restartDelta = kotlin.math.abs(pcm[100].toInt() - pcm[1_100].toInt())
+        assertTrue("Repeated PAD restart changed level by $restartDelta", restartDelta <= 2)
+    }
+
+    @Test
+    fun differentPadsAtTheSameEventRemainIntentionalLayers() {
+        val sampleRate = 8_000
+        val sustained = ShortArray(4_000) { 8_000 }
+        val audio = PcmAudio(name = "different-pad-layer", samples = sustained, sampleRate = sampleRate)
+        val first = PadModel(0, audio, 0, sustained.size, gain = 0.4f)
+        val second = PadModel(1, audio, 0, sustained.size, gain = 0.4f)
+        fun pads(includeSecond: Boolean) = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> first
+                1 -> if (includeSecond) second else PadModel(index)
+                else -> PadModel(index)
+            }
+        }
+
+        val single = renderPcm(pads(false), setOf(stepKey(0, 0)), sampleRate, swing = 50f)
+        val layered = renderPcm(
+            pads(true),
+            setOf(stepKey(0, 0), stepKey(1, 0)),
+            sampleRate,
+            swing = 50f,
+        )
+
+        assertTrue(windowEnergy(layered, 64, 512) > windowEnergy(single, 64, 512) * 3 / 2)
+    }
+
+    @Test
     fun reversePitchGainAndToneChangeIndependentPcmObservations() {
         val sampleRate = 8_000
         val rising = ShortArray(512) { frame -> (2_000 + frame * 40).coerceAtMost(22_000).toShort() }

@@ -56,6 +56,42 @@ class SamplerEngineVoiceTest {
     }
 
     @Test
+    fun samePadRetriggerRetiresEveryOlderCopyButKeepsDifferentPadsLayered() {
+        val audio = PcmAudio(
+            name = "retrigger.wav",
+            samples = ShortArray(128) { 8_000 },
+            sampleRate = 48_000,
+        )
+        fun activeVoice(padIndex: Int) = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot(
+                padIndex = padIndex,
+                audio = audio,
+                startFrame = 0,
+                endFrame = audio.frameCount,
+                pitchSemitones = 0f,
+                tone = 1f,
+                gain = 1f,
+                reverse = false,
+                playMode = PadPlayMode.ONE_SHOT,
+                chokeGroup = 0,
+            ),
+            outputSampleRate = 48_000,
+        )
+        val firstCopy = activeVoice(4)
+        val secondCopy = activeVoice(4)
+        val intentionalOtherPad = activeVoice(7)
+
+        retireVoicesForPadRetrigger(
+            voices = arrayOf(firstCopy, secondCopy, intentionalOtherPad),
+            padIndex = 4,
+        )
+
+        assertFalse(firstCopy.active)
+        assertFalse(secondCopy.active)
+        assertTrue(intentionalOtherPad.active)
+    }
+
+    @Test
     fun loopStartBoundaryStopsTheImportedSourceVoice() {
         val audio = PcmAudio(
             name = "source.wav",

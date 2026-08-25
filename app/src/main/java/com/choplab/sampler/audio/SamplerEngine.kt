@@ -10,6 +10,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import com.choplab.sampler.model.stepKey
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -644,6 +645,9 @@ class SamplerEngine(
     private fun startVoice(pad: PadSnapshot) {
         if (pad.endFrame <= pad.startFrame || pad.audio.samples.isEmpty()) return
 
+        // One physical PAD owns at most one live voice. Retriggering restarts that
+        // PAD while voices from different PADs remain available for performance.
+        retireVoicesForPadRetrigger(voices, pad.padIndex)
         if (pad.playMode == PadPlayMode.LOOP) {
             releasePadVoices(
                 pad.padIndex,
@@ -951,6 +955,24 @@ class SamplerEngine(
         const val SOURCE_PAD_INDEX = -2
         const val SOURCE_SCRATCH_PAD_INDEX = -3
         const val SCRATCH_SMOOTHING = 0.025
+    }
+}
+
+/** Retires every older copy of one PAD without touching intentional other-PAD layers. */
+internal fun retireVoicesForPadRetrigger(
+    voices: Array<SamplerEngine.Voice>,
+    padIndex: Int,
+) {
+    var voiceIndex = 0
+    while (voiceIndex < voices.size) {
+        val voice = voices[voiceIndex]
+        if (
+            voice.active &&
+            samePadVoiceConflictsForRetrigger(voice.padIndex, padIndex)
+        ) {
+            voice.deactivate()
+        }
+        voiceIndex++
     }
 }
 

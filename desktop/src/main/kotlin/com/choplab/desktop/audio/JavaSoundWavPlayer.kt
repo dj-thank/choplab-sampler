@@ -4,6 +4,7 @@ import com.choplab.sampler.audio.PadPcmRenderer
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import java.io.ByteArrayInputStream
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
@@ -87,10 +88,13 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     @Synchronized
     override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
         if (!pad.isAssigned) return
-        if (pad.chokeGroup > 0) {
-            activeVoices.filter { it.pad.chokeGroup == pad.chokeGroup }.toList().forEach(::closeVoice)
-        }
-        if (forceLoop) stopPad(pad.globalIndex)
+        activeVoices
+            .filter { voice ->
+                samePadVoiceConflictsForRetrigger(voice.pad.globalIndex, pad.globalIndex) ||
+                    (pad.chokeGroup > 0 && voice.pad.chokeGroup == pad.chokeGroup)
+            }
+            .toList()
+            .forEach(::closeVoice)
         val audio = requireNotNull(pad.audio)
         val clip = createClip(PadPcmRenderer.render(pad), audio.sampleRate)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode

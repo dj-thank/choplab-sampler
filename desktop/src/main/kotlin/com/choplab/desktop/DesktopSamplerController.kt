@@ -46,6 +46,7 @@ import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.sourceScratchRange
@@ -679,6 +680,9 @@ class DesktopSamplerController(
         if (pad?.isAssigned != true) return setStatus("先に音の入ったPADを選んでください")
         if (state.loopingPadIndex == index) {
             player.stopPad(index)
+            state.pads
+                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+                .forEach(player::stopPad)
             mutableState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1, statusMessage = "ビートループを停止しました") }
             return
         }
@@ -697,7 +701,8 @@ class DesktopSamplerController(
         }
         player.triggerPad(loopPad, forceLoop = true)
         mutableState.value.pads
-            .filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+            .map(mutableState.value.pads::get)
             .forEach(player::triggerPad)
         mutableState.update {
             it.copy(
@@ -963,7 +968,9 @@ class DesktopSamplerController(
                 val pad = current.pads[target.padIndex]
                 runCatching {
                     player.triggerPad(pad, forceLoop = true)
-                    current.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+                    current.pads
+                        .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
+                        .map(current.pads::get)
                         .forEach { player.triggerPad(it, forceLoop = false) }
                 }.onSuccess {
                     mutableState.update {

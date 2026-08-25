@@ -4,6 +4,7 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import com.choplab.sampler.model.stepKey
 import java.io.File
 import kotlin.math.abs
@@ -91,6 +92,11 @@ object PatternRenderer : PatternRenderService {
         WavFileWriter(outputFile, outputSampleRate, 1).use { writer ->
             repeat(totalFrames) { frame ->
                 events[frame]?.forEach { pad ->
+                    // Match live playback: one PAD retriggers one voice, while
+                    // different PADs remain polyphonic layers.
+                    voices.removeAll { voice ->
+                        samePadVoiceConflictsForRetrigger(voice.padIndex, pad.padIndex)
+                    }
                     if (pad.chokeGroup > 0) {
                         voices
                             .filter { it.chokeGroup == pad.chokeGroup }
@@ -149,6 +155,7 @@ object PatternRenderer : PatternRenderService {
     }
 
     private data class PadSnapshot(
+        val padIndex: Int,
         val audioSamples: ShortArray,
         val sourceSampleRate: Int,
         val startFrame: Int,
@@ -167,6 +174,7 @@ object PatternRenderer : PatternRenderService {
                 val start = pad.startFrame.coerceIn(0, audio.samples.lastIndex)
                 val end = pad.endFrame.coerceIn(start + 1, audio.samples.size)
                 return PadSnapshot(
+                    padIndex = pad.globalIndex,
                     audioSamples = audio.samples,
                     sourceSampleRate = audio.sampleRate,
                     startFrame = start,
@@ -186,6 +194,7 @@ object PatternRenderer : PatternRenderService {
         pad: PadSnapshot,
         outputSampleRate: Int,
     ) {
+        val padIndex = pad.padIndex
         val chokeGroup = pad.chokeGroup
         private val samples = pad.audioSamples
         private val startFrame = pad.startFrame

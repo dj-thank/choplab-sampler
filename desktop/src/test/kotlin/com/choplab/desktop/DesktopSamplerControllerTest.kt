@@ -6,6 +6,7 @@ import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingSession
@@ -390,6 +391,61 @@ class DesktopSamplerControllerTest {
             assertEquals(true, engine.triggered.last().second)
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun selectedVocalLoopIsTriggeredOnceWhileOtherVocalTakesRemainCompanions() {
+        val directory = Files.createTempDirectory("choplab-vocal-loop-owner").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine()
+        val audio = PcmAudio(
+            name = "voice.wav",
+            samples = ShortArray(2_000) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val loopPadIndex = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val companionPadIndex = loopPadIndex + 1
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeStartFrame = 0,
+                rangeEndFrame = audio.frameCount,
+                selectedBank = SamplerConfig.VOCAL_BANK_INDEX,
+                selectedPad = loopPadIndex,
+                pads = List(SamplerConfig.PAD_COUNT) { index ->
+                    when (index) {
+                        loopPadIndex, companionPadIndex -> PadModel(
+                            globalIndex = index,
+                            audio = audio,
+                            startFrame = 0,
+                            endFrame = audio.frameCount,
+                            contentKind = PadContentKind.VOCAL,
+                        )
+                        else -> PadModel(index)
+                    }
+                },
+            ),
+        )
+        val controller = DesktopSamplerController(engine, autosaveStore = store, autosaveDelayMillis = 0L)
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            engine.triggered.clear()
+
+            controller.toggleBeatLoopControl()
+
+            assertEquals(1, engine.triggered.count { it.first.globalIndex == loopPadIndex })
+            assertEquals(true, engine.triggered.single { it.first.globalIndex == loopPadIndex }.second)
+            assertEquals(1, engine.triggered.count { it.first.globalIndex == companionPadIndex })
+            assertEquals(false, engine.triggered.single { it.first.globalIndex == companionPadIndex }.second)
+
+            controller.toggleBeatLoopControl()
+
+            assertTrue(loopPadIndex in engine.stoppedPads)
+            assertTrue(companionPadIndex in engine.stoppedPads)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
         }
     }
 

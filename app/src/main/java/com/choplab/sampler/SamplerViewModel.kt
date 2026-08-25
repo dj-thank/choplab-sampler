@@ -108,6 +108,7 @@ import com.choplab.sampler.model.sourcePlaybackToggleAction
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.sourceUiPhase
 import com.choplab.sampler.model.stopAllPlaybackState
+import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.stopRecordingSession
 import com.choplab.sampler.model.shouldContinueSourcePlayback
@@ -1521,8 +1522,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         if (state.loopingPadIndex == globalIndex) {
             engine.stopPad(globalIndex)
-            state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-                .forEach { engine.stopPad(it.globalIndex) }
+            state.pads
+                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = globalIndex)
+                .forEach(engine::stopPad)
             playbackInterruptionCoordinator.endPlaybackSession()
             mutableUiState.update {
                 it.copy(
@@ -1554,8 +1556,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         changedPads.forEach(engine::updatePad)
         syncPattern()
         engine.startPadLoop(globalIndex)
-        state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-            .forEach { engine.triggerPad(it.globalIndex) }
+        mutableUiState.value.pads
+            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = globalIndex)
+            .forEach(engine::triggerPad)
         mutableUiState.update {
             it.copy(
                 pendingSourceCommand = pendingSourceCommandAfterStopRequest(it.sourcePlaying),
@@ -2050,8 +2053,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 val pad = state.pads[target.padIndex]
                 if (!preparePlaybackStart()) return false
                 engine.startPadLoop(target.padIndex)
-                state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-                    .forEach { engine.triggerPad(it.globalIndex) }
+                state.pads
+                    .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
+                    .forEach(engine::triggerPad)
                 mutableUiState.update {
                     it.copy(
                         loopingPadIndex = target.padIndex,

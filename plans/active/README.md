@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**完了:** `../completed/precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装した。`LOCAL_PASS` + scoped API 36 AVD evidenceを確認し、physical device/provider/public/Humanは別gateとして保持した。次の実装seamは未選択である。
+**進行中:** `monophonic-pad-retrigger-20260825.md`。同じ物理PADを単声retriggerとし、VOICE PADがloop ownerとcompanion layerへ二重投入される経路をAndroid／Windows／offline WAVで統一して除く。異なるPADの意図的な重ね演奏は保持し、到達上限は`LOCAL_PASS`。
+
+**直前の完了:** `../completed/precision-trim-imagegen-fit-20260825.md`。ユーザー提供のTRIM画面とImageGen候補から、PAD長押し直後に選択chop全体をscreen-fitting表示し、その後の波形長押しで1秒精密focusへ移る二段階を実装した。`LOCAL_PASS` + scoped API 36 AVD evidenceを確認し、physical device/provider/public/Humanは別gateとして保持した。
 
 **直前の完了plan:** `../completed/quick-sketch-20260825.md`。素材を安全な8チョップとA01–A08の交互step下書きへ変えるcross-platform QUICK SKETCHは`LOCAL_PASS`で完了済み。
 
