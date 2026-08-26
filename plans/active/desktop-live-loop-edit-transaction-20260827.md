@@ -73,6 +73,7 @@ controllerはeditable snapshotからcandidate PADをpureに作り、loading/reco
 - baseline: clean branch `7e8603c` / tree `2ca0ce1`、Wave 11 full gateは完了済み。product bytes変更前に同一高コストgateは再実行しない。
 - controller RED: `failedActiveLoopEditKeepsTheOldPadLoopAndHistoryFrontier`と`rejectedRecordingTimePadEditDoesNotRetriggerTheLoop`が既存実装で2/2 failure。GREEN後はsuccess/no-op/history controlを含む3 controller testsがPASS。
 - adapter RED/GREEN: missing `startReplacementBeforeRetiringConflicts`と`prepareCandidateOrAbandon`でそれぞれcompile RED。GREENはprepare failureでcandidate close、start failureでcandidate abandonのみ、successでstart→same-PAD/choke conflict retire順を固定。
+- Standards review RED/GREEN: recoverable adapter handlingが`runCatching`でfatal `Error`までstatusへ変換していた。`AssertionError` negative controlをRED確認後、UI recoverable境界を`Exception`だけへ限定し、fatalはstateをcommitせず再throwする。
 - `:desktop:test` full PASS。actual endpoint/Clip driverは現host unavailableのため未観測。
 
 ## Risks and rollback

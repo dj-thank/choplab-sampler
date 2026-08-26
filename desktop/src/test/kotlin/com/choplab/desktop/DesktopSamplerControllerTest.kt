@@ -23,6 +23,7 @@ import java.io.File
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -701,6 +702,29 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun fatalLoopReplacementErrorIsNotMisreportedAsARecoverableEditFailure() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val originalGain = controller.state.value.pads[loopPad].gain
+            engine.nextTriggerFailure = AssertionError("test fatal audio error")
+
+            val failure = assertFailsWith<AssertionError> {
+                controller.setSelectedPadGain(0.5f)
+            }
+
+            assertEquals("test fatal audio error", failure.message)
+            assertEquals(originalGain, controller.state.value.pads[loopPad].gain)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun rejectedRecordingTimePadEditDoesNotRetriggerTheLoop() {
         val engine = FakeAudioEngine()
         val recorder = FakeRecorder()
@@ -884,6 +908,7 @@ class DesktopSamplerControllerTest {
         val stoppedPads = mutableListOf<Int>()
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
+        var nextTriggerFailure: Throwable? = null
         override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
         override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
         override fun seekSource(frame: Int) { sourcePosition = frame }
@@ -891,6 +916,10 @@ class DesktopSamplerControllerTest {
         override fun padFramePosition(index: Int): Int? = null
         override fun stop() { isSourcePlaying = false }
         override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
+            nextTriggerFailure?.let { failure ->
+                nextTriggerFailure = null
+                throw failure
+            }
             if (failNextTrigger) {
                 failNextTrigger = false
                 error("test output unavailable")

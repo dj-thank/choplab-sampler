@@ -847,9 +847,12 @@ class DesktopSamplerController(
         if (candidate == currentPad) return
 
         if (before.loopingPadIndex == selected && candidate.isAssigned) {
-            val failure = runCatching {
+            val failure = try {
                 player.triggerPad(candidate, forceLoop = true)
-            }.exceptionOrNull()
+                null
+            } catch (recoverable: Exception) {
+                recoverable
+            }
             if (failure != null) {
                 return setStatus(
                     "ループ音を更新できないため編集を適用しませんでした: " +
