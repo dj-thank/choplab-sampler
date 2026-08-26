@@ -16,6 +16,14 @@ The start and end points that define one complete Beat loop. A clean boundary av
 
 One or more positions on the beat timeline where a PAD is triggered. Pattern placement is separate from looping the Chop audio itself.
 
+## Pattern variation
+
+One of the two bounded 16-step Beat patterns, A or B. The selected variation is the only one edited by the step surface; switching variations preserves the other pattern instead of replacing it.
+
+## Song arrangement
+
+The bounded four-bar order that assigns pattern A or B to each one-bar section. Song mode plays and exports that order; Pattern mode repeats only the selected variation.
+
 ## Placement preset
 
 A shortcut that creates regularly spaced Pattern placements, such as quarter-note, eighth-note, or sixteenth-note triggers.

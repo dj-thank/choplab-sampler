@@ -77,7 +77,7 @@ BEATで作った16-step patternをA/Bの二つへ分け、現在のpatternをも
 - [x] 2026-08-26T22:46:23+09:00 — Schema 6 persistence、schema 1–5 migration、manual save/open read-back、malformed controls。
 - [x] 2026-08-26T22:46:23+09:00 — Android/Windows/offline A/B order、continuous odd-tempo timing、full-PCM parity、desktop WAV read-back。
 - [x] 2026-08-26T22:46:23+09:00 — Arrange UI/policy compile、playback lock、overwrite confirmation、scroll-safe explicit return-to-step action。physical visual/TalkBack smokeはdevice/Human gateへ保持。
-- [ ] Full gate, review and closeout.
+- [x] 2026-08-26T23:00:00+09:00 — Exact product commit、190-task full gate、artifact/SBOM/manifest read-back、Standards/Spec review、SSOT closeout。
 
 ## Discoveries
 
@@ -103,6 +103,13 @@ BEATで作った16-step patternをA/Bの二つへ分け、現在のpatternをも
 - Offline timing RED: first schedule implementation diverged at the final event (`61600` expected / `61601` actual); countdown-residual scheduling matches Android across fractional bar boundaries.
 - Safety review RED: legacy snapshot dropped B/Song; three starter/readiness controls misclassified inactive work; the old dock contract omitted the new action. All targeted controls are GREEN.
 - Pre-commit unit matrix: 59 Gradle tasks exit `0`; shared Desktop 53/10 suites, shared Android host 53/10, Android 257/46, JVM-core 61/8, Desktop 87/18 — 511 tests / 92 suites, failures/errors/skips `0`.
+- Product anchor: `d70d5fcae1b6655241c2cc81a2596873f1cb4f45` / tree `5a0024f88281ab1fd08641c47f5e0c3b7d2855a7`; clean before docs-only closeout.
+- Full configured Gradle gate: 190 actionable tasks（134 executed / 56 up-to-date）、exit `0`; the exact 511-test / 92-suite XML set has failures/errors/skips `0`. Input bytes were unchanged from the pre-commit unit matrix, so no duplicate clean rebuild was started.
+- Lint debug/release: fatal 0 / errors 0 / warnings 7 each. `scripts/validate_project.sh` exit `0`（18-task Gradle fallback, XML/wrapper/UTF-8 checks）、Python policy 40 tests、public-surface 424 candidates、`git diff --check` PASS。
+- Final artifacts: debug APK 31,656,050 / `C800E7B8FBB19B628AEC19600B451D6AB62553ED8983E74E21B0A61856AC6090`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,175,732 / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`。
+- Android read-back: package/version/code/min/target、permission/exported allowlists、non-debuggable manifest、16-KiB-aware zip alignment PASS; `apksigner` reports unsigned as expected. The Python artifact verifier could not start because the installed SDK has no `apkanalyzer`; `aapt2`/`zipalign`/`apksigner` supplied the equivalent read-only evidence without installing tools or touching keys。
+- Windows read-back: ProductVersion `0.17.0`; app-image 405 files / 176,604,385 bytes, sorted path-size-file-hash manifest SHA `0541DEFF54C196B24B59E0B06BF88EBEC58FEF7C58905087BC5F4BA6E173C7DD`。SBOM: CycloneDX 1.6、650 components / 651 dependencies、1,581,101 bytes / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`。
+- Release bytecode: `processTransportFrame` reads precomputed `int[][][]`, primitive cursor and fixed pad array; sequence compiler/collection construction/blocking/I/O/log/UI calls are absent. Standards/Spec unresolved findings `0/0`。
 
 ## Risks and rollback
 

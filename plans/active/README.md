@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**wave 8 in progress:** `ab-song-variation-tracer-20260826.md`。exact Wave 7 closeout `41d715c` / tree `091f6a30`から、A/B二つの16-step variationを4小節へ並べ、Android/Windows playback、schema 6 save/reopen、offline WAVを一つの順序truthへ接続するbounded vertical tracer。arbitrary Song editor、stereo、stems、48dp responsive redesign、device/provider/public/Humanは含めない。odd BPM/swing timingはSong full-PCM REDが実証した場合だけ同じslice内で修復する。
+**wave 8 completed local; goal remains active:** `../completed/ab-song-variation-tracer-20260826.md`。exact Wave 7 closeout `41d715c` / tree `091f6a30`から、A/B二つの16-step variationを4小節へ並べ、shared history、schema 6 save/reopen、Android/Windows playback、offline WAVを一つの順序truthへ接続した。odd BPM/swingのSong full-PCM REDでcontinuous timingを修復し、511 tests / 190-task gate、APK/EXE/SBOM read-backまで`LOCAL_PASS`。arbitrary Song editor、stereo、stems、48dp responsive redesign、device/provider/public/Humanは別gate。
 
 **wave 7 completed local:** `../completed/android-live-final-sample-parity-20260826.md`。actual Android render loopが`Voice.render()`のterminal returnを破棄していた不一致を、natural finish／48-frame releaseのactual mix seamでRED再現し、mix-before-retireへ修復。471 tests / 190-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。multi-PAD/stereo/Songとphysical/device/provider/public/Humanは未選択の別wave。
 
@@ -40,7 +40,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** (1) choke-group／複数PAD polyphonyのfull PCM oracle、(2) stereo internal/export path、(3) audio parityを一旦止めてmulti-pattern/Song arrangement。same-PAD repeated eventとloop/vocal ownerは今回完了した。native engine/Voice kernelは選択dimensionのoracle前に開始しない。
+**次に選ぶ一つ:** Wave 8のcreative outcomeを再評価してから、(1) mono→stereo vertical path、(2) bounded physical/compact accessibility slice（権限取得時）、(3) A/B Songのdevice audio/route evidence（権限取得時）をfresh portfolioで比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

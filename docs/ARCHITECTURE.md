@@ -146,7 +146,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 `PatternRenderer`
 
 - リアルタイムengineと同じPitch/Tone/Gain/Reverse/Choke/limiterロジック
-- 4 bars × 16 stepsのevent frameを先に計算
+- Pattern modeの選択A/B × 4 bars、またはSong modeのA/B 4 sectionsについて、Android countdownと同じ連続fractional timingでevent frameを先に計算
 - 48 kHz mono PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 
@@ -171,7 +171,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 4. Stereo sample path、multi-output renderer、実機latency/xRun matrix
 5. Zero-crossing snap、fade editor、normalize、trim、time-stretch independent from pitch
 6. ADSR/filter envelope/LFO/insert and send FX
-7. Multi-pattern、Song/Arrangement、per-track length/polymeter
+7. bounded A/B Songを越える任意数pattern、可変section repeat、per-track length/polymeter
 8. MIDI/USB MIDI、velocity、aftertouch
 9. Stem export、share、portable project package
 10. Instrumented tests、Macrobenchmark、battery/thermal profilingとgate別release automation

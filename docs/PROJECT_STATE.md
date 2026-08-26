@@ -1,5 +1,22 @@
 # Project state
 
+## Current snapshot — 2026-08-26 A/B four-bar Song tracer
+
+This is the current local product truth for wave 8. It turns one 16-step beat into two bounded variations and one saved, playable and exportable four-bar arrangement without claiming the advanced Pro Song editor.
+
+- Observed/read back at: `2026-08-26T23:00:00+09:00`.
+- Product source: `codex/choplab-ab-song-tracer-20260826@d70d5fcae1b6655241c2cc81a2596873f1cb4f45`, tree `5a0024f88281ab1fd08641c47f5e0c3b7d2855a7`, based on wave-7 closeout `41d715c7bca702ddd5582a798e69511287241f62`. The dirty canonical preservation root remains untouched.
+- User outcome: BEATの`曲にする / A/B SONG`から、exactly two 16-step patternsを選択・複製し、exactly four one-bar sectionsをA/Bへ割り当てる。Pattern modeは選択中patternを1小節再生／4小節WAVへ反復し、Song modeは4 sectionの順序をAndroid/Windows playbackとWAV exportで共有する。
+- Durable truth: arrangement edits use the shared `ProductionCommand` / history / autosave path. Project schema 6 stores selected slot, A/B steps, four sections and mode; schema 1–5 migrate to A + empty B + A/A/A/A + Pattern mode. Malformed slot/section/duplicate/mismatched selected bytes fail closed. New schema-6 files are not claimed to open in older clients.
+- Realtime/offline truth: Android precompiles the Song into primitive `int[][][]` data and the callback advances a primitive bar/step cursor. Release bytecode contains no sequence compiler, collection construction, blocking, I/O, log or UI call in `processTransportFrame`. Windows emits the same bar/step order on its wall-clock transport. Odd BPM 123 / swing 57 full-PCM A/B/A/B live-versus-offline parity is within the existing tolerance.
+- Safety/UX: arrangement mutation is rejected while transport plays; copying over different non-empty work requires a second click and remains undoable. Inactive B/Song work now participates in pristine/new-project/readiness/clear/replacement decisions. The modal is vertically scrollable and has an explicit return-to-step action; physical touch, focus order and spoken labels remain device/Human gates.
+- Validation: 190-task full Gradle gate exit `0` (134 executed / 56 up-to-date). Android 257, shared Android/Desktop 53/53, JVM-core 61, Desktop 87; 511 tests / 92 suites, failures/errors/skips 0. Lint debug/release each report 0 fatal, 0 errors and 7 warnings. Configured validation 18 tasks, Python policy 40, public-surface 424 and `git diff --check` PASS.
+- Artifact read-back: debug APK 31,656,050 / `C800E7B8FBB19B628AEC19600B451D6AB62553ED8983E74E21B0A61856AC6090`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,175,732 / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- Final unsigned APK: `com.choplab.sampler`, version `0.17.0` / code `27`, min/target `29/36`; expected permission and exported-component allowlists match, 16-KiB-aware zip alignment passes, and `apksigner` confirms no signature. The configured Python verifier could not start because this SDK lacks `apkanalyzer`; equivalent `aapt2` / `zipalign` / `apksigner` read-back was performed without installing tools or touching signing material.
+- SBOM/Windows image: CycloneDX 1.6, product `0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`. Windows app-image contains 405 files / 176,604,385 bytes; its sorted path-size-file-hash manifest SHA-256 is `0541DEFF54C196B24B59E0B06BF88EBEC58FEF7C58905087BC5F4BA6E173C7DD`.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio and review live in parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE8_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE8_REVIEW_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, xRun/latency/route loss, compact touch, TalkBack/Narrator, iOS runtime integration, device/provider/public/signing and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-26 Android live terminal-sample parity
 
 This is the current local product truth for wave 7. It fixes the actual Android PAD mix call site rather than extending the earlier primitive/offline oracle.

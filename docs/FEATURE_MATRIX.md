@@ -27,7 +27,7 @@
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示。CHOPと通常BEATは同じ4×4演奏面を共有し、詳細sequencerだけを二次面へ分離 |
 | 正方形PAD | ✅ device/emulator | 4×4 / 8×2とも親領域へ収まる最大正方形を中央配置。Pixel 9a portraitとv0.11 portrait/landscape emulatorで確認 |
 | 内蔵ドラムキット | ✅ emulator/local | オリジナル合成5キット×16音。新規／reset／新規Source制作だけはDUSTY JAZZ＋starter beatをBANK Bへ自動配置し、復元／手動OPEN済みBANK Bは暗黙変更しない。別kit適用で既存音がある場合は二度押し確認 |
-| ビートへ声を重ねる | 🧪 current local | AndroidとWindowsで選択Beat loopを先頭から再始動して録音状態とloop表示を一致させ、BANK Dへ最大32テイク。project schema 5とWAV exportに含む。fake recorder/audio-port host testのみで、実環境の声は未録音 |
+| ビートへ声を重ねる | 🧪 current local | AndroidとWindowsで選択Beat loopを先頭から再始動して録音状態とloop表示を一致させ、BANK Dへ最大32テイク。project schema 6とWAV exportに含む。fake recorder/audio-port host testのみで、実環境の声は未録音 |
 | DJスクラッチ | 🧪 local/emulator | 元曲slice/S-Eまたは選択PADをpointer-downから直接所有し、左右を正逆速度へ変換。微小ノイズdead zone、px/s正規化、120ms idle無音、方向／倍率／playhead表示をhost test＋API 36 emulatorで確認。解除時は直前の有効なBeat loop/transportへ一度だけ復帰し、再開対象なしでは停止。TalkBack操作を公開。物理実機の連続操作感・クリック音・読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
@@ -65,10 +65,11 @@
 | 主再生モード／同一PADの二重音防止 | ✅ current local | 元曲、preview、Beat loop、transport、scratchは既存の共通停止境界を維持。さらにAndroid／Windows／offline WAVで同一PAD retriggerを単声restartへ統一し、VOCAL loop ownerを開始時companionから除外。loop停止は同じcompanion setも止める。異なるPADの意図的な重ね演奏はnegative controlで保持。物理聴取とclick/pop品質は未確認 |
 | Android再生割り込み安全性 | ✅ emulator/local | 全audible startをmedia/music audio focusで統一。Home、focus loss/transient/duck、出力切替ではengine silenceをfocus解放より先に一箇所で強制し、反復割り込みは一度だけ停止、録音のみの割り込みは再生へ触れない。gainでは自動再開しない。回転は再生継続、source seek/KEY retargetはfocus所有中のみ。端末音声録音はbackgroundで継続し、MIC/VOICEは安全停止。実機route-loss／通話競合は未確認 |
 | Swing | ✅ | 50–75% |
-| Pattern export | ✅ | 4 bars mono WAV |
-| Versioned stereo-capable project domain | 🧪 foundation | Immutable stereo-capable domain is host-tested。MVP archiveは32-PAD page対応schema 5/WAVで保存し、schema 1–4（旧4×16配置を含む）を移行読込 |
+| A/B 4小節 Song arrangement | ✅ current local | exactly two 16-step variationsを選択／複製し、4つのone-bar sectionをA/Bへ割当。shared history/autosave、schema 6 save/reopen、Android/Windows playback、offline WAVが同じ順序truthを使用。再生中のarrangement変更は拒否し、上書きcopyは二度押し。511 tests / 92 suitesとodd BPM/swing full-PCM parityがPASS。arbitrary pattern数・名前・repeat・物理音質・touch/TalkBack/Humanは未確認 |
+| Pattern export | ✅ current local | Pattern modeは選択A/Bを4 barsへ反復、Song modeはA/B 4 sectionsをその順に48 kHz mono WAVへ書出し |
+| Versioned stereo-capable project domain | 🧪 current local / foundation | MVP archiveは32-PAD pageとbounded A/B Song対応schema 6で保存し、schema 1–5（旧4×16配置を含む）をA + empty Bへ移行読込。immutable stereo-capable domainはhost-testedだがMVP audio path自体はmono |
 | Legacy/native engine coexistence boundary | 🧪 foundation | Playback/render interfaces added; native Oboe engine is not implemented |
-| Project save/load | ✅ MVP/local/emulator UI | `.choplab`手動保存/読込、共有PCM16 WAV、schema 1–5 migration、path traversal/過大manifest/malformed WAV/進捗0 InputStreamをfail-closedで拒否。CAPTURE先頭から同じdocument contractを開けることをAPI 36 DocumentsUI起動で確認。独立schema-1 fixture、固定seed malformed corpus、1000小entry、PCM総量超過をLOCAL検証 |
+| Project save/load | ✅ current local / emulator UI | `.choplab`手動保存/読込、共有PCM16 WAV、current schema 6とschema 1–5 migration、path traversal/過大manifest/malformed WAV/進捗0 InputStreamをfail-closedで拒否。schema 6はselected A/B・4 sections・Song mode・selected steps一致を検証。CAPTURE先頭から同じdocument contractを開けることをAPI 36 DocumentsUI起動で確認。独立schema-1 fixture、固定seed malformed corpus、1000小entry、PCM総量超過をLOCAL検証 |
 | 新しい音源への安全な切替 | 🧪 local/emulator | 既存制作がある場合は二度押し確認。ただし未編集starter drumsだけは制作破棄扱いにしない。読込開始時点で現在再生を停止し、decode中の新規再生を遮断。成功時だけ旧Source／A・C・D／user B／旧step／loop／scratch／履歴を除去し、新しいSource＋生成starter BANK Bとして開始。失敗／キャンセル／古い非同期完了は現制作へ触れない |
 | 再生表示と実音声の同期 | 🧪 local/device UI | `STOPPED / STARTING / PLAYING / STOPPING`を音声スレッド適用値と保留命令から導出。差替え・リセット・読込も停止確認前にSTOPPEDを表示せず、Undoは保留命令を復元しない |
 | 全再生停止 | 🧪 local/device UI | `ALL STOP`がsource、PAD voice、loop、scratchの境界を先に発行してからtransportを停止。UIのstep/loop/scratchも同時に解除し、録音中データは明示的に継続 |
