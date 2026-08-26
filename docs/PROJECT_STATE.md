@@ -1,5 +1,20 @@
 # Project state
 
+## Current snapshot — 2026-08-26 build-tools-only Android release verification
+
+This is the current local release-preparation truth for wave 9. It removes a tool-availability false negative without changing application, package, signing or workflow bytes.
+
+- Observed/read back at: `2026-08-26T23:22:11+09:00`.
+- Release-verifier source: `codex/choplab-android-verifier-fallback-20260826@e5229075150bcfb219eb05c666f46fd9eba05ad8`, tree `514e5161dd73ba49436756afa53782eeb16c47d5`, based on Wave 8 closeout `a484a96dedb1c1b6c9025d332d22de602017ae64`. The dirty canonical preservation root remains untouched.
+- Prior failure: on the installed Android SDK, the canonical verifier stopped before inspection with `Cannot find Android SDK tool: apkanalyzer`, although build-tools `36.0.0` contained `aapt2`, `zipalign` and `apksigner`.
+- Backend contract: `apkanalyzer manifest print` remains primary when installed. Only absence selects `aapt2 dump xmltree`; a discovered-but-failing primary is never hidden by fallback. Strict parsing rejects malformed lines, orphan/duplicate attributes, multiple roots, ambiguous namespaces/quoting and nonliteral security booleans before applying the one existing manifest policy.
+- Policy truth: both backends share package/version, permission/declaration allowlists, non-debuggable, exported-component/permission and forbidden-tooling checks. Alignment and signature code and CLI arguments are unchanged. `--require-signed` still rejects the exact unsigned candidate.
+- TDD/validation: missing fallback API produced the intended ImportError RED. Final Python discovery passes 59 tests, including primary/fallback selection and malformed/package/version/application/permission/declaration/debuggable/exported/profile-receiver negative controls. Configured validation passes public-surface, 18 Gradle JVM-core/Desktop tasks, six XML files, executable modes, wrapper SHA and UTF-8 policy. Current plus reachable-history public-surface 425 and `git diff --check` pass.
+- Exact artifact read-back: existing Wave 8 unsigned APK, 24,175,732 bytes / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`, passes canonical verification as `com.choplab.sampler` version `0.17.0` / code `27`, `manifest_tool=aapt2`, expected manifest policy, 16-KiB-aware alignment and unsigned-candidate policy. Requiring a signature exits `1` as expected.
+- Reused product evidence: `app`, `shared`, `jvm-core`, `desktop`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` tree objects exactly match Wave 8 base. Therefore the completed 190-task/511-test app gate and existing APK/Windows/SBOM bytes remain applicable; they were not rerun solely because the Git commit changed. CycloneDX read-back remains 1.6 / 650 components / 651 dependencies / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`.
+- Scope/gate: no key, signing identity, secret, workflow, tag, Release, GitHub, device, OAuth/provider, audio recording or Human state was read or changed. Strongest fresh result is `LOCAL_PASS`; `DEVICE_PASS`, `PROVIDER_PASS`, `PUBLIC_PASS` and `HUMAN_GO` remain separate.
+- Reviews: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE9_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE9_REVIEW_20260826.md`. Next local product candidate is one bounded mono→stereo import/live/save/export tracer; another verifier-only wave is not selected.
+
 ## Current snapshot — 2026-08-26 A/B four-bar Song tracer
 
 This is the current local product truth for wave 8. It turns one 16-step beat into two bounded variations and one saved, playable and exportable four-bar arrangement without claiming the advanced Pro Song editor.

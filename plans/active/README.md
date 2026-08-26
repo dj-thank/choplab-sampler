@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**wave 9 in progress:** `android-aapt2-release-verifier-fallback-20260826.md`。exact Wave 8 closeout `a484a96` / tree `f325d6e`から、`apkanalyzer`を持たないbuild-tools-only SDKでもfinal APKの同一manifest/security/alignment/signature policyをfail closedで検査する。`apkanalyzer` primaryは保持し、そのcommand failureはfallbackで隠さない。署名、secret、workflow、GitHub/Release、device/provider/Humanは変更しない。
+**wave 9 completed local; goal remains active:** `../completed/android-aapt2-release-verifier-fallback-20260826.md`。exact Wave 8 closeout `a484a96` / tree `f325d6e`から、`apkanalyzer`を持たないbuild-tools-only SDKでもfinal APKの同一manifest/security/alignment/signature policyをfail closedで検査できるようにした。product checkpoint `e522907` / tree `514e516`、Python policy 59、configured validation、exact Wave 8 APK/SBOM read-backまで`LOCAL_PASS`。署名、secret、workflow、GitHub/Release、device/provider/Humanは変更していない。
 
 **wave 8 completed local; goal remains active:** `../completed/ab-song-variation-tracer-20260826.md`。exact Wave 7 closeout `41d715c` / tree `091f6a30`から、A/B二つの16-step variationを4小節へ並べ、shared history、schema 6 save/reopen、Android/Windows playback、offline WAVを一つの順序truthへ接続した。odd BPM/swingのSong full-PCM REDでcontinuous timingを修復し、511 tests / 190-task gate、APK/EXE/SBOM read-backまで`LOCAL_PASS`。arbitrary Song editor、stereo、stems、48dp responsive redesign、device/provider/public/Humanは別gate。
 
@@ -42,7 +42,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** Wave 8のcreative outcomeを再評価してから、(1) mono→stereo vertical path、(2) bounded physical/compact accessibility slice（権限取得時）、(3) A/B Songのdevice audio/route evidence（権限取得時）をfresh portfolioで比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
+**次に選ぶ一つ:** 検査基盤だけを連続投資せず、次は製品体験へ戻る。local authorityの範囲ではmono→stereoのimport/live/save/export tracerを第一候補とし、bounded physical/compact accessibilityまたはA/B Song device audio/routeは権限取得時だけ比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

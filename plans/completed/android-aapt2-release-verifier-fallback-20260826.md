@@ -58,9 +58,9 @@ ChopLab の最終 Android APK を、Android command-line tools一式がなくて
 ## Progress
 
 - [x] 2026-08-26T23:10+09:00 — exact Wave 8 APKで`apkanalyzer`不在のexit 1を再現し、同じSDKの`aapt2`出力に必要security surfaceが存在することを確認。
-- [x] 2026-08-26T23:18+09:00 — fallback API未実装のImportErrorをREDとして固定し、backend selection、parser malformed input、manifest security negative controlsを追加。
-- [x] 2026-08-26T23:25+09:00 — strict `aapt2` parserとprimary/fallback selectionを実装。59 Python policy testsとexact APK read-backがGREEN。
-- [ ] full local policy/read-backとSSOT closeoutを完了する。
+- [x] 2026-08-26T23:15+09:00 — fallback API未実装のImportErrorをREDとして固定し、backend selection、parser malformed input、manifest security negative controlsを追加。
+- [x] 2026-08-26T23:18+09:00 — strict `aapt2` parserとprimary/fallback selectionを実装。59 Python policy testsとexact APK read-backがGREEN。
+- [x] 2026-08-26T23:22+09:00 — product checkpoint `e522907`、configured validation、artifact/SBOM/public-surface/read-back、Standards/Spec reviewとSSOT closeoutを完了。
 
 ## Discoveries
 
@@ -73,7 +73,7 @@ ChopLab の最終 Android APK を、Android command-line tools一式がなくて
 
 - 2026-08-26T23:12+09:00 — stereoより先に一waveだけrelease verifier availabilityを選択。理由は将来すべてのfinal APK gateへ効く横断制約であり、exact artifactとnegative controlsで局所反証できるため。次waveは製品体験へ戻す。
 - 2026-08-26T23:12+09:00 — `apkanalyzer` command failure時の自動fallbackは不採用。壊れたprimaryや異なる出力を隠すため。
-- 2026-08-26T23:25+09:00 — `aapt2`専用のsecurity policyは作らず、strict tree normalization後に既存`verify_manifest`を一度だけ適用。backend driftを一つのtest matrixで検出する。
+- 2026-08-26T23:18+09:00 — `aapt2`専用のsecurity policyは作らず、strict tree normalization後に既存`verify_manifest`を一度だけ適用。backend driftを一つのtest matrixで検出する。
 
 ## Validation log
 
@@ -101,6 +101,7 @@ ChopLab の最終 Android APK を、Android command-line tools一式がなくて
 - `python scripts/verify_sbom.py ...`
   - 2026-08-26 / existing Wave 8 artifact
   - PASS: CycloneDX 1.6、`com.choplab:ChopLab:0.17.0`、650 components / 651 dependencies、SHA-256 `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`。
+- Product checkpoint: `e5229075150bcfb219eb05c666f46fd9eba05ad8` / tree `514e5161dd73ba49436756afa53782eeb16c47d5`。`app` / `shared` / `jvm-core` / `desktop` / root build inputsはbase `a484a96`とtree-object一致。したがってWave 8の190-task/511-test product gateとAPK/Windows/SBOM bytesは再利用可能で、同じ高価なbuildを再実行していない。
 
 ## Risks and rollback
 

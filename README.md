@@ -150,6 +150,17 @@ Android SDK込みの標準検査:
 ./gradlew :app:assembleDebug
 ```
 
+最終APKのpackage/version、permission、debuggable、exported component、16 KiB alignment、署名状態をread-backする場合:
+
+```bash
+python scripts/verify_android_release.py \
+  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+  --version 0.17.0 \
+  --version-code 27
+```
+
+manifest検査はSDKに`apkanalyzer`があればそれを優先し、未導入ならbuild-toolsの`aapt2`へfail-closedでfallbackします。署名必須の配布候補では`--require-signed`と、CIのsecretから渡す`--expected-cert-sha256`を併用します。certificate値や署名鍵をコマンド履歴・文書・リポジトリへ書きません。
+
 APK:
 
 ```text

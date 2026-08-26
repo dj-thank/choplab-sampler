@@ -2,6 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Build-tools-only Android release verification — 2026-08-26
+
+- Product checkpoint: `e5229075150bcfb219eb05c666f46fd9eba05ad8`, tree `514e5161dd73ba49436756afa53782eeb16c47d5`, base `a484a96dedb1c1b6c9025d332d22de602017ae64`.
+- RED: exact Wave 8 unsigned APK stopped with `Cannot find Android SDK tool: apkanalyzer` / exit 1 while SDK build-tools `36.0.0` already contained `aapt2`, `zipalign` and `apksigner`. The new test seam then failed import before implementation.
+- GREEN: `apkanalyzer` remains primary; only absence selects a strict `aapt2 dump xmltree` normalizer. A present-but-failing primary does not fallback. Both backends enter the existing one manifest policy; nonliteral `debuggable` / `exported` values now fail closed.
+- Negative controls: malformed/unknown lines, orphan and duplicate attributes, multiple roots, missing package/application, version mismatch, unexpected permission/declaration/exported service, debuggable application, unprotected profile receiver, ambiguous security Boolean, both-tools-missing and unsigned-when-required all reject.
+- Python release/public policy: 59 tests PASS. Configured project validation: public-surface 425, executable modes, 18 Gradle JVM-core/Desktop tasks, six Android XML files, wrapper SHA/UTF-8 PASS. Reachable-history public-surface 425 and `git diff --check` PASS.
+- Exact APK read-back: 24,175,732 bytes / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy, 16-KiB-aware alignment and intentionally unsigned candidate PASS. `--require-signed` exits 1 as expected.
+- Unchanged product inputs: app/shared/jvm-core/desktop and root build tree objects match base, so Wave 8's 190-task / 511-test product gate and exact package bytes were not rerun. Existing CycloneDX 1.6 SBOM read-back passes at 650 components / 651 dependencies / 1,581,101 bytes / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`.
+- Gate: `LOCAL_PASS`. No signer identity, secret, key, workflow, GitHub/Release, device, provider, recording or Human action occurred.
+
 ## Android live terminal-sample parity — 2026-08-26
 
 - Product checkpoint: `2948c6a59ab18ba18a0813e9033098b4e31e41a6`, tree `52059c3dce144ef3ad3a3f81b863709edbe8c9c6`, base `6a0649d80e3e1c62bb10742b0ec01765f0a2c45b`.
