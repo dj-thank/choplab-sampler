@@ -27,6 +27,81 @@ final class SamplerStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testAllStopCancelsPendingRecordingPermissionCallback() async {
+        let permissionSession = DeferredRecordingPermissionSession()
+        let callbackFinished = expectation(description: "permission callback finished")
+        let store = makeStore(
+            recordingPermissionSession: permissionSession,
+            recordingPermissionCallbackDidFinish: callbackFinished.fulfill
+        )
+
+        store.startRecording()
+
+        XCTAssertEqual(permissionSession.pendingRequestCount, 1)
+        XCTAssertEqual(store.statusMessage, "録音権限を確認しています")
+
+        store.stopAll()
+        permissionSession.resolveNext(granted: true)
+        await fulfillment(of: [callbackFinished], timeout: 1)
+
+        XCTAssertFalse(store.isRecording)
+        XCTAssertEqual(store.statusMessage, "停止しました")
+    }
+
+    func testRecordingPermissionLeaseRejectsCancelledAndRepeatedCallbacks() {
+        var lease = RecordingPermissionLease()
+        let cancelled = lease.begin()
+        lease.invalidate()
+        XCTAssertFalse(lease.consume(cancelled))
+
+        let stale = lease.begin()
+        let current = lease.begin()
+        XCTAssertFalse(lease.consume(stale))
+        XCTAssertTrue(lease.consume(current))
+        XCTAssertFalse(lease.consume(current))
+    }
+
+    @MainActor
+    func testOnlyNewestRecordingPermissionRequestCanResolve() async {
+        let permissionSession = DeferredRecordingPermissionSession()
+        let callbacksFinished = expectation(description: "permission callbacks finished")
+        callbacksFinished.expectedFulfillmentCount = 2
+        let store = makeStore(
+            recordingPermissionSession: permissionSession,
+            recordingPermissionCallbackDidFinish: callbacksFinished.fulfill
+        )
+
+        store.startRecording()
+        store.startRecording()
+        XCTAssertEqual(permissionSession.pendingRequestCount, 2)
+
+        permissionSession.resolveNext(granted: true)
+        permissionSession.resolveNext(granted: false)
+        await fulfillment(of: [callbacksFinished], timeout: 1)
+
+        XCTAssertFalse(store.isRecording)
+        XCTAssertEqual(store.statusMessage, "録音権限が許可されませんでした")
+    }
+
+    @MainActor
+    func testNewerSourceActionCancelsPendingRecordingPermissionCallback() async {
+        let permissionSession = DeferredRecordingPermissionSession()
+        let callbackFinished = expectation(description: "permission callback finished")
+        let store = makeStore(
+            recordingPermissionSession: permissionSession,
+            recordingPermissionCallbackDidFinish: callbackFinished.fulfill
+        )
+
+        store.startRecording()
+        store.playSource()
+        permissionSession.resolveNext(granted: true)
+        await fulfillment(of: [callbackFinished], timeout: 1)
+
+        XCTAssertFalse(store.isRecording)
+        XCTAssertEqual(store.statusMessage, "先に音源を読み込んでください")
+    }
+
+    @MainActor
     func testPickerCancellationPreservesImportedSource() throws {
         let store = makeStore()
         let source = try makeWaveFile(named: "existing")
@@ -55,11 +130,16 @@ final class SamplerStoreTests: XCTestCase {
     }
 
     @MainActor
-    private func makeStore() -> SamplerStore {
+    private func makeStore(
+        recordingPermissionSession: RecordingPermissionSession = AVAudioSession.sharedInstance(),
+        recordingPermissionCallbackDidFinish: @escaping () -> Void = {}
+    ) -> SamplerStore {
         SamplerStore(
             sourceRepository: SourceFileRepository(
                 directory: root.appendingPathComponent("Sources", isDirectory: true)
-            )
+            ),
+            recordingPermissionSession: recordingPermissionSession,
+            recordingPermissionCallbackDidFinish: recordingPermissionCallbackDidFinish
         )
     }
 
@@ -75,6 +155,23 @@ final class SamplerStoreTests: XCTestCase {
         buffer.frameLength = 128
         try file.write(from: buffer)
         return url
+    }
+}
+
+private final class DeferredRecordingPermissionSession: RecordingPermissionSession {
+    var recordPermission: AVAudioSession.RecordPermission = .undetermined
+    private var pendingRequests: [(Bool) -> Void] = []
+
+    var pendingRequestCount: Int {
+        pendingRequests.count
+    }
+
+    func requestRecordPermission(_ response: @escaping (Bool) -> Void) {
+        pendingRequests.append(response)
+    }
+
+    func resolveNext(granted: Bool) {
+        pendingRequests.removeFirst()(granted)
     }
 }
 
