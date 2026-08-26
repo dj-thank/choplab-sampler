@@ -49,8 +49,8 @@ ViewModelの二経路はunique cache temporaryを使い、`try/finally`で所有
 ## Progress
 
 - [x] 2026-08-27T02:50+09:00 — Wave 13 clean closeoutからAndroid document boundaryをread-backし、validated temporaryとprovider success表示の間にdestination read-backがないことを選定。専用clean worktreeを作成。
-- [ ] Milestone 1 silent mismatch RED。
-- [ ] Milestone 2 streaming GREEN / Android binding。
+- [x] 2026-08-27T02:54+09:00 — Milestone 1 RED。JUnit harness差を修正後、silent truncationを置くtestはmissing `publishVerifiedDocument`だけでcompile failure。
+- [x] 2026-08-27T03:03+09:00 — Milestone 2 GREEN。exact/short/same-size corruption/extra/empty、missing source、output/read-back open、write/read/close、zero-progress、cancellation、fatal controlsをstreaming helperでPASS。Android WAV/projectをselected URI read-backへ接続し、検証不能時の非success copyとunique temporary/finally cleanupへ変更。host全群582 tests / 103 suitesをPASS。
 - [ ] Milestone 3 review/full gate/closeout。
 
 ## Decision log
@@ -61,6 +61,10 @@ ViewModelの二経路はunique cache temporaryを使い、`try/finally`で所有
 ## Validation log
 
 - baseline: clean `9043af2` / tree `7e71a8c`、Wave 13 full 197-task / 568-test gate完了済み。product bytes変更前に同じ高コストgateは再実行しない。
+- RED: first harness run exposed this module's JUnit4 rather than `kotlin.test`; test importsをcorrect harnessへ直した後はmissing publisher APIだけでcompile RED。failure copy testもmissing shared messageでcompile RED。
+- GREEN focused: publisher 13 tests、failure copy 1 test、shared Android/Desktop 66/66、Android app 265、JVM-core 81、Desktop 104。合計582 tests / 103 suites、failures/errors/skips 0。
+- Standards review: caller未使用のpublic fingerprint resultを削除し、deep boundaryの外はsuccess/typed failureだけへ縮小。output close完了前のread-back、fatal/cancellation wrapping、zero-progress spinをnegative controlsで防止。
+- Spec review: selected documentのcount＋SHA-256一致だけをsuccess条件にし、検証不能copyはWAV制作／project safety copy保持とdestination不完全可能性を表示。provider atomicity/rollbackは明示的に未達。
 
 ## Risks and rollback
 

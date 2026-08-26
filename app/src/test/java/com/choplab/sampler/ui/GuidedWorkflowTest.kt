@@ -393,6 +393,18 @@ class GuidedWorkflowTest {
     }
 
     @Test
+    fun unverifiedPublishedDocumentsNeverUseSuccessCopy() {
+        assertEquals(
+            "選んだ保存先のWAVを確認できません。不完全な可能性があります。制作はアプリ内に残っています",
+            documentPublicationVerificationFailureMessage(DocumentAction.EXPORT_WAV),
+        )
+        assertEquals(
+            "選んだ保存先の制作ファイルを確認できません。不完全な可能性があります。アプリ内の安全コピーは保持しています",
+            documentPublicationVerificationFailureMessage(DocumentAction.SAVE_PROJECT),
+        )
+    }
+
+    @Test
     fun documentCompletionCopyRejectsPathsAndControlCharacters() {
         assertEquals(
             "beat.wav にWAVを書き出しました。制作はアプリ内に残っています",
