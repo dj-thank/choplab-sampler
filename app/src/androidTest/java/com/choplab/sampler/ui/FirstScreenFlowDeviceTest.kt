@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -42,19 +43,19 @@ class FirstScreenFlowDeviceTest {
         setPristineDeck()
 
         composeRule.onNode(hasText("まず、自分の音を入れる")).assertIsDisplayed()
-        composeRule.onNode(hasContentDescription("曲を読み込む", substring = true)).assertIsDisplayed()
-        composeRule.onNode(hasContentDescription("制作を開く", substring = true)).assertIsDisplayed()
-        composeRule.onNode(hasContentDescription("マイクで録る", substring = true)).assertIsDisplayed()
-        composeRule.onNode(hasContentDescription("端末音声を録る", substring = true)).assertIsDisplayed()
-        val demo = composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+        composeRule.onNode(firstScreenAction("曲を読み込む")).assertIsDisplayed()
+        composeRule.onNode(firstScreenAction("制作を開く")).assertIsDisplayed()
+        composeRule.onNode(firstScreenAction("マイクで録る")).assertIsDisplayed()
+        composeRule.onNode(firstScreenAction("端末音声を録る")).assertIsDisplayed()
+        val demo = composeRule.onNode(firstScreenAction("デモを試す"))
         demo.assertIsDisplayed()
 
         val minimumTargetPx = 48f * composeRule.density.density
         listOf(
-            composeRule.onNode(hasContentDescription("曲を読み込む", substring = true)),
-            composeRule.onNode(hasContentDescription("制作を開く", substring = true)),
-            composeRule.onNode(hasContentDescription("マイクで録る", substring = true)),
-            composeRule.onNode(hasContentDescription("端末音声を録る", substring = true)),
+            composeRule.onNode(firstScreenAction("曲を読み込む")),
+            composeRule.onNode(firstScreenAction("制作を開く")),
+            composeRule.onNode(firstScreenAction("マイクで録る")),
+            composeRule.onNode(firstScreenAction("端末音声を録る")),
             demo,
         ).forEach { action ->
             val bounds = action.fetchSemanticsNode().boundsInRoot
@@ -74,7 +75,7 @@ class FirstScreenFlowDeviceTest {
     fun largeTextCanReachDemoAndBothBeatSurfacesByScrolling() {
         setPristineDeck(fontScale = 2f)
 
-        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
+        composeRule.onNode(firstScreenAction("デモを試す"))
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
@@ -1163,3 +1164,6 @@ class FirstScreenFlowDeviceTest {
         ) as SamplerDeckController
     }
 }
+
+private fun firstScreenAction(label: String) =
+    hasContentDescription(label, substring = true) and hasClickAction()
