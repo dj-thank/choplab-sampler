@@ -36,6 +36,77 @@ class ProductionSessionTest {
     }
 
     @Test
+    fun historyPlanPreviewsWithoutConsumptionAndCancelKeepsTheFrontier() {
+        val session = ProductionSession()
+        val initial = SamplerUiState()
+        val edited = session.applyEdit(initial, initial.copy(bpm = 126f))
+
+        val plan = assertNotNull(session.planUndo(edited.state))
+
+        assertEquals(92f, plan.restoredState.bpm)
+        assertEquals(1L, session.revision)
+        assertTrue(session.canUndo)
+        assertFalse(session.canRedo)
+
+        session.cancel(plan)
+
+        assertEquals(1L, session.revision)
+        assertTrue(session.canUndo)
+        assertFalse(session.canRedo)
+        assertFailsWith<IllegalArgumentException> { session.commit(plan) }
+
+        val undone = assertNotNull(session.undo(edited.state))
+        assertEquals(92f, undone.state.bpm)
+        assertEquals(2L, undone.revision)
+        assertTrue(undone.state.canRedo)
+    }
+
+    @Test
+    fun committedHistoryPlansAreExactOnceAndRedoCanBePreviewed() {
+        val session = ProductionSession()
+        val initial = SamplerUiState()
+        val edited = session.applyEdit(initial, initial.copy(bpm = 126f))
+        val undoPlan = assertNotNull(session.planUndo(edited.state))
+
+        val undone = session.commit(undoPlan)
+
+        assertEquals(92f, undone.state.bpm)
+        assertEquals(2L, undone.revision)
+        assertFailsWith<IllegalArgumentException> { session.commit(undoPlan) }
+
+        val redoPlan = assertNotNull(session.planRedo(undone.state))
+        assertEquals(126f, redoPlan.restoredState.bpm)
+        val redone = session.commit(redoPlan)
+        assertEquals(126f, redone.state.bpm)
+        assertEquals(3L, redone.revision)
+    }
+
+    @Test
+    fun staleAndCrossSessionHistoryPlansCannotConsumeTheFrontier() {
+        val owner = ProductionSession()
+        val other = ProductionSession()
+        val initial = SamplerUiState()
+        val edited = owner.applyEdit(initial, initial.copy(bpm = 126f))
+        val crossSessionPlan = assertNotNull(owner.planUndo(edited.state))
+
+        assertFailsWith<IllegalArgumentException> { other.commit(crossSessionPlan) }
+        assertTrue(owner.canUndo)
+        assertFalse(owner.canRedo)
+        owner.cancel(crossSessionPlan)
+
+        val stalePlan = assertNotNull(owner.planUndo(edited.state))
+        val status = owner.applyEdit(edited.state, edited.state.copy(statusMessage = "newer"))
+
+        assertFailsWith<IllegalArgumentException> { owner.commit(stalePlan) }
+        assertEquals(1L, owner.revision)
+        assertTrue(owner.canUndo)
+        assertFalse(owner.canRedo)
+
+        val undone = assertNotNull(owner.undo(status.state))
+        assertEquals(92f, undone.state.bpm)
+    }
+
+    @Test
     fun quickSketchIsOneUndoRedoAndPersistenceUnit() {
         val session = ProductionSession()
         val audio = PcmAudio(

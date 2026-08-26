@@ -51,8 +51,8 @@ Desktop controllerはUndo/Redoを一つのhelperへ集約する。same-owner tar
 ## Progress
 
 - [x] 2026-08-27T03:27+09:00 — Wave 14 clean closeoutからportfolioを再計算し、same-owner active-loop Undo/Redoのhistory-first全停止を選定。専用clean worktreeを作成。
-- [ ] Milestone 1 transaction RED。
-- [ ] Milestone 2 shared lifecycle and Windows GREEN。
+- [x] Milestone 1 transaction RED。
+- [x] Milestone 2 shared lifecycle and Windows GREEN。
 - [ ] Milestone 3 review/full gate/closeout。
 
 ## Decision log
@@ -63,6 +63,10 @@ Desktop controllerはUndo/Redoを一つのhelperへ集約する。same-owner tar
 ## Validation log
 
 - baseline: clean `924fb3c` / tree `cd39425`、Wave 14 full 197-task / 582-test gate完了済み。product bytes変更前に同じ高コストgateは再実行しない。
+- 2026-08-27T04:09+09:00 — RED: shared common test compileが`planUndo` / `planRedo` / `restoredState`未実装で失敗（`BUILD FAILED in 19s`）。
+- 2026-08-27T04:16+09:00 — focused shared Desktop host + Windows controller GREEN（21 tasks、34 controller tests）。fixtureの内蔵B-01 step/LOOP制約を誤認した2 assertionsは、実contractを読んで別one-shot PAD editへ修正。
+- 2026-08-27T04:19+09:00 — shared Android host `ProductionSessionTest`と実Java Sound `JavaSoundVoiceReplacementTest` GREEN（23 tasks）。
+- 2026-08-27T04:23+09:00 — adversarial controls GREEN: no-change no-retrigger、Undo/Redo recoverable cancellation、fatal passthrough、stale/cross-session exact-once、owner removal disruptive fallback。
 
 ## Risks and rollback
 
