@@ -1,6 +1,20 @@
 # Project state
 
-## Current snapshot — 2026-08-27 Windows initial Beat-loop startup transaction
+## Current snapshot — 2026-08-27 Android complete Beat-loop command admission
+
+Observed/read back at `2026-08-27T06:14:46+09:00`. Exact base is Wave 17 clean closeout `8065c898da4461717b4266c9803b555449caf9d7`, tree `1c794400ac7e9fca391f505da5eb907788d293b0`. Product checkpoint `5812c8a993eb57308dd4bf060ca7bd8ccea98ea5`, tree `1255aca145c6d92efa7eaea3f18e13b32e1287de`, is isolated on `codex/choplab-wave18-android-loop-admission-20260827`.
+
+- User outcome: Android loop owner plus every eligible VOICE companion is converted to immutable snapshots on the control thread and admitted as one bounded realtime command. Initial project start, vocal-recording restart and scratch return publish loop success only after that command enters the mailbox.
+- Rejection truth: stopped engine or full queue returns false. Initial start cancels its non-consuming edit plan, consumes no history/revision, preserves source/transport/loop/scratch/project state, and releases focus only when this request acquired it. Vocal restart stops the new take instead of recording against silent loop truth; scratch return reports failure and its caller releases focus.
+- Realtime boundary: the command applies the existing stop-all generation, publishes one owner, starts owner then companions in array order and uses the existing `startVoice` CHOKE/exact-ownership path. Release bytecode for the 85-line command branch has `new` 0, Function refs 0 and blocking/I/O/lock refs 0. Model filtering and array allocation occur before admission.
+- Deep transaction: `AndroidBeatLoopSessionTransaction` maps PAD modes, creates one `ProductionEditPlan`, calls the Boolean batch port, cancels on rejection/throw and commits exactly once on admission. Former unit-returning helper code/tests were removed because they became dead and contradicted the exclusive session command.
+- Executable proof: focused Android gate passes 280 / 49 suites. Final full Android/shared/JVM/Desktop lint, assembly and Windows-package gate passes 184 tasks (145 executed / 39 up-to-date). XML read-back is Android 280 / 49 suites, shared Android 86 / 17, shared Desktop 86 / 17, JVM 88 / 9 and Desktop 163 / 24: 703 tests / 116 suites, failures/errors/skips 0. Lint debug/release each has fatal/error 0 / warning 4.
+- Policy proof: Python policy 64/64, public current/history 461 each, configured validator 18 tasks plus XML/executable/wrapper/UTF-8, `git diff --check`, unsigned Android positive and signed-required negative pass. CycloneDX 1.6 verifies 650 components / 651 dependencies.
+- Android artifacts: debug APK 31,819,890 / `8EB1CEBB189131E12922B2B88FE3FFF043E3028441C43DD2BE610A63C289667A`; androidTest 10,996,855 / `F8AC9B2C1FC97672FCFB8565127D6099D80E906F49F623BE334C61AF102FE622`; unsigned release 24,290,420 / `FD23A077E7499897F8C4D431226E7325741FFF3D1CA858071CE7B2DE6E8F0F8F`. Version `0.17.0` / code 27, `manifest_tool=apkanalyzer`.
+- Windows/SBOM preservation: Desktop JAR 406,445 / `6659571F558CB832E9D88D21E8E9409A2EDB6370B912ADEA167026004EB25EE7`; EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`; image 405 files / 176,776,461 / manifest `A98268B6A9F53ACA288D89811DDAEA66170795B113EBA84D06A1EF5160EFADC6`. SBOM JSON `86B830331BBB3AF1B53301CD365DFD182335BADCE04FB0A5EF82BB9019DB3AA2`, XML `C73D25FB4A8C81B3DCC203488AFD3219128F8A62D04D2EB9E66F013801584AC8`.
+- Review/gate: local parent Standards/Spec unresolved `0/0`. No synchronous AudioTrack/speaker acknowledgement is claimed. No download, real audio, device/ADB, provider/OAuth, push/PR, tag/Release, signing/secret or Human action occurred. Strongest fresh result is `LOCAL_PASS`.
+
+## Historical local snapshot — 2026-08-27 Windows initial Beat-loop startup transaction
 
 Observed/read back at `2026-08-27T05:40:58+09:00`. Exact base is merged `main@9441b32da468393f79e10e65b50cd596ee19742a`, tree `08849f6b5f4568745523454e5b8854ceac89a995`. Product implementation `ca9fdbea82e436e6ceaacf8c43f9afd215d6bcf7` and reviewed test/plan head `e2ebd9c342d48cf5f96c563715b82f2f8b8f4ca1`, tree `925fbff786b9120cdd3639a2e1542c756ee24067`, are isolated on `codex/choplab-wave17-loop-start-main-20260827`.
 

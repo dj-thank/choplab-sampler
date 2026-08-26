@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**wave 18 selected / in progress:** `android-loop-session-admission-20260827.md`。Wave 17 closeout `8065c89` / tree `1c79440`から、Androidのowner＋eligible VOICE loop sessionを一つのbounded realtime commandとしてadmitし、初回project commit、VOICE録音restart、scratch returnをadmission成功後だけ公開する。queue full／engine stoppedはhistory/revision/runtime/autosaveを保持し、gate ceilingは`LOCAL_PASS`。
+**wave 18 completed local; goal remains active:** `../completed/android-loop-session-admission-20260827.md`。Wave 17 closeout `8065c89` / tree `1c79440`から、Androidのowner＋eligible VOICE loop sessionを一つのbounded realtime commandとしてadmitし、初回project commit、VOICE録音restart、scratch returnをadmission成功後だけ公開する。queue full／engine stoppedはhistory/revision/runtime/autosaveを保持。product `5812c8a` / tree `1255aca`、703 tests / 116 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical AudioTrack output、device/provider/public/signing/Humanは別gate。
+
+**次に保持する一つ:** Wave 19をWave 18 clean closeoutから再計算する。physical Windows/Android audio、provider、Wave 17–18 GitHub integration、次version releaseを別gateとして比較し、deterministic local user outcomeなしにpan/stems/native/MIDI/AIを自動選択しない。
 
 **wave 17 completed local; goal remains active:** `../completed/windows-loop-start-transaction-20260827.md`。merged `main@9441b32` / tree `08849f6`から、Windows初回Beat-loop開始をloading／録音admission→non-consuming edit plan→owner＋eligible VOICE companion candidate全開始→既存再生retire→exact-once commitへした。拒否／recoverable owner・companion failureは現在の音・project/history/runtimeとdurable autosave bytesを保持し、fatal／contract外failureは通常失敗copyへ変換しない。product/review head `e2ebd9c` / tree `925fbff`、699 tests / 114 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical Windows click/overlap/latency、device/provider/public/signing/Humanは別gate。
 

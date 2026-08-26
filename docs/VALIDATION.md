@@ -2,7 +2,17 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Wave 17 Windows initial Beat-loop startup transaction — 2026-08-27
+## Wave 18 Android complete Beat-loop command admission — 2026-08-27
+
+- Base/product: `8065c898da4461717b4266c9803b555449caf9d7` / product `5812c8a993eb57308dd4bf060ca7bd8ccea98ea5`, tree `1255aca145c6d92efa7eaea3f18e13b32e1287de`.
+- RED/GREEN: after JUnit4 fixture alignment, current compilation failed only on missing batch port, transaction result, session snapshots and realtime apply seam. GREEN replaces owner+separate companion enqueue with one Boolean `startPadLoopSession` command.
+- Transaction controls: rejection consumes no history/revision and a later edit remains valid; success demotes the previous LOOP, commits one edit and issues one owner/companion request; fatal engine failure cancels and propagates. Runtime helper proves companions are included for scratch/initial and intentionally excluded for vocal-recording restart.
+- Realtime controls: snapshot preparation forces one LOOP owner, filters unassigned/self companions and retains order. Apply order is stop prior ownership → publish owner/frame → start owner → companions. Release bytecode: branch lines 85, `new` 0, Function refs 0, blocking/I/O/lock refs 0.
+- Full proof: 184 tasks (145 executed / 39 up-to-date), `BUILD SUCCESSFUL in 3m27s`. Android 280 / 49 suites, shared Android 86 / 17, shared Desktop 86 / 17, JVM 88 / 9, Desktop 163 / 24; total 703 / 116, failures/errors/skips 0. Lint fatal/error 0 / warning 4 each.
+- Policy/artifacts: Python 64, public current/history 461, configured validator 18 tasks, APK unsigned positive/signed-negative, Windows package and CycloneDX 650/651 pass. Android hashes debug `8EB1CEBB...9667A`, androidTest `F8AC9B2C...FE622`, release `FD23A077...F0F8F`; Windows manifest `A98268B6...FADC6`; SBOM JSON `86B83033...B3AA2`, XML `C73D25FB...584AC8`.
+- Review/gate: local parent two-pass Standards/Spec unresolved `0/0`; `LOCAL_PASS` only. Physical AudioTrack output, route/focus timing, device/provider/public/signing/Human remain separate.
+
+## Historical Wave 17 Windows initial Beat-loop startup transaction — 2026-08-27
 
 - Exact base/current-main anchor: `9441b32da468393f79e10e65b50cd596ee19742a`, tree `08849f6b5f4568745523454e5b8854ceac89a995`. Product `ca9fdbea82e436e6ceaacf8c43f9afd215d6bcf7`; reviewed head `e2ebd9c342d48cf5f96c563715b82f2f8b8f4ca1`, tree `925fbff786b9120cdd3639a2e1542c756ee24067`.
 - Current-main RED/GREEN: tests first failed compilation on missing `beatLoopControlEnabled` and `planEdit`. GREEN adds a non-consuming edit plan, shared visible admission, complete Java Sound candidate-set startup, transport-callback serialization and commit-after-start controller ordering.

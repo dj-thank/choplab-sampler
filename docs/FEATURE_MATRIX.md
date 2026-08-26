@@ -44,7 +44,7 @@
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
-| チョップ済みビート音声全体を連続ループ | 🧪 current local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。Windows初回開始はowner＋対象VOICEを全て開始できた後だけ旧再生／project／historyを切り替え、回復可能な準備／開始失敗では現在の音とUndo/Redoを保持。物理音質、click/overlap/latencyは未確認 |
+| チョップ済みビート音声全体を連続ループ | ✅ current local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。Windowsはcomplete candidate start後だけ旧再生／project／historyを切替え、Androidはowner＋対象VOICEを一つのbounded commandとしてadmit後だけproject/history/runtimeを公開。回復可能なWindows開始失敗またはAndroid queue rejectionでは現在の制作truthを保持。物理音質、click/overlap/latencyは未確認 |
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
 | PAD→ループ／並べる→足す／擦る導線 | ✅ current local / historical device | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`STEPS`は選択PADの全16 cellを一画面で編集するfocused面へ開く。QUICK／BPM・音色controlsへ明示的に往復し、選択PADとBANK/pageを保持 |
@@ -60,9 +60,9 @@
 | ハードウェア系サンプラーの操作感 | ✅ device | 4工程、正方形PAD、役割色、波形、KEY/TONE/LEVEL、触覚、二段階clearを独自UIで再構成。連打感と触覚の最終評価はHuman判断 |
 | Pitch | ✅ | ±24 st、速度も連動 |
 | Reverse | ✅ | PAD別 |
-| One Shot / Gate / Beat Loop | ✅ current local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。Windows初回startはloading/recording admission後にowner＋eligible VOICE候補を全開始し、source／旧PAD／transport／scratch退役より前にcomplete candidate setを確認してからproject/history/autosaveをexact-once commitする。owner/companion recoverable failureは旧再生、PAD mode、frontier、durable autosave bytesを保持。loop停止effect失敗時もmode/owner/historyを変更しない。物理click/overlap/latencyは未確認 |
+| One Shot / Gate / Beat Loop | ✅ current local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。Windows初回startはcomplete candidate set後、Android初回startはsingle owner/companion command admission後だけproject/history/autosaveをcommitする。Androidのengine stopped／queue full、Windows owner/companion failure、loop停止effect失敗はいずれもfalseなmode/owner/historyを公開しない。物理click/overlap/latencyは未確認 |
 | Choke group | ✅ | 1–4 |
-| リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
+| リアルタイム音声安全性 | 🧪 current local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先。Android loop owner＋VOICE sessionはcontrol側でimmutable snapshot配列を作り一つのcommandへ格納し、release bytecodeのaudio-thread branchは`new`／Function／lock／I/O参照0。clear世代境界、128固定latest-wins PAD mailbox、事前確保Voice、shared DSPのallocation-free callbackを維持 |
 | マイク停止の完了確認 | 🧪 current local | PR #75 / `main@4f56a69`でAndroid native startをdaemon startupへ逃がし、pending STOPはframework `stop`を呼ばず`release`も非同期に委譲する。startup待ちを最大2秒で失敗確定し、未完成WAVをdecodeせず、実unwindまで代替startをfail-closedにする。RESET/`onCleared`は取消状態だけを同期公開し、native待ちはdaemonで完了する。Windowsはlineの`open`後`start`失敗でexact-once closeと一時WAV破棄を保持 |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。MIC/VOICEのnative開始完了は一致するSTARTINGだけをRECORDINGへ進め、late callbackがSTOPPING/Idleを復活させたりBeat loopを始動しない。開始時に既存再生を停止し、録音中の競合操作を遮断。PR #58 product `3b5dd59`は#75のruntime/test/reducerを保持する。実MediaProjection/AudioRecord再検証は未実施 |
 | CHOKEとBeat-loop session所有権 | ✅ current local | active loop ownerと同じnonzero groupのPAD triggerは、ownerと開始時VOICE companionを一つのsessionとして先に停止し、loop/playhead truthをclearしてから新PADを鳴らす。group 0／別group／same owner／通常polyphonyは保持。ownerと同groupのVOICEはloop開始時companionから除外。stop失敗はDesktopで新triggerを拒否。物理fade/click品質は未確認 |

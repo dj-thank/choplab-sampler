@@ -1,4 +1,4 @@
-# Admit one complete Android Beat-loop session before publishing success
+# Admit one complete Android Beat-loop session before publishing success truth
 
 ## Purpose and user-visible outcome
 
@@ -48,12 +48,15 @@ When Android starts or resumes a Beat loop, ChopLab either admits the loop owner
 - [x] 2026-08-27 — Recomputed Wave 18 from Wave 17 and selected Android loop-session admission over external or broad feature lanes.
 - [x] 2026-08-27 — Current RED: after aligning new tests with the app module's JUnit4 fixture, compilation failed only on missing `startPadLoopSession`, transaction result, session snapshot and realtime apply seams.
 - [x] 2026-08-27 — Implemented one admitted owner/companion command, initial project transaction and shared vocal/scratch runtime starter. Focused `:app:testDebugUnitTest` passes.
-- [ ] Review, run full gate and close.
+- [x] 2026-08-27 — Removed two obsolete unit-returning `StartPadLoop` helpers/tests whose layer-preserving contract contradicted the new single exclusive command. Release bytecode shows the new command branch has 0 `new`, Function, lock or I/O references.
+- [x] 2026-08-27 — Local parent Standards/Spec review found no unresolved issue. Full 184-task gate, 703 tests / 116 suites, lint, policy, package, APK and SBOM read-back pass.
+- [x] 2026-08-27 — Recorded exact artifacts, moved the plan to completed and closed repo/PAD SSOT at `LOCAL_PASS`.
 
 ## Discoveries
 
 - The old unit-returning command had two separate truths: owner admission was ignored and companion triggers could be partially admitted.
 - Former `StartPadLoop` helpers kept unrelated PAD layers only because a separate stop-all command ran first. Once the stop and session start are one command, those helpers/tests became dead and contradictory and were removed.
+- The managed sandbox denies Javac/apkanalyzer access to readable workspace artifacts; the same offline full gate and verifier pass outside that sandbox without cache mutation.
 
 ## Decision log
 
@@ -62,7 +65,14 @@ When Android starts or resumes a Beat loop, ChopLab either admits the loop owner
 
 ## Validation log
 
-- Pending.
+- Current RED: `:app:compileDebugUnitTestKotlin`; missing batch port/transaction/snapshot/apply APIs after JUnit4 fixture alignment.
+- Focused GREEN: `:app:testDebugUnitTest`; Android 280 tests / 49 suites, zero failure/error/skip.
+- Full gate: 184 tasks (145 executed / 39 up-to-date), `BUILD SUCCESSFUL in 3m27s`.
+- Final XML: Android 280 / 49 suites; shared Android 86 / 17; shared Desktop 86 / 17; JVM 88 / 9; Desktop 163 / 24; total 703 / 116, zero failure/error/skip.
+- Lint debug/release fatal/error 0, warning 4 each. Python policy 64/64; public current/history 461 each; configured validator 18 tasks plus XML/mode/wrapper/UTF-8.
+- Android unsigned positive exit 0 (`0.17.0` / code 27 / `manifest_tool=apkanalyzer`); signed-required negative exit 1. CycloneDX 1.6 verifies 650 components / 651 dependencies.
+- Release-bytecode loop branch: 85 instructions/labels, `new` 0, Function refs 0, blocking/I/O/lock refs 0.
+- Artifacts: debug APK `8EB1CEBB189131E12922B2B88FE3FFF043E3028441C43DD2BE610A63C289667A`; androidTest `F8AC9B2C1FC97672FCFB8565127D6099D80E906F49F623BE334C61AF102FE622`; unsigned release `FD23A077E7499897F8C4D431226E7325741FFF3D1CA858071CE7B2DE6E8F0F8F`; Windows image manifest `A98268B6A9F53ACA288D89811DDAEA66170795B113EBA84D06A1EF5160EFADC6`; SBOM JSON `86B830331BBB3AF1B53301CD365DFD182335BADCE04FB0A5EF82BB9019DB3AA2` / XML `C73D25FB4A8C81B3DCC203488AFD3219128F8A62D04D2EB9E66F013801584AC8`.
 
 ## Risks and rollback
 
