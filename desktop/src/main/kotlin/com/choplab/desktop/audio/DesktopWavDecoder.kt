@@ -45,7 +45,7 @@ object DesktopWavDecoder {
     internal fun readPcm(
         name: String,
         stream: AudioInputStream,
-        maximumFrames: Int = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
+        maximumFrames: Int = AudioResourceLimits.MAX_DECODED_FRAMES,
     ): PcmAudio {
         require(maximumFrames > 0) { "maximumFrames must be positive" }
         val channels = stream.format.channels

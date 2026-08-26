@@ -233,8 +233,8 @@ fun ArrangementWaveformTimeline(
 private fun buildSlicePeaks(pad: PadModel): List<Pair<Float, Float>> {
     val audio = pad.audio ?: return emptyList()
     if (!pad.isAssigned || audio.samples.isEmpty()) return emptyList()
-    val start = pad.startFrame.coerceIn(0, audio.samples.lastIndex)
-    val end = pad.endFrame.coerceIn(start + 1, audio.samples.size)
+    val start = pad.startFrame.coerceIn(0, audio.frameCount - 1)
+    val end = pad.endFrame.coerceIn(start + 1, audio.frameCount)
     val width = min(512, end - start)
     val framesPerBucket = max(1, (end - start) / width)
     val rawPeaks = List(width) { bucket ->
@@ -245,7 +245,7 @@ private fun buildSlicePeaks(pad: PadModel): List<Pair<Float, Float>> {
         var maximum = 0f
         var frame = from
         while (frame < to) {
-            val value = audio.samples[frame] / 32_768f
+            val value = audio.monoSampleAt(frame) / 32_768f
             if (value < minimum) minimum = value
             if (value > maximum) maximum = value
             frame += stride

@@ -63,6 +63,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - [x] 2026-08-26T23:39+09:00 — Milestone 1 RED/GREEN。shared frame/channel contract、Android PCM conversion、Windows streaming decodeを左右非対称fixtureで固定。
 - [x] 2026-08-26T23:49+09:00 — Milestone 2 RED/GREEN。schema 7 channel manifest、strict mono/stereo WAV、channel-aware memory budget、schema 1–6 mono migrationを固定。
 - [x] 2026-08-27T00:03+09:00 — Milestone 3 RED/GREEN。Android realtime source/PAD/scratch、host PAD、Pattern/Song WAV、Windows Clip/scratchを左右別frameへ接続。
+- [x] 2026-08-27T00:04+09:00 — Milestone 4 analysis substep。waveform、trim overview、PAD/timeline peaks、zero crossing、transientをframe-based mono projectionへ統一。
 - [ ] Milestone 4 full gate / closeout。
 
 ## Discoveries
@@ -77,6 +78,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - Android realtimeは既存stereo `AudioTrack`を維持し、callback開始時に3個のmutable stereo frameだけを確保する。各sampleではpositionを一度だけ進め、L/R filterとmaster limiterを独立適用する。
 - offline WAVのchannel countは実際のrender eventに含まれる最大channelCountから決めるため、mono-only projectの1ch header/data bytesを維持できる。
 - Windows Clipへ渡すpure PCM stream seamを分離すると、音声deviceなしで2ch format、4-byte frame size、interleaving、frame lengthをread-backできる。
+- interleaved sample indexをframeとして扱うと、zero crossingは2倍位置へずれ、波形は後半半分を見ず、transientの時間軸も崩れる。visual/analysisだけは左右平均を明示し、audible pathの左右identityとは分離した。
 
 ## Decision log
 
@@ -106,6 +108,10 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
   - GREEN: asymmetric stereo full-bar Android/offline master parity、左右各sampleの最大delta 1以下。
 - `:desktop:test --tests '*JavaSoundPcmInputTest'`
   - GREEN: Windows PCM handoffは2ch、frame size 4、frameLength 2、interleaved bytes exact。
+- `:shared:desktopTest --tests '*ProductionCommandTest.stereoZeroCrossingUsesAudioFramesInsteadOfInterleavedSampleOffsets'`
+  - RED: direct sample indexingがframe 100のcrossingをsample offset 200として返却。
+- `:shared:desktopTest ... :app:testDebugUnitTest --tests stereo analysis fixtures`
+  - GREEN: zero crossing frame 100、waveform後半bucketの±peak、stereo transientの4 onset frameを保持。
 
 ## Risks and rollback
 

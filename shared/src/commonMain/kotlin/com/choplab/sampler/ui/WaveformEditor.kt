@@ -137,12 +137,13 @@ fun WaveformEditor(
     val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
     val widthPx = canvasSize.width.toFloat().coerceAtLeast(1f)
-    val waveformEnvelope = remember(audio.id, visibleStart, visibleEnd, canvasSize.width) {
+    val waveformEnvelope = remember(audio.id, audio.channelCount, visibleStart, visibleEnd, canvasSize.width) {
         buildWaveformEnvelope(
             samples = audio.samples,
             visibleStart = visibleStart,
             visibleEnd = visibleEnd,
             pixelWidth = canvasSize.width,
+            channelCount = audio.channelCount,
         )
     }
 
@@ -802,8 +803,13 @@ fun buildWaveformEnvelope(
     visibleEnd: Int,
     pixelWidth: Int,
     pixelStep: Int = 2,
+    channelCount: Int = 1,
 ): WaveformEnvelope {
-    if (samples.isEmpty() || visibleEnd <= visibleStart || pixelWidth <= 0) {
+    require(channelCount in 1..2 && samples.size % channelCount == 0) {
+        "Waveform PCM must contain complete mono or stereo frames"
+    }
+    val frameCount = samples.size / channelCount
+    if (frameCount == 0 || visibleEnd <= visibleStart || pixelWidth <= 0) {
         return WaveformEnvelope(FloatArray(0), FloatArray(0), pixelStep.coerceAtLeast(1))
     }
     val safePixelStep = pixelStep.coerceAtLeast(1)
@@ -817,15 +823,17 @@ fun buildWaveformEnvelope(
         val frameFrom = visibleStart + (frameSpan.toLong() * x / pixelWidth).toInt()
         val nextX = (x + safePixelStep).coerceAtMost(pixelWidth)
         val frameTo = visibleStart + (frameSpan.toLong() * nextX / pixelWidth).toInt()
-        val safeFrom = frameFrom.coerceIn(0, samples.lastIndex)
-        val safeTo = frameTo.coerceIn(safeFrom + 1, samples.size)
+        val safeFrom = frameFrom.coerceIn(0, frameCount - 1)
+        val safeTo = frameTo.coerceIn(safeFrom + 1, frameCount)
         val sampleStep = max(1, (safeTo - safeFrom) / 48)
 
         var minimum = 0f
         var maximum = 0f
         var frame = safeFrom
         while (frame < safeTo) {
-            val value = samples[frame] / 32_768f
+            var sum = 0
+            repeat(channelCount) { channel -> sum += samples[frame * channelCount + channel].toInt() }
+            val value = (sum / channelCount) / 32_768f
             if (value < minimum) minimum = value
             if (value > maximum) maximum = value
             frame += sampleStep

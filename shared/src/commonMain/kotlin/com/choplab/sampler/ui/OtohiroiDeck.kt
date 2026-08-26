@@ -4483,13 +4483,14 @@ private fun SourceWaveform(
     val visibleFrames = viewport.visibleFrames
     val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
-    val envelope = remember(visibleAudio?.id, visibleStart, visibleEnd) {
+    val envelope = remember(visibleAudio?.id, visibleAudio?.channelCount, visibleStart, visibleEnd) {
         visibleAudio?.let {
             buildWaveformEnvelope(
                 samples = it.samples,
                 visibleStart = visibleStart,
                 visibleEnd = visibleEnd,
                 pixelWidth = 640,
+                channelCount = it.channelCount,
                 pixelStep = 1,
             )
         }

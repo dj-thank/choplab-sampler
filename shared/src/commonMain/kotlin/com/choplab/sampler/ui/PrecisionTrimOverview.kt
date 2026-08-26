@@ -43,12 +43,13 @@ fun PrecisionTrimOverview(
     modifier: Modifier = Modifier,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    val envelope = remember(audio.id, canvasSize.width) {
+    val envelope = remember(audio.id, audio.channelCount, canvasSize.width) {
         buildWaveformEnvelope(
             samples = audio.samples,
             visibleStart = 0,
             visibleEnd = audio.frameCount,
             pixelWidth = canvasSize.width,
+            channelCount = audio.channelCount,
             pixelStep = 2,
         )
     }

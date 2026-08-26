@@ -227,7 +227,7 @@ class AudioDecoder(private val context: Context) {
                                 val storedChannelCount = retainedChannelCountForImport(outputChannels)
                                 val destination = output ?: Pcm16ArrayBuilder(
                                     initialFrameCapacity = estimateInitialCapacity(durationUs, outputSampleRate),
-                                    maximumFrames = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
+                                    maximumFrames = AudioResourceLimits.MAX_DECODED_FRAMES,
                                     channelCount = storedChannelCount,
                                 ).also {
                                     output = it

@@ -9,6 +9,23 @@ import kotlin.test.assertTrue
 
 class ProductionCommandTest {
     @Test
+    fun stereoZeroCrossingUsesAudioFramesInsteadOfInterleavedSampleOffsets() {
+        val audio = PcmAudio(
+            name = "stereo-crossing",
+            samples = ShortArray(400 * 2) { sample ->
+                if (sample / 2 < 100) (-2_000).toShort() else 2_000.toShort()
+            },
+            sampleRate = 8_000,
+            channelCount = 2,
+        )
+
+        assertEquals(
+            100,
+            snapFrameToZeroCrossing(audio, targetFrame = 104, lowerBound = 0, upperBound = audio.frameCount),
+        )
+    }
+
+    @Test
     fun sourceRangeUsesSharedMinimumAndZeroCrossingPolicy() {
         val audio = crossingAudio()
         val state = SamplerUiState(

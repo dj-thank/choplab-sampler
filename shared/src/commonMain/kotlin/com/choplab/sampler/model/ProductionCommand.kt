@@ -91,26 +91,25 @@ fun snapFrameToZeroCrossing(
     lowerBound: Int,
     upperBound: Int,
 ): Int {
-    val samples = audio.samples
-    if (samples.size < 2) return targetFrame.coerceIn(lowerBound, upperBound)
+    if (audio.frameCount < 2) return targetFrame.coerceIn(lowerBound, upperBound)
 
-    val safeLower = lowerBound.coerceIn(0, samples.size)
-    val safeUpper = upperBound.coerceIn(safeLower, samples.size)
+    val safeLower = lowerBound.coerceIn(0, audio.frameCount)
+    val safeUpper = upperBound.coerceIn(safeLower, audio.frameCount)
     val target = targetFrame.coerceIn(safeLower, safeUpper)
-    if (target == 0 || target == samples.size) return target
+    if (target == 0 || target == audio.frameCount) return target
 
     val radius = (audio.sampleRate * ZERO_CROSSING_SEARCH_SECONDS)
         .toInt()
         .coerceIn(32, 1_024)
     val from = maxOf(1, safeLower, target - radius)
-    val to = minOf(samples.lastIndex, safeUpper, target + radius)
+    val to = minOf(audio.frameCount - 1, safeUpper, target + radius)
     if (from > to) return target
 
     var bestCrossing = -1
     var bestDistance = Int.MAX_VALUE
     for (frame in from..to) {
-        val previous = samples[frame - 1].toInt()
-        val current = samples[frame].toInt()
+        val previous = audio.monoSampleAt(frame - 1).toInt()
+        val current = audio.monoSampleAt(frame).toInt()
         val crossesZero =
             (previous <= 0 && current >= 0) || (previous >= 0 && current <= 0)
         if (crossesZero) {
@@ -124,9 +123,9 @@ fun snapFrameToZeroCrossing(
     if (bestCrossing >= 0) return bestCrossing
 
     var quietestFrame = target
-    var quietestMagnitude = kotlin.math.abs(samples[target].toInt())
+    var quietestMagnitude = kotlin.math.abs(audio.monoSampleAt(target).toInt())
     for (frame in from..to) {
-        val magnitude = kotlin.math.abs(samples[frame].toInt())
+        val magnitude = kotlin.math.abs(audio.monoSampleAt(frame).toInt())
         if (magnitude < quietestMagnitude) {
             quietestFrame = frame
             quietestMagnitude = magnitude

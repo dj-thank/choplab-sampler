@@ -992,6 +992,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 endFrame = snapshot.rangeEndFrame,
                 sampleRate = audio.sampleRate,
                 maxSlices = SamplerConfig.PADS_PER_BANK,
+                channelCount = audio.channelCount,
             )
             val markers = detectedMarkers
                 .map { marker ->
