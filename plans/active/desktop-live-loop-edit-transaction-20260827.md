@@ -1,0 +1,75 @@
+# Keep a playing Windows loop truthful while editing its PAD
+
+## Purpose and user-visible outcome
+
+WindowsでBeat loopを鳴らしながらKEY/TONE/LEVEL、trim、reverse、CHOKEを調整したとき、更新後のloop開始に成功した場合だけproject/history/autosaveへ編集を確定する。出力adapterが失敗した場合は、旧loopと旧PAD設定を保持し、画面だけ「再生中」または編集済みになる分裂を起こさない。録音中やloading中に拒否した編集は、音声adapterへretriggerを送らない。
+
+## Current state
+
+- exact base: `7e8603c0e9a64ff6cb4b74d4d244985494a7256c` / tree `2ca0ce170de67417907021ee7f6405aed90ee555`（Wave 11 closeout）。
+- owner root: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-desktop-loop-edit-transaction-20260827`、branch `codex/choplab-desktop-loop-edit-transaction-20260827`。
+- `DesktopSamplerController.updateSelected`はproject editを先にcommitし、active loopを明示stopしてから新しいvoiceをtriggerする。trigger failureは例外を外へ出し、committed state/historyと停止した実音を戻さない。
+- 同helperはloading/recordingで`commitEdit`が拒否した後もcurrent loopを再triggerする。
+- `JavaSoundWavPlayer.triggerPad`はcandidate Clip生成・開始より前にsame-PAD/choke voiceをcloseするため、candidate failure時に旧loopを保持できない。
+- Android engineはpreallocated voiceのlive parametersをcursorを保ったまま更新する。今回はAndroid経路を変更しない。
+
+## Constraints and invariants
+
+- target files: `desktop/.../DesktopSamplerController.kt`、`DesktopSamplerAudioEngine.kt`、`JavaSoundWavPlayer.kt`、desktop tests、SSOT/plan docs。
+- active loop editはcandidate playbackを開始できた後だけproject mutationとしてcommitする。failureは旧editable state、history、loop ownershipを保持し、truthful Japanese statusを返す。
+- Java Sound adapterはreplacement candidateの開始に失敗した場合、既存conflicting voicesをcloseしない。candidate自身はcloseしてリークしない。
+- successful replacementは従来どおりsame physical PADをmonophonicにし、同じnonzero CHOKE groupを止め、異なるPADのintentional polyphonyを保持する。
+- loading/recording edit admission、Undo/Redo、autosave merge key、loop playhead reset behaviorを広げない。
+- Android、shared model/schema、WAV/export、version/signing/release、Pixel/ADB、provider/public/Humanはscope外。
+- 実Windows endpointが現hostに無いため、audible qualityやdriver behaviorをLOCAL testから主張しない。
+
+## Architecture and interfaces
+
+`DesktopSamplerAudioEngine.triggerPad`のfailure contractを「replacement candidateを開始できなければexisting voicesを保持する」と明文化する。Java Soundはcandidate Clipを準備してactive registryへ仮所有させ、開始成功後にだけ事前計算したconflict setをretireする。開始失敗時はcandidateだけをabandonする。このorderingはactual adapterが使うsmall internal helperでhost-testする。
+
+controllerはeditable snapshotからcandidate PADをpureに作り、loading/recordingとno-opを先に拒否する。selected PADがactive loop ownerならadapter replacementをpreflightし、成功後にだけ既存`ProductionSession.applyEdit`/merge key/autosave経路へcommitする。失敗時はsession-only status更新だけを行う。
+
+## Milestones
+
+### Milestone 1: Failure and rejection RED
+
+- controller test: loop edit trigger failureがthrowせず、PAD value、loop owner、stop calls、history frontierを変えない。
+- controller test: active recordingで拒否したPAD editがloop retriggerを増やさない。
+- adapter ordering test: candidate start failureはcandidateだけをabandonし、existing conflictsをretireしない。successはstart後にretireする。
+- Acceptance: current implementationで少なくともfailure/rejection assertionsがREDになる。
+
+### Milestone 2: Transactional GREEN
+
+- `triggerPad` replacement orderingをcandidate-firstにする。
+- `updateSelected`をadmission → candidate playback → project commitの順へ限定する。
+- successful KEY/TONE/LEVEL/reverse/trim/choke loop edit、same-PAD monophony、CHOKE、recording/loading rejectionを回帰確認する。
+
+### Milestone 3: Review and full local gate
+
+- Standards/Spec adversarial review、desktop focused/full tests、configured validation、full clean Gradle/package/SBOM/artifact read-back、SSOT/active-state closeout。
+- Acceptance: unresolved findings `0/0`、exact product/closeout HEAD/tree/hashes、canonical dirty preservation、remaining physical audio gatesを記録する。
+
+## Progress
+
+- [x] 2026-08-27T01:48+09:00 — Wave 11 exact closeoutとcurrent sourceをread-backし、active-loop editのcommit/stop/trigger failure splitとrejected-edit retriggerを選定。専用clean worktreeを作成。
+- [ ] Milestone 1 RED。
+- [ ] Milestone 2 GREEN。
+- [ ] Milestone 3 full gate and closeout。
+
+## Decision log
+
+- 2026-08-27T01:48+09:00 — another layout proxy、pan/stems/mixer、arbitrary Song、native/MIDIではなく、日常のlive loop調整でstate/history/audioが分裂するbounded reliability defectを選択。
+- 2026-08-27T01:48+09:00 — Java Soundのold-voice preservationをcontroller fakeだけの仮定にせず、adapter contractとactual ordering helperの両方で固定する。
+- 2026-08-27T01:48+09:00 — candidate開始後の数ms overlapは、旧loopを先に破壊して失敗するより安全。物理click/overlap/latencyの聴感はdevice/Human gateとして残す。
+
+## Validation log
+
+- baseline: clean branch `7e8603c` / tree `2ca0ce1`、Wave 11 full gateは完了済み。product bytes変更前に同一高コストgateは再実行しない。
+
+## Risks and rollback
+
+最大のriskはcandidate-first開始時の一時overlap、candidate listenerとactive registryのrace、playback成功後にproject commitが進まない分裂である。start/abandon/retire order test、controller success/failure/no-op/admission controls、full desktop gateで反証する。rollbackはこのisolated branchを採用しないことだけで、Wave 11 closeoutとprotected dirty checkoutは不変。
+
+## Remaining device validation
+
+現hostにはpresent Windows AudioEndpointが無い。actual Clip/driver failure、audible continuity、click/pop、latency、route removal、Bluetooth、sleep/resume、Narrator、Human qualityはこのLOCAL contractから昇格しない。
