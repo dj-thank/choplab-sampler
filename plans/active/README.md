@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 9 in progress:** `android-aapt2-release-verifier-fallback-20260826.md`。exact Wave 8 closeout `a484a96` / tree `f325d6e`から、`apkanalyzer`を持たないbuild-tools-only SDKでもfinal APKの同一manifest/security/alignment/signature policyをfail closedで検査する。`apkanalyzer` primaryは保持し、そのcommand failureはfallbackで隠さない。署名、secret、workflow、GitHub/Release、device/provider/Humanは変更しない。
+
 **wave 8 completed local; goal remains active:** `../completed/ab-song-variation-tracer-20260826.md`。exact Wave 7 closeout `41d715c` / tree `091f6a30`から、A/B二つの16-step variationを4小節へ並べ、shared history、schema 6 save/reopen、Android/Windows playback、offline WAVを一つの順序truthへ接続した。odd BPM/swingのSong full-PCM REDでcontinuous timingを修復し、511 tests / 190-task gate、APK/EXE/SBOM read-backまで`LOCAL_PASS`。arbitrary Song editor、stereo、stems、48dp responsive redesign、device/provider/public/Humanは別gate。
 
 **wave 7 completed local:** `../completed/android-live-final-sample-parity-20260826.md`。actual Android render loopが`Voice.render()`のterminal returnを破棄していた不一致を、natural finish／48-frame releaseのactual mix seamでRED再現し、mix-before-retireへ修復。471 tests / 190-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。multi-PAD/stereo/Songとphysical/device/provider/public/Humanは未選択の別wave。

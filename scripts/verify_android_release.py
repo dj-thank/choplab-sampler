@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -51,7 +52,7 @@ def android_tool_executable_names(name: str, *, platform: str = os.name) -> tupl
     return (name,)
 
 
-def find_android_tool(name: str) -> str:
+def find_android_tool_optional(name: str) -> str | None:
     executables = android_tool_executable_names(name)
     sdk_root_text = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
     candidates: list[Path] = []
@@ -76,6 +77,15 @@ def find_android_tool(name: str) -> str:
         if found:
             return found
 
+    return None
+
+
+def find_android_tool(name: str) -> str:
+    found = find_android_tool_optional(name)
+    if found:
+        return found
+
+    sdk_root_text = os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME")
     if not sdk_root_text:
         raise VerificationError(f"Cannot find {name}; ANDROID_SDK_ROOT is not set")
     raise VerificationError(f"Cannot find Android SDK tool: {name}")
@@ -89,6 +99,23 @@ def normalize_component_name(package_name: str, name: str) -> str:
     return name
 
 
+def read_manifest_boolean(
+    element: ET.Element,
+    attribute: str,
+    *,
+    default: bool,
+) -> bool:
+    raw_value = element.attrib.get(f"{ANDROID}{attribute}")
+    if raw_value is None:
+        return default
+    normalized = raw_value.lower()
+    if normalized not in {"true", "false"}:
+        raise VerificationError(
+            f"Android manifest {attribute} must be a literal boolean; found {raw_value!r}"
+        )
+    return normalized == "true"
+
+
 def parse_manifest(xml_text: str) -> ET.Element:
     try:
         root = ET.fromstring(xml_text)
@@ -97,6 +124,156 @@ def parse_manifest(xml_text: str) -> ET.Element:
     if root.tag != "manifest":
         raise VerificationError(f"Unexpected manifest root: {root.tag}")
     return root
+
+
+def _parse_aapt2_attribute_name(raw_name: str, *, line_number: int) -> str:
+    name = re.sub(r"\(0x[0-9a-fA-F]+\)$", "", raw_name)
+    if not name or any(character.isspace() for character in name):
+        raise VerificationError(
+            f"Malformed aapt2 manifest attribute name at line {line_number}: {raw_name!r}"
+        )
+    if name.startswith(("http://", "https://")):
+        try:
+            namespace, local_name = name.rsplit(":", 1)
+        except ValueError as error:
+            raise VerificationError(
+                f"Malformed aapt2 namespaced attribute at line {line_number}: {name!r}"
+            ) from error
+        if not namespace or not local_name:
+            raise VerificationError(
+                f"Malformed aapt2 namespaced attribute at line {line_number}: {name!r}"
+            )
+        return f"{{{namespace}}}{local_name}"
+    if ":" in name:
+        raise VerificationError(
+            f"Ambiguous aapt2 attribute namespace at line {line_number}: {name!r}"
+        )
+    return name
+
+
+def _parse_aapt2_attribute_value(raw_value: str, *, line_number: int) -> str:
+    value = raw_value.strip()
+    raw_marker = " (Raw: "
+    marker_index = value.rfind(raw_marker)
+    if marker_index >= 0:
+        if not value.endswith(")"):
+            raise VerificationError(
+                f"Malformed aapt2 Raw attribute at line {line_number}: {raw_value!r}"
+            )
+        value = value[:marker_index].rstrip()
+    if not value:
+        raise VerificationError(f"Empty aapt2 manifest attribute at line {line_number}")
+    if value.startswith('"'):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise VerificationError(
+                f"Malformed quoted aapt2 attribute at line {line_number}: {error.msg}"
+            ) from error
+        if not isinstance(decoded, str):
+            raise VerificationError(
+                f"Quoted aapt2 attribute is not a string at line {line_number}"
+            )
+        return decoded
+    if '"' in value:
+        raise VerificationError(
+            f"Ambiguous quoted aapt2 attribute at line {line_number}: {value!r}"
+        )
+    return value
+
+
+def parse_aapt2_manifest(output: str) -> ET.Element:
+    """Convert strict ``aapt2 dump xmltree`` output to the canonical manifest tree."""
+
+    root: ET.Element | None = None
+    element_stack: list[tuple[int, ET.Element]] = []
+    namespace_line = re.compile(r"^N: [^=\s]+=[^\s]+(?: \(line=\d+\))?$")
+    element_line = re.compile(
+        r"^(?P<indent> *)E: (?P<tag>[A-Za-z0-9_.:-]+)(?: \(line=\d+\))?$"
+    )
+    attribute_line = re.compile(r"^(?P<indent> *)A: (?P<payload>.+)$")
+
+    for line_number, line in enumerate(output.splitlines(), start=1):
+        if not line.strip():
+            continue
+        if "\t" in line:
+            raise VerificationError(f"Unsupported aapt2 manifest tab at line {line_number}")
+        stripped = line.lstrip(" ")
+        if stripped.startswith("N:"):
+            if line != stripped or root is not None or not namespace_line.fullmatch(stripped):
+                raise VerificationError(
+                    f"Malformed aapt2 namespace line at line {line_number}: {line!r}"
+                )
+            continue
+
+        element_match = element_line.fullmatch(line)
+        if element_match:
+            indent = len(element_match.group("indent"))
+            element = ET.Element(element_match.group("tag"))
+            while element_stack and element_stack[-1][0] >= indent:
+                element_stack.pop()
+            if not element_stack:
+                if root is not None:
+                    raise VerificationError(
+                        f"aapt2 manifest contains multiple roots at line {line_number}"
+                    )
+                root = element
+            else:
+                element_stack[-1][1].append(element)
+            element_stack.append((indent, element))
+            continue
+
+        attribute_match = attribute_line.fullmatch(line)
+        if attribute_match:
+            if not element_stack:
+                raise VerificationError(
+                    f"aapt2 manifest contains an orphan attribute at line {line_number}"
+                )
+            indent = len(attribute_match.group("indent"))
+            element_indent, element = element_stack[-1]
+            if indent != element_indent + 2:
+                raise VerificationError(
+                    f"Ambiguous aapt2 attribute indentation at line {line_number}"
+                )
+            payload = attribute_match.group("payload")
+            raw_name, separator, raw_value = payload.partition("=")
+            if not separator:
+                raise VerificationError(
+                    f"Malformed aapt2 manifest attribute at line {line_number}: {payload!r}"
+                )
+            name = _parse_aapt2_attribute_name(raw_name, line_number=line_number)
+            if name in element.attrib:
+                raise VerificationError(
+                    f"aapt2 manifest contains a duplicate attribute at line {line_number}: {name!r}"
+                )
+            element.attrib[name] = _parse_aapt2_attribute_value(
+                raw_value,
+                line_number=line_number,
+            )
+            continue
+
+        raise VerificationError(
+            f"Unsupported aapt2 manifest line at line {line_number}: {line!r}"
+        )
+
+    if root is None:
+        raise VerificationError("aapt2 returned an empty manifest tree")
+    if root.tag != "manifest":
+        raise VerificationError(f"Unexpected manifest root from aapt2: {root.tag}")
+    return root
+
+
+def read_manifest(apk: Path) -> tuple[ET.Element, str]:
+    apkanalyzer = find_android_tool_optional("apkanalyzer")
+    if apkanalyzer:
+        manifest_xml = run([apkanalyzer, "manifest", "print", str(apk)]).stdout
+        return parse_manifest(manifest_xml), "apkanalyzer"
+
+    aapt2 = find_android_tool("aapt2")
+    manifest_tree = run(
+        [aapt2, "dump", "xmltree", str(apk), "--file", "AndroidManifest.xml"]
+    ).stdout
+    return parse_aapt2_manifest(manifest_tree), "aapt2"
 
 
 def verify_manifest(root: ET.Element, *, expected_version: str, expected_version_code: int) -> None:
@@ -149,7 +326,7 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
     application = root.find("application")
     if application is None:
         raise VerificationError("Android manifest has no application element")
-    if application.attrib.get(f"{ANDROID}debuggable", "false").lower() == "true":
+    if read_manifest_boolean(application, "debuggable", default=False):
         raise VerificationError("Published APK is debuggable")
 
     exported: dict[str, str | None] = {}
@@ -161,7 +338,7 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
                 continue
             normalized = normalize_component_name(package_name, raw_name)
             all_components.add(normalized)
-            if element.attrib.get(f"{ANDROID}exported", "false").lower() == "true":
+            if read_manifest_boolean(element, "exported", default=False):
                 exported[normalized] = element.attrib.get(f"{ANDROID}permission")
 
     forbidden_tooling = sorted(
@@ -270,10 +447,9 @@ def main() -> int:
     if not args.apk.is_file():
         raise VerificationError(f"APK does not exist: {args.apk}")
 
-    apkanalyzer = find_android_tool("apkanalyzer")
-    manifest_xml = run([apkanalyzer, "manifest", "print", str(args.apk)]).stdout
+    manifest, manifest_tool = read_manifest(args.apk)
     verify_manifest(
-        parse_manifest(manifest_xml),
+        manifest,
         expected_version=args.version,
         expected_version_code=args.version_code,
     )
@@ -286,6 +462,7 @@ def main() -> int:
     print(
         "Verified Android release APK: "
         f"{args.apk} version={args.version} code={args.version_code} "
+        f"manifest_tool={manifest_tool} "
         f"certificate_sha256={fingerprint or 'unsigned-ci-candidate'}"
     )
     return 0
