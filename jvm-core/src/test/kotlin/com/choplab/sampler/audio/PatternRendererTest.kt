@@ -28,6 +28,7 @@ class PatternRendererTest {
             if (index == 0) PadModel(index, stereo, 0, stereo.frameCount, gain = 1f) else PadModel(index)
         }
         val file = File.createTempFile("choplab-stereo-master", ".wav")
+        val monoFile = File.createTempFile("choplab-mono-master-control", ".wav")
 
         try {
             val summary = PatternRenderer.renderToWav(
@@ -51,8 +52,32 @@ class PatternRendererTest {
             assertEquals(summary.frameCount * 2 * Short.SIZE_BYTES, littleEndianInt(bytes, 40))
             assertTrue(pcm[energeticFrame * 2] > 0)
             assertTrue(pcm[energeticFrame * 2 + 1] < 0)
+
+            val mono = stereo.copy(
+                name = "mono-master-control",
+                samples = ShortArray(stereo.frameCount) { 6_000 },
+                channelCount = 1,
+            )
+            val monoPads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) PadModel(index, mono, 0, mono.frameCount, gain = 1f) else PadModel(index)
+            }
+            val monoSummary = PatternRenderer.renderToWav(
+                outputFile = monoFile,
+                pads = monoPads,
+                activeSteps = setOf(stepKey(0, 0)),
+                bpm = 120f,
+                swing = 50f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            val monoBytes = monoFile.readBytes()
+            assertEquals(1, monoSummary.channelCount)
+            assertEquals(1, littleEndianShort(monoBytes, 22))
+            assertEquals(2, littleEndianShort(monoBytes, 32))
+            assertEquals(monoSummary.frameCount * Short.SIZE_BYTES, littleEndianInt(monoBytes, 40))
         } finally {
             file.delete()
+            monoFile.delete()
         }
     }
 

@@ -32,6 +32,23 @@ internal fun validateDecodedAudioFormat(sampleRate: Int, channelCount: Int): Dec
     return DecodedAudioFormat(sampleRate, channelCount)
 }
 
+internal fun validateStableDecodedPcmFormat(
+    storedChannelCount: Int?,
+    storedSampleRate: Int?,
+    decodedFormat: DecodedAudioFormat,
+) {
+    check((storedChannelCount == null) == (storedSampleRate == null)) {
+        "Decoded PCM format initialization is incomplete"
+    }
+    if (storedChannelCount == null) return
+    check(storedChannelCount == retainedChannelCountForImport(decodedFormat.channelCount)) {
+        "デコード中に音声チャンネル構成が変わりました"
+    }
+    check(storedSampleRate == decodedFormat.sampleRate) {
+        "デコード中にサンプルレートが変わりました"
+    }
+}
+
 internal fun appendDecodedPcm(
     source: ByteBuffer,
     encoding: Int,
@@ -192,13 +209,17 @@ class AudioDecoder(private val context: Context) {
                 when (val outputIndex = decoder.dequeueOutputBuffer(info, CODEC_TIMEOUT_US)) {
                     MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         val format = decoder.outputFormat
-                        validateDecodedAudioFormat(
+                        val decodedFormat = validateDecodedAudioFormat(
                             sampleRate = format.intOrDefault(MediaFormat.KEY_SAMPLE_RATE, outputSampleRate),
                             channelCount = format.intOrDefault(MediaFormat.KEY_CHANNEL_COUNT, outputChannels),
-                        ).also { decodedFormat ->
-                            outputSampleRate = decodedFormat.sampleRate
-                            outputChannels = decodedFormat.channelCount
-                        }
+                        )
+                        validateStableDecodedPcmFormat(
+                            storedChannelCount = output?.channelCount,
+                            storedSampleRate = pcmSampleRate,
+                            decodedFormat = decodedFormat,
+                        )
+                        outputSampleRate = decodedFormat.sampleRate
+                        outputChannels = decodedFormat.channelCount
                         pcmEncoding = format.intOrDefault(
                             MediaFormat.KEY_PCM_ENCODING,
                             AudioFormat.ENCODING_PCM_16BIT,
@@ -233,12 +254,11 @@ class AudioDecoder(private val context: Context) {
                                     output = it
                                     pcmSampleRate = outputSampleRate
                                 }
-                                check(destination.channelCount == storedChannelCount) {
-                                    "デコード中に音声チャンネル構成が変わりました"
-                                }
-                                check(pcmSampleRate == outputSampleRate) {
-                                    "デコード中にサンプルレートが変わりました"
-                                }
+                                validateStableDecodedPcmFormat(
+                                    storedChannelCount = destination.channelCount,
+                                    storedSampleRate = pcmSampleRate,
+                                    decodedFormat = DecodedAudioFormat(outputSampleRate, outputChannels),
+                                )
                                 appendDecodedPcm(
                                     source = frameBuffer,
                                     encoding = pcmEncoding,

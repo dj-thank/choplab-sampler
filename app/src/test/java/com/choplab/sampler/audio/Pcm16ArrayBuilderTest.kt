@@ -10,6 +10,35 @@ import org.junit.Test
 
 class Pcm16ArrayBuilderTest {
     @Test
+    fun decodedPcmFormatCannotChangeAfterOutputStartsEvenWithoutAnotherPcmBuffer() {
+        validateStableDecodedPcmFormat(
+            storedChannelCount = null,
+            storedSampleRate = null,
+            decodedFormat = DecodedAudioFormat(sampleRate = 48_000, channelCount = 2),
+        )
+        validateStableDecodedPcmFormat(
+            storedChannelCount = 2,
+            storedSampleRate = 48_000,
+            decodedFormat = DecodedAudioFormat(sampleRate = 48_000, channelCount = 2),
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            validateStableDecodedPcmFormat(
+                storedChannelCount = 2,
+                storedSampleRate = 48_000,
+                decodedFormat = DecodedAudioFormat(sampleRate = 44_100, channelCount = 2),
+            )
+        }
+        assertThrows(IllegalStateException::class.java) {
+            validateStableDecodedPcmFormat(
+                storedChannelCount = 2,
+                storedSampleRate = 48_000,
+                decodedFormat = DecodedAudioFormat(sampleRate = 48_000, channelCount = 1),
+            )
+        }
+    }
+
+    @Test
     fun decodedAudioFormatRejectsImplausibleProviderOutput() {
         assertEquals(DecodedAudioFormat(8_000, 1), validateDecodedAudioFormat(8_000, 1))
         assertEquals(DecodedAudioFormat(192_000, 8), validateDecodedAudioFormat(192_000, 8))
