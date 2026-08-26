@@ -2,7 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Waves 12–16 PR #78 integration candidate — 2026-08-27
+## Wave 17 Windows initial Beat-loop startup transaction — 2026-08-27
+
+- Exact base/current-main anchor: `9441b32da468393f79e10e65b50cd596ee19742a`, tree `08849f6b5f4568745523454e5b8854ceac89a995`. Product `ca9fdbea82e436e6ceaacf8c43f9afd215d6bcf7`; reviewed head `e2ebd9c342d48cf5f96c563715b82f2f8b8f4ca1`, tree `925fbff786b9120cdd3639a2e1542c756ee24067`.
+- Current-main RED/GREEN: tests first failed compilation on missing `beatLoopControlEnabled` and `planEdit`. GREEN adds a non-consuming edit plan, shared visible admission, complete Java Sound candidate-set startup, transport-callback serialization and commit-after-start controller ordering.
+- Negative controls: loading/recording invokes no startup; owner/companion recoverable failure preserves transport/project/history/revision and exact autosave archive bytes; fatal and contract-external errors propagate; a late transport callback cannot add a voice during handoff. Direct proxy-Clip tests prove all candidates start before source/old PAD retirement and candidate failure retires neither.
+- Success controls: the complete session starts one loop owner plus eligible companions, retires prior playback once, publishes one owner, commits one Undo step when PAD modes change and keeps exact GATE ownership APIs. Active-loop stop remains covered by the existing suite.
+- Executable proof: focused shared Android/Desktop plus Desktop gate passes 333 / 58. Full single-worker gate passes 184 tasks (150 executed / 34 up-to-date). XML: Android 276 / 47, shared Android 86 / 17, shared Desktop 86 / 17, JVM 88 / 9, Desktop 163 / 24; total 699 / 114, failures/errors/skips 0. Lint debug/release each: fatal/error 0 / warning 4.
+- Policy: Python 64/64; public current/history 457 each; configured validator 18 tasks plus six XML, executable modes, wrapper SHA and UTF-8; `git diff --check` pass. Unsigned Android positive exits 0 (`0.17.0` / code 27 / `manifest_tool=apkanalyzer`); signed-required negative exits 1. CycloneDX 1.6 verifies 650 components / 651 dependencies.
+- Artifacts: debug APK 31,803,506 / `BA96E55410DACE8B753F6C60600375429946069BDD4600404AA7C54399695BC8`; androidTest 10,996,855 / `F8AC9B2C1FC97672FCFB8565127D6099D80E906F49F623BE334C61AF102FE622`; unsigned release 24,274,036 / `D8165757CF4393DBCC808118D49585A23D5ACCB3237998BDE74620DF9D686AB5`; Desktop JAR 406,445 / `6659571F558CB832E9D88D21E8E9409A2EDB6370B912ADEA167026004EB25EE7`; Windows app-image 405 / 176,776,461 / manifest `A98268B6A9F53ACA288D89811DDAEA66170795B113EBA84D06A1EF5160EFADC6`; SBOM JSON `D2C005FDA6DE4CEB9C4FC5A8EE3E58E6AD52FA1525EA5A1FEE9E0A98D6341389`, XML `DD8F19E237CC36C84430B6F2E3442FD4ED3612F8CB4D383B89F7D427E1D190F4`.
+- Review/gate: local parent two-pass Standards/Spec final unresolved `0/0`. The managed sandbox denied Javac/apkanalyzer access to readable workspace artifacts; identical offline commands passed outside it. Gate is `LOCAL_PASS`; no physical audio/device/provider/public/signing/Human claim is inferred.
+
+## Historical Waves 12–16 PR #78 integration candidate — 2026-08-27
 
 - Product: merge `04a761c589f9370811b54224801064448def2951`, tree `12984c19307849012fade6dae538a5b3b74bbd63`, parents Waves 12–15 receipt `9cca343fae45c74747a22eb04eca98ceb8c13543` and Wave 16 source `63092410f6f249d7b89c49393efe6cfbed349827` / tree `263c1958ccf0e52fa417fa6254a43bffde392cf0`.
 - Admission contract: one shared loading/recording decision controls deck buttons, Windows menu and both platform controllers. The deep history owner rejects busy plans without consuming history or revision, invalidates a stale unresolved plan, and preserves normal Undo/Redo plus same-owner loop continuity.

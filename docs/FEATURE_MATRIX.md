@@ -60,7 +60,7 @@
 | ハードウェア系サンプラーの操作感 | ✅ device | 4工程、正方形PAD、役割色、波形、KEY/TONE/LEVEL、触覚、二段階clearを独自UIで再構成。連打感と触覚の最終評価はHuman判断 |
 | Pitch | ✅ | ±24 st、速度も連動 |
 | Reverse | ✅ | PAD別 |
-| One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
+| One Shot / Gate / Beat Loop | ✅ current local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。Windows初回startはloading/recording admission後にowner＋eligible VOICE候補を全開始し、source／旧PAD／transport／scratch退役より前にcomplete candidate setを確認してからproject/history/autosaveをexact-once commitする。owner/companion recoverable failureは旧再生、PAD mode、frontier、durable autosave bytesを保持。loop停止effect失敗時もmode/owner/historyを変更しない。物理click/overlap/latencyは未確認 |
 | Choke group | ✅ | 1–4 |
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
 | マイク停止の完了確認 | 🧪 current local | PR #75 / `main@4f56a69`でAndroid native startをdaemon startupへ逃がし、pending STOPはframework `stop`を呼ばず`release`も非同期に委譲する。startup待ちを最大2秒で失敗確定し、未完成WAVをdecodeせず、実unwindまで代替startをfail-closedにする。RESET/`onCleared`は取消状態だけを同期公開し、native待ちはdaemonで完了する。Windowsはlineの`open`後`start`失敗でexact-once closeと一時WAV破棄を保持 |

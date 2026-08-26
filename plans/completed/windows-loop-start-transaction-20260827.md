@@ -1,4 +1,4 @@
-# Start a Windows Beat loop without destroying the current production on failure
+# Start a Windows Beat loop transactionally without destroying the current production on failure
 
 ## User outcome
 
@@ -95,6 +95,11 @@ On Windows, pressing Beat Loop while another primary playback mode is active eit
 - Current-main RED: `:shared:compileTestKotlinDesktop :desktop:compileTestKotlin`; missing `beatLoopControlEnabled` / `planEdit`.
 - Focused GREEN: `:shared:testAndroidHostTest :shared:desktopTest :desktop:test`; 333 tests / 58 suites, zero failure/error/skip.
 - Adapter wiring follow-up: `:desktop:test`; success after adding direct proxy-Clip success/failure ordering controls.
+- Full gate: 184 tasks (150 executed / 34 up-to-date), `BUILD SUCCESSFUL in 2m45s` outside the managed sandbox after the same sandboxed command twice stopped at a readable Gradle-cache JAR with `AccessDeniedException`.
+- XML read-back: Android 276 / 47 suites; shared Android 86 / 17; shared Desktop 86 / 17; JVM 88 / 9; Desktop 163 / 24; total 699 / 114, zero failure/error/skip.
+- Lint debug/release: fatal/error 0, warning 4 each. Python policy 64/64; public current/history 457 each; configured validator 18 tasks plus XML/mode/wrapper/UTF-8 checks.
+- Android unsigned candidate verifier exit 0 (`0.17.0` / code 27 / `manifest_tool=apkanalyzer`); signed-required negative exit 1. CycloneDX 1.6 verifies 650 components / 651 dependencies.
+- Artifacts: debug APK `BA96E55410DACE8B753F6C60600375429946069BDD4600404AA7C54399695BC8`; androidTest `F8AC9B2C1FC97672FCFB8565127D6099D80E906F49F623BE334C61AF102FE622`; unsigned release `D8165757CF4393DBCC808118D49585A23D5ACCB3237998BDE74620DF9D686AB5`; Desktop JAR `6659571F558CB832E9D88D21E8E9409A2EDB6370B912ADEA167026004EB25EE7`; Windows image manifest `A98268B6A9F53ACA288D89811DDAEA66170795B113EBA84D06A1EF5160EFADC6`.
 
 ## Risks and rollback
 
@@ -114,4 +119,5 @@ On Windows, pressing Beat Loop while another primary playback mode is active eit
 - [x] 2026-08-27 — Preserved the earlier dirty Wave 17 worktree as historical input and created a clean exact-main owner worktree instead of overwriting or treating the old branch as current proof.
 - [x] 2026-08-27 — Current-main RED: shared test compilation failed on missing `beatLoopControlEnabled` and `planEdit`; the controller/lifecycle tests also required a complete loop-session audio-port operation.
 - [x] 2026-08-27 — Implemented the shared edit-plan/presentation admission and Windows complete candidate-set handoff while retaining exact GATE ownership. Focused shared Android 86 / 17 suites, shared Desktop 86 / 17 and Desktop 161 / 24 pass: 333 tests / 58 suites, zero failure/error/skip.
-- [ ] Run two-axis review, full configured gate, record artifacts and close the plan.
+- [x] 2026-08-27 — Local parent two-axis review found missing direct actual-adapter ordering proof and incomplete ExecPlan structure. Added proxy-Clip source/PAD success/failure controls, exact durable autosave-byte control and the required architecture/milestone/risk logs; final Standards/Spec unresolved findings are `0/0`.
+- [x] 2026-08-27 — Full 184-task gate, 699-test XML read-back, lint, Python/public policy, configured validator, APK positive/negative, Windows package and SBOM all pass. Recorded exact artifacts and closed at `LOCAL_PASS`.
