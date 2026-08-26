@@ -86,6 +86,29 @@ class VerifiedDocumentPublisherTest {
     }
 
     @Test
+    fun oversizedNonTerminatingReadBackStopsAtTheFirstExtraByte() {
+        val directory = Files.createTempDirectory("choplab-verified-document-endless-extra").toFile()
+        val source = directory.resolve("source.bin").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val destination = MemoryDestination()
+        val readBack = BoundedEndlessInputStream(maximumReadableBytes = source.length() + 1L)
+
+        try {
+            val failure = assertThrows(DocumentPublicationException::class.java) {
+                publishVerifiedDocument(
+                    source = source,
+                    openDestinationOutput = destination::openOutput,
+                    openDestinationReadBack = { readBack },
+                )
+            }
+
+            assertEquals("保存先の内容が書き込んだデータと一致しません", failure.message)
+            assertEquals(source.length() + 1L, readBack.bytesRead)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun unavailableOutputOrReadBackFailsClosed() {
         val directory = Files.createTempDirectory("choplab-verified-document-open").toFile()
         val source = directory.resolve("source.bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
@@ -331,5 +354,29 @@ private class IntermittentZeroInputStream(bytes: ByteArray) : InputStream() {
         }
         returnZero = true
         return delegate.read(buffer, offset, length)
+    }
+}
+
+private class BoundedEndlessInputStream(
+    private val maximumReadableBytes: Long,
+) : InputStream() {
+    var bytesRead: Long = 0L
+        private set
+
+    override fun read(): Int {
+        if (bytesRead >= maximumReadableBytes) {
+            throw AssertionError("read-back continued after the first provable extra byte")
+        }
+        bytesRead += 1L
+        return 0x5A
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (bytesRead + length > maximumReadableBytes) {
+            throw AssertionError("read-back requested bytes past the first provable extra byte")
+        }
+        buffer.fill(0x5A.toByte(), offset, offset + length)
+        bytesRead += length.toLong()
+        return length
     }
 }

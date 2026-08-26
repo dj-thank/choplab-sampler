@@ -45,7 +45,7 @@ fun publishVerifiedDocument(
 
     val destinationFingerprint = try {
         openDestinationReadBack()
-            ?.use(::fingerprint)
+            ?.use { input -> fingerprint(input, sourceFingerprint.byteCount) }
             ?: throw DocumentPublicationException("保存先を再読できません")
     } catch (cancellation: CancellationException) {
         throw cancellation
@@ -59,7 +59,7 @@ fun publishVerifiedDocument(
         sourceFingerprint.byteCount != destinationFingerprint.byteCount ||
         !MessageDigest.isEqual(sourceFingerprint.digest, destinationFingerprint.digest)
     ) {
-        throw DocumentPublicationException("保存先の内容が書き込んだデータと一致しません")
+        throw DocumentPublicationException(PUBLICATION_MISMATCH_MESSAGE)
     }
 }
 
@@ -89,23 +89,38 @@ private fun copyAndFingerprint(input: InputStream, output: OutputStream): Stream
     return StreamFingerprint(byteCount, digest.digest())
 }
 
-private fun fingerprint(input: InputStream): StreamFingerprint {
+private fun fingerprint(
+    input: InputStream,
+    expectedByteCount: Long,
+): StreamFingerprint {
     val digest = MessageDigest.getInstance("SHA-256")
     val buffer = ByteArray(COPY_BUFFER_BYTES)
     var byteCount = 0L
     while (true) {
-        val count = input.read(buffer)
+        val remaining = expectedByteCount - byteCount
+        val readLimit = if (remaining >= buffer.size.toLong()) {
+            buffer.size
+        } else {
+            (remaining + 1L).toInt()
+        }
+        val count = input.read(buffer, 0, readLimit)
         when {
             count < 0 -> break
             count > 0 -> {
+                if (count.toLong() > remaining) {
+                    throw DocumentPublicationException(PUBLICATION_MISMATCH_MESSAGE)
+                }
                 digest.update(buffer, 0, count)
-                byteCount = Math.addExact(byteCount, count.toLong())
+                byteCount += count.toLong()
             }
             else -> {
                 val single = input.read()
                 if (single < 0) break
+                if (byteCount >= expectedByteCount) {
+                    throw DocumentPublicationException(PUBLICATION_MISMATCH_MESSAGE)
+                }
                 digest.update(single.toByte())
-                byteCount = Math.addExact(byteCount, 1L)
+                byteCount += 1L
             }
         }
     }
@@ -118,3 +133,4 @@ private data class StreamFingerprint(
 )
 
 private const val COPY_BUFFER_BYTES = 64 * 1024
+private const val PUBLICATION_MISMATCH_MESSAGE = "保存先の内容が書き込んだデータと一致しません"
