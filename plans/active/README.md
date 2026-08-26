@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の統合plan:** 8/8 hosted済みの既存PR #78 receipt `8680fdb`へ、exact-head reviewのnon-terminating provider read-back bound修正 `a531f7b`とclean Wave 15 closeout `1deb8a9`を統合する。Waves 12–14のfocused editor、status epoch、exact GATE ownership、candidate-first loop replacement、atomic Windows WAV、verified Android publicationを保持し、Wave 15のsame-owner active-loop Undo/Redo transactionを追加する。fresh merged local gate、artifact/policy/read-back、two-axis reviewと、新しい同一exact final headのhosted Android/Windows/iOS/supply-chainが全て通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** product merge `37312af` / tree `a9a1e07`として、8/8 hosted済みの既存PR #78 receipt `8680fdb`、exact-head reviewのnon-terminating provider read-back bound修正 `a531f7b`、clean Wave 15 closeout `1deb8a9`を統合済み。Waves 12–14のfocused editor、status epoch、exact GATE ownership、candidate-first loop replacement、atomic Windows WAV、verified Android publicationを保持し、Wave 15のsame-owner active-loop Undo/Redo transactionを追加した。663 tests、全184-task gate、artifact/policy/read-back、two-axis reviewは`LOCAL_PASS`。次は同じPR #78だけをfast-forward更新し、新しい同一exact final headのhosted Android/Windows/iOS/supply-chain、clean mergeability、review thread解消が全て揃う場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 
