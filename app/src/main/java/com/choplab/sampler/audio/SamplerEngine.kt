@@ -372,15 +372,13 @@ class SamplerEngine(
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
                         if (voice.active) {
-                            val value = voice.render(outputSampleRate)
-                            if (voice.finished) {
-                                voice.deactivate()
-                            } else {
+                            val value = renderPadVoiceFrameForMix(voice, outputSampleRate)
+                            if (voice.active) {
                                 if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
                                     latestLoopFrame = voice.currentFrame
                                 }
-                                monoMix += value
                             }
+                            monoMix += value
                         }
                         voiceIndex++
                     }
@@ -956,6 +954,24 @@ class SamplerEngine(
         const val SOURCE_SCRATCH_PAD_INDEX = -3
         const val SCRATCH_SMOOTHING = 0.025
     }
+}
+
+/**
+ * Host-testable form of the PAD-voice render/retire ordering used by the realtime loop.
+ *
+ * A terminal render call can return a valid final sample while also setting `finished`.
+ * Capture that value, retire the voice immediately, then return the captured sample so
+ * the caller mixes it exactly once.
+ */
+@Suppress("NOTHING_TO_INLINE")
+internal inline fun renderPadVoiceFrameForMix(
+    voice: SamplerEngine.Voice,
+    outputSampleRate: Int,
+): Float {
+    if (!voice.active) return 0f
+    val value = voice.render(outputSampleRate)
+    if (voice.finished) voice.deactivate()
+    return value
 }
 
 /** Retires every older copy of one PAD without touching intentional other-PAD layers. */

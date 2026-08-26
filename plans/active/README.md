@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 7 selected after evidence recompute:** `android-live-final-sample-parity-20260826.md`。actual Android render loopが`Voice.render()`のterminal returnを`finished`判定後にmixせず破棄する一方、offline WAV/oracleはmixしていた。call-site orderingをhost-testable seamでREDにし、mix-before-retireへ最小修復する。multi-PAD oracleはこの上流不一致を閉じるまでdefer。targetは`LOCAL_PASS`。
+
 **wave 6 completed local:** `../completed/choke-export-parity-20260826.md`。offline WAVのsame-group VOICEがloop ownerをsilenceするlive/export不一致をshared companion policyで修復。owner-only／other-group layerのfull-bar最大PCM差≤1、no-loop／multiple-loop controls、469 tests / 190-task gateで`LOCAL_PASS`。
 
 **wave 5 completed local:** `../completed/choke-loop-session-ownership-20260826.md`。同じnonzero CHOKE groupのPAD triggerがloop owner voiceだけを止めてcontroller state／VOICE companionを残す不具合と、同group companionがloop開始直後にownerをsilenceする不具合をshared ownership planで修復。通常polyphonyを保持し、466 tests / 190-task gateで`LOCAL_PASS`。
