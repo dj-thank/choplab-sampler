@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 11 active local:** `focused-step-editor-accessibility-20260827.md`。exact Wave 10 closeout `600211f` / tree `3300900`から、`並べる詳細 / STEPS`を固定・非scrollのfocused editorへし、portrait 4×4 / landscape 8×2の全16 cellsをsupported reference viewport/font scaleで48dp以上にする。既存BPM/音色/preset面は削除せず往復可能に保つ。targetは`LOCAL_PASS`で、physical touch/TalkBack/Narrator、device/provider/public/signing/Humanはscope外。
+
 **wave 10 completed local; goal remains active:** `../completed/stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持した。3–8chは既存互換mono、schema 1–6とmono-only WAV shapeを保護。product checkpoint `66d3911` / tree `e60216a`、537 tests / 197-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。device/provider/public/signing/Humanはscope外。
 
 **wave 9 completed local; goal remains active:** `../completed/android-aapt2-release-verifier-fallback-20260826.md`。exact Wave 8 closeout `a484a96` / tree `f325d6e`から、`apkanalyzer`を持たないbuild-tools-only SDKでもfinal APKの同一manifest/security/alignment/signature policyをfail closedで検査できるようにした。product checkpoint `e522907` / tree `514e516`、Python policy 59、configured validation、exact Wave 8 APK/SBOM read-backまで`LOCAL_PASS`。署名、secret、workflow、GitHub/Release、device/provider/Humanは変更していない。
