@@ -101,7 +101,6 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
             .performClick()
         composeRule.onNode(hasContentDescription("クイック", substring = true))
-            .performScrollTo()
             .assertIsDisplayed()
     }
 
