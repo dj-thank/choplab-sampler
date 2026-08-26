@@ -1,5 +1,20 @@
 # Project state
 
+## Current snapshot — 2026-08-26 Android live terminal-sample parity
+
+This is the current local product truth for wave 7. It fixes the actual Android PAD mix call site rather than extending the earlier primitive/offline oracle.
+
+- Observed/read back at: `2026-08-26T21:47:28+09:00`.
+- Product source: `codex/choplab-polyphonic-pattern-parity-20260826@2948c6a59ab18ba18a0813e9033098b4e31e41a6`, tree `52059c3dce144ef3ad3a3f81b863709edbe8c9c6`, based on wave-6 closeout `6a0649d80e3e1c62bb10742b0ec01765f0a2c45b`. The branch name records the initial portfolio choice before stronger evidence caused a recompute. Dirty canonical preservation root remains untouched.
+- Defect and repair: `SamplerEngine.renderLoop` previously deactivated a PAD voice and skipped its return when the same `Voice.render()` call marked the voice finished. The loop now captures the value, retires immediately when finished, and mixes that captured terminal sample exactly once; subsequent calls return zero.
+- TDD evidence: the behavior-preserving actual-mix seam was RED twice. Natural completion lost frame `402` (`-0.0012556206` versus `0.0`); a 48-frame release lost frame `47` (`0.0040690107` versus `0.0`). Both fixtures and existing primitive/offline parity are GREEN after the one-variable ordering repair.
+- Realtime boundary: the same-file helper is `internal inline`; release bytecode contains no helper invocation at the call site. The relevant path remains render → finished check → deactivate → mix captured value, with no new allocation, blocking, I/O, logging or UI call. Pitch, tone, gain, envelope, CHOKE selection, event order, loop ownership and project bytes are unchanged.
+- Validation: 190-task full gate exit `0`. Android 252, shared Android/Desktop 40/40, JVM-core 55, Desktop 84; 471 tests / 87 suites, failures/errors/skips 0. Lint debug/release each report 0 fatal, 0 errors and 7 warnings. Configured validation 18 tasks, Python policy 40, public-surface 418 and `git diff --check` PASS.
+- Artifact read-back: debug APK 31,590,514 / `5B2D88932F3F8AA1B79E4123585464EB35221AB99C130B2AB122D6565F4C978C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `0AFAEEE1887DE5AD872D1F190D328E6710807A0B1F78E01F3B5097C1105D86DC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- SBOM/read-back: CycloneDX 1.6, product version `0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `50B03C65FEC1B35E159FB539A446ED9957813D745F5A3E240E658823F59B35F2`. All listed artifacts are newer than the product commit.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio and review: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE7_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE7_REVIEW_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, click/pop, DAC/output capture, latency, sustained polyphony, route loss, device/provider/public/signing and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-26 CHOKE live/export loop-session parity
 
 This is the current local product truth for wave 6. It makes offline WAV select the same unambiguous Beat-loop owner and eligible vocal companions as live loop start.

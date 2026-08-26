@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Android live terminal-sample parity — 2026-08-26
+
+- Product checkpoint: `2948c6a59ab18ba18a0813e9033098b4e31e41a6`, tree `52059c3dce144ef3ad3a3f81b863709edbe8c9c6`, base `6a0649d80e3e1c62bb10742b0ec01765f0a2c45b`.
+- RED: a behavior-preserving extraction of the actual PAD render/retire call site failed twice at the exact same values. Natural finish frame `402` expected `-0.0012556206` but mixed `0.0`; 48-frame release frame `47` expected `0.0040690107` but mixed `0.0`.
+- GREEN: the call site captures the one render return, deactivates immediately if it also reports finished, then mixes the captured return once. Natural and release sequences match direct `Voice` output exactly; inactive follow-up returns zero. Existing `PatternMasterParityTest` and `PatternRendererTest` remain green.
+- Realtime inspection: `renderPadVoiceFrameForMix` is inline. Release `SamplerEngine.renderLoop` bytecode has no helper invocation and the relevant block retains one `Voice.render`, followed by finished/deactivate and the captured float mix. No new allocation, blocking, I/O, logging or UI reference was introduced.
+- Full gate: 190 tasks, exit `0`. Android 252 / 45 suites, shared Android/Desktop 40/40 / 8+8 suites, JVM-core 55 / 8 suites, Desktop 84 / 18 suites; 471 tests / 87 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Artifacts: debug APK 31,590,514 / `5B2D88932F3F8AA1B79E4123585464EB35221AB99C130B2AB122D6565F4C978C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `0AFAEEE1887DE5AD872D1F190D328E6710807A0B1F78E01F3B5097C1105D86DC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- Other gates: configured validation 18 tasks, Python policy 40, public-surface 418, `git diff --check` PASS. CycloneDX 1.6 / product `0.17.0` / 650 components / 651 dependencies / 1,581,101 bytes / `50B03C65FEC1B35E159FB539A446ED9957813D745F5A3E240E658823F59B35F2` parsed successfully. Every listed artifact is newer than the product commit.
+- Review: parent PAD `work/PAD_CHOPLAB_GOAL_WAVE7_REVIEW_20260826.md`; Standards/Spec unresolved 0/0.
+- Gate: `LOCAL_PASS`; actual output capture, physical click/pop/tails, latency, sustained polyphony, route/device, provider/public/signing and Human outcomes remain unclaimed.
+
 ## CHOKE live/export loop-session parity — 2026-08-26
 
 - Product checkpoint: `b445c18a6bb50abfd878f95a2d2e6c3397cb3222`, tree `a650dae4c5bc7a18d321c303fdcad8c268f2888e`, base `611a58932fff6faf4ae6178acdc1f7c575cb0a7b`.
