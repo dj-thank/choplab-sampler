@@ -856,13 +856,29 @@ class DesktopSamplerController(
             statusMessage = "PAD ${index + 1}の音声全体をループ中です",
         )
         val plan = productionSession.planEdit(state, target)
+        val preparedSession = try {
+            player.prepareExclusiveLoopSession(loopPad, companionPads)
+        } catch (failure: DesktopLoopSessionStartupException) {
+            productionSession.cancel(plan)
+            setStatus("ビートループを開始できませんでした: ${failure.message}")
+            return
+        } catch (failure: Throwable) {
+            productionSession.cancel(plan)
+            throw failure
+        }
+        val startedSession = try {
+            preparedSession.startCandidates()
+        } catch (failure: DesktopLoopSessionStartupException) {
+            productionSession.cancel(plan)
+            setStatus("ビートループを開始できませんでした: ${failure.message}")
+            return
+        } catch (failure: Throwable) {
+            productionSession.cancel(plan)
+            throw failure
+        }
         playbackTransitionLock.withLock {
             try {
-                player.startExclusiveLoopSession(loopPad, companionPads)
-            } catch (failure: DesktopLoopSessionStartupException) {
-                productionSession.cancel(plan)
-                setStatus("ビートループを開始できませんでした: ${failure.message}")
-                return
+                startedSession.retirePriorPlayback()
             } catch (failure: Throwable) {
                 productionSession.cancel(plan)
                 throw failure

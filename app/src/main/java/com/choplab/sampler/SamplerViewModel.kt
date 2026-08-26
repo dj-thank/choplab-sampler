@@ -26,6 +26,7 @@ import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
+import com.choplab.sampler.audio.discardVocalTakeAfterLoopAdmissionFailure
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.HistoryRequestDenial
@@ -274,6 +275,34 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         loopToStop?.let { loopPad ->
             engine.stopPad(loopPad)
             playbackInterruptionCoordinator.endPlaybackSession()
+        }
+    }
+
+    private fun discardRejectedVocalTake(
+        operation: Long,
+        requestedFile: File,
+        message: String,
+    ) {
+        vocalCapture.discard(operation)
+        mutableUiState.update { state ->
+            stopRecordingSession(state, RecordingKind.VOCAL_OVERDUB).copy(
+                statusMessage = "$message。録音テイクを破棄しています…",
+            )
+        }
+        viewModelScope.launch {
+            val cleanup = withContext(Dispatchers.IO) {
+                discardVocalTakeAfterLoopAdmissionFailure(
+                    requestedFile = requestedFile,
+                    stopRecorder = microphoneRecorder::stop,
+                    deleteOwned = captureTempFiles::deleteOwned,
+                )
+            }
+            projectOperations.completeIfCurrent(operation) {
+                finishVocalRecordingFailure(
+                    message = cleanup.exceptionOrNull()?.message?.let { "$message: $it" } ?: message,
+                    cleanupOwner = VocalFailureCleanupOwner.STOP_OPERATION,
+                )
+            }
         }
     }
 
@@ -537,8 +566,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                             val beatLoopReady = !recordingPolicy.allowBeatLoopDuringRecording ||
                                 preparePlaybackStart(allowDuringRecording = true)
                             if (!beatLoopReady) {
-                                stopVocalOverdubRecording()
-                                setStatus("他のアプリが音声を使用中のため、ボーカル録音を停止します")
+                                discardRejectedVocalTake(
+                                    operation = operation,
+                                    requestedFile = file,
+                                    message = "他のアプリが音声を使用中のため、ボーカル録音を停止しました",
+                                )
+                                return@completeIfCurrent
                             } else {
                                 val loopAdmitted = !recordingPolicy.allowBeatLoopDuringRecording ||
                                     startAndroidPadLoopSession(
@@ -549,8 +582,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                                     )
                                 if (!loopAdmitted) {
                                     playbackInterruptionCoordinator.endPlaybackSession()
-                                    stopVocalOverdubRecording()
-                                    setStatus("再生操作が集中しているため、ボーカル録音を停止します")
+                                    discardRejectedVocalTake(
+                                        operation = operation,
+                                        requestedFile = file,
+                                        message = "再生操作が集中しているため、ボーカル録音を停止しました",
+                                    )
                                     return@completeIfCurrent
                                 }
                                 mutableUiState.value = started.copy(

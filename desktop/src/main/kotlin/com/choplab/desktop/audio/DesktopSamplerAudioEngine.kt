@@ -9,6 +9,16 @@ class DesktopLoopSessionStartupException(cause: Exception) : Exception(
     cause,
 )
 
+/** Started candidate voices that can retire superseded playback at the controller handoff boundary. */
+fun interface DesktopStartedLoopSession {
+    fun retirePriorPlayback()
+}
+
+/** Prepared clips whose potentially slow startup remains outside the controller handoff boundary. */
+fun interface DesktopPreparedLoopSession {
+    fun startCandidates(): DesktopStartedLoopSession
+}
+
 /** Platform audio port used by the desktop controller and test fakes. */
 interface DesktopSamplerAudioEngine : AutoCloseable {
     val isSourcePlaying: Boolean
@@ -26,12 +36,16 @@ interface DesktopSamplerAudioEngine : AutoCloseable {
      */
     fun triggerPad(pad: PadModel, forceLoop: Boolean = false): Long
     /**
-     * Starts the complete Beat-loop session before retiring existing source/PAD playback.
-     * Preparation or startup failure must abandon every candidate, preserve prior playback,
-     * and throw [DesktopLoopSessionStartupException]. Failures after candidate startup are not
-     * recoverable under this contract and must propagate unchanged.
+     * Prepares a complete Beat-loop session without retiring existing source/PAD playback.
+     * [DesktopPreparedLoopSession.startCandidates] may also be slow and must run before the
+     * controller enters its handoff boundary. Preparation or startup failure must abandon every
+     * candidate, preserve prior playback, and throw [DesktopLoopSessionStartupException]. Once
+     * startup succeeds, retirement failures are non-recoverable and must propagate unchanged.
      */
-    fun startExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>)
+    fun prepareExclusiveLoopSession(
+        loopPad: PadModel,
+        companionPads: List<PadModel>,
+    ): DesktopPreparedLoopSession
     fun releasePad(index: Int)
     /** Releases only the GATE voice created by [triggerPad] with [ownership]. */
     fun releasePadIfOwned(index: Int, ownership: Long)

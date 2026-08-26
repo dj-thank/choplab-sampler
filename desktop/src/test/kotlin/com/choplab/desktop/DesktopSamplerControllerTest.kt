@@ -3,7 +3,9 @@ package com.choplab.desktop
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopLoopSessionStartupException
+import com.choplab.desktop.audio.DesktopPreparedLoopSession
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
+import com.choplab.desktop.audio.DesktopStartedLoopSession
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
@@ -2220,7 +2222,7 @@ class DesktopSamplerControllerTest {
             controller.toggleTransport()
             val before = controller.state.value
             val stopAllBefore = engine.stopAllCount
-            engine.failNextTrigger = true
+            engine.failNextExclusiveStart = true
 
             val result = runCatching { controller.toggleBeatLoopControl() }
 
@@ -2236,6 +2238,44 @@ class DesktopSamplerControllerTest {
             assertEquals(0, engine.exclusiveRetireCount)
             assertTrue(after.statusMessage.startsWith("ビートループを開始できませんでした:"))
         } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun slowFailedInitialBeatLoopPreparationDoesNotPauseExistingTransport() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.fillSelectedPadPattern(com.choplab.sampler.model.RepeatGrid.SIXTEENTH)
+            controller.setBpm(240f)
+            controller.toggleTransport()
+            awaitCondition { engine.triggered.isNotEmpty() }
+            engine.triggered.clear()
+
+            val preparationEntered = CountDownLatch(1)
+            val releasePreparation = CountDownLatch(1)
+            engine.exclusiveStartHook = {
+                preparationEntered.countDown()
+                check(releasePreparation.await(2, TimeUnit.SECONDS))
+            }
+            engine.failNextExclusiveStart = true
+            val start = executor.submit { controller.toggleBeatLoopControl() }
+
+            assertTrue(preparationEntered.await(2, TimeUnit.SECONDS))
+            Thread.sleep(400L)
+            val transportContinued = engine.triggered.isNotEmpty()
+            releasePreparation.countDown()
+            start.get(2, TimeUnit.SECONDS)
+
+            assertTrue(transportContinued)
+            assertTrue(controller.state.value.transportPlaying)
+            assertTrue(controller.state.value.statusMessage.startsWith("ビートループを開始できませんでした:"))
+        } finally {
+            executor.shutdownNow()
             controller.close()
         }
     }
@@ -2397,17 +2437,17 @@ class DesktopSamplerControllerTest {
             awaitCondition { engine.triggered.isNotEmpty() }
             engine.triggered.clear()
 
-            val candidateEntered = CountDownLatch(1)
-            val releaseCandidate = CountDownLatch(1)
-            engine.exclusiveStartHook = {
-                candidateEntered.countDown()
-                check(releaseCandidate.await(2, TimeUnit.SECONDS))
+            val handoffEntered = CountDownLatch(1)
+            val releaseHandoff = CountDownLatch(1)
+            engine.exclusiveRetireHook = {
+                handoffEntered.countDown()
+                check(releaseHandoff.await(2, TimeUnit.SECONDS))
             }
             val handoff = executor.submit { controller.toggleBeatLoopControl() }
 
-            assertTrue(candidateEntered.await(2, TimeUnit.SECONDS))
+            assertTrue(handoffEntered.await(2, TimeUnit.SECONDS))
             Thread.sleep(350L)
-            releaseCandidate.countDown()
+            releaseHandoff.countDown()
             handoff.get(2, TimeUnit.SECONDS)
 
             assertFalse(controller.state.value.transportPlaying)
@@ -2446,12 +2486,14 @@ class DesktopSamplerControllerTest {
         val stoppedPads = mutableListOf<Int>()
         private var nextVoiceOwnership: Long = 0L
         var failNextTrigger: Boolean = false
+        var failNextExclusiveStart: Boolean = false
         var failTriggerPad: Int? = null
         var failNextStopPad: Boolean = false
         var failNextStopAll: Boolean = false
         var failClose: Boolean = false
         var nextTriggerFailure: Throwable? = null
         var exclusiveStartHook: (() -> Unit)? = null
+        var exclusiveRetireHook: (() -> Unit)? = null
         @Volatile var exclusiveStartCount: Int = 0
         @Volatile var exclusiveRetireCount: Int = 0
         @Volatile var failNextLoad: Boolean = false
@@ -2502,34 +2544,44 @@ class DesktopSamplerControllerTest {
             nextVoiceOwnership += 1L
             return nextVoiceOwnership
         }
-        override fun startExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>) {
+        override fun prepareExclusiveLoopSession(
+            loopPad: PadModel,
+            companionPads: List<PadModel>,
+        ): DesktopPreparedLoopSession {
             exclusiveStartCount++
-            exclusiveStartHook?.invoke()
-            nextTriggerFailure?.let { failure ->
-                nextTriggerFailure = null
-                throw failure
-            }
-            if (failNextTrigger) {
-                failNextTrigger = false
-                throw DesktopLoopSessionStartupException(
-                    IllegalStateException("test output unavailable"),
-                )
-            }
             val candidates = listOf(loopPad to true) + companionPads.map { it to false }
-            failTriggerPad?.let { failingPad ->
-                if (candidates.any { it.first.globalIndex == failingPad }) {
-                    failTriggerPad = null
+            return DesktopPreparedLoopSession {
+                exclusiveStartHook?.invoke()
+                nextTriggerFailure?.let { failure ->
+                    nextTriggerFailure = null
+                    throw failure
+                }
+                if (failNextExclusiveStart) {
+                    failNextExclusiveStart = false
                     throw DesktopLoopSessionStartupException(
-                        IllegalStateException("test companion output unavailable"),
+                        IllegalStateException("test output unavailable"),
                     )
                 }
+                failTriggerPad?.let { failingPad ->
+                    if (candidates.any { it.first.globalIndex == failingPad }) {
+                        failTriggerPad = null
+                        throw DesktopLoopSessionStartupException(
+                            IllegalStateException("test companion output unavailable"),
+                        )
+                    }
+                }
+                candidates.forEach { (pad, forceLoop) ->
+                    triggered += pad to forceLoop
+                    nextVoiceOwnership += 1L
+                }
+                DesktopStartedLoopSession {
+                    exclusiveRetireHook?.invoke()
+                    triggered.clear()
+                    triggered.addAll(candidates)
+                    exclusiveRetireCount++
+                    isSourcePlaying = false
+                }
             }
-            candidates.forEach { (pad, forceLoop) ->
-                triggered += pad to forceLoop
-                nextVoiceOwnership += 1L
-            }
-            exclusiveRetireCount++
-            isSourcePlaying = false
         }
         override fun releasePad(index: Int) {
             releasedPads += index
