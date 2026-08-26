@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の統合plan:** 既存PR #78のreceipt `aab2876`へclean Wave 14 closeout `924fb3c`を統合し、PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factory、Wave 12のcandidate-first active-loop replacement、Wave 13のatomic WAV publicationを保持したまま、Wave 14のverified Android document publicationを追加する。fresh merged local gate、artifact/policy/read-back、two-axis reviewと、同一exact final headのhosted Android/Windows/iOS/supply-chainが全て通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** product merge `5495ed1` / tree `0ec045e`で既存PR #78 receipt `aab2876`とclean Wave 14 closeout `924fb3c`を統合した。PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factory、Wave 12のcandidate-first active-loop replacement、Wave 13のatomic WAV publicationを保持し、Wave 14のverified Android document publicationを追加している。focused 51-task、controlled full 184-task、651 tests / 109 suites、lint、Python 64、public-surface/history 449、Android policy、Windows package、SBOM、two-axis reviewはPASS。同一exact final headのhosted Android/Windows/iOS/supply-chainとclean merge-stateが全て通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 
