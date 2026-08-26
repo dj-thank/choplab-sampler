@@ -56,6 +56,7 @@
 | One Shot / Gate / Beat Loop | 🧪 local | PAD別。通常modeは全platformでONE_SHOT/GATEだけを切替え、Beat Loopは明示controlでチョップ範囲全体を連続再生。loop停止effect失敗時はmode/owner/historyを変更しないnegative testあり |
 | Choke group | ✅ | 1–4 |
 | CHOKEとBeat-loop session所有権 | ✅ current local | active loop ownerと同じnonzero groupのPAD triggerは、ownerと開始時VOICE companionを一つのsessionとして先に停止し、loop/playhead truthをclearしてから新PADを鳴らす。group 0／別group／same owner／通常polyphonyは保持。ownerと同groupのVOICEはloop開始時companionから除外。stop失敗はDesktopで新triggerを拒否。物理fade/click品質は未確認 |
+| CHOKE loop-sessionのlive/export parity | ✅ current local | exactly one assigned loop ownerではoffline WAVもshared live policyでframe-zero VOICE companionを選ぶ。same-nonzero-group VOICEはownerをsilenceせず、CHOKE OFF／別group layerは保持。Android realtime Voice＋shared limiterとのfull-bar最大PCM差≤1。no-loop／multiple-loopは従来の全non-loop VOICEを保持。物理聴取・latencyは未確認 |
 | リアルタイム音声安全性 | 🧪 local | 操作queueを512件へ制限し1 block最大64件、Stop Allを容量外で優先しtransportも同じ境界で停止。clear世代境界と128固定latest-wins PAD mailbox、事前確保Voiceを維持。新shared DSPはcallback call-siteでallocation/lock/I/Oなし、tone expはcontrol boundaryだけ、soft limiterは非有限値を0へ安全化 |
 | マイク停止の完了確認 | 🧪 local | workerとWAV writerの終了を最大2秒確認し、timeout時は未完成WAVを成功扱い・decodeしない。Windowsはlineの`open`成功後に`start`が失敗してもexact-once closeし、一時WAVと内部状態を破棄するhost regressionを含む |
 | 録音セッションと誤再生防止 | 🧪 historical emulator / current local | MIC / DEVICE / VOICEを単一の`STARTING → RECORDING → STOPPING`状態で排他管理。端末音声captureは世代付きsessionと2秒のstop/release境界を持ち、開始途中STOPと旧workerの新session破壊をLOCALで防止。開始時に既存再生を停止し、Vocalだけ選択Beat loopを再始動。録音中の競合操作を遮断。現候補の実MediaProjection/AudioRecord再検証は未実施 |

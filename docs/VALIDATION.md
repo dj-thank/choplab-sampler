@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## CHOKE live/export loop-session parity — 2026-08-26
+
+- Product checkpoint: `b445c18a6bb50abfd878f95a2d2e6c3397cb3222`, tree `a650dae4c5bc7a18d321c303fdcad8c268f2888e`, base `611a58932fff6faf4ae6178acdc1f7c575cb0a7b`.
+- RED: same-group full-bar offline export diverged from Android realtime `Voice` + shared limiter by maximum `9,262` PCM units at frame `49` (`offline=7,121`, `realtime=-2,141`).
+- GREEN: offline frame-zero selection reuses `vocalCompanionPadIndicesForLoopStart` only for exactly one assigned loop owner. Same-group owner-only and other-group intentional-layer full bars match the realtime/master oracle within `<=1` at every frame.
+- Negative controls: no-loop and multiple-assigned-loop inputs keep all historical non-loop vocals. Existing step timing, retrigger, polyphony, loop, vocal, final-sample, resource and non-finite paths remain green.
+- Full gate: the unchanged product commit completed 190 tasks with exit `0`. Android 250, shared Android/Desktop 40/40, JVM-core 55, Desktop 84; 469 tests / 87 suites, failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 31,590,514 / `9DAF4879CA8C2A3A0AE3A7AA448E1DE1E29C63383FEEC1715ED7E90E9E0B1789`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `F33392832B1A203FAF45D35BEF1E853868CB76EABB190525EEF7299FE09E266C`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Other gates at the product checkpoint: configured validation, Python policy 40, public-surface 417, Windows ProductVersion `0.17.0`, CycloneDX 1.6 / 650 components / 651 dependencies / `68E245F9C1D7B6003201BC4FAC28987EDD00F787EFD04FEBC4D7165624ED11EB`, and `git diff --check` PASS. The closeout-only tree passes Python policy 40, public-surface 418 and `git diff --check`; current byte read-back found no matching long-running process or crash log.
+- Review: parent PAD `work/PAD_CHOPLAB_GOAL_WAVE6_REVIEW_20260826.md`; Standards/Spec unresolved 0/0.
+- Gate: `LOCAL_PASS`; physical audio/fade/click/latency, route/device, provider/public and Human outcomes remain unclaimed.
+
 ## CHOKE loop-session ownership — 2026-08-26
 
 - Product checkpoint: `1853659ef56d40117e9f61d1c7f01a752ed02f33`, tree `e07a07c46500f14aaa09619f4463682a07890eef`, base `639d5132c12bd3efe0d0346731cef9fbdaca15ec`.

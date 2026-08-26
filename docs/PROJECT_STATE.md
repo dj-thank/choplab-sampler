@@ -1,5 +1,21 @@
 # Project state
 
+## Current snapshot — 2026-08-26 CHOKE live/export loop-session parity
+
+This is the current local product truth for wave 6. It makes offline WAV select the same unambiguous Beat-loop owner and eligible vocal companions as live loop start.
+
+- Observed/read back at: `2026-08-26T21:14:49+09:00`.
+- Product source: `codex/choplab-choke-export-parity-20260826@b445c18a6bb50abfd878f95a2d2e6c3397cb3222`, tree `a650dae4c5bc7a18d321c303fdcad8c268f2888e`, based on wave-5 integrated closeout `611a58932fff6faf4ae6178acdc1f7c575cb0a7b`. Dirty canonical preservation root remains untouched.
+- Defect and repair: offline frame-zero events previously started every non-loop VOCAL after the loop owner, so a same-nonzero-CHOKE companion silenced only the exported owner. `PatternRenderer` now reuses the shared live companion-selection policy for exactly one assigned loop owner.
+- Preserved behavior: CHOKE OFF and other-group vocals remain intentional layers. No-loop and multiple-assigned-loop inputs preserve historical non-loop VOCAL inclusion instead of inventing an ambiguous owner.
+- Oracle: before repair, the same-group full-bar comparison reached maximum delta `9,262` PCM units at frame `49` (`offline=7,121`, `realtime=-2,141`). Repaired owner-only and other-group-layer fixtures match Android realtime `SamplerEngine.Voice` plus the shared limiter within `<=1` for every frame.
+- Boundary: no realtime engine/callback, Java Sound, project/history/autosave/schema/audio asset, UI, provider/device/public/signing or Human behavior changed.
+- Validation: the unchanged product commit completed the 190-task full gate with exit `0`. Android 250, shared Android/Desktop 40/40, JVM-core 55, Desktop 84; 469 tests / 87 suites, failures/errors/skips 0. Lint errors 0/warnings 7; configured validation, Python policy 40, product-checkpoint public-surface 417 and `git diff --check` PASS. The closeout-only tree passes Python policy 40, public-surface 418 and `git diff --check` without rebuilding product bytes.
+- Artifact read-back: debug APK 31,590,514 / `9DAF4879CA8C2A3A0AE3A7AA448E1DE1E29C63383FEEC1715ED7E90E9E0B1789`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `F33392832B1A203FAF45D35BEF1E853868CB76EABB190525EEF7299FE09E266C`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- SBOM/read-back: CycloneDX 1.6, product version `0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `68E245F9C1D7B6003201BC4FAC28987EDD00F787EFD04FEBC4D7165624ED11EB`. Every test XML and listed artifact is newer than the product commit; current worktree was clean before closeout and no matching long-running process remained.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio and review: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE6_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE6_REVIEW_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, click/pop and latency, route/device behavior, provider/public and `HUMAN_GO` remain separate.
+
 ## Current snapshot — 2026-08-26 CHOKE loop-session ownership
 
 This is the current local product truth for wave 5. It repairs controller-owned playback state and companion ownership without changing project or audio bytes.

@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**wave 6 selected:** `choke-export-parity-20260826.md`。wave 5のlive loop-owner policyに対し、offline WAVがsame-group VOICEをframe 0で起動してownerをsilenceする不一致を、Android realtime Voice＋shared limiterのfull-bar PCM oracleで閉じる。CHOKE OFF／別group／no-loop／multiple-loopをnegative controlにし、targetは`LOCAL_PASS`。
+**wave 6 completed local:** `../completed/choke-export-parity-20260826.md`。offline WAVのsame-group VOICEがloop ownerをsilenceするlive/export不一致をshared companion policyで修復。owner-only／other-group layerのfull-bar最大PCM差≤1、no-loop／multiple-loop controls、469 tests / 190-task gateで`LOCAL_PASS`。
 
 **wave 5 completed local:** `../completed/choke-loop-session-ownership-20260826.md`。同じnonzero CHOKE groupのPAD triggerがloop owner voiceだけを止めてcontroller state／VOICE companionを残す不具合と、同group companionがloop開始直後にownerをsilenceする不具合をshared ownership planで修復。通常polyphonyを保持し、466 tests / 190-task gateで`LOCAL_PASS`。
 
