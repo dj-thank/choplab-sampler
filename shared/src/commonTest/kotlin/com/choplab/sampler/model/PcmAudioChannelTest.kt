@@ -53,4 +53,22 @@ class PcmAudioChannelTest {
             )
         }
     }
+
+    @Test
+    fun legacyProjectSnapshotCarriesTheActualStoredChannelCount() {
+        val stereo = PcmAudio(
+            id = 19L,
+            name = "snapshot-stereo.wav",
+            samples = shortArrayOf(1, -1, 2, -2),
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+
+        val snapshot = LegacyProjectAdapter.toSnapshot(
+            SamplerUiState(currentAudio = stereo, rangeEndFrame = stereo.frameCount),
+        )
+
+        assertEquals(2, snapshot.audioAssets.single().channelCount)
+        assertEquals(2L, snapshot.audioAssets.single().frameCount)
+    }
 }

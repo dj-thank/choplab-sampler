@@ -61,7 +61,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 
 - [x] 2026-08-26T23:33+09:00 — Wave 9 closeoutをexact baseとして専用worktreeを作成し、mono assumptionsとchannel-sensitive call sitesをinventory。
 - [x] 2026-08-26T23:39+09:00 — Milestone 1 RED/GREEN。shared frame/channel contract、Android PCM conversion、Windows streaming decodeを左右非対称fixtureで固定。
-- [ ] Milestone 2 RED/GREEN。
+- [x] 2026-08-26T23:49+09:00 — Milestone 2 RED/GREEN。schema 7 channel manifest、strict mono/stereo WAV、channel-aware memory budget、schema 1–6 mono migrationを固定。
 - [ ] Milestone 3 RED/GREEN。
 - [ ] Milestone 4 full gate / closeout。
 
@@ -72,6 +72,8 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - mono-only Pattern export bytesはoutput channel countをassigned audioの最大channelCountから決めれば維持できる。
 - Android decoderはoutput format確定前にbuilderを作るとproviderのformat変更でchannel shapeを誤るため、最初のPCM bufferまでbuilder生成を遅延し、その後のsample rate/channel shape変更を拒否する。
 - 新規worktreeには`local.properties`が無いため、Android testはファイル保存ではなくprocess-local `ANDROID_HOME`で既存SDKを指定する。
+- current writerからlegacy fixtureを導出するtestはschema headerだけでなくschema 7のaudio channel fieldも除去する必要がある。旧parser自体は7-field audio行をそのまま維持した。
+- duplicate audio IDの同一性にはname/rate/samplesだけでなくchannelCountが必要。同じinterleaved bytesでもmonoとstereoではframe truthが異なる。
 
 ## Decision log
 
@@ -88,6 +90,10 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
   - shared/desktop GREEN。app test compileはtest helperのJDK `Buffer` return型だけで停止し、production compileはPASS。
 - `:app:testDebugUnitTest --tests com.choplab.sampler.audio.Pcm16ArrayBuilderTest`
   - GREEN: frame-aware stereo capacity、PCM16 stereo preservation、3ch average-mono、partial frame/layout change rejection PASS。
+- `:jvm-core:test --tests '*ProjectArchiveCodecTest.schemaSevenRoundTripPreservesAsymmetricStereoAndWavShape'`
+  - RED: schema 6 mono codecが6 interleaved samplesを3 mono framesとしてread-backできずreject。
+- `:shared:desktopTest :jvm-core:test`
+  - GREEN: schema 7 stereo exact round-trip、WAV 2ch/block-align/data size、schema 1–6 mono migration、manifest/header mismatch、resident budget、duplicate-ID channel mismatchを含む全shared/JVM-core tests PASS。
 
 ## Risks and rollback
 

@@ -32,7 +32,7 @@ internal fun InputStream.readWithProgress(buffer: ByteArray, offset: Int, length
  * Bounded, versioned `.choplab` archive for the currently implemented sampler state.
  *
  * The manifest is deliberately small and text based. Audio assets are stored once as
- * canonical mono PCM-16 WAV and shared by current-source and PAD references.
+ * canonical mono/stereo PCM-16 WAV and shared by current-source and PAD references.
  */
 object ProjectArchiveCodec {
     private const val LEGACY_PCM_SCHEMA_VERSION = 1
@@ -40,7 +40,8 @@ object ProjectArchiveCodec {
     private const val CONTENT_KIND_SCHEMA_VERSION = 4
     private const val PAGED_BANK_SCHEMA_VERSION = 5
     private const val ARRANGEMENT_SCHEMA_VERSION = 6
-    private const val SCHEMA_VERSION = ARRANGEMENT_SCHEMA_VERSION
+    private const val CHANNEL_IDENTITY_SCHEMA_VERSION = 7
+    private const val SCHEMA_VERSION = CHANNEL_IDENTITY_SCHEMA_VERSION
     private const val LEGACY_LAYOUT_PAD_COUNT = 64
     private const val LEGACY_PADS_PER_BANK = 16
     private const val MANIFEST_ENTRY = "project.txt"
@@ -60,7 +61,7 @@ object ProjectArchiveCodec {
 
             audio.forEachIndexed { index, value ->
                 zip.putDeterministicEntry(audioEntry(index, SCHEMA_VERSION))
-                MonoPcm16WavCodec.write(zip, value.samples, value.sampleRate)
+                Pcm16WavCodec.write(zip, value.samples, value.sampleRate, value.channelCount)
                 zip.closeEntry()
             }
         }
@@ -89,7 +90,7 @@ object ProjectArchiveCodec {
             zip.closeEntry()
             val manifest = parseManifest(manifestBytes.toString(Charsets.UTF_8))
             val declaredPcmBytes = manifest.audio.sumOf { metadata ->
-                metadata.frameCount.toLong() * Short.SIZE_BYTES
+                pcmBytes(metadata.frameCount, metadata.channelCount)
             }
             require(declaredPcmBytes <= maxResidentPcmBytes) {
                 "この端末で安全に開けるプロジェクト音声容量を超えています"
@@ -106,7 +107,7 @@ object ProjectArchiveCodec {
                 val metadata = manifest.audio.singleOrNull { it.entryName == entry.name }
                     ?: error("未登録の項目があります: ${entry.name}")
                 require(metadata.index !in audioByIndex) { "音声IDが重複しています" }
-                totalPcmBytes += metadata.frameCount.toLong() * Short.SIZE_BYTES
+                totalPcmBytes += pcmBytes(metadata.frameCount, metadata.channelCount)
                 require(totalPcmBytes <= ProjectLimits.MAX_TOTAL_PCM_BYTES) {
                     "プロジェクト内の音声データが大きすぎます"
                 }
@@ -115,8 +116,14 @@ object ProjectArchiveCodec {
                 }
                 val samples = when (manifest.schemaVersion) {
                     LEGACY_PCM_SCHEMA_VERSION -> zip.readLegacyPcm16LittleEndian(metadata.frameCount)
-                    in WAV_SCHEMA_VERSION..SCHEMA_VERSION ->
+                    in WAV_SCHEMA_VERSION until CHANNEL_IDENTITY_SCHEMA_VERSION ->
                         MonoPcm16WavCodec.read(zip, metadata.frameCount, metadata.sampleRate)
+                    CHANNEL_IDENTITY_SCHEMA_VERSION -> Pcm16WavCodec.read(
+                        input = zip,
+                        expectedFrames = metadata.frameCount,
+                        expectedSampleRate = metadata.sampleRate,
+                        expectedChannelCount = metadata.channelCount,
+                    )
                     else -> error("未対応のプロジェクト形式です")
                 }
                 require(zip.read() == -1) { "音声データのサイズが一致しません: ${entry.name}" }
@@ -125,6 +132,7 @@ object ProjectArchiveCodec {
                     name = metadata.name,
                     samples = samples,
                     sampleRate = metadata.sampleRate,
+                    channelCount = metadata.channelCount,
                 )
                 zip.closeEntry()
             }
@@ -139,7 +147,7 @@ object ProjectArchiveCodec {
         fun add(value: PcmAudio?) {
             if (value == null) return
             require(value.sampleRate in 8_000..ProjectLimits.MAX_SAMPLE_RATE) { "音声のサンプルレートが不正です" }
-            require(value.samples.isNotEmpty() && value.samples.size <= MAX_MVP_AUDIO_FRAMES) {
+            require(value.samples.isNotEmpty() && value.frameCount in 1..MAX_MVP_AUDIO_FRAMES) {
                 "音声データの長さが不正です"
             }
             val previous = byId[value.id]
@@ -147,6 +155,7 @@ object ProjectArchiveCodec {
                 previous == null ||
                     previous.name == value.name &&
                     previous.sampleRate == value.sampleRate &&
+                    previous.channelCount == value.channelCount &&
                     previous.samples.contentEquals(value.samples),
             ) { "同じ音声IDに異なるデータがあります" }
             if (previous == null) byId[value.id] = value
@@ -176,6 +185,7 @@ object ProjectArchiveCodec {
                         value.id,
                         value.sampleRate,
                         value.frameCount,
+                        value.channelCount,
                         encodeText(value.name),
                         audioEntry(index, SCHEMA_VERSION),
                     ).joinToString("\t"),
@@ -260,7 +270,8 @@ object ProjectArchiveCodec {
         require(audioCount in 0..ProjectLimits.MAX_AUDIO_ASSETS) { "プロジェクト内の音声数が不正です" }
         val audio = List(audioCount) { expectedIndex ->
             val values = next("audio")
-            require(values.size == 7) { "音声情報が不正です" }
+            val hasChannelIdentity = schemaVersion >= CHANNEL_IDENTITY_SCHEMA_VERSION
+            require(values.size == if (hasChannelIdentity) 8 else 7) { "音声情報が不正です" }
             val index = values[1].toIntStrict("audio.index")
             require(index == expectedIndex) { "音声indexが連続していません" }
             val id = values[2].toLongStrict("audio.id")
@@ -268,16 +279,24 @@ object ProjectArchiveCodec {
             require(sampleRate in 8_000..ProjectLimits.MAX_SAMPLE_RATE) { "音声sampleRateが不正です" }
             val frameCount = values[4].toIntStrict("audio.frameCount")
             require(frameCount in 1..MAX_MVP_AUDIO_FRAMES) { "音声frameCountが不正です" }
-            val name = decodeText(values[5])
+            val channelCount = if (hasChannelIdentity) {
+                values[5].toIntStrict("audio.channelCount").also {
+                    require(it in 1..2) { "音声channelCountが不正です" }
+                }
+            } else {
+                1
+            }
+            val nameIndex = if (hasChannelIdentity) 6 else 5
+            val name = decodeText(values[nameIndex])
             require(name.isNotBlank() && name.length <= ProjectLimits.MAX_ASSET_NAME_CHARS) { "音声名が不正です" }
-            val entryName = values[6]
+            val entryName = values[nameIndex + 1]
             validateEntryName(entryName)
             require(entryName == audioEntry(index, schemaVersion)) { "音声entryが不正です" }
-            AudioManifest(index, id, sampleRate, frameCount, name, entryName)
+            AudioManifest(index, id, sampleRate, frameCount, channelCount, name, entryName)
         }
         require(audio.distinctBy { it.id }.size == audio.size) { "音声IDが重複しています" }
         require(audio.distinctBy { it.entryName }.size == audio.size) { "音声entryが重複しています" }
-        require(audio.sumOf { it.frameCount.toLong() * Short.SIZE_BYTES } <= ProjectLimits.MAX_TOTAL_PCM_BYTES) {
+        require(audio.sumOf { pcmBytes(it.frameCount, it.channelCount) } <= ProjectLimits.MAX_TOTAL_PCM_BYTES) {
             "プロジェクト内の音声データが大きすぎます"
         }
         val state = next("state")
@@ -497,6 +516,7 @@ object ProjectArchiveCodec {
         val id: Long,
         val sampleRate: Int,
         val frameCount: Int,
+        val channelCount: Int,
         val name: String,
         val entryName: String,
     )
@@ -563,6 +583,12 @@ object ProjectArchiveCodec {
 
     private fun audioEntry(index: Int, schemaVersion: Int) =
         if (schemaVersion == LEGACY_PCM_SCHEMA_VERSION) "audio/$index.pcm" else "audio/$index.wav"
+
+    private fun pcmBytes(frameCount: Int, channelCount: Int): Long =
+        Math.multiplyExact(
+            Math.multiplyExact(frameCount.toLong(), channelCount.toLong()),
+            Short.SIZE_BYTES.toLong(),
+        )
 
     private class NonClosingOutputStream(output: OutputStream) : FilterOutputStream(output) {
         override fun close() {

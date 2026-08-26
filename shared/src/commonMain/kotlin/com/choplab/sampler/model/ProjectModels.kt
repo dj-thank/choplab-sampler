@@ -235,7 +235,7 @@ object LegacyProjectAdapter {
                 id = requireNotNull(assetIds[audio.id]),
                 name = audio.name.ifBlank { "Legacy audio" },
                 sampleRate = audio.sampleRate,
-                channelCount = 1,
+                channelCount = audio.channelCount,
                 frameCount = audio.frameCount.toLong(),
             )
         }

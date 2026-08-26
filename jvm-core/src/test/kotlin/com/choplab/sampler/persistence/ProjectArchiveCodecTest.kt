@@ -42,16 +42,130 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
-    fun archiveUsesSchemaSixForABSongArrangement() {
+    fun archiveUsesSchemaSevenForABSongArrangementAndChannelIdentity() {
         val manifest = unzip(archiveFor(SamplerUiState()))
             .single { (name, _) -> name == "project.txt" }
             .second
             .toString(Charsets.UTF_8)
 
-        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t6\n"))
+        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t7\n"))
         assertTrue(manifest.contains("arrangement\t0\t0\t0,0,0,0\n"))
         assertTrue(manifest.contains("pattern\t0\t\n"))
         assertTrue(manifest.contains("pattern\t1\t\n"))
+    }
+
+    @Test
+    fun schemaSevenRoundTripPreservesAsymmetricStereoAndWavShape() {
+        val audio = PcmAudio(
+            id = 700L,
+            name = "left-right.wav",
+            samples = shortArrayOf(1_000, -3_000, 2_000, -4_000, 3_000, -5_000),
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+        val state = SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)
+
+        val archive = archiveFor(state)
+        val entries = unzip(archive)
+        val manifest = entries.single { it.first == "project.txt" }.second.toString(Charsets.UTF_8)
+        val wav = entries.single { it.first == "audio/0.wav" }.second
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(archive))
+
+        assertTrue(manifest.contains("audio\t0\t700\t48000\t3\t2\t"))
+        assertEquals(2, wav.littleEndianShort(22))
+        assertEquals(4, wav.littleEndianShort(32))
+        assertEquals(12, wav.littleEndianInt(40))
+        assertEquals(2, restored.currentAudio?.channelCount)
+        assertEquals(3, restored.currentAudio?.frameCount)
+        assertArrayEquals(audio.samples, restored.currentAudio?.samples)
+    }
+
+    @Test
+    fun schemaSixArchiveStillLoadsAsMono() {
+        val audio = PcmAudio(
+            id = 601L,
+            name = "schema-six-mono.wav",
+            samples = shortArrayOf(11, -12, 13),
+            sampleRate = 48_000,
+        )
+        val entries = unzip(
+            archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)),
+        ).map { (name, bytes) ->
+            if (name != "project.txt") return@map name to bytes
+            name to bytes.toString(Charsets.UTF_8)
+                .replace("CHOPLAB_PROJECT\t7", "CHOPLAB_PROJECT\t6")
+                .removeSchemaSevenFields()
+                .toByteArray(Charsets.UTF_8)
+        }
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+
+        assertEquals(1, restored.currentAudio?.channelCount)
+        assertArrayEquals(audio.samples, restored.currentAudio?.samples)
+    }
+
+    @Test
+    fun schemaSevenRejectsManifestWavChannelMismatch() {
+        val audio = PcmAudio(
+            id = 702L,
+            name = "mismatch.wav",
+            samples = shortArrayOf(1, -1, 2, -2),
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+        val entries = unzip(
+            archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)),
+        ).map { (name, bytes) ->
+            if (name != "audio/0.wav") return@map name to bytes
+            name to bytes.copyOf().also { wav ->
+                wav[22] = 1
+                wav[23] = 0
+            }
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+        }
+    }
+
+    @Test
+    fun stereoResidentBudgetCountsEveryInterleavedSampleBeforeReadingAudio() {
+        val audio = PcmAudio(
+            id = 703L,
+            name = "resident-budget.wav",
+            samples = shortArrayOf(1, -1, 2, -2, 3, -3),
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+        val archive = archiveFor(SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(archive), maxResidentPcmBytes = 11L)
+        }
+    }
+
+    @Test
+    fun duplicateAudioIdCannotHideAChannelShapeMismatch() {
+        val samples = shortArrayOf(1, -1, 2, -2)
+        val mono = PcmAudio(id = 704L, name = "same.wav", samples = samples, sampleRate = 48_000)
+        val stereo = PcmAudio(
+            id = 704L,
+            name = "same.wav",
+            samples = samples,
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+        val state = SamplerUiState(
+            currentAudio = mono,
+            rangeEndFrame = mono.frameCount,
+            pads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) PadModel(index, stereo, 0, stereo.frameCount) else PadModel(index)
+            },
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.write(state, ByteArrayOutputStream())
+        }
     }
 
     @Test
@@ -83,7 +197,8 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(SamplerUiState(activeSteps = steps))).map { (name, bytes) ->
             if (name != "project.txt") return@map name to bytes
             name to bytes.toString(Charsets.UTF_8)
-                .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t5")
+                .replace("CHOPLAB_PROJECT\t7", "CHOPLAB_PROJECT\t5")
+                .removeSchemaSevenFields()
                 .removeSchemaSixFields()
                 .toByteArray(Charsets.UTF_8)
         }
@@ -231,6 +346,8 @@ class ProjectArchiveCodecTest {
                     line.startsWith("padCount\t") -> "padCount\t64"
                     line.startsWith("state\t") -> line.split('\t').toMutableList().also { it[6] = "16" }.joinToString("\t")
                     line.startsWith("steps\t") -> "steps\t${stepKey(16, 3)}"
+                    line.startsWith("audio\t") ->
+                        line.split('\t').toMutableList().apply { removeAt(5) }.joinToString("\t")
                     line.startsWith("pad\t") -> {
                         val fields = line.split('\t').toMutableList()
                         val currentIndex = fields[1].toInt()
@@ -307,8 +424,9 @@ class ProjectArchiveCodecTest {
         val schemaOneEntries = schemaTwoEntries.map { (name, bytes) ->
             when (name) {
                 "project.txt" -> name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t1")
+                    .replace("CHOPLAB_PROJECT\t7", "CHOPLAB_PROJECT\t1")
                     .replace("audio/0.wav", "audio/0.pcm")
+                    .removeSchemaSevenFields()
                     .removeSchemaSixFields()
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
@@ -331,7 +449,8 @@ class ProjectArchiveCodecTest {
         ).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t2")
+                    .replace("CHOPLAB_PROJECT\t7", "CHOPLAB_PROJECT\t2")
+                    .removeSchemaSevenFields()
                     .removeSchemaSixFields()
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
@@ -362,7 +481,8 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(state)).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t3")
+                    .replace("CHOPLAB_PROJECT\t7", "CHOPLAB_PROJECT\t3")
+                    .removeSchemaSevenFields()
                     .removeSchemaSixFields()
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
@@ -382,7 +502,7 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t999")
+                    .replace("CHOPLAB_PROJECT\t7", "CHOPLAB_PROJECT\t999")
                     .toByteArray(Charsets.UTF_8)
             } else {
                 name to bytes
@@ -557,6 +677,21 @@ class ProjectArchiveCodecTest {
         lineSequence()
             .filterNot { line -> line.startsWith("arrangement\t") || line.startsWith("pattern\t") }
             .joinToString("\n", postfix = "\n")
+
+    private fun String.removeSchemaSevenFields(): String =
+        lineSequence().joinToString("\n") { line ->
+            if (!line.startsWith("audio\t")) return@joinToString line
+            line.split('\t').toMutableList().apply { removeAt(5) }.joinToString("\t")
+        } + "\n"
+
+    private fun ByteArray.littleEndianShort(offset: Int): Int =
+        (this[offset].toInt() and 0xFF) or ((this[offset + 1].toInt() and 0xFF) shl 8)
+
+    private fun ByteArray.littleEndianInt(offset: Int): Int =
+        (this[offset].toInt() and 0xFF) or
+            ((this[offset + 1].toInt() and 0xFF) shl 8) or
+            ((this[offset + 2].toInt() and 0xFF) shl 16) or
+            ((this[offset + 3].toInt() and 0xFF) shl 24)
 
     private fun unzip(bytes: ByteArray): List<Pair<String, ByteArray>> = buildList {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
