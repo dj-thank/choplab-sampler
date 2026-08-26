@@ -42,7 +42,7 @@
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
 | PAD→ループ／並べる→足す／擦る導線 | ✅ current local / historical device | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`STEPS`は選択PADの全16 cellを一画面で編集するfocused面へ開く。QUICK／BPM・音色controlsへ明示的に往復し、選択PADとBANK/pageを保持 |
-| 上級操作の段階表示 | 🧪 current local | KEY/TONE/LEVELは通常BEAT画面から直操作し、再生中の選択音へカーソルを戻さず即時反映。16手動stepをfocused面へ分離し、BPM/Swing／tone／配置preset等の既存fine controlsは`BPM・音色 / CONTROLS`から保持 |
+| 上級操作の段階表示 | ✅ current local | KEY/TONE/LEVELは通常BEAT画面から直操作。Androidは再生cursorを保ったlive parameter更新、Windowsはactive loopのreplacement candidateを開始できた後だけproject/history/autosaveへ編集を確定する。Windowsの開始失敗は旧loop・旧設定・historyを保持し、loading/recording拒否とno-opはretriggerしない。16手動stepをfocused面へ分離し、既存fine controlsは`BPM・音色 / CONTROLS`から保持。物理Windowsのclick/一時overlap/latencyは未確認 |
 | ビート画面の実波形・再生位置 | ✅ device | 選択sliceのPCM波形、ビートループ位置、16-step playhead、A〜Dの4レーン発音マーカーを固定表示 |
 | BANKを替えて音を重ねる | ✅ emulator/local | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、空BANKも選択可能。全128 PADを演奏・配置 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
