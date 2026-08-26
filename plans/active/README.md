@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の統合plan:** merged `main@592b4ee`をexact baseに、clean Wave 13 closeout `9043af2`（Wave 12を包含）を一つの新しいreview surfaceへ統合する。PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factoryを保持し、Wave 12のcandidate-first active-loop replacementとWave 13のatomic WAV publicationを合成する。fresh local full gate、public-surface、two-axis review、exact-head hosted Android/Windows/iOS/supply-chainが通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** product `cc4199f` / tree `0ab9a9c`で merged `main@592b4ee` と clean Wave 13 closeout `9043af2`（Wave 12を包含）を統合した。PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factoryを保持し、Wave 12のcandidate-first active-loop replacementとWave 13のatomic WAV publicationを合成している。focused 23-task、full 184-task、637 tests / 108 suites、lint、Python 64、public-surface/history 446、Android policy、Windows package、SBOM、two-axis reviewはPASS。exact final receiptのhosted Android/Windows/iOS/supply-chainとclean merge-stateが通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF、device/provider/public/signing/Humanは別gate。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 
