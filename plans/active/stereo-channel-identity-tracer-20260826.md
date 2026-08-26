@@ -60,7 +60,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 ## Progress
 
 - [x] 2026-08-26T23:33+09:00 — Wave 9 closeoutをexact baseとして専用worktreeを作成し、mono assumptionsとchannel-sensitive call sitesをinventory。
-- [ ] Milestone 1 RED/GREEN。
+- [x] 2026-08-26T23:39+09:00 — Milestone 1 RED/GREEN。shared frame/channel contract、Android PCM conversion、Windows streaming decodeを左右非対称fixtureで固定。
 - [ ] Milestone 2 RED/GREEN。
 - [ ] Milestone 3 RED/GREEN。
 - [ ] Milestone 4 full gate / closeout。
@@ -70,6 +70,8 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - `PcmAudio` constructorへdefault channelCountを足すだけなら大半のmono fixturesはsource-compatibleだが、direct `samples[index]` はframe semanticsを破るため明示修正が必要。
 - Android `AudioTrack` 自体は既にstereo float output。現在はmix後にmonoを左右複製しているため、device API変更なしにchannel identityを通せる。
 - mono-only Pattern export bytesはoutput channel countをassigned audioの最大channelCountから決めれば維持できる。
+- Android decoderはoutput format確定前にbuilderを作るとproviderのformat変更でchannel shapeを誤るため、最初のPCM bufferまでbuilder生成を遅延し、その後のsample rate/channel shape変更を拒否する。
+- 新規worktreeには`local.properties`が無いため、Android testはファイル保存ではなくprocess-local `ANDROID_HOME`で既存SDKを指定する。
 
 ## Decision log
 
@@ -79,7 +81,13 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 
 ## Validation log
 
-未実行。各milestoneでRED→GREENとexact command/resultを追記する。
+- `:shared:desktopTest --tests com.choplab.sampler.model.PcmAudioChannelTest`
+  - RED: `channelCount` / frame access API未実装でtest compile failure。
+  - GREEN: interleaved stereo frameCount/duration/access、mono playback projection、partial/unsupported channel rejection PASS。
+- `:shared:desktopTest :desktop:test :app:testDebugUnitTest`
+  - shared/desktop GREEN。app test compileはtest helperのJDK `Buffer` return型だけで停止し、production compileはPASS。
+- `:app:testDebugUnitTest --tests com.choplab.sampler.audio.Pcm16ArrayBuilderTest`
+  - GREEN: frame-aware stereo capacity、PCM16 stereo preservation、3ch average-mono、partial frame/layout change rejection PASS。
 
 ## Risks and rollback
 
@@ -88,4 +96,3 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 ## Remaining device validation
 
 物理端末での左右出力、route/focus、Bluetooth/USB、音質、latency、TalkBack、実音聴取はこのLOCAL sliceでは証明しない。Pixel/ADB、provider/public、署名、Human GOは別の権限付きtaskで扱う。
-

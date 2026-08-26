@@ -68,14 +68,46 @@ enum class PendingSourceCommand {
 data class PcmAudio(
     val id: Long = nextPcmAudioId(),
     val name: String,
+    /** Interleaved PCM-16 samples. Frame positions everywhere else index all channels together. */
     val samples: ShortArray,
     val sampleRate: Int,
+    val channelCount: Int = 1,
 ) {
+    init {
+        require(channelCount in 1..2) { "保存できる音声チャンネル数は1または2です" }
+        require(samples.size % channelCount == 0) { "音声データに不完全なPCMフレームがあります" }
+    }
+
     val frameCount: Int
-        get() = samples.size
+        get() = samples.size / channelCount
 
     val durationSeconds: Float
-        get() = if (sampleRate > 0) samples.size.toFloat() / sampleRate else 0f
+        get() = if (sampleRate > 0) frameCount.toFloat() / sampleRate else 0f
+
+    fun sampleAt(frame: Int, channel: Int): Short {
+        require(frame in 0 until frameCount) { "音声フレームが範囲外です" }
+        require(channel in 0 until channelCount) { "音声チャンネルが範囲外です" }
+        return samples[frame * channelCount + channel]
+    }
+
+    /** Maps stored mono to both output sides while preserving stored stereo identity. */
+    fun playbackSampleAt(frame: Int, outputChannel: Int): Short {
+        require(outputChannel in 0..1) { "出力チャンネルが範囲外です" }
+        return sampleAt(frame, if (channelCount == 1) 0 else outputChannel)
+    }
+
+    /** Explicit mono projection for waveform and analysis algorithms that do not carry channels. */
+    fun monoSampleAt(frame: Int): Short {
+        if (channelCount == 1) return sampleAt(frame, 0)
+        val sum = sampleAt(frame, 0).toInt() + sampleAt(frame, 1).toInt()
+        return (sum / channelCount).toShort()
+    }
+}
+
+/** Preserve layouts the MVP can name; retain legacy average-mono behavior for 3–8 channels. */
+fun retainedChannelCountForImport(sourceChannelCount: Int): Int {
+    require(sourceChannelCount in 1..8) { "対応できないチャンネル数です: $sourceChannelCount" }
+    return if (sourceChannelCount == 2) 2 else 1
 }
 
 data class SliceRange(

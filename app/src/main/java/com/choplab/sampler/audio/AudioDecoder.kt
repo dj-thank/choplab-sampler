@@ -8,6 +8,7 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.retainedChannelCountForImport
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -29,6 +30,83 @@ internal fun validateDecodedAudioFormat(sampleRate: Int, channelCount: Int): Dec
         "対応できないチャンネル数です: $channelCount"
     }
     return DecodedAudioFormat(sampleRate, channelCount)
+}
+
+internal fun appendDecodedPcm(
+    source: ByteBuffer,
+    encoding: Int,
+    sourceChannelCount: Int,
+    destination: Pcm16ArrayBuilder,
+) {
+    val channels = sourceChannelCount
+    check(channels in 1..8) { "Decoded channel count was not validated" }
+    check(destination.channelCount == retainedChannelCountForImport(channels)) {
+        "Decoded channel layout changed after PCM output started"
+    }
+
+    fun appendFrame(readSample: () -> Float) {
+        if (destination.channelCount == 2) {
+            destination.append(readSample())
+            destination.append(readSample())
+        } else {
+            var sum = 0f
+            repeat(channels) { sum += readSample() }
+            destination.append((sum / channels).coerceIn(-1f, 1f))
+        }
+    }
+
+    val bytesPerSample = when (encoding) {
+        AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_32BIT -> Int.SIZE_BYTES
+        AudioFormat.ENCODING_PCM_8BIT -> Byte.SIZE_BYTES
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
+        else -> Short.SIZE_BYTES
+    }
+    val frameBytes = Math.multiplyExact(channels, bytesPerSample)
+    require(source.remaining() % frameBytes == 0) { "音声データに不完全なPCMフレームがあります" }
+
+    when (encoding) {
+        AudioFormat.ENCODING_PCM_FLOAT -> {
+            val values = source.asFloatBuffer()
+            while (values.remaining() >= channels) {
+                appendFrame { values.get().coerceIn(-1f, 1f) }
+            }
+        }
+
+        AudioFormat.ENCODING_PCM_8BIT -> {
+            while (source.remaining() >= channels) {
+                appendFrame {
+                    val unsigned = source.get().toInt() and 0xFF
+                    ((unsigned - 128) / 128f).coerceIn(-1f, 1f)
+                }
+            }
+        }
+
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
+            while (source.remaining() >= frameBytes) {
+                appendFrame {
+                    val b0 = source.get().toInt() and 0xFF
+                    val b1 = source.get().toInt() and 0xFF
+                    val b2 = source.get().toInt() and 0xFF
+                    var value = b0 or (b1 shl 8) or (b2 shl 16)
+                    if (value and 0x0080_0000 != 0) value = value or -0x0100_0000
+                    (value / 8_388_608f).coerceIn(-1f, 1f)
+                }
+            }
+        }
+
+        AudioFormat.ENCODING_PCM_32BIT -> {
+            while (source.remaining() >= frameBytes) {
+                appendFrame { (source.getInt() / 2_147_483_648f).coerceIn(-1f, 1f) }
+            }
+        }
+
+        else -> {
+            val values = source.asShortBuffer()
+            while (values.remaining() >= channels) {
+                appendFrame { (values.get() / 32_768f).coerceIn(-1f, 1f) }
+            }
+        }
+    }
 }
 
 class AudioDecoder(private val context: Context) {
@@ -75,10 +153,8 @@ class AudioDecoder(private val context: Context) {
                 outputChannels = format.channelCount
             }
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
-            val output = Pcm16ArrayBuilder(
-                initialCapacity = estimateInitialCapacity(durationUs, outputSampleRate),
-                maximumSize = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
-            )
+            var output: Pcm16ArrayBuilder? = null
+            var pcmSampleRate: Int? = null
             val info = MediaCodec.BufferInfo()
             var inputEnded = false
             var outputEnded = false
@@ -148,11 +224,26 @@ class AudioDecoder(private val context: Context) {
                                     limit(info.offset + info.size)
                                 }.slice().order(ByteOrder.LITTLE_ENDIAN)
 
-                                appendAsMono(
+                                val storedChannelCount = retainedChannelCountForImport(outputChannels)
+                                val destination = output ?: Pcm16ArrayBuilder(
+                                    initialFrameCapacity = estimateInitialCapacity(durationUs, outputSampleRate),
+                                    maximumFrames = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
+                                    channelCount = storedChannelCount,
+                                ).also {
+                                    output = it
+                                    pcmSampleRate = outputSampleRate
+                                }
+                                check(destination.channelCount == storedChannelCount) {
+                                    "デコード中に音声チャンネル構成が変わりました"
+                                }
+                                check(pcmSampleRate == outputSampleRate) {
+                                    "デコード中にサンプルレートが変わりました"
+                                }
+                                appendDecodedPcm(
                                     source = frameBuffer,
                                     encoding = pcmEncoding,
-                                    channelCount = outputChannels,
-                                    destination = output,
+                                    sourceChannelCount = outputChannels,
+                                    destination = destination,
                                 )
                             }
                             outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
@@ -162,82 +253,21 @@ class AudioDecoder(private val context: Context) {
                 }
             }
 
-            val samples = output.toArray()
+            val destination = output ?: error("音声データを展開できませんでした")
+            val samples = destination.toArray()
             if (samples.isEmpty()) error("音声データを展開できませんでした")
 
-            removeTinyDcOffset(samples)
+            removeTinyDcOffset(samples, destination.channelCount)
             PcmAudio(
                 name = resolveDisplayName(uri),
                 samples = samples,
                 sampleRate = outputSampleRate,
+                channelCount = destination.channelCount,
             )
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
             runCatching { extractor.release() }
-        }
-    }
-
-    private fun appendAsMono(
-        source: ByteBuffer,
-        encoding: Int,
-        channelCount: Int,
-        destination: Pcm16ArrayBuilder,
-    ) {
-        val channels = channelCount
-        check(channels in 1..8) { "Decoded channel count was not validated" }
-        when (encoding) {
-            AudioFormat.ENCODING_PCM_FLOAT -> {
-                val values = source.asFloatBuffer()
-                while (values.remaining() >= channels) {
-                    var sum = 0f
-                    repeat(channels) { sum += values.get() }
-                    destination.append((sum / channels).coerceIn(-1f, 1f))
-                }
-            }
-
-            AudioFormat.ENCODING_PCM_8BIT -> {
-                while (source.remaining() >= channels) {
-                    var sum = 0f
-                    repeat(channels) {
-                        val unsigned = source.get().toInt() and 0xFF
-                        sum += (unsigned - 128) / 128f
-                    }
-                    destination.append((sum / channels).coerceIn(-1f, 1f))
-                }
-            }
-
-            AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
-                while (source.remaining() >= channels * 3) {
-                    var sum = 0f
-                    repeat(channels) {
-                        val b0 = source.get().toInt() and 0xFF
-                        val b1 = source.get().toInt() and 0xFF
-                        val b2 = source.get().toInt() and 0xFF
-                        var value = b0 or (b1 shl 8) or (b2 shl 16)
-                        if (value and 0x0080_0000 != 0) value = value or -0x0100_0000
-                        sum += value / 8_388_608f
-                    }
-                    destination.append((sum / channels).coerceIn(-1f, 1f))
-                }
-            }
-
-            AudioFormat.ENCODING_PCM_32BIT -> {
-                while (source.remaining() >= channels * Int.SIZE_BYTES) {
-                    var sum = 0f
-                    repeat(channels) { sum += source.getInt() / 2_147_483_648f }
-                    destination.append((sum / channels).coerceIn(-1f, 1f))
-                }
-            }
-
-            else -> {
-                val values = source.asShortBuffer()
-                while (values.remaining() >= channels) {
-                    var sum = 0f
-                    repeat(channels) { sum += values.get() / 32_768f }
-                    destination.append((sum / channels).coerceIn(-1f, 1f))
-                }
-            }
         }
     }
 
@@ -279,18 +309,24 @@ class AudioDecoder(private val context: Context) {
         }.getOrNull() ?: uri.lastPathSegment ?: "sample"
     }
 
-    private fun removeTinyDcOffset(samples: ShortArray) {
-        val checkCount = minOf(samples.size, 240_000)
-        if (checkCount <= 0) return
-        var sum = 0L
-        for (index in 0 until checkCount) sum += samples[index].toLong()
-        val mean = sum.toFloat() / checkCount
-        if (kotlin.math.abs(mean) in 16f..2_621f) {
-            for (index in samples.indices) {
-                samples[index] = (samples[index] - mean)
-                    .roundToInt()
-                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                    .toShort()
+    private fun removeTinyDcOffset(samples: ShortArray, channelCount: Int) {
+        val frameCount = samples.size / channelCount
+        val checkFrames = minOf(frameCount, 240_000)
+        if (checkFrames <= 0) return
+        repeat(channelCount) { channel ->
+            var sum = 0L
+            for (frame in 0 until checkFrames) {
+                sum += samples[frame * channelCount + channel].toLong()
+            }
+            val mean = sum.toFloat() / checkFrames
+            if (kotlin.math.abs(mean) in 16f..2_621f) {
+                for (frame in 0 until frameCount) {
+                    val index = frame * channelCount + channel
+                    samples[index] = (samples[index] - mean)
+                        .roundToInt()
+                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                        .toShort()
+                }
             }
         }
     }
@@ -311,16 +347,26 @@ class AudioDecoder(private val context: Context) {
 }
 
 internal class Pcm16ArrayBuilder(
-    initialCapacity: Int,
-    private val maximumSize: Int,
+    initialFrameCapacity: Int,
+    maximumFrames: Int,
+    val channelCount: Int,
 ) {
+    private val maximumSize: Int
+
     init {
-        require(maximumSize > 0) { "maximumSize must be positive" }
+        require(maximumFrames > 0) { "maximumFrames must be positive" }
+        require(channelCount in 1..2) { "channelCount must be mono or stereo" }
+        maximumSize = Math.multiplyExact(maximumFrames, channelCount)
     }
 
-    private var values = ShortArray(initialCapacity.coerceIn(1, maximumSize))
+    private var values = ShortArray(
+        Math.multiplyExact(initialFrameCapacity.coerceAtLeast(1), channelCount)
+            .coerceAtMost(maximumSize),
+    )
     var size: Int = 0
         private set
+    val frameCount: Int
+        get() = size / channelCount
 
     fun append(value: Float) {
         if (size >= maximumSize) {
@@ -338,5 +384,8 @@ internal class Pcm16ArrayBuilder(
         }
     }
 
-    fun toArray(): ShortArray = values.copyOf(size)
+    fun toArray(): ShortArray {
+        check(size % channelCount == 0) { "音声データに不完全なPCMフレームがあります" }
+        return values.copyOf(size)
+    }
 }

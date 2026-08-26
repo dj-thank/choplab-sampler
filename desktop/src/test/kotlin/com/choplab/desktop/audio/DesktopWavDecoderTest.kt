@@ -23,7 +23,7 @@ class DesktopWavDecoderTest {
     )
 
     @Test
-    fun streamsAndDownmixesStereoFrames() {
+    fun streamsAndPreservesAsymmetricStereoFrames() {
         val bytes = pcm16LittleEndian(
             1_000, -1_000,
             Short.MAX_VALUE, Short.MAX_VALUE,
@@ -31,11 +31,37 @@ class DesktopWavDecoderTest {
         )
         val stream = AudioInputStream(ByteArrayInputStream(bytes), stereoFormat, 3)
 
-        val audio = DesktopWavDecoder.readMono("stereo.wav", stream, maximumFrames = 10)
+        val audio = DesktopWavDecoder.readPcm("stereo.wav", stream, maximumFrames = 10)
 
         assertEquals("stereo.wav", audio.name)
         assertEquals(48_000, audio.sampleRate)
-        assertContentEquals(shortArrayOf(0, Short.MAX_VALUE, Short.MIN_VALUE), audio.samples)
+        assertEquals(2, audio.channelCount)
+        assertEquals(3, audio.frameCount)
+        assertContentEquals(
+            shortArrayOf(1_000, -1_000, Short.MAX_VALUE, Short.MAX_VALUE, Short.MIN_VALUE, Short.MIN_VALUE),
+            audio.samples,
+        )
+    }
+
+    @Test
+    fun downmixesThreeChannelInputWithoutGuessingAStoredLayout() {
+        val surroundFormat = AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED,
+            48_000f,
+            16,
+            3,
+            6,
+            48_000f,
+            false,
+        )
+        val bytes = pcm16LittleEndian(9_000, -3_000, 0, -9_000, 3_000, 0)
+        val stream = AudioInputStream(ByteArrayInputStream(bytes), surroundFormat, 2)
+
+        val audio = DesktopWavDecoder.readPcm("three-channel.wav", stream, maximumFrames = 10)
+
+        assertEquals(1, audio.channelCount)
+        assertEquals(2, audio.frameCount)
+        assertContentEquals(shortArrayOf(2_000, -2_000), audio.samples)
     }
 
     @Test
@@ -44,7 +70,7 @@ class DesktopWavDecoderTest {
         val stream = AudioInputStream(ByteArrayInputStream(bytes), stereoFormat, 2)
 
         assertFailsWith<IllegalArgumentException> {
-            DesktopWavDecoder.readMono("too-large.wav", stream, maximumFrames = 1)
+            DesktopWavDecoder.readPcm("too-large.wav", stream, maximumFrames = 1)
         }
     }
 
@@ -58,7 +84,7 @@ class DesktopWavDecoderTest {
         )
 
         assertFailsWith<IllegalStateException> {
-            DesktopWavDecoder.readMono("unknown.wav", stream, maximumFrames = 1)
+            DesktopWavDecoder.readPcm("unknown.wav", stream, maximumFrames = 1)
         }
     }
 
