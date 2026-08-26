@@ -11,6 +11,8 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -367,6 +369,74 @@ class DesktopSamplerControllerTest {
             assertTrue(controller.state.value.canUndo)
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun recordingTimeHistoryRequestPreservesTheProjectAndFrontier() {
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            controller.setBpm(126f)
+            controller.toggleMicrophoneRecording()
+            val before = controller.state.value
+            assertEquals(
+                RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING),
+                before.recordingSession,
+            )
+
+            controller.undoEdit()
+
+            val denied = controller.state.value
+            assertEquals(126f, denied.bpm)
+            assertTrue(denied.canUndo)
+            assertFalse(denied.canRedo)
+            assertEquals(before.recordingSession, denied.recordingSession)
+            assertEquals(before.loopingPadIndex, denied.loopingPadIndex)
+            assertEquals("録音をSTOPしてから編集してください", denied.statusMessage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun loadingTimeHistoryRequestPreservesTheProjectAndFrontier() {
+        val directory = Files.createTempDirectory("choplab-history-loading").toFile()
+        val source = directory.resolve("loading-history.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(64) { it.toShort() })
+        }
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            autosaveStore = null,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(126f)
+            controller.loadWav(source)
+            engine.awaitBlockedLoad()
+            val before = controller.state.value
+            assertTrue(before.isLoading)
+            assertTrue(before.canUndo)
+
+            controller.undoEdit()
+
+            val denied = controller.state.value
+            assertEquals(126f, denied.bpm)
+            assertTrue(denied.isLoading)
+            assertTrue(denied.canUndo)
+            assertFalse(denied.canRedo)
+            assertEquals(before.loopingPadIndex, denied.loopingPadIndex)
+            assertEquals("現在の処理が終わってから編集してください", denied.statusMessage)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
         }
     }
 

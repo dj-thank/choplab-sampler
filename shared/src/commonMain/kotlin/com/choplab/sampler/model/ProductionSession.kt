@@ -155,6 +155,7 @@ class ProductionSession(maxHistoryEntries: Int = 40) {
         direction: ProductionHistoryDirection,
     ): ProductionHistoryPlan? {
         invalidatePlans()
+        if (current.historyRequestDenial != null) return null
         val restored = historyTarget(direction) ?: return null
         check(revision < Long.MAX_VALUE) { "Production revision exhausted" }
         return ProductionHistoryPlan(

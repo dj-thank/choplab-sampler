@@ -6,11 +6,11 @@
 
 ## Current selection
 
-**現在の統合plan:** product merge `37312af` / tree `a9a1e07`として、8/8 hosted済みの既存PR #78 receipt `8680fdb`、exact-head reviewのnon-terminating provider read-back bound修正 `a531f7b`、clean Wave 15 closeout `1deb8a9`を統合済み。Waves 12–14のfocused editor、status epoch、exact GATE ownership、candidate-first loop replacement、atomic Windows WAV、verified Android publicationを保持し、Wave 15のsame-owner active-loop Undo/Redo transactionを追加した。663 tests、全184-task gate、artifact/policy/read-back、two-axis reviewは`LOCAL_PASS`。次は同じPR #78だけをfast-forward更新し、新しい同一exact final headのhosted Android/Windows/iOS/supply-chain、clean mergeability、review thread解消が全て揃う場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** Waves 12–16 の local product integration と closeout は完了した。status epoch、exact GATE ownership、candidate-first loop/history replacement、atomic Windows WAV、bounded verified Android publicationを保持し、loading／録音中のUndo/Redo許可truthをshared deck、Windows native menu、Android/Windows controller、deep history ownerで一つにした。統合bytesは 676 tests / 112 suites、configured package/policy/read-backまで`LOCAL_PASS`。既存PR #78は、新しい同一exact final headのhosted Android/Windows/iOS/supply-chain、review thread、mergeabilityを読み戻した場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 
-**wave 16 portfolio recompute / no slice selected:** Wave 15 closeoutをfresh-readし、次のbounded user outcomeを比較する。新しいsliceは、deterministic local falsifierと権限境界が固定されるまで開始しない。
+**wave 16 completed local; goal remains active:** `../completed/history-admission-truth-20260827.md`。Wave 15 clean closeout `1deb8a9` / tree `afcde382`から、loading／録音中のUndo/Redo許可truthをshared deck、Windows native menu、Android/Windows controller、deep history ownerで一つにした。拒否時はhistory/project/runtime/autosaveと古いhistory planを安全に保持／無効化し、通常Undo/Redoとactive-loop transactionを保つ。source product `6309241` / tree `263c195`、統合bytes 676 tests / 112 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical keyboard/TalkBack/Narrator/audio、device/provider/public/signing/Humanは別gate。
 
 **wave 15 completed local; goal remains active:** `../completed/desktop-live-loop-history-transaction-20260827.md`。exact Wave 14 closeout `924fb3c` / tree `cd39425`から、Windows same-owner active Beat loopのUndo/Redoをhistory preview→candidate audio→commit/cancelへし、candidate failureでproject/history/voiceを保持する。PAD不変時はretriggerせず、owner変更は従来の全停止へ戻す。product checkpoint `70b31e9` / tree `ce9469c`、593 tests / 197-task gateまで`LOCAL_PASS`。source/transport/scratch continuity、physical audio、device/provider/public/signing/Humanはscope外。
 
@@ -76,7 +76,7 @@
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
-**次に選ぶ一つ:** Wave 16 portfolioをWave 15 clean closeoutから再計算する。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に保持する一つ:** Wave 16完了後、initial Beat-loop startup transactionを再比較する。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
