@@ -2491,7 +2491,7 @@ private fun FocusedStepEditor(
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             MachineButton(
-                label = "PADへ戻る\nQUICK",
+                label = "クイックへ戻る\nQUICK",
                 onClick = onShowQuick,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
