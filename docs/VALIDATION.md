@@ -2,6 +2,12 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Wave 14 post-Wave 12/13 integration candidate — 2026-08-27
+
+- Integration input: existing PR #78 receipt `aab28763c8a44bee2e778578f17d11cf52075fb6` plus clean Wave 14 closeout `924fb3c05697fb1ff801d3dba7fb1a77ee8c29dc` / product `60068369e9c2820509a839c259693ae0ce2bac2d`.
+- Manual conflict contract: preserve `PadTriggerOwnership` and the prior dedicated operation epoch while adding Wave 14 cancellation propagation and verified provider publication. No parent receipt substitutes for fresh validation of the merged bytes.
+- Required proof: focused and full Android/shared/JVM/Desktop tests, lint, assembly, Windows packaging, configured/Python/public-surface policy, artifact/SBOM read-back and two-axis review. Only one exact final receipt may be pushed to the existing PR #78.
+
 ## Wave 12/13 post-PR #58 integration candidate — 2026-08-27
 
 - Product anchor: `cc4199f0c17ededfd3847ba0ffc14f0c0bdbc4c8`, tree `0ab9a9ca90885b9d3e77f44e434d81da2aff22ad`, with parents merged `main@592b4ee777b32c9ce84d771166d04628cd104818` and integrated closeout `9043af2f582b4f8965ce973ab007d79de4d9324b`. The latter contains Wave 12 product `b8db4368511d8dd3578634bdd071be0da0f38b8a` and Wave 13 product `ffe1bbdf59d0645652c3f8556fb6f601e5218670`.
@@ -149,6 +155,19 @@
 - The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
 - Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
 - Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
+## Verified Android document publication — 2026-08-27
+
+- Product checkpoint: `60068369e9c2820509a839c259693ae0ce2bac2d`, tree `e7b7643ddade8d54aed421c4c01597d2d1722cf8`, base `9043af2f582b4f8965ce973ab007d79de4d9324b`.
+- RED/GREEN streaming boundary: after adapting the new test to the module's JUnit4 harness, compilation failed only because `publishVerifiedDocument` did not exist. GREEN streams the validated source into a fake destination, closes output, reopens it and requires exact count plus SHA-256. It covers exact 150k and empty copies, silent truncation, same-size corruption, extra bytes, output/read-back null, missing source, write/read/close failures and a zero-progress bulk read.
+- Android binding: WAV export and portable-project save use unique cache temporaries and the same verified publisher. Project codec read-back plus internal autosave stay before provider publication. A failed or unverifiable destination never emits success; shared Japanese copy distinguishes the potentially incomplete selected document from the retained in-app production/safety copy.
+- Control review: missing source cannot open destination output; failed write/close cannot start read-back; output closes before read-back opens; cancellation is rethrown exactly; fatal `Error` is not caught; all owned temporaries are cleaned in `finally`. The unused public publication fingerprint was removed. Final Standards/Spec unresolved findings: `0/0`.
+- Full clean gate: `BUILD SUCCESSFUL in 3m 50s`; 197 tasks (196 executed / 1 up-to-date). Android app 265 / 46 suites, shared Android/Desktop 66/66 / 13+13 suites, JVM-core 81 / 9 suites, Desktop 104 / 22 suites; total 582 tests / 103 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Configured/policy gates: explicit Git Bash `validate_project.sh` PASS (product-checkpoint public surface 443, executable modes, 18 Gradle tasks, six XML files, wrapper SHA/UTF-8). Closeout Python policy 59 PASS. Current plus reachable-history public surface 443 has no credential/signing/audio candidates. `git diff --check` PASS.
+- Final unsigned Android candidate: 24,224,884 bytes / `D5CE2B5EE7051B880B55553B690196BB339D253C16BAC9AEB04D094DF588E692`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy and alignment PASS. Unsigned candidate acceptance exits 0; `--require-signed` rejects with exit 1.
+- Other artifacts: debug APK 31,721,586 / `51974214AEFF95BC7DE3D666308E53A9D3E52975074537D4EB2AD5680F5202F5`; androidTest 10,878,659 / `19002E0EBB2B62B599FAE7CF1738AC275B7D4CBEC610F0348D3B9C871A90E4AC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`; Desktop JAR 349,674 / `C4B2F22F74F0FC4C1AE4126B80FAA92728898E9897213A71274008266EC32DC9`.
+- Windows/SBOM: app-image 405 files / 176,657,157 bytes. The reproducible sorted path/size/file-hash manifest SHA-256 is `A941FD50C0BEDADA4A419F22F15AF0331D6EFDFD011B072DB6233CBE6B1A0AFC`. CycloneDX 1.6 JSON verifies `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies. JSON is 1,581,101 bytes / `AD8E0022CF0376B3DA972B821804122CE7C3665D064A04214F46DCB6416FA5FE`; XML build output is 1,431,320 bytes / `4BAD93472E047B342E4468A094EB2F7D3A64D2189C0B12038DDC431A9A113964`. `verify_sbom.py` is JSON-only, so XML was not represented as a parser PASS.
+- Gate: exact-byte fake-provider contracts establish `LOCAL_PASS`, not provider atomicity or real URI behavior. Google Files/Drive/Dropbox reopen timing, partial existing-document state, network/offline behavior, process death, device/provider/public/signing and Human outcomes remain unclaimed.
+
 ## Overwrite-safe Windows WAV export — 2026-08-27
 
 - Product checkpoint: `ffe1bbdf59d0645652c3f8556fb6f601e5218670`, tree `d3ae7a9bb18d48ae323e92aaabfe58e25acd975f`, base `6fb1c94f283019580d0cbf0fecfadeefa324675a`.

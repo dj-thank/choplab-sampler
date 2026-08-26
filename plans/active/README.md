@@ -6,11 +6,13 @@
 
 ## Current selection
 
-**現在の統合plan:** product `cc4199f` / tree `0ab9a9c`で merged `main@592b4ee` と clean Wave 13 closeout `9043af2`（Wave 12を包含）を統合した。PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factoryを保持し、Wave 12のcandidate-first active-loop replacementとWave 13のatomic WAV publicationを合成している。focused 23-task、full 184-task、637 tests / 108 suites、lint、Python 64、public-surface/history 446、Android policy、Windows package、SBOM、two-axis reviewはPASS。exact final receiptのhosted Android/Windows/iOS/supply-chainとclean merge-stateが通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** 既存PR #78のreceipt `aab2876`へclean Wave 14 closeout `924fb3c`を統合し、PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factory、Wave 12のcandidate-first active-loop replacement、Wave 13のatomic WAV publicationを保持したまま、Wave 14のverified Android document publicationを追加する。fresh merged local gate、artifact/policy/read-back、two-axis reviewと、同一exact final headのhosted Android/Windows/iOS/supply-chainが全て通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 
-**wave 14 portfolio recompute / implementation unselected:** Wave 12/13のGitHub統合が閉じた後にcurrent source・SSOT・external gatesを再読し、もう一つのbounded local user outcomeだけを選ぶ。physical touch/audio/speech、Android SAF provider behavior、signing/provider/public/Humanは別gateであり、pan/stems/arbitrary Song/native/MIDI/AIへ暗黙拡張しない。
+**wave 15 portfolio recompute / no slice selected:** Wave 14のGitHub統合を閉じてからcurrent source・SSOT・external gatesをfresh-readし、次のbounded user outcomeを比較する。新しいsliceは、deterministic local falsifierと権限境界が固定されるまで開始しない。
+
+**wave 14 completed local; goal remains active:** `../completed/android-verified-document-publication-20260827.md`。exact Wave 13 closeout `9043af2` / tree `7e71a8c`から、AndroidのWAV／portable制作をproviderへcopyした後にselected URIをstreaming size＋SHA-256で再読し、validated temporaryと一致した場合だけ成功表示する。silent truncation/corruptionを失敗へし、cancellation/fatal truthとowned temporary cleanupを固定した。product checkpoint `6006836` / tree `e7b7643`、582 tests / 197-task gateまで`LOCAL_PASS`。provider atomicity、既存document復元、device/provider/public/signing/Humanはscope外。
 
 **wave 13 completed local; goal remains active:** `../completed/windows-atomic-wav-export-20260827.md`。exact Wave 12 closeout `6fb1c94` / tree `ce7ce3d`から、Windowsの4小節WAVをsame-parent temporaryへ完成・PCM-16 shape検証・file syncしてからだけdestinationへatomic replaceする。render/write/close/shape/move failureは既存WAV bytesを保持し、temporary debrisを残さない。manual `.choplab` saveとdeep helperを共有し、product checkpoint `ffe1bbd` / tree `d3ae7a9`、568 tests / 197-task gateまで`LOCAL_PASS`。Android SAF、DSP、schema、device/provider/public/signing/Humanはscope外。
 
@@ -72,7 +74,7 @@
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
-**次に選ぶ一つ:** Wave 13はoverwrite-safe Windows WAV exportとして完了。Wave 14はcurrent sourceと残gateを再計算中で、まだ実装sliceを選定していない。physical touch・TalkBack/Narrator・L/R route・A/B Song device audio・Android SAF provider behaviorは別権限gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に選ぶ一つ:** Wave 15 portfolioをWave 14 clean closeoutから再計算中。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

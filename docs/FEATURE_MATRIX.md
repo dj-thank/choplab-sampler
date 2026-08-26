@@ -82,7 +82,7 @@
 | 全再生停止 | 🧪 local/device UI | `ALL STOP`がsource、PAD voice、loop、scratchの境界を先に発行してからtransportを停止。UIのstep/loop/scratchも同時に解除し、録音中データは明示的に継続 |
 | 録音中の編集所有権 | 🧪 local | MIC / DEVICE / VOICEのSTARTING・RECORDING・STOPPING中はproject edit、UNDO、REDOを拒否し、ボタンも無効化。PAD preview開始はengine停止と同時にsource/transport/loop/scratch UI truthを更新 |
 | Autosave/recovery | ✅ historical device / current local | 900ms debounce、SHA-256に結合した世代revision、store再生成後も古い/equal revisionを拒否、最新の検証済み世代を選ぶpending復旧、三世代保持。verified disk revisionをProductionSessionへ引継ぎ、process restart後の次editが古い番号で拒否されないJVM regressionあり。現候補のDEVICE再実行は未実施。手動上書き前にもアプリ内安全コピーを作成 |
-| 保存・書出し・削除の操作真実 | ✅ local / Windows visual | SAVEは自動復旧、portable制作file、再生確認、4小節WAVを分けて説明。`ビート配置を消す / CLEAR STEPS`は二度押しでpattern配置だけを消し、Source/PAD/project/autosaveを消す表示や動作にしない。1200×900同一状態before/afterで文字切れなし。物理touch/読み上げ/Human理解は未確認 |
+| 保存・書出し・削除の操作真実 | ✅ current local / Windows visual | SAVEは自動復旧、portable制作file、再生確認、4小節WAVを分けて説明。AndroidのWAV／portable制作はapp-owned validated temporaryをproviderへcopy後、selected URIのbyte count＋SHA-256 read-back一致時だけ成功表示し、検証不能時は制作／internal safety copy保持とdestination不完全可能性を伝える。provider atomicity・既存document復元・実URI挙動は未確認。`ビート配置を消す / CLEAR STEPS`は二度押しでpattern配置だけを消し、Source/PAD/project/autosaveを消す表示や動作にしない。1200×900同一状態before/afterで文字切れなし。物理touch/読み上げ/Human理解は未確認 |
 | 起動時autosave復元と制作routing | ✅ emulator/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は新規取込を無効化し、`LOADING / 音声を読込中 / PLEASE WAIT`でfalseな`NO SOURCE`を防止。復元後は未編集starterだけ→CAPTURE、Source＋starter→CHOP、user Beat／PAD-only→BEATへroute。API 36でBeat編集→autosave→強制終了→BEAT復帰を確認 |
 | Undo / Redo | ✅ MVP/local | PAD、range/marker、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesceし、slice選択だけのSESSION changeはUndo/autosaveを増やさない |
 | MIDI | — | 未実装 |

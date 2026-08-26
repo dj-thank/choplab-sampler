@@ -134,6 +134,16 @@ fun documentCompletionMessage(
     }
 }
 
+fun documentPublicationVerificationFailureMessage(action: DocumentAction): String = when (action) {
+    DocumentAction.SAVE_PROJECT ->
+        "選んだ保存先の制作ファイルを確認できません。不完全な可能性があります。アプリ内の安全コピーは保持しています"
+    DocumentAction.EXPORT_WAV ->
+        "選んだ保存先のWAVを確認できません。不完全な可能性があります。制作はアプリ内に残っています"
+    DocumentAction.IMPORT_AUDIO,
+    DocumentAction.OPEN_PROJECT,
+    -> "選んだファイルの内容を確認できません。現在の制作はそのままです"
+}
+
 private fun safeDocumentDisplayText(
     value: String?,
     maxLength: Int,
