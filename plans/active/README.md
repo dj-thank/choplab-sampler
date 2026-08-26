@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 13 selected / in progress:** `windows-atomic-wav-export-20260827.md`。exact Wave 12 closeout `6fb1c94` / tree `ce7ce3d`から、Windowsの4小節WAVをsame-parent temporaryへ完成させてからだけdestinationへ置換する。render/write/close/move failureは既存WAV bytesを保持し、temporary debrisを残さない。manual `.choplab` atomic saveとdeep helperを共有し、Android SAF、DSP、schema、device/provider/public/signing/Humanはscope外。
+
 **wave 12 completed local; goal remains active:** `../completed/desktop-live-loop-edit-transaction-20260827.md`。exact Wave 11 closeout `7e8603c` / tree `2ca0ce1`から、Windowsのactive Beat loop編集をadapter開始成功後だけproject/history/autosaveへcommitするtransactionへ修復した。candidate failureは旧loop・旧PAD設定・historyを保持し、loading/recording拒否とno-opのretriggerを禁止。Java Soundはcandidate-first start／failure abandon／success retireをactual helperで固定し、product checkpoint `b8db436` / tree `a9b28c0`、560 tests / 197-task gateまで`LOCAL_PASS`。physical Windows endpoint/audio/Human、Android、schema、release/publicはscope外。
 
 **wave 11 completed local; goal remains active:** `../completed/focused-step-editor-accessibility-20260827.md`。exact Wave 10 closeout `600211f` / tree `3300900`から、`並べる詳細 / STEPS`を固定・非scrollのfocused editorへし、portrait 4×4 / landscape 8×2の全16 cellsをsupported/inset-constrained viewportとfont scaleで48dp以上にした。既存BPM/音色/preset面は削除せず往復可能。product checkpoint `9611894` / tree `d4e9b92`、553 tests / 197-task gateまで`LOCAL_PASS`。physical touch/TalkBack/Narrator、device/provider/public/signing/Humanは別gate。
@@ -48,7 +50,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** Wave 12 closeout後のcurrent sourceからportfolioを再計算し、deterministicなlocal falsifierを持つbounded user outcomeを一つだけ選ぶ。physical touch・TalkBack/Narrator・L/R route・A/B Song device audioは別権限gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に選ぶ一つ:** Wave 13でoverwrite-safe Windows WAV exportを選択済み。closeout前に別sliceを開始しない。physical touch・TalkBack/Narrator・L/R route・A/B Song device audioは別権限gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
