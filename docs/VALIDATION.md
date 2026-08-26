@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## PR #79 loop-admission review repair — 2026-08-27
+
+- Base/product: Wave 18 closeout `fa39c476df239a2c84ec7c9149c69ce70ba9d608` / review-repair product `11d01272758eda774852ea2af1e55fe9d3e5c3b4`, tree `83c205536006518aab5da4d3c33e02500f84c2dd`.
+- RED controls: slow failed Desktop startup paused transport; Android loop-admission failure lacked a discard-only helper; failed Java Sound candidate cleanup lost close ownership. A second direct RED showed a late same-PAD transport hit could supersede a started candidate before handoff, and another proved candidate startup held the Java Sound monitor.
+- GREEN contract: Desktop render/open/start stays outside `playbackTransitionLock`; candidate voices are separately staged until one short retire/commit boundary. Cleanup close failure retains exact engine ownership. Android rejection stops and deletes app-owned takes without any decode/save callback.
+- Focused/full proof: Desktop 165 / 24 suites and Android 284 / 50 suites pass. Clean aggregate gate passes 197 tasks (191 executed / 6 up-to-date), `BUILD SUCCESSFUL in 4m38s`; shared Android 86 / 17, shared Desktop 86 / 17 and JVM 88 / 9 bring the total to 709 tests / 117 suites, zero failure/error/skip.
+- Lint/policy: debug and release lint each fatal/error 0 / warning 4. Python policy 64/64; public current/history 464 each; configured validation 18 tasks plus six XML files, executable modes, wrapper SHA-256 and UTF-8 policy; `git diff --check` passes.
+- Package controls: unsigned Android `0.17.0` / code 27 passes with `manifest_tool=aapt2`; signed-required negative exits 1. Windows ProductVersion `0.17.0` passes. CycloneDX 1.6 verifies 650 components / 651 dependencies.
+- Artifact read-back: debug APK `28317CE1547063E5F4BAC84711E58C0BA282569861874E65FFD415B2B07E389D`; androidTest `F8AC9B2C1FC97672FCFB8565127D6099D80E906F49F623BE334C61AF102FE622`; unsigned release `A9A70634E9587F8602390B26A0E3D2E36A8177E088788B4428FFFDE94210D53E`; Desktop JAR `B4D2B1D79338FC5E6D98C317CB8690C431DC555AB3920E910FD147C139A6943B`; Windows image manifest `2D32051661ADF24F1DDA5FFD440A8A2914CD0DFD58F385A6C6389A2BE82934F7`; SBOM JSON `578DF19D4737D11FD57ABCE06076D0B579EC00E498664D1AACEB4D718D09FED9`, XML `31A3FEC6D5F7BDB15A74FA80741F3740960FF83ED942034003EBD08B85AD667A`.
+- Execution note: the managed sandbox denied one readable Gradle transform JAR; the identical offline gate passed outside it. Read-back済みのtask-owned build outputsだけを削除して460 MBを回収した。これらはexact product commitから再生成でき、source/cache/user artifactは削除していない。
+- Review/gate: local Standards and Spec passes have unresolved `0/0`. PR #79 checks, current review threads, merge and merged-main read-back are separate live provider evidence; tag/Release/device/signing/Human remain out of scope.
+
 ## Wave 18 Android complete Beat-loop command admission — 2026-08-27
 
 - Base/product: `8065c898da4461717b4266c9803b555449caf9d7` / product `5812c8a993eb57308dd4bf060ca7bd8ccea98ea5`, tree `1255aca145c6d92efa7eaea3f18e13b32e1287de`.

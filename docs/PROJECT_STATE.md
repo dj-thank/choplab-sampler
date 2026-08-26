@@ -1,5 +1,19 @@
 # Project state
 
+## Current snapshot — 2026-08-27 Waves 17–18 review-hardened integration bytes
+
+Observed/read back at `2026-08-27T07:20:00+09:00`. Exact input is Wave 18 closeout `fa39c476df239a2c84ec7c9149c69ce70ba9d608`, tree `54a57715ba08b3f528cd1c10f48067bcba1663d1`. Review-repair product anchor is `11d01272758eda774852ea2af1e55fe9d3e5c3b4`, tree `83c205536006518aab5da4d3c33e02500f84c2dd`, on the existing PR #79 branch.
+
+- Windows transaction: PCM render/open and complete candidate startup now run outside the controller handoff lock. Started candidates remain in a separately owned staging set, so transport continues during slow startup, a late same-PAD transport hit cannot retire the candidate, and the short handoff boundary retires every prior/late voice before publishing loop state.
+- Windows cleanup truth: a candidate whose `Clip.close()` fails remains owned by the Java Sound engine. The cleanup failure propagates as non-recoverable, and `stopAll()` can retry the exact voice instead of losing a still-audible clip.
+- Android recording truth: audio-focus or complete loop-session admission failure no longer calls the normal vocal stop/decode/save path. It stops the recorder and deletes both the returned app-owned take and original requested take through a no-decode/no-save cleanup seam; stop or delete failure remains visible.
+- Additional falsifier: review found and fixed a second race between candidate startup and handoff. Direct proxy-Clip tests prove slow startup does not hold the engine monitor against transport, while staged candidates cannot be superseded by a late transport hit.
+- Executable proof: clean full gate passes 197 tasks (191 executed / 6 up-to-date), `BUILD SUCCESSFUL in 4m38s`. XML read-back is Android 284 / 50 suites, shared Android 86 / 17, shared Desktop 86 / 17, JVM 88 / 9 and Desktop 165 / 24: 709 tests / 117 suites, failures/errors/skips 0. Lint debug/release each has fatal/error 0 / warning 4.
+- Policy/package proof: Python policy 64/64, public current/history 464 each, configured validator 18/18 tasks plus XML/mode/wrapper/UTF-8, unsigned Android positive and signed-required negative, Windows ProductVersion/package and CycloneDX 650/651 pass.
+- Artifacts: debug APK 31,836,274 / `28317CE1547063E5F4BAC84711E58C0BA282569861874E65FFD415B2B07E389D`; androidTest 10,996,855 / `F8AC9B2C1FC97672FCFB8565127D6099D80E906F49F623BE334C61AF102FE622`; unsigned release 24,290,420 / `A9A70634E9587F8602390B26A0E3D2E36A8177E088788B4428FFFDE94210D53E`; Desktop JAR 413,374 / `B4D2B1D79338FC5E6D98C317CB8690C431DC555AB3920E910FD147C139A6943B`.
+- Windows/SBOM: `ChopLab.exe` 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`; app-image 405 files / 176,783,390 bytes / manifest `2D32051661ADF24F1DDA5FFD440A8A2914CD0DFD58F385A6C6389A2BE82934F7`. SBOM JSON 1,580,941 / `578DF19D4737D11FD57ABCE06076D0B579EC00E498664D1AACEB4D718D09FED9`, XML 1,431,139 / `31A3FEC6D5F7BDB15A74FA80741F3740960FF83ED942034003EBD08B85AD667A`.
+- Gate: local parent Standards/Spec review unresolved `0/0`; strongest fresh result is `LOCAL_PASS`. Existing PR #79 exact-head checks, review-thread read-back, mergeability and merged-main checks remain provider gates to observe live. No tag/Release, signing secret, device/ADB, OAuth/provider account, real recording or Human gate is claimed.
+
 ## Current snapshot — 2026-08-27 Android complete Beat-loop command admission
 
 Observed/read back at `2026-08-27T06:14:46+09:00`. Exact base is Wave 17 clean closeout `8065c898da4461717b4266c9803b555449caf9d7`, tree `1c794400ac7e9fca391f505da5eb907788d293b0`. Product checkpoint `5812c8a993eb57308dd4bf060ca7bd8ccea98ea5`, tree `1255aca145c6d92efa7eaea3f18e13b32e1287de`, is isolated on `codex/choplab-wave18-android-loop-admission-20260827`.

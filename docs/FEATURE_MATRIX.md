@@ -33,7 +33,7 @@
 | PAD付き | ✅ emulator | 4 BANK × 32 PAD（合計128）。各BANKを固定01–16 / 17–32ページで表示。CHOPと通常BEATは同じ4×4演奏面を共有し、詳細sequencerだけを二次面へ分離 |
 | 正方形PAD | ✅ device/emulator | 4×4 / 8×2とも親領域へ収まる最大正方形を中央配置。Pixel 9a portraitとv0.11 portrait/landscape emulatorで確認 |
 | 内蔵ドラムキット | ✅ emulator/local | オリジナル合成5キット×16音。新規／reset／新規Source制作だけはDUSTY JAZZ＋starter beatをBANK Bへ自動配置し、復元／手動OPEN済みBANK Bは暗黙変更しない。別kit適用で既存音がある場合は二度押し確認 |
-| ビートへ声を重ねる | 🧪 current local | AndroidとWindowsで選択Beat loopを先頭から再始動して録音状態とloop表示を一致させ、BANK Dへ最大32テイク。current project schema 7とWAV exportに含む。fake recorder/audio-port host testのみで、実環境の声は未録音 |
+| ビートへ声を重ねる | 🧪 current local | AndroidとWindowsで選択Beat loopを先頭から再始動して録音状態とloop表示を一致させ、BANK Dへ最大32テイク。Androidのfocus／loop-session admission失敗は通常のdecode/saveへ入らず、recorderを停止してapp-owned takeを破棄する。current project schema 7とWAV exportに含む。fake recorder/audio-port host testのみで、実環境の声は未録音 |
 | DJスクラッチ | 🧪 local/emulator | 元曲slice/S-Eまたは選択PADをpointer-downから直接所有し、左右を正逆速度へ変換。微小ノイズdead zone、px/s正規化、120ms idle無音、方向／倍率／playhead表示をhost test＋API 36 emulatorで確認。解除時は直前の有効なBeat loop/transportへ一度だけ復帰し、再開対象なしでは停止。TalkBack操作を公開。物理実機の連続操作感・クリック音・読み上げは未確認 |
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
@@ -44,7 +44,7 @@
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
-| チョップ済みビート音声全体を連続ループ | ✅ current local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。Windowsはcomplete candidate start後だけ旧再生／project／historyを切替え、Androidはowner＋対象VOICEを一つのbounded commandとしてadmit後だけproject/history/runtimeを公開。回復可能なWindows開始失敗またはAndroid queue rejectionでは現在の制作truthを保持。物理音質、click/overlap/latencyは未確認 |
+| チョップ済みビート音声全体を連続ループ | ✅ current local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。Windowsはrender/open/startをhandoff lock外で行い、candidateを別所有してlate transport hitとcleanup失敗に耐え、complete start後だけ旧再生／project／historyを切替える。Androidはowner＋対象VOICEを一つのbounded commandとしてadmit後だけproject/history/runtimeを公開。回復可能なWindows開始失敗またはAndroid queue rejectionでは現在の制作truthを保持。物理音質、click/overlap/latencyは未確認 |
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
 | PAD→ループ／並べる→足す／擦る導線 | ✅ current local / historical device | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`STEPS`は選択PADの全16 cellを一画面で編集するfocused面へ開く。QUICK／BPM・音色controlsへ明示的に往復し、選択PADとBANK/pageを保持 |
