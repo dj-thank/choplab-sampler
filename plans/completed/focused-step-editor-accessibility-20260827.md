@@ -55,7 +55,7 @@ shared pure policyは`DeckLayoutMetrics`とviewport width/heightからfocused wo
 - [x] 2026-08-27T00:42+09:00 — Wave 10 exact closeout、SSOT、explicit 16-step 48dp gapをread-backし、dedicated worktreeを作成。
 - [x] 2026-08-27T01:20+09:00 — Milestone 1 RED/GREEN。viewport/font geometry、row-major 1–16、48dp、invalid/undersized fail-close、3-mode transitionをshared pure policyへ固定。
 - [x] 2026-08-27T01:20+09:00 — Milestone 2 shared Compose integration。`STEPS`はfocused editorを開き、QUICK／BPM・音色controlsへ明示的に往復する。selected PAD key、active/playhead/disabled semanticsを同一presentationへ集約。
-- [ ] Milestone 3 full gate and closeout。
+- [x] 2026-08-27T01:31+09:00 — Milestone 3 full gate and closeout。clean 197 tasks、553 tests / 99 suites、lint／configured／Python／public-history／Android正負control／Windows／SBOMをread-backし、Standards/Spec unresolved 0/0で`LOCAL_PASS`。
 
 ## Discoveries
 
@@ -79,7 +79,8 @@ shared pure policyは`DeckLayoutMetrics`とviewport width/heightからfocused wo
 - geometry RED: `resolveFocusedStepLayout`／workspace mode API不在でshared test compile failure。GREEN: reference 360×640、412×820、640×360、1280×720のfont 1.0/1.3/2.0、row-major、minimum target、fail-close PASS。
 - semantics RED: `stepCellPresentations`不在でshared test compile failure。GREEN: selected PADの16 exact keys、active/playhead/disabled descriptions、invalid columns PASS。
 - review RED: inset control 632×328 font 2.0がassert-not-null failure（3dpで47.5dp）。GREEN: scoped 2dp gapで48.5dp以上。
-- shared Desktop、shared Android host、app全unit test compile/run PASS。full package/lint/artifact gateはproduct checkpoint後に実行する。
+- product checkpoint `96118949fc8d8ec766715a6eb110d76523ac1095` / tree `d4e9b929f2e250e784bd2eeeb4dc309044bdb00c`。clean full Gradle gate 197 tasks（196 executed / 1 up-to-date）、553 tests / 99 suites、failure/error/skip 0。Lint debug/release各fatal 0 / errors 0 / warnings 7。
+- configured validation 18 tasks、Python policy 59、current＋reachable-history public surface 433、`git diff --check` PASS。unsigned Android verifierは`manifest_tool=aapt2`でPASSし、`--require-signed`はexpected exit 1。Windows ProductVersion、405-file app-image manifest、CycloneDX 650/651もPASS。
 
 ## Risks and rollback
 

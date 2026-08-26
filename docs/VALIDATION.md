@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Focused sixteen-step editor — 2026-08-27
+
+- Product checkpoint: `96118949fc8d8ec766715a6eb110d76523ac1095`, tree `d4e9b929f2e250e784bd2eeeb4dc309044bdb00c`, base `600211fa20b0cb3f4e1fdcaf0878d0aecb7166a3`.
+- RED/GREEN geometry: missing focused-layout/workspace-mode APIs failed shared test compilation. GREEN covers 360×640, 412×820, 640×360 and 1280×720 at font scale 1.0/1.3/2.0; portrait 4×4, landscape 8×2, exact row-major 1–16, minimum 48dp, and invalid/undersized fail-close. Review added 632×328 font 2.0; it failed at 47.5dp before a compact-landscape-only 2dp gap raised the minimum above 48dp.
+- RED/GREEN interaction: missing cell-presentation API failed compilation. GREEN binds all sixteen selected-PAD step keys and descriptions, preserves active/playhead/disabled truth, rejects invalid columns, and round-trips QUICK → FOCUSED_STEPS → FINE_CONTROLS → FOCUSED_STEPS → QUICK. Compose keeps the original controller callback and production state.
+- Full clean gate: `BUILD SUCCESSFUL in 4m 13s`; 197 tasks (196 executed / 1 up-to-date). Android app 264 / 46 suites, shared Android/Desktop 66/66 / 13+13 suites, JVM-core 68 / 8 suites, Desktop 89 / 19 suites; total 553 tests / 99 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Configured/policy gates: `validate_project.sh` PASS (public surface, executable modes, 18 Gradle tasks, six XML files, wrapper SHA/UTF-8). Python policy 59 PASS. Current plus reachable-history public surface 433 has no credential/signing/audio candidates. `git diff --check` PASS.
+- Final unsigned Android candidate: 24,208,500 bytes / `E9DEB956D6F47FB24B89A26A8B6E70C5B941D7C93FDB9A3DAEB91FB78C2464BA`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy and alignment PASS. Unsigned candidate acceptance exits 0; `--require-signed` rejects with exit 1.
+- Other artifacts: debug APK 31,705,202 / `1F71851E832DAF3D5FE75A13E3E3900B17E71BCA2A8E7654998C1512BCFC1098`; androidTest 10,878,659 / `19002E0EBB2B62B599FAE7CF1738AC275B7D4CBEC610F0348D3B9C871A90E4AC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`; Desktop JAR 336,656 / `ACDE462391B3D2BD006AAA68E72E96E8541CE1B3162948671913A8C361214D15`.
+- Windows/SBOM: app-image 405 files / 176,638,021 bytes. The reproducible manifest is each slash-normalized relative path, decimal size and lowercase SHA-256 joined with `|`, sorted by path and LF-terminated; its SHA-256 is `E810F81D08ED4A3C6FBF33F987F9B1C0694EFA844447AF6208693301DD1EA050`. CycloneDX 1.6 `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `FF210B222F9CF2C12E6975A6AAA7DBCA5BAD663F1516A3598019BF7143953598`.
+- Review/gate: local parent Standards/Spec unresolved findings `0/0`. Result `LOCAL_PASS`; physical touch, TalkBack/Narrator speech/order, one-hand comfort, device/provider/public/signing and Human outcomes remain unclaimed.
+
 ## Stereo channel identity tracer — 2026-08-27
 
 - Product checkpoint: `66d3911f57dfb56baed682cf8c0ec9a0aed85164`, tree `e60216ab70ef540f48815524e0b645de16817007`, base `d6c22434f1bfd9fa5bc505717d0be4fa4a552a3d`.

@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**wave 11 active local:** `focused-step-editor-accessibility-20260827.md`。exact Wave 10 closeout `600211f` / tree `3300900`から、`並べる詳細 / STEPS`を固定・非scrollのfocused editorへし、portrait 4×4 / landscape 8×2の全16 cellsをsupported reference viewport/font scaleで48dp以上にする。既存BPM/音色/preset面は削除せず往復可能に保つ。targetは`LOCAL_PASS`で、physical touch/TalkBack/Narrator、device/provider/public/signing/Humanはscope外。
+**wave 11 completed local; goal remains active:** `../completed/focused-step-editor-accessibility-20260827.md`。exact Wave 10 closeout `600211f` / tree `3300900`から、`並べる詳細 / STEPS`を固定・非scrollのfocused editorへし、portrait 4×4 / landscape 8×2の全16 cellsをsupported/inset-constrained viewportとfont scaleで48dp以上にした。既存BPM/音色/preset面は削除せず往復可能。product checkpoint `9611894` / tree `d4e9b92`、553 tests / 197-task gateまで`LOCAL_PASS`。physical touch/TalkBack/Narrator、device/provider/public/signing/Humanは別gate。
 
 **wave 10 completed local; goal remains active:** `../completed/stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持した。3–8chは既存互換mono、schema 1–6とmono-only WAV shapeを保護。product checkpoint `66d3911` / tree `e60216a`、537 tests / 197-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。device/provider/public/signing/Humanはscope外。
 
@@ -46,7 +46,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** Wave 10でstereo channel identityはLOCAL完了したため、pan/stems/mixerへ自動的に広げない。次のportfolioでは、local authority内のcompact/accessibilityまたは一つのaudible workflow tracerと、別権限が必要なphysical L/R・route・A/B Song device audioを比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
+**次に選ぶ一つ:** Wave 11で16-stepの構造的compact/accessibility gapはLOCAL完了したため、layout proxyを横展開しない。次のportfolioでは、local authority内で閉じる一つのaudible workflow／reliability tracerと、別権限が必要なphysical touch・TalkBack/Narrator・L/R route・A/B Song device audioを比較する。pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

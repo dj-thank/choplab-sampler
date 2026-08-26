@@ -32,7 +32,7 @@
 | レイヤー制作UI | ✅ emulator | `音を重ねる` 1入口に SOUNDS / DRUMS / VOICE / SCRATCH を集約。SOUNDSは全BANKの音を4つ打ち・8分・16分で配置可能 |
 | 「おとひろい」正式UI | ✅ device/emulator | `入れる / チョップ / ビート / 保存` の4工程。CAPTUREに`制作を開く / OPEN PROJECT`を追加し、通常BEATをCHOP由来の波形＋BANK/page＋4×4 PADへ統一。旧Pixel receiptとcurrent API 36 emulator表示を分離して保持 |
 | 初期画面とデモ導線 | ✅ current local / API 36 emulator | pristine CAPTUREは空波形より先に`曲を読み込む / 制作を開く / MIC / DEVICE`を提示し、starterを`DUSTY JAZZデモ`として明示。Android/Windowsのデモ遷移はB DRUMS・B-01・01–16で一致。final exact APK 7 instrumentation testsと両platformのfresh captureを確認。物理touch/TalkBack/Humanは未確認 |
-| 固定操作面とlarge-text例外 | ✅ current local / emulator | 通常portraitとperformance画面は固定、landscapeのCHOP/通常BEATはresponsive配置。font scale 1.2+はheaderを簡素化し4工程を2×2、statusを複数行化。初期入力面だけはconstrained portrait/landscapeで全CTAへ到達するbounded vertical scrollを許可。640 × 360 dp / 200%でstage 49dp、demo 59dpを実測。16-step全セルの48dp化はresponsive再設計待ち |
+| 固定操作面とlarge-text例外 | ✅ current local / emulator | 通常portraitとperformance画面は固定、landscapeのCHOP/通常BEATはresponsive配置。font scale 1.2+はheaderを簡素化し4工程を2×2、statusを複数行化。初期入力面だけはconstrained portrait/landscapeで全CTAへ到達するbounded vertical scrollを許可。`STEPS`のfocused面は非scrollでportrait 4×4／landscape 8×2、参照viewportとfont 100/130/200%で全16 target 48dp以上。physical touch・TalkBack/Narrator・Human評価は未確認 |
 | 曲を流しながらPADで刻む | 🧪 local/emulator | source再生中のCapture PADは空／割当済みにかかわらず現在位置を刻む。割当済みA01は旧音を鳴らさず現在素材へ上書きし、旧loop/scratch実行参照も解除 |
 | 波形タップで頭出し | 🧪 source | source停止中／再生中のseekを実装。実機確認待ち |
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
@@ -41,8 +41,8 @@
 | チョップ済みビート音声全体を連続ループ | 🧪 local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。実機音質確認待ち |
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
-| PAD→ループ／並べる→足す／擦る導線 | ✅ device/emulator | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`QUICK / STEPS / ADD / SCRATCH`から4レーン／16-step詳細へ明示的に切替。選択PADとBANK/pageは往復で保持 |
-| 上級操作の段階表示 | 🧪 emulator/local | KEY/TONE/LEVELは通常BEAT画面から直操作し、再生中の選択音へカーソルを戻さず即時反映。16手動step、BPM/Swing等は`細かく調整`へ整理 |
+| PAD→ループ／並べる→足す／擦る導線 | ✅ current local / historical device | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`STEPS`は選択PADの全16 cellを一画面で編集するfocused面へ開く。QUICK／BPM・音色controlsへ明示的に往復し、選択PADとBANK/pageを保持 |
+| 上級操作の段階表示 | 🧪 current local | KEY/TONE/LEVELは通常BEAT画面から直操作し、再生中の選択音へカーソルを戻さず即時反映。16手動stepをfocused面へ分離し、BPM/Swing／tone／配置preset等の既存fine controlsは`BPM・音色 / CONTROLS`から保持 |
 | ビート画面の実波形・再生位置 | ✅ device | 選択sliceのPCM波形、ビートループ位置、16-step playhead、A〜Dの4レーン発音マーカーを固定表示 |
 | BANKを替えて音を重ねる | ✅ emulator/local | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、空BANKも選択可能。全128 PADを演奏・配置 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
