@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 18 selected / in progress:** `android-loop-session-admission-20260827.md`。Wave 17 closeout `8065c89` / tree `1c79440`から、Androidのowner＋eligible VOICE loop sessionを一つのbounded realtime commandとしてadmitし、初回project commit、VOICE録音restart、scratch returnをadmission成功後だけ公開する。queue full／engine stoppedはhistory/revision/runtime/autosaveを保持し、gate ceilingは`LOCAL_PASS`。
+
 **wave 17 completed local; goal remains active:** `../completed/windows-loop-start-transaction-20260827.md`。merged `main@9441b32` / tree `08849f6`から、Windows初回Beat-loop開始をloading／録音admission→non-consuming edit plan→owner＋eligible VOICE companion candidate全開始→既存再生retire→exact-once commitへした。拒否／recoverable owner・companion failureは現在の音・project/history/runtimeとdurable autosave bytesを保持し、fatal／contract外failureは通常失敗copyへ変換しない。product/review head `e2ebd9c` / tree `925fbff`、699 tests / 114 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical Windows click/overlap/latency、device/provider/public/signing/Humanは別gate。
 
 **直前のGitHub統合完了:** Waves 12–16 receipt `c3806b1`はPR #78の8/8 exact-head checksとresolved review後、merge commit `9441b32`としてmainへ統合済み。merged-main Android/Windows/iOS/supply-chain 4/4もSUCCESS。

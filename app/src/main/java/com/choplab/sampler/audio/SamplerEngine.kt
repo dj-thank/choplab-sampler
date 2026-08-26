@@ -211,10 +211,12 @@ class SamplerEngine(
             EngineCommand.Trigger(globalIndex, ownership)
         }
 
-    override fun startPadLoop(globalIndex: Int) {
-        enqueuePrepared {
-            EngineCommand.StartPadLoop(
-                padIndex = globalIndex,
+    override fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean {
+        if (!loopPad.isAssigned) return false
+        val session = preparePadLoopSessionSnapshots(loopPad, companionPads)
+        return enqueuePrepared {
+            EngineCommand.StartPadLoopSession(
+                session = session,
                 sourceStopGeneration = sourcePlaybackState.issueStop(),
             )
         }
@@ -502,24 +504,17 @@ class SamplerEngine(
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad != null) startVoice(pad, command.ownership)
                 }
-                is EngineCommand.StartPadLoop -> {
+                is EngineCommand.StartPadLoopSession -> {
                     applyPendingPadUpdates()
-                    if (
-                        retireSourceVoiceForLoopStart(
-                            sourcePlaybackState = sourcePlaybackState,
-                            sourceVoice = sourceVoice,
-                            stopGeneration = command.sourceStopGeneration,
-                        )
-                    ) {
-                        sourceVoiceGeneration = 0L
-                    }
-                    val pad = padKit.getOrNull(command.padIndex)
-                    if (pad?.playMode == PadPlayMode.LOOP) {
-                        retireConflictingVoicesForLoopStart(voices, command.padIndex)
-                        currentLoopPadValue.set(command.padIndex)
-                        currentLoopFrameValue.set(if (pad.reverse) pad.endFrame - 1 else pad.startFrame)
-                        startVoice(pad)
-                    }
+                    applyExclusivePadLoopSession(
+                        session = command.session,
+                        stopPriorPlayback = { applyStopAllVoices(command.sourceStopGeneration) },
+                        publishLoop = { padIndex, frame ->
+                            currentLoopPadValue.set(padIndex)
+                            currentLoopFrameValue.set(frame)
+                        },
+                        startVoice = { pad -> startVoice(pad) },
+                    )
                 }
                 is EngineCommand.StopPad -> {
                     releasePadVoices(command.padIndex, frames = FAST_RELEASE_FRAMES)
@@ -761,8 +756,8 @@ class SamplerEngine(
 
     private sealed interface EngineCommand {
         data class Trigger(val padIndex: Int, val ownership: Long) : EngineCommand
-        data class StartPadLoop(
-            val padIndex: Int,
+        data class StartPadLoopSession(
+            val session: PadLoopSessionSnapshots,
             val sourceStopGeneration: Long,
         ) : EngineCommand
         data class StopPad(val padIndex: Int) : EngineCommand
@@ -1116,34 +1111,53 @@ internal fun retireVoicesForPadRetrigger(
     }
 }
 
-/**
- * A loop replaces only accidental audition voices. Other PAD voices are intentional layers.
- * This runs on the audio thread and must stay allocation-free.
- */
-internal fun retireConflictingVoicesForLoopStart(
-    voices: Array<SamplerEngine.Voice>,
-    loopPadIndex: Int,
-) {
-    var voiceIndex = 0
-    while (voiceIndex < voices.size) {
-        val voice = voices[voiceIndex]
-        if (
-            voice.active &&
-            (voice.padIndex == loopPadIndex || voice.padIndex == PREVIEW_PAD_INDEX)
-        ) {
-            voice.deactivate()
-        }
-        voiceIndex++
+internal data class PadLoopSessionSnapshots(
+    val loopPad: SamplerEngine.PadSnapshot,
+    val companionPads: Array<SamplerEngine.PadSnapshot>,
+)
+
+/** Converts all model input before the realtime command is admitted. */
+internal fun preparePadLoopSessionSnapshots(
+    loopPad: PadModel,
+    companionPads: List<PadModel>,
+): PadLoopSessionSnapshots {
+    require(loopPad.isAssigned) { "Beat loop PAD has no audio" }
+    val forcedLoop = if (loopPad.playMode == PadPlayMode.LOOP) {
+        loopPad
+    } else {
+        loopPad.copy(playMode = PadPlayMode.LOOP)
     }
+    val companions = companionPads
+        .asSequence()
+        .filter(PadModel::isAssigned)
+        .filter { it.globalIndex != loopPad.globalIndex }
+        .distinctBy(PadModel::globalIndex)
+        .map(SamplerEngine.PadSnapshot::from)
+        .toList()
+        .toTypedArray()
+    return PadLoopSessionSnapshots(
+        loopPad = SamplerEngine.PadSnapshot.from(forcedLoop),
+        companionPads = companions,
+    )
 }
 
-/** Applies the source stop generation at the same audio-thread boundary as loop start. */
-internal fun retireSourceVoiceForLoopStart(
-    sourcePlaybackState: SourcePlaybackState,
-    sourceVoice: SamplerEngine.Voice,
-    stopGeneration: Long,
-): Boolean {
-    if (!sourcePlaybackState.applyStopBoundary(stopGeneration)) return false
-    sourceVoice.deactivate()
-    return true
+/** Audio-thread command body; inline callbacks keep the runtime path allocation-free. */
+internal inline fun applyExclusivePadLoopSession(
+    session: PadLoopSessionSnapshots,
+    stopPriorPlayback: () -> Unit,
+    publishLoop: (padIndex: Int, frame: Int) -> Unit,
+    startVoice: (SamplerEngine.PadSnapshot) -> Unit,
+) {
+    stopPriorPlayback()
+    val loopPad = session.loopPad
+    publishLoop(
+        loopPad.padIndex,
+        if (loopPad.reverse) loopPad.endFrame - 1 else loopPad.startFrame,
+    )
+    startVoice(loopPad)
+    var index = 0
+    while (index < session.companionPads.size) {
+        startVoice(session.companionPads[index])
+        index++
+    }
 }

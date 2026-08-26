@@ -32,7 +32,7 @@ private class RecordingPlaybackEngine : SamplerPlaybackEngine {
     override fun updatePad(pad: PadModel) = Unit
     override fun updateAllPads(pads: List<PadModel>) = Unit
     override fun triggerPad(globalIndex: Int): Long? = 1L
-    override fun startPadLoop(globalIndex: Int) = Unit
+    override fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean = true
     override fun stopPad(globalIndex: Int) = Unit
     override fun beginScratch(globalIndex: Int, startFrame: Int) = Unit
     override fun beginSourceScratch(audio: PcmAudio, startFrame: Int, endFrame: Int) = Unit

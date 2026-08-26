@@ -8,6 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.choplab.sampler.audio.AudioDecoder
 import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
+import com.choplab.sampler.audio.AndroidBeatLoopSessionResult
+import com.choplab.sampler.audio.AndroidBeatLoopSessionTransaction
+import com.choplab.sampler.audio.startAndroidPadLoopSession
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.CaptureEventBus
 import com.choplab.sampler.audio.CaptureTempFileStore
@@ -166,6 +169,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         playbackSilencer = PlaybackSilencer(engine::stopAllPlayback),
     )
     private val productionSession = ProductionSession(maxHistoryEntries = MAX_HISTORY_ENTRIES)
+    private val beatLoopSessionTransaction = AndroidBeatLoopSessionTransaction(productionSession, engine)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
     private var autosaveJob: Job? = null
@@ -536,8 +540,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                                 stopVocalOverdubRecording()
                                 setStatus("他のアプリが音声を使用中のため、ボーカル録音を停止します")
                             } else {
-                                if (recordingPolicy.allowBeatLoopDuringRecording) {
-                                    startEnginePadLoop(loopPadIndex)
+                                val loopAdmitted = !recordingPolicy.allowBeatLoopDuringRecording ||
+                                    startAndroidPadLoopSession(
+                                        engine = engine,
+                                        pads = started.pads,
+                                        loopPadIndex = loopPadIndex,
+                                        includeCompanions = false,
+                                    )
+                                if (!loopAdmitted) {
+                                    playbackInterruptionCoordinator.endPlaybackSession()
+                                    stopVocalOverdubRecording()
+                                    setStatus("再生操作が集中しているため、ボーカル録音を停止します")
+                                    return@completeIfCurrent
                                 }
                                 mutableUiState.value = started.copy(
                                     loopingPadIndex = loopPadIndex,
@@ -1302,10 +1316,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun triggerEnginePad(globalIndex: Int): Long? = engine.triggerPad(globalIndex)
 
-    private fun startEnginePadLoop(globalIndex: Int) {
-        engine.startPadLoop(globalIndex)
-    }
-
     override fun stopSourceForWorkspaceChange() {
         val state = mutableUiState.value
         val shouldStop = state.sourcePlaying ||
@@ -1604,38 +1614,27 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
             return
         }
+        val focusWasActive = playbackInterruptionCoordinator.canRetargetPlayback()
         if (!preparePlaybackStart()) return
 
-        stopCompetingPlayback()
-        var loopPad = pad
-        val changedPads = mutableListOf<PadModel>()
-        commitEdit { current ->
-            val pads = current.pads.map { candidate ->
-                val updated = when {
-                    candidate.globalIndex == globalIndex -> candidate.copy(playMode = PadPlayMode.LOOP)
-                    candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
-                    else -> candidate
-                }
-                if (updated != candidate) changedPads += updated
-                updated
-            }
-            loopPad = pads[globalIndex]
-            current.copy(pads = pads)
+        val result = try {
+            beatLoopSessionTransaction.start(state, globalIndex)
+        } catch (failure: Throwable) {
+            if (!focusWasActive) playbackInterruptionCoordinator.endPlaybackSession()
+            throw failure
         }
-        changedPads.forEach(engine::updatePad)
-        syncPattern()
-        startEnginePadLoop(globalIndex)
-        mutableUiState.value.pads
-            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = globalIndex)
-            .forEach { triggerEnginePad(it) }
-        mutableUiState.update {
-            it.copy(
-                pendingSourceCommand = pendingSourceCommandAfterStopRequest(it.sourcePlaying),
-                loopingPadIndex = globalIndex,
-                loopPlayheadFrame = if (loopPad.reverse) loopPad.endFrame - 1 else loopPad.startFrame,
-                statusMessage = "${('A'.code + loopPad.bankIndex).toChar()}-%02d の音声全体をループ中"
-                    .format(loopPad.indexInBank + 1),
-            )
+        when (result) {
+            AndroidBeatLoopSessionResult.Rejected -> {
+                if (!focusWasActive) playbackInterruptionCoordinator.endPlaybackSession()
+                setStatus("操作が集中しているため、ビートループを開始しませんでした")
+            }
+            is AndroidBeatLoopSessionResult.Started -> {
+                clearScratchRuntime()
+                result.changedPads.forEach(engine::updatePad)
+                mutableUiState.value = result.transition.state
+                syncPattern()
+                if (result.transition.persistenceRequired) scheduleAutosave()
+            }
         }
     }
 
@@ -2157,10 +2156,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             is ScratchReturnTarget.PadLoop -> {
                 val pad = state.pads[target.padIndex]
                 if (!preparePlaybackStart()) return false
-                startEnginePadLoop(target.padIndex)
-                state.pads
-                    .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
-                    .forEach { triggerEnginePad(it) }
+                if (!startAndroidPadLoopSession(engine, state.pads, target.padIndex)) {
+                    setStatus("操作が集中しているため、スクラッチ前のループへ戻れませんでした")
+                    return false
+                }
                 mutableUiState.update {
                     it.copy(
                         loopingPadIndex = target.padIndex,
