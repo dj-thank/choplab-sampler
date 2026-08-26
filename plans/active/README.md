@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**wave 16 portfolio recompute / no slice selected:** Wave 15 closeoutをfresh-readし、次のbounded user outcomeを比較する。新しいsliceは、deterministic local falsifierと権限境界が固定されるまで開始しない。
+**wave 16 selected / in progress:** `history-admission-truth-20260827.md`。Wave 15 clean closeout `1deb8a9` / tree `afcde382`から、loading／録音中のUndo/Redo許可truthをshared deck、Windows native menu、Android/Windows controllerで一つにする。拒否時はhistory/project/runtime/autosaveを不変にし、通常Undo/Redoとactive-loop transactionを保つ。gate ceilingは`LOCAL_PASS`。
 
 **wave 15 completed local; goal remains active:** `../completed/desktop-live-loop-history-transaction-20260827.md`。exact Wave 14 closeout `924fb3c` / tree `cd39425`から、Windows same-owner active Beat loopのUndo/Redoをhistory preview→candidate audio→commit/cancelへし、candidate failureでproject/history/voiceを保持する。PAD不変時はretriggerせず、owner変更は従来の全停止へ戻す。product checkpoint `70b31e9` / tree `ce9469c`、593 tests / 197-task gateまで`LOCAL_PASS`。source/transport/scratch continuity、physical audio、device/provider/public/signing/Humanはscope外。
 
@@ -56,7 +56,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** Wave 16 portfolioをWave 15 clean closeoutから再計算する。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に保持する一つ:** Wave 16完了後、initial Beat-loop startup transactionを再比較する。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
