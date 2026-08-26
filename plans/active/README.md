@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の統合plan:** PR #58 の既存branchを唯一のreview surfaceとして、exact `main@4f56a69`を含むGATE ownership／録音取消／transport修復に、PR #64・#76・#77のclean headsとWave 10 stereo productを統合する。旧tag `v0.17.0`は書き換えず、local full gate・二軸review・exact remote-head read-back・hosted checksを通過した場合だけmainへ進める。device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** PR #58 の既存branchを唯一のreview surfaceとして、exact `main@4f56a69`を含むGATE ownership／録音取消／transport修復に、PR #64・#76・#77のclean headsとWave 10 stereo productを統合した。immutable product `1d0e850` / tree `f4f69b7`はfull 184-task gate、606 tests、Python 64、public-surface 435、artifact/SBOM read-back、Standards/Spec 0/0を通過した。次はexact remote headを再読して通常のfast-forward pushだけを行い、fresh hosted checksとclean merge stateを確認して既存PRをmainへ統合する。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。device/provider/public/signing/Humanは別gate。
 
 **wave 10 completed local; goal remains active:** `../completed/stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持した。3–8chは既存互換mono、schema 1–6とmono-only WAV shapeを保護。product checkpoint `66d3911` / tree `e60216a`、537 tests / 197-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。device/provider/public/signing/Humanはscope外。
 
