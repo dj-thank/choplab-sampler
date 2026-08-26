@@ -107,12 +107,14 @@ import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nearestPadTrimBoundary
 import com.choplab.sampler.model.precisionTrimWindow
 import com.choplab.sampler.model.padTrimInitialWindow
+import com.choplab.sampler.model.redoRequestEnabled
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.sourceUiPhase
 import com.choplab.sampler.model.stepPadTrimBoundary
+import com.choplab.sampler.model.undoRequestEnabled
 import com.choplab.sampler.model.visiblePads
 import kotlin.math.max
 import kotlin.math.abs
@@ -4142,14 +4144,14 @@ private fun FinishWorkspace(
                 MachineButton(
                     label = "1つ戻す\nUNDO",
                     onClick = viewModel::undoEdit,
-                    enabled = state.canUndo && !state.isLoading && !state.recordingSession.isActive,
+                    enabled = state.undoRequestEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
                 MachineButton(
                     label = "やり直す\nREDO",
                     onClick = viewModel::redoEdit,
-                    enabled = state.canRedo && !state.isLoading && !state.recordingSession.isActive,
+                    enabled = state.redoRequestEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )

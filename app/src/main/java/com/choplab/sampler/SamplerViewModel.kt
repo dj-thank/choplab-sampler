@@ -25,6 +25,7 @@ import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.DrumKitApplyDecision
+import com.choplab.sampler.model.HistoryRequestDenial
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
@@ -75,6 +76,7 @@ import com.choplab.sampler.model.editingRequestAllowedDuringRecording
 import com.choplab.sampler.model.failAutosaveRecovery
 import com.choplab.sampler.model.failRecordingSession
 import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.historyRequestDenial
 import com.choplab.sampler.model.inferProjectLaunchTarget
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nextVocalPadIndex
@@ -124,11 +126,15 @@ import com.choplab.sampler.model.setPadTrimBoundary
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.transientAnalysisStillCurrent
 import com.choplab.sampler.persistence.AtomicProjectStore
+import com.choplab.sampler.persistence.DocumentPublicationException
 import com.choplab.sampler.persistence.ProjectArchiveCodec
+import com.choplab.sampler.persistence.publishVerifiedDocument
 import com.choplab.sampler.ui.DocumentAction
 import com.choplab.sampler.ui.documentCompletionMessage
+import com.choplab.sampler.ui.documentPublicationVerificationFailureMessage
 import com.choplab.sampler.ui.SamplerDeckController
 import com.choplab.sampler.ui.PadTriggerOwnership
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,6 +147,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 import kotlin.math.pow
 
 class SamplerViewModel(application: Application) : AndroidViewModel(application), SamplerDeckController {
@@ -1813,8 +1820,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(isLoading = true, statusMessage = "4小節のWAVを書き出しています…")
             }
             val application = getApplication<Application>()
-            val temporary = File(application.cacheDir, "choplab_export_${System.currentTimeMillis()}.wav")
-            runCatching {
+            val temporary = File(application.cacheDir, "choplab-export-${UUID.randomUUID()}.wav")
+            try {
                 val summary = withContext(Dispatchers.Default) {
                     PatternRenderer.renderSequenceToWav(
                         outputFile = temporary,
@@ -1825,12 +1832,16 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 withContext(Dispatchers.IO) {
-                    application.contentResolver.openOutputStream(destination, "w")?.use { output ->
-                        temporary.inputStream().use { input -> input.copyTo(output) }
-                    } ?: error("保存先を開けません")
+                    publishVerifiedDocument(
+                        source = temporary,
+                        openDestinationOutput = {
+                            application.contentResolver.openOutputStream(destination, "w")
+                        },
+                        openDestinationReadBack = {
+                            application.contentResolver.openInputStream(destination)
+                        },
+                    )
                 }
-                summary
-            }.onSuccess { summary ->
                 mutableUiState.update {
                     it.copy(
                         isLoading = false,
@@ -1840,15 +1851,25 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         ),
                     )
                 }
-            }.onFailure { throwable ->
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: DocumentPublicationException) {
                 mutableUiState.update {
                     it.copy(
                         isLoading = false,
-                        statusMessage = throwable.message ?: "WAVを書き出せませんでした",
+                        statusMessage = documentPublicationVerificationFailureMessage(DocumentAction.EXPORT_WAV),
                     )
                 }
+            } catch (error: Exception) {
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = error.message ?: "WAVを書き出せませんでした",
+                    )
+                }
+            } finally {
+                temporary.delete()
             }
-            temporary.delete()
         }
     }
 
@@ -1857,40 +1878,49 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val revision = productionSession.revision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
-            runCatching {
+            val application = getApplication<Application>()
+            val verified = File(application.cacheDir, "project-save-${UUID.randomUUID()}.choplab")
+            try {
                 withContext(Dispatchers.IO) {
-                    val application = getApplication<Application>()
-                    val verified = File(
-                        application.cacheDir,
-                        "project-save-${System.currentTimeMillis()}.choplab",
-                    )
-                    try {
-                        verified.outputStream().buffered().use { output ->
-                            ProjectArchiveCodec.write(snapshot, output)
-                        }
-                        verified.inputStream().buffered().use(ProjectArchiveCodec::read)
-                        autosaveStore.save(snapshot, revision)
-                        application.contentResolver.openOutputStream(destination, "w")?.use { output ->
-                            verified.inputStream().buffered().use { input -> input.copyTo(output) }
-                        } ?: error("保存先を開けません")
-                    } finally {
-                        verified.delete()
+                    verified.outputStream().buffered().use { output ->
+                        ProjectArchiveCodec.write(snapshot, output)
                     }
+                    verified.inputStream().buffered().use(ProjectArchiveCodec::read)
+                    autosaveStore.save(snapshot, revision)
+                    publishVerifiedDocument(
+                        source = verified,
+                        openDestinationOutput = {
+                            application.contentResolver.openOutputStream(destination, "w")
+                        },
+                        openDestinationReadBack = {
+                            application.contentResolver.openInputStream(destination)
+                        },
+                    )
                 }
-            }.onSuccess {
                 mutableUiState.update {
                     it.copy(
                         isLoading = false,
                         statusMessage = documentCompletionMessage(DocumentAction.SAVE_PROJECT),
                     )
                 }
-            }.onFailure { throwable ->
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: DocumentPublicationException) {
                 mutableUiState.update {
                     it.copy(
                         isLoading = false,
-                        statusMessage = throwable.message ?: "プロジェクトを保存できませんでした",
+                        statusMessage = documentPublicationVerificationFailureMessage(DocumentAction.SAVE_PROJECT),
                     )
                 }
+            } catch (error: Exception) {
+                mutableUiState.update {
+                    it.copy(
+                        isLoading = false,
+                        statusMessage = error.message ?: "プロジェクトを保存できませんでした",
+                    )
+                }
+            } finally {
+                verified.delete()
             }
         }
     }
@@ -1947,7 +1977,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun undoEdit() {
-        if (rejectEditWhileRecording()) return
+        if (rejectHistoryRequest()) return
         val transition = productionSession.undo(mutableUiState.value) ?: run {
             setStatus("戻せる操作はありません")
             return
@@ -1957,7 +1987,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun redoEdit() {
-        if (rejectEditWhileRecording()) return
+        if (rejectHistoryRequest()) return
         val transition = productionSession.redo(mutableUiState.value) ?: run {
             setStatus("やり直せる操作はありません")
             return
@@ -1988,6 +2018,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (editingRequestAllowedDuringRecording(session)) return false
         setStatus("${recordingKindLabel(session)}をSTOPしてから編集してください")
         return true
+    }
+
+    private fun rejectHistoryRequest(): Boolean = when (mutableUiState.value.historyRequestDenial) {
+        null -> false
+        HistoryRequestDenial.LOADING -> {
+            setStatus("現在の処理が終わってから編集してください")
+            true
+        }
+        HistoryRequestDenial.RECORDING -> rejectEditWhileRecording()
     }
 
     private fun applyProjectState(

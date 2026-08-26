@@ -11,6 +11,8 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -36,8 +38,8 @@ import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -367,6 +369,74 @@ class DesktopSamplerControllerTest {
             assertTrue(controller.state.value.canUndo)
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun recordingTimeHistoryRequestPreservesTheProjectAndFrontier() {
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            controller.setBpm(126f)
+            controller.toggleMicrophoneRecording()
+            val before = controller.state.value
+            assertEquals(
+                RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING),
+                before.recordingSession,
+            )
+
+            controller.undoEdit()
+
+            val denied = controller.state.value
+            assertEquals(126f, denied.bpm)
+            assertTrue(denied.canUndo)
+            assertFalse(denied.canRedo)
+            assertEquals(before.recordingSession, denied.recordingSession)
+            assertEquals(before.loopingPadIndex, denied.loopingPadIndex)
+            assertEquals("録音をSTOPしてから編集してください", denied.statusMessage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun loadingTimeHistoryRequestPreservesTheProjectAndFrontier() {
+        val directory = Files.createTempDirectory("choplab-history-loading").toFile()
+        val source = directory.resolve("loading-history.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(64) { it.toShort() })
+        }
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            autosaveStore = null,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(126f)
+            controller.loadWav(source)
+            engine.awaitBlockedLoad()
+            val before = controller.state.value
+            assertTrue(before.isLoading)
+            assertTrue(before.canUndo)
+
+            controller.undoEdit()
+
+            val denied = controller.state.value
+            assertEquals(126f, denied.bpm)
+            assertTrue(denied.isLoading)
+            assertTrue(denied.canUndo)
+            assertFalse(denied.canRedo)
+            assertEquals(before.loopingPadIndex, denied.loopingPadIndex)
+            assertEquals("現在の処理が終わってから編集してください", denied.statusMessage)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
         }
     }
 
@@ -1617,6 +1687,296 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun failedActiveLoopEditKeepsTheOldPadLoopAndHistoryFrontier() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val before = controller.state.value
+            val triggerCount = engine.triggered.size
+            engine.stoppedPads.clear()
+            engine.failNextTrigger = true
+
+            val edit = runCatching { controller.setSelectedPadPitch(7f) }
+
+            assertTrue(edit.isSuccess)
+            assertEquals(before.pads[loopPad].pitchSemitones, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount, engine.triggered.size)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertTrue(
+                controller.state.value.statusMessage.startsWith(
+                    "ループ音を更新できないため編集を適用しませんでした:",
+                ),
+            )
+
+            controller.undoEdit()
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[loopPad].playMode)
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun successfulActiveLoopEditStartsTheCandidateThenCommitsExactlyOneEdit() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val triggerCount = engine.triggered.size
+            engine.stoppedPads.clear()
+
+            controller.setSelectedPadPitch(7f)
+
+            assertEquals(7f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount + 1, engine.triggered.size)
+            assertEquals(7f, engine.triggered.last().first.pitchSemitones)
+            assertEquals(true, engine.triggered.last().second)
+            assertTrue(engine.stoppedPads.isEmpty())
+
+            controller.setSelectedPadPitch(7f)
+            assertEquals(triggerCount + 1, engine.triggered.size)
+
+            controller.undoEdit()
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(PadPlayMode.LOOP, controller.state.value.pads[loopPad].playMode)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun activeLoopUndoAndRedoReplaceTheSameOwnerWithoutStoppingTheLoop() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.setSelectedPadPitch(7f)
+            val triggerCount = engine.triggered.size
+            val stopAllCount = engine.stopAllCount
+            engine.stoppedPads.clear()
+
+            controller.undoEdit()
+
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount + 1, engine.triggered.size)
+            assertEquals(0f, engine.triggered.last().first.pitchSemitones)
+            assertTrue(engine.triggered.last().second)
+            assertEquals(stopAllCount, engine.stopAllCount)
+            assertTrue(engine.stoppedPads.isEmpty())
+
+            controller.redoEdit()
+
+            assertEquals(7f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount + 2, engine.triggered.size)
+            assertEquals(7f, engine.triggered.last().first.pitchSemitones)
+            assertTrue(engine.triggered.last().second)
+            assertEquals(stopAllCount, engine.stopAllCount)
+            assertTrue(engine.stoppedPads.isEmpty())
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedActiveLoopUndoKeepsTheEditedLoopAndHistoryFrontier() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.setSelectedPadPitch(7f)
+            val triggerCount = engine.triggered.size
+            val stopAllCount = engine.stopAllCount
+            engine.stoppedPads.clear()
+            engine.failNextTrigger = true
+
+            controller.undoEdit()
+
+            assertEquals(7f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(controller.state.value.canUndo)
+            assertFalse(controller.state.value.canRedo)
+            assertEquals(triggerCount, engine.triggered.size)
+            assertEquals(stopAllCount, engine.stopAllCount)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertTrue(
+                controller.state.value.statusMessage.startsWith(
+                    "ループ音を戻せないためUndoを適用しませんでした:",
+                ),
+            )
+
+            controller.undoEdit()
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(controller.state.value.canRedo)
+
+            val undoState = controller.state.value
+            val triggerCountAfterUndo = engine.triggered.size
+            engine.failNextTrigger = true
+            controller.redoEdit()
+
+            assertEquals(undoState.pads, controller.state.value.pads)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(controller.state.value.canRedo)
+            assertEquals(triggerCountAfterUndo, engine.triggered.size)
+            assertTrue(
+                controller.state.value.statusMessage.startsWith(
+                    "ループ音をやり直せないためRedoを適用しませんでした:",
+                ),
+            )
+
+            controller.redoEdit()
+            assertEquals(7f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun undoPastTheLoopOwnerUsesTheExistingDisruptiveHistoryPath() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.setSelectedPadPitch(7f)
+
+            controller.undoEdit()
+            val stopAllCount = engine.stopAllCount
+            controller.undoEdit()
+
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[loopPad].playMode)
+            assertEquals(stopAllCount + 1, engine.stopAllCount)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun activeLoopUndoWithAnUnchangedOwnerPadDoesNotRetriggerAudio() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val patternPad = loopPad + 1
+            controller.selectPad(patternPad)
+            val stepWasActive = stepKey(patternPad, 0) in controller.state.value.activeSteps
+            controller.toggleStep(0)
+            assertEquals(!stepWasActive, stepKey(patternPad, 0) in controller.state.value.activeSteps)
+            val triggerCount = engine.triggered.size
+            val stopAllCount = engine.stopAllCount
+            engine.stoppedPads.clear()
+
+            controller.undoEdit()
+
+            assertEquals(stepWasActive, stepKey(patternPad, 0) in controller.state.value.activeSteps)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount, engine.triggered.size)
+            assertEquals(stopAllCount, engine.stopAllCount)
+            assertTrue(engine.stoppedPads.isEmpty())
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun fatalActiveLoopUndoErrorDoesNotConsumeHistoryOrRewriteStatus() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.setSelectedPadPitch(7f)
+            val before = controller.state.value
+            engine.nextTriggerFailure = AssertionError("test fatal undo audio error")
+
+            val failure = assertFailsWith<AssertionError> { controller.undoEdit() }
+
+            assertEquals("test fatal undo audio error", failure.message)
+            assertEquals(before, controller.state.value)
+            assertTrue(controller.state.value.canUndo)
+            assertFalse(controller.state.value.canRedo)
+
+            controller.undoEdit()
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun fatalLoopReplacementErrorIsNotMisreportedAsARecoverableEditFailure() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val originalGain = controller.state.value.pads[loopPad].gain
+            engine.nextTriggerFailure = AssertionError("test fatal audio error")
+
+            val failure = assertFailsWith<AssertionError> {
+                controller.setSelectedPadGain(0.5f)
+            }
+
+            assertEquals("test fatal audio error", failure.message)
+            assertEquals(originalGain, controller.state.value.pads[loopPad].gain)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun rejectedRecordingTimePadEditDoesNotRetriggerTheLoop() {
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            player = engine,
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.toggleVocalRecording()
+            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            val triggerCount = engine.triggered.size
+            engine.stoppedPads.clear()
+            val originalTone = controller.state.value.pads[loopPad].tone
+
+            controller.setSelectedPadTone(0.2f)
+
+            assertEquals(originalTone, controller.state.value.pads[loopPad].tone)
+            assertEquals(triggerCount, engine.triggered.size)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertEquals("録音をSTOPしてから編集してください", controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun matchingChokeTriggerStopsPublishedLoopSessionBeforePlayingRequestedPad() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -1810,9 +2170,11 @@ class DesktopSamplerControllerTest {
         var failNextStopPad: Boolean = false
         var failNextStopAll: Boolean = false
         var failClose: Boolean = false
+        var nextTriggerFailure: Throwable? = null
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
+        @Volatile var stopAllCount: Int = 0
         @Volatile var closeCalls: Int = 0
         @Volatile var loadPcmCalls: Int = 0
         @Volatile var playFromCalls: Int = 0
@@ -1845,6 +2207,10 @@ class DesktopSamplerControllerTest {
         override fun padFramePosition(index: Int): Int? = null
         override fun stop() { isSourcePlaying = false }
         override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
+            nextTriggerFailure?.let { failure ->
+                nextTriggerFailure = null
+                throw failure
+            }
             if (failNextTrigger) {
                 failNextTrigger = false
                 error("test output unavailable")
@@ -1869,6 +2235,7 @@ class DesktopSamplerControllerTest {
         override fun stopAll() {
             isSourcePlaying = false
             stopAllCalls++
+            stopAllCount++
             if (failNextStopAll) {
                 failNextStopAll = false
                 error("test stop-all unavailable")

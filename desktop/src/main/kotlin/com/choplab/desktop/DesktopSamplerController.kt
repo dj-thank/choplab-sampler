@@ -7,17 +7,18 @@ import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
+import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
-import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.DrumKitApplyDecision
+import com.choplab.sampler.model.HistoryRequestDenial
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
@@ -43,6 +44,7 @@ import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.observeRecordingSession
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
+import com.choplab.sampler.model.historyRequestDenial
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.patternSequenceForExport
@@ -62,6 +64,7 @@ import com.choplab.sampler.model.ProjectOperationEpoch
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.ProductionEffect
+import com.choplab.sampler.model.ProductionHistoryPlan
 import com.choplab.sampler.model.ProductionMutation
 import com.choplab.sampler.model.ProductionSession
 import com.choplab.sampler.model.ScratchReturnTarget
@@ -206,15 +209,14 @@ class DesktopSamplerController(
         }
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
-            runCatching {
-                PatternRenderer.renderSequenceToWav(
-                    outputFile = outputFile,
+            try {
+                DesktopBeatFiles.export(
+                    target = outputFile,
                     pads = snapshot.pads,
                     patternSequence = exportSequence,
                     bpm = snapshot.bpm,
                     swing = snapshot.swing,
                 )
-            }.onSuccess {
                 statusOperations.completeIfCurrent(operation) {
                     mutableState.update {
                         it.copy(
@@ -227,7 +229,7 @@ class DesktopSamplerController(
                         )
                     }
                 }
-            }.onFailure { error ->
+            } catch (error: Exception) {
                 statusOperations.completeIfCurrent(operation) {
                     mutableState.update { it.copy(isLoading = false, statusMessage = "WAV書き出し失敗: ${error.message ?: error.javaClass.simpleName}") }
                 }
@@ -862,20 +864,8 @@ class DesktopSamplerController(
         }
     }
     override fun toggleRecordArm() = mutableState.update { it.copy(recordArmed = !it.recordArmed) }
-    override fun undoEdit() {
-        if (rejectEditWhileRecording()) return
-        val transition = productionSession.undo(mutableState.value)
-            ?: return setStatus("戻せる操作はありません")
-        applyHistoryState(transition.state, "1つ前の操作へ戻しました")
-        scheduleAutosave()
-    }
-    override fun redoEdit() {
-        if (rejectEditWhileRecording()) return
-        val transition = productionSession.redo(mutableState.value)
-            ?: return setStatus("やり直せる操作はありません")
-        applyHistoryState(transition.state, "操作をやり直しました")
-        scheduleAutosave()
-    }
+    override fun undoEdit() = applyHistoryOperation(HistoryOperation.UNDO)
+    override fun redoEdit() = applyHistoryOperation(HistoryOperation.REDO)
 
     override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
         val bankIndex = SamplerConfig.DRUM_BANK_INDEX
@@ -925,12 +915,31 @@ class DesktopSamplerController(
     }
 
     private fun updateSelected(mergeKey: String? = null, transform: (PadModel) -> PadModel) {
-        val selected = mutableState.value.selectedPad
-        commitEdit(mergeKey) { state -> state.copy(pads = state.pads.toMutableList().also { it[state.selectedPad] = transform(it[state.selectedPad]) }) }
-        val current = mutableState.value
-        if (current.loopingPadIndex == selected && current.pads[selected].isAssigned) {
-            player.stopPad(selected)
-            triggerPlayerPad(current.pads[selected], forceLoop = true)
+        val before = mutableState.value
+        if (before.isLoading) return setStatus("現在の処理が終わってから編集してください")
+        if (rejectEditWhileRecording()) return
+        val selected = before.selectedPad
+        val currentPad = before.pads.getOrNull(selected) ?: return
+        val candidate = transform(currentPad)
+        if (candidate == currentPad) return
+
+        if (before.loopingPadIndex == selected && candidate.isAssigned) {
+            val failure = try {
+                player.triggerPad(candidate, forceLoop = true)
+                null
+            } catch (recoverable: Exception) {
+                recoverable
+            }
+            if (failure != null) {
+                return setStatus(
+                    "ループ音を更新できないため編集を適用しませんでした: " +
+                        (failure.message ?: failure.javaClass.simpleName),
+                )
+            }
+        }
+
+        commitEdit(mergeKey) { state ->
+            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate })
         }
     }
 
@@ -949,6 +958,95 @@ class DesktopSamplerController(
         if (editingRequestAllowedDuringRecording(mutableState.value.recordingSession)) return false
         setStatus("録音をSTOPしてから編集してください")
         return true
+    }
+
+    private fun rejectHistoryRequest(): Boolean = when (mutableState.value.historyRequestDenial) {
+        null -> false
+        HistoryRequestDenial.LOADING -> {
+            setStatus("現在の処理が終わってから編集してください")
+            true
+        }
+        HistoryRequestDenial.RECORDING -> rejectEditWhileRecording()
+    }
+
+    private fun applyHistoryOperation(operation: HistoryOperation) {
+        if (rejectHistoryRequest()) return
+        val before = mutableState.value
+        val plan = when (operation) {
+            HistoryOperation.UNDO -> productionSession.planUndo(before)
+            HistoryOperation.REDO -> productionSession.planRedo(before)
+        } ?: return setStatus(operation.missingMessage)
+
+        if (!sameLoopOwnerCanContinue(before, plan.restoredState)) {
+            val transition = productionSession.commit(plan)
+            applyHistoryState(transition.state, operation.successMessage)
+            scheduleAutosave()
+            return
+        }
+
+        applyContinuousLoopHistory(before, plan, operation)
+    }
+
+    private fun sameLoopOwnerCanContinue(
+        current: SamplerUiState,
+        restored: SamplerUiState,
+    ): Boolean {
+        val ownerIndex = current.loopingPadIndex ?: return false
+        return restored.loopingPadIndex == ownerIndex &&
+            restored.pads.getOrNull(ownerIndex)?.isAssigned == true &&
+            current.currentAudio == restored.currentAudio &&
+            current.masterPitchSemitones == restored.masterPitchSemitones &&
+            !current.transportPlaying &&
+            !current.sourcePlaying &&
+            current.pendingSourceCommand == PendingSourceCommand.NONE &&
+            current.scratchingPadIndex == null &&
+            !current.sourceScratchActive
+    }
+
+    private fun applyContinuousLoopHistory(
+        before: SamplerUiState,
+        plan: ProductionHistoryPlan,
+        operation: HistoryOperation,
+    ) {
+        val ownerIndex = requireNotNull(before.loopingPadIndex)
+        val restoredPad = requireNotNull(plan.restoredState.pads.getOrNull(ownerIndex))
+        val replacementRequired = before.pads.getOrNull(ownerIndex) != restoredPad
+
+        if (replacementRequired) {
+            val failure = try {
+                player.triggerPad(restoredPad, forceLoop = true)
+                null
+            } catch (recoverable: Exception) {
+                recoverable
+            }
+            if (failure != null) {
+                productionSession.cancel(plan)
+                setStatus(
+                    operation.failurePrefix + (failure.message ?: failure.javaClass.simpleName),
+                )
+                return
+            }
+        }
+
+        val transition = productionSession.commit(plan)
+        val currentRuntime = mutableState.value
+        mutableState.value = transition.state.copy(
+            statusMessage = operation.successMessage,
+            loopingPadIndex = ownerIndex,
+            loopPlayheadFrame = if (replacementRequired) {
+                if (restoredPad.reverse) restoredPad.endFrame - 1 else restoredPad.startFrame
+            } else {
+                currentRuntime.loopPlayheadFrame
+            },
+            projectLaunchTarget = currentRuntime.projectLaunchTarget,
+            projectLaunchRevision = currentRuntime.projectLaunchRevision,
+            scratchingPadIndex = null,
+            scratchPlayheadFrame = -1,
+            sourceScratchActive = false,
+            scratchSpeed = 0f,
+            scratchReturnAvailable = false,
+        )
+        scheduleAutosave()
     }
 
     private fun applyHistoryState(
@@ -1000,6 +1098,23 @@ class DesktopSamplerController(
             val playbackFailure = loadSourcePcm(next.currentAudio)
             if (playbackFailure != null) setStatus(sourcePlaybackFailureMessage(playbackFailure))
         }
+    }
+
+    private enum class HistoryOperation(
+        val missingMessage: String,
+        val successMessage: String,
+        val failurePrefix: String,
+    ) {
+        UNDO(
+            missingMessage = "戻せる操作はありません",
+            successMessage = "1つ前の操作へ戻しました",
+            failurePrefix = "ループ音を戻せないためUndoを適用しませんでした: ",
+        ),
+        REDO(
+            missingMessage = "やり直せる操作はありません",
+            successMessage = "操作をやり直しました",
+            failurePrefix = "ループ音をやり直せないためRedoを適用しませんでした: ",
+        ),
     }
 
     private fun scheduleAutosave() {
