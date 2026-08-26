@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**wave 15 selected / in progress:** `desktop-live-loop-history-transaction-20260827.md`。exact Wave 14 closeout `924fb3c` / tree `cd39425`から、Windows same-owner active Beat loopのUndo/Redoをhistory preview→candidate audio→commit/cancelへし、candidate failureでproject/history/voiceを保持する。loop owner変更、loop-start/stop、Android、physical audio、device/provider/public/signing/Humanはscope外。
+**wave 16 portfolio recompute / no slice selected:** Wave 15 closeoutをfresh-readし、次のbounded user outcomeを比較する。新しいsliceは、deterministic local falsifierと権限境界が固定されるまで開始しない。
+
+**wave 15 completed local; goal remains active:** `../completed/desktop-live-loop-history-transaction-20260827.md`。exact Wave 14 closeout `924fb3c` / tree `cd39425`から、Windows same-owner active Beat loopのUndo/Redoをhistory preview→candidate audio→commit/cancelへし、candidate failureでproject/history/voiceを保持する。PAD不変時はretriggerせず、owner変更は従来の全停止へ戻す。product checkpoint `70b31e9` / tree `ce9469c`、593 tests / 197-task gateまで`LOCAL_PASS`。source/transport/scratch continuity、physical audio、device/provider/public/signing/Humanはscope外。
 
 **wave 14 completed local; goal remains active:** `../completed/android-verified-document-publication-20260827.md`。exact Wave 13 closeout `9043af2` / tree `7e71a8c`から、AndroidのWAV／portable制作をproviderへcopyした後にselected URIをstreaming size＋SHA-256で再読し、validated temporaryと一致した場合だけ成功表示する。silent truncation/corruptionを失敗へし、cancellation/fatal truthとowned temporary cleanupを固定した。product checkpoint `6006836` / tree `e7b7643`、582 tests / 197-task gateまで`LOCAL_PASS`。provider atomicity、既存document復元、device/provider/public/signing/Humanはscope外。
 
@@ -54,7 +56,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** Wave 15でsame-owner Windows loop history transactionを選択済み。closeout前に別sliceを開始しない。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に選ぶ一つ:** Wave 16 portfolioをWave 15 clean closeoutから再計算する。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
