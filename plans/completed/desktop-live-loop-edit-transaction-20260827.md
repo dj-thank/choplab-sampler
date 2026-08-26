@@ -75,7 +75,7 @@ controllerはeditable snapshotからcandidate PADをpureに作り、loading/reco
 - adapter RED/GREEN: missing `startReplacementBeforeRetiringConflicts`と`prepareCandidateOrAbandon`でそれぞれcompile RED。GREENはprepare failureでcandidate close、start failureでcandidate abandonのみ、successでstart→same-PAD/choke conflict retire順を固定。
 - Standards review RED/GREEN: recoverable adapter handlingが`runCatching`でfatal `Error`までstatusへ変換していた。`AssertionError` negative controlをRED確認後、UI recoverable境界を`Exception`だけへ限定し、fatalはstateをcommitせず再throwする。
 - `:desktop:test` full PASS。actual endpoint/Clip driverは現host unavailableのため未観測。
-- configured validation PASS（product checkpoint public surface 435、18 Gradle tasks、six XML、wrapper/executable/UTF-8）、closeout Python policy 59、current＋reachable-history public surface 436、`git diff --check` PASS。
+- configured validation PASS（product checkpoint public surface 435、18 Gradle tasks、six XML、wrapper/executable/UTF-8）、closeout Python policy 59、current＋reachable-history public surface 435、`git diff --check` PASS。
 - clean full Gradle/package gate PASS in 5m04s: 197 tasks（193 executed / 4 up-to-date）、560 tests / 100 suites、failures/errors/skips 0、lint debug/release各0 errors / 7 warnings。
 - unsigned release APK 24,208,500 / `E9DEB956D6F47FB24B89A26A8B6E70C5B941D7C93FDB9A3DAEB91FB78C2464BA`はversion `0.17.0` / code `27` / `aapt2` policyをPASSし、signed-required negativeはexit 1。Windows app-image 405 files / 176,642,851 bytes / manifest `EE98847088B77942ECD98F0BF1DD27F336A8D0421A0E22C0AD1D8B09BCC3A479`。CycloneDX 1.6は650 components / 651 dependencies。
 
