@@ -227,6 +227,57 @@ data class BeatWorkspaceSurface(
     val showDetailedSequencer: Boolean,
 )
 
+internal data class BeatWorkspaceModeSurface(
+    val showPadGrid: Boolean,
+    val showFocusedStepEditor: Boolean,
+    val showDetailedSequencer: Boolean,
+)
+
+internal enum class BeatWorkspaceMode {
+    QUICK,
+    FOCUSED_STEPS,
+    FINE_CONTROLS,
+}
+
+internal enum class BeatWorkspaceAction {
+    SHOW_QUICK,
+    SHOW_FOCUSED_STEPS,
+    SHOW_FINE_CONTROLS,
+}
+
+internal fun restoreBeatWorkspaceMode(name: String?): BeatWorkspaceMode =
+    BeatWorkspaceMode.entries.firstOrNull { it.name == name } ?: BeatWorkspaceMode.QUICK
+
+internal fun transitionBeatWorkspace(
+    current: BeatWorkspaceMode,
+    action: BeatWorkspaceAction,
+): BeatWorkspaceMode {
+    val target = when (action) {
+        BeatWorkspaceAction.SHOW_QUICK -> BeatWorkspaceMode.QUICK
+        BeatWorkspaceAction.SHOW_FOCUSED_STEPS -> BeatWorkspaceMode.FOCUSED_STEPS
+        BeatWorkspaceAction.SHOW_FINE_CONTROLS -> BeatWorkspaceMode.FINE_CONTROLS
+    }
+    return if (target == current) current else target
+}
+
+internal fun beatWorkspaceSurface(mode: BeatWorkspaceMode): BeatWorkspaceModeSurface = when (mode) {
+    BeatWorkspaceMode.QUICK -> BeatWorkspaceModeSurface(
+        showPadGrid = true,
+        showFocusedStepEditor = false,
+        showDetailedSequencer = false,
+    )
+    BeatWorkspaceMode.FOCUSED_STEPS -> BeatWorkspaceModeSurface(
+        showPadGrid = false,
+        showFocusedStepEditor = true,
+        showDetailedSequencer = false,
+    )
+    BeatWorkspaceMode.FINE_CONTROLS -> BeatWorkspaceModeSurface(
+        showPadGrid = false,
+        showFocusedStepEditor = false,
+        showDetailedSequencer = true,
+    )
+}
+
 fun beatWorkspaceSurface(showFineControls: Boolean): BeatWorkspaceSurface = BeatWorkspaceSurface(
     showPadGrid = !showFineControls,
     showDetailedSequencer = showFineControls,

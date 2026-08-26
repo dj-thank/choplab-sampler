@@ -53,8 +53,8 @@ shared pure policyは`DeckLayoutMetrics`とviewport width/heightからfocused wo
 ## Progress
 
 - [x] 2026-08-27T00:42+09:00 — Wave 10 exact closeout、SSOT、explicit 16-step 48dp gapをread-backし、dedicated worktreeを作成。
-- [ ] Milestone 1 RED/GREEN。
-- [ ] Milestone 2 shared Compose integration。
+- [x] 2026-08-27T01:20+09:00 — Milestone 1 RED/GREEN。viewport/font geometry、row-major 1–16、48dp、invalid/undersized fail-close、3-mode transitionをshared pure policyへ固定。
+- [x] 2026-08-27T01:20+09:00 — Milestone 2 shared Compose integration。`STEPS`はfocused editorを開き、QUICK／BPM・音色controlsへ明示的に往復する。selected PAD key、active/playhead/disabled semanticsを同一presentationへ集約。
 - [ ] Milestone 3 full gate and closeout。
 
 ## Discoveries
@@ -62,18 +62,24 @@ shared pure policyは`DeckLayoutMetrics`とviewport width/heightからfocused wo
 - existing portrait fine surfaceは8×2 gridへ72/84dpしか割り当てず、vertical target 48dpを構造上満たせない。
 - full focused workspaceなら、content padding/fixed chromeと48dp navigation headerを差し引いても360×640 font 2.0でportrait 4×4、640×360 font 2.0でlandscape 8×2を48dp以上にできる。
 - paginationやscrollは不要で、既存fine-control surfaceを二次面として保てば機能削除も不要。
+- nominal 640×360のsystem/outer inset後を模した632×328 font 2.0では通常3dp gapがcell height 47.5dpになる。compact landscape focused editorだけ2dp gapにすることで48.5dpを確保し、他surfaceのlayout constantは変更しない。
+- 新しいgeometry、workspace mode、step presentationはshared内部契約で足りる。既存public `BeatWorkspaceSurface(Boolean)`を拡張せず、source/binary互換面を増やさない。
 
 ## Decision log
 
 - 2026-08-27T00:42+09:00 — Wave 11はstems/pan/release基盤ではなくcentral Beat step accuracyを選択。explicit SSOT gap、local falsifiability、user outcomeへの直接性を優先。
 - 2026-08-27T00:42+09:00 — hidden page/scrollでtargetを稼がず、focused full-workspaceをorientation別4×4/8×2にする。
 - 2026-08-27T00:42+09:00 — existing BPM/音色/preset面を削除せず、focused editorから明示的に往復する。
+- 2026-08-27T01:20+09:00 — root inset controlをsupported contractへ加え、compact landscape focused gapを2dpへ限定。unsafeな縮小gridを表示する代わりに、policyは48dp未満をfail closedにする。
+- 2026-08-27T01:20+09:00 — controller/state/schemaへmodeを足さず、`rememberSaveable`のpresentation nameとpure reducerだけでQUICK／FOCUSED_STEPS／FINE_CONTROLSを管理する。
 
 ## Validation log
 
-- pending baseline doctor/configured validation。
-- pending focused RED/GREEN。
-- pending full gate。
+- baseline doctor: Git/JDK 17/Codex/repository/clean PASS。machine-local SDK pathはworktreeへ保存せず、explicit `ANDROID_HOME`でconfigured validation 18 tasks、public surface 430、XML、wrapper SHA、UTF-8 policy PASS。
+- geometry RED: `resolveFocusedStepLayout`／workspace mode API不在でshared test compile failure。GREEN: reference 360×640、412×820、640×360、1280×720のfont 1.0/1.3/2.0、row-major、minimum target、fail-close PASS。
+- semantics RED: `stepCellPresentations`不在でshared test compile failure。GREEN: selected PADの16 exact keys、active/playhead/disabled descriptions、invalid columns PASS。
+- review RED: inset control 632×328 font 2.0がassert-not-null failure（3dpで47.5dp）。GREEN: scoped 2dp gapで48.5dp以上。
+- shared Desktop、shared Android host、app全unit test compile/run PASS。full package/lint/artifact gateはproduct checkpoint後に実行する。
 
 ## Risks and rollback
 
