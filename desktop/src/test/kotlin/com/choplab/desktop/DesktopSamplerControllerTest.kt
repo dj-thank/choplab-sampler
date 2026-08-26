@@ -2,6 +2,7 @@ package com.choplab.desktop
 
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.audio.DesktopAudioRecorder
+import com.choplab.desktop.audio.DesktopLoopSessionStartupException
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
@@ -33,6 +34,7 @@ import java.io.File
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
@@ -2140,6 +2142,279 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test
+    fun loadingDeniedInitialBeatLoopDoesNoAudioOrProjectWork() {
+        val directory = Files.createTempDirectory("choplab-loop-loading-denial").toFile()
+        val source = directory.resolve("loading-loop.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(64) { it.toShort() })
+        }
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            autosaveStore = null,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.loadWav(source)
+            engine.awaitBlockedLoad()
+            val before = controller.state.value
+
+            controller.toggleBeatLoopControl()
+
+            val after = controller.state.value
+            assertTrue(after.isLoading)
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.loopingPadIndex, after.loopingPadIndex)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(0, engine.exclusiveStartCount)
+            assertEquals("現在の処理が終わってから編集してください", after.statusMessage)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun recordingDeniedInitialBeatLoopDoesNoAudioOrProjectWork() {
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleMicrophoneRecording()
+            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            val before = controller.state.value
+            val stopAllBefore = engine.stopAllCount
+
+            controller.toggleBeatLoopControl()
+
+            val after = controller.state.value
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.loopingPadIndex, after.loopingPadIndex)
+            assertEquals(before.recordingSession, after.recordingSession)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(stopAllBefore, engine.stopAllCount)
+            assertEquals(0, engine.exclusiveStartCount)
+            assertEquals("録音をSTOPしてから編集してください", after.statusMessage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedInitialBeatLoopStartKeepsTransportProjectAndHistoryFrontier() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleTransport()
+            val before = controller.state.value
+            val stopAllBefore = engine.stopAllCount
+            engine.failNextTrigger = true
+
+            val result = runCatching { controller.toggleBeatLoopControl() }
+
+            assertTrue(result.isSuccess)
+            val after = controller.state.value
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.transportPlaying, after.transportPlaying)
+            assertEquals(before.currentStep, after.currentStep)
+            assertEquals(before.loopingPadIndex, after.loopingPadIndex)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(before.canRedo, after.canRedo)
+            assertEquals(stopAllBefore, engine.stopAllCount)
+            assertEquals(0, engine.exclusiveRetireCount)
+            assertTrue(after.statusMessage.startsWith("ビートループを開始できませんでした:"))
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun failedVocalCompanionStartupPublishesNoPartialLoopSession() {
+        val directory = Files.createTempDirectory("choplab-loop-session-start-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine()
+        val audio = PcmAudio(
+            name = "voice.wav",
+            samples = ShortArray(2_000) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val loopPadIndex = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val companionPadIndex = loopPadIndex + 1
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeEndFrame = audio.frameCount,
+                selectedBank = SamplerConfig.VOCAL_BANK_INDEX,
+                selectedPad = loopPadIndex,
+                pads = List(SamplerConfig.PAD_COUNT) { index ->
+                    when (index) {
+                        loopPadIndex, companionPadIndex -> PadModel(
+                            globalIndex = index,
+                            audio = audio,
+                            startFrame = 0,
+                            endFrame = audio.frameCount,
+                            contentKind = PadContentKind.VOCAL,
+                        )
+                        else -> PadModel(index)
+                    }
+                },
+            ),
+        )
+        val controller = DesktopSamplerController(engine, autosaveStore = store, autosaveDelayMillis = 0L)
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            engine.triggered.clear()
+            val before = controller.state.value
+            val stopAllBefore = engine.stopAllCount
+            engine.failTriggerPad = companionPadIndex
+
+            controller.toggleBeatLoopControl()
+
+            val after = controller.state.value
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.loopingPadIndex, after.loopingPadIndex)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(before.canRedo, after.canRedo)
+            assertEquals(stopAllBefore, engine.stopAllCount)
+            assertEquals(0, engine.exclusiveRetireCount)
+            assertTrue(engine.triggered.isEmpty())
+            assertTrue(after.statusMessage.startsWith("ビートループを開始できませんでした:"))
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun fatalInitialBeatLoopStartupPropagatesWithoutChangingProduction() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleTransport()
+            val before = controller.state.value
+            engine.nextTriggerFailure = AssertionError("test fatal initial loop error")
+
+            val failure = assertFailsWith<AssertionError> {
+                controller.toggleBeatLoopControl()
+            }
+
+            assertEquals("test fatal initial loop error", failure.message)
+            assertEquals(before, controller.state.value)
+            assertEquals(0, engine.exclusiveRetireCount)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun unexpectedInitialBeatLoopAdapterExceptionPropagatesWithoutChangingProduction() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleTransport()
+            val before = controller.state.value
+            engine.nextTriggerFailure = IllegalStateException("test contract violation")
+
+            val failure = assertFailsWith<IllegalStateException> {
+                controller.toggleBeatLoopControl()
+            }
+
+            assertEquals("test contract violation", failure.message)
+            assertEquals(before, controller.state.value)
+            assertEquals(0, engine.exclusiveRetireCount)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun successfulInitialBeatLoopStartCommitsOneEditAfterTheCandidateSession() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleTransport()
+            engine.triggered.clear()
+            val stopAllBefore = engine.stopAllCount
+            assertFalse(controller.state.value.canUndo)
+
+            controller.toggleBeatLoopControl()
+
+            val started = controller.state.value
+            assertFalse(started.transportPlaying)
+            assertEquals(loopPad, started.loopingPadIndex)
+            assertEquals(PadPlayMode.LOOP, started.pads[loopPad].playMode)
+            assertTrue(started.canUndo)
+            assertFalse(started.canRedo)
+            assertEquals(stopAllBefore, engine.stopAllCount)
+            assertEquals(1, engine.exclusiveRetireCount)
+            assertEquals(loopPad, engine.triggered.single().first.globalIndex)
+            assertTrue(engine.triggered.single().second)
+
+            controller.undoEdit()
+
+            val undone = controller.state.value
+            assertEquals(null, undone.loopingPadIndex)
+            assertEquals(PadPlayMode.ONE_SHOT, undone.pads[loopPad].playMode)
+            assertFalse(undone.canUndo)
+            assertTrue(undone.canRedo)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun loopHandoffBlocksLateTransportVoicesUntilStopIsPublished() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.fillSelectedPadPattern(com.choplab.sampler.model.RepeatGrid.SIXTEENTH)
+            controller.toggleTransport()
+            awaitCondition { engine.triggered.isNotEmpty() }
+            engine.triggered.clear()
+
+            val candidateEntered = CountDownLatch(1)
+            val releaseCandidate = CountDownLatch(1)
+            engine.exclusiveStartHook = {
+                candidateEntered.countDown()
+                check(releaseCandidate.await(2, TimeUnit.SECONDS))
+            }
+            val handoff = executor.submit { controller.toggleBeatLoopControl() }
+
+            assertTrue(candidateEntered.await(2, TimeUnit.SECONDS))
+            Thread.sleep(350L)
+            releaseCandidate.countDown()
+            handoff.get(2, TimeUnit.SECONDS)
+
+            assertFalse(controller.state.value.transportPlaying)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(listOf(loopPad to true), engine.triggered.map { it.first.globalIndex to it.second })
+        } finally {
+            executor.shutdownNow()
+            controller.close()
+        }
+    }
+
     private fun awaitCondition(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 2_000_000_000L
         while (!condition()) {
@@ -2167,10 +2442,14 @@ class DesktopSamplerControllerTest {
         val stoppedPads = mutableListOf<Int>()
         private var nextVoiceOwnership: Long = 0L
         var failNextTrigger: Boolean = false
+        var failTriggerPad: Int? = null
         var failNextStopPad: Boolean = false
         var failNextStopAll: Boolean = false
         var failClose: Boolean = false
         var nextTriggerFailure: Throwable? = null
+        var exclusiveStartHook: (() -> Unit)? = null
+        @Volatile var exclusiveStartCount: Int = 0
+        @Volatile var exclusiveRetireCount: Int = 0
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
@@ -2218,6 +2497,35 @@ class DesktopSamplerControllerTest {
             triggered += pad to forceLoop
             nextVoiceOwnership += 1L
             return nextVoiceOwnership
+        }
+        override fun startExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>) {
+            exclusiveStartCount++
+            exclusiveStartHook?.invoke()
+            nextTriggerFailure?.let { failure ->
+                nextTriggerFailure = null
+                throw failure
+            }
+            if (failNextTrigger) {
+                failNextTrigger = false
+                throw DesktopLoopSessionStartupException(
+                    IllegalStateException("test output unavailable"),
+                )
+            }
+            val candidates = listOf(loopPad to true) + companionPads.map { it to false }
+            failTriggerPad?.let { failingPad ->
+                if (candidates.any { it.first.globalIndex == failingPad }) {
+                    failTriggerPad = null
+                    throw DesktopLoopSessionStartupException(
+                        IllegalStateException("test companion output unavailable"),
+                    )
+                }
+            }
+            candidates.forEach { (pad, forceLoop) ->
+                triggered += pad to forceLoop
+                nextVoiceOwnership += 1L
+            }
+            exclusiveRetireCount++
+            isSourcePlaying = false
         }
         override fun releasePad(index: Int) {
             releasedPads += index

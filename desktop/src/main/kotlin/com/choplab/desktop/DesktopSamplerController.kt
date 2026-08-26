@@ -4,6 +4,7 @@ import com.choplab.desktop.audio.DesktopWavDecoder
 import com.choplab.desktop.audio.DesktopMicrophoneRecorder
 import com.choplab.desktop.audio.DesktopSystemAudioRecorder
 import com.choplab.desktop.audio.DesktopAudioRecorder
+import com.choplab.desktop.audio.DesktopLoopSessionStartupException
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
@@ -87,6 +88,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * JVM shell for the shared deck. Audio/filesystem/permission work stays here;
@@ -118,6 +120,7 @@ class DesktopSamplerController(
     private val sourceLoadOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     internal var recoveredHydrationAdmission: () -> Unit = {}
+    private val playbackTransitionLock = ReentrantLock()
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
         onStep = ::onTransportStep,
@@ -824,31 +827,57 @@ class DesktopSamplerController(
             mutableState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1, statusMessage = "ビートループを停止しました") }
             return
         }
-        stopCompetingPlayback()
-        var loopPad = pad
-        commitEdit { current ->
-            val pads = current.pads.map { candidate ->
-                when {
-                    candidate.globalIndex == index -> candidate.copy(playMode = PadPlayMode.LOOP)
-                    candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
-                    else -> candidate
-                }
+        if (rejectEditRequest()) return
+
+        val pads = state.pads.map { candidate ->
+            when {
+                candidate.globalIndex == index -> candidate.copy(playMode = PadPlayMode.LOOP)
+                candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
+                else -> candidate
             }
-            loopPad = pads[index]
-            current.copy(pads = pads)
         }
-        triggerPlayerPad(loopPad, forceLoop = true)
-        mutableState.value.pads
+        val loopPad = pads[index]
+        val companionPads = pads
             .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
-            .map(mutableState.value.pads::get)
-            .forEach { triggerPlayerPad(it) }
-        mutableState.update {
-            it.copy(
-                loopingPadIndex = index,
-                loopPlayheadFrame = if (loopPad.reverse) loopPad.endFrame - 1 else loopPad.startFrame,
-                statusMessage = "PAD ${index + 1}の音声全体をループ中です",
-            )
+            .map(pads::get)
+        val target = state.copy(
+            pads = pads,
+            transportPlaying = false,
+            currentStep = -1,
+            sourcePlaying = false,
+            pendingSourceCommand = PendingSourceCommand.NONE,
+            loopingPadIndex = index,
+            loopPlayheadFrame = if (loopPad.reverse) loopPad.endFrame - 1 else loopPad.startFrame,
+            scratchingPadIndex = null,
+            scratchPlayheadFrame = -1,
+            sourceScratchActive = false,
+            scratchSpeed = 0f,
+            scratchReturnAvailable = false,
+            statusMessage = "PAD ${index + 1}の音声全体をループ中です",
+        )
+        val plan = productionSession.planEdit(state, target)
+        playbackTransitionLock.withLock {
+            try {
+                player.startExclusiveLoopSession(loopPad, companionPads)
+            } catch (failure: DesktopLoopSessionStartupException) {
+                productionSession.cancel(plan)
+                setStatus("ビートループを開始できませんでした: ${failure.message}")
+                return
+            } catch (failure: Throwable) {
+                productionSession.cancel(plan)
+                throw failure
+            }
+
+            scratchReturnTarget = ScratchReturnTarget.None
+            scratchIdleFuture?.cancel(false)
+            scratchIdleFuture = null
+            transport.requestStop()
+            scratch.stop()
+            val transition = productionSession.commit(plan)
+            mutableState.value = transition.state
+            if (transition.persistenceRequired) scheduleAutosave()
         }
+        transport.awaitStopped()
     }
     override fun toggleTransport() {
         val state = mutableState.value
@@ -944,14 +973,21 @@ class DesktopSamplerController(
     }
 
     private fun commitEdit(mergeKey: String? = null, transform: (SamplerUiState) -> SamplerUiState) {
-        if (mutableState.value.isLoading) return setStatus("現在の処理が終わってから編集してください")
-        if (rejectEditWhileRecording()) return
+        if (rejectEditRequest()) return
         val before = mutableState.value
         val after = transform(before)
         val transition = productionSession.applyEdit(before, after, mergeKey)
         if (transition.mutation == ProductionMutation.NONE) return
         mutableState.value = transition.state
         if (transition.persistenceRequired) scheduleAutosave()
+    }
+
+    private fun rejectEditRequest(): Boolean {
+        if (mutableState.value.isLoading) {
+            setStatus("現在の処理が終わってから編集してください")
+            return true
+        }
+        return rejectEditWhileRecording()
     }
 
     private fun rejectEditWhileRecording(): Boolean {
@@ -1488,7 +1524,8 @@ class DesktopSamplerController(
     private fun sourcePlaybackFailureMessage(error: Throwable): String =
         "音声は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}"
 
-    private fun onTransportStep(barIndex: Int, step: Int) {
+    private fun onTransportStep(barIndex: Int, step: Int): Unit = playbackTransitionLock.withLock {
+        if (!transport.isRunning) return
         val snapshot = mutableState.value
         if (!snapshot.transportPlaying) return
         mutableState.update { current -> if (current.transportPlaying) current.copy(currentStep = step) else current }

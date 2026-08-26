@@ -86,6 +86,62 @@ internal fun <T> startReplacementBeforeRetiringConflicts(
 }
 
 /**
+ * Prepares and starts a complete candidate set before retiring prior playback.
+ * Any preparation/start failure abandons every prepared candidate and leaves the
+ * retirement callback untouched.
+ */
+internal fun <I, C> prepareAndStartCandidatesBeforeRetiringPlayback(
+    inputs: List<I>,
+    prepareCandidate: (I) -> C,
+    startCandidate: (C) -> Unit,
+    abandonCandidate: (C) -> Unit,
+    retirePlayback: () -> Unit,
+): List<C> {
+    val candidates = ArrayList<C>(inputs.size)
+    try {
+        inputs.forEach { input -> candidates += prepareCandidate(input) }
+        candidates.forEach(startCandidate)
+    } catch (failure: Throwable) {
+        candidates.forEach { candidate ->
+            try {
+                abandonCandidate(candidate)
+            } catch (cleanupFailure: Throwable) {
+                failure.addSuppressed(cleanupFailure)
+            }
+        }
+        if (failure is DesktopLoopSessionStartupException) throw failure
+        if (failure is Exception) throw DesktopLoopSessionStartupException(failure)
+        throw failure
+    }
+    retirePlayback()
+    return candidates
+}
+
+/**
+ * Preserves sequential CHOKE ownership without letting a companion immediately
+ * silence the selected loop owner.
+ */
+internal fun exclusiveLoopCompanionPads(
+    loopPad: PadModel,
+    companionPads: List<PadModel>,
+): List<PadModel> {
+    val ownerChokeGroup = loopPad.chokeGroup.takeIf { it > 0 }
+    val candidates = companionPads
+        .asSequence()
+        .filter(PadModel::isAssigned)
+        .filter { pad -> ownerChokeGroup == null || pad.chokeGroup != ownerChokeGroup }
+        .distinctBy(PadModel::globalIndex)
+        .toList()
+    val finalOwnerByChoke = candidates
+        .withIndex()
+        .filter { it.value.chokeGroup > 0 }
+        .associate { it.value.chokeGroup to it.index }
+    return candidates.filterIndexed { index, pad ->
+        pad.chokeGroup <= 0 || finalOwnerByChoke[pad.chokeGroup] == index
+    }
+}
+
+/**
  * Java Sound engine for the Windows deck.
  *
  * Source playback and PAD voices have separate ownership so a PAD hit never
@@ -172,37 +228,38 @@ class JavaSoundWavPlayer internal constructor(
                     (pad.chokeGroup > 0 && voice.pad.chokeGroup == pad.chokeGroup)
             }
             .toList()
-        val audio = requireNotNull(pad.audio)
-        val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
-        val renderingPad = if (pad.playMode == mode) pad else pad.copy(playMode = mode)
-        val rendered = PadPcmRenderer.renderInterleaved(renderingPad)
-        val clip = createClip(rendered.samples, audio.sampleRate, rendered.channelCount)
-        val voice = ActiveVoice(pad, mode, acquireVoiceOwnership(), clip)
-        activeVoices += voice
-        try {
-            clip.addLineListener { event ->
-                if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
-                    synchronized(this) { closeVoice(voice) }
-                }
-            }
-        } catch (failure: Throwable) {
-            closeVoice(voice)
-            throw failure
-        }
+        val voice = prepareVoice(pad, forceLoop)
         startReplacementBeforeRetiringConflicts(
             candidate = voice,
             conflicts = conflicts,
-            startCandidate = { replacement ->
-                if (replacement.mode == PadPlayMode.LOOP) {
-                    replacement.clip.loop(Clip.LOOP_CONTINUOUSLY)
-                } else {
-                    replacement.clip.start()
-                }
-            },
+            startCandidate = ::startVoice,
             abandonCandidate = ::closeVoice,
             retireConflict = ::closeVoice,
         )
         return voice.ownership
+    }
+
+    @Synchronized
+    override fun startExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>) {
+        require(loopPad.isAssigned) { "Beat loop PAD has no audio" }
+        val requests = buildList {
+            add(LoopSessionRequest(loopPad, forceLoop = true))
+            exclusiveLoopCompanionPads(loopPad, companionPads)
+                .asSequence()
+                .filter { it.globalIndex != loopPad.globalIndex }
+                .forEach { add(LoopSessionRequest(it, forceLoop = false)) }
+        }
+        val priorVoices = activeVoices.toList()
+        prepareAndStartCandidatesBeforeRetiringPlayback(
+            inputs = requests,
+            prepareCandidate = { request -> prepareVoice(request.pad, request.forceLoop) },
+            startCandidate = ::startVoice,
+            abandonCandidate = ::closeVoice,
+            retirePlayback = {
+                sourceClip?.stop()
+                priorVoices.forEach(::closeVoice)
+            },
+        )
     }
 
     @Synchronized
@@ -260,6 +317,35 @@ class JavaSoundWavPlayer internal constructor(
         )
     }
 
+    private fun prepareVoice(pad: PadModel, forceLoop: Boolean): ActiveVoice {
+        val audio = requireNotNull(pad.audio)
+        val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
+        val renderingPad = if (pad.playMode == mode) pad else pad.copy(playMode = mode)
+        val rendered = PadPcmRenderer.renderInterleaved(renderingPad)
+        val clip = createClip(rendered.samples, audio.sampleRate, rendered.channelCount)
+        val voice = ActiveVoice(pad, mode, acquireVoiceOwnership(), clip)
+        activeVoices += voice
+        try {
+            clip.addLineListener { event ->
+                if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
+                    synchronized(this) { closeVoice(voice) }
+                }
+            }
+        } catch (failure: Throwable) {
+            closeVoice(voice)
+            throw failure
+        }
+        return voice
+    }
+
+    private fun startVoice(voice: ActiveVoice) {
+        if (voice.mode == PadPlayMode.LOOP) {
+            voice.clip.loop(Clip.LOOP_CONTINUOUSLY)
+        } else {
+            voice.clip.start()
+        }
+    }
+
     private fun replaceSource(newClip: Clip) {
         sourceClip?.stop()
         sourceClip?.close()
@@ -290,6 +376,11 @@ class JavaSoundWavPlayer internal constructor(
         val mode: PadPlayMode,
         val ownership: Long,
         val clip: Clip,
+    )
+
+    private data class LoopSessionRequest(
+        val pad: PadModel,
+        val forceLoop: Boolean,
     )
 }
 

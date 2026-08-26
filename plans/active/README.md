@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**現在の統合plan:** Waves 12–16 の local product integration と closeout は完了した。status epoch、exact GATE ownership、candidate-first loop/history replacement、atomic Windows WAV、bounded verified Android publicationを保持し、loading／録音中のUndo/Redo許可truthをshared deck、Windows native menu、Android/Windows controller、deep history ownerで一つにした。統合bytesは 676 tests / 112 suites、configured package/policy/read-backまで`LOCAL_PASS`。既存PR #78は、新しい同一exact final headのhosted Android/Windows/iOS/supply-chain、review thread、mergeabilityを読み戻した場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
+**wave 17 selected / in progress:** `windows-loop-start-transaction-20260827.md`。merged `main@9441b32` / tree `08849f6`から、Windows初回Beat-loop開始をloading／録音admission→non-consuming edit plan→owner＋eligible VOICE companion candidate全開始→既存再生retire→exact-once commitへする。拒否／recoverable startup failureは現在の音・project/history/runtimeを保持する。過去のdirty Wave 17 worktreeはread-only入力として保全し、current-mainへ意図を再適用する。gate ceilingは`LOCAL_PASS`。
+
+**直前のGitHub統合完了:** Waves 12–16 receipt `c3806b1`はPR #78の8/8 exact-head checksとresolved review後、merge commit `9441b32`としてmainへ統合済み。merged-main Android/Windows/iOS/supply-chain 4/4もSUCCESS。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 

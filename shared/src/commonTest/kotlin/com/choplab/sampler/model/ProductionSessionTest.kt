@@ -62,6 +62,49 @@ class ProductionSessionTest {
     }
 
     @Test
+    fun editPlanPreviewsWithoutConsumingHistoryAndCancelKeepsTheFrontier() {
+        val session = ProductionSession()
+        val initial = SamplerUiState()
+        val plan = session.planEdit(initial, initial.copy(bpm = 126f))
+
+        assertEquals(ProductionMutation.PROJECT, plan.mutation)
+        assertEquals(0L, session.revision)
+        assertFalse(session.canUndo)
+        assertFalse(session.canRedo)
+
+        session.cancel(plan)
+
+        assertEquals(0L, session.revision)
+        assertFalse(session.canUndo)
+        assertFailsWith<IllegalArgumentException> { session.commit(plan) }
+
+        val applied = session.applyEdit(initial, initial.copy(bpm = 126f))
+        assertEquals(1L, applied.revision)
+        assertTrue(applied.state.canUndo)
+    }
+
+    @Test
+    fun editPlansAreOwnerEpochBoundAndExactOnce() {
+        val owner = ProductionSession()
+        val other = ProductionSession()
+        val initial = SamplerUiState()
+        val crossSessionPlan = owner.planEdit(initial, initial.copy(bpm = 120f))
+
+        assertFailsWith<IllegalArgumentException> { other.commit(crossSessionPlan) }
+        assertEquals(0L, owner.revision)
+        val committed = owner.commit(crossSessionPlan)
+        assertEquals(120f, committed.state.bpm)
+        assertEquals(1L, committed.revision)
+        assertTrue(committed.state.canUndo)
+        assertFailsWith<IllegalArgumentException> { owner.commit(crossSessionPlan) }
+
+        val stale = owner.planEdit(committed.state, committed.state.copy(bpm = 130f))
+        owner.applyEdit(committed.state, committed.state.copy(statusMessage = "newer"))
+        assertFailsWith<IllegalArgumentException> { owner.commit(stale) }
+        assertEquals(1L, owner.revision)
+    }
+
+    @Test
     fun busyRuntimeOwnersCannotPreviewOrConsumeHistory() {
         val session = ProductionSession()
         val initial = SamplerUiState()
