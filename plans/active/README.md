@@ -6,7 +6,19 @@
 
 ## Current selection
 
-**現在の統合plan:** Waves 12–16 の local product integration と closeout は完了した。status epoch、exact GATE ownership、candidate-first loop/history replacement、atomic Windows WAV、bounded verified Android publicationを保持し、loading／録音中のUndo/Redo許可truthをshared deck、Windows native menu、Android/Windows controller、deep history ownerで一つにした。統合bytesは 676 tests / 112 suites、configured package/policy/read-backまで`LOCAL_PASS`。既存PR #78は、新しい同一exact final headのhosted Android/Windows/iOS/supply-chain、review thread、mergeabilityを読み戻した場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
+**Wave 19 PR review repair completed local; GitHub integration remains active:** `../completed/waves17-18-pr-review-repair-20260827.md`。PR #79の3件の有効指摘を、Windowsのrender/open/startをhandoff lock外へ分離、candidate stagingとcleanup所有権保持、Android rejected vocal takeのstop＋discard専用経路で閉じた。追加raceも反証してproduct `11d0127` / tree `83c2055`、709 tests / 117 suites、197-task gate、package/policy/read-backまで`LOCAL_PASS`。
+
+**次に保持する一つ:** 新しいfeatureは開始せず、既存PR #79を同じbranch/headへ更新する。exact-head 8 workflows、review threads 0、clean mergeabilityとbase/head不変を確認してからだけnormal mergeし、merged-main 4 workflowsをread-backする。tag、Release、署名、device/provider account、Humanは別taskのまま。
+
+**wave 18 completed local; goal remains active:** `../completed/android-loop-session-admission-20260827.md`。Wave 17 closeout `8065c89` / tree `1c79440`から、Androidのowner＋eligible VOICE loop sessionを一つのbounded realtime commandとしてadmitし、初回project commit、VOICE録音restart、scratch returnをadmission成功後だけ公開する。queue full／engine stoppedはhistory/revision/runtime/autosaveを保持。product `5812c8a` / tree `1255aca`、703 tests / 116 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical AudioTrack output、device/provider/public/signing/Humanは別gate。
+
+**次に保持する一つ:** Wave 19をWave 18 clean closeoutから再計算する。physical Windows/Android audio、provider、Wave 17–18 GitHub integration、次version releaseを別gateとして比較し、deterministic local user outcomeなしにpan/stems/native/MIDI/AIを自動選択しない。
+
+**wave 17 completed local; goal remains active:** `../completed/windows-loop-start-transaction-20260827.md`。merged `main@9441b32` / tree `08849f6`から、Windows初回Beat-loop開始をloading／録音admission→non-consuming edit plan→owner＋eligible VOICE companion candidate全開始→既存再生retire→exact-once commitへした。拒否／recoverable owner・companion failureは現在の音・project/history/runtimeとdurable autosave bytesを保持し、fatal／contract外failureは通常失敗copyへ変換しない。product/review head `e2ebd9c` / tree `925fbff`、699 tests / 114 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical Windows click/overlap/latency、device/provider/public/signing/Humanは別gate。
+
+**直前のGitHub統合完了:** Waves 12–16 receipt `c3806b1`はPR #78の8/8 exact-head checksとresolved review後、merge commit `9441b32`としてmainへ統合済み。merged-main Android/Windows/iOS/supply-chain 4/4もSUCCESS。
+
+**次に保持する一つ:** Wave 18をWave 17 clean closeoutから再計算する。Android realtime loop-start acknowledgement、physical Windows audio/shortcut、Android DocumentsProvider、次version releaseは別gateとして比較し、deterministic local user outcomeなしにpan/stems/native/MIDI/AIを自動拡張しない。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 

@@ -1,5 +1,8 @@
 package com.choplab.desktop.audio
 
+import com.choplab.sampler.model.PadContentKind
+import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PcmAudio
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -61,5 +64,35 @@ class JavaSoundVoiceReplacementTest {
             listOf("start:new", "retire:old-same-pad", "retire:old-choke-peer"),
             events,
         )
+    }
+
+    @Test
+    fun exclusiveLoopCompanionsPreserveSequentialChokeOwnership() {
+        val audio = PcmAudio(
+            name = "voice.wav",
+            samples = ShortArray(400),
+            sampleRate = 1_000,
+        )
+        fun vocal(index: Int, chokeGroup: Int) = PadModel(
+            globalIndex = index,
+            audio = audio,
+            startFrame = 0,
+            endFrame = audio.frameCount,
+            chokeGroup = chokeGroup,
+            contentKind = PadContentKind.VOCAL,
+        )
+
+        val survivors = exclusiveLoopCompanionPads(
+            loopPad = vocal(64, 2),
+            companionPads = listOf(
+                vocal(96, 0),
+                vocal(97, 1),
+                vocal(98, 0),
+                vocal(99, 1),
+                vocal(100, 2),
+            ),
+        )
+
+        assertEquals(listOf(96, 98, 99), survivors.map(PadModel::globalIndex))
     }
 }

@@ -42,14 +42,22 @@ class DesktopTransport(
         this.swing = swing.coerceIn(50f, 75f)
     }
 
-    fun stop() {
+    fun requestStop() {
         running.set(false)
+        worker?.interrupt()
+    }
+
+    fun awaitStopped() {
         val active = worker
         if (active != null && active !== Thread.currentThread()) {
-            active.interrupt()
             runCatching { active.join(500L) }
         }
         if (worker === active) worker = null
+    }
+
+    fun stop() {
+        requestStop()
+        awaitStopped()
     }
 
     private fun runLoop() {

@@ -99,6 +99,7 @@ import com.choplab.sampler.model.audiblePlaybackStepCount
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.beatLoopControlEnabled
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.focusPadTrimAtFrame
 import com.choplab.sampler.model.hasAnyPatternSteps
@@ -2992,7 +2993,7 @@ private fun BeatLoopControl(
             MachineButton(
                 label = beatLoopButtonLabel(looping = loopingPad != null, fontScale = fontScale),
                 onClick = viewModel::toggleBeatLoopControl,
-                enabled = pad.isAssigned || loopingPad != null,
+                enabled = state.beatLoopControlEnabled,
                 active = loopingPad != null,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
@@ -3025,7 +3026,7 @@ private fun LandscapeBeatPlaybackRow(
         MachineButton(
             label = beatLoopButtonLabel(looping = loopingPad != null, fontScale = fontScale),
             onClick = viewModel::toggleBeatLoopControl,
-            enabled = selectedPad.isAssigned || loopingPad != null,
+            enabled = state.beatLoopControlEnabled,
             active = loopingPad != null,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,

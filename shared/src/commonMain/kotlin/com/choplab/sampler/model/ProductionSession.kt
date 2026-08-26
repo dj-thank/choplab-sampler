@@ -19,6 +19,21 @@ class ProductionCommandPlan internal constructor(
     internal var resolved: Boolean = false
 }
 
+/**
+ * Non-consuming arbitrary edit whose platform work must succeed before commit.
+ * A plan belongs to exactly one session and can be committed or cancelled once.
+ */
+class ProductionEditPlan internal constructor(
+    internal val ownerToken: Any,
+    internal val epoch: Long,
+    internal val before: SamplerUiState,
+    internal val after: SamplerUiState,
+    internal val mergeKey: String?,
+    val mutation: ProductionMutation,
+) {
+    internal var resolved: Boolean = false
+}
+
 internal enum class ProductionHistoryDirection {
     UNDO,
     REDO,
@@ -97,20 +112,47 @@ class ProductionSession(maxHistoryEntries: Int = 40) {
         before: SamplerUiState,
         after: SamplerUiState,
         mergeKey: String? = null,
-    ): ProductionSessionTransition {
+    ): ProductionSessionTransition = commit(planEdit(before, after, mergeKey))
+
+    fun planEdit(
+        before: SamplerUiState,
+        after: SamplerUiState,
+        mergeKey: String? = null,
+    ): ProductionEditPlan {
         invalidatePlans()
         val mutation = when {
             after == before -> ProductionMutation.NONE
             before.hasSameEditableContent(after) -> ProductionMutation.SESSION
             else -> ProductionMutation.PROJECT
         }
-        if (mutation == ProductionMutation.PROJECT) {
-            history.record(before, mergeKey)
+        if (mutation == ProductionMutation.PROJECT) check(revision < Long.MAX_VALUE) {
+            "Production revision exhausted"
+        }
+        return ProductionEditPlan(
+            ownerToken = ownerToken,
+            epoch = transactionEpoch,
+            before = before,
+            after = after,
+            mergeKey = mergeKey,
+            mutation = mutation,
+        )
+    }
+
+    fun cancel(plan: ProductionEditPlan) {
+        requirePlanIsCurrent(plan)
+        plan.resolved = true
+    }
+
+    fun commit(plan: ProductionEditPlan): ProductionSessionTransition {
+        requirePlanIsCurrent(plan)
+        plan.resolved = true
+        if (plan.mutation == ProductionMutation.PROJECT) {
+            history.record(plan.before, plan.mergeKey)
             advanceRevision()
         }
         return transition(
-            state = after,
-            mutation = mutation,
+            state = plan.after,
+            mutation = plan.mutation,
         )
     }
 
@@ -238,6 +280,12 @@ class ProductionSession(maxHistoryEntries: Int = 40) {
         require(plan.ownerToken === ownerToken) { "Production command plan belongs to another session" }
         require(!plan.resolved) { "Production command plan was already resolved" }
         require(plan.epoch == transactionEpoch) { "Production command plan is stale" }
+    }
+
+    private fun requirePlanIsCurrent(plan: ProductionEditPlan) {
+        require(plan.ownerToken === ownerToken) { "Production edit plan belongs to another session" }
+        require(!plan.resolved) { "Production edit plan was already resolved" }
+        require(plan.epoch == transactionEpoch) { "Production edit plan is stale" }
     }
 
     private fun requirePlanIsCurrent(plan: ProductionHistoryPlan) {
