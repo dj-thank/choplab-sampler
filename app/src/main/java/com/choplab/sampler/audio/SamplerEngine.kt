@@ -376,6 +376,9 @@ class SamplerEngine(
     private fun renderLoop(track: AudioTrack, blockFrames: Int) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
         val output = FloatArray(blockFrames * 2)
+        val sourceFrame = MutableStereoFrame()
+        val scratchFrame = MutableStereoFrame()
+        val padFrame = MutableStereoFrame()
 
         try {
             while (running.get()) {
@@ -390,9 +393,12 @@ class SamplerEngine(
                 for (frame in 0 until blockFrames) {
                     if (transportState.running) processTransportFrame()
 
-                    var monoMix = 0f
+                    var leftMix = 0f
+                    var rightMix = 0f
                     if (sourceVoice.active) {
-                        monoMix += sourceVoice.render(outputSampleRate)
+                        sourceVoice.renderStereo(outputSampleRate, sourceFrame)
+                        leftMix += sourceFrame.left
+                        rightMix += sourceFrame.right
                         latestSourceFrame = sourceVoice.currentFrame
                         if (sourceVoice.finished) {
                             val completedGeneration = sourceVoiceGeneration
@@ -402,32 +408,35 @@ class SamplerEngine(
                         }
                     }
                     scratchVoice?.let { scratch ->
-                        monoMix += scratch.render(
+                        scratch.renderStereo(
                             outputSampleRate = outputSampleRate,
                             targetSpeed = scratchTargetSpeed,
+                            destination = scratchFrame,
                         )
+                        leftMix += scratchFrame.left
+                        rightMix += scratchFrame.right
                         latestScratchFrame = scratch.currentFrame
                     }
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
                         if (voice.active) {
-                            val value = renderPadVoiceFrameForMix(voice, outputSampleRate)
+                            renderPadVoiceStereoFrameForMix(voice, outputSampleRate, padFrame)
                             if (voice.active) {
                                 if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
                                     latestLoopFrame = voice.currentFrame
                                 }
                             }
-                            monoMix += value
+                            leftMix += padFrame.left
+                            rightMix += padFrame.right
                         }
                         voiceIndex++
                     }
 
                     // Smooth saturating limiter protects against polyphonic overload.
-                    val limited = SamplerDspPrimitives.softLimit(monoMix)
                     val outputIndex = frame * 2
-                    output[outputIndex] = limited
-                    output[outputIndex + 1] = limited
+                    output[outputIndex] = SamplerDspPrimitives.softLimit(leftMix)
+                    output[outputIndex + 1] = SamplerDspPrimitives.softLimit(rightMix)
                 }
                 if (latestSourceFrame >= 0) currentSourceFrameValue.set(latestSourceFrame)
                 if (monitoredLoopPad >= 0) {
@@ -809,7 +818,7 @@ class SamplerEngine(
         var startOrder: Long = 0L
             private set
         private var audioId: Long? = null
-        private var samples: ShortArray = EMPTY_SAMPLES
+        private var audio: PcmAudio? = null
         private var startFrame = 0
         private var endFrame = 1
         private var reverse = false
@@ -823,9 +832,11 @@ class SamplerEngine(
             reverse = false,
             playMode = PadPlayMode.ONE_SHOT,
         )
-        private var filterState = 0f
+        private var filterStateLeft = 0f
+        private var filterStateRight = 0f
         private var releaseFramesRemaining = -1
         private var releaseFramesTotal = 1
+        private val compatibilityFrame = MutableStereoFrame()
 
         var finished: Boolean = true
             private set
@@ -852,7 +863,7 @@ class SamplerEngine(
             chokeGroup = pad.chokeGroup
             this.startOrder = startOrder
             audioId = pad.audio.id
-            samples = pad.audio.samples
+            audio = pad.audio
             startFrame = pad.startFrame
             endFrame = pad.endFrame
             reverse = pad.reverse
@@ -861,7 +872,8 @@ class SamplerEngine(
             filterAlpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
             sourceStep = sourceStepFor(pad, outputSampleRate)
             cursor.reset(startFrame, endFrame, reverse, playMode)
-            filterState = 0f
+            filterStateLeft = 0f
+            filterStateRight = 0f
             releaseFramesRemaining = -1
             releaseFramesTotal = 1
         }
@@ -874,7 +886,7 @@ class SamplerEngine(
             chokeGroup = 0
             startOrder = 0L
             audioId = null
-            samples = EMPTY_SAMPLES
+            audio = null
             startFrame = 0
             endFrame = 1
             reverse = false
@@ -882,7 +894,8 @@ class SamplerEngine(
             tone = 1f
             filterAlpha = 1f
             sourceStep = 1.0
-            filterState = 0f
+            filterStateLeft = 0f
+            filterStateRight = 0f
             releaseFramesRemaining = -1
             releaseFramesTotal = 1
         }
@@ -904,16 +917,31 @@ class SamplerEngine(
             }
         }
 
-        fun render(@Suppress("UNUSED_PARAMETER") outputSampleRate: Int): Float {
-            if (!active || finished) return 0f
+        fun render(outputSampleRate: Int): Float {
+            renderStereo(outputSampleRate, compatibilityFrame)
+            return compatibilityFrame.left
+        }
+
+        fun renderStereo(
+            @Suppress("UNUSED_PARAMETER") outputSampleRate: Int,
+            destination: MutableStereoFrame,
+        ) {
+            if (!active || finished) {
+                destination.clear()
+                return
+            }
+            val currentAudio = checkNotNull(audio) { "Active voice has no PCM" }
             val position = cursor.position
 
             val lower = floor(position).toInt().coerceIn(startFrame, endFrame - 1)
             val upper = (lower + 1).coerceAtMost(endFrame - 1)
             val fraction = (position - lower).toFloat()
-            val lowerSample = samples[lower] / 32_768f
-            val upperSample = samples[upper] / 32_768f
-            val raw = lowerSample + (upperSample - lowerSample) * fraction
+            val lowerLeft = currentAudio.playbackSampleAt(lower, 0) / 32_768f
+            val upperLeft = currentAudio.playbackSampleAt(upper, 0) / 32_768f
+            val rawLeft = lowerLeft + (upperLeft - lowerLeft) * fraction
+            val lowerRight = currentAudio.playbackSampleAt(lower, 1) / 32_768f
+            val upperRight = currentAudio.playbackSampleAt(upper, 1) / 32_768f
+            val rawRight = lowerRight + (upperRight - lowerRight) * fraction
 
             val boundaryEnvelope = SamplerDspPrimitives.boundaryEnvelope(
                 position = position,
@@ -922,12 +950,18 @@ class SamplerEngine(
                 reverse = reverse,
             )
 
-            val filtered = if (filterAlpha >= 1f) {
-                filterState = raw
-                raw
+            val filteredLeft: Float
+            val filteredRight: Float
+            if (filterAlpha >= 1f) {
+                filterStateLeft = rawLeft
+                filterStateRight = rawRight
+                filteredLeft = rawLeft
+                filteredRight = rawRight
             } else {
-                filterState += filterAlpha * (raw - filterState)
-                filterState
+                filterStateLeft += filterAlpha * (rawLeft - filterStateLeft)
+                filterStateRight += filterAlpha * (rawRight - filterStateRight)
+                filteredLeft = filterStateLeft
+                filteredRight = filterStateRight
             }
 
             var releaseEnvelope = 1f
@@ -939,7 +973,8 @@ class SamplerEngine(
 
             cursor.advance(sourceStep)
             if (cursor.finished) finished = true
-            return filtered * gain * boundaryEnvelope * releaseEnvelope
+            val envelope = gain * boundaryEnvelope * releaseEnvelope
+            destination.set(filteredLeft * envelope, filteredRight * envelope)
         }
 
         private fun sourceStepFor(pad: PadSnapshot, outputSampleRate: Int): Double {
@@ -949,17 +984,13 @@ class SamplerEngine(
                 outputSampleRate = outputSampleRate,
             )
         }
-
-        private companion object {
-            val EMPTY_SAMPLES = ShortArray(0)
-        }
     }
 
     private class ScratchVoice(
         pad: PadSnapshot,
         initialFrame: Int,
     ) {
-        private val samples = pad.audio.samples
+        private val audio = pad.audio
         private val startFrame = pad.startFrame
         private val endFrame = pad.endFrame
         private val sourceSampleRate = pad.audio.sampleRate
@@ -970,17 +1001,24 @@ class SamplerEngine(
         val currentFrame: Int
             get() = cursor.position.toInt().coerceIn(startFrame, endFrame - 1)
 
-        fun render(outputSampleRate: Int, targetSpeed: Float): Float {
+        fun renderStereo(
+            outputSampleRate: Int,
+            targetSpeed: Float,
+            destination: MutableStereoFrame,
+        ) {
             val smoothedSpeed = speedSmoother.next(targetSpeed)
             val lower = floor(cursor.position).toInt().coerceIn(startFrame, endFrame - 1)
             val upper = (lower + 1).let { if (it >= endFrame) startFrame else it }
             val fraction = (cursor.position - lower).toFloat()
-            val lowerSample = samples[lower] / 32_768f
-            val upperSample = samples[upper] / 32_768f
-            val interpolated = lowerSample + (upperSample - lowerSample) * fraction
+            val lowerLeft = audio.playbackSampleAt(lower, 0) / 32_768f
+            val upperLeft = audio.playbackSampleAt(upper, 0) / 32_768f
+            val left = lowerLeft + (upperLeft - lowerLeft) * fraction
+            val lowerRight = audio.playbackSampleAt(lower, 1) / 32_768f
+            val upperRight = audio.playbackSampleAt(upper, 1) / 32_768f
+            val right = lowerRight + (upperRight - lowerRight) * fraction
             val motionEnvelope = (abs(smoothedSpeed) * 2.5).coerceIn(0.0, 1.0).toFloat()
             cursor.advance(smoothedSpeed * sourceSampleRate / outputSampleRate.toDouble())
-            return interpolated * gain * motionEnvelope
+            destination.set(left * gain * motionEnvelope, right * gain * motionEnvelope)
         }
     }
 
@@ -1013,6 +1051,21 @@ internal inline fun renderPadVoiceFrameForMix(
     val value = voice.render(outputSampleRate)
     if (voice.finished) voice.deactivate()
     return value
+}
+
+/** Stereo form of the same terminal-sample-preserving realtime mix seam. */
+@Suppress("NOTHING_TO_INLINE")
+internal inline fun renderPadVoiceStereoFrameForMix(
+    voice: SamplerEngine.Voice,
+    outputSampleRate: Int,
+    destination: MutableStereoFrame,
+) {
+    if (!voice.active) {
+        destination.clear()
+        return
+    }
+    voice.renderStereo(outputSampleRate, destination)
+    if (voice.finished) voice.deactivate()
 }
 
 /** Retires every older copy of one PAD without touching intentional other-PAD layers. */

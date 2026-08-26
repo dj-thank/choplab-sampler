@@ -1,6 +1,7 @@
 package com.choplab.desktop.audio
 
 import com.choplab.sampler.audio.PadPcmRenderer
+import com.choplab.sampler.audio.RenderedPcm
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
@@ -11,6 +12,29 @@ import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.Clip
 import javax.sound.sampled.LineEvent
+
+internal fun pcm16AudioInputStream(
+    samples: ShortArray,
+    sampleRate: Int,
+    channelCount: Int,
+): AudioInputStream {
+    require(samples.isNotEmpty()) { "再生するPCMがありません" }
+    require(channelCount in 1..2 && samples.size % channelCount == 0) {
+        "再生PCMのチャンネル構成が不正です"
+    }
+    val bytes = ByteArray(samples.size * Short.SIZE_BYTES)
+    for (index in samples.indices) {
+        val sample = samples[index].toInt()
+        bytes[index * 2] = (sample and 0xFF).toByte()
+        bytes[index * 2 + 1] = (sample shr 8).toByte()
+    }
+    val format = AudioFormat(sampleRate.toFloat(), 16, channelCount, true, false)
+    return AudioInputStream(
+        ByteArrayInputStream(bytes),
+        format,
+        (samples.size / channelCount).toLong(),
+    )
+}
 
 /**
  * Java Sound engine for the Windows deck.
@@ -29,10 +53,10 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
 
     @Synchronized
     override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) {
-        val samples = if (pitchSemitones == 0f) {
-            audio.samples.copyOf()
+        val rendered = if (pitchSemitones == 0f) {
+            RenderedPcm(audio.samples.copyOf(), audio.channelCount)
         } else {
-            PadPcmRenderer.render(
+            PadPcmRenderer.renderInterleaved(
                 PadModel(
                     globalIndex = 0,
                     audio = audio,
@@ -43,7 +67,7 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
                 ),
             )
         }
-        replaceSource(createClip(samples, audio.sampleRate))
+        replaceSource(createClip(rendered.samples, audio.sampleRate, rendered.channelCount))
         sourceOriginalFrames = audio.frameCount
     }
 
@@ -96,7 +120,8 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
             .toList()
             .forEach(::closeVoice)
         val audio = requireNotNull(pad.audio)
-        val clip = createClip(PadPcmRenderer.render(pad), audio.sampleRate)
+        val rendered = PadPcmRenderer.renderInterleaved(pad)
+        val clip = createClip(rendered.samples, audio.sampleRate, rendered.channelCount)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
         val voice = ActiveVoice(pad, mode, clip)
         activeVoices += voice
@@ -140,17 +165,9 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         sourceOriginalFrames = 0
     }
 
-    private fun createClip(samples: ShortArray, sampleRate: Int): Clip {
-        require(samples.isNotEmpty()) { "再生するPCMがありません" }
-        val bytes = ByteArray(samples.size * Short.SIZE_BYTES)
-        for (index in samples.indices) {
-            val sample = samples[index].toInt()
-            bytes[index * 2] = (sample and 0xFF).toByte()
-            bytes[index * 2 + 1] = (sample shr 8).toByte()
-        }
-        val format = AudioFormat(sampleRate.toFloat(), 16, 1, true, false)
+    private fun createClip(samples: ShortArray, sampleRate: Int, channelCount: Int): Clip {
         val clip = AudioSystem.getClip()
-        AudioInputStream(ByteArrayInputStream(bytes), format, samples.size.toLong()).use(clip::open)
+        pcm16AudioInputStream(samples, sampleRate, channelCount).use(clip::open)
         return clip
     }
 

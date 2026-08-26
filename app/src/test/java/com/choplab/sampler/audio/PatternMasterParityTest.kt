@@ -16,6 +16,66 @@ import org.junit.Test
 
 class PatternMasterParityTest {
     @Test
+    fun asymmetricStereoFullBarMatchesRealtimeVoiceAndMasterPerChannel() {
+        val sampleRate = 8_000
+        val audio = PcmAudio(
+            name = "stereo-full-bar-parity.wav",
+            samples = ShortArray(512 * 2) { sample ->
+                val frame = sample / 2
+                if (sample % 2 == 0) {
+                    (3_000 + frame * 19).coerceAtMost(12_000).toShort()
+                } else {
+                    (-2_000 - frame * 13).coerceAtLeast(-9_000).toShort()
+                }
+            },
+            sampleRate = sampleRate,
+            channelCount = 2,
+        )
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = 16,
+            endFrame = 496,
+            pitchSemitones = 3f,
+            tone = 0.35f,
+            gain = 0.7f,
+            reverse = true,
+        )
+        val pads = List(SamplerConfig.PAD_COUNT) { index -> if (index == 0) pad else PadModel(index) }
+        val output = File.createTempFile("choplab-stereo-master-parity", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = output,
+                pads = pads,
+                activeSteps = setOf(stepKey(0, 0)),
+                bpm = 120f,
+                swing = 60f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            val actual = readPcm16(output)
+            val voice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(pad), sampleRate)
+            val renderedFrame = MutableStereoFrame()
+            val expected = ShortArray(summary.frameCount * 2)
+            repeat(summary.frameCount) { frame ->
+                renderPadVoiceStereoFrameForMix(voice, sampleRate, renderedFrame)
+                expected[frame * 2] = (
+                    SamplerDspPrimitives.softLimit(renderedFrame.left).coerceIn(-1f, 1f) * Short.MAX_VALUE
+                    ).toInt().toShort()
+                expected[frame * 2 + 1] = (
+                    SamplerDspPrimitives.softLimit(renderedFrame.right).coerceIn(-1f, 1f) * Short.MAX_VALUE
+                    ).toInt().toShort()
+            }
+
+            assertEquals(2, summary.channelCount)
+            assertFullPcmParity(expected, actual, label = "asymmetric stereo full bar")
+        } finally {
+            output.delete()
+        }
+    }
+
+    @Test
     fun oddTempoABSongFullPcmMatchesAndroidCountdownVoiceAndMaster() {
         val sampleRate = 8_000
         val bpm = 123f

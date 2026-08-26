@@ -11,6 +11,36 @@ import org.junit.Test
 
 class SamplerEngineVoiceTest {
     @Test
+    fun realtimeVoicePreservesStereoAndDuplicatesMonoWithoutAdvancingTwice() {
+        val stereo = PcmAudio(
+            name = "stereo-live.wav",
+            samples = ShortArray(512 * 2) { sample -> if (sample % 2 == 0) 12_000 else -6_000 },
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+        val stereoPad = PadModel(0, stereo, 0, stereo.frameCount, gain = 1f, tone = 1f)
+        val stereoVoice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(stereoPad), 48_000)
+        val frame = MutableStereoFrame()
+        repeat(64) { stereoVoice.renderStereo(48_000, frame) }
+
+        assertTrue(frame.left > 0f)
+        assertTrue(frame.right < 0f)
+        assertEquals(64, stereoVoice.currentFrame)
+
+        val mono = PcmAudio(
+            name = "mono-live.wav",
+            samples = ShortArray(512) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val monoVoice = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot.from(PadModel(1, mono, 0, mono.frameCount, gain = 1f)),
+            48_000,
+        )
+        monoVoice.renderStereo(48_000, frame)
+        assertEquals(frame.left, frame.right, 0f)
+    }
+
+    @Test
     fun toneFilterCoefficientIsBoundedAndComputedAtTheControlBoundary() {
         assertEquals(1f, SamplerDspPrimitives.toneFilterAlpha(tone = 1f, outputSampleRate = 48_000), 0f)
         val dark = SamplerDspPrimitives.toneFilterAlpha(tone = 0.15f, outputSampleRate = 48_000)

@@ -16,6 +16,47 @@ import org.junit.Test
 
 class PatternRendererTest {
     @Test
+    fun stereoPatternMasterPreservesLeftAndRightWhileMonoMastersStayMono() {
+        val sampleRate = 8_000
+        val stereo = PcmAudio(
+            name = "stereo-master",
+            samples = ShortArray(512 * 2) { sample -> if (sample % 2 == 0) 12_000 else -6_000 },
+            sampleRate = sampleRate,
+            channelCount = 2,
+        )
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, stereo, 0, stereo.frameCount, gain = 1f) else PadModel(index)
+        }
+        val file = File.createTempFile("choplab-stereo-master", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = pads,
+                activeSteps = setOf(stepKey(0, 0)),
+                bpm = 120f,
+                swing = 50f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            val bytes = file.readBytes()
+            val pcm = readPcm16(file)
+            val energeticFrame = (0 until summary.frameCount).first { frame ->
+                kotlin.math.abs(pcm[frame * 2].toInt()) > 1_000
+            }
+
+            assertEquals(2, summary.channelCount)
+            assertEquals(2, littleEndianShort(bytes, 22))
+            assertEquals(4, littleEndianShort(bytes, 32))
+            assertEquals(summary.frameCount * 2 * Short.SIZE_BYTES, littleEndianInt(bytes, 40))
+            assertTrue(pcm[energeticFrame * 2] > 0)
+            assertTrue(pcm[energeticFrame * 2 + 1] < 0)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun fourBarSequenceRendersTheRequestedABOrderInsteadOfRepeatingOnePattern() {
         val sampleRate = 8_000
         val positive = PcmAudio(name = "pattern-a", samples = ShortArray(256) { 12_000 }, sampleRate = sampleRate)
@@ -398,6 +439,13 @@ class PatternRendererTest {
         ByteBuffer.wrap(bytes, offset, Int.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)
             .int
+
+    private fun littleEndianShort(bytes: ByteArray, offset: Int): Int =
+        ByteBuffer.wrap(bytes, offset, Short.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .short
+            .toInt()
+            .and(0xFFFF)
 
     private fun readPcm16(file: File): ShortArray {
         val bytes = file.readBytes()

@@ -62,7 +62,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - [x] 2026-08-26T23:33+09:00 — Wave 9 closeoutをexact baseとして専用worktreeを作成し、mono assumptionsとchannel-sensitive call sitesをinventory。
 - [x] 2026-08-26T23:39+09:00 — Milestone 1 RED/GREEN。shared frame/channel contract、Android PCM conversion、Windows streaming decodeを左右非対称fixtureで固定。
 - [x] 2026-08-26T23:49+09:00 — Milestone 2 RED/GREEN。schema 7 channel manifest、strict mono/stereo WAV、channel-aware memory budget、schema 1–6 mono migrationを固定。
-- [ ] Milestone 3 RED/GREEN。
+- [x] 2026-08-27T00:03+09:00 — Milestone 3 RED/GREEN。Android realtime source/PAD/scratch、host PAD、Pattern/Song WAV、Windows Clip/scratchを左右別frameへ接続。
 - [ ] Milestone 4 full gate / closeout。
 
 ## Discoveries
@@ -74,6 +74,9 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - 新規worktreeには`local.properties`が無いため、Android testはファイル保存ではなくprocess-local `ANDROID_HOME`で既存SDKを指定する。
 - current writerからlegacy fixtureを導出するtestはschema headerだけでなくschema 7のaudio channel fieldも除去する必要がある。旧parser自体は7-field audio行をそのまま維持した。
 - duplicate audio IDの同一性にはname/rate/samplesだけでなくchannelCountが必要。同じinterleaved bytesでもmonoとstereoではframe truthが異なる。
+- Android realtimeは既存stereo `AudioTrack`を維持し、callback開始時に3個のmutable stereo frameだけを確保する。各sampleではpositionを一度だけ進め、L/R filterとmaster limiterを独立適用する。
+- offline WAVのchannel countは実際のrender eventに含まれる最大channelCountから決めるため、mono-only projectの1ch header/data bytesを維持できる。
+- Windows Clipへ渡すpure PCM stream seamを分離すると、音声deviceなしで2ch format、4-byte frame size、interleaving、frame lengthをread-backできる。
 
 ## Decision log
 
@@ -94,6 +97,15 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
   - RED: schema 6 mono codecが6 interleaved samplesを3 mono framesとしてread-backできずreject。
 - `:shared:desktopTest :jvm-core:test`
   - GREEN: schema 7 stereo exact round-trip、WAV 2ch/block-align/data size、schema 1–6 mono migration、manifest/header mismatch、resident budget、duplicate-ID channel mismatchを含む全shared/JVM-core tests PASS。
+- `:jvm-core:test --tests '*PadPcmRendererTest.asymmetricStereoRendersInterleavedWithoutChannelCollapse' --tests '*PatternRendererTest.stereoPatternMasterPreservesLeftAndRightWhileMonoMastersStayMono'`
+  - RED: host PAD APIとPattern summaryがmono shapeしか持たずtest compile failure。
+  - GREEN: interleaved host render、2ch WAV header/block-align/data、左右符号identity PASS。
+- `:app:testDebugUnitTest --tests '*SamplerEngineVoiceTest.realtimeVoicePreservesStereoAndDuplicatesMonoWithoutAdvancingTwice' :desktop:test`
+  - GREEN: realtime stereo/mono projection、single frame advance、Windows full suite PASS。
+- `:app:testDebugUnitTest --tests '*PatternMasterParityTest.asymmetricStereoFullBarMatchesRealtimeVoiceAndMasterPerChannel'`
+  - GREEN: asymmetric stereo full-bar Android/offline master parity、左右各sampleの最大delta 1以下。
+- `:desktop:test --tests '*JavaSoundPcmInputTest'`
+  - GREEN: Windows PCM handoffは2ch、frame size 4、frameLength 2、interleaved bytes exact。
 
 ## Risks and rollback
 
