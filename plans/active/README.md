@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**wave 13 selected / in progress:** `windows-atomic-wav-export-20260827.md`。exact Wave 12 closeout `6fb1c94` / tree `ce7ce3d`から、Windowsの4小節WAVをsame-parent temporaryへ完成させてからだけdestinationへ置換する。render/write/close/move failureは既存WAV bytesを保持し、temporary debrisを残さない。manual `.choplab` atomic saveとdeep helperを共有し、Android SAF、DSP、schema、device/provider/public/signing/Humanはscope外。
+**wave 14 portfolio recompute / implementation unselected:** Wave 13 closeoutをexact baseとしてcurrent source・SSOT・external gatesを再読し、もう一つのbounded local user outcomeだけを選ぶ。physical touch/audio/speech、Android SAF provider behavior、signing/provider/public/Humanは別gateであり、pan/stems/arbitrary Song/native/MIDI/AIへ暗黙拡張しない。
+
+**wave 13 completed local; goal remains active:** `../completed/windows-atomic-wav-export-20260827.md`。exact Wave 12 closeout `6fb1c94` / tree `ce7ce3d`から、Windowsの4小節WAVをsame-parent temporaryへ完成・PCM-16 shape検証・file syncしてからだけdestinationへatomic replaceする。render/write/close/shape/move failureは既存WAV bytesを保持し、temporary debrisを残さない。manual `.choplab` saveとdeep helperを共有し、product checkpoint `ffe1bbd` / tree `d3ae7a9`、568 tests / 197-task gateまで`LOCAL_PASS`。Android SAF、DSP、schema、device/provider/public/signing/Humanはscope外。
 
 **wave 12 completed local; goal remains active:** `../completed/desktop-live-loop-edit-transaction-20260827.md`。exact Wave 11 closeout `7e8603c` / tree `2ca0ce1`から、Windowsのactive Beat loop編集をadapter開始成功後だけproject/history/autosaveへcommitするtransactionへ修復した。candidate failureは旧loop・旧PAD設定・historyを保持し、loading/recording拒否とno-opのretriggerを禁止。Java Soundはcandidate-first start／failure abandon／success retireをactual helperで固定し、product checkpoint `b8db436` / tree `a9b28c0`、560 tests / 197-task gateまで`LOCAL_PASS`。physical Windows endpoint/audio/Human、Android、schema、release/publicはscope外。
 
@@ -50,7 +52,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** Wave 13でoverwrite-safe Windows WAV exportを選択済み。closeout前に別sliceを開始しない。physical touch・TalkBack/Narrator・L/R route・A/B Song device audioは別権限gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に選ぶ一つ:** Wave 13はoverwrite-safe Windows WAV exportとして完了。Wave 14はcurrent sourceと残gateを再計算中で、まだ実装sliceを選定していない。physical touch・TalkBack/Narrator・L/R route・A/B Song device audio・Android SAF provider behaviorは別権限gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

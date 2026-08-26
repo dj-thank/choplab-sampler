@@ -8,6 +8,7 @@ Windowsで既存WAVへ4小節を書き出し直すとき、新しいWAVが最後
 
 - exact base: `6fb1c94f283019580d0cbf0fecfadeefa324675a` / tree `ce7ce3d2acb7124708e801291b50838b0814e57f`（Wave 12 closeout）。
 - owner root: `C:/Users/rambo/Documents/ChatGPT/pad/work/choplab-atomic-wav-export-20260827`、branch `codex/choplab-atomic-wav-export-20260827`。
+- product checkpoint: `ffe1bbdf59d0645652c3f8556fb6f601e5218670` / tree `d3ae7a9bb18d48ae323e92aaabfe58e25acd975f`。
 - `DesktopSamplerController.exportBeat(outputFile)`はuser destinationを直接`PatternRenderer.renderSequenceToWav`へ渡す。
 - `WavFileWriter`は`RandomAccessFile(file, "rw")`を開き、header前に`setLength(0)`する。後続のrender/I/O failureは以前のdestination bytesを戻さない。
 - `DesktopProjectFiles.save`は同一folderのtemporaryへwrite/read-back後、atomic-move-firstで置換し、failure時にtemporaryを消す。WAV exportには同等のboundaryがない。
@@ -51,7 +52,7 @@ Windows Beat exportは`DesktopBeatFiles.export`のような限定adapterを通�
 - [x] 2026-08-27T02:15+09:00 — Wave 12 clean closeoutからcurrent sourceをread-backし、direct destination truncationとmanual-project atomic-saveとの差を選定。専用clean worktreeを作成。
 - [x] 2026-08-27T02:18+09:00 — Milestone 1 RED。existing `beat.wav`のsentinelとpartial writerを置くtestがmissing `replaceWithAtomicSibling`でcompile failure。production adapter testもmissing `DesktopBeatFiles` / renderer seamでcompile failure。
 - [x] 2026-08-27T02:28+09:00 — Milestone 2 GREEN。same-parent temporary、file sync、atomic replace、existing-target fail-close、finally cleanupをdeep helperへ実装。WAV adapter failure/success/actual RIFF、new-target failure、temporary消失、manual project failure-preservation controlsとdesktop full 104 tests / 22 suitesをPASS。
-- [ ] Milestone 3 review/full gate/closeout。
+- [x] 2026-08-27T02:43+09:00 — Milestone 3 closeout。Standards/Spec findings `0/0`、clean 197-task gate、568 tests / 102 suites、configured/Python/public-surface/release-negative/package/SBOM read-backをPASS。product checkpoint `ffe1bbdf59d0645652c3f8556fb6f601e5218670` / tree `d3ae7a9bb18d48ae323e92aaabfe58e25acd975f`を固定し、Android SAF provider atomicity、filesystem variation、actual audition以下を別gateに保持。
 
 ## Decision log
 
@@ -67,6 +68,13 @@ Windows Beat exportは`DesktopBeatFiles.export`のような限定adapterを通�
 - Standards review: export controllerの`runCatching`がfatal `Error`もrecoverable failure statusへ変換する境界を発見し、`Exception`だけをstatusへ変換する明示try/catchへ限定。
 - Standards review: move成功後のredundant cleanup checkが例外を出すと、published targetを成功済みなのにfailureと誤報し得た。`published` ownershipを明示し、cleanupは未publish pathだけに限定。
 - Spec review: rendererがsuccess summaryを返してもcanonical PCM-16 header/sizeが不一致なら旧targetを置換しないstreaming shape read-backを追加。invalid-success negativeとactual RIFF/WAVE positiveがPASS。
+- full clean gate: `BUILD SUCCESSFUL in 5m 18s`、197 tasks（193 executed / 4 up-to-date）。Android 264、shared Android/Desktop 66/66、JVM-core 68、Desktop 104、合計568 tests / 102 suites、failures/errors/skips 0。Lint debug/releaseは各errors 0 / warnings 7。
+- configured/release gates: explicit Git Bash validation、Python policy 59、current＋reachable-history public surface 440、`git diff --check`、unsigned APK positiveとsigned-required exit-1 negative、CycloneDX 1.6 / 650 components / 651 dependenciesをPASS。
+- package read-back: Windows app-image 405 files / 176,651,039 bytes / manifest SHA-256 `53AB068CDDE342ECDB74E5C0C3D5A395AC9EAC9A8A8D3F86D3131EAC99D176E1`。Desktop JAR SHA-256 `C4B2F22F74F0FC4C1AE4126B80FAA92728898E9897213A71274008266EC32DC9`。
+
+## Outcome
+
+Wave 13は`LOCAL_PASS`で完了した。Windowsの既存WAV上書きは、新しいcanonical WAVが閉じられ、summaryとのheader/size整合を通り、同一filesystem上でatomic publicationできたときだけ成功する。失敗時の旧output保全はsynthetic host contractであり、実filesystem/antivirus/network shareや聴感品質へ一般化しない。protected dirty/conflicted checkouts、Android/provider、GitHub/public stateは不変。
 
 ## Risks and rollback
 
