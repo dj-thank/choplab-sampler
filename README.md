@@ -6,7 +6,7 @@
 
 Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APK、iOS Simulator app zip、Windows app-image zipを同時に添付します。
+現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、1/2ch音声の取り込みと左右を保つ再生、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、mono/stereo WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APK、iOS Simulator app zip、Windows app-image zipを同時に添付します。
 
 画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。縦横どちらでも画面スクロールを使わず、`入れる / チョップ / ビート / 保存` の固定4工程から取込、波形チョップ、PAD演奏、16-step制作、WAV書き出しへ直接移動できます。
 
@@ -45,11 +45,11 @@ Windows版の素材取込は、実装済みdecoderに合わせてWAVだけを表
 - `app/`: 現在のビルド基準線。AudioTrackベースのMVP実装です。
 - `ios/`: SwiftUI + AVFoundationのiOS 16向けプレビューMVP。音源取込、16 PAD、範囲編集、録音、停止を実装し、署名不要のSimulator previewとして検証します。
 - `desktop/`: 元Androidデックの色・工程・PAD vocabularyを踏襲したWindows EXE previewです。ローカルWAV、Spotify PKCE metadata/control、A/B 16-stepと4小節Songまでを対象にし、署名済みinstallerやSpotify音声取込は対象外です。
-- `reference/pro-v0.2/`: Oboe、ステレオ、独立タイムストレッチ、ADSR、LFO、FX、MIDI、任意数・可変repeatの高度なSong、ステム書き出しの未統合参照コードと設計資料です。
+- `reference/pro-v0.2/`: Oboe、独立タイムストレッチ、ADSR、LFO、FX、MIDI、pan/mixer、任意数・可変repeatの高度なSong、ステム書き出しの未統合参照コードと設計資料です。
 
 `reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。Codexには、参照コードを盲目的にコピーさせず、MVPへ段階的に統合し、各段階でビルドとテストを通すよう指示しています。
 
-実装済みのMVP範囲と未実装のPro範囲は[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)に記録しています。MVPの制作保存・自動復旧・Undo/Redoとbounded A/B 4小節Songは実装済みです。MIDI、独立タイムストレッチ、ネイティブOboeエンジン、ステレオ再生、任意数・可変repeatのSong editorは完成扱いにしていません。
+実装済みのMVP範囲と未実装のPro範囲は[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)に記録しています。MVPの制作保存・自動復旧・Undo/Redo、bounded A/B 4小節Song、Android/Windowsの1/2ch channel identityはローカル実装済みです。物理端末の左右出力と音質は別gateであり、MIDI、pan/mixer、独立タイムストレッチ、ネイティブOboeエンジン、stems、任意数・可変repeatのSong editorは完成扱いにしていません。
 
 ## 最短開始手順
 

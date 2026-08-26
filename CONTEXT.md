@@ -4,6 +4,14 @@
 
 A bounded piece of source audio that can be assigned to a PAD and played as one sound.
 
+## Audio frame
+
+One instant across every stored channel. A mono frame contains one PCM sample and a stereo frame contains interleaved left and right samples, while Chop boundaries, playheads and duration always count frames rather than raw sample-array positions.
+
+## Channel identity
+
+The contract that keeps the left and right samples of a stereo Audio frame distinct through import, playback, project persistence and export. Waveform and transient analysis may use an explicit mono projection, but that projection does not replace the audible channel data.
+
 ## Beat loop
 
 A Chop intended to repeat continuously from its end back to its start. Its repetition unit is the Chop itself, not a fixed interval on the sequencer grid.

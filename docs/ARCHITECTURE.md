@@ -19,7 +19,8 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 `model/SamplerModels.kt`
 
 - `PcmAudio`
-  - 16-bit signed PCMのモノラル `ShortArray`
+  - 16-bit signed PCMの1ch/2ch interleaved `ShortArray`
+  - `frameCount`は全channelを一緒に進める時間座標。`sampleAt`はchannel identity、`monoSampleAt`は表示／解析用の明示投影
   - 元サンプルレート
   - 表示名と一意ID
 - `SliceRange`
@@ -42,11 +43,11 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 1. `MediaExtractor`で最初のaudio trackを選択
 2. MIMEに対応する`MediaCodec` decoderを作成
 3. decoder outputをPCMとして取得
-4. 複数チャンネルをモノラルへ平均化
+4. 2chは左右を保持し、1chはmonoのまま、3–8chはspeaker layoutを推測せず従来どおり平均monoへ変換
 5. PCM float/8/16/24/32-bitを内部PCM-16へ正規化
-6. 微小なDC offsetを除去
+6. 微小なDC offsetをchannel別に除去
 
-最大10分／最大30,000,000 mono framesで防御し、巨大ファイルによるメモリ枯渇を抑えます。
+最大10分／最大30,000,000 audio framesで防御し、2chではinterleaved sample数を2倍として容量へ反映します。最初のPCM出力後にsample rateまたは保存channel shapeが変わった場合は、後続PCMの有無にかかわらずfail closedにします。
 
 ### 3.2 マイク
 
@@ -116,7 +117,7 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 
 - `AudioTrack.MODE_STREAM`
 - `ENCODING_PCM_FLOAT`
-- stereo output（mono mixをL/Rへ複製）
+- stereo output（mono sourceはL/Rへ複製し、stereo source/PAD/scratchは左右を別々にmix・limit）
 - `PERFORMANCE_MODE_LOW_LATENCY`
 - 端末が申告するnative sample rateを優先
 - partial writeを考慮し、block全体を書き切るまでループ
@@ -147,10 +148,19 @@ UI層、制作状態、リアルタイム音声処理、オフライン書き出
 
 - リアルタイムengineと同じPitch/Tone/Gain/Reverse/Choke/limiterロジック
 - Pattern modeの選択A/B × 4 bars、またはSong modeのA/B 4 sectionsについて、Android countdownと同じ連続fractional timingでevent frameを先に計算
-- 48 kHz mono PCM-16をchunk単位で`WavFileWriter`へ送る
+- 実際に発音する素材がmonoだけなら48 kHz mono、stereoを含むなら48 kHz interleaved stereo PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 
-リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、soft limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持つ。さらにsingle PAD / single event / full barではrealtime Voice + shared limiterとoffline WAVを全frame比較し、最大1 PCM unitをgateとする。polyphony/choke/loop/vocal/stereoを同様に拡張してから共通Voice kernelまたはnative moduleへ進む。
+リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、soft limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持ちます。single PAD / single event / full barではmonoと左右非対称stereoの両方をrealtime Voice + shared limiterとoffline WAVで全frame比較し、channelごと最大1 PCM unitをgateとします。polyphony/choke/loop/vocalをさらに拡張してから共通Voice kernelまたはnative moduleへ進みます。
+
+### 7.1 制作archive
+
+`ProjectArchiveCodec`
+
+- current schema 7はaudio manifestへ`channelCount`を記録し、1ch/2ch PCM-16 WAVのchannel、byte rate、block align、frame count、data lengthを相互検証
+- schema 1–6はchannel identityを持たないため、既存contractどおりmonoとして移行
+- manifest宣言時点と各entry読込時の両方で、frame × channel × 2 bytesをarchive／resident PCM budgetへ算入
+- current sourceと複数PADが同じaudio IDを共有する場合、name/rate/channel shape/sample bytesが一致しなければ拒否
 
 ## 8. メモリ戦略
 

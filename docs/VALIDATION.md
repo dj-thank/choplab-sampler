@@ -2,6 +2,22 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Stereo channel identity tracer — 2026-08-27
+
+- Product checkpoint: `66d3911f57dfb56baed682cf8c0ec9a0aed85164`, tree `e60216ab70ef540f48815524e0b645de16817007`, base `d6c22434f1bfd9fa5bc505717d0be4fa4a552a3d`.
+- RED/GREEN domain/import: missing `channelCount`/frame APIs failed test compilation before `PcmAudio` became strict interleaved 1/2ch PCM. Android PCM float/8/16/24/32 and Windows PCM-16 preserve asymmetric stereo, keep mono, average 3–8ch to mono, enforce frame-based capacity/duration, reject partial frames and remove DC per channel.
+- RED/GREEN persistence: schema-6 mono WAV interpretation rejected asymmetric interleaved bytes. Schema 7 now round-trips exact L/R samples and checks manifest channel identity against strict RIFF/WAV shape. Schema 1–6 mono fixtures, channel mismatch, duplicate-ID shape mismatch and resident-budget negatives pass.
+- RED/GREEN playback/export: host PAD and Pattern summary initially had only mono shapes. Android source/PAD/scratch, Windows Clip/scratch, host PAD and Pattern/Song renderer now share frame coordinates and channel-aware output. Asymmetric full-bar Android realtime versus offline export stays within one PCM unit per channel. Mono-only control reads back WAV channel 1, block-align 2 and mono data length.
+- RED/GREEN analysis: the old zero-crossing path reported stereo frame 100 as interleaved sample offset 200. Waveform/trim/PAD/timeline/zero-crossing/transient now use per-channel frame count with explicit L/R average for analysis.
+- Adversarial closeout: review found a zero-size-EOS edge where a second codec format-change could change sample rate after PCM started without another data buffer. A pure negative control now rejects post-start sample-rate or stored channel-shape drift immediately; focused tests pass.
+- Full clean gate: `BUILD SUCCESSFUL in 4m 31s`; 197 tasks (192 executed / 5 up-to-date). Android 264 / 46 suites, shared Android/Desktop 58/58 / 11+11 suites, JVM-core 68 / 8 suites, Desktop 89 / 19 suites; total 537 tests / 95 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Realtime bytecode: release `SamplerEngine.renderLoop` allocates one float array and three `MutableStereoFrame` objects before the outer loop. Its steady sample loop has zero `new`, the method has zero monitor instructions and zero `java.io`/`java.nio` references; the only later `new` is the write-failure exception path.
+- Configured/policy gates: `validate_project.sh` PASS (public surface, executable modes, 18 Gradle tasks, six XML files, wrapper SHA/UTF-8). Python policy 59 PASS. Current plus reachable-history public surface 429 has no credential/signing/audio candidates. `git diff --check` PASS.
+- Final unsigned Android candidate: 24,192,116 bytes / `7F180B3A48452179B3277D8FA3633820E6C093B8A759CD43E3B4464D6259016A`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy and alignment PASS. Unsigned candidate acceptance exits 0; `--require-signed` rejects with exit 1.
+- Other artifacts: debug APK 31,672,434 / `F1C13E9A163BAB2652D1EE3703C359A564F2EFEC1DCB0FCBB5379AD87911AE67`; androidTest 10,878,659 / `19002E0EBB2B62B599FAE7CF1738AC275B7D4CBEC610F0348D3B9C871A90E4AC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`. App-image 405 files / 176,614,704 bytes / manifest `9F97268C312E570D5B051C5B5BB06F7A142EE42EE610BE2ADB3FE202A186CB2A`.
+- Supply chain: CycloneDX 1.6 `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `EA59D6FD8BA9B87C206F35396A2B21B98673DDE637CFC55B8FACB8AD984BCD39`.
+- Review/gate: local Standards/Spec unresolved findings 0/0. Result `LOCAL_PASS`; physical L/R output, audio quality, route/focus/Bluetooth/USB, latency/xRun, accessibility speech, device/provider/public/signing and Human outcomes remain unclaimed.
+
 ## Build-tools-only Android release verification — 2026-08-26
 
 - Product checkpoint: `e5229075150bcfb219eb05c666f46fd9eba05ad8`, tree `514e5161dd73ba49436756afa53782eeb16c47d5`, base `a484a96dedb1c1b6c9025d332d22de602017ae64`.

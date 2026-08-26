@@ -27,7 +27,7 @@
 
 `PcmAudio` をMVP channel truthの唯一の入口にし、`sampleAt(frame, channel)`、`playbackSampleAt(frame, outputChannel)`、`monoSampleAt(frame)`を提供する。DSP position/filter/rangeはframe単位で一度だけ進み、left/rightは同じpositionから別々に補間・filterする。
 
-Android realtimeは再利用可能なprimitive `StereoFrame`へrenderし、source/scratch/PAD mixをleft/right別にsoft-limitする。host/offlineは`RenderedPcm(samples, channelCount, frameCount)`を使い、Windows formatとWAV writerへchannelCountを渡す。視覚/解析は`monoSampleAt`へ明示投影する。
+Android realtimeは再利用可能なprimitive `MutableStereoFrame`へrenderし、source/scratch/PAD mixをleft/right別にsoft-limitする。host/offlineは`RenderedPcm(samples, channelCount, frameCount)`を使い、Windows formatとWAV writerへchannelCountを渡す。視覚/解析は`monoSampleAt`へ明示投影する。
 
 Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16WavCodec`が1/2ch header、interleaved sample count、declared frame countを相互検証する。旧schemaのparser/codec pathはmono固定で残す。
 
@@ -64,7 +64,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - [x] 2026-08-26T23:49+09:00 — Milestone 2 RED/GREEN。schema 7 channel manifest、strict mono/stereo WAV、channel-aware memory budget、schema 1–6 mono migrationを固定。
 - [x] 2026-08-27T00:03+09:00 — Milestone 3 RED/GREEN。Android realtime source/PAD/scratch、host PAD、Pattern/Song WAV、Windows Clip/scratchを左右別frameへ接続。
 - [x] 2026-08-27T00:04+09:00 — Milestone 4 analysis substep。waveform、trim overview、PAD/timeline peaks、zero crossing、transientをframe-based mono projectionへ統一。
-- [ ] Milestone 4 full gate / closeout。
+- [x] 2026-08-27T00:24+09:00 — Milestone 4 full gate / closeout。review修正後のexact product checkpointで197-task／537-test gate、package、release/SBOM/public-surface、bytecode、Standards/Spec read-backを完了。
 
 ## Discoveries
 
@@ -79,6 +79,7 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
 - offline WAVのchannel countは実際のrender eventに含まれる最大channelCountから決めるため、mono-only projectの1ch header/data bytesを維持できる。
 - Windows Clipへ渡すpure PCM stream seamを分離すると、音声deviceなしで2ch format、4-byte frame size、interleaving、frame lengthをread-backできる。
 - interleaved sample indexをframeとして扱うと、zero crossingは2倍位置へずれ、波形は後半半分を見ず、transientの時間軸も崩れる。visual/analysisだけは左右平均を明示し、audible pathの左右identityとは分離した。
+- Review時、PCM開始後の二度目のcodec format-changeがzero-size EOSで終わると後続buffer側の安定性checkへ到達しないedgeを発見した。format-change通知時点でもstored channel shape/sample rateを検証し、データ有無に依存せずfail closedにした。
 
 ## Decision log
 
@@ -112,6 +113,20 @@ Archive schema 7ではaudio manifestへchannelCountを追加し、generic `Pcm16
   - RED: direct sample indexingがframe 100のcrossingをsample offset 200として返却。
 - `:shared:desktopTest ... :app:testDebugUnitTest --tests stereo analysis fixtures`
   - GREEN: zero crossing frame 100、waveform後半bucketの±peak、stereo transientの4 onset frameを保持。
+- `:app:testDebugUnitTest --tests Pcm16ArrayBuilderTest` + focused mono Pattern control
+  - GREEN: PCM開始後のsample-rate／stored-channel driftをzero-size EOS前でもreject。mono-only exportは1ch、block align 2、frame×2-byte data lengthを維持。
+- clean configured Gradle gate
+  - Product checkpoint `66d3911f57dfb56baed682cf8c0ec9a0aed85164` / tree `e60216ab70ef540f48815524e0b645de16817007`。
+  - `BUILD SUCCESSFUL in 4m 31s`; 197 tasks（192 executed / 5 up-to-date）。537 tests / 95 suites、failure/error/skip 0。debug/release Lintはfatal/error 0、warning 7。
+  - Android 264、shared Android/Desktop 58/58、JVM-core 68、Desktop 89。
+- release/package/policy read-back
+  - unsigned release APK 24,192,116 bytes / `7F180B3A48452179B3277D8FA3633820E6C093B8A759CD43E3B4464D6259016A`。aapt2 manifest/security/alignment/unsigned policy PASS、`--require-signed` expected exit 1。
+  - Windows ProductVersion `0.17.0`; app-image 405 files / 176,614,704 bytes / manifest `9F97268C312E570D5B051C5B5BB06F7A142EE42EE610BE2ADB3FE202A186CB2A`。
+  - CycloneDX 1.6、650 components / 651 dependencies、1,581,101 bytes / `EA59D6FD8BA9B87C206F35396A2B21B98673DDE637CFC55B8FACB8AD984BCD39`。
+  - configured validation 18 tasks、Python policy 59、reachable-history public surface 429、`git diff --check` PASS。
+- release bytecode / review
+  - output array 1と`MutableStereoFrame` 3個はouter loop前。steady sample loopの`new` 0、renderLoopのmonitor 0、`java.io`/`java.nio` reference 0。唯一の後段`new`はAudioTrack write failure exception。
+  - Standards/Spec unresolved finding 0/0。
 
 ## Risks and rollback
 

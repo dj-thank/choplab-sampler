@@ -1,12 +1,12 @@
 # ExecPlan registry
 
-更新: 2026-08-26
+更新: 2026-08-27
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**wave 10 in progress:** `stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持する一つの縦断tracerを実装する。3–8chは既存互換mono、schema 1–6とmono-only bytesを保護し、device/provider/public/signing/Humanはscope外。
+**wave 10 completed local; goal remains active:** `../completed/stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持した。3–8chは既存互換mono、schema 1–6とmono-only WAV shapeを保護。product checkpoint `66d3911` / tree `e60216a`、537 tests / 197-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。device/provider/public/signing/Humanはscope外。
 
 **wave 9 completed local; goal remains active:** `../completed/android-aapt2-release-verifier-fallback-20260826.md`。exact Wave 8 closeout `a484a96` / tree `f325d6e`から、`apkanalyzer`を持たないbuild-tools-only SDKでもfinal APKの同一manifest/security/alignment/signature policyをfail closedで検査できるようにした。product checkpoint `e522907` / tree `514e516`、Python policy 59、configured validation、exact Wave 8 APK/SBOM read-backまで`LOCAL_PASS`。署名、secret、workflow、GitHub/Release、device/provider/Humanは変更していない。
 
@@ -44,7 +44,7 @@
 
 **独立保守delta:** `main@495ddc9`からのWindows recorder startup cleanupは、`TargetDataLine.open`後の`start`失敗をexact-once closeと一時WAV／状態破棄でfail-closedにする小規模修正。新しいExecPlanは選択ず、上記のproduct decisionは変更しない。hosted `:desktop:test`が実行済みになるまでsource/static candidate扱いとする。
 
-**次に選ぶ一つ:** 検査基盤だけを連続投資せず、次は製品体験へ戻る。local authorityの範囲ではmono→stereoのimport/live/save/export tracerを第一候補とし、bounded physical/compact accessibilityまたはA/B Song device audio/routeは権限取得時だけ比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
+**次に選ぶ一つ:** Wave 10でstereo channel identityはLOCAL完了したため、pan/stems/mixerへ自動的に広げない。次のportfolioでは、local authority内のcompact/accessibilityまたは一つのaudible workflow tracerと、別権限が必要なphysical L/R・route・A/B Song device audioを比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
