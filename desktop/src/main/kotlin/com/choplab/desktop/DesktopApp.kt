@@ -25,6 +25,9 @@ import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.WindowsAudioDiagnostics
 import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.RecordingSession
+import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.redoRequestEnabled
+import com.choplab.sampler.model.undoRequestEnabled
 import com.choplab.sampler.model.visiblePads
 import com.choplab.sampler.ui.OtohiroiDeck
 import com.choplab.sampler.ui.DocumentAction
@@ -37,6 +40,19 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.io.File
 import javax.swing.JFileChooser
+
+internal enum class DesktopHistoryAction {
+    UNDO,
+    REDO,
+}
+
+internal fun desktopHistoryActionEnabled(
+    state: SamplerUiState,
+    action: DesktopHistoryAction,
+): Boolean = when (action) {
+    DesktopHistoryAction.UNDO -> state.undoRequestEnabled
+    DesktopHistoryAction.REDO -> state.redoRequestEnabled
+}
 
 fun main(args: Array<String>) = application {
     val startupFile = remember {
@@ -163,13 +179,13 @@ fun main(args: Array<String>) = application {
                 Item(
                     "元に戻す",
                     shortcut = KeyShortcut(Key.Z, ctrl = true),
-                    enabled = state.canUndo,
+                    enabled = desktopHistoryActionEnabled(state, DesktopHistoryAction.UNDO),
                     onClick = controller::undoEdit,
                 )
                 Item(
                     "やり直す",
                     shortcut = KeyShortcut(Key.Y, ctrl = true),
-                    enabled = state.canRedo,
+                    enabled = desktopHistoryActionEnabled(state, DesktopHistoryAction.REDO),
                     onClick = controller::redoEdit,
                 )
             }

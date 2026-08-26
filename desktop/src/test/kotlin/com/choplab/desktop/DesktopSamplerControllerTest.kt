@@ -10,6 +10,8 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
+import com.choplab.sampler.model.RecordingKind
+import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -305,6 +307,37 @@ class DesktopSamplerControllerTest {
             controller.redoEdit()
             assertEquals(126f, controller.state.value.bpm)
             assertTrue(controller.state.value.canUndo)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun recordingTimeHistoryRequestPreservesTheProjectAndFrontier() {
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            controller.setBpm(126f)
+            controller.toggleMicrophoneRecording()
+            val before = controller.state.value
+            assertEquals(
+                RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING),
+                before.recordingSession,
+            )
+
+            controller.undoEdit()
+
+            val denied = controller.state.value
+            assertEquals(126f, denied.bpm)
+            assertTrue(denied.canUndo)
+            assertFalse(denied.canRedo)
+            assertEquals(before.recordingSession, denied.recordingSession)
+            assertEquals(before.loopingPadIndex, denied.loopingPadIndex)
+            assertEquals("録音をSTOPしてから編集してください", denied.statusMessage)
         } finally {
             controller.close()
         }

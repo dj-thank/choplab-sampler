@@ -62,6 +62,49 @@ class ProductionSessionTest {
     }
 
     @Test
+    fun busyRuntimeOwnersCannotPreviewOrConsumeHistory() {
+        val session = ProductionSession()
+        val initial = SamplerUiState()
+        val edited = session.applyEdit(initial, initial.copy(bpm = 126f))
+
+        val stalePlan = assertNotNull(session.planUndo(edited.state))
+        val loading = edited.state.copy(isLoading = true)
+        assertNull(session.planUndo(loading))
+        assertFailsWith<IllegalArgumentException> { session.commit(stalePlan) }
+        assertNull(session.undo(loading))
+        assertEquals(1L, session.revision)
+        assertTrue(session.canUndo)
+        assertFalse(session.canRedo)
+
+        val recording = edited.state.copy(
+            recordingSession = RecordingSession.Active(
+                RecordingKind.VOCAL_OVERDUB,
+                RecordingPhase.RECORDING,
+            ),
+        )
+        assertNull(session.planUndo(recording))
+        assertNull(session.undo(recording))
+        assertEquals(1L, session.revision)
+        assertTrue(session.canUndo)
+        assertFalse(session.canRedo)
+
+        val undone = assertNotNull(session.undo(edited.state))
+        assertEquals(92f, undone.state.bpm)
+        assertEquals(2L, session.revision)
+        assertFalse(session.canUndo)
+        assertTrue(session.canRedo)
+
+        val redoLoading = undone.state.copy(isLoading = true)
+        assertNull(session.planRedo(redoLoading))
+        assertNull(session.redo(redoLoading))
+        assertEquals(2L, session.revision)
+        assertTrue(session.canRedo)
+
+        val redone = assertNotNull(session.redo(undone.state))
+        assertEquals(126f, redone.state.bpm)
+    }
+
+    @Test
     fun committedHistoryPlansAreExactOnceAndRedoCanBePreviewed() {
         val session = ProductionSession()
         val initial = SamplerUiState()

@@ -18,6 +18,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.DrumKitApplyDecision
+import com.choplab.sampler.model.HistoryRequestDenial
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
 import com.choplab.sampler.model.RecordingSession
@@ -43,6 +44,7 @@ import com.choplab.sampler.model.nextVocalPadIndex
 import com.choplab.sampler.model.observeRecordingSession
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
+import com.choplab.sampler.model.historyRequestDenial
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.patternSequenceForExport
@@ -871,8 +873,17 @@ class DesktopSamplerController(
         return true
     }
 
+    private fun rejectHistoryRequest(): Boolean = when (mutableState.value.historyRequestDenial) {
+        null -> false
+        HistoryRequestDenial.LOADING -> {
+            setStatus("現在の処理が終わってから編集してください")
+            true
+        }
+        HistoryRequestDenial.RECORDING -> rejectEditWhileRecording()
+    }
+
     private fun applyHistoryOperation(operation: HistoryOperation) {
-        if (rejectEditWhileRecording()) return
+        if (rejectHistoryRequest()) return
         val before = mutableState.value
         val plan = when (operation) {
             HistoryOperation.UNDO -> productionSession.planUndo(before)

@@ -52,7 +52,8 @@ When ChopLab is opening, importing, saving or exporting a document, or when any 
 ## Progress
 
 - [x] 2026-08-27 — Re-read Wave 15 closeout and protected checkout ownership; selected the cross-platform history-admission mismatch over the larger initial loop-start transaction.
-- [ ] Observe focused RED.
-- [ ] Implement shared admission and all four bindings.
-- [ ] Run focused tests and adversarial review.
+- [x] 2026-08-27 — RED: `:shared:compileTestKotlinDesktop` failed on missing `HistoryRequestDenial`, `historyRequestDenial`, `undoRequestEnabled` and `redoRequestEnabled` (`BUILD FAILED in 39s`).
+- [x] 2026-08-27 — Implemented one shared loading/recording admission, deep `ProductionSession` refusal, shared deck + Windows native menu enablement and Android/Windows controller preflight.
+- [x] 2026-08-27 — Focused GREEN: shared Android 74 / 14 suites, shared Desktop 74 / 14, Android app 265 / 46 and Desktop 111 / 23; total 524 / 97 with zero failures/errors/skips.
+- [x] 2026-08-27 — Adversarial review found that a busy denial initially left an older unresolved history plan committable. Busy planning now invalidates that stale plan without consuming history or advancing revision; the regression control passes. Final focused Standards/Spec unresolved findings: `0/0`.
 - [ ] Run full configured gate, record artifacts and close the plan.

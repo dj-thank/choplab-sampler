@@ -25,6 +25,7 @@ import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.DrumKitApplyDecision
+import com.choplab.sampler.model.HistoryRequestDenial
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
@@ -74,6 +75,7 @@ import com.choplab.sampler.model.editingRequestAllowedDuringRecording
 import com.choplab.sampler.model.failAutosaveRecovery
 import com.choplab.sampler.model.failRecordingSession
 import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.historyRequestDenial
 import com.choplab.sampler.model.inferProjectLaunchTarget
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nextVocalPadIndex
@@ -1930,7 +1932,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun undoEdit() {
-        if (rejectEditWhileRecording()) return
+        if (rejectHistoryRequest()) return
         val transition = productionSession.undo(mutableUiState.value) ?: run {
             setStatus("戻せる操作はありません")
             return
@@ -1940,7 +1942,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun redoEdit() {
-        if (rejectEditWhileRecording()) return
+        if (rejectHistoryRequest()) return
         val transition = productionSession.redo(mutableUiState.value) ?: run {
             setStatus("やり直せる操作はありません")
             return
@@ -1971,6 +1973,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (editingRequestAllowedDuringRecording(session)) return false
         setStatus("${recordingKindLabel(session)}をSTOPしてから編集してください")
         return true
+    }
+
+    private fun rejectHistoryRequest(): Boolean = when (mutableUiState.value.historyRequestDenial) {
+        null -> false
+        HistoryRequestDenial.LOADING -> {
+            setStatus("現在の処理が終わってから編集してください")
+            true
+        }
+        HistoryRequestDenial.RECORDING -> rejectEditWhileRecording()
     }
 
     private fun applyProjectState(
