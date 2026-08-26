@@ -41,6 +41,51 @@ internal fun pcm16AudioInputStream(
 }
 
 /**
+ * Prepares a newly owned resource and abandons it if preparation fails.
+ */
+internal fun <T> prepareCandidateOrAbandon(
+    candidate: T,
+    prepareCandidate: (T) -> Unit,
+    abandonCandidate: (T) -> Unit,
+): T {
+    try {
+        prepareCandidate(candidate)
+    } catch (failure: Throwable) {
+        try {
+            abandonCandidate(candidate)
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+    return candidate
+}
+
+/**
+ * Starts a prepared replacement before retiring voices it supersedes.
+ * The candidate owner must make both cleanup callbacks idempotent.
+ */
+internal fun <T> startReplacementBeforeRetiringConflicts(
+    candidate: T,
+    conflicts: List<T>,
+    startCandidate: (T) -> Unit,
+    abandonCandidate: (T) -> Unit,
+    retireConflict: (T) -> Unit,
+) {
+    try {
+        startCandidate(candidate)
+    } catch (failure: Throwable) {
+        try {
+            abandonCandidate(candidate)
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+    conflicts.forEach(retireConflict)
+}
+
+/**
  * Java Sound engine for the Windows deck.
  *
  * Source playback and PAD voices have separate ownership so a PAD hit never
@@ -121,13 +166,12 @@ class JavaSoundWavPlayer internal constructor(
     @Synchronized
     override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
         if (!pad.isAssigned) return 0L
-        activeVoices
+        val conflicts = activeVoices
             .filter { voice ->
                 samePadVoiceConflictsForRetrigger(voice.pad.globalIndex, pad.globalIndex) ||
                     (pad.chokeGroup > 0 && voice.pad.chokeGroup == pad.chokeGroup)
             }
             .toList()
-            .forEach(::closeVoice)
         val audio = requireNotNull(pad.audio)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
         val renderingPad = if (pad.playMode == mode) pad else pad.copy(playMode = mode)
@@ -141,11 +185,23 @@ class JavaSoundWavPlayer internal constructor(
                     synchronized(this) { closeVoice(voice) }
                 }
             }
-            if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
         } catch (failure: Throwable) {
             closeVoice(voice)
             throw failure
         }
+        startReplacementBeforeRetiringConflicts(
+            candidate = voice,
+            conflicts = conflicts,
+            startCandidate = { replacement ->
+                if (replacement.mode == PadPlayMode.LOOP) {
+                    replacement.clip.loop(Clip.LOOP_CONTINUOUSLY)
+                } else {
+                    replacement.clip.start()
+                }
+            },
+            abandonCandidate = ::closeVoice,
+            retireConflict = ::closeVoice,
+        )
         return voice.ownership
     }
 
@@ -195,13 +251,13 @@ class JavaSoundWavPlayer internal constructor(
 
     private fun createClip(samples: ShortArray, sampleRate: Int, channelCount: Int): Clip {
         val clip = clipFactory.create()
-        return try {
-            pcm16AudioInputStream(samples, sampleRate, channelCount).use(clip::open)
-            clip
-        } catch (failure: Throwable) {
-            runCatching { clip.close() }
-            throw failure
-        }
+        return prepareCandidateOrAbandon(
+            candidate = clip,
+            prepareCandidate = { candidate ->
+                pcm16AudioInputStream(samples, sampleRate, channelCount).use(candidate::open)
+            },
+            abandonCandidate = Clip::close,
+        )
     }
 
     private fun replaceSource(newClip: Clip) {

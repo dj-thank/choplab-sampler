@@ -36,8 +36,8 @@ import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -1617,6 +1617,124 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun failedActiveLoopEditKeepsTheOldPadLoopAndHistoryFrontier() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val before = controller.state.value
+            val triggerCount = engine.triggered.size
+            engine.stoppedPads.clear()
+            engine.failNextTrigger = true
+
+            val edit = runCatching { controller.setSelectedPadPitch(7f) }
+
+            assertTrue(edit.isSuccess)
+            assertEquals(before.pads[loopPad].pitchSemitones, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount, engine.triggered.size)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertTrue(
+                controller.state.value.statusMessage.startsWith(
+                    "ループ音を更新できないため編集を適用しませんでした:",
+                ),
+            )
+
+            controller.undoEdit()
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[loopPad].playMode)
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun successfulActiveLoopEditStartsTheCandidateThenCommitsExactlyOneEdit() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val triggerCount = engine.triggered.size
+            engine.stoppedPads.clear()
+
+            controller.setSelectedPadPitch(7f)
+
+            assertEquals(7f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCount + 1, engine.triggered.size)
+            assertEquals(7f, engine.triggered.last().first.pitchSemitones)
+            assertEquals(true, engine.triggered.last().second)
+            assertTrue(engine.stoppedPads.isEmpty())
+
+            controller.setSelectedPadPitch(7f)
+            assertEquals(triggerCount + 1, engine.triggered.size)
+
+            controller.undoEdit()
+            assertEquals(0f, controller.state.value.pads[loopPad].pitchSemitones)
+            assertEquals(PadPlayMode.LOOP, controller.state.value.pads[loopPad].playMode)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun fatalLoopReplacementErrorIsNotMisreportedAsARecoverableEditFailure() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val originalGain = controller.state.value.pads[loopPad].gain
+            engine.nextTriggerFailure = AssertionError("test fatal audio error")
+
+            val failure = assertFailsWith<AssertionError> {
+                controller.setSelectedPadGain(0.5f)
+            }
+
+            assertEquals("test fatal audio error", failure.message)
+            assertEquals(originalGain, controller.state.value.pads[loopPad].gain)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun rejectedRecordingTimePadEditDoesNotRetriggerTheLoop() {
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(
+            player = engine,
+            microphone = recorder,
+            autosaveStore = null,
+        )
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.toggleVocalRecording()
+            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            val triggerCount = engine.triggered.size
+            engine.stoppedPads.clear()
+            val originalTone = controller.state.value.pads[loopPad].tone
+
+            controller.setSelectedPadTone(0.2f)
+
+            assertEquals(originalTone, controller.state.value.pads[loopPad].tone)
+            assertEquals(triggerCount, engine.triggered.size)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertEquals("録音をSTOPしてから編集してください", controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun matchingChokeTriggerStopsPublishedLoopSessionBeforePlayingRequestedPad() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -1810,6 +1928,7 @@ class DesktopSamplerControllerTest {
         var failNextStopPad: Boolean = false
         var failNextStopAll: Boolean = false
         var failClose: Boolean = false
+        var nextTriggerFailure: Throwable? = null
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
@@ -1845,6 +1964,10 @@ class DesktopSamplerControllerTest {
         override fun padFramePosition(index: Int): Int? = null
         override fun stop() { isSourcePlaying = false }
         override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
+            nextTriggerFailure?.let { failure ->
+                nextTriggerFailure = null
+                throw failure
+            }
             if (failNextTrigger) {
                 failNextTrigger = false
                 error("test output unavailable")

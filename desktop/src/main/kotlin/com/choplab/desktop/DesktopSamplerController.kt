@@ -7,11 +7,11 @@ import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
+import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
-import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
@@ -206,15 +206,14 @@ class DesktopSamplerController(
         }
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
-            runCatching {
-                PatternRenderer.renderSequenceToWav(
-                    outputFile = outputFile,
+            try {
+                DesktopBeatFiles.export(
+                    target = outputFile,
                     pads = snapshot.pads,
                     patternSequence = exportSequence,
                     bpm = snapshot.bpm,
                     swing = snapshot.swing,
                 )
-            }.onSuccess {
                 statusOperations.completeIfCurrent(operation) {
                     mutableState.update {
                         it.copy(
@@ -227,7 +226,7 @@ class DesktopSamplerController(
                         )
                     }
                 }
-            }.onFailure { error ->
+            } catch (error: Exception) {
                 statusOperations.completeIfCurrent(operation) {
                     mutableState.update { it.copy(isLoading = false, statusMessage = "WAV書き出し失敗: ${error.message ?: error.javaClass.simpleName}") }
                 }
@@ -925,12 +924,31 @@ class DesktopSamplerController(
     }
 
     private fun updateSelected(mergeKey: String? = null, transform: (PadModel) -> PadModel) {
-        val selected = mutableState.value.selectedPad
-        commitEdit(mergeKey) { state -> state.copy(pads = state.pads.toMutableList().also { it[state.selectedPad] = transform(it[state.selectedPad]) }) }
-        val current = mutableState.value
-        if (current.loopingPadIndex == selected && current.pads[selected].isAssigned) {
-            player.stopPad(selected)
-            triggerPlayerPad(current.pads[selected], forceLoop = true)
+        val before = mutableState.value
+        if (before.isLoading) return setStatus("現在の処理が終わってから編集してください")
+        if (rejectEditWhileRecording()) return
+        val selected = before.selectedPad
+        val currentPad = before.pads.getOrNull(selected) ?: return
+        val candidate = transform(currentPad)
+        if (candidate == currentPad) return
+
+        if (before.loopingPadIndex == selected && candidate.isAssigned) {
+            val failure = try {
+                player.triggerPad(candidate, forceLoop = true)
+                null
+            } catch (recoverable: Exception) {
+                recoverable
+            }
+            if (failure != null) {
+                return setStatus(
+                    "ループ音を更新できないため編集を適用しませんでした: " +
+                        (failure.message ?: failure.javaClass.simpleName),
+                )
+            }
+        }
+
+        commitEdit(mergeKey) { state ->
+            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate })
         }
     }
 

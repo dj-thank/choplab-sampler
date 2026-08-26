@@ -6,7 +6,17 @@
 
 ## Current selection
 
-**現在の統合plan:** PR #58 の既存branchを唯一のreview surfaceとして、exact `main@4f56a69`を含むGATE ownership／録音取消／transport修復、PR #64・#76・#77、Wave 10 stereo product、完了済みWave 11 focused-step editorを一つのancestryへ統合する。統合productは `41a4bc3` / tree `054db7e`。Wave 11 input `9611894` / tree `d4e9b92`は`並べる詳細 / STEPS`を固定・非scrollのportrait 4×4／landscape 8×2へし、全16 targetをsupported/inset-constrained viewportとfont scaleで48dp以上にする。hosted Androidが反証したfocused return labelは`クイックへ戻る / QUICK`へ修復し、次のrunが反証した旧`performScrollTo()`だけを`59cfac9`で除去してdirect visibility assertionを保持した。#58側のlarge-text bounded scrollとexact GATE ownership callbackを保持した統合full gateは622 tests / 105 suites、failures/errors/skips 0で再通過済み。fresh hosted checksとclean merge-state read-backが通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/TalkBack/Narrator、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** merged `main@592b4ee`をexact baseに、clean Wave 13 closeout `9043af2`（Wave 12を包含）を一つの新しいreview surfaceへ統合する。PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factoryを保持し、Wave 12のcandidate-first active-loop replacementとWave 13のatomic WAV publicationを合成する。fresh local full gate、public-surface、two-axis review、exact-head hosted Android/Windows/iOS/supply-chainが通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF、device/provider/public/signing/Humanは別gate。
+
+**直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
+
+**wave 14 portfolio recompute / implementation unselected:** Wave 12/13のGitHub統合が閉じた後にcurrent source・SSOT・external gatesを再読し、もう一つのbounded local user outcomeだけを選ぶ。physical touch/audio/speech、Android SAF provider behavior、signing/provider/public/Humanは別gateであり、pan/stems/arbitrary Song/native/MIDI/AIへ暗黙拡張しない。
+
+**wave 13 completed local; goal remains active:** `../completed/windows-atomic-wav-export-20260827.md`。exact Wave 12 closeout `6fb1c94` / tree `ce7ce3d`から、Windowsの4小節WAVをsame-parent temporaryへ完成・PCM-16 shape検証・file syncしてからだけdestinationへatomic replaceする。render/write/close/shape/move failureは既存WAV bytesを保持し、temporary debrisを残さない。manual `.choplab` saveとdeep helperを共有し、product checkpoint `ffe1bbd` / tree `d3ae7a9`、568 tests / 197-task gateまで`LOCAL_PASS`。Android SAF、DSP、schema、device/provider/public/signing/Humanはscope外。
+
+**wave 12 completed local; goal remains active:** `../completed/desktop-live-loop-edit-transaction-20260827.md`。exact Wave 11 closeout `7e8603c` / tree `2ca0ce1`から、Windowsのactive Beat loop編集をadapter開始成功後だけproject/history/autosaveへcommitするtransactionへ修復した。candidate failureは旧loop・旧PAD設定・historyを保持し、loading/recording拒否とno-opのretriggerを禁止。Java Soundはcandidate-first start／failure abandon／success retireをactual helperで固定し、product checkpoint `b8db436` / tree `a9b28c0`、560 tests / 197-task gateまで`LOCAL_PASS`。physical Windows endpoint/audio/Human、Android、schema、release/publicはscope外。
+
+**wave 11 completed local; goal remains active:** `../completed/focused-step-editor-accessibility-20260827.md`。exact Wave 10 closeout `600211f` / tree `3300900`から、`並べる詳細 / STEPS`を固定・非scrollのfocused editorへし、portrait 4×4 / landscape 8×2の全16 cellsをsupported/inset-constrained viewportとfont scaleで48dp以上にした。既存BPM/音色/preset面は削除せず往復可能。product checkpoint `9611894` / tree `d4e9b92`、553 tests / 197-task gateまで`LOCAL_PASS`。physical touch/TalkBack/Narrator、device/provider/public/signing/Humanは別gate。
 
 **wave 10 completed local; goal remains active:** `../completed/stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持した。3–8chは既存互換mono、schema 1–6とmono-only WAV shapeを保護。product checkpoint `66d3911` / tree `e60216a`、537 tests / 197-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。device/provider/public/signing/Humanはscope外。
 
@@ -62,7 +72,7 @@
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
-**次に選ぶ一つ:** Wave 11で16-stepの構造的compact/accessibility gapはLOCAL完了したため、layout proxyを横展開しない。次のportfolioでは、local authority内で閉じる一つのaudible workflow／reliability tracerと、別権限が必要なphysical touch・TalkBack/Narrator・L/R route・A/B Song device audioを比較する。pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
+**次に選ぶ一つ:** Wave 13はoverwrite-safe Windows WAV exportとして完了。Wave 14はcurrent sourceと残gateを再計算中で、まだ実装sliceを選定していない。physical touch・TalkBack/Narrator・L/R route・A/B Song device audio・Android SAF provider behaviorは別権限gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 
