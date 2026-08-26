@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**現在の統合plan:** PR #58 の既存branchを唯一のreview surfaceとして、exact `main@4f56a69`を含むGATE ownership／録音取消／transport修復に、PR #64・#76・#77のclean headsとWave 10 stereo productを統合した。immutable product `1d0e850` / tree `f4f69b7`はfull 184-task gate、606 tests、Python 64、public-surface 435、artifact/SBOM read-back、Standards/Spec 0/0を通過した。次はexact remote headを再読して通常のfast-forward pushだけを行い、fresh hosted checksとclean merge stateを確認して既存PRをmainへ統合する。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** PR #58 の既存branchを唯一のreview surfaceとして、exact `main@4f56a69`を含むGATE ownership／録音取消／transport修復、PR #64・#76・#77、Wave 10 stereo product、完了済みWave 11 focused-step editorを一つのancestryへ統合する。Wave 11 input `9611894` / tree `d4e9b92`は`並べる詳細 / STEPS`を固定・非scrollのportrait 4×4／landscape 8×2へし、全16 targetをsupported/inset-constrained viewportとfont scaleで48dp以上にする。#58側のlarge-text bounded scrollとexact GATE ownership callbackを保持した統合full gate、fresh hosted checks、clean merge-state read-backが通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/TalkBack/Narrator、device/provider/public/signing/Humanは別gate。
 
 **wave 10 completed local; goal remains active:** `../completed/stereo-channel-identity-tracer-20260826.md`。exact Wave 9 closeout `d6c2243` / tree `85ffa6d`から、左右非対称の1/2ch PCMをimport、Android/Windows playback、schema 7 save/reopen、Pattern/Song WAVまでframe単位で保持した。3–8chは既存互換mono、schema 1–6とmono-only WAV shapeを保護。product checkpoint `66d3911` / tree `e60216a`、537 tests / 197-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。device/provider/public/signing/Humanはscope外。
 
@@ -62,7 +62,7 @@
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
-**次に選ぶ一つ:** Wave 10でstereo channel identityはLOCAL完了したため、pan/stems/mixerへ自動的に広げない。次のportfolioでは、local authority内のcompact/accessibilityまたは一つのaudible workflow tracerと、別権限が必要なphysical L/R・route・A/B Song device audioを比較する。arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
+**次に選ぶ一つ:** Wave 11で16-stepの構造的compact/accessibility gapはLOCAL完了したため、layout proxyを横展開しない。次のportfolioでは、local authority内で閉じる一つのaudible workflow／reliability tracerと、別権限が必要なphysical touch・TalkBack/Narrator・L/R route・A/B Song device audioを比較する。pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは自動選択しない。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

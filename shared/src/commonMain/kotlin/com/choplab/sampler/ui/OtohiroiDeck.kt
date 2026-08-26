@@ -246,9 +246,11 @@ fun OtohiroiDeck(
                 .widthIn(max = 980.dp),
         ) {
             val fontScale = LocalDensity.current.fontScale
+            val viewportWidthDp = maxWidth.value.roundToInt()
+            val viewportHeightDp = maxHeight.value.roundToInt()
             val metrics = resolveDeckLayout(
-                widthDp = maxWidth.value.roundToInt(),
-                heightDp = maxHeight.value.roundToInt(),
+                widthDp = viewportWidthDp,
+                heightDp = viewportHeightDp,
                 fontScale = fontScale,
             )
             val gap = metrics.gapDp.dp
@@ -362,6 +364,8 @@ fun OtohiroiDeck(
                                 SequenceWorkspace(
                                     state = state,
                                     metrics = metrics,
+                                    viewportWidthDp = viewportWidthDp,
+                                    viewportHeightDp = viewportHeightDp,
                                     onOpenPadDetails = { padIndex ->
                                         viewModel.selectPad(padIndex)
                                         padPageName = PadEditorPage.PARAM.name
@@ -2291,6 +2295,8 @@ private fun PlayModeEditor(
 private fun SequenceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
+    viewportWidthDp: Int,
+    viewportHeightDp: Int,
     onOpenPadDetails: (Int) -> Unit,
     onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
@@ -2298,9 +2304,14 @@ private fun SequenceWorkspace(
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
-    var showFineControls by rememberSaveable { mutableStateOf(false) }
+    var workspaceModeName by rememberSaveable { mutableStateOf(BeatWorkspaceMode.QUICK.name) }
+    val workspaceMode = restoreBeatWorkspaceMode(workspaceModeName)
+    val surface = beatWorkspaceSurface(workspaceMode)
+    val navigateWorkspace: (BeatWorkspaceAction) -> Unit = { action ->
+        workspaceModeName = transitionBeatWorkspace(workspaceMode, action).name
+    }
     val scrollState = rememberScrollState()
-    if (beatWorkspaceSurface(showFineControls).showPadGrid) {
+    if (surface.showPadGrid) {
         BeatChopSurface(
             state = state,
             metrics = metrics,
@@ -2308,7 +2319,19 @@ private fun SequenceWorkspace(
             onOpenPadTrim = onOpenPadTrim,
             onOpenLayerStudio = onOpenLayerStudio,
             onOpenArrangementStudio = onOpenArrangementStudio,
-            onShowFineControls = { showFineControls = true },
+            onShowFocusedSteps = { navigateWorkspace(BeatWorkspaceAction.SHOW_FOCUSED_STEPS) },
+            viewModel = viewModel,
+        )
+        return
+    }
+    if (surface.showFocusedStepEditor) {
+        FocusedStepEditor(
+            state = state,
+            metrics = metrics,
+            viewportWidthDp = viewportWidthDp,
+            viewportHeightDp = viewportHeightDp,
+            onShowQuick = { navigateWorkspace(BeatWorkspaceAction.SHOW_QUICK) },
+            onShowFineControls = { navigateWorkspace(BeatWorkspaceAction.SHOW_FINE_CONTROLS) },
             viewModel = viewModel,
         )
         return
@@ -2349,7 +2372,15 @@ private fun SequenceWorkspace(
                 onOpenLayerStudio = onOpenLayerStudio,
                 onOpenArrangementStudio = onOpenArrangementStudio,
                 showFineControls = true,
-                onShowFineControls = { showFineControls = it },
+                onShowFineControls = { stepsVisible ->
+                    navigateWorkspace(
+                        if (stepsVisible) {
+                            BeatWorkspaceAction.SHOW_FOCUSED_STEPS
+                        } else {
+                            BeatWorkspaceAction.SHOW_QUICK
+                        },
+                    )
+                },
                 viewModel = viewModel,
                 modifier = Modifier.weight(0.7f).fillMaxHeight(),
             )
@@ -2423,7 +2454,85 @@ private fun SequenceWorkspace(
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
                 onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
                 onOpenArrange = onOpenArrangementStudio,
-                onStepsVisibleChange = { showFineControls = it },
+                onStepsVisibleChange = { stepsVisible ->
+                    navigateWorkspace(
+                        if (stepsVisible) {
+                            BeatWorkspaceAction.SHOW_FOCUSED_STEPS
+                        } else {
+                            BeatWorkspaceAction.SHOW_QUICK
+                        },
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FocusedStepEditor(
+    state: SamplerUiState,
+    metrics: DeckLayoutMetrics,
+    viewportWidthDp: Int,
+    viewportHeightDp: Int,
+    onShowQuick: () -> Unit,
+    onShowFineControls: () -> Unit,
+    viewModel: SamplerDeckController,
+) {
+    val layout = resolveFocusedStepLayout(metrics, viewportWidthDp, viewportHeightDp)
+    val gap = (layout?.cellGapDp ?: metrics.gapDp.toFloat()).dp
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(FOCUSED_STEP_HEADER_HEIGHT_DP.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            MachineButton(
+                label = "PADへ戻る\nQUICK",
+                onClick = onShowQuick,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "BPM・音色\nCONTROLS",
+                onClick = onShowFineControls,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+        if (layout == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(DeckPanelDark, RoundedCornerShape(5.dp))
+                    .border(1.dp, DeckInk, RoundedCornerShape(5.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "この画面サイズでは16ステップを安全な大きさで表示できません",
+                    color = DeckInk,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            StepSequencer(
+                selectedPad = state.selectedPad,
+                activeSteps = state.activeSteps,
+                currentStep = state.currentStep,
+                onToggleStep = viewModel::toggleStep,
+                enabled = state.selectedPadModel().canUsePatternSteps(),
+                columns = layout.columns,
+                gap = layout.cellGapDp.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
             )
         }
     }
@@ -2437,7 +2546,7 @@ private fun BeatChopSurface(
     onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
     onOpenArrangementStudio: () -> Unit,
-    onShowFineControls: () -> Unit,
+    onShowFocusedSteps: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
@@ -2475,7 +2584,7 @@ private fun BeatChopSurface(
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
             onOpenArrange = onOpenArrangementStudio,
-            onStepsVisibleChange = { if (it) onShowFineControls() },
+            onStepsVisibleChange = { if (it) onShowFocusedSteps() },
         )
     }
 
