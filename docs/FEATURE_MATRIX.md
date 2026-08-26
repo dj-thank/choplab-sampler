@@ -44,7 +44,7 @@
 | チョップ後のPAD操作案内 | 🧪 local/emulator | 元曲再生中は空PAD＝追加、音ありPAD＝タップ上書き／長押し微調整。長押し開始時にはcaptureせず、通常タップ完了時だけ上書きする契約をhost test。通常／文字130%で旧版固定表示を確認 |
 | 曲全体のトーン | 🧪 source | ±12 semitone、速度連動。実機確認待ち |
 | 音楽からビートを作る | ✅ | Chop + PAD + Sequencer + WAV export |
-| チョップ済みビート音声全体を連続ループ | 🧪 local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。実機音質確認待ち |
+| チョップ済みビート音声全体を連続ループ | 🧪 current local | PAD範囲の末尾から先頭へ前向き・逆向きに折り返し、同時に使うループPADは1つ。Windows初回開始はowner＋対象VOICEを全て開始できた後だけ旧再生／project／historyを切り替え、回復可能な準備／開始失敗では現在の音とUndo/Redoを保持。物理音質、click/overlap/latencyは未確認 |
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
 | PAD→ループ／並べる→足す／擦る導線 | ✅ current local / historical device | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`STEPS`は選択PADの全16 cellを一画面で編集するfocused面へ開く。QUICK／BPM・音色controlsへ明示的に往復し、選択PADとBANK/pageを保持 |
