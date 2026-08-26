@@ -48,7 +48,7 @@
 | 選択音を4つ打ち・8分・16分へ配置 | ✅ | `配置プリセット`として選択PADだけを置換し、他PAD・他BANKの重ね音を保持。LOOP/VOCALは専用再生のため配置対象外 |
 | LOOP / VOICEとステップ表示の整合 | 🧪 local/emulator | LOOPは音声全体の反復、VOICEは開始時の一度再生。16-stepセルと演奏録音を無効化し、旧保存keyも再生・書出し・Finish表示から除外 |
 | PAD→ループ／並べる→足す／擦る導線 | ✅ current local / historical device | Capture/Chop/BeatのDockをpure item policy＋共通handler rendererへ統一。通常BEATはCHOPと同じ4×4 PADで演奏し、`STEPS`は選択PADの全16 cellを一画面で編集するfocused面へ開く。QUICK／BPM・音色controlsへ明示的に往復し、選択PADとBANK/pageを保持 |
-| 上級操作の段階表示 | ✅ current local | KEY/TONE/LEVELは通常BEAT画面から直操作。Androidは再生cursorを保ったlive parameter更新、Windowsはactive loopのreplacement candidateを開始できた後だけproject/history/autosaveへ編集を確定する。Windowsの開始失敗は旧loop・旧設定・historyを保持し、loading/recording拒否とno-opはretriggerしない。16手動stepをfocused面へ分離し、既存fine controlsは`BPM・音色 / CONTROLS`から保持。物理Windowsのclick/一時overlap/latencyは未確認 |
+| 上級操作の段階表示 | ✅ current local | KEY/TONE/LEVELは通常BEAT画面から直操作。Androidは再生cursorを保ったlive parameter更新、Windowsはactive loopのreplacement candidateを開始できた後だけproject/history/autosaveへ編集を確定する。same-owner Undo/Redoもrestored candidate成功後だけhistoryを消費し、失敗時は旧loop・設定・frontierを保持、PAD不変ならretriggerしない。16手動stepをfocused面へ分離し、既存fine controlsは`BPM・音色 / CONTROLS`から保持。物理Windowsのclick/一時overlap/latencyは未確認 |
 | ビート画面の実波形・再生位置 | ✅ device | 選択sliceのPCM波形、ビートループ位置、16-step playhead、A〜Dの4レーン発音マーカーを固定表示 |
 | BANKを替えて音を重ねる | ✅ emulator/local | A=メロディー、B=ドラム、C=ワンショット、D=ボイスを常時表示し、空BANKも選択可能。全128 PADを演奏・配置 |
 | 取り込んだ音の場所を選ぶ | ✅ | 波形S/E範囲、slice選択 |
@@ -84,7 +84,7 @@
 | Autosave/recovery | ✅ historical device / current local | 900ms debounce、SHA-256に結合した世代revision、store再生成後も古い/equal revisionを拒否、最新の検証済み世代を選ぶpending復旧、三世代保持。verified disk revisionをProductionSessionへ引継ぎ、process restart後の次editが古い番号で拒否されないJVM regressionあり。現候補のDEVICE再実行は未実施。手動上書き前にもアプリ内安全コピーを作成 |
 | 保存・書出し・削除の操作真実 | ✅ current local / Windows visual | SAVEは自動復旧、portable制作file、再生確認、4小節WAVを分けて説明。AndroidのWAV／portable制作はapp-owned validated temporaryをproviderへcopy後、selected URIのbyte count＋SHA-256 read-back一致時だけ成功表示し、検証不能時は制作／internal safety copy保持とdestination不完全可能性を伝える。provider atomicity・既存document復元・実URI挙動は未確認。`ビート配置を消す / CLEAR STEPS`は二度押しでpattern配置だけを消し、Source/PAD/project/autosaveを消す表示や動作にしない。1200×900同一状態before/afterで文字切れなし。物理touch/読み上げ/Human理解は未確認 |
 | 起動時autosave復元と制作routing | ✅ emulator/local | 復元開始を`isLoading`として公開し、空結果・失敗・成功で必ず解除。復元中は新規取込を無効化し、`LOADING / 音声を読込中 / PLEASE WAIT`でfalseな`NO SOURCE`を防止。復元後は未編集starterだけ→CAPTURE、Source＋starter→CHOP、user Beat／PAD-only→BEATへroute。API 36でBeat編集→autosave→強制終了→BEAT復帰を確認 |
-| Undo / Redo | ✅ MVP/local | PAD、range/marker、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesceし、slice選択だけのSESSION changeはUndo/autosaveを増やさない |
+| Undo / Redo | ✅ current local | PAD、range/marker、sequence、BPM/Swing等を最大40操作。連続slider調整は1操作へcoalesceし、slice選択だけのSESSION changeはUndo/autosaveを増やさない。Windows same-owner Beat loopはhistory targetを非消費previewし、changed PAD candidate成功後だけcommit、recoverable/fatal失敗ではfrontierを保持する。owner変更とsource/transport/scratch continuity、物理音声品質は未確認 |
 | MIDI | — | 未実装 |
 | Independent time-stretch | — | 未実装 |
 | Stereo channel identity / internal engine | ✅ current local | Android/Windows import、source/PAD/scratch、schema 7 save/reopen、Pattern/Song WAVまで1/2ch frame identityを保持。3–8chは平均mono、waveform/transientは明示L/R平均。左右非対称full-bar live/export最大差1以下。物理L/R出力、route、音質、pan、stemsは未確認／未実装 |

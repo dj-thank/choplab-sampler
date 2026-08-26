@@ -6,11 +6,13 @@
 
 ## Current selection
 
-**現在の統合plan:** product merge `5495ed1` / tree `0ec045e`で既存PR #78 receipt `aab2876`とclean Wave 14 closeout `924fb3c`を統合した。PR #58でhosted修復済みのfocused editor、dedicated status-operation epoch、exact GATE ownership、Clip factory、Wave 12のcandidate-first active-loop replacement、Wave 13のatomic WAV publicationを保持し、Wave 14のverified Android document publicationを追加している。focused 51-task、controlled full 184-task、651 tests / 109 suites、lint、Python 64、public-surface/history 449、Android policy、Windows package、SBOM、two-axis reviewはPASS。同一exact final headのhosted Android/Windows/iOS/supply-chainとclean merge-stateが全て通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
+**現在の統合plan:** 8/8 hosted済みの既存PR #78 receipt `8680fdb`へ、exact-head reviewのnon-terminating provider read-back bound修正 `a531f7b`とclean Wave 15 closeout `1deb8a9`を統合する。Waves 12–14のfocused editor、status epoch、exact GATE ownership、candidate-first loop replacement、atomic Windows WAV、verified Android publicationを保持し、Wave 15のsame-owner active-loop Undo/Redo transactionを追加する。fresh merged local gate、artifact/policy/read-back、two-axis reviewと、新しい同一exact final headのhosted Android/Windows/iOS/supply-chainが全て通る場合だけmainへmergeする。旧tag `v0.17.0`は書き換えず、次のbinary releaseは明示的な新version/tag決定を待つ。physical touch/audio/speech、Android SAF provider behavior、device/provider/public/signing/Humanは別gate。
 
 **直前の統合完了:** PR #58 は receipt `5ecd5ef` の8/8 hosted checks（Android API 36は29 tests / 0 failed）後、merge commit `592b4ee`としてmainへ統合済み。
 
-**wave 15 portfolio recompute / no slice selected:** Wave 14のGitHub統合を閉じてからcurrent source・SSOT・external gatesをfresh-readし、次のbounded user outcomeを比較する。新しいsliceは、deterministic local falsifierと権限境界が固定されるまで開始しない。
+**wave 16 portfolio recompute / no slice selected:** Wave 15 closeoutをfresh-readし、次のbounded user outcomeを比較する。新しいsliceは、deterministic local falsifierと権限境界が固定されるまで開始しない。
+
+**wave 15 completed local; goal remains active:** `../completed/desktop-live-loop-history-transaction-20260827.md`。exact Wave 14 closeout `924fb3c` / tree `cd39425`から、Windows same-owner active Beat loopのUndo/Redoをhistory preview→candidate audio→commit/cancelへし、candidate failureでproject/history/voiceを保持する。PAD不変時はretriggerせず、owner変更は従来の全停止へ戻す。product checkpoint `70b31e9` / tree `ce9469c`、593 tests / 197-task gateまで`LOCAL_PASS`。source/transport/scratch continuity、physical audio、device/provider/public/signing/Humanはscope外。
 
 **wave 14 completed local; goal remains active:** `../completed/android-verified-document-publication-20260827.md`。exact Wave 13 closeout `9043af2` / tree `7e71a8c`から、AndroidのWAV／portable制作をproviderへcopyした後にselected URIをstreaming size＋SHA-256で再読し、validated temporaryと一致した場合だけ成功表示する。silent truncation/corruptionを失敗へし、cancellation/fatal truthとowned temporary cleanupを固定した。product checkpoint `6006836` / tree `e7b7643`、582 tests / 197-task gateまで`LOCAL_PASS`。provider atomicity、既存document復元、device/provider/public/signing/Humanはscope外。
 
@@ -74,7 +76,7 @@
 
 **独立したDesktop import境界修正:** reachable product `3ad2bd9`（tree `8272a51`、`main@3260f5c`）で、Windows decoderはproject/archiveと同じ8–192 kHzだけを受理し、192,001 Hz以上をPCM payload読込・state公開・autosaveより前に拒否する。exact 192 kHz受理とfail-on-read 192,001 Hz拒否をfocused testに固定し、上記画面planやarchive schemaは変更しない。hosted `:desktop:test`がmerge gate。
 
-**次に選ぶ一つ:** Wave 15 portfolioをWave 14 clean closeoutから再計算中。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
+**次に選ぶ一つ:** Wave 16 portfolioをWave 15 clean closeoutから再計算する。provider atomicity・既存document復元・physical touch/TalkBack/Narrator/L/R route/A/B Song device audioは別gate、pan/stems/mixer、arbitrary Song breadth、native engine/Voice kernel、MIDI/AIは未選択のまま保持する。
 
 **直前のpattern/master完了:** `../completed/pattern-master-parity-oracle-20260824.md`。REDでoffline final-sample欠落を検出・修復し、exact Pixel、PR #49、`main@ecc6c54`、全PR/main CI、merged-main provider Windows daily installまで完了。
 

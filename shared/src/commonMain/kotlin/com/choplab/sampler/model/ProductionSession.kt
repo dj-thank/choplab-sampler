@@ -19,6 +19,25 @@ class ProductionCommandPlan internal constructor(
     internal var resolved: Boolean = false
 }
 
+internal enum class ProductionHistoryDirection {
+    UNDO,
+    REDO,
+}
+
+/**
+ * Non-consuming history target whose platform effects must succeed before commit.
+ * A plan belongs to exactly one session and can be committed or cancelled once.
+ */
+class ProductionHistoryPlan internal constructor(
+    internal val ownerToken: Any,
+    internal val epoch: Long,
+    internal val current: SamplerUiState,
+    val restoredState: SamplerUiState,
+    internal val direction: ProductionHistoryDirection,
+) {
+    internal var resolved: Boolean = false
+}
+
 data class ProductionSessionTransition(
     val state: SamplerUiState,
     val mutation: ProductionMutation,
@@ -95,18 +114,56 @@ class ProductionSession(maxHistoryEntries: Int = 40) {
         )
     }
 
-    fun undo(current: SamplerUiState): ProductionSessionTransition? {
-        invalidatePlans()
-        val restored = history.undo(current) ?: return null
+    fun planUndo(current: SamplerUiState): ProductionHistoryPlan? =
+        planHistory(current, ProductionHistoryDirection.UNDO)
+
+    fun planRedo(current: SamplerUiState): ProductionHistoryPlan? =
+        planHistory(current, ProductionHistoryDirection.REDO)
+
+    fun cancel(plan: ProductionHistoryPlan) {
+        requirePlanIsCurrent(plan)
+        plan.resolved = true
+    }
+
+    fun commit(plan: ProductionHistoryPlan): ProductionSessionTransition {
+        requirePlanIsCurrent(plan)
+        val currentTarget = historyTarget(plan.direction)
+        require(currentTarget == plan.restoredState) { "Production history plan target changed" }
+        check(revision < Long.MAX_VALUE) { "Production revision exhausted" }
+        plan.resolved = true
+        val restored = when (plan.direction) {
+            ProductionHistoryDirection.UNDO -> history.undo(plan.current)
+            ProductionHistoryDirection.REDO -> history.redo(plan.current)
+        }
+        check(restored == plan.restoredState) { "Production history plan commit drifted" }
         advanceRevision()
-        return transition(restored, ProductionMutation.PROJECT)
+        return transition(plan.restoredState, ProductionMutation.PROJECT)
+    }
+
+    fun undo(current: SamplerUiState): ProductionSessionTransition? {
+        val plan = planUndo(current) ?: return null
+        return commit(plan)
     }
 
     fun redo(current: SamplerUiState): ProductionSessionTransition? {
+        val plan = planRedo(current) ?: return null
+        return commit(plan)
+    }
+
+    private fun planHistory(
+        current: SamplerUiState,
+        direction: ProductionHistoryDirection,
+    ): ProductionHistoryPlan? {
         invalidatePlans()
-        val restored = history.redo(current) ?: return null
-        advanceRevision()
-        return transition(restored, ProductionMutation.PROJECT)
+        val restored = historyTarget(direction) ?: return null
+        check(revision < Long.MAX_VALUE) { "Production revision exhausted" }
+        return ProductionHistoryPlan(
+            ownerToken = ownerToken,
+            epoch = transactionEpoch,
+            current = current,
+            restoredState = restored,
+            direction = direction,
+        )
     }
 
     fun replaceProject(
@@ -170,10 +227,22 @@ class ProductionSession(maxHistoryEntries: Int = 40) {
         revision++
     }
 
+    private fun historyTarget(direction: ProductionHistoryDirection): SamplerUiState? =
+        when (direction) {
+            ProductionHistoryDirection.UNDO -> history.peekUndo()
+            ProductionHistoryDirection.REDO -> history.peekRedo()
+        }
+
     private fun requirePlanIsCurrent(plan: ProductionCommandPlan) {
         require(plan.ownerToken === ownerToken) { "Production command plan belongs to another session" }
         require(!plan.resolved) { "Production command plan was already resolved" }
         require(plan.epoch == transactionEpoch) { "Production command plan is stale" }
+    }
+
+    private fun requirePlanIsCurrent(plan: ProductionHistoryPlan) {
+        require(plan.ownerToken === ownerToken) { "Production history plan belongs to another session" }
+        require(!plan.resolved) { "Production history plan was already resolved" }
+        require(plan.epoch == transactionEpoch) { "Production history plan is stale" }
     }
 }
 

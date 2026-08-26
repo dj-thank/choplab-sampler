@@ -2,7 +2,13 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Waves 12–14 PR #78 integration candidate — 2026-08-27
+## Waves 12–15 PR #78 integration candidate — 2026-08-27
+
+- Inputs: exact hosted Waves 12–14 receipt `8680fdbbc0a7346ec02fb958ad5b2dbac3254f6d`, reviewed read-back bound fix `a531f7be70358ec284bbc263a06dc17923cd8767`, and clean Wave 15 closeout `1deb8a9ec2198e88fcde07a572bf0a8f9eea333e` / product `70b31e949a9faa42d0f459f2d03218d16e6e30b7`.
+- Review RED/GREEN: an endless destination stream made the new regression throw after the old implementation requested 64 KiB. The fix passes the source count into read-back, requests at most remaining plus one and fails with the typed mismatch at the first extra byte. The test proves exactly `source.length + 1` bytes are consumed.
+- Merge contract: retain every prior loop ownership, candidate-first replacement, atomic Windows publication and verified Android publication boundary while adding Wave 15 exact-once history preview/cancel/commit. Fresh merged proof is required before another push.
+
+## Historical Waves 12–14 PR #78 integration candidate — 2026-08-27
 
 - Product merge: `5495ed1780eea69e4a3f7d25c57cdda5714ac602`, tree `0ec045e93694dc5182e364ebc836e1c18e7bb69d`, parents existing PR #78 receipt `aab28763c8a44bee2e778578f17d11cf52075fb6` and clean Wave 14 closeout `924fb3c05697fb1ff801d3dba7fb1a77ee8c29dc`. Wave 14 product is `60068369e9c2820509a839c259693ae0ce2bac2d`.
 - Manual conflict contract: preserve `PadTriggerOwnership`, the prior Desktop status-operation epoch, candidate-first replacement and atomic sibling publication while adding Wave 14 cancellation propagation and verified Android provider copy/read-back. No parent receipt substitutes for fresh validation of the merged bytes.
@@ -160,6 +166,20 @@
 - The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
 - Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
 - Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
+## Windows active-loop history transaction — 2026-08-27
+
+- Product checkpoint: `70b31e949a9faa42d0f459f2d03218d16e6e30b7`, tree `ce9469cdf37b6620c8b5c428fa479e9361194d1b`, base `924fb3c05697fb1ff801d3dba7fb1a77ee8c29dc`.
+- RED/GREEN history boundary: shared common tests first failed compilation on missing `planUndo`, `planRedo` and `restoredState`. GREEN previews without consuming, cancels without revision/frontier mutation, commits exactly once, previews Redo, rejects resolved/stale/cross-session plans and preserves the synchronous Android-facing API.
+- Windows binding: a same assigned owner with no source/transport/scratch conflict either keeps an identical PAD without retrigger or starts the restored PAD candidate before history commit. Successful Undo→Redo preserves owner and avoids `stopPad`/`stopAll`; a removed owner uses the existing disruptive stop path.
+- Failure controls: recoverable Undo and Redo startup failure cancel the plan and keep project, revision, frontier and current loop. Fatal `AssertionError` propagates without status rewrite or history consumption. Replacement success resets playhead to the restored forward start/reverse end; no-change keeps the runtime playhead.
+- Review: source/master-pitch changes do not enter the continuity path, public plan surface exposes only the target needed by the platform adapter, history mutation remains behind owner/epoch/exact-once checks, and no realtime callback or persistence/schema code changed. Final Standards/Spec unresolved findings: `0/0`.
+- Full clean gate: `BUILD SUCCESSFUL in 3m 55s`; 197 tasks (195 executed / 2 up-to-date). Android app 265 / 46 suites, shared Android/Desktop 69/69 / 13+13 suites, JVM-core 81 / 9 suites, Desktop 109 / 22 suites; total 593 tests / 103 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Configured/policy gates: explicit Git Bash `validate_project.sh` PASS (product-checkpoint public surface 444, executable modes, 18 Gradle tasks, six XML files, wrapper SHA/UTF-8). Closeout Python policy 59 PASS. Current plus reachable-history public surface 445 has no credential/signing/audio candidates. `git diff --check` PASS.
+- Final unsigned Android candidate: 24,224,884 bytes / `B13EE2794AD8048A918DF6D7A7EC6CBB569E2151E0B373D2E520562CD73A81F8`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy and alignment PASS. Unsigned candidate acceptance exits 0; `--require-signed` rejects with exit 1.
+- Other artifacts: debug APK 31,721,586 / `8CD10DF4060A13F8EF7FE444A711FC040C02D6F53DC14431DC2AD40A28265AD6`; androidTest 10,878,659 / `19002E0EBB2B62B599FAE7CF1738AC275B7D4CBEC610F0348D3B9C871A90E4AC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`; Desktop JAR 352,656 / `AE31D186132A4039DF0AB8831EE959D07AF681EB0D90FE16BD820D96D38A8F15`.
+- Windows/SBOM: app-image 405 files / 176,664,783 bytes. The reproducible sorted path/size/file-hash manifest SHA-256 is `4EE29D2883A034B880ED88E5B63F2857448B40A8F568F8CF7CAF39E8DC0C62F1`. CycloneDX 1.6 JSON verifies `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies. JSON is 1,581,101 bytes / `A86D110C9B4DC5EE8FF624394D679FBA4CEF1B6A4A2F4DC55D1147B7D645B836`; XML is 1,431,320 bytes / `80F089913D2A51FF326468239861D824E860741E2F4E3998CCBEB5719F2366ED`. The verifier is JSON-only, so XML is not represented as a parser PASS.
+- Gate: deterministic host contracts establish `LOCAL_PASS`, not physical click-free output or endpoint behavior. Actual Java Sound continuity, short overlap/click/latency, route removal, Bluetooth, sleep/resume, device/provider/public/signing and Human outcomes remain unclaimed.
+
 ## Verified Android document publication — 2026-08-27
 
 - Product checkpoint: `60068369e9c2820509a839c259693ae0ce2bac2d`, tree `e7b7643ddade8d54aed421c4c01597d2d1722cf8`, base `9043af2f582b4f8965ce973ab007d79de4d9324b`.
