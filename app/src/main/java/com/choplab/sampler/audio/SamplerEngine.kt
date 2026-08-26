@@ -10,6 +10,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
+import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import com.choplab.sampler.model.stepKey
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -19,6 +20,46 @@ import kotlin.math.floor
 import kotlin.math.max
 
 internal const val PREVIEW_PAD_INDEX = -1
+
+internal fun compilePatternSequence(patterns: List<Set<Int>>): Array<Array<IntArray>> {
+    val source = patterns.ifEmpty { listOf(emptySet()) }
+    return Array(source.size) { patternIndex ->
+        val activeSteps = source[patternIndex]
+        Array(SamplerConfig.STEP_COUNT) { step ->
+            (0 until SamplerConfig.PAD_COUNT)
+                .filter { pad -> stepKey(pad, step) in activeSteps }
+                .toIntArray()
+        }
+    }
+}
+
+/** Mutable primitive cursor used directly by the realtime callback without allocation. */
+internal class PatternSequenceCursor {
+    var sectionIndex: Int = 0
+        private set
+    var stepIndex: Int = 0
+        private set
+
+    fun reset() {
+        sectionIndex = 0
+        stepIndex = 0
+    }
+
+    fun constrain(sectionCount: Int) {
+        require(sectionCount > 0) { "Pattern sequence must not be empty" }
+        if (sectionIndex >= sectionCount) sectionIndex = 0
+    }
+
+    fun advance(sectionCount: Int) {
+        require(sectionCount > 0) { "Pattern sequence must not be empty" }
+        if (stepIndex == SamplerConfig.STEP_COUNT - 1) {
+            stepIndex = 0
+            sectionIndex = (sectionIndex + 1) % sectionCount
+        } else {
+            stepIndex++
+        }
+    }
+}
 
 /**
  * Low-latency streaming sampler and sample-accurate 16-step sequencer.
@@ -40,6 +81,7 @@ class SamplerEngine(
     private val padKit = arrayOfNulls<PadSnapshot>(SamplerConfig.PAD_COUNT)
     private val controlPadKit = AtomicReferenceArray<PadSnapshot?>(SamplerConfig.PAD_COUNT)
     private val pendingPadUpdates = LatestIndexedMailbox<PadSnapshot>(SamplerConfig.PAD_COUNT)
+    private val padVoiceOwnership = PadVoiceOwnership()
     private val voices = Array(MAX_POLYPHONY) { Voice() }
     private val sourceVoice = Voice()
     private var sourceVoiceGeneration = 0L
@@ -48,11 +90,12 @@ class SamplerEngine(
     @Volatile private var audioTrack: AudioTrack? = null
     @Volatile private var audioThread: Thread? = null
 
-    private var pattern: Array<IntArray> = Array(SamplerConfig.STEP_COUNT) { IntArray(0) }
+    private var patternSequence: Array<Array<IntArray>> =
+        arrayOf(Array(SamplerConfig.STEP_COUNT) { IntArray(0) })
+    private val patternCursor = PatternSequenceCursor()
     private var bpm = 92f
     private var swing = 54f
     private val transportState = TransportRuntimeState()
-    private var nextPatternStep = 0
     private var framesUntilNextStep = 0.0
 
     override val currentStep: Int
@@ -163,9 +206,10 @@ class SamplerEngine(
         pads.forEach(::updatePad)
     }
 
-    override fun triggerPad(globalIndex: Int) {
-        enqueue(EngineCommand.Trigger(globalIndex))
-    }
+    override fun triggerPad(globalIndex: Int): Long? =
+        padVoiceOwnership.offerOwned(globalIndex, ::enqueuePrepared) { ownership ->
+            EngineCommand.Trigger(globalIndex, ownership)
+        }
 
     override fun startPadLoop(globalIndex: Int) {
         enqueuePrepared {
@@ -227,7 +271,12 @@ class SamplerEngine(
     }
 
     override fun releasePad(globalIndex: Int) {
-        enqueue(EngineCommand.Release(globalIndex))
+        enqueue(EngineCommand.Release(globalIndex, ownership = null))
+    }
+
+    override fun releasePadIfOwned(globalIndex: Int, ownership: Long) {
+        if (ownership == PadVoiceOwnership.NONE) return
+        enqueue(EngineCommand.Release(globalIndex, ownership))
     }
 
     override fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int) {
@@ -281,14 +330,13 @@ class SamplerEngine(
     }
 
     override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
-        val steps = Array(SamplerConfig.STEP_COUNT) { step ->
-            (0 until SamplerConfig.PAD_COUNT)
-                .filter { pad -> stepKey(pad, step) in activeSteps }
-                .toIntArray()
-        }
+        setPatternSequence(listOf(activeSteps), bpm, swing)
+    }
+
+    override fun setPatternSequence(patterns: List<Set<Int>>, bpm: Float, swing: Float) {
         enqueue(
             EngineCommand.SetPattern(
-                steps = steps,
+                patterns = compilePatternSequence(patterns),
                 bpm = SamplerDspPrimitives.bpm(bpm),
                 swing = SamplerDspPrimitives.swing(swing),
             ),
@@ -335,6 +383,9 @@ class SamplerEngine(
     private fun renderLoop(track: AudioTrack, blockFrames: Int) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
         val output = FloatArray(blockFrames * 2)
+        val sourceFrame = MutableStereoFrame()
+        val scratchFrame = MutableStereoFrame()
+        val padFrame = MutableStereoFrame()
 
         try {
             while (running.get()) {
@@ -349,9 +400,12 @@ class SamplerEngine(
                 for (frame in 0 until blockFrames) {
                     if (transportState.running) processTransportFrame()
 
-                    var monoMix = 0f
+                    var leftMix = 0f
+                    var rightMix = 0f
                     if (sourceVoice.active) {
-                        monoMix += sourceVoice.render(outputSampleRate)
+                        sourceVoice.renderStereo(outputSampleRate, sourceFrame)
+                        leftMix += sourceFrame.left
+                        rightMix += sourceFrame.right
                         latestSourceFrame = sourceVoice.currentFrame
                         if (sourceVoice.finished) {
                             val completedGeneration = sourceVoiceGeneration
@@ -361,35 +415,35 @@ class SamplerEngine(
                         }
                     }
                     scratchVoice?.let { scratch ->
-                        monoMix += scratch.render(
+                        scratch.renderStereo(
                             outputSampleRate = outputSampleRate,
                             targetSpeed = scratchTargetSpeed,
+                            destination = scratchFrame,
                         )
+                        leftMix += scratchFrame.left
+                        rightMix += scratchFrame.right
                         latestScratchFrame = scratch.currentFrame
                     }
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
                         if (voice.active) {
-                            val monitorsLoop = voice.padIndex == monitoredLoopPad &&
-                                voice.playMode == PadPlayMode.LOOP
-                            monoMix = mixVoiceSampleAndRetire(
-                                voice = voice,
-                                outputSampleRate = outputSampleRate,
-                                monoMix = monoMix,
-                            )
-                            if (monitorsLoop && voice.active) {
-                                latestLoopFrame = voice.currentFrame
+                            renderPadVoiceStereoFrameForMix(voice, outputSampleRate, padFrame)
+                            if (voice.active) {
+                                if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
+                                    latestLoopFrame = voice.currentFrame
+                                }
                             }
+                            leftMix += padFrame.left
+                            rightMix += padFrame.right
                         }
                         voiceIndex++
                     }
 
                     // Smooth saturating limiter protects against polyphonic overload.
-                    val limited = SamplerDspPrimitives.softLimit(monoMix)
                     val outputIndex = frame * 2
-                    output[outputIndex] = limited
-                    output[outputIndex + 1] = limited
+                    output[outputIndex] = SamplerDspPrimitives.softLimit(leftMix)
+                    output[outputIndex + 1] = SamplerDspPrimitives.softLimit(rightMix)
                 }
                 if (latestSourceFrame >= 0) currentSourceFrameValue.set(latestSourceFrame)
                 if (monitoredLoopPad >= 0) {
@@ -446,7 +500,7 @@ class SamplerEngine(
                 is EngineCommand.Trigger -> {
                     applyPendingPadUpdates()
                     val pad = padKit.getOrNull(command.padIndex)
-                    if (pad != null) startVoice(pad)
+                    if (pad != null) startVoice(pad, command.ownership)
                 }
                 is EngineCommand.StartPadLoop -> {
                     applyPendingPadUpdates()
@@ -487,6 +541,7 @@ class SamplerEngine(
                     command.padIndex,
                     playMode = PadPlayMode.GATE,
                     frames = RELEASE_FRAMES,
+                    ownership = command.ownership,
                 )
                 is EngineCommand.Preview -> startVoice(command.pad)
                 is EngineCommand.PlaySource -> {
@@ -503,13 +558,14 @@ class SamplerEngine(
                     }
                 }
                 is EngineCommand.SetPattern -> {
-                    pattern = command.steps
+                    patternSequence = command.patterns
+                    patternCursor.constrain(patternSequence.size)
                     bpm = command.bpm
                     swing = command.swing
                 }
                 EngineCommand.StartTransport -> {
                     transportState.start()
-                    nextPatternStep = 0
+                    patternCursor.reset()
                     framesUntilNextStep = 0.0
                 }
                 EngineCommand.StopTransport -> {
@@ -622,9 +678,9 @@ class SamplerEngine(
 
     private fun processTransportFrame() {
         if (framesUntilNextStep <= 0.0) {
-            val stepToPlay = nextPatternStep
+            val stepToPlay = patternCursor.stepIndex
             transportState.publishStep(stepToPlay)
-            val stepPads = pattern[stepToPlay]
+            val stepPads = patternSequence[patternCursor.sectionIndex][stepToPlay]
             var stepPadIndex = 0
             while (stepPadIndex < stepPads.size) {
                 val pad = padKit.getOrNull(stepPads[stepPadIndex])
@@ -633,7 +689,7 @@ class SamplerEngine(
             }
 
             framesUntilNextStep += stepLengthFrames(stepToPlay)
-            nextPatternStep = (stepToPlay + 1) % SamplerConfig.STEP_COUNT
+            patternCursor.advance(patternSequence.size)
         }
         framesUntilNextStep -= 1.0
     }
@@ -642,9 +698,15 @@ class SamplerEngine(
         return SamplerDspPrimitives.stepLengthFrames(outputSampleRate, bpm, swing, step)
     }
 
-    private fun startVoice(pad: PadSnapshot) {
+    private fun startVoice(
+        pad: PadSnapshot,
+        ownership: Long = padVoiceOwnership.acquire(pad.padIndex),
+    ) {
         if (pad.endFrame <= pad.startFrame || pad.audio.samples.isEmpty()) return
 
+        // One physical PAD owns at most one live voice. Retriggering restarts that
+        // PAD while voices from different PADs remain available for performance.
+        retireVoicesForPadRetrigger(voices, pad.padIndex)
         if (pad.playMode == PadPlayMode.LOOP) {
             releasePadVoices(
                 pad.padIndex,
@@ -667,27 +729,26 @@ class SamplerEngine(
             voiceIndex++
         }
         nextVoiceStartOrder++
-        selectedVoice.start(pad, outputSampleRate, startOrder = nextVoiceStartOrder)
+        selectedVoice.start(
+            pad,
+            outputSampleRate,
+            startOrder = nextVoiceStartOrder,
+            ownership = ownership,
+        )
     }
 
     private fun releasePadVoices(
         padIndex: Int,
         playMode: PadPlayMode? = null,
         frames: Int,
-    ) {
-        var index = 0
-        while (index < voices.size) {
-            val voice = voices[index]
-            if (
-                voice.active &&
-                voice.padIndex == padIndex &&
-                (playMode == null || voice.playMode == playMode)
-            ) {
-                voice.release(frames)
-            }
-            index++
-        }
-    }
+        ownership: Long? = null,
+    ) = releaseMatchingPadVoices(
+        voices = voices,
+        padIndex = padIndex,
+        playMode = playMode,
+        frames = frames,
+        ownership = ownership,
+    )
 
     private fun releaseChokeGroup(chokeGroup: Int, frames: Int) {
         var index = 0
@@ -699,7 +760,7 @@ class SamplerEngine(
     }
 
     private sealed interface EngineCommand {
-        data class Trigger(val padIndex: Int) : EngineCommand
+        data class Trigger(val padIndex: Int, val ownership: Long) : EngineCommand
         data class StartPadLoop(
             val padIndex: Int,
             val sourceStopGeneration: Long,
@@ -707,12 +768,12 @@ class SamplerEngine(
         data class StopPad(val padIndex: Int) : EngineCommand
         data class BeginScratch(val padIndex: Int, val voice: ScratchVoice) : EngineCommand
         data object EndScratch : EngineCommand
-        data class Release(val padIndex: Int) : EngineCommand
+        data class Release(val padIndex: Int, val ownership: Long?) : EngineCommand
         data class Preview(val pad: PadSnapshot) : EngineCommand
         data class PlaySource(val source: PadSnapshot, val generation: Long) : EngineCommand
         data class StopSource(val generation: Long) : EngineCommand
         data class SetPattern(
-            val steps: Array<IntArray>,
+            val patterns: Array<Array<IntArray>>,
             val bpm: Float,
             val swing: Float,
         ) : EngineCommand
@@ -766,8 +827,10 @@ class SamplerEngine(
             private set
         var startOrder: Long = 0L
             private set
+        var ownership: Long = PadVoiceOwnership.NONE
+            private set
         private var audioId: Long? = null
-        private var samples: ShortArray = EMPTY_SAMPLES
+        private var audio: PcmAudio? = null
         private var startFrame = 0
         private var endFrame = 1
         private var reverse = false
@@ -781,9 +844,11 @@ class SamplerEngine(
             reverse = false,
             playMode = PadPlayMode.ONE_SHOT,
         )
-        private var filterState = 0f
+        private var filterStateLeft = 0f
+        private var filterStateRight = 0f
         private var releaseFramesRemaining = -1
         private var releaseFramesTotal = 1
+        private val compatibilityFrame = MutableStereoFrame()
 
         var finished: Boolean = true
             private set
@@ -800,7 +865,12 @@ class SamplerEngine(
         internal val liveGain: Float
             get() = gain
 
-        fun start(pad: PadSnapshot, outputSampleRate: Int, startOrder: Long = 0L) {
+        fun start(
+            pad: PadSnapshot,
+            outputSampleRate: Int,
+            startOrder: Long = 0L,
+            ownership: Long = PadVoiceOwnership.NONE,
+        ) {
             require(pad.endFrame > pad.startFrame) { "Playback range must not be empty" }
             require(pad.audio.samples.isNotEmpty()) { "Playback audio must not be empty" }
             active = true
@@ -809,8 +879,9 @@ class SamplerEngine(
             playMode = pad.playMode
             chokeGroup = pad.chokeGroup
             this.startOrder = startOrder
+            this.ownership = ownership
             audioId = pad.audio.id
-            samples = pad.audio.samples
+            audio = pad.audio
             startFrame = pad.startFrame
             endFrame = pad.endFrame
             reverse = pad.reverse
@@ -819,7 +890,8 @@ class SamplerEngine(
             filterAlpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)
             sourceStep = sourceStepFor(pad, outputSampleRate)
             cursor.reset(startFrame, endFrame, reverse, playMode)
-            filterState = 0f
+            filterStateLeft = 0f
+            filterStateRight = 0f
             releaseFramesRemaining = -1
             releaseFramesTotal = 1
         }
@@ -831,8 +903,9 @@ class SamplerEngine(
             playMode = PadPlayMode.ONE_SHOT
             chokeGroup = 0
             startOrder = 0L
+            ownership = PadVoiceOwnership.NONE
             audioId = null
-            samples = EMPTY_SAMPLES
+            audio = null
             startFrame = 0
             endFrame = 1
             reverse = false
@@ -840,7 +913,8 @@ class SamplerEngine(
             tone = 1f
             filterAlpha = 1f
             sourceStep = 1.0
-            filterState = 0f
+            filterStateLeft = 0f
+            filterStateRight = 0f
             releaseFramesRemaining = -1
             releaseFramesTotal = 1
         }
@@ -862,16 +936,31 @@ class SamplerEngine(
             }
         }
 
-        fun render(@Suppress("UNUSED_PARAMETER") outputSampleRate: Int): Float {
-            if (!active || finished) return 0f
+        fun render(outputSampleRate: Int): Float {
+            renderStereo(outputSampleRate, compatibilityFrame)
+            return compatibilityFrame.left
+        }
+
+        fun renderStereo(
+            @Suppress("UNUSED_PARAMETER") outputSampleRate: Int,
+            destination: MutableStereoFrame,
+        ) {
+            if (!active || finished) {
+                destination.clear()
+                return
+            }
+            val currentAudio = checkNotNull(audio) { "Active voice has no PCM" }
             val position = cursor.position
 
             val lower = floor(position).toInt().coerceIn(startFrame, endFrame - 1)
             val upper = (lower + 1).coerceAtMost(endFrame - 1)
             val fraction = (position - lower).toFloat()
-            val lowerSample = samples[lower] / 32_768f
-            val upperSample = samples[upper] / 32_768f
-            val raw = lowerSample + (upperSample - lowerSample) * fraction
+            val lowerLeft = currentAudio.playbackSampleAt(lower, 0) / 32_768f
+            val upperLeft = currentAudio.playbackSampleAt(upper, 0) / 32_768f
+            val rawLeft = lowerLeft + (upperLeft - lowerLeft) * fraction
+            val lowerRight = currentAudio.playbackSampleAt(lower, 1) / 32_768f
+            val upperRight = currentAudio.playbackSampleAt(upper, 1) / 32_768f
+            val rawRight = lowerRight + (upperRight - lowerRight) * fraction
 
             val boundaryEnvelope = SamplerDspPrimitives.boundaryEnvelope(
                 position = position,
@@ -880,12 +969,18 @@ class SamplerEngine(
                 reverse = reverse,
             )
 
-            val filtered = if (filterAlpha >= 1f) {
-                filterState = raw
-                raw
+            val filteredLeft: Float
+            val filteredRight: Float
+            if (filterAlpha >= 1f) {
+                filterStateLeft = rawLeft
+                filterStateRight = rawRight
+                filteredLeft = rawLeft
+                filteredRight = rawRight
             } else {
-                filterState += filterAlpha * (raw - filterState)
-                filterState
+                filterStateLeft += filterAlpha * (rawLeft - filterStateLeft)
+                filterStateRight += filterAlpha * (rawRight - filterStateRight)
+                filteredLeft = filterStateLeft
+                filteredRight = filterStateRight
             }
 
             var releaseEnvelope = 1f
@@ -897,7 +992,8 @@ class SamplerEngine(
 
             cursor.advance(sourceStep)
             if (cursor.finished) finished = true
-            return filtered * gain * boundaryEnvelope * releaseEnvelope
+            val envelope = gain * boundaryEnvelope * releaseEnvelope
+            destination.set(filteredLeft * envelope, filteredRight * envelope)
         }
 
         private fun sourceStepFor(pad: PadSnapshot, outputSampleRate: Int): Double {
@@ -907,17 +1003,13 @@ class SamplerEngine(
                 outputSampleRate = outputSampleRate,
             )
         }
-
-        private companion object {
-            val EMPTY_SAMPLES = ShortArray(0)
-        }
     }
 
     private class ScratchVoice(
         pad: PadSnapshot,
         initialFrame: Int,
     ) {
-        private val samples = pad.audio.samples
+        private val audio = pad.audio
         private val startFrame = pad.startFrame
         private val endFrame = pad.endFrame
         private val sourceSampleRate = pad.audio.sampleRate
@@ -928,17 +1020,24 @@ class SamplerEngine(
         val currentFrame: Int
             get() = cursor.position.toInt().coerceIn(startFrame, endFrame - 1)
 
-        fun render(outputSampleRate: Int, targetSpeed: Float): Float {
+        fun renderStereo(
+            outputSampleRate: Int,
+            targetSpeed: Float,
+            destination: MutableStereoFrame,
+        ) {
             val smoothedSpeed = speedSmoother.next(targetSpeed)
             val lower = floor(cursor.position).toInt().coerceIn(startFrame, endFrame - 1)
             val upper = (lower + 1).let { if (it >= endFrame) startFrame else it }
             val fraction = (cursor.position - lower).toFloat()
-            val lowerSample = samples[lower] / 32_768f
-            val upperSample = samples[upper] / 32_768f
-            val interpolated = lowerSample + (upperSample - lowerSample) * fraction
+            val lowerLeft = audio.playbackSampleAt(lower, 0) / 32_768f
+            val upperLeft = audio.playbackSampleAt(upper, 0) / 32_768f
+            val left = lowerLeft + (upperLeft - lowerLeft) * fraction
+            val lowerRight = audio.playbackSampleAt(lower, 1) / 32_768f
+            val upperRight = audio.playbackSampleAt(upper, 1) / 32_768f
+            val right = lowerRight + (upperRight - lowerRight) * fraction
             val motionEnvelope = (abs(smoothedSpeed) * 2.5).coerceIn(0.0, 1.0).toFloat()
             cursor.advance(smoothedSpeed * sourceSampleRate / outputSampleRate.toDouble())
-            return interpolated * gain * motionEnvelope
+            destination.set(left * gain * motionEnvelope, right * gain * motionEnvelope)
         }
     }
 
@@ -964,6 +1063,57 @@ internal fun mixVoiceSampleAndRetire(
     val mixed = monoMix + voice.render(outputSampleRate)
     if (voice.finished) voice.deactivate()
     return mixed
+}
+
+/**
+ * Host-testable form of the PAD-voice render/retire ordering used by the realtime loop.
+ *
+ * A terminal render call can return a valid final sample while also setting `finished`.
+ * Capture that value, retire the voice immediately, then return the captured sample so
+ * the caller mixes it exactly once.
+ */
+@Suppress("NOTHING_TO_INLINE")
+internal inline fun renderPadVoiceFrameForMix(
+    voice: SamplerEngine.Voice,
+    outputSampleRate: Int,
+): Float {
+    if (!voice.active) return 0f
+    val value = voice.render(outputSampleRate)
+    if (voice.finished) voice.deactivate()
+    return value
+}
+
+/** Stereo form of the same terminal-sample-preserving realtime mix seam. */
+@Suppress("NOTHING_TO_INLINE")
+internal inline fun renderPadVoiceStereoFrameForMix(
+    voice: SamplerEngine.Voice,
+    outputSampleRate: Int,
+    destination: MutableStereoFrame,
+) {
+    if (!voice.active) {
+        destination.clear()
+        return
+    }
+    voice.renderStereo(outputSampleRate, destination)
+    if (voice.finished) voice.deactivate()
+}
+
+/** Retires every older copy of one PAD without touching intentional other-PAD layers. */
+internal fun retireVoicesForPadRetrigger(
+    voices: Array<SamplerEngine.Voice>,
+    padIndex: Int,
+) {
+    var voiceIndex = 0
+    while (voiceIndex < voices.size) {
+        val voice = voices[voiceIndex]
+        if (
+            voice.active &&
+            samePadVoiceConflictsForRetrigger(voice.padIndex, padIndex)
+        ) {
+            voice.deactivate()
+        }
+        voiceIndex++
+    }
 }
 
 /**

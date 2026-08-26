@@ -27,6 +27,8 @@ import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.visiblePads
 import com.choplab.sampler.ui.OtohiroiDeck
+import com.choplab.sampler.ui.DocumentAction
+import com.choplab.sampler.ui.documentPickerCanceledMessage
 import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
 import java.awt.FileDialog
@@ -34,6 +36,7 @@ import java.awt.Frame
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.io.File
+import javax.swing.JFileChooser
 
 fun main(args: Array<String>) = application {
     val startupFile = remember {
@@ -46,6 +49,7 @@ fun main(args: Array<String>) = application {
         DesktopSamplerController(
             player,
             recoverAutosaveOnStart = startupFile == null,
+            preserveAutosaveUntilInitialProjectReplacement = startupFile != null,
         )
     }
     val spotify = remember { SpotifyDesktopSession(controller::setStatus) }
@@ -55,7 +59,9 @@ fun main(args: Array<String>) = application {
     val state by controller.state.collectAsState()
     val padKeyOwner = remember { DesktopPadKeyOwner() }
     val closeApplication = {
-        padKeyOwner.releaseAll().forEach { controller.releasePad(it.padIndex) }
+        padKeyOwner.releaseAll().forEach {
+            controller.releasePadIfOwned(it.padIndex, it.ownership)
+        }
         spotify.close()
         audioDiagnostics.close()
         controller.close()
@@ -98,7 +104,8 @@ fun main(args: Array<String>) = application {
                         false
                     } else {
                         controller.selectPlayablePad(action.padIndex)
-                        controller.triggerPad(action.padIndex)
+                        val ownership = controller.triggerPadWithOwnership(action.padIndex)
+                        padKeyOwner.bindOwnership(event.key, ownership)
                         true
                     }
                 }
@@ -107,7 +114,7 @@ fun main(args: Array<String>) = application {
                     if (action == null) {
                         false
                     } else {
-                        controller.releasePad(action.padIndex)
+                        controller.releasePadIfOwned(action.padIndex, action.ownership)
                         true
                     }
                 }
@@ -118,7 +125,9 @@ fun main(args: Array<String>) = application {
         DisposableEffect(window, padKeyOwner) {
             val focusListener = object : WindowAdapter() {
                 override fun windowLostFocus(event: WindowEvent) {
-                    padKeyOwner.releaseAll().forEach { controller.releasePad(it.padIndex) }
+                    padKeyOwner.releaseAll().forEach {
+                        controller.releasePadIfOwned(it.padIndex, it.ownership)
+                    }
                 }
             }
             window.addWindowFocusListener(focusListener)
@@ -130,7 +139,7 @@ fun main(args: Array<String>) = application {
         MenuBar {
             Menu("ファイル") {
                 Item(
-                    "WAVを読み込む",
+                    "音声を読み込む（WAV）",
                     shortcut = KeyShortcut(Key.O, ctrl = true),
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { chooseWav(controller) },
@@ -228,12 +237,23 @@ fun main(args: Array<String>) = application {
 }
 
 private fun chooseWav(controller: DesktopSamplerController) {
-    val dialog = FileDialog(null as Frame?, "ChopLabで開くWAV", FileDialog.LOAD).apply {
-        filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
-        isVisible = true
+    val chooser = JFileChooser().apply {
+        dialogTitle = "ChopLabで音声を開く（Windows版はWAV）"
+        fileSelectionMode = JFileChooser.FILES_ONLY
+        isMultiSelectionEnabled = false
+        isAcceptAllFileFilterUsed = false
+        fileFilter = DesktopAudioImportPolicy.fileFilter
     }
-    val file = dialog.file ?: return
-    runCatching { controller.loadWav(File(dialog.directory, file)) }
+    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
+        controller.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
+        return
+    }
+    val file = chooser.selectedFile ?: return
+    if (!DesktopAudioImportPolicy.accepts(file)) {
+        controller.setStatus("Windows版ではWAV音声を選んでください")
+        return
+    }
+    runCatching { controller.loadWav(file) }
         .onFailure { controller.setStatus("WAV読込失敗: ${it.message ?: it.javaClass.simpleName}") }
 }
 
@@ -243,7 +263,10 @@ private fun chooseExportWav(controller: DesktopSamplerController) {
         filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
         isVisible = true
     }
-    val selected = dialog.file ?: return
+    val selected = dialog.file ?: run {
+        controller.setStatus(documentPickerCanceledMessage(DocumentAction.EXPORT_WAV))
+        return
+    }
     val output = File(dialog.directory, selected).let { file ->
         if (file.extension.equals("wav", ignoreCase = true)) file else File(file.parentFile, "${file.nameWithoutExtension}.wav")
     }
@@ -261,7 +284,14 @@ private fun chooseProject(controller: DesktopSamplerController, mode: Int) {
         filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".choplab", ignoreCase = true) }
         isVisible = true
     }
-    val selected = dialog.file ?: return
+    val selected = dialog.file ?: run {
+        controller.setStatus(
+            documentPickerCanceledMessage(
+                if (saving) DocumentAction.SAVE_PROJECT else DocumentAction.OPEN_PROJECT,
+            ),
+        )
+        return
+    }
     val file = File(dialog.directory, selected)
     if (saving) controller.saveProject(file) else controller.openProject(file)
 }

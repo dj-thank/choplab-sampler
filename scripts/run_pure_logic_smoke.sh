@@ -14,6 +14,7 @@ kotlinc \
   "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/VoicePlaybackCursor.kt" \
   "$ROOT/app/src/main/java/com/choplab/sampler/audio/TransientDetector.kt" \
   "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/WavFileWriter.kt" \
+  "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/StereoPcm.kt" \
   "$ROOT/jvm-core/src/main/kotlin/com/choplab/sampler/audio/PatternRenderer.kt" \
   "$ROOT/scripts/SmokeMain.kt" \
   -include-runtime \

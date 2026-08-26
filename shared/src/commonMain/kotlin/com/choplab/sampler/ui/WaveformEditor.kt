@@ -5,8 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,7 +45,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -63,8 +72,89 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SliceRange
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.PI
+
+/**
+ * Keeps a single vertical drag unconsumed so an enclosing CHOP scroller can own it. Waveform
+ * transforms begin only after horizontal single-pointer intent or multi-pointer transform slop.
+ */
+private suspend fun PointerInputScope.detectWaveformTransformGestures(
+    allowVerticalDragPassThrough: Boolean,
+    onGesture: (centroid: Offset, pan: Offset, zoom: Float) -> Unit,
+) {
+    awaitEachGesture {
+        var cumulativeZoom = 1f
+        var cumulativePan = Offset.Zero
+        var cumulativeRotation = 0f
+        var transformClaimed = false
+        val touchSlop = viewConfiguration.touchSlop
+
+        awaitFirstDown(requireUnconsumed = false)
+        do {
+            val event = awaitPointerEvent()
+            val canceled = event.changes.any { it.isConsumed }
+            if (!canceled) {
+                val zoomChange = event.calculateZoom()
+                val panChange = event.calculatePan()
+                val rotationChange = event.calculateRotation()
+
+                if (!transformClaimed) {
+                    cumulativeZoom *= zoomChange
+                    cumulativePan += panChange
+                    cumulativeRotation += rotationChange
+                    val multiPointer = event.changes.count { it.pressed } >= 2
+                    val centroidSize = event.calculateCentroidSize(useCurrent = false)
+                    val zoomMotion =
+                        abs(1f - cumulativeZoom) * centroidSize
+                    val rotationMotion =
+                        abs(cumulativeRotation * PI.toFloat() * centroidSize / 180f)
+                    val horizontalMotion = abs(cumulativePan.x)
+                    val verticalMotion = abs(cumulativePan.y)
+
+                    transformClaimed = if (multiPointer) {
+                        zoomMotion > touchSlop ||
+                            rotationMotion > touchSlop ||
+                            cumulativePan.getDistance() > touchSlop
+                    } else {
+                        horizontalMotion > touchSlop && horizontalMotion > verticalMotion
+                    }
+
+                    if (
+                        !multiPointer &&
+                        verticalMotion > touchSlop &&
+                        verticalMotion >= horizontalMotion
+                    ) {
+                        if (allowVerticalDragPassThrough) {
+                            // Stop observing this gesture without consuming its movement. The
+                            // large-text CHOP verticalScroll sees this Main-pass change and claims it.
+                            return@awaitEachGesture
+                        }
+                        // With no scroll ancestor, claim the vertical drag as a no-op transform.
+                        // Consuming its movement cancels the sibling tap detector, preventing a
+                        // drag in normal CHOP or PAD trim from seeking or moving a boundary on up.
+                        transformClaimed = true
+                    }
+                }
+
+                if (transformClaimed) {
+                    val centroid = event.calculateCentroid(useCurrent = false)
+                    if (
+                        centroid != Offset.Unspecified &&
+                        (zoomChange != 1f || panChange != Offset.Zero)
+                    ) {
+                        onGesture(centroid, panChange, zoomChange)
+                    }
+                    event.changes.forEach { change ->
+                        if (change.positionChanged()) change.consume()
+                    }
+                }
+            }
+        } while (!canceled && event.changes.any { it.pressed })
+    }
+}
 
 @Composable
 fun WaveformEditor(
@@ -80,6 +170,8 @@ fun WaveformEditor(
     onWaveformTap: (Int) -> Unit,
     onWaveformLongPress: ((Int) -> Unit)? = null,
     longPressFocusFrames: Int? = null,
+    initialFocusFrame: Int? = null,
+    initialVisibleFrames: Int? = null,
     playheadFrame: Int? = null,
     modifier: Modifier = Modifier,
     canvasHeight: Dp = 220.dp,
@@ -91,25 +183,57 @@ fun WaveformEditor(
     maximumZoom: Float = 32f,
     zoomFocusFrame: Int? = null,
     viewportResetKey: Any? = null,
+    allowVerticalDragPassThrough: Boolean = false,
+    onViewportChanged: ((WaveformViewport) -> Unit)? = null,
     readoutColor: Color? = null,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val haptics = LocalHapticFeedback.current
-    var zoom by remember(audio.id, viewportResetKey) { mutableFloatStateOf(1f) }
-    var scroll by remember(audio.id, viewportResetKey) { mutableFloatStateOf(0f) }
+    val initialViewport = remember(
+        audio.id,
+        viewportResetKey,
+        initialFocusFrame,
+        initialVisibleFrames,
+        maximumZoom,
+    ) {
+        initialWaveformViewport(
+            totalFrames = audio.frameCount,
+            focusFrame = initialFocusFrame,
+            targetVisibleFrames = initialVisibleFrames,
+            maximumZoom = maximumZoom,
+        )
+    }
+    var zoom by remember(
+        audio.id,
+        viewportResetKey,
+        initialFocusFrame,
+        initialVisibleFrames,
+        maximumZoom,
+    ) { mutableFloatStateOf(initialViewport.zoom) }
+    var scroll by remember(
+        audio.id,
+        viewportResetKey,
+        initialFocusFrame,
+        initialVisibleFrames,
+        maximumZoom,
+    ) { mutableFloatStateOf(initialViewport.scroll) }
 
     val viewport = resolveWaveformViewport(audio.frameCount, zoom, scroll)
+    LaunchedEffect(viewport) {
+        onViewportChanged?.invoke(viewport)
+    }
     val totalFrames = viewport.totalFrames
     val visibleFrames = viewport.visibleFrames
     val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
     val widthPx = canvasSize.width.toFloat().coerceAtLeast(1f)
-    val waveformEnvelope = remember(audio.id, visibleStart, visibleEnd, canvasSize.width) {
+    val waveformEnvelope = remember(audio.id, audio.channelCount, visibleStart, visibleEnd, canvasSize.width) {
         buildWaveformEnvelope(
             samples = audio.samples,
             visibleStart = visibleStart,
             visibleEnd = visibleEnd,
             pixelWidth = canvasSize.width,
+            channelCount = audio.channelCount,
         )
     }
 
@@ -197,9 +321,16 @@ fun WaveformEditor(
                             },
                         )
                     }
-                    .pointerInput(audio.id, visibleStart, visibleFrames) {
-                        detectTransformGestures { centroid, pan, zoomChange, _ ->
-                            if (canvasSize.width <= 0) return@detectTransformGestures
+                    .pointerInput(
+                        audio.id,
+                        visibleStart,
+                        visibleFrames,
+                        allowVerticalDragPassThrough,
+                    ) {
+                        detectWaveformTransformGestures(
+                            allowVerticalDragPassThrough = allowVerticalDragPassThrough,
+                        ) { centroid, pan, zoomChange ->
+                            if (canvasSize.width <= 0) return@detectWaveformTransformGestures
                             val focusFrame = waveformFrameAtX(
                                 centroid.x,
                                 canvasSize.width.toFloat(),
@@ -478,6 +609,27 @@ fun WaveformEditor(
     }
 }
 
+fun initialWaveformViewport(
+    totalFrames: Int,
+    focusFrame: Int?,
+    targetVisibleFrames: Int?,
+    maximumZoom: Float,
+): WaveformViewport {
+    if (focusFrame == null || targetVisibleFrames == null || targetVisibleFrames <= 0) {
+        return resolveWaveformViewport(totalFrames, zoom = 1f, scroll = 0f)
+    }
+    val requested = focusWaveformViewport(focusFrame, totalFrames, targetVisibleFrames)
+    val safeMaximum = maximumZoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
+    val cappedZoom = requested.zoom.coerceAtMost(safeMaximum)
+    return zoomViewportAtFocus(
+        frame = focusFrame,
+        totalFrames = totalFrames,
+        zoom = 1f,
+        zoomChange = cappedZoom,
+        maximumZoom = safeMaximum,
+    )
+}
+
 fun centeredViewportScroll(frame: Int, totalFrames: Int, zoom: Float): Float {
     val safeTotalFrames = totalFrames.coerceAtLeast(1)
     val safeZoom = zoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
@@ -748,8 +900,13 @@ fun buildWaveformEnvelope(
     visibleEnd: Int,
     pixelWidth: Int,
     pixelStep: Int = 2,
+    channelCount: Int = 1,
 ): WaveformEnvelope {
-    if (samples.isEmpty() || visibleEnd <= visibleStart || pixelWidth <= 0) {
+    require(channelCount in 1..2 && samples.size % channelCount == 0) {
+        "Waveform PCM must contain complete mono or stereo frames"
+    }
+    val frameCount = samples.size / channelCount
+    if (frameCount == 0 || visibleEnd <= visibleStart || pixelWidth <= 0) {
         return WaveformEnvelope(FloatArray(0), FloatArray(0), pixelStep.coerceAtLeast(1))
     }
     val safePixelStep = pixelStep.coerceAtLeast(1)
@@ -763,15 +920,17 @@ fun buildWaveformEnvelope(
         val frameFrom = visibleStart + (frameSpan.toLong() * x / pixelWidth).toInt()
         val nextX = (x + safePixelStep).coerceAtMost(pixelWidth)
         val frameTo = visibleStart + (frameSpan.toLong() * nextX / pixelWidth).toInt()
-        val safeFrom = frameFrom.coerceIn(0, samples.lastIndex)
-        val safeTo = frameTo.coerceIn(safeFrom + 1, samples.size)
+        val safeFrom = frameFrom.coerceIn(0, frameCount - 1)
+        val safeTo = frameTo.coerceIn(safeFrom + 1, frameCount)
         val sampleStep = max(1, (safeTo - safeFrom) / 48)
 
         var minimum = 0f
         var maximum = 0f
         var frame = safeFrom
         while (frame < safeTo) {
-            val value = samples[frame] / 32_768f
+            var sum = 0
+            repeat(channelCount) { channel -> sum += samples[frame * channelCount + channel].toInt() }
+            val value = (sum / channelCount) / 32_768f
             if (value < minimum) minimum = value
             if (value > maximum) maximum = value
             frame += sampleStep
@@ -783,7 +942,7 @@ fun buildWaveformEnvelope(
     return WaveformEnvelope(minimums, maximums, safePixelStep)
 }
 
-private fun DrawScope.drawWaveformEnvelope(
+internal fun DrawScope.drawWaveformEnvelope(
     envelope: WaveformEnvelope,
     color: Color,
 ) {
@@ -846,7 +1005,7 @@ fun waveformOverviewGeometry(
     return WaveformOverviewGeometry(left = left, right = right.coerceAtLeast(left))
 }
 
-private fun frameToX(frame: Int, visibleStart: Int, visibleFrames: Int, width: Float): Float =
+internal fun frameToX(frame: Int, visibleStart: Int, visibleFrames: Int, width: Float): Float =
     ((frame - visibleStart).toFloat() / visibleFrames.coerceAtLeast(1) * width)
 
 private fun formatTime(frame: Int, sampleRate: Int): String {

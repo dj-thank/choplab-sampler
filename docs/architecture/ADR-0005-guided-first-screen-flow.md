@@ -2,13 +2,13 @@
 
 - Status: Accepted
 - Date: 2026-08-24
-- Scope: shared Android/Windows first entry, large-text chrome and playable-PAD selection
+- Scope: shared Android/Windows first entry, large-text chrome, scroll gesture arbitration and playable-PAD selection
 
 ## Context
 
 The starter production is intentionally playable, but the previous first screen showed an empty waveform and four source actions without explaining that BEAT and SAVE belonged to the included DUSTY JAZZ demo. At Android font scale 1.3 and 2.0, fixed-height one-row workflow chrome clipped or overlapped labels. The Desktop BEAT transition also selected B-01 without synchronizing the visible bank and page because it bypassed the shared state transition.
 
-The product should stay simpler than a general DAW. MPC and Cubase are functional references for staged work and stable controls, not visual or structural templates to copy.
+The product should stay simpler than a general DAW. MPC and Cubase are functional references for staged work and stable controls, not visual or structural templates to copy. A PAD `onPress` also runs before a scroll parent resolves touch slop, so model/audio side effects at press-down would turn a large-text CHOP or BEAT swipe into an unintended PAD action.
 
 ## Decision
 
@@ -19,9 +19,9 @@ Keep the shared four-stage model `入れる → チョップ → ビート → �
 - the built-in starter is named as a separate `DUSTY JAZZデモ` route;
 - loading, loaded-source and active-recording states retain the existing waveform and stop/safety controls.
 
-At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. The first-entry body scrolls when enlarged content or compact landscape height cannot fit. Large-text BEAT quick/detail bodies also use bounded scrolling with explicit waveform and 48 dp-safe PAD-grid heights; global chrome remains fixed. Normal text retains the one-row chrome and existing responsive BEAT composition.
+At font scale 1.2 or greater, the shared layout policy uses a simplified header, a two-by-two workflow strip and a two-line status region. The first-entry body uses bounded vertical scrolling when enlarged content or compact landscape height cannot fit. Large-text CHOP and BEAT bodies also use bounded scrolling with explicit waveform and PAD-grid heights, while global chrome remains fixed. CHOP and ONE SHOT actions in those scroll bodies commit only after `detectTapGestures` confirms a completed tap. Empty CHOP pads have no long-press trim target, so a stationary hold also completes through that tap boundary at pointer-up. An assigned performance GATE instead waits through a 120 ms scroll-classification window; if the parent cancels before activation it dispatches nothing, otherwise it triggers while the pointer remains down and releases on the actual pointer-up. A shorter completed GATE tap receives an 80 ms minimum preview. GATE trigger ownership is released exactly once if navigation or recomposition cancels its pointer node, and changing play mode restarts pointer arbitration. Non-scroll PAD surfaces retain immediate press-down performance. When compact landscape suppresses the separate status strip, the header renders the recording or transient status instead. Normal text retains the one-row chrome and existing responsive workspace compositions.
 
-Within a scrollable BEAT body, ONE SHOT PAD selection and playback commit only after the pointer gesture completes as a tap. GATE waits through a short scroll-classification window, then preserves the remaining physical hold until pointer-up. Once triggered, it owns an exact-once release even if opening TRIM replaces and cancels the gesture node. Changing a PAD between ONE SHOT and GATE restarts its pointer handler so routing cannot retain a stale mode. A vertical drag canceled by the parent before activation sends no PAD model or audio action. Non-scroll PAD surfaces keep their direct press-down performance path.
+When a compact 48 dp PAD omits its secondary visual caption, accessibility semantics still state assignment, play mode and content kind. `LOOP`, `DRM` and `VOX` therefore remain available without forcing overlapping text into the cell.
 
 Both platform controllers use the shared `ensurePlayablePadSelected` state transition, which updates selected PAD, bank and page together.
 
@@ -30,7 +30,8 @@ Both platform controllers use the shared `ensurePlayablePadSelected` state trans
 - A first-time user can distinguish making with personal audio from trying the bundled demo.
 - The demo keeps its existing pads, pattern and export readiness; no audio or project semantics change.
 - Large text preserves full action labels and 48 dp minimum targets instead of shrinking typography.
-- Constrained CAPTURE or large-text BEAT may require an intentional body scroll; global chrome and normal-text composition do not scroll.
+- The initial surface may require one intentional scroll in constrained portrait or landscape, and large-text CHOP/BEAT bodies may scroll to retain usable PADs and lower controls; global deck scrolling is not introduced.
+- A swipe may begin on a large-text CHOP/BEAT PAD without selecting, capturing or sounding it when the parent wins before activation. ONE SHOT and CHOP still commit on completed tap, while held and short-tap GATE gestures preserve audible duration and cannot leak trigger ownership across navigation. Non-scroll performance latency is unchanged.
 - When a 48 dp large-text PAD cannot fit its secondary LOOP/DRM/VOX/key caption cleanly, the visible cell keeps its complete PAD identity while accessibility semantics always state both play mode and content kind.
 - Android and Windows render the same entry and workflow policy while keeping platform I/O adapters separate.
 
@@ -43,4 +44,4 @@ Both platform controllers use the shared `ensurePlayablePadSelected` state trans
 
 ## Rollback
 
-The change is presentation policy plus one shared selection delegation. Reverting it restores the previous first screen and chrome. Project schema, audio bytes and user data require no migration.
+The change is presentation policy, bounded pointer arbitration and one shared selection delegation. Reverting it restores the previous first screen, chrome and PAD gesture path. Project schema, audio bytes and user data require no migration.

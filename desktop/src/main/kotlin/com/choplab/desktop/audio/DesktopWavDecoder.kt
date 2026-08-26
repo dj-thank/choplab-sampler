@@ -4,12 +4,13 @@ import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.ProjectLimits
 import com.choplab.sampler.model.persistableAudioDisplayName
+import com.choplab.sampler.model.retainedChannelCountForImport
 import java.io.File
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 
-/** JVM adapter for the same bounded mono PCM shape consumed by the shared deck. */
+/** JVM adapter for bounded mono/stereo PCM consumed by the shared deck. */
 object DesktopWavDecoder {
     fun decode(file: File): PcmAudio {
         require(file.isFile) { "Audio file does not exist: ${file.path}" }
@@ -36,19 +37,20 @@ object DesktopWavDecoder {
                 AudioSystem.getAudioInputStream(targetFormat, source)
             }
             pcmStream.use { pcm ->
-                return readMono(file.name, pcm)
+                return readPcm(file.name, pcm)
             }
         }
     }
 
-    internal fun readMono(
+    internal fun readPcm(
         name: String,
         stream: AudioInputStream,
-        maximumFrames: Int = AudioResourceLimits.MAX_DECODED_MONO_FRAMES,
+        maximumFrames: Int = AudioResourceLimits.MAX_DECODED_FRAMES,
     ): PcmAudio {
         require(maximumFrames > 0) { "maximumFrames must be positive" }
         val channels = stream.format.channels
         require(channels in 1..8) { "音声のチャンネル数に対応していません" }
+        val storedChannelCount = retainedChannelCountForImport(channels)
         require(stream.format.sampleSizeInBits == 16 && !stream.format.isBigEndian) {
             "PCM-16 little-endian形式が必要です"
         }
@@ -65,13 +67,14 @@ object DesktopWavDecoder {
             }
         }
 
-        val builder = BoundedMonoPcmBuilder(
-            initialCapacity = knownFrames
+        val builder = BoundedPcmBuilder(
+            initialFrameCapacity = knownFrames
                 .takeIf { it in 1..effectiveMaximumFrames.toLong() }
                 ?.toInt()
                 ?.coerceAtMost(INITIAL_CAPACITY_LIMIT)
                 ?: DEFAULT_INITIAL_CAPACITY,
-            maximumSize = effectiveMaximumFrames,
+            maximumFrames = effectiveMaximumFrames,
+            channelCount = storedChannelCount,
         )
         val frameBytes = channels * Short.SIZE_BYTES
         val bufferSize = (STREAM_BUFFER_BYTES / frameBytes).coerceAtLeast(1) * frameBytes
@@ -85,29 +88,34 @@ object DesktopWavDecoder {
 
             var offset = 0
             while (offset < read) {
-                var sum = 0
-                repeat(channels) { channel ->
-                    val sampleOffset = offset + channel * Short.SIZE_BYTES
-                    val value = (buffer[sampleOffset].toInt() and 0xFF) or
-                        (buffer[sampleOffset + 1].toInt() shl 8)
-                    sum += value.toShort().toInt()
+                if (storedChannelCount == 2) {
+                    repeat(storedChannelCount) { channel ->
+                        builder.append(buffer.readPcm16(offset + channel * Short.SIZE_BYTES))
+                    }
+                } else {
+                    var sum = 0
+                    repeat(channels) { channel ->
+                        sum += buffer.readPcm16(offset + channel * Short.SIZE_BYTES).toInt()
+                    }
+                    builder.append(
+                        (sum / channels)
+                            .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                            .toShort(),
+                    )
                 }
-                builder.append(
-                    (sum / channels)
-                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                        .toShort(),
-                )
                 offset += frameBytes
             }
         }
 
         val samples = builder.toArray()
         require(samples.isNotEmpty()) { "音声データを展開できませんでした" }
-        AudioResourceLimits.requireDecodedMonoFrameCount(samples.size.toLong(), sampleRate)
+        val frameCount = samples.size / storedChannelCount
+        AudioResourceLimits.requireDecodedMonoFrameCount(frameCount.toLong(), sampleRate)
         return PcmAudio(
             name = persistableAudioDisplayName(name, null),
             samples = samples,
             sampleRate = sampleRate,
+            channelCount = storedChannelCount,
         )
     }
 
@@ -127,15 +135,28 @@ object DesktopWavDecoder {
     private const val INITIAL_CAPACITY_LIMIT = 4_000_000
 }
 
-internal class BoundedMonoPcmBuilder(
-    initialCapacity: Int,
-    private val maximumSize: Int,
+private fun ByteArray.readPcm16(offset: Int): Short {
+    val value = (this[offset].toInt() and 0xFF) or (this[offset + 1].toInt() shl 8)
+    return value.toShort()
+}
+
+internal class BoundedPcmBuilder(
+    initialFrameCapacity: Int,
+    maximumFrames: Int,
+    val channelCount: Int,
 ) {
+    private val maximumSize: Int
+
     init {
-        require(maximumSize > 0) { "maximumSize must be positive" }
+        require(maximumFrames > 0) { "maximumFrames must be positive" }
+        require(channelCount in 1..2) { "channelCount must be mono or stereo" }
+        maximumSize = Math.multiplyExact(maximumFrames, channelCount)
     }
 
-    private var values = ShortArray(initialCapacity.coerceIn(1, maximumSize))
+    private var values = ShortArray(
+        Math.multiplyExact(initialFrameCapacity.coerceAtLeast(1), channelCount)
+            .coerceAtMost(maximumSize),
+    )
     private var size = 0
 
     fun append(value: Short) {

@@ -1,15 +1,44 @@
 package com.choplab.desktop.audio
 
 import com.choplab.sampler.audio.PadPcmRenderer
+import com.choplab.sampler.audio.RenderedPcm
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import java.io.ByteArrayInputStream
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.Clip
 import javax.sound.sampled.LineEvent
+
+internal fun interface DesktopClipFactory {
+    fun create(): Clip
+}
+
+internal fun pcm16AudioInputStream(
+    samples: ShortArray,
+    sampleRate: Int,
+    channelCount: Int,
+): AudioInputStream {
+    require(samples.isNotEmpty()) { "再生するPCMがありません" }
+    require(channelCount in 1..2 && samples.size % channelCount == 0) {
+        "再生PCMのチャンネル構成が不正です"
+    }
+    val bytes = ByteArray(samples.size * Short.SIZE_BYTES)
+    for (index in samples.indices) {
+        val sample = samples[index].toInt()
+        bytes[index * 2] = (sample and 0xFF).toByte()
+        bytes[index * 2 + 1] = (sample shr 8).toByte()
+    }
+    val format = AudioFormat(sampleRate.toFloat(), 16, channelCount, true, false)
+    return AudioInputStream(
+        ByteArrayInputStream(bytes),
+        format,
+        (samples.size / channelCount).toLong(),
+    )
+}
 
 /**
  * Java Sound engine for the Windows deck.
@@ -18,9 +47,14 @@ import javax.sound.sampled.LineEvent
  * destroys the loaded source. PAD PCM is rendered with the shared JVM voice
  * controls before it reaches a Clip.
  */
-class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
+class JavaSoundWavPlayer internal constructor(
+    private val clipFactory: DesktopClipFactory,
+) : DesktopSamplerAudioEngine {
+    constructor() : this(DesktopClipFactory { AudioSystem.getClip() })
+
     private var sourceClip: Clip? = null
     private var sourceOriginalFrames: Int = 0
+    private var nextVoiceOwnership: Long = 0L
     private val activeVoices = mutableListOf<ActiveVoice>()
 
     override val isSourcePlaying: Boolean
@@ -28,10 +62,10 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
 
     @Synchronized
     override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) {
-        val samples = if (pitchSemitones == 0f) {
-            audio.samples.copyOf()
+        val rendered = if (pitchSemitones == 0f) {
+            RenderedPcm(audio.samples.copyOf(), audio.channelCount)
         } else {
-            PadPcmRenderer.render(
+            PadPcmRenderer.renderInterleaved(
                 PadModel(
                     globalIndex = 0,
                     audio = audio,
@@ -42,7 +76,7 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
                 ),
             )
         }
-        replaceSource(createClip(samples, audio.sampleRate))
+        replaceSource(createClip(rendered.samples, audio.sampleRate, rendered.channelCount))
         sourceOriginalFrames = audio.frameCount
     }
 
@@ -85,29 +119,52 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     }
 
     @Synchronized
-    override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
-        if (!pad.isAssigned) return
-        if (pad.chokeGroup > 0) {
-            activeVoices.filter { it.pad.chokeGroup == pad.chokeGroup }.toList().forEach(::closeVoice)
-        }
-        if (forceLoop) stopPad(pad.globalIndex)
+    override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
+        if (!pad.isAssigned) return 0L
+        activeVoices
+            .filter { voice ->
+                samePadVoiceConflictsForRetrigger(voice.pad.globalIndex, pad.globalIndex) ||
+                    (pad.chokeGroup > 0 && voice.pad.chokeGroup == pad.chokeGroup)
+            }
+            .toList()
+            .forEach(::closeVoice)
         val audio = requireNotNull(pad.audio)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
-        val clip = createClip(renderDesktopPadPcm(pad, mode), audio.sampleRate)
-        val voice = ActiveVoice(pad, mode, clip)
+        val renderingPad = if (pad.playMode == mode) pad else pad.copy(playMode = mode)
+        val rendered = PadPcmRenderer.renderInterleaved(renderingPad)
+        val clip = createClip(rendered.samples, audio.sampleRate, rendered.channelCount)
+        val voice = ActiveVoice(pad, mode, acquireVoiceOwnership(), clip)
         activeVoices += voice
-        clip.addLineListener { event ->
-            if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
-                synchronized(this) { closeVoice(voice) }
+        try {
+            clip.addLineListener { event ->
+                if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
+                    synchronized(this) { closeVoice(voice) }
+                }
             }
+            if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
+        } catch (failure: Throwable) {
+            closeVoice(voice)
+            throw failure
         }
-        if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
+        return voice.ownership
     }
 
     @Synchronized
     override fun releasePad(index: Int) {
         activeVoices
             .filter { it.pad.globalIndex == index && it.mode == PadPlayMode.GATE }
+            .toList()
+            .forEach(::closeVoice)
+    }
+
+    @Synchronized
+    override fun releasePadIfOwned(index: Int, ownership: Long) {
+        activeVoices
+            .filter {
+                it.pad.globalIndex == index &&
+                    it.mode == PadPlayMode.GATE &&
+                    it.ownership == ownership
+            }
             .toList()
             .forEach(::closeVoice)
     }
@@ -136,18 +193,15 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         sourceOriginalFrames = 0
     }
 
-    private fun createClip(samples: ShortArray, sampleRate: Int): Clip {
-        require(samples.isNotEmpty()) { "再生するPCMがありません" }
-        val bytes = ByteArray(samples.size * Short.SIZE_BYTES)
-        for (index in samples.indices) {
-            val sample = samples[index].toInt()
-            bytes[index * 2] = (sample and 0xFF).toByte()
-            bytes[index * 2 + 1] = (sample shr 8).toByte()
+    private fun createClip(samples: ShortArray, sampleRate: Int, channelCount: Int): Clip {
+        val clip = clipFactory.create()
+        return try {
+            pcm16AudioInputStream(samples, sampleRate, channelCount).use(clip::open)
+            clip
+        } catch (failure: Throwable) {
+            runCatching { clip.close() }
+            throw failure
         }
-        val format = AudioFormat(sampleRate.toFloat(), 16, 1, true, false)
-        val clip = AudioSystem.getClip()
-        AudioInputStream(ByteArrayInputStream(bytes), format, samples.size.toLong()).use(clip::open)
-        return clip
     }
 
     private fun replaceSource(newClip: Clip) {
@@ -162,8 +216,15 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
         return (progress * clip.frameLength).toInt().coerceIn(0, clip.frameLength)
     }
 
+    private fun acquireVoiceOwnership(): Long {
+        do {
+            nextVoiceOwnership = if (nextVoiceOwnership == Long.MAX_VALUE) 1L else nextVoiceOwnership + 1L
+        } while (activeVoices.any { it.ownership == nextVoiceOwnership })
+        return nextVoiceOwnership
+    }
+
     private fun closeVoice(voice: ActiveVoice) {
-        activeVoices.remove(voice)
+        if (!activeVoices.remove(voice)) return
         runCatching { voice.clip.stop() }
         runCatching { voice.clip.close() }
     }
@@ -171,11 +232,12 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     private data class ActiveVoice(
         val pad: PadModel,
         val mode: PadPlayMode,
+        val ownership: Long,
         val clip: Clip,
     )
 }
 
 internal fun renderDesktopPadPcm(pad: PadModel, mode: PadPlayMode): ShortArray {
     val renderingPad = if (pad.playMode == mode) pad else pad.copy(playMode = mode)
-    return PadPcmRenderer.render(renderingPad)
+    return PadPcmRenderer.renderInterleaved(renderingPad).samples
 }

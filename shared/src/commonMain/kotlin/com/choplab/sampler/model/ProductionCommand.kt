@@ -13,6 +13,11 @@ sealed interface ProductionCommand {
     data class MoveSliceMarker(val markerIndex: Int, val frame: Int) : ProductionCommand
     data class SelectSliceAt(val frame: Int) : ProductionCommand
     data object ToggleSelectedPadPerformanceMode : ProductionCommand
+    data object CreateQuickSketch : ProductionCommand
+    data class SelectPatternVariation(val slot: Int) : ProductionCommand
+    data object DuplicateSelectedPatternToOther : ProductionCommand
+    data class ToggleSongSectionPattern(val sectionIndex: Int) : ProductionCommand
+    data object ToggleSongMode : ProductionCommand
 }
 
 /** Whether the accepted command changed durable music, only this session, or nothing. */
@@ -57,8 +62,25 @@ fun reduceProductionCommand(
         is ProductionCommand.MoveSliceMarker -> moveSliceMarker(state, command.markerIndex, command.frame)
         is ProductionCommand.SelectSliceAt -> error("Selection is handled before edit admission")
         ProductionCommand.ToggleSelectedPadPerformanceMode -> toggleSelectedPadPerformanceMode(state)
+        ProductionCommand.CreateQuickSketch -> createQuickSketch(state)
+        is ProductionCommand.SelectPatternVariation -> arrangementCommandResult(
+            state,
+            state.selectPatternVariation(command.slot),
+        )
+        ProductionCommand.DuplicateSelectedPatternToOther -> arrangementCommandResult(
+            state,
+            state.duplicateSelectedPatternToOther(),
+        )
+        is ProductionCommand.ToggleSongSectionPattern -> arrangementCommandResult(
+            state,
+            state.toggleSongSectionPattern(command.sectionIndex),
+        )
+        ProductionCommand.ToggleSongMode -> arrangementCommandResult(state, state.toggleSongMode())
     }
 }
+
+fun canCreateQuickSketch(state: SamplerUiState): Boolean =
+    quickSketchPreconditionMessage(state) == null
 
 fun minimumChopFrames(sampleRate: Int): Int =
     (sampleRate.coerceAtLeast(1) * MINIMUM_CHOP_SECONDS).toInt().coerceAtLeast(64)
@@ -69,26 +91,25 @@ fun snapFrameToZeroCrossing(
     lowerBound: Int,
     upperBound: Int,
 ): Int {
-    val samples = audio.samples
-    if (samples.size < 2) return targetFrame.coerceIn(lowerBound, upperBound)
+    if (audio.frameCount < 2) return targetFrame.coerceIn(lowerBound, upperBound)
 
-    val safeLower = lowerBound.coerceIn(0, samples.size)
-    val safeUpper = upperBound.coerceIn(safeLower, samples.size)
+    val safeLower = lowerBound.coerceIn(0, audio.frameCount)
+    val safeUpper = upperBound.coerceIn(safeLower, audio.frameCount)
     val target = targetFrame.coerceIn(safeLower, safeUpper)
-    if (target == 0 || target == samples.size) return target
+    if (target == 0 || target == audio.frameCount) return target
 
     val radius = (audio.sampleRate * ZERO_CROSSING_SEARCH_SECONDS)
         .toInt()
         .coerceIn(32, 1_024)
     val from = maxOf(1, safeLower, target - radius)
-    val to = minOf(samples.lastIndex, safeUpper, target + radius)
+    val to = minOf(audio.frameCount - 1, safeUpper, target + radius)
     if (from > to) return target
 
     var bestCrossing = -1
     var bestDistance = Int.MAX_VALUE
     for (frame in from..to) {
-        val previous = samples[frame - 1].toInt()
-        val current = samples[frame].toInt()
+        val previous = audio.monoSampleAt(frame - 1).toInt()
+        val current = audio.monoSampleAt(frame).toInt()
         val crossesZero =
             (previous <= 0 && current >= 0) || (previous >= 0 && current <= 0)
         if (crossesZero) {
@@ -102,9 +123,9 @@ fun snapFrameToZeroCrossing(
     if (bestCrossing >= 0) return bestCrossing
 
     var quietestFrame = target
-    var quietestMagnitude = kotlin.math.abs(samples[target].toInt())
+    var quietestMagnitude = kotlin.math.abs(audio.monoSampleAt(target).toInt())
     for (frame in from..to) {
-        val magnitude = kotlin.math.abs(samples[frame].toInt())
+        val magnitude = kotlin.math.abs(audio.monoSampleAt(frame).toInt())
         if (magnitude < quietestMagnitude) {
             quietestFrame = frame
             quietestMagnitude = magnitude
@@ -278,6 +299,114 @@ private fun toggleSelectedPadPerformanceMode(state: SamplerUiState): ProductionC
     )
 }
 
+private fun createQuickSketch(state: SamplerUiState): ProductionCommandResult =
+    when (val evaluation = quickSketchEvaluation(state)) {
+        is QuickSketchEvaluation.Rejected -> sessionFeedback(state, evaluation.message)
+        is QuickSketchEvaluation.Ready -> {
+            val audio = requireNotNull(state.currentAudio)
+            val pads = state.pads.toMutableList()
+            evaluation.ranges.forEachIndexed { index, range ->
+                pads[index] = pads[index].copy(
+                    audio = audio,
+                    startFrame = range.startFrame,
+                    endFrame = range.endFrame,
+                    contentKind = PadContentKind.SAMPLE,
+                )
+            }
+            val melodySteps = evaluation.ranges.indices
+                .mapTo(mutableSetOf()) { index -> stepKey(index, index * 2) }
+            val updatedPads = pads.take(QUICK_SKETCH_SLICE_COUNT)
+            ProductionCommandResult(
+                state = state.copy(
+                    sliceMarkers = evaluation.ranges.dropLast(1).map(SliceRange::endFrame),
+                    activeSliceIndex = 0,
+                    manualChopEnabled = false,
+                    selectedBank = 0,
+                    selectedPad = 0,
+                    pads = pads,
+                    activeSteps = state.activeSteps + melodySteps,
+                    statusMessage = "8つの下書きを作りました。気に入らなければ元に戻せます",
+                ),
+                mutation = ProductionMutation.PROJECT,
+                effects = updatedPads.map(ProductionEffect::RefreshPad) + ProductionEffect.RefreshPattern,
+            )
+        }
+    }
+
+private sealed interface QuickSketchEvaluation {
+    data class Ready(val ranges: List<SliceRange>) : QuickSketchEvaluation
+    data class Rejected(val message: String) : QuickSketchEvaluation
+}
+
+private fun quickSketchEvaluation(state: SamplerUiState): QuickSketchEvaluation {
+    quickSketchPreconditionMessage(state)?.let { message ->
+        return QuickSketchEvaluation.Rejected(message)
+    }
+    val audio = requireNotNull(state.currentAudio)
+    val start = state.rangeStartFrame.coerceIn(0, audio.frameCount)
+    val end = state.rangeEndFrame.coerceIn(start, audio.frameCount)
+    val minimum = minimumChopFrames(audio.sampleRate)
+    val boundaries = ArrayList<Int>(QUICK_SKETCH_SLICE_COUNT + 1)
+    boundaries += start
+    val length = end - start
+    for (index in 1 until QUICK_SKETCH_SLICE_COUNT) {
+        val lower = boundaries.last() + minimum
+        val remainingSlices = QUICK_SKETCH_SLICE_COUNT - index
+        val upper = end - minimum * remainingSlices
+        if (lower > upper) {
+            return QuickSketchEvaluation.Rejected(QUICK_SKETCH_UNSAFE_MESSAGE)
+        }
+        val ideal = start + (length.toLong() * index / QUICK_SKETCH_SLICE_COUNT).toInt()
+        val boundary = snapFrameToZeroCrossing(
+            audio = audio,
+            targetFrame = ideal.coerceIn(lower, upper),
+            lowerBound = lower,
+            upperBound = upper,
+        )
+        if (boundary !in lower..upper || boundary <= boundaries.last()) {
+            return QuickSketchEvaluation.Rejected(QUICK_SKETCH_UNSAFE_MESSAGE)
+        }
+        boundaries += boundary
+    }
+    boundaries += end
+    val ranges = boundaries.zipWithNext(::SliceRange)
+    if (ranges.size != QUICK_SKETCH_SLICE_COUNT || ranges.any { it.length < minimum }) {
+        return QuickSketchEvaluation.Rejected(QUICK_SKETCH_UNSAFE_MESSAGE)
+    }
+    return QuickSketchEvaluation.Ready(ranges)
+}
+
+private fun quickSketchPreconditionMessage(state: SamplerUiState): String? {
+    if (state.isLoading) return "現在の処理が終わってから編集してください"
+    if (!editingRequestAllowedDuringRecording(state.recordingSession)) {
+        return "録音をSTOPしてから編集してください"
+    }
+    val audio = state.currentAudio
+        ?: return "先に素材を入れてください。制作は変更していません"
+    if (state.pads.size < SamplerConfig.PADS_PER_BANK ||
+        state.pads.take(SamplerConfig.PADS_PER_BANK).any(PadModel::isAssigned)
+    ) {
+        return "BANK Aに音があるため、下書きは作らず制作を変更していません"
+    }
+    val hasMelodyStep = state.activeSteps.any { key ->
+        val padIndex = key / SamplerConfig.STEP_COUNT
+        padIndex in 0 until SamplerConfig.PADS_PER_BANK
+    }
+    if (hasMelodyStep) {
+        return "BANK Aに配置があるため、下書きは作らず制作を変更していません"
+    }
+    if (state.sliceMarkers.isNotEmpty()) {
+        return "手動のチョップ位置があるため、下書きは作らず制作を変更していません"
+    }
+    val start = state.rangeStartFrame.coerceIn(0, audio.frameCount)
+    val end = state.rangeEndFrame.coerceIn(start, audio.frameCount)
+    val minimum = minimumChopFrames(audio.sampleRate)
+    if (end.toLong() - start < minimum.toLong() * QUICK_SKETCH_SLICE_COUNT) {
+        return "選択範囲が短く、8つの下書きを作れません。制作は変更していません"
+    }
+    return null
+}
+
 private fun classifiedResult(
     before: SamplerUiState,
     after: SamplerUiState,
@@ -294,6 +423,26 @@ private fun classifiedResult(
         mutation = ProductionMutation.SESSION,
     )
     else -> unchanged(before)
+}
+
+private fun arrangementCommandResult(
+    before: SamplerUiState,
+    after: SamplerUiState,
+): ProductionCommandResult {
+    val projectChanged = before.activeSteps != after.activeSteps ||
+        before.patternArrangement != after.patternArrangement
+    return when {
+        projectChanged -> ProductionCommandResult(
+            state = after,
+            mutation = ProductionMutation.PROJECT,
+            effects = listOf(ProductionEffect.RefreshPattern),
+        )
+        after != before -> ProductionCommandResult(
+            state = after,
+            mutation = ProductionMutation.SESSION,
+        )
+        else -> unchanged(before)
+    }
 }
 
 private fun sessionFeedback(
@@ -314,3 +463,6 @@ private fun unchanged(state: SamplerUiState): ProductionCommandResult = Producti
 
 private const val MINIMUM_CHOP_SECONDS = 0.008f
 private const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
+private const val QUICK_SKETCH_SLICE_COUNT = 8
+private const val QUICK_SKETCH_UNSAFE_MESSAGE =
+    "安全な8つの境界を作れないため、制作は変更していません"

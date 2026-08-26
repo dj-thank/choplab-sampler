@@ -4,6 +4,7 @@ import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
@@ -13,7 +14,9 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activePhaseFor
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.hasAudiblePlaybackPatternContent
 import com.choplab.sampler.model.inferProjectLaunchTarget
+import com.choplab.sampler.model.materializedPatternArrangement
 
 enum class WorkflowStage(
     val label: String,
@@ -45,11 +48,175 @@ fun initialWorkflowStage(state: SamplerUiState): WorkflowStage = when (
     ProjectLaunchTarget.BEAT -> WorkflowStage.BEAT
 }
 
-fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean = when (stage) {
-    WorkflowStage.CAPTURE -> true
-    WorkflowStage.CHOP -> state.currentAudio != null
-    WorkflowStage.BEAT -> state.pads.any(PadModel::isAssigned)
-    WorkflowStage.FINISH -> state.currentAudio != null || state.pads.any(PadModel::isAssigned)
+data class WorkflowStageAvailability(
+    val enabled: Boolean,
+    val blockedReason: String?,
+)
+
+fun workflowStageAvailability(
+    stage: WorkflowStage,
+    state: SamplerUiState,
+): WorkflowStageAvailability = when (stage) {
+    WorkflowStage.CAPTURE -> WorkflowStageAvailability(enabled = true, blockedReason = null)
+    WorkflowStage.CHOP -> if (state.currentAudio != null) {
+        WorkflowStageAvailability(enabled = true, blockedReason = null)
+    } else {
+        WorkflowStageAvailability(
+            enabled = false,
+            blockedReason = "曲を読み込むか録音すると使えます",
+        )
+    }
+    WorkflowStage.BEAT -> if (state.pads.any(PadModel::isAssigned)) {
+        WorkflowStageAvailability(enabled = true, blockedReason = null)
+    } else {
+        WorkflowStageAvailability(
+            enabled = false,
+            blockedReason = "チョップでPADに音を入れると使えます",
+        )
+    }
+    WorkflowStage.FINISH -> if (state.currentAudio != null || state.pads.any(PadModel::isAssigned)) {
+        WorkflowStageAvailability(enabled = true, blockedReason = null)
+    } else {
+        WorkflowStageAvailability(
+            enabled = false,
+            blockedReason = "音源か音の入ったPADを用意すると使えます",
+        )
+    }
+}
+
+fun workflowStageEnabled(stage: WorkflowStage, state: SamplerUiState): Boolean =
+    workflowStageAvailability(stage, state).enabled
+
+fun workflowStageStateDescription(availability: WorkflowStageAvailability): String =
+    if (availability.enabled) {
+        "利用できます"
+    } else {
+        "まだ使えません。${availability.blockedReason ?: "準備が必要です"}"
+    }
+
+enum class DocumentAction {
+    IMPORT_AUDIO,
+    OPEN_PROJECT,
+    SAVE_PROJECT,
+    EXPORT_WAV,
+}
+
+fun documentPickerCanceledMessage(action: DocumentAction): String = when (action) {
+    DocumentAction.IMPORT_AUDIO -> "音声の選択をキャンセルしました。現在の制作はそのままです"
+    DocumentAction.OPEN_PROJECT -> "制作を開くのをキャンセルしました。現在の制作はそのままです"
+    DocumentAction.SAVE_PROJECT -> "保存先の選択をキャンセルしました。アプリ内の自動保存は続きます"
+    DocumentAction.EXPORT_WAV -> "WAVの保存をキャンセルしました。制作はそのままです"
+}
+
+fun documentCompletionMessage(
+    action: DocumentAction,
+    destinationName: String? = null,
+    detail: String? = null,
+): String {
+    val safeName = safeDocumentDisplayText(destinationName, maxLength = 80)
+    val safeDetail = safeDocumentDisplayText(detail, maxLength = 48, stripPath = false)
+    val detailText = safeDetail?.let { "（$it）" }.orEmpty()
+    return when (action) {
+        DocumentAction.IMPORT_AUDIO ->
+            safeName?.let { "$it を読み込みました" } ?: "音声を読み込みました"
+        DocumentAction.OPEN_PROJECT ->
+            safeName?.let { "$it を開きました" } ?: "制作を開きました"
+        DocumentAction.SAVE_PROJECT -> if (safeName != null) {
+            "$safeName に制作を保存しました。アプリ内の安全コピーも保持しています"
+        } else {
+            "制作を選んだ保存先へ保存しました。アプリ内の安全コピーも保持しています"
+        }
+        DocumentAction.EXPORT_WAV -> if (safeName != null) {
+            "$safeName にWAVを書き出しました$detailText。制作はアプリ内に残っています"
+        } else {
+            "WAVを選んだ保存先に書き出しました$detailText。制作はアプリ内に残っています"
+        }
+    }
+}
+
+private fun safeDocumentDisplayText(
+    value: String?,
+    maxLength: Int,
+    stripPath: Boolean = true,
+): String? {
+    val firstLine = value
+        ?.substringBefore('\n')
+        ?.substringBefore('\r')
+        ?.substringBefore('\u0000')
+        ?.trim()
+        .orEmpty()
+    if (firstLine.isEmpty()) return null
+    val leaf = if (stripPath) {
+        firstLine.substringAfterLast('/').substringAfterLast('\\')
+    } else {
+        firstLine
+    }
+    return leaf
+        .filterNot { character -> character.code < 0x20 || character.code == 0x7F }
+        .take(maxLength)
+        .trim()
+        .takeIf(String::isNotEmpty)
+}
+
+data class WorkflowNextActionPresentation(
+    val stage: WorkflowStage?,
+    val title: String,
+    val guidance: String,
+)
+
+fun workflowNextActionPresentation(state: SamplerUiState): WorkflowNextActionPresentation {
+    if (state.isLoading) {
+        return WorkflowNextActionPresentation(
+            stage = null,
+            title = "NEXT 待つ",
+            guidance = "音声の読込が終わるまで待ちます",
+        )
+    }
+    val recording = state.recordingSession as? RecordingSession.Active
+    if (recording != null) {
+        return if (recording.phase == RecordingPhase.STOPPING) {
+            WorkflowNextActionPresentation(
+                stage = null,
+                title = "NEXT 待つ",
+                guidance = "録音の停止と保存が終わるまで待ちます",
+            )
+        } else {
+            WorkflowNextActionPresentation(
+                stage = null,
+                title = "NEXT 録音を止める",
+                guidance = "上の停止ボタンで録音を保存します",
+            )
+        }
+    }
+
+    val anyAssignedPad = state.pads.any(PadModel::isAssigned)
+    val sourceHasChop = state.currentAudio?.let { source ->
+        state.pads.any { pad -> pad.isAssigned && pad.audio?.id == source.id }
+    } ?: false
+    return when {
+        state.currentAudio == null && (
+            !anyAssignedPad || BuiltInDrumKits.isPristineStarterProduction(state)
+        ) -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.CAPTURE,
+            title = "NEXT 1 入れる",
+            guidance = "曲を読み込むか録音します",
+        )
+        state.currentAudio != null && !sourceHasChop -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.CHOP,
+            title = "NEXT 2 チョップ",
+            guidance = "曲を流し、空PADを押します",
+        )
+        !state.hasAudiblePlaybackPatternContent() -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.BEAT,
+            title = "NEXT 3 ビート",
+            guidance = "音ありPADをループするか、鳴るマスを置きます",
+        )
+        else -> WorkflowNextActionPresentation(
+            stage = WorkflowStage.FINISH,
+            title = "NEXT 4 保存",
+            guidance = "再生で確認し、制作またはWAVを保存します",
+        )
+    }
 }
 
 fun reconcileWorkflowStage(stage: WorkflowStage, state: SamplerUiState): WorkflowStage =
@@ -59,6 +226,57 @@ data class BeatWorkspaceSurface(
     val showPadGrid: Boolean,
     val showDetailedSequencer: Boolean,
 )
+
+internal data class BeatWorkspaceModeSurface(
+    val showPadGrid: Boolean,
+    val showFocusedStepEditor: Boolean,
+    val showDetailedSequencer: Boolean,
+)
+
+internal enum class BeatWorkspaceMode {
+    QUICK,
+    FOCUSED_STEPS,
+    FINE_CONTROLS,
+}
+
+internal enum class BeatWorkspaceAction {
+    SHOW_QUICK,
+    SHOW_FOCUSED_STEPS,
+    SHOW_FINE_CONTROLS,
+}
+
+internal fun restoreBeatWorkspaceMode(name: String?): BeatWorkspaceMode =
+    BeatWorkspaceMode.entries.firstOrNull { it.name == name } ?: BeatWorkspaceMode.QUICK
+
+internal fun transitionBeatWorkspace(
+    current: BeatWorkspaceMode,
+    action: BeatWorkspaceAction,
+): BeatWorkspaceMode {
+    val target = when (action) {
+        BeatWorkspaceAction.SHOW_QUICK -> BeatWorkspaceMode.QUICK
+        BeatWorkspaceAction.SHOW_FOCUSED_STEPS -> BeatWorkspaceMode.FOCUSED_STEPS
+        BeatWorkspaceAction.SHOW_FINE_CONTROLS -> BeatWorkspaceMode.FINE_CONTROLS
+    }
+    return if (target == current) current else target
+}
+
+internal fun beatWorkspaceSurface(mode: BeatWorkspaceMode): BeatWorkspaceModeSurface = when (mode) {
+    BeatWorkspaceMode.QUICK -> BeatWorkspaceModeSurface(
+        showPadGrid = true,
+        showFocusedStepEditor = false,
+        showDetailedSequencer = false,
+    )
+    BeatWorkspaceMode.FOCUSED_STEPS -> BeatWorkspaceModeSurface(
+        showPadGrid = false,
+        showFocusedStepEditor = true,
+        showDetailedSequencer = false,
+    )
+    BeatWorkspaceMode.FINE_CONTROLS -> BeatWorkspaceModeSurface(
+        showPadGrid = false,
+        showFocusedStepEditor = false,
+        showDetailedSequencer = true,
+    )
+}
 
 fun beatWorkspaceSurface(showFineControls: Boolean): BeatWorkspaceSurface = BeatWorkspaceSurface(
     showPadGrid = !showFineControls,
@@ -131,6 +349,27 @@ fun captureEntryPresentation(state: SamplerUiState): CaptureEntryPresentation {
     )
 }
 
+data class CaptureEntryActionPresentation(
+    val loadAudioLabel: String,
+    val openProjectLabel: String,
+    val recordingSectionTitle: String,
+    val starterDemoTitle: String,
+    val starterDemoGuidance: String,
+    val starterDemoActionLabel: String,
+    val starterDemoCompactActionLabel: String,
+)
+
+fun captureEntryActionPresentation(): CaptureEntryActionPresentation =
+    CaptureEntryActionPresentation(
+        loadAudioLabel = "曲を読み込む\nLOAD AUDIO",
+        openProjectLabel = "制作を開く\nOPEN PROJECT",
+        recordingSectionTitle = "録音から始める",
+        starterDemoTitle = "すぐ試す  DUSTY JAZZデモ",
+        starterDemoGuidance = "PAD、ビート、保存を音入りで試せます",
+        starterDemoActionLabel = "デモを試す\nTRY BEAT",
+        starterDemoCompactActionLabel = "デモを試す",
+    )
+
 data class FinishReadinessPresentation(
     val title: String,
     val guidance: String,
@@ -139,8 +378,8 @@ data class FinishReadinessPresentation(
 fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentation =
     if (readyForWav) {
         FinishReadinessPresentation(
-            title = "ビートを書き出せます",
-            guidance = "操作は端末内へ自動保存。再生で確認し、4小節WAVにもできます。",
+            title = "制作を保存・書き出し",
+            guidance = "制作は端末内へ自動保存。必要なら制作ファイルを保存し、再生で確認して4小節WAVを書き出せます。",
         )
     } else {
         FinishReadinessPresentation(
@@ -148,6 +387,17 @@ fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentati
             guidance = "WAVはまだ準備中です。『ビート』で鳴らすマスを光らせてください。",
         )
     }
+
+data class FinishClearActionPresentation(
+    val label: String,
+    val confirmLabel: String,
+)
+
+fun finishClearActionPresentation(): FinishClearActionPresentation =
+    FinishClearActionPresentation(
+        label = "ビート配置を消す\nCLEAR STEPS",
+        confirmLabel = "もう一度で配置を削除",
+    )
 
 data class CaptureInputPolicy(
     val fileEnabled: Boolean,
@@ -265,7 +515,8 @@ fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
     !BuiltInDrumKits.isPristineStarterProduction(state) && (
         state.currentAudio != null ||
             state.pads.any(PadModel::isAssigned) ||
-            state.activeSteps.isNotEmpty()
+            state.activeSteps.isNotEmpty() ||
+            state.materializedPatternArrangement() != PatternArrangement()
         )
 
 data class ChopSessionPresentation(

@@ -25,6 +25,8 @@ import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.assignLiveChopToPad
+import com.choplab.sampler.model.chokeLoopSessionTransition
+import com.choplab.sampler.model.clearEveryPattern
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.restorePadTrimSnapshot
@@ -43,11 +45,17 @@ import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
+import com.choplab.sampler.model.patternSequenceForExport
+import com.choplab.sampler.model.patternSequenceForPlayback
+import com.choplab.sampler.model.removePadFromEveryPattern
+import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.PendingSourceCommand
 import com.choplab.sampler.model.ProjectOperationEpoch
@@ -62,6 +70,8 @@ import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadS
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
+import com.choplab.sampler.ui.DocumentAction
+import com.choplab.sampler.ui.documentCompletionMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,9 +79,11 @@ import kotlinx.coroutines.flow.update
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * JVM shell for the shared deck. Audio/filesystem/permission work stays here;
@@ -84,6 +96,7 @@ class DesktopSamplerController(
     private val autosaveStore: AtomicProjectStore? = defaultAutosaveStore(),
     private val autosaveDelayMillis: Long = 900L,
     private val recoverAutosaveOnStart: Boolean = true,
+    private val preserveAutosaveUntilInitialProjectReplacement: Boolean = false,
 ) : SamplerDeckController, AutoCloseable {
     private val mutableState = MutableStateFlow(
         SamplerUiState(
@@ -97,7 +110,11 @@ class DesktopSamplerController(
     )
     private val productionSession = ProductionSession(maxHistoryEntries = 40)
     private val projectOperations = ProjectOperationEpoch()
+    private val recoveryOperations = ProjectOperationEpoch()
+    private val statusOperations = ProjectOperationEpoch()
+    private val sourceLoadOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
+    internal var recoveredHydrationAdmission: () -> Unit = {}
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
         onStep = ::onTransportStep,
@@ -114,7 +131,22 @@ class DesktopSamplerController(
     private val ioExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "ChopLab-Windows-Project-IO").apply { isDaemon = true }
     }
-    @Volatile private var autosaveFuture: ScheduledFuture<*>? = null
+    private val autosaveLifecycleLock = Any()
+    private var autosaveWork: AutosaveWork? = null
+    private var startupRecoveryFuture: Future<*>? = null
+    private var startupRecoveryOutcome = if (autosaveStore != null && recoverAutosaveOnStart) {
+        StartupRecoveryOutcome.PENDING
+    } else {
+        StartupRecoveryOutcome.NOT_REQUESTED
+    }
+    private var startupRecoveryFailureRevision: Long? = null
+    private var startupRecoveryDurableRevision: Long? = null
+    private var closed = false
+    private val sourcePlaybackLoadLock = ReentrantLock()
+    @Volatile private var closePlayerAfterSourceLoad = false
+    private var sourcePlayerClosed = false
+    private val sourcePlaybackStateLock = Any()
+    private var sourcePlaybackAvailability: SourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
     private val projectLaunchRevision = AtomicLong(0L)
@@ -122,13 +154,14 @@ class DesktopSamplerController(
 
     init {
         if (autosaveStore != null && recoverAutosaveOnStart) {
-            recoverAutosave()
+            startupRecoveryFuture = recoverAutosave()
         } else {
             mutableState.value = freshProductionState()
         }
     }
 
     fun loadWav(file: File) {
+        statusOperations.invalidate()
         val operation = projectOperations.begin()
         stopCompetingPlayback()
         mutableState.update { it.copy(isLoading = true, statusMessage = "${file.name}を解析しています") }
@@ -136,10 +169,11 @@ class DesktopSamplerController(
             runCatching { DesktopWavDecoder.decode(file) }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
-                        val playbackFailure = runCatching { player.loadPcm(audio) }.exceptionOrNull()
+                        recoveryOperations.invalidate()
+                        val playbackFailure = loadSourcePcm(audio)
                         val next = BuiltInDrumKits.installStarterKit(
                             SamplerUiState(
-                                statusMessage = playbackFailure?.let { "音声は読込済みですが再生機器を開けません: ${it.message}" }
+                                statusMessage = playbackFailure?.let(::sourcePlaybackFailureMessage)
                                     ?: "${file.name}を読み込みました。チョップで音を切ってください",
                                 currentAudio = audio,
                                 rangeEndFrame = audio.frameCount,
@@ -165,24 +199,43 @@ class DesktopSamplerController(
     fun toggleVocalRecording() = toggleRecording(RecordingKind.VOCAL_OVERDUB)
     fun exportBeat() = setStatus("保存先を選択してください")
     fun exportBeat(outputFile: File) {
-        val operation = projectOperations.begin()
+        val operation = statusOperations.begin()
         val snapshot = mutableState.value
+        val exportSequence = snapshot.patternSequenceForExport().map { steps ->
+            steps.audibleStepKeys(snapshot.pads)
+        }
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
             runCatching {
-                PatternRenderer.renderToWav(outputFile, snapshot.pads, snapshot.activeSteps, snapshot.bpm, snapshot.swing)
+                PatternRenderer.renderSequenceToWav(
+                    outputFile = outputFile,
+                    pads = snapshot.pads,
+                    patternSequence = exportSequence,
+                    bpm = snapshot.bpm,
+                    swing = snapshot.swing,
+                )
             }.onSuccess {
-                projectOperations.completeIfCurrent(operation) {
-                    mutableState.update { it.copy(isLoading = false, statusMessage = "${outputFile.name}を書き出しました") }
+                statusOperations.completeIfCurrent(operation) {
+                    mutableState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = documentCompletionMessage(
+                                action = DocumentAction.EXPORT_WAV,
+                                destinationName = outputFile.name,
+                                detail = "4小節",
+                            ),
+                        )
+                    }
                 }
             }.onFailure { error ->
-                projectOperations.completeIfCurrent(operation) {
+                statusOperations.completeIfCurrent(operation) {
                     mutableState.update { it.copy(isLoading = false, statusMessage = "WAV書き出し失敗: ${error.message ?: error.javaClass.simpleName}") }
                 }
             }
         }
     }
     fun openProject(file: File) {
+        statusOperations.invalidate()
         val operation = projectOperations.begin()
         stopCompetingPlayback()
         mutableState.update { it.copy(isLoading = true, statusMessage = "${file.name}を開いています") }
@@ -190,6 +243,7 @@ class DesktopSamplerController(
             runCatching { DesktopProjectFiles.load(file) }
                 .onSuccess { restored ->
                     projectOperations.completeIfCurrent(operation) {
+                        recoveryOperations.invalidate()
                         val transition = productionSession.replaceProject(restored)
                         applyHistoryState(
                             restored = transition.state,
@@ -211,18 +265,26 @@ class DesktopSamplerController(
     }
 
     fun saveProject(file: File) {
-        val operation = projectOperations.begin()
+        val operation = statusOperations.begin()
         val snapshot = mutableState.value
         mutableState.update { it.copy(isLoading = true, statusMessage = "制作を保存しています") }
         ioExecutor.execute {
             runCatching { DesktopProjectFiles.save(file, snapshot) }
                 .onSuccess { written ->
-                    projectOperations.completeIfCurrent(operation) {
-                        mutableState.update { it.copy(isLoading = false, statusMessage = "${written.name}を保存しました") }
+                    statusOperations.completeIfCurrent(operation) {
+                        mutableState.update {
+                            it.copy(
+                                isLoading = false,
+                                statusMessage = documentCompletionMessage(
+                                    action = DocumentAction.SAVE_PROJECT,
+                                    destinationName = written.name,
+                                ),
+                            )
+                        }
                     }
                 }
                 .onFailure { error ->
-                    projectOperations.completeIfCurrent(operation) {
+                    statusOperations.completeIfCurrent(operation) {
                         mutableState.update { it.copy(isLoading = false, statusMessage = "制作保存失敗: ${error.message ?: error.javaClass.simpleName}") }
                     }
                 }
@@ -260,7 +322,7 @@ class DesktopSamplerController(
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
             val loopPlaybackFailure = if (loopPad != null) {
                 stopAllSounds()
-                runCatching { player.triggerPad(loopPad, forceLoop = true) }.exceptionOrNull()
+                runCatching { triggerPlayerPad(loopPad, forceLoop = true) }.exceptionOrNull()
             } else {
                 null
             }
@@ -312,6 +374,7 @@ class DesktopSamplerController(
     }
 
     private fun stopRecording(kind: RecordingKind) {
+        statusOperations.invalidate()
         val operation = projectOperations.begin()
         mutableState.update { it.copy(recordingSession = (it.recordingSession as? RecordingSession.Active)?.copy(phase = RecordingPhase.STOPPING) ?: it.recordingSession) }
         ioExecutor.execute {
@@ -321,6 +384,7 @@ class DesktopSamplerController(
                 .mapCatching { file -> file to DesktopWavDecoder.decode(file) }
                 .onSuccess { (_, audio) ->
                     projectOperations.completeIfCurrent(operation) {
+                        recoveryOperations.invalidate()
                         val current = mutableState.value
                         val next = if (kind == RecordingKind.VOCAL_OVERDUB) {
                             val target = current.pads.nextVocalPadIndex()
@@ -355,7 +419,12 @@ class DesktopSamplerController(
                         }
                         val transition = productionSession.applyEdit(current, next)
                         mutableState.value = transition.state
-                        runCatching { player.loadPcm(audio) }.onFailure { error ->
+                        val playbackFailure = if (kind == RecordingKind.VOCAL_OVERDUB) {
+                            runCatching { player.loadPcm(audio) }.exceptionOrNull()
+                        } else {
+                            loadSourcePcm(audio)
+                        }
+                        playbackFailure?.let { error ->
                             setStatus("録音は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}")
                         }
                         scheduleAutosave()
@@ -377,8 +446,14 @@ class DesktopSamplerController(
     fun setStatus(message: String) = mutableState.update { it.copy(statusMessage = message) }
 
     override fun resetProject() {
+        statusOperations.invalidate()
         projectOperations.invalidate()
+        recoveryOperations.invalidate()
+        sourceLoadOperations.invalidate()
         stopCompetingPlayback()
+        synchronized(sourcePlaybackStateLock) {
+            sourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
+        }
         mutableState.value = productionSession.replaceProject(freshProductionState()).state
         scheduleAutosave()
     }
@@ -459,19 +534,57 @@ class DesktopSamplerController(
     }
 
     override fun triggerPad(index: Int) {
+        triggerPadAndReturnOwnership(index)
+    }
+
+    override fun triggerPadWithOwnership(index: Int): Long =
+        triggerPadAndReturnOwnership(index) ?: 0L
+
+    private fun triggerPadAndReturnOwnership(index: Int): Long? {
         val pad = mutableState.value.pads.getOrNull(index)
         if (pad?.isAssigned == true) {
-            player.triggerPad(pad)
+            if (!stopChokedLoopSessionBeforeTrigger(index)) return null
+            val ownership = triggerPlayerPad(pad)
             val beforeRecord = mutableState.value
             if (beforeRecord.recordArmed && beforeRecord.transportPlaying && beforeRecord.currentStep >= 0) {
                 commitEdit { it.copy(activeSteps = it.activeSteps + stepKey(index, it.currentStep)) }
             }
             mutableState.update { it.copy(selectedPad = index, statusMessage = "PAD ${index + 1}を再生中です") }
+            return ownership
         } else {
             selectPad(index)
+            return null
         }
     }
-    override fun releasePad(index: Int) = player.releasePad(index)
+
+    override fun releasePad(index: Int) {
+        player.releasePad(index)
+    }
+
+    override fun releasePadIfOwned(index: Int, ownership: Long) {
+        if (ownership != 0L) player.releasePadIfOwned(index, ownership)
+    }
+
+    private fun triggerPlayerPad(pad: PadModel, forceLoop: Boolean = false): Long =
+        player.triggerPad(pad, forceLoop)
+
+    private fun stopChokedLoopSessionBeforeTrigger(index: Int): Boolean {
+        val transition = mutableState.value.chokeLoopSessionTransition(index)
+        if (!transition.stopsLoopSession) return true
+        val stopFailure = runCatching {
+            transition.padIndicesToStop.forEach(player::stopPad)
+        }.exceptionOrNull()
+        if (stopFailure != null) {
+            setStatus(
+                "CHOKEでビートループを停止できないためPADを再生しませんでした: " +
+                    (stopFailure.message ?: stopFailure.javaClass.simpleName),
+            )
+            return false
+        }
+        mutableState.value = transition.state
+        return true
+    }
+
     override fun previewPad(index: Int) {
         stopCompetingPlayback()
         triggerPad(index)
@@ -479,14 +592,24 @@ class DesktopSamplerController(
     override fun playSourceFrom(frame: Int) {
         val state = mutableState.value
         if (state.currentAudio == null) return
+        if (!sourcePlaybackIsReady()) return
         val safe = frame.coerceIn(0, state.rangeEndFrame)
         stopCompetingPlayback()
-        player.playFrom(safe)
+        val playbackFailure = runCatching { player.playFrom(safe) }.exceptionOrNull()
+        if (playbackFailure != null) {
+            publishSourcePlaybackFailure(playbackFailure)
+            return
+        }
         mutableState.update { it.copy(sourcePlayheadFrame = safe, sourcePlaying = true, statusMessage = "元曲を再生中です") }
     }
     override fun seekSourcePlayback(frame: Int) {
+        if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return
         val safe = frame.coerceIn(0, mutableState.value.rangeEndFrame)
-        player.seekSource(safe)
+        val playbackFailure = runCatching { player.seekSource(safe) }.exceptionOrNull()
+        if (playbackFailure != null) {
+            publishSourcePlaybackFailure(playbackFailure)
+            return
+        }
         mutableState.update { it.copy(sourcePlayheadFrame = safe) }
     }
     override fun toggleSourcePlayback() = toggleSource(!mutableState.value.sourcePlaying)
@@ -619,8 +742,13 @@ class DesktopSamplerController(
         val state = mutableState.value
         if (state.currentAudio == null) return
         if (shouldPlay) {
+            if (!sourcePlaybackIsReady()) return
             stopCompetingPlayback()
-            player.playFrom(state.sourcePlayheadFrame)
+            val playbackFailure = runCatching { player.playFrom(state.sourcePlayheadFrame) }.exceptionOrNull()
+            if (playbackFailure != null) {
+                publishSourcePlaybackFailure(playbackFailure)
+                return
+            }
             mutableState.update { it.copy(sourcePlaying = true, statusMessage = "元曲を再生中です") }
         } else {
             val frame = player.sourceFramePosition().coerceIn(0, state.rangeEndFrame)
@@ -635,8 +763,14 @@ class DesktopSamplerController(
         val frame = mutableState.value.sourcePlayheadFrame
         commitEdit("master-pitch") { it.copy(masterPitchSemitones = pitch) }
         mutableState.value.currentAudio?.let { audio ->
-            player.loadPcm(audio, pitch)
-            if (wasPlaying) player.playFrom(frame)
+            val loadFailure = loadSourcePcm(audio, pitch)
+            if (loadFailure != null) {
+                runCatching { player.stop() }
+                publishSourcePlaybackFailure(loadFailure)
+            } else if (wasPlaying) {
+                val playbackFailure = runCatching { player.playFrom(frame) }.exceptionOrNull()
+                if (playbackFailure != null) publishSourcePlaybackFailure(playbackFailure)
+            }
         }
     }
     override fun setSelectedPadPitch(value: Float) = updateSelected("pad-pitch") { it.copy(pitchSemitones = value.coerceIn(-24f, 24f)) }
@@ -657,9 +791,8 @@ class DesktopSamplerController(
         val selected = mutableState.value.selectedPad
         player.stopPad(selected)
         commitEdit { state ->
-            state.copy(
+            state.removePadFromEveryPattern(selected).copy(
                 pads = state.pads.toMutableList().also { it[selected] = PadModel(selected) },
-                activeSteps = state.activeSteps.filterNot { key -> key / SamplerConfig.STEP_COUNT == selected }.toSet(),
                 loopingPadIndex = state.loopingPadIndex?.takeUnless { it == selected },
                 loopPlayheadFrame = if (state.loopingPadIndex == selected) -1 else state.loopPlayheadFrame,
                 statusMessage = "選択PADを消去しました",
@@ -675,7 +808,7 @@ class DesktopSamplerController(
         val pad = state.pads[state.selectedPad]
         state.copy(activeSteps = state.activeSteps.togglePadStep(pad, step))
     }
-    override fun clearAllPattern() = commitEdit { it.copy(activeSteps = emptySet()) }
+    override fun clearAllPattern() = commitEdit { it.clearEveryPattern() }
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
         val index = state.loopingPadIndex ?: state.selectedPad
@@ -683,6 +816,9 @@ class DesktopSamplerController(
         if (pad?.isAssigned != true) return setStatus("先に音の入ったPADを選んでください")
         if (state.loopingPadIndex == index) {
             player.stopPad(index)
+            state.pads
+                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+                .forEach(player::stopPad)
             mutableState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1, statusMessage = "ビートループを停止しました") }
             return
         }
@@ -699,10 +835,11 @@ class DesktopSamplerController(
             loopPad = pads[index]
             current.copy(pads = pads)
         }
-        player.triggerPad(loopPad, forceLoop = true)
+        triggerPlayerPad(loopPad, forceLoop = true)
         mutableState.value.pads
-            .filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-            .forEach(player::triggerPad)
+            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+            .map(mutableState.value.pads::get)
+            .forEach { triggerPlayerPad(it) }
         mutableState.update {
             it.copy(
                 loopingPadIndex = index,
@@ -762,14 +899,15 @@ class DesktopSamplerController(
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.copy(
+            state.replaceBankStepsAcrossPatterns(
+                bankStart = bankStart,
+                bankEndExclusive = bankEnd,
+                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            ).copy(
                 pads = pads,
                 selectedBank = bankIndex,
                 selectedPad = bankStart,
                 selectedDrumKitId = kitId,
-                activeSteps = state.activeSteps
-                    .filterNotTo(linkedSetOf()) { key -> key / SamplerConfig.STEP_COUNT in bankStart until bankEnd } +
-                    BuiltInDrumKits.starterPattern(kitId, bankIndex),
                 loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
                 loopPlayheadFrame = if (state.loopingPadIndex in bankStart until bankEnd) -1 else state.loopPlayheadFrame,
                 statusMessage = "${BuiltInDrumKits.catalog.first { it.id == kitId }.name} を BANK B ドラムにセット",
@@ -792,7 +930,7 @@ class DesktopSamplerController(
         val current = mutableState.value
         if (current.loopingPadIndex == selected && current.pads[selected].isAssigned) {
             player.stopPad(selected)
-            player.triggerPad(current.pads[selected], forceLoop = true)
+            triggerPlayerPad(current.pads[selected], forceLoop = true)
         }
     }
 
@@ -817,6 +955,7 @@ class DesktopSamplerController(
         restored: SamplerUiState,
         message: String,
         launchTarget: ProjectLaunchTarget? = null,
+        hydrateAudio: Boolean = true,
     ) {
         transport.stop()
         scratch.stop()
@@ -846,42 +985,217 @@ class DesktopSamplerController(
             canUndo = productionSession.canUndo,
             canRedo = productionSession.canRedo,
         )
+        if (!hydrateAudio) {
+            // Clear the old device state before publishing the recovered project. A state
+            // observer may synchronously apply pitch and load the source while publication
+            // is in progress; clearing after publication would erase that newer readiness.
+            synchronized(sourcePlaybackStateLock) {
+                sourcePlaybackAvailability = next.currentAudio?.let {
+                    SourcePlaybackAvailability.Pending(next.statusMessage)
+                } ?: SourcePlaybackAvailability.Unavailable
+            }
+        }
         mutableState.value = next
-        next.currentAudio?.let(player::loadPcm)
+        if (hydrateAudio) {
+            val playbackFailure = loadSourcePcm(next.currentAudio)
+            if (playbackFailure != null) setStatus(sourcePlaybackFailureMessage(playbackFailure))
+        }
     }
 
     private fun scheduleAutosave() {
         val store = autosaveStore ?: return
-        val snapshot = mutableState.value
-        autosaveFuture?.cancel(false)
-        autosaveFuture = persistenceExecutor.schedule(
-            {
-                runCatching { store.save(snapshot) }.onFailure { error ->
-                    mutableState.update { current ->
-                        current.copy(statusMessage = "自動保存失敗: ${error.message ?: error.javaClass.simpleName}")
+        val snapshot = AutosaveSnapshot(
+            state = mutableState.value,
+            revision = productionSession.revision,
+        )
+        synchronized(autosaveLifecycleLock) {
+            if (closed) return
+            autosaveWork
+                ?.takeIf { it.phase == AutosavePhase.SCHEDULED }
+                ?.let { pending ->
+                    if (pending.future?.cancel(false) == true) {
+                        pending.phase = AutosavePhase.CANCELLED
                     }
                 }
-            },
-            autosaveDelayMillis.coerceAtLeast(0L),
-            TimeUnit.MILLISECONDS,
-        )
+            autosaveWork = enqueueAutosaveLocked(
+                store = store,
+                snapshot = snapshot,
+                delayMillis = autosaveDelayMillis.coerceAtLeast(0L),
+            )
+        }
     }
 
-    private fun recoverAutosave() {
+    private fun enqueueAutosaveLocked(
+        store: AtomicProjectStore,
+        snapshot: AutosaveSnapshot,
+        delayMillis: Long,
+    ): AutosaveWork {
+        val work = AutosaveWork(snapshot)
+        work.future = persistenceExecutor.schedule(
+            { executeAutosave(store, work) },
+            delayMillis,
+            TimeUnit.MILLISECONDS,
+        )
+        return work
+    }
+
+    private fun executeAutosave(store: AtomicProjectStore, work: AutosaveWork) {
+        // Future.cancel(false) can succeed after its callable starts. Publish RUNNING
+        // under the lifecycle lock before touching the store so close waits this body.
+        val admitted = synchronized(autosaveLifecycleLock) {
+            if (work.phase != AutosavePhase.SCHEDULED) {
+                false
+            } else {
+                work.phase = AutosavePhase.RUNNING
+                true
+            }
+        }
+        if (!admitted) return
+        try {
+            work.savedSuccessfully = persistAutosave(store, work.snapshot.state)
+        } finally {
+            synchronized(autosaveLifecycleLock) {
+                work.phase = AutosavePhase.COMPLETED
+            }
+        }
+    }
+
+    private fun persistAutosave(store: AtomicProjectStore, snapshot: SamplerUiState): Boolean =
+        runCatching {
+            store.save(snapshot)
+            true
+        }.getOrElse { error ->
+            mutableState.update { current ->
+                current.copy(statusMessage = "自動保存失敗: ${error.message ?: error.javaClass.simpleName}")
+            }
+            false
+        }
+
+    private fun flushAutosaveOnClose(request: AutosaveCloseRequest) {
         val store = autosaveStore ?: return
-        persistenceExecutor.execute {
-            runCatching { store.loadWithRevision() }
-                .onSuccess { recovered ->
-                    if (recovered == null) {
-                        mutableState.value = productionSession.replaceProject(freshProductionState()).state
-                        scheduleAutosave()
+        if (
+            preserveAutosaveUntilInitialProjectReplacement &&
+            request.pending == null &&
+            request.snapshot.revision == 0L
+        ) {
+            // An explicit startup path owns the first project replacement. Until that
+            // replacement succeeds (or a real edit advances the revision), the fresh UI
+            // is only a placeholder and must not replace an existing autosave on close.
+            return
+        }
+        if (
+            request.startupRecoveryOutcome == StartupRecoveryOutcome.FAILED &&
+            request.pending == null &&
+            request.snapshot.revision == request.startupRecoveryFailureRevision
+        ) {
+            // A recovery error publishes an empty UI placeholder, not a new project.
+            // Keep the user's existing generations untouched unless a later edit owns work.
+            return
+        }
+        if (
+            request.startupRecoveryOutcome == StartupRecoveryOutcome.SUCCEEDED &&
+            request.pending == null &&
+            request.snapshot.revision == request.startupRecoveryDurableRevision
+        ) {
+            // Recovery was published without an editable mutation. The archive already owns
+            // this content, so a no-op launch/close must not rotate distinct older generations.
+            return
+        }
+        val workToAwait = synchronized(autosaveLifecycleLock) {
+            when (request.pending?.phase) {
+                AutosavePhase.SCHEDULED -> {
+                    if (request.pending.future?.cancel(false) == true) {
+                        request.pending.phase = AutosavePhase.CANCELLED
+                        enqueueAutosaveLocked(store, request.snapshot, delayMillis = 0L).also {
+                            autosaveWork = it
+                        }
                     } else {
-                        val restored = recovered.state
+                        request.pending
+                    }
+                }
+                AutosavePhase.RUNNING,
+                AutosavePhase.COMPLETED,
+                -> request.pending
+                AutosavePhase.CANCELLED -> enqueueAutosaveLocked(
+                    store = store,
+                    snapshot = request.snapshot,
+                    delayMillis = 0L,
+                ).also { autosaveWork = it }
+                null -> enqueueAutosaveLocked(
+                    store = store,
+                    snapshot = request.snapshot,
+                    delayMillis = 0L,
+                ).also { autosaveWork = it }
+            }
+        }
+        awaitAutosave(workToAwait)
+
+        // A project operation can publish a newer state while an older save is running,
+        // then lose scheduling admission because close has already claimed the lifecycle.
+        // Wait for the older body first, then persist the newer owned revision exactly once.
+        val followUpRequired = !workToAwait.savedSuccessfully ||
+            request.snapshot.revision > workToAwait.snapshot.revision
+        if (!followUpRequired) return
+        val followUp = synchronized(autosaveLifecycleLock) {
+            enqueueAutosaveLocked(
+                store = store,
+                snapshot = request.snapshot,
+                delayMillis = 0L,
+            ).also { autosaveWork = it }
+        }
+        awaitAutosave(followUp)
+    }
+
+    private fun awaitAutosave(work: AutosaveWork?) {
+        awaitPersistenceTask(work?.future)
+    }
+
+    private fun awaitPersistenceTask(completion: Future<*>?) {
+        if (completion == null) return
+        var interrupted = false
+        while (true) {
+            try {
+                completion.get()
+                break
+            } catch (_: InterruptedException) {
+                interrupted = true
+            } catch (_: Exception) {
+                // Persistence tasks report their own failures through state.
+                break
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
+    }
+
+    private fun recoverAutosave(): Future<*> {
+        val store = requireNotNull(autosaveStore)
+        // Recovery owns a separate epoch before the controller escapes its constructor.
+        // Project replacement invalidates it only after that replacement succeeds; failed
+        // user loads therefore fall back to the still-recoverable startup snapshot.
+        val recoveryOperation = recoveryOperations.begin()
+        return persistenceExecutor.submit {
+            var scheduleFreshAutosave = false
+            var recoveryFailed = false
+            val recoveredAudio = try {
+                val recovered = store.loadWithRevision()
+                if (recovered == null) {
+                    recoveryOperations.completeIfCurrent(recoveryOperation) {
+                        mutableState.value = productionSession.replaceProject(freshProductionState()).state
+                        scheduleFreshAutosave = true
+                    }
+                    RecoveredAudioHydration()
+                } else {
+                    val restored = recovered.state
+                    var audioToHydrate: PcmAudio? = null
+                    var sourceLoadOperation: Long? = null
+                    recoveryOperations.completeIfCurrent(recoveryOperation) {
                         val transition = productionSession.replaceProject(
                             restored,
                             persistenceRequired = false,
                             recoveredRevision = recovered.revision,
                         )
+                        sourceLoadOperation = transition.state.currentAudio
+                            ?.let { sourceLoadOperations.begin() }
                         applyHistoryState(
                             restored = transition.state,
                             message = "前回の自動保存を復元しました",
@@ -889,34 +1203,197 @@ class DesktopSamplerController(
                                 restored,
                                 starterOnly = BuiltInDrumKits.hasUntouchedStarterDrums(restored),
                             ),
+                            hydrateAudio = false,
                         )
+                        audioToHydrate = transition.state.currentAudio
+                        synchronized(autosaveLifecycleLock) {
+                            startupRecoveryDurableRevision = transition.revision
+                        }
                     }
+                    RecoveredAudioHydration(
+                        audio = audioToHydrate,
+                        pitchSemitones = restored.masterPitchSemitones,
+                        sourceLoadOperation = sourceLoadOperation,
+                    )
                 }
-                .onFailure { error ->
+            } catch (error: Throwable) {
+                recoveryOperations.completeIfCurrent(recoveryOperation) {
+                    synchronized(autosaveLifecycleLock) {
+                        startupRecoveryOutcome = StartupRecoveryOutcome.FAILED
+                        startupRecoveryFailureRevision = productionSession.revision
+                    }
                     mutableState.value = SamplerUiState(
                         statusMessage = "自動保存を復元できません: ${error.message ?: error.javaClass.simpleName}",
                     )
                 }
+                recoveryFailed = true
+                RecoveredAudioHydration()
+            }
+            if (!recoveryFailed) {
+                synchronized(autosaveLifecycleLock) {
+                    startupRecoveryOutcome = StartupRecoveryOutcome.SUCCEEDED
+                }
+                if (scheduleFreshAutosave) scheduleAutosave()
+                scheduleRecoveredAudioHydration(recoveredAudio, recoveryOperation)
+            }
         }
     }
 
-    private fun onTransportStep(step: Int) {
+    private fun scheduleRecoveredAudioHydration(
+        hydration: RecoveredAudioHydration,
+        recoveryOperation: Long,
+    ) {
+        val audio = hydration.audio ?: return
+        val sourceLoadOperation = hydration.sourceLoadOperation ?: return
+        synchronized(autosaveLifecycleLock) {
+            if (closed) return
+        }
+        ioExecutor.execute {
+            // Device opening must not run under the recovery epoch monitor: close and a
+            // newer project action can revoke ownership without waiting for Windows audio.
+            if (!recoveryOperations.isCurrent(recoveryOperation)) return@execute
+            recoveredHydrationAdmission()
+            val loadResult = loadSourcePcmIfCurrent(
+                audio = audio,
+                pitchSemitones = hydration.pitchSemitones,
+                operation = sourceLoadOperation,
+            )
+            if (
+                loadResult.applied &&
+                loadResult.failure != null &&
+                recoveryOperations.isCurrent(recoveryOperation)
+            ) {
+                setStatus(sourcePlaybackFailureMessage(requireNotNull(loadResult.failure)))
+            }
+        }
+    }
+
+    private fun loadSourcePcm(audio: PcmAudio?, pitchSemitones: Float = 0f): Throwable? {
+        val operation = sourceLoadOperations.begin()
+        return loadSourcePcmIfCurrent(audio, pitchSemitones, operation).failure
+    }
+
+    private fun loadSourcePcmIfCurrent(
+        audio: PcmAudio?,
+        pitchSemitones: Float,
+        operation: Long,
+    ): SourcePcmLoadResult {
+        try {
+            sourcePlaybackLoadLock.lockInterruptibly()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return SourcePcmLoadResult(applied = false)
+        }
+        try {
+            if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) {
+                return SourcePcmLoadResult(applied = false)
+            }
+            synchronized(sourcePlaybackStateLock) {
+                val restoreStatus = (sourcePlaybackAvailability as? SourcePlaybackAvailability.Pending)
+                    ?.restoreStatus
+                    ?: mutableState.value.statusMessage
+                sourcePlaybackAvailability = audio?.let {
+                    SourcePlaybackAvailability.Pending(restoreStatus)
+                } ?: SourcePlaybackAvailability.Unavailable
+            }
+            if (audio == null) {
+                return SourcePcmLoadResult(applied = true)
+            }
+            val failure = runCatching { player.loadPcm(audio, pitchSemitones) }.exceptionOrNull()
+            if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) {
+                return SourcePcmLoadResult(applied = false, failure = failure)
+            }
+            synchronized(sourcePlaybackStateLock) {
+                if (failure == null) {
+                    val restoreStatus = (sourcePlaybackAvailability as? SourcePlaybackAvailability.Pending)
+                        ?.restoreStatus
+                    sourcePlaybackAvailability = SourcePlaybackAvailability.Ready
+                    mutableState.update { current ->
+                        if (
+                            restoreStatus != null &&
+                            current.statusMessage == SOURCE_PLAYBACK_PENDING_MESSAGE
+                        ) {
+                            current.copy(statusMessage = restoreStatus)
+                        } else {
+                            current
+                        }
+                    }
+                } else {
+                    sourcePlaybackAvailability = SourcePlaybackAvailability.Failed(
+                        sourcePlaybackFailureMessage(failure),
+                    )
+                }
+            }
+            return SourcePcmLoadResult(applied = true, failure = failure)
+        } finally {
+            if (closePlayerAfterSourceLoad) closeSourcePlayerLocked()
+            sourcePlaybackLoadLock.unlock()
+        }
+    }
+
+    private fun controllerIsClosed(): Boolean = synchronized(autosaveLifecycleLock) { closed }
+
+    private fun sourcePlaybackIsReady(): Boolean = synchronized(sourcePlaybackStateLock) {
+        when (val availability = sourcePlaybackAvailability) {
+            SourcePlaybackAvailability.Ready -> true
+            is SourcePlaybackAvailability.Pending -> {
+                mutableState.update {
+                    it.copy(sourcePlaying = false, statusMessage = SOURCE_PLAYBACK_PENDING_MESSAGE)
+                }
+                false
+            }
+            is SourcePlaybackAvailability.Failed -> {
+                mutableState.update {
+                    it.copy(sourcePlaying = false, statusMessage = availability.message)
+                }
+                false
+            }
+            SourcePlaybackAvailability.Unavailable -> {
+                mutableState.update {
+                    it.copy(
+                        sourcePlaying = false,
+                        statusMessage = "音声を再生できません。Windowsの出力デバイスを確認してください",
+                    )
+                }
+                false
+            }
+        }
+    }
+
+    private fun publishSourcePlaybackFailure(error: Throwable) {
+        val message = sourcePlaybackFailureMessage(error)
+        synchronized(sourcePlaybackStateLock) {
+            sourcePlaybackAvailability = SourcePlaybackAvailability.Failed(message)
+            mutableState.update {
+                it.copy(sourcePlaying = false, statusMessage = message)
+            }
+        }
+    }
+
+    private fun sourcePlaybackFailureMessage(error: Throwable): String =
+        "音声は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}"
+
+    private fun onTransportStep(barIndex: Int, step: Int) {
         val snapshot = mutableState.value
         if (!snapshot.transportPlaying) return
         mutableState.update { current -> if (current.transportPlaying) current.copy(currentStep = step) else current }
-        val audible = snapshot.activeSteps.audibleStepKeys(snapshot.pads)
+        val sequence = snapshot.patternSequenceForPlayback()
+        val audible = sequence[barIndex % sequence.size].audibleStepKeys(snapshot.pads)
         snapshot.pads.forEach { pad ->
-            if (stepKey(pad.globalIndex, step) in audible) player.triggerPad(pad)
+            if (stepKey(pad.globalIndex, step) in audible) triggerPlayerPad(pad)
         }
     }
 
-    private fun stopCompetingPlayback(preserveScratchReturn: Boolean = false) {
+    private fun stopCompetingPlayback(
+        preserveScratchReturn: Boolean = false,
+        stopAudioEngine: Boolean = true,
+    ) {
         if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         transport.stop()
         scratch.stop()
-        player.stopAll()
+        if (stopAudioEngine) player.stopAll()
         mutableState.update {
             it.copy(
                 transportPlaying = false,
@@ -958,9 +1435,11 @@ class DesktopSamplerController(
             is ScratchReturnTarget.PadLoop -> {
                 val pad = current.pads[target.padIndex]
                 runCatching {
-                    player.triggerPad(pad, forceLoop = true)
-                    current.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
-                        .forEach { player.triggerPad(it, forceLoop = false) }
+                    triggerPlayerPad(pad, forceLoop = true)
+                    current.pads
+                        .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
+                        .map(current.pads::get)
+                        .forEach { triggerPlayerPad(it, forceLoop = false) }
                 }.onSuccess {
                     mutableState.update {
                         it.copy(
@@ -1046,20 +1525,116 @@ class DesktopSamplerController(
     }
 
     override fun close() {
+        val recoveryToAwait = synchronized(autosaveLifecycleLock) {
+            if (closed) return
+            closed = true
+            startupRecoveryFuture
+        }
+        sourceLoadOperations.invalidate()
+        closePlayerAfterSourceLoad = true
+        // Recovery owns the persistence executor before any close-time save. Wait for
+        // its state publication so an initial loading snapshot cannot supersede it.
+        awaitPersistenceTask(recoveryToAwait)
+        // completeIfCurrent owns the project-operation monitor for its entire publication.
+        // Invalidate and wait for any admitted completion before taking the close snapshot.
         projectOperations.invalidate()
-        ioExecutor.shutdownNow()
-        autosaveFuture?.cancel(false)
-        scratchIdleFuture?.cancel(false)
-        persistenceExecutor.shutdownNow()
-        playbackMonitor.shutdownNow()
-        transport.close()
-        scratch.close()
-        microphone.close()
-        systemAudio.close()
-        player.close()
+        recoveryOperations.invalidate()
+        statusOperations.invalidate()
+        val closeRequest = synchronized(autosaveLifecycleLock) {
+            AutosaveCloseRequest(
+                pending = autosaveWork,
+                snapshot = AutosaveSnapshot(
+                    state = mutableState.value,
+                    revision = productionSession.revision,
+                ),
+                startupRecoveryOutcome = startupRecoveryOutcome,
+                startupRecoveryFailureRevision = startupRecoveryFailureRevision,
+                startupRecoveryDurableRevision = startupRecoveryDurableRevision,
+            )
+        }
+        runCatching { ioExecutor.shutdownNow() }
+        runCatching { playbackMonitor.shutdownNow() }
+        runCatching { stopCompetingPlayback(stopAudioEngine = false) }
+        runCatching { transport.close() }
+        runCatching { scratch.close() }
+        runCatching { microphone.close() }
+        runCatching { systemAudio.close() }
+        if (sourcePlaybackLoadLock.tryLock()) {
+            try {
+                closeSourcePlayerLocked()
+            } finally {
+                sourcePlaybackLoadLock.unlock()
+            }
+        }
+        try {
+            flushAutosaveOnClose(closeRequest)
+        } finally {
+            runCatching { persistenceExecutor.shutdownNow() }
+        }
     }
 
+    private fun closeSourcePlayerLocked() {
+        if (sourcePlayerClosed) return
+        runCatching { player.stopAll() }
+        runCatching { player.close() }
+        sourcePlayerClosed = true
+    }
+
+    private sealed interface SourcePlaybackAvailability {
+        object Unavailable : SourcePlaybackAvailability
+        object Ready : SourcePlaybackAvailability
+        data class Pending(val restoreStatus: String) : SourcePlaybackAvailability
+        data class Failed(val message: String) : SourcePlaybackAvailability
+    }
+
+    private enum class AutosavePhase {
+        SCHEDULED,
+        RUNNING,
+        COMPLETED,
+        CANCELLED,
+    }
+
+    private enum class StartupRecoveryOutcome {
+        NOT_REQUESTED,
+        PENDING,
+        SUCCEEDED,
+        FAILED,
+    }
+
+    private data class AutosaveSnapshot(
+        val state: SamplerUiState,
+        val revision: Long,
+    )
+
+    private data class RecoveredAudioHydration(
+        val audio: PcmAudio? = null,
+        val pitchSemitones: Float = 0f,
+        val sourceLoadOperation: Long? = null,
+    )
+
+    private data class SourcePcmLoadResult(
+        val applied: Boolean,
+        val failure: Throwable? = null,
+    )
+
+    private class AutosaveWork(
+        val snapshot: AutosaveSnapshot,
+        var phase: AutosavePhase = AutosavePhase.SCHEDULED,
+        var future: ScheduledFuture<*>? = null,
+        var savedSuccessfully: Boolean = false,
+    )
+
+    private data class AutosaveCloseRequest(
+        val pending: AutosaveWork?,
+        val snapshot: AutosaveSnapshot,
+        val startupRecoveryOutcome: StartupRecoveryOutcome,
+        val startupRecoveryFailureRevision: Long?,
+        val startupRecoveryDurableRevision: Long?,
+    )
+
     companion object {
+        private const val SOURCE_PLAYBACK_PENDING_MESSAGE = "音声の再生を準備しています"
+
         internal fun defaultAutosaveStore(): AtomicProjectStore {
             val root = System.getenv("LOCALAPPDATA")
                 ?.takeIf(String::isNotBlank)

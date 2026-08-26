@@ -17,7 +17,8 @@ interface SamplerPlaybackEngine {
     fun start(): Result<Unit>
     fun updatePad(pad: PadModel)
     fun updateAllPads(pads: List<PadModel>)
-    fun triggerPad(globalIndex: Int)
+    /** Returns an ownership token only when the realtime trigger command was admitted. */
+    fun triggerPad(globalIndex: Int): Long?
     fun startPadLoop(globalIndex: Int)
     fun stopPad(globalIndex: Int)
     fun beginScratch(globalIndex: Int, startFrame: Int)
@@ -25,10 +26,14 @@ interface SamplerPlaybackEngine {
     fun updateScratchSpeed(speed: Float)
     fun endScratch()
     fun releasePad(globalIndex: Int)
+    fun releasePadIfOwned(globalIndex: Int, ownership: Long)
     fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int)
     fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float)
     fun stopSource()
     fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float)
+    fun setPatternSequence(patterns: List<Set<Int>>, bpm: Float, swing: Float) {
+        setPattern(patterns.firstOrNull() ?: emptySet(), bpm, swing)
+    }
     fun startTransport()
     fun stopTransport()
     fun stopAllVoices()

@@ -1,10 +1,30 @@
 package com.choplab.sampler.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeckLayoutPolicyTest {
+    @Test
+    fun scrollAwarePadArbitrationIsLimitedToLargeTextScrollBodies() {
+        listOf(
+            resolveDeckLayout(widthDp = 412, heightDp = 820, fontScale = 1f),
+            resolveDeckLayout(widthDp = 800, heightDp = 320, fontScale = 1f),
+        ).forEach { metrics ->
+            assertFalse(metrics.performanceWorkspaceNeedsScroll)
+            assertFalse(metrics.beatWorkspaceNeedsScroll)
+        }
+
+        listOf(
+            resolveDeckLayout(widthDp = 360, heightDp = 640, fontScale = 2f),
+            resolveDeckLayout(widthDp = 640, heightDp = 360, fontScale = 1.3f),
+        ).forEach { metrics ->
+            assertTrue(metrics.performanceWorkspaceNeedsScroll)
+            assertTrue(metrics.beatWorkspaceNeedsScroll)
+        }
+    }
+
     @Test
     fun compactPortraitKeepsChromeBelowOneQuarterOfShortPhone() {
         val metrics = resolveDeckLayout(widthDp = 360, heightDp = 640)
@@ -35,6 +55,8 @@ class DeckLayoutPolicyTest {
         assertEquals(false, metrics.largeText)
         assertEquals(false, metrics.focusedCaptureNeedsScroll)
         assertEquals(false, metrics.beatWorkspaceNeedsScroll)
+        assertEquals(false, metrics.performanceWorkspaceNeedsScroll)
+        assertEquals(false, metrics.showInlineHeaderStatus)
     }
 
     @Test
@@ -50,7 +72,9 @@ class DeckLayoutPolicyTest {
             assertTrue(metrics.statusHeightDp >= 64)
             assertEquals(true, metrics.focusedCaptureNeedsScroll)
             assertEquals(true, metrics.beatWorkspaceNeedsScroll)
+            assertEquals(true, metrics.performanceWorkspaceNeedsScroll)
             assertTrue(metrics.beatPadGridHeightDp >= 4 * 48 + 3 * metrics.gapDp)
+            assertEquals(metrics.touchSafePadGridHeightDp, metrics.beatPadGridHeightDp)
         }
         assertTrue(medium.workspaceHeightAfterProductionDock(820) >= 480)
         assertTrue(largest.workspaceHeightAfterProductionDock(640) >= 300)
@@ -67,8 +91,10 @@ class DeckLayoutPolicyTest {
             performanceWorkspaceLayout(metrics),
         )
         assertEquals(false, metrics.showStatusStrip)
+        assertEquals(true, metrics.showInlineHeaderStatus)
         assertEquals(true, metrics.focusedCaptureNeedsScroll)
         assertEquals(false, metrics.beatWorkspaceNeedsScroll)
+        assertEquals(false, metrics.performanceWorkspaceNeedsScroll)
         assertEquals(3, metrics.gapDp)
         assertTrue(metrics.waveformHeightDp <= 128)
         assertTrue(320 - metrics.fixedChromeHeightDp >= 230)
@@ -87,7 +113,27 @@ class DeckLayoutPolicyTest {
             assertTrue(metrics.controlHeightDp >= 48)
             assertTrue(metrics.modeBarHeightDp >= 48 * 2 + metrics.gapDp)
             assertTrue(metrics.productionDockHeightDp >= 48)
+            assertTrue(metrics.performanceWorkspaceNeedsScroll)
+            assertEquals(
+                PerformanceWorkspaceLayout.STACKED,
+                performanceWorkspaceLayout(metrics),
+            )
+            assertTrue(metrics.touchSafePadGridHeightDp >= 4 * 48 + 3 * metrics.gapDp)
+            assertTrue(metrics.showInlineHeaderStatus)
         }
+    }
+
+    @Test
+    fun onlyRegularNonLargeTextLandscapeUsesTheWideFirstEntry() {
+        val wide = resolveDeckLayout(widthDp = 1280, heightDp = 720, fontScale = 1f)
+        val compact = resolveDeckLayout(widthDp = 640, heightDp = 360, fontScale = 1f)
+        val largeText = resolveDeckLayout(widthDp = 1280, heightDp = 720, fontScale = 1.3f)
+        val portrait = resolveDeckLayout(widthDp = 720, heightDp = 1280, fontScale = 1f)
+
+        assertEquals(FocusedCaptureEntryLayout.WIDE_SPLIT, focusedCaptureEntryLayout(wide))
+        assertEquals(FocusedCaptureEntryLayout.STACKED, focusedCaptureEntryLayout(compact))
+        assertEquals(FocusedCaptureEntryLayout.STACKED, focusedCaptureEntryLayout(largeText))
+        assertEquals(FocusedCaptureEntryLayout.STACKED, focusedCaptureEntryLayout(portrait))
     }
 
     @Test

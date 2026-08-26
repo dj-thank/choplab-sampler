@@ -9,6 +9,38 @@ import org.junit.Test
 
 class TransientDetectorTest {
     @Test
+    fun stereoDetectionReturnsFramePositionsInsteadOfInterleavedSamplePositions() {
+        val sampleRate = 48_000
+        val frameCount = sampleRate * 2
+        val samples = ShortArray(frameCount * 2)
+        val expectedFrames = listOf(12_000, 36_000, 60_000, 84_000)
+        expectedFrames.forEach { onset ->
+            repeat(1_000) { offset ->
+                val envelope = 1f - offset / 1_000f
+                val value = (
+                    sin(2.0 * PI * 900.0 * offset / sampleRate) * envelope * Short.MAX_VALUE
+                    ).toInt().toShort()
+                samples[(onset + offset) * 2] = value
+                samples[(onset + offset) * 2 + 1] = value
+            }
+        }
+
+        val markers = TransientDetector.detect(
+            samples = samples,
+            channelCount = 2,
+            startFrame = 0,
+            endFrame = frameCount,
+            sampleRate = sampleRate,
+            maxSlices = 8,
+        )
+
+        val toleranceFrames = sampleRate / 200
+        expectedFrames.forEach { expected ->
+            assertTrue(markers.any { actual -> abs(actual - expected) <= toleranceFrames })
+        }
+    }
+
+    @Test
     fun detectsSeparatedPercussiveOnsets() {
         val sampleRate = 48_000
         val samples = ShortArray(sampleRate * 2)

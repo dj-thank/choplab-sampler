@@ -5,10 +5,41 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SamplerEngineVoiceTest {
+    @Test
+    fun realtimeVoicePreservesStereoAndDuplicatesMonoWithoutAdvancingTwice() {
+        val stereo = PcmAudio(
+            name = "stereo-live.wav",
+            samples = ShortArray(512 * 2) { sample -> if (sample % 2 == 0) 12_000 else -6_000 },
+            sampleRate = 48_000,
+            channelCount = 2,
+        )
+        val stereoPad = PadModel(0, stereo, 0, stereo.frameCount, gain = 1f, tone = 1f)
+        val stereoVoice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(stereoPad), 48_000)
+        val frame = MutableStereoFrame()
+        repeat(64) { stereoVoice.renderStereo(48_000, frame) }
+
+        assertTrue(frame.left > 0f)
+        assertTrue(frame.right < 0f)
+        assertEquals(64, stereoVoice.currentFrame)
+
+        val mono = PcmAudio(
+            name = "mono-live.wav",
+            samples = ShortArray(512) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val monoVoice = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot.from(PadModel(1, mono, 0, mono.frameCount, gain = 1f)),
+            48_000,
+        )
+        monoVoice.renderStereo(48_000, frame)
+        assertEquals(frame.left, frame.right, 0f)
+    }
+
     @Test
     fun toneFilterCoefficientIsBoundedAndComputedAtTheControlBoundary() {
         assertEquals(1f, SamplerDspPrimitives.toneFilterAlpha(tone = 1f, outputSampleRate = 48_000), 0f)
@@ -53,6 +84,42 @@ class SamplerEngineVoiceTest {
         assertFalse(preview.active)
         assertFalse(targetAudition.active)
         assertTrue(intentionalOtherLayer.active)
+    }
+
+    @Test
+    fun samePadRetriggerRetiresEveryOlderCopyButKeepsDifferentPadsLayered() {
+        val audio = PcmAudio(
+            name = "retrigger.wav",
+            samples = ShortArray(128) { 8_000 },
+            sampleRate = 48_000,
+        )
+        fun activeVoice(padIndex: Int) = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot(
+                padIndex = padIndex,
+                audio = audio,
+                startFrame = 0,
+                endFrame = audio.frameCount,
+                pitchSemitones = 0f,
+                tone = 1f,
+                gain = 1f,
+                reverse = false,
+                playMode = PadPlayMode.ONE_SHOT,
+                chokeGroup = 0,
+            ),
+            outputSampleRate = 48_000,
+        )
+        val firstCopy = activeVoice(4)
+        val secondCopy = activeVoice(4)
+        val intentionalOtherPad = activeVoice(7)
+
+        retireVoicesForPadRetrigger(
+            voices = arrayOf(firstCopy, secondCopy, intentionalOtherPad),
+            padIndex = 4,
+        )
+
+        assertFalse(firstCopy.active)
+        assertFalse(secondCopy.active)
+        assertTrue(intentionalOtherPad.active)
     }
 
     @Test
@@ -310,5 +377,109 @@ class SamplerEngineVoiceTest {
         assertEquals(0f, snapshot.gain, 0f)
         val voice = SamplerEngine.Voice(snapshot, 48_000)
         repeat(64) { assertTrue(voice.render(48_000).isFinite()) }
+    }
+
+    @Test
+    fun actualMixSeamIncludesTheNaturalTerminalSampleBeforeRetirement() {
+        val sampleRate = 48_000
+        val audio = PcmAudio(
+            name = "terminal-natural.wav",
+            samples = ShortArray(512) { frame ->
+                when {
+                    frame % 5 == 0 -> 12_000
+                    frame % 3 == 0 -> -9_000
+                    else -> (frame * 29 - 6_000).coerceIn(-12_000, 12_000).toShort()
+                }
+            },
+            sampleRate = sampleRate,
+        )
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = 16,
+            endFrame = 496,
+            pitchSemitones = 3f,
+            tone = 0.35f,
+            gain = 0.7f,
+            reverse = true,
+        )
+        val snapshot = SamplerEngine.PadSnapshot.from(pad)
+        val direct = renderDirectUntilFinished(SamplerEngine.Voice(snapshot, sampleRate), sampleRate)
+        val throughMixSeam = renderThroughMixSeamUntilInactive(
+            SamplerEngine.Voice(snapshot, sampleRate),
+            sampleRate,
+        )
+
+        assertNotEquals("Fixture must retain a nonzero terminal return", 0f, direct.last(), 0f)
+        assertFloatSequenceEquals(direct, throughMixSeam)
+    }
+
+    @Test
+    fun actualMixSeamIncludesTheFastReleaseTerminalSampleBeforeRetirement() {
+        val sampleRate = 48_000
+        val audio = PcmAudio(
+            name = "terminal-release.wav",
+            samples = ShortArray(1_024) { frame -> if (frame % 2 == 0) 12_000 else 8_000 },
+            sampleRate = sampleRate,
+        )
+        val snapshot = SamplerEngine.PadSnapshot.from(
+            PadModel(
+                globalIndex = 3,
+                audio = audio,
+                startFrame = 0,
+                endFrame = audio.frameCount,
+                gain = 0.8f,
+                playMode = PadPlayMode.LOOP,
+                chokeGroup = 1,
+            ),
+        )
+        val directVoice = SamplerEngine.Voice(snapshot, sampleRate)
+        val mixSeamVoice = SamplerEngine.Voice(snapshot, sampleRate)
+        repeat(96) {
+            directVoice.render(sampleRate)
+            mixSeamVoice.render(sampleRate)
+        }
+        directVoice.release(frames = 48)
+        mixSeamVoice.release(frames = 48)
+
+        val direct = renderDirectUntilFinished(directVoice, sampleRate)
+        val throughMixSeam = renderThroughMixSeamUntilInactive(mixSeamVoice, sampleRate)
+
+        assertEquals(48, direct.size)
+        assertNotEquals("Release fixture must retain a nonzero terminal return", 0f, direct.last(), 0f)
+        assertFloatSequenceEquals(direct, throughMixSeam)
+        assertFalse(mixSeamVoice.active)
+        assertEquals(0f, renderPadVoiceFrameForMix(mixSeamVoice, sampleRate), 0f)
+    }
+
+    private fun renderDirectUntilFinished(
+        voice: SamplerEngine.Voice,
+        outputSampleRate: Int,
+    ): FloatArray {
+        val values = mutableListOf<Float>()
+        while (!voice.finished) {
+            check(values.size < 20_000) { "Voice did not finish within the bounded fixture" }
+            values += voice.render(outputSampleRate)
+        }
+        return values.toFloatArray()
+    }
+
+    private fun renderThroughMixSeamUntilInactive(
+        voice: SamplerEngine.Voice,
+        outputSampleRate: Int,
+    ): FloatArray {
+        val values = mutableListOf<Float>()
+        while (voice.active) {
+            check(values.size < 20_000) { "Mix seam did not retire the bounded fixture" }
+            values += renderPadVoiceFrameForMix(voice, outputSampleRate)
+        }
+        return values.toFloatArray()
+    }
+
+    private fun assertFloatSequenceEquals(expected: FloatArray, actual: FloatArray) {
+        assertEquals("Rendered frame count", expected.size, actual.size)
+        expected.indices.forEach { frame ->
+            assertEquals("Rendered value at frame $frame", expected[frame], actual[frame], 0f)
+        }
     }
 }

@@ -36,6 +36,38 @@ class ProductionSessionTest {
     }
 
     @Test
+    fun quickSketchIsOneUndoRedoAndPersistenceUnit() {
+        val session = ProductionSession()
+        val audio = PcmAudio(
+            name = "sketch.wav",
+            samples = ShortArray(1_600) { frame ->
+                if ((frame / 100) % 2 == 0) (-2_000).toShort() else 2_000.toShort()
+            },
+            sampleRate = 8_000,
+        )
+        val initial = SamplerUiState(currentAudio = audio, rangeEndFrame = audio.frameCount)
+
+        val applied = session.commit(
+            session.planCommand(initial, ProductionCommand.CreateQuickSketch),
+        )
+
+        assertEquals(1L, applied.revision)
+        assertTrue(applied.persistenceRequired)
+        assertEquals(8, applied.state.pads.take(8).count(PadModel::isAssigned))
+        assertEquals(8, applied.state.activeSteps.size)
+
+        val undone = assertNotNull(session.undo(applied.state))
+        assertEquals(initial.pads, undone.state.pads)
+        assertEquals(initial.activeSteps, undone.state.activeSteps)
+        assertEquals(initial.sliceMarkers, undone.state.sliceMarkers)
+
+        val redone = assertNotNull(session.redo(undone.state))
+        assertEquals(applied.state.pads, redone.state.pads)
+        assertEquals(applied.state.activeSteps, redone.state.activeSteps)
+        assertEquals(applied.state.sliceMarkers, redone.state.sliceMarkers)
+    }
+
+    @Test
     fun sessionSelectionDoesNotCreateRevisionHistoryOrPersistence() {
         val session = ProductionSession()
         val audio = PcmAudio(name = "selection.wav", samples = ShortArray(400), sampleRate = 1_000)

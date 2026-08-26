@@ -3,6 +3,8 @@ package com.choplab.sampler.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +32,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
@@ -52,7 +56,7 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.bankRoleFor
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,6 +65,158 @@ import kotlin.math.max
 
 private const val PAD_KEYS = "1234QWERASDFZXCV"
 private const val SCROLL_GATE_ACTIVATION_DELAY_MILLIS = 120L
+private const val SCROLL_GATE_MINIMUM_PREVIEW_MILLIS = 80L
+
+private enum class DeferredGateDecision {
+    RELEASED,
+    CANCELED,
+}
+
+/**
+ * Arbitrates a GATE press against an ancestor scroll before activation, then owns every remaining
+ * pointer change through the initiating pointer's physical up event. The controller-issued
+ * ownership token prevents a delayed release from stopping a newer trigger from any input source.
+ */
+private suspend fun PointerInputScope.detectDeferredGateGestures(
+    onPressedChange: (Boolean) -> Unit,
+    onSelect: () -> Unit,
+    onTrigger: () -> Long,
+    onRelease: (Long) -> Unit,
+    onLongPress: () -> Unit,
+) = coroutineScope {
+    val gestureScope = this
+
+    awaitEachGesture {
+        val down = awaitFirstDown()
+        down.consume()
+        onPressedChange(true)
+        try {
+            val decision = withTimeoutOrNull(SCROLL_GATE_ACTIVATION_DELAY_MILLIS) {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Main)
+                    if (event.changes.any { it.isConsumed }) {
+                        return@withTimeoutOrNull DeferredGateDecision.CANCELED
+                    }
+                    val primaryChange = event.changes.firstOrNull { it.id == down.id }
+                        ?: return@withTimeoutOrNull DeferredGateDecision.CANCELED
+                    val displaced =
+                        (primaryChange.position - down.position).getDistance() >
+                            viewConfiguration.touchSlop
+                    val outsidePad = primaryChange.position.x < 0f ||
+                        primaryChange.position.y < 0f ||
+                        primaryChange.position.x >= size.width ||
+                        primaryChange.position.y >= size.height
+                    if (!primaryChange.pressed) {
+                        return@withTimeoutOrNull if (displaced || outsidePad) {
+                            DeferredGateDecision.CANCELED
+                        } else {
+                            DeferredGateDecision.RELEASED
+                        }
+                    }
+                    if (displaced || outsidePad) {
+                        return@withTimeoutOrNull DeferredGateDecision.CANCELED
+                    }
+
+                    // The child receives Main before its scroll ancestor. Re-check at Final so a
+                    // parent that won this pre-activation movement cancels without PAD side effects.
+                    val finalEvent = awaitPointerEvent(PointerEventPass.Final)
+                    if (finalEvent.changes.any { it.isConsumed }) {
+                        return@withTimeoutOrNull DeferredGateDecision.CANCELED
+                    }
+                }
+            }
+
+            when (decision) {
+                DeferredGateDecision.CANCELED -> Unit
+                DeferredGateDecision.RELEASED -> {
+                    onSelect()
+                    val ownership = onTrigger()
+                    // Keep receiving new gestures while this preview is audible. If a newer tap
+                    // or another input retriggers first, the controller rejects this old token.
+                    gestureScope.launch {
+                        try {
+                            delay(SCROLL_GATE_MINIMUM_PREVIEW_MILLIS)
+                        } finally {
+                            onRelease(ownership)
+                        }
+                    }
+                }
+                null -> {
+                    onSelect()
+                    val ownership = onTrigger()
+                    // Start the minimum-preview clock at the actual trigger, not at pointer-up.
+                    // The waiter below can survive into the next gesture; controller ownership
+                    // prevents it from cutting a newer touch, keyboard or programmatic trigger.
+                    val minimumPreview = gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        delay(SCROLL_GATE_MINIMUM_PREVIEW_MILLIS)
+                    }
+                    var releasedByPhysicalUp = false
+                    var longPressEligible = true
+                    try {
+                        val remainingLongPressMillis =
+                            (viewConfiguration.longPressTimeoutMillis -
+                                SCROLL_GATE_ACTIVATION_DELAY_MILLIS).coerceAtLeast(0L)
+                        val releasedBeforeLongPress = withTimeoutOrNull(remainingLongPressMillis) {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                val primaryChange = event.changes.firstOrNull { it.id == down.id }
+                                if (
+                                    primaryChange != null &&
+                                    (primaryChange.position - down.position).getDistance() >
+                                    viewConfiguration.touchSlop
+                                ) {
+                                    longPressEligible = false
+                                }
+                                // Activation settled ownership. Consume at Main before the parent
+                                // can turn later movement into a scroll/cancellation.
+                                event.changes.forEach { it.consume() }
+                                if (primaryChange == null || !primaryChange.pressed) {
+                                    return@withTimeoutOrNull true
+                                }
+                            }
+                        }
+                        if (releasedBeforeLongPress == null) {
+                            // Movement does not surrender GATE ownership, but it does disqualify
+                            // the stationary long-press action so dragging off a held PAD cannot
+                            // unexpectedly replace the grid with TRIM.
+                            if (longPressEligible) onLongPress()
+                            // The callback normally replaces this node with TRIM. If it does not,
+                            // retain ownership until the actual pointer-up just as a long tap does.
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                val primaryChange = event.changes.firstOrNull { it.id == down.id }
+                                event.changes.forEach { it.consume() }
+                                if (primaryChange == null || !primaryChange.pressed) break
+                            }
+                        }
+                        releasedByPhysicalUp = true
+                    } finally {
+                        if (releasedByPhysicalUp) {
+                            // A release just beyond the 120 ms activation boundary must still get
+                            // the same 80 ms audible minimum measured from its actual trigger.
+                            // UNDISTPATCHED enters the finally-protected waiter before this gesture
+                            // can hand control back to a replacement pointer-input node.
+                            gestureScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                try {
+                                    minimumPreview.join()
+                                } finally {
+                                    onRelease(ownership)
+                                }
+                            }
+                        } else {
+                            // Pointer-input replacement/cancellation after activation still releases
+                            // exactly once; a superseded ownership token cannot cut a retrigger.
+                            minimumPreview.cancel()
+                            onRelease(ownership)
+                        }
+                    }
+                }
+            }
+        } finally {
+            onPressedChange(false)
+        }
+    }
+}
 
 @Composable
 fun PadGrid(
@@ -68,6 +224,8 @@ fun PadGrid(
     selectedPad: Int,
     onTrigger: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    onTriggerWithOwnership: ((Int) -> Long)? = null,
+    onReleaseIfOwned: ((Int, Long) -> Unit)? = null,
     onSelect: (Int) -> Unit,
     onLongPress: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -115,6 +273,12 @@ fun PadGrid(
                             deferPadActionUntilTap = deferPadActionUntilTap,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
+                            onTriggerWithOwnership = onTriggerWithOwnership?.let { trigger ->
+                                { trigger(pad.globalIndex) }
+                            },
+                            onReleaseIfOwned = onReleaseIfOwned?.let { release ->
+                                { ownership -> release(pad.globalIndex, ownership) }
+                            },
                             onSelect = { onSelect(pad.globalIndex) },
                             onLongPress = { onLongPress(pad.globalIndex) },
                             modifier = Modifier.size(geometry.cellSize.dp),
@@ -136,11 +300,14 @@ private fun PerformancePad(
     deferPadActionUntilTap: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
+    onTriggerWithOwnership: (() -> Long)?,
+    onReleaseIfOwned: ((Long) -> Unit)?,
     onSelect: () -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
+    var localGateOwnership by remember(pad.globalIndex) { mutableStateOf(0L) }
     val haptics = LocalHapticFeedback.current
     val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val shape = RoundedCornerShape(9.dp)
@@ -166,6 +333,24 @@ private fun PerformancePad(
         pad.isAssigned &&
         pad.playMode == PadPlayMode.GATE &&
         !captureMode
+    val useOwnedGatePress = pad.isAssigned &&
+        pad.playMode == PadPlayMode.GATE &&
+        !captureMode
+    val triggerOwnedGate = {
+        onTriggerWithOwnership?.invoke() ?: run {
+            localGateOwnership += 1L
+            onTrigger()
+            localGateOwnership
+        }
+    }
+    val releaseOwnedGate = { ownership: Long ->
+        if (onReleaseIfOwned != null) {
+            onReleaseIfOwned(ownership)
+        } else if (localGateOwnership == ownership) {
+            localGateOwnership += 1L
+            onRelease()
+        }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -184,69 +369,71 @@ private fun PerformancePad(
                 sourcePhase,
                 deferPadActionUntilTap,
             ) {
-                detectTapGestures(
-                    onTap = {
-                        if (deferPadActionUntilTap && !deferGatePerformance) {
-                            // The scroll parent cancels before onTap, so a drag cannot select or sound a PAD.
-                            onSelect()
-                            if (captureMode || pad.isAssigned) {
-                                onTrigger()
-                                if (pad.isAssigned) onRelease()
-                            }
-                        } else if (deferDestructiveCapture) {
-                            onTrigger()
-                        }
-                    },
-                    onLongPress = {
-                        if (pad.isAssigned) {
+                if (deferGatePerformance) {
+                    detectDeferredGateGestures(
+                        onPressedChange = { pressed = it },
+                        onSelect = onSelect,
+                        onTrigger = triggerOwnedGate,
+                        onRelease = releaseOwnedGate,
+                        onLongPress = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onSelect()
                             onLongPress()
-                        }
-                    },
-                    onPress = {
-                        pressed = true
-                        try {
-                            if (deferGatePerformance) {
-                                var gateTriggered = false
-                                try {
-                                    coroutineScope {
-                                        val delayedStart = launch {
-                                            // Let the scroll parent consume a drag before committing audio.
-                                            delay(SCROLL_GATE_ACTIVATION_DELAY_MILLIS)
-                                            onSelect()
-                                            onTrigger()
-                                            gateTriggered = true
-                                        }
-                                        val released = tryAwaitRelease()
-                                        delayedStart.cancelAndJoin()
-                                        if (!gateTriggered && released) {
-                                            // A short completed tap remains an intentional preview.
-                                            onSelect()
-                                            onTrigger()
-                                            gateTriggered = true
-                                        }
-                                    }
-                                } finally {
-                                    // Opening trim replaces this pointerInput node. Once trigger ownership
-                                    // was acquired, cancellation must still release the GATE exactly once.
-                                    if (gateTriggered) onRelease()
+                        },
+                    )
+                } else {
+                    detectTapGestures(
+                        onTap = {
+                            if (deferPadActionUntilTap) {
+                                // A parent-consumed drag cancels before onTap, so scrolling has no PAD side effects.
+                                onSelect()
+                                if (captureMode || pad.isAssigned) {
+                                    onTrigger()
+                                    if (pad.isAssigned) onRelease()
                                 }
-                            } else {
+                            } else if (deferDestructiveCapture) {
+                                onTrigger()
+                            }
+                        },
+                        onLongPress = if (pad.isAssigned) {
+                            {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onSelect()
+                                onLongPress()
+                            }
+                        } else {
+                            // Empty CHOP pads have no trim target. Leaving this callback null lets a
+                            // stationary hold complete through onTap instead of being swallowed.
+                            null
+                        },
+                        onPress = {
+                            var pressOwnership = PadTriggerOwnership.NONE
+                            pressed = true
+                            try {
                                 if (!deferPadActionUntilTap) {
                                     onSelect()
                                     if (!deferDestructiveCapture && (captureMode || pad.isAssigned)) {
-                                        onTrigger()
+                                        if (useOwnedGatePress) {
+                                            pressOwnership = triggerOwnedGate()
+                                        } else {
+                                            onTrigger()
+                                        }
                                     }
                                 }
                                 tryAwaitRelease()
+                            } finally {
+                                if (!deferPadActionUntilTap && pad.isAssigned) {
+                                    if (useOwnedGatePress) {
+                                        releaseOwnedGate(pressOwnership)
+                                    } else {
+                                        onRelease()
+                                    }
+                                }
+                                pressed = false
                             }
-                        } finally {
-                            if (!deferPadActionUntilTap && pad.isAssigned) onRelease()
-                            pressed = false
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
             .semantics {
                 role = Role.Button
@@ -380,8 +567,8 @@ fun shouldDeferDestructiveCaptureUntilTap(
 private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
     val audio = pad.audio ?: return FloatArray(0)
     if (!pad.isAssigned || audio.samples.isEmpty()) return FloatArray(0)
-    val start = pad.startFrame.coerceIn(0, audio.samples.lastIndex)
-    val end = pad.endFrame.coerceIn(start + 1, audio.samples.size)
+    val start = pad.startFrame.coerceIn(0, audio.frameCount - 1)
+    val end = pad.endFrame.coerceIn(start + 1, audio.frameCount)
     val bucketCount = 9
     val bucketSize = max(1, (end - start) / bucketCount)
     val peaks = FloatArray(bucketCount) { bucket ->
@@ -391,7 +578,7 @@ private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
         var frame = from
         val stride = max(1, (to - from) / 24)
         while (frame < to) {
-            peak = max(peak, abs(audio.samples[frame] / 32_768f))
+            peak = max(peak, abs(audio.monoSampleAt(frame) / 32_768f))
             frame += stride
         }
         peak

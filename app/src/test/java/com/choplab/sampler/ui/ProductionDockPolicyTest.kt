@@ -90,6 +90,7 @@ class ProductionDockPolicyTest {
         val expected = listOf(
             ProductionDockIntent.SHOW_QUICK,
             ProductionDockIntent.SHOW_STEPS,
+            ProductionDockIntent.OPEN_ARRANGE,
             ProductionDockIntent.OPEN_ADD,
             ProductionDockIntent.OPEN_SCRATCH,
         )
