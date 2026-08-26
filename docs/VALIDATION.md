@@ -2,7 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
-## Waves 12–15 PR #78 integration candidate — 2026-08-27
+## Waves 12–16 PR #78 integration candidate — 2026-08-27
+
+- Product: merge `04a761c589f9370811b54224801064448def2951`, tree `12984c19307849012fade6dae538a5b3b74bbd63`, parents Waves 12–15 receipt `9cca343fae45c74747a22eb04eca98ceb8c13543` and Wave 16 source `63092410f6f249d7b89c49393efe6cfbed349827` / tree `263c1958ccf0e52fa417fa6254a43bffde392cf0`.
+- Admission contract: one shared loading/recording decision controls deck buttons, Windows menu and both platform controllers. The deep history owner rejects busy plans without consuming history or revision, invalidates a stale unresolved plan, and preserves normal Undo/Redo plus same-owner loop continuity.
+- Integration control: `loadingTimeHistoryRequestPreservesTheProjectAndFrontier` directly binds the Windows controller boundary. Source-branch focused Standards/Spec review and the integrated diff have unresolved findings `0/0`.
+- Executable proof: focused merged tests pass in 59 tasks. The final single-worker full gate passes in 184 tasks (39 executed / 145 up-to-date). XML: Android 276 / 47 suites, shared Android 82 / 16, shared Desktop 82 / 16, JVM-core 88 / 9 and Desktop 148 / 24; total 676 / 112, failures/errors/skips 0. Lint debug/release each: fatal 0 / error 0 / warning 7.
+- Policy: configured validation passes 18 Gradle tasks, six XML resources, executable modes, wrapper SHA and UTF-8. Python policy passes 64/64. Current and reachable-history public-surface scans each accept 454 candidates with no credential, signing or user-audio candidate. `git diff --check` passes.
+- Android artifacts: debug 32,901,372 / `42E0987046F9790EB7A26DEFE9D1544B153892F07B09A1BA9A6D4861A28A86D1`; androidTest 11,173,354 / `147D47F27C8DF3CD488E29C1EA682B5F85E73837DB0FB084375314C968B4D358`; unsigned release 24,274,036 / `2A25D94847AC0A1F6D0842B9F9E893EDF1DCF53FAA213B08E22A23174E7976C7`. Version `0.17.0` / code 27 and `manifest_tool=aapt2`; unsigned acceptance exits 0 and signed-required negative exits 1.
+- Windows/SBOM: `ChopLab.exe` 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`; Desktop JAR 393,533 / `61C619DDBD791A774C4B9F2CCA3051025D7A2917C6AD00FABEED2C211B8508F0`; app-image 405 files / 176,760,428 bytes / deterministic manifest `8B161FD1604F7ABC26D059292E772EDEA068C9FEFCAFE5B959697345812600E2`. CycloneDX 1.6 has 650 components / 651 dependencies; JSON 1,581,101 / `9FB3E143B2BF5A38C3BA0B16586AF308024B4ED9B5BCD238CA52179BFAA93D59`, XML 1,431,320 / `8E6311F678C261C7CF31E2331012CDA5B733165FF23BEEF6B222A1A0B9FB9A2B`.
+- Review/gate: exact merged bytes establish `LOCAL_PASS`. Update only existing PR #78, require fresh exact-head PR/push Android, Windows, iOS and supply-chain success, clean mergeability and no unresolved review thread. Do not infer device/provider/signing/tag/new Release/Human proof, and do not rewrite `v0.17.0`.
+
+## Historical Waves 12–15 PR #78 integration candidate — 2026-08-27
 
 - Product: merge `37312af8c502621077c3a01c569dc4d797efbff5`, tree `a9a1e0715cf8b8105c0d1fd054b70bada6c0218f`, parents reviewed read-back bound fix `a531f7be70358ec284bbc263a06dc17923cd8767` and clean Wave 15 closeout `1deb8a9ec2198e88fcde07a572bf0a8f9eea333e` / product `70b31e949a9faa42d0f459f2d03218d16e6e30b7`. Exact hosted Waves 12–14 receipt `8680fdbbc0a7346ec02fb958ad5b2dbac3254f6d` remains the previous PR #78 anchor.
 - Review RED/GREEN: an endless destination stream made the new regression throw after the old implementation requested 64 KiB. The fix passes the source count into read-back, requests at most remaining plus one and fails with the typed mismatch at the first extra byte. The test proves exactly `source.length + 1` bytes are consumed.
