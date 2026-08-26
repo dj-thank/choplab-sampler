@@ -2272,6 +2272,7 @@ class DesktopSamplerControllerTest {
                 },
             ),
         )
+        val durableBefore = directory.resolve("autosave.choplab").readBytes()
         val controller = DesktopSamplerController(engine, autosaveStore = store, autosaveDelayMillis = 0L)
         try {
             awaitCondition { !controller.state.value.isLoading }
@@ -2291,6 +2292,9 @@ class DesktopSamplerControllerTest {
             assertEquals(0, engine.exclusiveRetireCount)
             assertTrue(engine.triggered.isEmpty())
             assertTrue(after.statusMessage.startsWith("ビートループを開始できませんでした:"))
+
+            controller.close()
+            assertTrue(durableBefore.contentEquals(directory.resolve("autosave.choplab").readBytes()))
         } finally {
             controller.close()
             directory.deleteRecursively()

@@ -30,6 +30,31 @@ On Windows, pressing Beat Loop while another primary playback mode is active eit
 - Success records one project edit when PAD modes change, publishes one loop owner/playhead, starts each eligible companion once and preserves the existing exclusive primary-mode policy.
 - Do not change Android engine/callbacks, source PCM, pad DSP, pattern/song render, project archives/schema, recording lifecycle, provider behavior or release identity.
 
+## Architecture and interfaces
+
+- `ProductionSession.planEdit` owns a non-consuming, owner/epoch/exact-once project target; only `commit` records history/revision and only `cancel` resolves a failed candidate.
+- `SamplerUiState.beatLoopControlEnabled` owns visible start admission while keeping an already-owned loop stoppable.
+- `DesktopSamplerAudioEngine.startExclusiveLoopSession` owns the recoverable preparation/start boundary. `JavaSoundWavPlayer` prepares every candidate, starts every candidate, then retires source and prior PAD voices.
+- `DesktopSamplerController` serializes the transport step callback with the loop handoff. It requests transport stop and publishes state only after the complete Java Sound candidate session succeeds.
+- Existing exact GATE ownership tokens remain on `triggerPad` / `releasePadIfOwned`; this slice does not add a second voice owner.
+
+## Milestones
+
+### Milestone 1: current-main falsifier
+
+- Add shared plan/admission and Windows owner/companion/transport-race tests before production APIs.
+- Acceptance: compile RED names the missing seams rather than failing from environment or fixture errors.
+
+### Milestone 2: candidate-first transaction
+
+- Implement shared edit planning, presentation admission, Java Sound candidate-set lifecycle and controller handoff.
+- Acceptance: focused shared Android/Desktop and Desktop adapter suites pass; recoverable failures leave runtime/project/history/durable autosave unchanged.
+
+### Milestone 3: closeout
+
+- Run separate Standards and Spec reviews, configured full gate, package/policy/artifact read-back, then move this plan to `plans/completed/` and update current SSOT.
+- Acceptance: clean product checkpoint, zero unresolved review findings and explicit remaining physical/device gates.
+
 ## TDD and controls
 
 1. Add shared tests for edit-plan preview/cancel/commit, exact-once/stale/cross-session rejection and shared loop-control enablement.
@@ -52,6 +77,36 @@ On Windows, pressing Beat Loop while another primary playback mode is active eit
 ## Gate ceiling
 
 `LOCAL_PASS` only. Host fakes and lifecycle ordering do not claim physical Java Sound output, click-free transition, endpoint removal, Bluetooth/sleep/resume, device/provider/public/signing or Human acceptance.
+
+## Discoveries
+
+- The earlier interrupted Wave 17 worktree contained a useful candidate but was based on pre-merge Wave 16 and remained dirty. It is retained read-only; current work was reapplied to exact merged main.
+- Kotlin daemon marker creation is denied under the managed sandbox, but Gradle's in-process fallback completes compilation/tests. This is an execution-environment warning, not a product failure.
+- Helper-level ordering tests did not prove the actual Java Sound port wiring. Direct proxy-Clip tests now bind source/PAD retirement after complete candidate startup and preservation on companion failure.
+
+## Decision log
+
+- 2026-08-27 — Select Windows synchronous startup because it has a deterministic endpoint admission/failure boundary; defer Android realtime command acknowledgement as a separate design.
+- 2026-08-27 — Preserve `triggerPad` ownership tokens and add one batch method rather than weakening the exact GATE release contract.
+- 2026-08-27 — Treat only preparation/start `Exception` as recoverable. Failures after candidate startup/retirement begins and fatal `Error` propagate unchanged because rollback can no longer be proven.
+
+## Validation log
+
+- Current-main RED: `:shared:compileTestKotlinDesktop :desktop:compileTestKotlin`; missing `beatLoopControlEnabled` / `planEdit`.
+- Focused GREEN: `:shared:testAndroidHostTest :shared:desktopTest :desktop:test`; 333 tests / 58 suites, zero failure/error/skip.
+- Adapter wiring follow-up: `:desktop:test`; success after adding direct proxy-Clip success/failure ordering controls.
+
+## Risks and rollback
+
+- Candidate playback may overlap prior playback for the bounded startup interval; physical click/overlap quality is unclaimed until endpoint testing.
+- A non-contract retirement/scratch failure after candidates start cannot be truthfully rolled back and therefore propagates; the state is not misreported as recoverable success.
+- Rollback is the single Wave 17 product commit on this isolated branch. The historical dirty worktree and canonical dirty checkout are not changed.
+
+## Remaining device validation
+
+- Physical Windows endpoint open/start failure, click/pop/brief overlap, latency, device removal, Bluetooth and sleep/resume.
+- Native keyboard/Narrator interaction with the shared enabled state.
+- Android realtime loop-start acknowledgement remains a separately selected slice.
 
 ## Progress
 

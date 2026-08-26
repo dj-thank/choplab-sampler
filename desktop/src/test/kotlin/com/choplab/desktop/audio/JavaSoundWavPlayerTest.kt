@@ -4,6 +4,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import java.lang.reflect.Proxy
+import java.util.ArrayDeque
 import javax.sound.sampled.Clip
 import javax.sound.sampled.LineEvent
 import javax.sound.sampled.LineListener
@@ -89,6 +90,88 @@ class JavaSoundWavPlayerTest {
     }
 
     @Test
+    fun exclusiveLoopSessionStartsEveryCandidateBeforeRetiringSourceAndPadPlayback() {
+        val events = mutableListOf<String>()
+        val source = ClipProbe(label = "source", events = events)
+        val oldPad = ClipProbe(label = "old-pad", events = events)
+        val loop = ClipProbe(label = "loop", events = events)
+        val companion = ClipProbe(label = "companion", events = events)
+        val clips = ArrayDeque(listOf(source, oldPad, loop, companion))
+        val player = JavaSoundWavPlayer(DesktopClipFactory { clips.removeFirst().clip })
+        try {
+            player.loadPcm(testAudio(), pitchSemitones = 0f)
+            player.playFrom(0)
+            player.triggerPad(testPad(globalIndex = 6), forceLoop = false)
+            events.clear()
+
+            player.startExclusiveLoopSession(
+                loopPad = testPad(globalIndex = 7),
+                companionPads = listOf(testPad(globalIndex = 8)),
+            )
+
+            assertEquals(
+                listOf(
+                    "loop:open",
+                    "companion:open",
+                    "loop:loop",
+                    "companion:start",
+                    "source:stop",
+                    "old-pad:stop",
+                    "old-pad:close",
+                ),
+                events,
+            )
+        } finally {
+            player.close()
+        }
+    }
+
+    @Test
+    fun exclusiveLoopCompanionFailureAbandonsCandidatesAndPreservesPriorPlayback() {
+        val events = mutableListOf<String>()
+        val source = ClipProbe(label = "source", events = events)
+        val oldPad = ClipProbe(label = "old-pad", events = events)
+        val loop = ClipProbe(label = "loop", events = events)
+        val companion = ClipProbe(failOn = "start", label = "companion", events = events)
+        val clips = ArrayDeque(listOf(source, oldPad, loop, companion))
+        val player = JavaSoundWavPlayer(DesktopClipFactory { clips.removeFirst().clip })
+        try {
+            player.loadPcm(testAudio(), pitchSemitones = 0f)
+            player.playFrom(0)
+            player.triggerPad(testPad(globalIndex = 6), forceLoop = false)
+            val sourceStopsBefore = source.stopCount
+            events.clear()
+
+            val failure = assertFailsWith<DesktopLoopSessionStartupException> {
+                player.startExclusiveLoopSession(
+                    loopPad = testPad(globalIndex = 7),
+                    companionPads = listOf(testPad(globalIndex = 8)),
+                )
+            }
+
+            assertEquals("start failed", failure.message)
+            assertEquals(sourceStopsBefore, source.stopCount)
+            assertEquals(0, oldPad.stopCount)
+            assertEquals(0, oldPad.closeCount)
+            assertEquals(
+                listOf(
+                    "loop:open",
+                    "companion:open",
+                    "loop:loop",
+                    "companion:start",
+                    "loop:stop",
+                    "loop:close",
+                    "companion:stop",
+                    "companion:close",
+                ),
+                events,
+            )
+        } finally {
+            player.close()
+        }
+    }
+
+    @Test
     fun forceLoopKeepsTheLegacyNonIntegralRenderBoundaryWhenThePadIsOneShot() {
         val audio = PcmAudio(
             name = "short",
@@ -118,10 +201,13 @@ class JavaSoundWavPlayerTest {
         sampleRate = 48_000,
     )
 
-    private fun testPad(playMode: PadPlayMode = PadPlayMode.ONE_SHOT): PadModel {
+    private fun testPad(
+        playMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+        globalIndex: Int = 7,
+    ): PadModel {
         val audio = testAudio()
         return PadModel(
-            globalIndex = 7,
+            globalIndex = globalIndex,
             audio = audio,
             startFrame = 0,
             endFrame = audio.frameCount,
@@ -130,7 +216,9 @@ class JavaSoundWavPlayerTest {
     }
 
     private class ClipProbe(
-        private val failOn: String,
+        private val failOn: String = "",
+        private val label: String = "clip",
+        private val events: MutableList<String>? = null,
     ) {
         var openCount = 0
         var startCount = 0
@@ -146,12 +234,15 @@ class JavaSoundWavPlayerTest {
         ) { proxy, method, arguments ->
             when (method.name) {
                 "open" -> {
+                    events?.add("$label:open")
                     openCount++
                     if (failOn == "open") error("open failed")
                     null
                 }
                 "start" -> {
+                    events?.add("$label:start")
                     startCount++
+                    if (failOn == "start") error("start failed")
                     if (failOn == "start-after-stop") {
                         framePosition = 4
                         listener?.update(LineEvent(proxy as Clip, LineEvent.Type.STOP, framePosition.toLong()))
@@ -160,15 +251,18 @@ class JavaSoundWavPlayerTest {
                     null
                 }
                 "loop" -> {
+                    events?.add("$label:loop")
                     loopCount++
                     if (failOn == "loop") error("loop failed")
                     null
                 }
                 "stop" -> {
+                    events?.add("$label:stop")
                     stopCount++
                     null
                 }
                 "close" -> {
+                    events?.add("$label:close")
                     closeCount++
                     null
                 }
