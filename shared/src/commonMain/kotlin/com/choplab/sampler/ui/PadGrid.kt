@@ -567,8 +567,8 @@ fun shouldDeferDestructiveCaptureUntilTap(
 private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
     val audio = pad.audio ?: return FloatArray(0)
     if (!pad.isAssigned || audio.samples.isEmpty()) return FloatArray(0)
-    val start = pad.startFrame.coerceIn(0, audio.samples.lastIndex)
-    val end = pad.endFrame.coerceIn(start + 1, audio.samples.size)
+    val start = pad.startFrame.coerceIn(0, audio.frameCount - 1)
+    val end = pad.endFrame.coerceIn(start + 1, audio.frameCount)
     val bucketCount = 9
     val bucketSize = max(1, (end - start) / bucketCount)
     val peaks = FloatArray(bucketCount) { bucket ->
@@ -578,7 +578,7 @@ private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
         var frame = from
         val stride = max(1, (to - from) / 24)
         while (frame < to) {
-            peak = max(peak, abs(audio.samples[frame] / 32_768f))
+            peak = max(peak, abs(audio.monoSampleAt(frame) / 32_768f))
             frame += stride
         }
         peak

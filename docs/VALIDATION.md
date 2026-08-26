@@ -2,6 +2,13 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Consolidated PR #58 integration candidate — 2026-08-27
+
+- Integration parents: existing PR #58 head `d56244aa9c8208604341b08592db37dc3c3b816e`; PR #64 `9785d82c28bcc5c7d44de24b738f6bba0ed4f0a8`; PR #76 `330d57607fed062842e3a9df9920a01d95f505c1`; PR #77 `92db43402c5dad7b9b3a055f12728f5b2fa5ffeb`; Wave 10 closeout `600211fa20b0cb3f4e1fdcaf0878d0aecb7166a3`.
+- Conflict controls: combined GATE token plus CHOKE transition, channel-aware ten-minute streaming limits, reverse cursor plus stereo render, transport readiness plus bar index, and Java Sound exact-once close plus clip factory. Older single-channel, stale-release, stop-failure, same-PAD and different-PAD negative controls are retained.
+- Focused integration gate: `:shared:testAndroidHostTest :shared:desktopTest :jvm-core:test :desktop:test :app:testDebugUnitTest` completed successfully after one test-fixture repair pass. The first pass failed only because a pre-Song one-argument transport fixture and three renamed `readMono` calls had not adopted the merged interfaces.
+- Remaining gate: full configured validation, lint/package/artifact/SBOM read-back, independent Standards/Spec review and hosted exact-head workflows. No tag, release, signing identity, device or provider boundary has been touched.
+
 ## Guided first-screen GitHub review repair — 2026-08-25
 
 - Product source: reachable two-parent commit `3b5dd59b9271ab9a8a4abce9f03b80301b753861`, tree `4985a8ce8b30c4554e86c1695d2349d0b076024a`, advancing prior PR docs head `17a959a92fb3a08edf83662c8440d16c2de70178` and exact main `4f56a693b86540d1be13a6eb2153a3cf96ef9396`. GitHub recorded the product at `2026-08-24T15:10:27Z`; the documentation observation at `2026-08-25T00:10:38+09:00` occurred 11 seconds later. PR #52 and PRs #62, #65, #66, #67, #68, #70, #71, #73, #74 and #75 are integrated. The #65 Desktop readiness/step-zero, #67 8–192 kHz admission, #68 terminal-sample behavior/test, #71 import-name boundary, both recorder cancellation paths and #74 reverse renderer/test/force-loop behavior are retained.
@@ -121,6 +128,181 @@
 - The release manifest writer now fails before attestation/publication unless the Android APK, iOS Simulator archive, Windows app-image archive, and CycloneDX SBOM each have a checksum sidecar that names the exact target and matches its bytes.
 - Every discovered `.sha256` sidecar is validated, so malformed, mismatched, cross-named, and orphan sidecars cannot be published alongside the generated `SHA256SUMS`.
 - Focused unit coverage includes the accepted four-asset set plus missing, digest-mismatch, filename-mismatch, and orphan-sidecar failures. Hosted PR CI remains the integration proof; no tag or Release is created by this candidate.
+
+## Stereo channel identity tracer — 2026-08-27
+
+- Product checkpoint: `66d3911f57dfb56baed682cf8c0ec9a0aed85164`, tree `e60216ab70ef540f48815524e0b645de16817007`, base `d6c22434f1bfd9fa5bc505717d0be4fa4a552a3d`.
+- RED/GREEN domain/import: missing `channelCount`/frame APIs failed test compilation before `PcmAudio` became strict interleaved 1/2ch PCM. Android PCM float/8/16/24/32 and Windows PCM-16 preserve asymmetric stereo, keep mono, average 3–8ch to mono, enforce frame-based capacity/duration, reject partial frames and remove DC per channel.
+- RED/GREEN persistence: schema-6 mono WAV interpretation rejected asymmetric interleaved bytes. Schema 7 now round-trips exact L/R samples and checks manifest channel identity against strict RIFF/WAV shape. Schema 1–6 mono fixtures, channel mismatch, duplicate-ID shape mismatch and resident-budget negatives pass.
+- RED/GREEN playback/export: host PAD and Pattern summary initially had only mono shapes. Android source/PAD/scratch, Windows Clip/scratch, host PAD and Pattern/Song renderer now share frame coordinates and channel-aware output. Asymmetric full-bar Android realtime versus offline export stays within one PCM unit per channel. Mono-only control reads back WAV channel 1, block-align 2 and mono data length.
+- RED/GREEN analysis: the old zero-crossing path reported stereo frame 100 as interleaved sample offset 200. Waveform/trim/PAD/timeline/zero-crossing/transient now use per-channel frame count with explicit L/R average for analysis.
+- Adversarial closeout: review found a zero-size-EOS edge where a second codec format-change could change sample rate after PCM started without another data buffer. A pure negative control now rejects post-start sample-rate or stored channel-shape drift immediately; focused tests pass.
+- Full clean gate: `BUILD SUCCESSFUL in 4m 31s`; 197 tasks (192 executed / 5 up-to-date). Android 264 / 46 suites, shared Android/Desktop 58/58 / 11+11 suites, JVM-core 68 / 8 suites, Desktop 89 / 19 suites; total 537 tests / 95 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Realtime bytecode: release `SamplerEngine.renderLoop` allocates one float array and three `MutableStereoFrame` objects before the outer loop. Its steady sample loop has zero `new`, the method has zero monitor instructions and zero `java.io`/`java.nio` references; the only later `new` is the write-failure exception path.
+- Configured/policy gates: `validate_project.sh` PASS (public surface, executable modes, 18 Gradle tasks, six XML files, wrapper SHA/UTF-8). Python policy 59 PASS. Current plus reachable-history public surface 429 has no credential/signing/audio candidates. `git diff --check` PASS.
+- Final unsigned Android candidate: 24,192,116 bytes / `7F180B3A48452179B3277D8FA3633820E6C093B8A759CD43E3B4464D6259016A`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy and alignment PASS. Unsigned candidate acceptance exits 0; `--require-signed` rejects with exit 1.
+- Other artifacts: debug APK 31,672,434 / `F1C13E9A163BAB2652D1EE3703C359A564F2EFEC1DCB0FCBB5379AD87911AE67`; androidTest 10,878,659 / `19002E0EBB2B62B599FAE7CF1738AC275B7D4CBEC610F0348D3B9C871A90E4AC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`. App-image 405 files / 176,614,704 bytes / manifest `9F97268C312E570D5B051C5B5BB06F7A142EE42EE610BE2ADB3FE202A186CB2A`.
+- Supply chain: CycloneDX 1.6 `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `EA59D6FD8BA9B87C206F35396A2B21B98673DDE637CFC55B8FACB8AD984BCD39`.
+- Review/gate: local Standards/Spec unresolved findings 0/0. Result `LOCAL_PASS`; physical L/R output, audio quality, route/focus/Bluetooth/USB, latency/xRun, accessibility speech, device/provider/public/signing and Human outcomes remain unclaimed.
+
+## Build-tools-only Android release verification — 2026-08-26
+
+- Product checkpoint: `e5229075150bcfb219eb05c666f46fd9eba05ad8`, tree `514e5161dd73ba49436756afa53782eeb16c47d5`, base `a484a96dedb1c1b6c9025d332d22de602017ae64`.
+- RED: exact Wave 8 unsigned APK stopped with `Cannot find Android SDK tool: apkanalyzer` / exit 1 while SDK build-tools `36.0.0` already contained `aapt2`, `zipalign` and `apksigner`. The new test seam then failed import before implementation.
+- GREEN: `apkanalyzer` remains primary; only absence selects a strict `aapt2 dump xmltree` normalizer. A present-but-failing primary does not fallback. Both backends enter the existing one manifest policy; nonliteral `debuggable` / `exported` values now fail closed.
+- Negative controls: malformed/unknown lines, orphan and duplicate attributes, multiple roots, missing package/application, version mismatch, unexpected permission/declaration/exported service, debuggable application, unprotected profile receiver, ambiguous security Boolean, both-tools-missing and unsigned-when-required all reject.
+- Python release/public policy: 59 tests PASS. Configured project validation: public-surface 425, executable modes, 18 Gradle JVM-core/Desktop tasks, six Android XML files, wrapper SHA/UTF-8 PASS. Reachable-history public-surface 425 and `git diff --check` PASS.
+- Exact APK read-back: 24,175,732 bytes / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`; package `com.choplab.sampler`, version `0.17.0` / code `27`, `manifest_tool=aapt2`, manifest policy, 16-KiB-aware alignment and intentionally unsigned candidate PASS. `--require-signed` exits 1 as expected.
+- Unchanged product inputs: app/shared/jvm-core/desktop and root build tree objects match base, so Wave 8's 190-task / 511-test product gate and exact package bytes were not rerun. Existing CycloneDX 1.6 SBOM read-back passes at 650 components / 651 dependencies / 1,581,101 bytes / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`.
+- Gate: `LOCAL_PASS`. No signer identity, secret, key, workflow, GitHub/Release, device, provider, recording or Human action occurred.
+
+## Android live terminal-sample parity — 2026-08-26
+
+- Product checkpoint: `2948c6a59ab18ba18a0813e9033098b4e31e41a6`, tree `52059c3dce144ef3ad3a3f81b863709edbe8c9c6`, base `6a0649d80e3e1c62bb10742b0ec01765f0a2c45b`.
+- RED: a behavior-preserving extraction of the actual PAD render/retire call site failed twice at the exact same values. Natural finish frame `402` expected `-0.0012556206` but mixed `0.0`; 48-frame release frame `47` expected `0.0040690107` but mixed `0.0`.
+- GREEN: the call site captures the one render return, deactivates immediately if it also reports finished, then mixes the captured return once. Natural and release sequences match direct `Voice` output exactly; inactive follow-up returns zero. Existing `PatternMasterParityTest` and `PatternRendererTest` remain green.
+- Realtime inspection: `renderPadVoiceFrameForMix` is inline. Release `SamplerEngine.renderLoop` bytecode has no helper invocation and the relevant block retains one `Voice.render`, followed by finished/deactivate and the captured float mix. No new allocation, blocking, I/O, logging or UI reference was introduced.
+- Full gate: 190 tasks, exit `0`. Android 252 / 45 suites, shared Android/Desktop 40/40 / 8+8 suites, JVM-core 55 / 8 suites, Desktop 84 / 18 suites; 471 tests / 87 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7.
+- Artifacts: debug APK 31,590,514 / `5B2D88932F3F8AA1B79E4123585464EB35221AB99C130B2AB122D6565F4C978C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `0AFAEEE1887DE5AD872D1F190D328E6710807A0B1F78E01F3B5097C1105D86DC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- Other gates: configured validation 18 tasks, Python policy 40, public-surface 418, `git diff --check` PASS. CycloneDX 1.6 / product `0.17.0` / 650 components / 651 dependencies / 1,581,101 bytes / `50B03C65FEC1B35E159FB539A446ED9957813D745F5A3E240E658823F59B35F2` parsed successfully. Every listed artifact is newer than the product commit.
+- Review: parent PAD `work/PAD_CHOPLAB_GOAL_WAVE7_REVIEW_20260826.md`; Standards/Spec unresolved 0/0.
+- Gate: `LOCAL_PASS`; actual output capture, physical click/pop/tails, latency, sustained polyphony, route/device, provider/public/signing and Human outcomes remain unclaimed.
+
+## CHOKE live/export loop-session parity — 2026-08-26
+
+- Product checkpoint: `b445c18a6bb50abfd878f95a2d2e6c3397cb3222`, tree `a650dae4c5bc7a18d321c303fdcad8c268f2888e`, base `611a58932fff6faf4ae6178acdc1f7c575cb0a7b`.
+- RED: same-group full-bar offline export diverged from Android realtime `Voice` + shared limiter by maximum `9,262` PCM units at frame `49` (`offline=7,121`, `realtime=-2,141`).
+- GREEN: offline frame-zero selection reuses `vocalCompanionPadIndicesForLoopStart` only for exactly one assigned loop owner. Same-group owner-only and other-group intentional-layer full bars match the realtime/master oracle within `<=1` at every frame.
+- Negative controls: no-loop and multiple-assigned-loop inputs keep all historical non-loop vocals. Existing step timing, retrigger, polyphony, loop, vocal, final-sample, resource and non-finite paths remain green.
+- Full gate: the unchanged product commit completed 190 tasks with exit `0`. Android 250, shared Android/Desktop 40/40, JVM-core 55, Desktop 84; 469 tests / 87 suites, failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 31,590,514 / `9DAF4879CA8C2A3A0AE3A7AA448E1DE1E29C63383FEEC1715ED7E90E9E0B1789`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `F33392832B1A203FAF45D35BEF1E853868CB76EABB190525EEF7299FE09E266C`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Other gates at the product checkpoint: configured validation, Python policy 40, public-surface 417, Windows ProductVersion `0.17.0`, CycloneDX 1.6 / 650 components / 651 dependencies / `68E245F9C1D7B6003201BC4FAC28987EDD00F787EFD04FEBC4D7165624ED11EB`, and `git diff --check` PASS. The closeout-only tree passes Python policy 40, public-surface 418 and `git diff --check`; current byte read-back found no matching long-running process or crash log.
+- Review: parent PAD `work/PAD_CHOPLAB_GOAL_WAVE6_REVIEW_20260826.md`; Standards/Spec unresolved 0/0.
+- Gate: `LOCAL_PASS`; physical audio/fade/click/latency, route/device, provider/public and Human outcomes remain unclaimed.
+
+## CHOKE loop-session ownership — 2026-08-26
+
+- Product checkpoint: `1853659ef56d40117e9f61d1c7f01a752ed02f33`, tree `e07a07c46500f14aaa09619f4463682a07890eef`, base `639d5132c12bd3efe0d0346731cef9fbdaca15ec`.
+- RED/GREEN: Desktop current code first left loop state after a matching CHOKE trigger. GREEN shared tests cover complete owner/companion stop plans, group-zero/different-group/same-owner/invalid controls and owner-wins-same-group-vocal selection. Desktop covers exact stops, requested trigger, ordinary polyphony and fail-closed stop failure.
+- Android/Windows binding: controllers issue the shared stop plan before trigger and clear loop/playhead runtime truth; no history/autosave mutation. Android commands retain serial engine ordering; Desktop rejects the trigger if a stop throws.
+- Full gate: 190 tasks PASS. Android 248, shared Android/Desktop 40/40, JVM-core 54, Desktop 84; 466 total, failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 32,560,016 / `D36C4C21C02CFA384D76BE17F683DADFBE647F7951BF061BC0BF03766F77032A`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E3EA26BDFEA2C4C4E0EF0CA6209095D88DCE8A7485B831653BD78C4D6C6AADE1`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Other gates: configured project validation, Python policy 40, product public-surface 416 / documentation-inclusive 417, CycloneDX and `git diff --check` PASS. Local parent Standards/Spec findings 0/0.
+- Gate: `LOCAL_PASS`; physical audio/fade/click quality, device/provider/public and Human outcomes remain unclaimed.
+
+## Wide first-entry integrated goal head — 2026-08-26
+
+- Integrated product checkpoint: `b6eed97215bac6c27d3bef66b0f1c8c0e2e0b569`, tree `8f65157dae53050f48dac1c733bbdeb21689c523`; includes wide product `8b3751e`, shared Capture vocabulary `7d45164` and both closeout histories.
+- RED/GREEN: wide-layout policy first failed compilation; follow-up shared-vocabulary test also failed compilation before `CaptureEntryActionPresentation`. Both pass on Desktop and Android host, and compact/portrait/large-text remain exact negative controls.
+- Same-state visual: 1200×900 pristine Windows baseline/after under isolated app data. The split uses the available surface, retains all actions/NEXT state, has no clipping, and exact processes were closed.
+- Full final gate: 190 tasks PASS. Android 248, shared Android/Desktop 37/37, JVM-core 54, Desktop 80; 456 total, failures/errors/skips 0. Lint errors 0/warnings 7; public-surface 415 PASS.
+- Artifacts: debug APK 32,560,016 / `317ECA6F5E4ADAB34F20F60DB799FC3AE8F5BEE4B639C26C963258408EBA0B7E`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E28538D965C3210E263B9D04E5FF8554D6ADE72A69D6C21BA17A791944A80FBE`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Local parent Standards/Spec findings 0/0. Evidence and portfolio receipts are in parent PAD `work/CHOPLAB_WIDE_CAPTURE_EVIDENCE_20260826/` and `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE4_20260826.md`.
+- Gate: `LOCAL_PASS` plus scoped Windows visual. Compact/device/speech/audio/provider/public/Human gates remain unclaimed.
+
+## Continuous goal UX integrated head — 2026-08-26
+
+- Integrated checkpoint: `c660ce946764a5ef7d80e74fbbb8481d7f7b5d07`, tree `eb76832b79dec3491258744cc38584dcf7bc3955`; merge parents preserve the completed document-outcome and Finish-action branches.
+- Combined focused tests after conflict resolution PASS. Conflicts were documentation ordering only; both revision-bound records were retained.
+- Full integrated gate: 190 tasks PASS. Android 247, shared Android/Desktop 36/36, JVM-core 54, Desktop 80; 453 total, failures/errors/skips 0. Lint debug/release errors 0/warnings 7; public-surface 413 PASS.
+- Integrated artifacts: debug APK 32,535,756 / `D21EF9D3A380D1CAA9781BB9F2C91E1E7E331C37B97BE7687B3F51A4A6D1153C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `264FF124462B9F02E4E8D491DF435CAB3513EE05548025F758D415D4D8628C0E`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Gate: integrated `LOCAL_PASS`; the scoped Finish screenshot remains visual evidence only. Device, provider/public, physical audio/accessibility and Human gates remain unclaimed.
+
+## Finish action truth UX — 2026-08-26
+
+- Product checkpoint: `c4f0ca429b944f1b30ec5ce1d4452e037a1715f4`, tree `ff2a26e2d8e4c13016e277eb3428c97b569e599e`, base `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`.
+- RED/GREEN: shared presentation tests first failed compilation because `FinishClearActionPresentation` and its policy did not exist. GREEN fixes the ready title/guidance and the exact two-press clear label/confirmation; existing Android `GuidedWorkflowTest` agrees.
+- UI/runtime: same self-created Quick Sketch production was captured before/after in a packaged Windows app with isolated app data. The title and `CLEAR STEPS` labels fit at 1200×900; `clearAllPattern`, readiness, document actions and Undo/Redo behavior are unchanged.
+- Full gate: 197 tasks PASS. Android 244, shared Android/Desktop 36/36, JVM-core 54 and Desktop 80; failures/errors/skips 0. Lint debug/release errors 0/warnings 7.
+- Artifacts: debug APK 31,541,362 / `AEE147DD589749A040BD6271E35C2F5783557980AB009919BD14081D2C99C2A9`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,093,812 / `D4CD3B59E022C1DEFAB9948E5A83FD18E447539885B081D4423C3FAD0236F822`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Other gates: CycloneDX 650 components / 651 dependencies; configured project validation PASS; Python policy 40; product public surface 412 / documentation-inclusive 413; `git diff --check` PASS. Local parent Standards/Spec findings 0/0.
+- Evidence: parent PAD `work/CHOPLAB_GOAL_UX_AUDIT_20260826/` contains accepted screenshots, comparison and review notes.
+- Gate: `LOCAL_PASS` plus scoped Windows visual evidence. Device, physical audio/touch, accessibility speech, provider/public and Human outcomes remain unclaimed.
+
+## Wide first-entry UX — 2026-08-26
+
+- Product checkpoint: `8b3751e5f56b9b2dd0b0c74f1003283064e45e5b`, tree `2dcbb42bc31c98778d1705182ecec5afbae01e90`, base `2bdf60d21252d490c4d50576375528e395b8f426`.
+- RED/GREEN: `FocusedCaptureEntryLayout` was missing and focused test failed compilation. GREEN proves wide only for regular normal-text landscape; compact 640×360, large-text landscape and portrait remain stacked.
+- Visual: current-run 3862×2110 baseline/after screenshots use isolated app data and the same pristine/cancel flow. After uses the full surface for 2×2 own-audio actions plus separate demo panel, retains WAV-only picker and cancel feedback, and closes exact runtime processes gracefully.
+- `scripts/validate_project.sh`: public-surface baseline 411, executable modes, JVM-core/Desktop 18 tasks, XML/wrapper checks PASS. Documentation-inclusive final public-surface 412 PASS.
+- Full gate: 190 tasks PASS. Android 248, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 31,574,130 / `3BB275F43AADF26C34004170F56794CF9D51E97481799FE05DE01D60BE9CD369`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `D8FB290F6F5858D7322B559E42BCAE10C539836482CDC42F9E0BA961DB114F4A`.
+- Windows verifier/ProductVersion, CycloneDX, Python 40 and `git diff --check` PASS.
+- Gate: `LOCAL_PASS` plus scoped Windows screenshot evidence; compact/device/speech/audio/provider/public/Human gates remain unclaimed.
+
+## Document operation outcome confidence — 2026-08-26
+
+- Product checkpoint: `e2a76d80340dcad97856e5c39c1b74596cc2f42f`, tree `96c14bd39f82036bd8770e64628682a8f6c887aa`, base `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`.
+- RED/GREEN: shared cancel/completion contract first failed compilation. GREEN covers all four action cancellations, Android/no-name and Windows/leaf-name completion, external-file vs retained-project truth, full-path/control-character rejection and length bounds.
+- Platform source: four Android result callbacks plus Windows WAV/project dialogs report cancellation. Android/Windows save/export success calls the same shared contract; existing I/O and failure code is unchanged.
+- `scripts/validate_project.sh`: public-surface baseline 410, executable modes, JVM-core/Desktop 18 tasks, XML/wrapper checks PASS. Documentation-inclusive final public-surface 411 PASS.
+- Full gate: 190 tasks PASS. Android 247, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7.
+- Artifacts: debug APK 31,541,362 / `05F90319795637C615A2AEC8FE500757FE11346A6A3674D7CEF479822E20F193`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `640F97E963BD1355B503952A4D2539DC2B8E38D78CD713713FF9BD4B920D8844`.
+- Windows verifier/ProductVersion and CycloneDX PASS. Python 40 and `git diff --check` PASS.
+- Gate: `LOCAL_PASS`; real provider/dialog destinations, device, screen-reader, public and Human gates remain unclaimed.
+
+## Workflow NEXT and locked-stage reasons — 2026-08-26
+
+- Product checkpoint: `a9f2245abd1673ce02b9a94f231b66d5fe87a4ea`, tree `05d84e34c62f83057ef28175ea2d4d3d9d7de96a`, base `8b9c00ba2a382705c3478c1ce8984225d30a6c8d`.
+- RED/GREEN: new availability/next-action tests first failed compilation. GREEN covers empty, starter demo, loaded source, source+starter, source chop, PAD-only, LOOP, export-ready, loading, recording and stopping states; locked reasons and bounded copy lengths are exact assertions.
+- UI integration: stage tabs retain their existing enabled Boolean and navigation behavior, adding state descriptions only. The fixed status strip now shows one NEXT action and uses merged semantics; no scroll/modal/screen was added.
+- `scripts/validate_project.sh`: public-surface baseline 409 PASS; executable modes PASS; JVM-core/Desktop 18 tasks PASS; XML/wrapper checks PASS. Documentation-inclusive final public-surface 410 and all Python policy 40 PASS.
+- Full gate: 190 tasks PASS. Android 244, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint debug/release errors 0/warnings 7.
+- Artifacts: debug APK 31,541,362 / `500B675B04A3D4DED7C88FB5F286AB6CBF2E571F99BB8DEAC7EED951FCCD21B4`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,093,812 / `3477E4CC631F2C1F8195FC388E4BD65216F6926638AA120E34F949BDFCA6A1CE`.
+- Windows verifier: ProductVersion `0.17.0`, EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630` PASS. CycloneDX build and `git diff --check` PASS.
+- Gate: `LOCAL_PASS`; physical visual/touch/speech/audio, provider/public and Human outcomes remain unclaimed.
+
+## Android signer verifier recovery — 2026-08-26
+
+- Product checkpoint: `807ef56d53eb99a8fcf4c8e779b4486136563f4e`, tree `482fdd141336a1528bce66b049891b44494b7c68`, base `4978c4c715fdc7116364e748f0a34cb1c2964e48`.
+- RED/GREEN: the initial stderr-output contract could not import. The implemented parser now accepts one normalized digest from stdout and/or stderr, deduplicates identical lines, and rejects conflicting values. SDK-owned build-tools win over an ambient executable.
+- Focused/full policy: verifier 13 tests PASS; all Python release/public tests 40 PASS.
+- Exact artifact negative control: the existing local `v0.17.0` signed APK passed version `0.17.0 (27)`, manifest, permission/export, alignment, signature and expected-identity checks with identity output suppressed. No keystore or repository secret was read back or changed.
+- Project validation: final public-surface 409 PASS; executable modes PASS; JVM-core/Desktop 18 Gradle tasks PASS; Android XML, wrapper SHA-256 and wrapper UTF-8 policy PASS. Fresh Android unit/Lint/release APK/CycloneDX gate: 111 tasks PASS; Android unit 239, failures/errors/skips 0; unsigned release APK 24,093,812 bytes / `911C43FF695562699D45F6F30E6806ABF6350DBA9933C7E65602CD07542EDD11`; SBOM 650 components / 651 dependencies PASS. `git diff --check` PASS.
+- `doctor.sh` was not run because it invokes `adb devices`, which was explicitly outside this task's authority. JDK/SDK/tool resolution was exercised through validation and the exact-APK verifier without ADB.
+- Gate: `LOCAL_PASS`; no OAuth, provider, GitHub, device, publication or Human gate was run or promoted.
+
+## Monophonic PAD retrigger and loop-session ownership — 2026-08-25
+
+- Product source: `be52047124cf502feec8275f8e74451d400872c8`, tree `6159ef8f08bd133ca23e0c9b6dddc7bfbc705da2`, parent `dfe9a223309cd4f439ffa348039428117161d2a1`.
+- RED/GREEN: missing same-PAD retire and vocal-companion policies first failed compilation; the offline repeated-event fixture then failed behaviorally because the second step was louder; a Windows controller negative path failed because loop stop left its companion vocal active. All became GREEN after one ownership policy and symmetric loop-session start/stop.
+- Negative controls: Android keeps a different PAD voice active; offline two-PAD same-frame energy remains greater than a single PAD; vocal companion selection includes another assigned vocal but excludes the loop owner and empty/non-vocal PADs.
+- Full local gate: clean 191 tasks PASS; exact product commit final read-back 184 tasks PASS. Shared Android host 34, shared Desktop 34, Android 239, JVM-core 54 and Desktop 80; failures/errors/skips 0.
+- Other checks: debug/release Lint errors 0/warnings 7; Python policy 36 PASS; public-surface 408 PASS; six XML files, executable modes, wrapper SHA-256/UTF-8 and `git diff --check` PASS. The configured shell script was not invoked because its no-`kotlinc` fallback lacks `--offline`; each component and the stronger full Gradle set were run separately without download.
+- Realtime inspection: compiled Android `startVoice` delegates to the fixed-array retire helper; neither method contains a `new` bytecode instruction. No callback allocation, blocking, I/O or logging was introduced.
+- Artifacts: debug APK 31,541,362 bytes / `14BE56FCFB703E38F1E7B44B3BE6AF22B398F7E3970D1EE4448D5B1F24D552FB`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,093,812 / `911C43FF695562699D45F6F30E6806ABF6350DBA9933C7E65602CD07542EDD11`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, app-image 405 files / 176,529,514 bytes.
+- Gate: `LOCAL_PASS`; no install, device, recording, real audio capture/listening, Spotify/provider, publication or Human gate was attempted.
+
+## Image-guided screen-fitting precision trim — 2026-08-25
+
+- Product source: `6befe1193a91d099bc8ecd5f736eb4d2fea64d24`, tree `71cd3941580e80346549bbad4af0669bc5739112`, parent `25792b9`.
+- Reference workflow: original screenshot opened at 570 × 1280; built-in ImageGen candidate saved under parent `outputs/`; 7-region contract and readable brief under `docs/ui/`; exact prompt and hashes in the parent receipt.
+- RED/GREEN: missing initial-window policy failed compilation. Unit contracts then passed for 80% PAD fit, one-second floor, source-edge clamp, maximum zoom, overview semantics and compact-height threshold. Android instrumentation compiled and 2/2 focused tests passed on exact AVD serial `emulator-5592`.
+- Runtime capture: synthetic four-second WAV only. A01 selected range `0:00.000–0:00.500`, initial viewport `0:00.000–0:01.000`, overview `表示 1.0秒`; fresh 1080 × 2400 capture and normalized three-way comparison saved in parent `outputs/`.
+- Full local gate: clean 191 tasks PASS and final 184-task full read-back PASS. Shared hosts 32/32, Android 238, JVM-core 52, Desktop 79; failures/errors/skips 0. With two AVD instrumentation tests, total 435.
+- Other checks: Lint errors 0/warnings 7; Python 36 PASS; final public-surface 406 PASS; UI contract validator PASS; `git diff --check` PASS; debug marker scan empty.
+- Gate: `LOCAL_PASS` plus scoped AVD; physical device/audio/TalkBack/provider/public/Human gates not claimed.
+
+## Supported-audio picker local candidate — 2026-08-25
+
+- Product source: `a72d4ea485ff786072a9e6d9d9d75a4800422f41`, tree `a16f2bcc57226f58e872d8c7cf14a756e28bf7ef`, parent `47e5637`.
+- RED: source-contract tests caught Android's unrestricted base MIME and Windows' ineffective AWT filename filter. Bundled AndroidX/JDK bytecode/source confirmed both root causes.
+- GREEN: Android compiled bytecode emits only `OPEN_DOCUMENT`, `OPENABLE`, and `audio/*`; Android instrumentation contract test assembled. Windows policy test accepts real `.wav` files only; runtime chooser has one WAV filter and no All Files option.
+- Clean Gradle gate: 191 actionable tasks PASS. Shared host 32/32, Android 234, JVM-core 52, Desktop 79; failures/errors/skips 0. Lint errors 0, warnings 7.
+- Other gates: Python 36 PASS, public-surface 401 PASS, `git diff --check` PASS.
+- Artifacts: debug APK `09997FF6…`, androidTest `BE647B4C…`, unsigned release `8C60AAAC…`; full size/hash and runtime evidence are in parent PAD `work/PAD_CHOPLAB_AUDIO_PICKER_LOCAL_RECEIPT_20260825.md`.
+- Gate: `LOCAL_PASS`; connected Pixel/device/provider/public/Human boundaries were not touched or promoted.
+
+## Reversible Quick Sketch local candidate — 2026-08-25
+
+- Product source: `143a96919120273795805a6c1b95a203339cd4b9`, tree `707a40df56ebbdaff2f5c1688a4cd8dd13d20abc`, base `8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`.
+- TDD contract: fixed eight safe ranges, A01–A08 only, alternating steps `0,2,...,14`, all B/C/D pads and non-A steps preserved, strict no-op for existing A work/markers/short source/loading/recording, one ProductionSession Undo/Redo/persistence unit, and context-only four-slot dock action.
+- Full Gradle gate: `:shared:testAndroidHostTest :shared:desktopTest :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :jvm-core:test :desktop:test :desktop:packageWindows` — `BUILD SUCCESSFUL`, 184 actionable tasks on final read-back. Shared host 32/32, Android 234, JVM-core 52, Desktop 78; failures/errors/skips 0. Lint errors 0, warnings 7.
+- Other gates: `scripts/validate_project.sh` PASS; Python policy 34 PASS; public-surface 397 candidates PASS; `git diff --check` PASS.
+- Windows prototype: an original generated sine fixture produced the context button, seven markers, eight A pads and eight melody steps in isolated app data; starter-drum keys remained. Exact launcher/UI PIDs were stopped. No user/Spotify/third-party audio, recording or real project was used.
+- Artifacts: debug APK `BB20B2C9…`, androidTest `77608CAD…`, unsigned release `6824CC90…`; exact size/hash and runtime evidence are in parent PAD `work/PAD_CHOPLAB_QUICK_SKETCH_LOCAL_RECEIPT_20260825.md`.
+- Review: Spec P0–P3 none. Standards source findings none; one closeout-document P2 repaired.
+- Gate: `LOCAL_PASS`. Device/audio/TalkBack/provider/public/Human boundaries remain unclaimed.
 
 ## Desktop recorder startup cleanup candidate — 2026-08-24
 

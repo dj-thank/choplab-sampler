@@ -189,6 +189,7 @@ fun SamplerUiState.hasSameEditableContent(other: SamplerUiState): Boolean =
         autoNextPad == other.autoNextPad &&
         pads == other.pads &&
         activeSteps == other.activeSteps &&
+        patternArrangement == other.patternArrangement &&
         bpm == other.bpm &&
         swing == other.swing &&
         sourcePlayheadFrame == other.sourcePlayheadFrame &&

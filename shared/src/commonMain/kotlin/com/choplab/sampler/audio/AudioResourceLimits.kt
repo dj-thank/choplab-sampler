@@ -8,7 +8,9 @@ package com.choplab.sampler.audio
  */
 object AudioResourceLimits {
     const val MAX_IMPORT_DURATION_SECONDS = 10L * 60L
-    const val MAX_DECODED_MONO_FRAMES = 30_000_000
+    const val MAX_DECODED_FRAMES = 30_000_000
+    @Deprecated("Use the channel-independent frame limit")
+    const val MAX_DECODED_MONO_FRAMES = MAX_DECODED_FRAMES
     const val MAX_IMPORT_FILE_BYTES = 256L * 1024L * 1024L
     const val MAX_RECORDING_DURATION_SECONDS = 10L * 60L
     const val MIN_FREE_DISK_RESERVE_BYTES = 64L * 1024L * 1024L

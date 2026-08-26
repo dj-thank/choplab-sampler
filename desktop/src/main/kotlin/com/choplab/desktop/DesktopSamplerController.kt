@@ -25,6 +25,8 @@ import com.choplab.sampler.model.RepeatGrid
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.assignLiveChopToPad
+import com.choplab.sampler.model.chokeLoopSessionTransition
+import com.choplab.sampler.model.clearEveryPattern
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.restorePadTrimSnapshot
@@ -43,9 +45,14 @@ import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
+import com.choplab.sampler.model.patternSequenceForExport
+import com.choplab.sampler.model.patternSequenceForPlayback
+import com.choplab.sampler.model.removePadFromEveryPattern
+import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
+import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
@@ -63,6 +70,8 @@ import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadS
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
+import com.choplab.sampler.ui.DocumentAction
+import com.choplab.sampler.ui.documentCompletionMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -192,13 +201,31 @@ class DesktopSamplerController(
     fun exportBeat(outputFile: File) {
         val operation = statusOperations.begin()
         val snapshot = mutableState.value
+        val exportSequence = snapshot.patternSequenceForExport().map { steps ->
+            steps.audibleStepKeys(snapshot.pads)
+        }
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
             runCatching {
-                PatternRenderer.renderToWav(outputFile, snapshot.pads, snapshot.activeSteps, snapshot.bpm, snapshot.swing)
+                PatternRenderer.renderSequenceToWav(
+                    outputFile = outputFile,
+                    pads = snapshot.pads,
+                    patternSequence = exportSequence,
+                    bpm = snapshot.bpm,
+                    swing = snapshot.swing,
+                )
             }.onSuccess {
                 statusOperations.completeIfCurrent(operation) {
-                    mutableState.update { it.copy(isLoading = false, statusMessage = "${outputFile.name}を書き出しました") }
+                    mutableState.update {
+                        it.copy(
+                            isLoading = false,
+                            statusMessage = documentCompletionMessage(
+                                action = DocumentAction.EXPORT_WAV,
+                                destinationName = outputFile.name,
+                                detail = "4小節",
+                            ),
+                        )
+                    }
                 }
             }.onFailure { error ->
                 statusOperations.completeIfCurrent(operation) {
@@ -245,7 +272,15 @@ class DesktopSamplerController(
             runCatching { DesktopProjectFiles.save(file, snapshot) }
                 .onSuccess { written ->
                     statusOperations.completeIfCurrent(operation) {
-                        mutableState.update { it.copy(isLoading = false, statusMessage = "${written.name}を保存しました") }
+                        mutableState.update {
+                            it.copy(
+                                isLoading = false,
+                                statusMessage = documentCompletionMessage(
+                                    action = DocumentAction.SAVE_PROJECT,
+                                    destinationName = written.name,
+                                ),
+                            )
+                        }
                     }
                 }
                 .onFailure { error ->
@@ -508,6 +543,7 @@ class DesktopSamplerController(
     private fun triggerPadAndReturnOwnership(index: Int): Long? {
         val pad = mutableState.value.pads.getOrNull(index)
         if (pad?.isAssigned == true) {
+            if (!stopChokedLoopSessionBeforeTrigger(index)) return null
             val ownership = triggerPlayerPad(pad)
             val beforeRecord = mutableState.value
             if (beforeRecord.recordArmed && beforeRecord.transportPlaying && beforeRecord.currentStep >= 0) {
@@ -531,6 +567,24 @@ class DesktopSamplerController(
 
     private fun triggerPlayerPad(pad: PadModel, forceLoop: Boolean = false): Long =
         player.triggerPad(pad, forceLoop)
+
+    private fun stopChokedLoopSessionBeforeTrigger(index: Int): Boolean {
+        val transition = mutableState.value.chokeLoopSessionTransition(index)
+        if (!transition.stopsLoopSession) return true
+        val stopFailure = runCatching {
+            transition.padIndicesToStop.forEach(player::stopPad)
+        }.exceptionOrNull()
+        if (stopFailure != null) {
+            setStatus(
+                "CHOKEでビートループを停止できないためPADを再生しませんでした: " +
+                    (stopFailure.message ?: stopFailure.javaClass.simpleName),
+            )
+            return false
+        }
+        mutableState.value = transition.state
+        return true
+    }
+
     override fun previewPad(index: Int) {
         stopCompetingPlayback()
         triggerPad(index)
@@ -737,9 +791,8 @@ class DesktopSamplerController(
         val selected = mutableState.value.selectedPad
         player.stopPad(selected)
         commitEdit { state ->
-            state.copy(
+            state.removePadFromEveryPattern(selected).copy(
                 pads = state.pads.toMutableList().also { it[selected] = PadModel(selected) },
-                activeSteps = state.activeSteps.filterNot { key -> key / SamplerConfig.STEP_COUNT == selected }.toSet(),
                 loopingPadIndex = state.loopingPadIndex?.takeUnless { it == selected },
                 loopPlayheadFrame = if (state.loopingPadIndex == selected) -1 else state.loopPlayheadFrame,
                 statusMessage = "選択PADを消去しました",
@@ -755,7 +808,7 @@ class DesktopSamplerController(
         val pad = state.pads[state.selectedPad]
         state.copy(activeSteps = state.activeSteps.togglePadStep(pad, step))
     }
-    override fun clearAllPattern() = commitEdit { it.copy(activeSteps = emptySet()) }
+    override fun clearAllPattern() = commitEdit { it.clearEveryPattern() }
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
         val index = state.loopingPadIndex ?: state.selectedPad
@@ -763,6 +816,9 @@ class DesktopSamplerController(
         if (pad?.isAssigned != true) return setStatus("先に音の入ったPADを選んでください")
         if (state.loopingPadIndex == index) {
             player.stopPad(index)
+            state.pads
+                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+                .forEach(player::stopPad)
             mutableState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1, statusMessage = "ビートループを停止しました") }
             return
         }
@@ -781,7 +837,8 @@ class DesktopSamplerController(
         }
         triggerPlayerPad(loopPad, forceLoop = true)
         mutableState.value.pads
-            .filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+            .map(mutableState.value.pads::get)
             .forEach { triggerPlayerPad(it) }
         mutableState.update {
             it.copy(
@@ -842,14 +899,15 @@ class DesktopSamplerController(
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.copy(
+            state.replaceBankStepsAcrossPatterns(
+                bankStart = bankStart,
+                bankEndExclusive = bankEnd,
+                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            ).copy(
                 pads = pads,
                 selectedBank = bankIndex,
                 selectedPad = bankStart,
                 selectedDrumKitId = kitId,
-                activeSteps = state.activeSteps
-                    .filterNotTo(linkedSetOf()) { key -> key / SamplerConfig.STEP_COUNT in bankStart until bankEnd } +
-                    BuiltInDrumKits.starterPattern(kitId, bankIndex),
                 loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
                 loopPlayheadFrame = if (state.loopingPadIndex in bankStart until bankEnd) -1 else state.loopPlayheadFrame,
                 statusMessage = "${BuiltInDrumKits.catalog.first { it.id == kitId }.name} を BANK B ドラムにセット",
@@ -1315,11 +1373,12 @@ class DesktopSamplerController(
     private fun sourcePlaybackFailureMessage(error: Throwable): String =
         "音声は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}"
 
-    private fun onTransportStep(step: Int) {
+    private fun onTransportStep(barIndex: Int, step: Int) {
         val snapshot = mutableState.value
         if (!snapshot.transportPlaying) return
         mutableState.update { current -> if (current.transportPlaying) current.copy(currentStep = step) else current }
-        val audible = snapshot.activeSteps.audibleStepKeys(snapshot.pads)
+        val sequence = snapshot.patternSequenceForPlayback()
+        val audible = sequence[barIndex % sequence.size].audibleStepKeys(snapshot.pads)
         snapshot.pads.forEach { pad ->
             if (stepKey(pad.globalIndex, step) in audible) triggerPlayerPad(pad)
         }
@@ -1377,7 +1436,9 @@ class DesktopSamplerController(
                 val pad = current.pads[target.padIndex]
                 runCatching {
                     triggerPlayerPad(pad, forceLoop = true)
-                    current.pads.filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL }
+                    current.pads
+                        .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
+                        .map(current.pads::get)
                         .forEach { triggerPlayerPad(it, forceLoop = false) }
                 }.onSuccess {
                     mutableState.update {

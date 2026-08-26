@@ -16,11 +16,16 @@ object TransientDetector {
         sampleRate: Int,
         maxSlices: Int = 16,
         sensitivity: Float = 1.15f,
+        channelCount: Int = 1,
     ): List<Int> {
         if (samples.isEmpty() || sampleRate <= 0 || maxSlices <= 1) return emptyList()
+        require(channelCount in 1..2 && samples.size % channelCount == 0) {
+            "音声データに不完全なPCMフレームがあります"
+        }
 
-        val start = startFrame.coerceIn(0, samples.lastIndex)
-        val end = endFrame.coerceIn(start + 1, samples.size)
+        val frameCount = samples.size / channelCount
+        val start = startFrame.coerceIn(0, frameCount - 1)
+        val end = endFrame.coerceIn(start + 1, frameCount)
         val windowSize = (sampleRate / 200).coerceIn(128, 512) // approximately 5 ms
         val windowCount = (end - start) / windowSize
         if (windowCount < 4) return emptyList()
@@ -33,8 +38,12 @@ object TransientDetector {
             val from = start + window * windowSize
             val to = min(end, from + windowSize)
             var sum = 0.0
-            for (index in from until to) {
-                val value = samples[index] / 32_768f
+            for (frame in from until to) {
+                var channelSum = 0
+                repeat(channelCount) { channel ->
+                    channelSum += samples[frame * channelCount + channel].toInt()
+                }
+                val value = (channelSum / channelCount) / 32_768f
                 sum += value * value
             }
             val rms = sqrt(sum / max(1, to - from)).toFloat()

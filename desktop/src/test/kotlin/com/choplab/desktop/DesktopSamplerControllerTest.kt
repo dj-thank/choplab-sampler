@@ -7,7 +7,9 @@ import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
@@ -16,6 +18,7 @@ import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.selectedPadPage
+import com.choplab.sampler.model.materializedPatternArrangement
 import com.choplab.sampler.persistence.AtomicProjectStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -213,6 +216,10 @@ class DesktopSamplerControllerTest {
             controller.setSwing(64f)
             controller.saveProject(project)
             awaitCondition { project.isFile && !controller.state.value.isLoading }
+            assertEquals(
+                "session.choplab に制作を保存しました。アプリ内の安全コピーも保持しています",
+                controller.state.value.statusMessage,
+            )
             controller.setBpm(80f)
 
             controller.openProject(project)
@@ -221,6 +228,104 @@ class DesktopSamplerControllerTest {
             assertEquals(133f, controller.state.value.bpm)
             assertEquals(64f, controller.state.value.swing)
             assertEquals("session.choplabを開きました", controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun arrangementCommandsShareHistoryAndSurviveProjectRoundTrip() {
+        val directory = Files.createTempDirectory("choplab-controller-arrangement").toFile()
+        val project = directory.resolve("ab-song.choplab")
+        val controller = controller()
+        try {
+            controller.ensurePlayablePadSelected()
+            val patternA = controller.state.value.activeSteps
+            controller.duplicateSelectedPatternToOther()
+            controller.toggleStep(15)
+            val patternB = controller.state.value.activeSteps
+            assertNotEquals(patternA, patternB)
+
+            controller.toggleSongSectionPattern(1)
+            assertEquals(listOf(0, 1, 0, 0), controller.state.value.patternArrangement.songSections)
+            controller.undoEdit()
+            assertEquals(listOf(0, 0, 0, 0), controller.state.value.patternArrangement.songSections)
+            controller.redoEdit()
+            controller.toggleSongSectionPattern(3)
+            controller.toggleSongMode()
+            val expected = controller.state.value.materializedPatternArrangement()
+
+            controller.saveProject(project)
+            awaitCondition { project.isFile && !controller.state.value.isLoading }
+            controller.selectPatternVariation(0)
+            controller.toggleSongMode()
+
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "ab-song.choplabを開きました" }
+
+            val restored = controller.state.value
+            assertEquals(expected, restored.patternArrangement)
+            assertEquals(expected.storedStepsBySlot[expected.selectedSlot], restored.activeSteps)
+            assertEquals(listOf(patternA, patternB), restored.patternArrangement.storedStepsBySlot)
+            assertTrue(restored.patternArrangement.songModeEnabled)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun songModeDesktopExportUsesTheSavedABABOrder() {
+        val directory = Files.createTempDirectory("choplab-controller-song-export").toFile()
+        val output = directory.resolve("ab-song.wav")
+        val store = AtomicProjectStore(directory.resolve("autosave"))
+        val positive = PcmAudio(name = "pattern-a.wav", samples = ShortArray(256) { 12_000 }, sampleRate = 8_000)
+        val negative = PcmAudio(name = "pattern-b.wav", samples = ShortArray(256) { -12_000 }, sampleRate = 8_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> PadModel(index, positive, 0, positive.frameCount)
+                1 -> PadModel(index, negative, 0, negative.frameCount)
+                else -> PadModel(index)
+            }
+        }
+        val patternA = setOf(stepKey(0, 0))
+        val patternB = setOf(stepKey(1, 0))
+        store.save(
+            SamplerUiState(
+                pads = pads,
+                activeSteps = patternA,
+                patternArrangement = PatternArrangement(
+                    storedStepsBySlot = listOf(patternA, patternB),
+                    songSections = listOf(0, 1, 0, 1),
+                    songModeEnabled = true,
+                ),
+                bpm = 120f,
+                swing = 50f,
+            ),
+        )
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+
+            controller.exportBeat(output)
+            awaitCondition { output.isFile && !controller.state.value.isLoading }
+
+            val bytes = output.readBytes()
+            val pcm = ShortArray((bytes.size - 44) / Short.SIZE_BYTES) { index ->
+                java.nio.ByteBuffer.wrap(bytes, 44 + index * Short.SIZE_BYTES, Short.SIZE_BYTES)
+                    .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                    .short
+            }
+            val barFrames = pcm.size / 4
+            assertTrue(pcm[64] > 0)
+            assertTrue(pcm[barFrames + 64] < 0)
+            assertTrue(pcm[barFrames * 2 + 64] > 0)
+            assertTrue(pcm[barFrames * 3 + 64] < 0)
         } finally {
             controller.close()
             directory.deleteRecursively()
@@ -717,6 +822,61 @@ class DesktopSamplerControllerTest {
             assertEquals(true, engine.triggered.last().second)
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun selectedVocalLoopIsTriggeredOnceWhileOtherVocalTakesRemainCompanions() {
+        val directory = Files.createTempDirectory("choplab-vocal-loop-owner").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine()
+        val audio = PcmAudio(
+            name = "voice.wav",
+            samples = ShortArray(2_000) { 8_000 },
+            sampleRate = 48_000,
+        )
+        val loopPadIndex = SamplerConfig.VOCAL_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+        val companionPadIndex = loopPadIndex + 1
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeStartFrame = 0,
+                rangeEndFrame = audio.frameCount,
+                selectedBank = SamplerConfig.VOCAL_BANK_INDEX,
+                selectedPad = loopPadIndex,
+                pads = List(SamplerConfig.PAD_COUNT) { index ->
+                    when (index) {
+                        loopPadIndex, companionPadIndex -> PadModel(
+                            globalIndex = index,
+                            audio = audio,
+                            startFrame = 0,
+                            endFrame = audio.frameCount,
+                            contentKind = PadContentKind.VOCAL,
+                        )
+                        else -> PadModel(index)
+                    }
+                },
+            ),
+        )
+        val controller = DesktopSamplerController(engine, autosaveStore = store, autosaveDelayMillis = 0L)
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            engine.triggered.clear()
+
+            controller.toggleBeatLoopControl()
+
+            assertEquals(1, engine.triggered.count { it.first.globalIndex == loopPadIndex })
+            assertEquals(true, engine.triggered.single { it.first.globalIndex == loopPadIndex }.second)
+            assertEquals(1, engine.triggered.count { it.first.globalIndex == companionPadIndex })
+            assertEquals(false, engine.triggered.single { it.first.globalIndex == companionPadIndex }.second)
+
+            controller.toggleBeatLoopControl()
+
+            assertTrue(loopPadIndex in engine.stoppedPads)
+            assertTrue(companionPadIndex in engine.stoppedPads)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
         }
     }
 
@@ -1457,6 +1617,35 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun matchingChokeTriggerStopsPublishedLoopSessionBeforePlayingRequestedPad() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val loopPad = bankStart + 8
+            val requestedPad = bankStart + 9
+            assertEquals(1, controller.state.value.pads[loopPad].chokeGroup)
+            assertEquals(1, controller.state.value.pads[requestedPad].chokeGroup)
+
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            engine.stoppedPads.clear()
+            val triggerCountBeforeRequest = engine.triggered.size
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertEquals(-1, controller.state.value.loopPlayheadFrame)
+            assertEquals(listOf(loopPad), engine.stoppedPads)
+            assertEquals(triggerCountBeforeRequest + 1, engine.triggered.size)
+            assertEquals(requestedPad, engine.triggered.last().first.globalIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun failedDesktopTriggerDoesNotSupersedeAnOlderGateOwner() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -1476,6 +1665,116 @@ class DesktopSamplerControllerTest {
 
             assertTrue(engine.releasedPads.isEmpty())
             assertEquals(listOf(padIndex to olderOwnership), engine.releasedOwnedPads)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun matchingChokeTriggerStopsTheLoopOwnersVocalCompanionSet() {
+        val directory = Files.createTempDirectory("choplab-choke-loop-session").toFile()
+        val store = AtomicProjectStore(directory)
+        val audio = PcmAudio(
+            name = "choke-session.wav",
+            samples = ShortArray(256) { 6_000 },
+            sampleRate = 48_000,
+        )
+        val loopPad = 4
+        val vocalCompanion = 5
+        val requestedPad = 6
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                loopPad -> PadModel(index, audio, 0, audio.frameCount, chokeGroup = 1)
+                vocalCompanion -> PadModel(
+                    index,
+                    audio,
+                    0,
+                    audio.frameCount,
+                    contentKind = PadContentKind.VOCAL,
+                )
+                requestedPad -> PadModel(index, audio, 0, audio.frameCount, chokeGroup = 1)
+                else -> PadModel(index)
+            }
+        }
+        store.save(
+            SamplerUiState(
+                currentAudio = audio,
+                rangeStartFrame = 0,
+                rangeEndFrame = audio.frameCount,
+                pads = pads,
+                selectedPad = loopPad,
+            ),
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            player = engine,
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+            controller.toggleBeatLoopControl()
+            assertEquals(listOf(loopPad, vocalCompanion), engine.triggered.map { it.first.globalIndex })
+            engine.stoppedPads.clear()
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(listOf(vocalCompanion, loopPad), engine.stoppedPads)
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertEquals(requestedPad, engine.triggered.last().first.globalIndex)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun differentChokeGroupKeepsTheLoopSessionAndOrdinaryPolyphony() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val loopPad = bankStart + 8
+            val requestedPad = bankStart + 4
+            assertEquals(1, controller.state.value.pads[loopPad].chokeGroup)
+            assertEquals(0, controller.state.value.pads[requestedPad].chokeGroup)
+
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            engine.stoppedPads.clear()
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertTrue(engine.stoppedPads.isEmpty())
+            assertEquals(requestedPad, engine.triggered.last().first.globalIndex)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun chokeStopFailureKeepsLoopTruthAndRejectsTheRequestedTrigger() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val loopPad = bankStart + 8
+            val requestedPad = bankStart + 9
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            val triggerCountBeforeRequest = engine.triggered.size
+            engine.failNextStopPad = true
+
+            controller.triggerPad(requestedPad)
+
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            assertEquals(triggerCountBeforeRequest, engine.triggered.size)
+            assertTrue(
+                controller.state.value.statusMessage.startsWith(
+                    "CHOKEでビートループを停止できないためPADを再生しませんでした:",
+                ),
+            )
         } finally {
             controller.close()
         }

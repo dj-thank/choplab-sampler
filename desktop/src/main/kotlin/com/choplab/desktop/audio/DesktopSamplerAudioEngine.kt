@@ -13,7 +13,7 @@ interface DesktopSamplerAudioEngine : AutoCloseable {
     fun sourceFramePosition(): Int
     fun padFramePosition(index: Int): Int?
     fun stop()
-    /** Starts one PAD voice and returns the exact ownership token for that voice. */
+    /** Retriggers one PAD monophonically and returns the exact ownership token for that voice. */
     fun triggerPad(pad: PadModel, forceLoop: Boolean = false): Long
     fun releasePad(index: Int)
     /** Releases only the GATE voice created by [triggerPad] with [ownership]. */

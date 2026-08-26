@@ -152,4 +152,33 @@ class WaveformViewportPolicyTest {
         assertEquals(432_000, last.visibleStart)
         assertEquals(480_000, last.visibleStart + last.visibleFrames)
     }
+
+    @Test
+    fun initialViewportUsesThePadFitAndRespectsMaximumZoom() {
+        val fitted = initialWaveformViewport(
+            totalFrames = 1_000,
+            focusFrame = 500,
+            targetVisibleFrames = 400,
+            maximumZoom = 32f,
+        )
+        val capped = initialWaveformViewport(
+            totalFrames = 1_000,
+            focusFrame = 500,
+            targetVisibleFrames = 10,
+            maximumZoom = 4f,
+        )
+        val default = initialWaveformViewport(
+            totalFrames = 1_000,
+            focusFrame = null,
+            targetVisibleFrames = null,
+            maximumZoom = 32f,
+        )
+
+        assertEquals(300, fitted.visibleStart)
+        assertEquals(400, fitted.visibleFrames)
+        assertEquals(375, capped.visibleStart)
+        assertEquals(250, capped.visibleFrames)
+        assertEquals(0, default.visibleStart)
+        assertEquals(1_000, default.visibleFrames)
+    }
 }

@@ -1,0 +1,207 @@
+{
+  "schema_version": "1.0",
+  "contract_id": "choplab-precision-trim-long-press-20260825",
+  "product": "ChopLab / おとひろい",
+  "intent": "長押ししたPADのチョップ全体を最初に見やすい大きさで表示し、そこから境界周辺を1秒精密表示へ移して安全に調整できる",
+  "reference": {
+    "primary_image": "C:/Users/rambo/Documents/ChatGPT/pad/.codex-remote-attachments/01a03422-fee8-74f3-82be-f50e0ebc7a56/d9f9e7be-233f-4890-a13a-04e3e035128c/1-Photo-1.jpg",
+    "primary_dimensions_px": [570, 1280],
+    "comparison_image": "C:/Users/rambo/Documents/ChatGPT/pad/outputs/ChopLab-precision-trim-imagegen-target-20260825.png",
+    "implementation_capture": "C:/Users/rambo/Documents/ChatGPT/pad/outputs/ChopLab-precision-trim-implemented-20260825.png",
+    "implementation_dimensions_px": [1080, 2400],
+    "authority": "visual_reference_not_runtime_proof",
+    "notes": "Primary is the user-supplied current screen. Comparison is an ImageGen candidate used only for hierarchy; product copy and runtime state remain source-authoritative. Implementation capture is a fresh API 36 AVD state using synthetic audio."
+  },
+  "copy_policy": {
+    "observed_copy": "画像に実際に見える文字を転記し、生成画像の文字は機能仕様へ昇格しない",
+    "authoritative_copy": "現在のCompose source、domain contract、アクセシビリティ文言を正本にする",
+    "confidence_values": ["exact", "inferred", "illegible"],
+    "forbidden_shortcuts": [
+      "生成画像の時刻やサンプル値を実データとして固定しない",
+      "長押し画像だけで境界移動やdevice successを宣言しない",
+      "既存のSTART/END、精度、Preview、Revert、Source、Stop Allを削除しない"
+    ]
+  },
+  "coordinate_system": {
+    "origin": "top-left",
+    "units": "normalized_0_to_1",
+    "bounds_order": ["x", "y", "width", "height"]
+  },
+  "visual_tokens": {
+    "palette": ["cream console", "ink black", "selection orange", "start green"],
+    "touch_target": "minimum 48dp",
+    "type": "Japanese-first monospace hardware-console vocabulary",
+    "density": "retain all controls while giving the focused waveform first visual priority"
+  },
+  "regions": [
+    {
+      "id": "machine_header",
+      "title": "Machine header",
+      "bounds": [0.03, 0.067, 0.94, 0.065],
+      "observed_copy": [
+        {"text": "OTOHIROI", "confidence": "exact", "role": "product heading"},
+        {"text": "チョップ / CHOP", "confidence": "exact", "role": "mode"},
+        {"text": "A MELODY 138 BPM", "confidence": "exact", "role": "session summary"},
+        {"text": "音を全停止 / ALL STOP", "confidence": "exact", "role": "safety action"}
+      ],
+      "authoritative_copy": ["OTOHIROI", "チョップ / CHOP", "現在のBANKとBPM", "音を全停止 / ALL STOP"],
+      "purpose": "現在の制作モードと常設の停止手段を示す",
+      "states": ["idle", "playing", "recording", "stopping"],
+      "interactions": ["tap all stop", "accessibility activate"],
+      "visual_contract": ["低い高さで固定", "BPMとBANKは右寄せ", "ALL STOPは常に48dp以上"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "MachineHeader in OtohiroiDeck.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt"],
+        "deviation": "現在のauthoritative state表示を維持する"
+      }
+    },
+    {
+      "id": "workflow_and_pad_tabs",
+      "title": "Workflow and PAD edit tabs",
+      "bounds": [0.03, 0.137, 0.94, 0.123],
+      "observed_copy": [
+        {"text": "1 入れる / 2 チョップ / 3 ビート / 4 保存", "confidence": "exact", "role": "workflow navigation"},
+        {"text": "PADへ戻る / 切り位置 / 音づくり / 鳴り方", "confidence": "exact", "role": "PAD editor navigation"}
+      ],
+      "authoritative_copy": ["1 入れる", "2 チョップ", "3 ビート", "4 保存", "PADへ戻る / BACK", "切り位置 / TRIM", "音づくり / PARAM", "鳴り方 / PLAY"],
+      "purpose": "工程とPAD編集内の現在地を二層で示す",
+      "states": ["capture", "chop trim selected", "beat", "finish"],
+      "interactions": ["tap workflow tab", "tap PAD editor tab", "keyboard or accessibility activate"],
+      "visual_contract": ["選択中だけorange", "二層を混同しない", "全ラベルを2行以内"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "WorkflowStrip and PadEditorPage tabs in OtohiroiDeck.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt"],
+        "deviation": "なし"
+      }
+    },
+    {
+      "id": "coach_and_context",
+      "title": "Long-press guidance and context overview",
+      "bounds": [0.03, 0.267, 0.94, 0.105],
+      "observed_copy": [
+        {"text": "波形を長押し：近い境界を移動して、その場所を1秒拡大", "confidence": "exact", "role": "coach"}
+      ],
+      "authoritative_copy": ["長押ししたPADを見やすく表示。波形長押しで近い境界を移動して1秒拡大"],
+      "purpose": "最初は選択チョップ全体、次に精密1秒という二段階を説明し、全体内の位置を失わない",
+      "states": ["initial PAD fit", "precision focus", "edge-clamped focus"],
+      "interactions": ["read", "accessibility traversal"],
+      "visual_contract": ["短い一文", "full-source overviewに選択チョップと表示窓を重ねる", "overviewは編集操作を奪わない", "高さ500dp未満はmain waveformを守るためoverviewだけ省略する"],
+      "implementation": {
+        "fidelity": "adapted",
+        "target": "BeginnerCoachBar plus PrecisionTrimOverview",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/ui/PrecisionTrimOverview.kt"],
+        "deviation": "生成案の検索アイコンは追加せず、既存paletteと状態だけでcontextを表す。compact landscapeではoverviewを省略する"
+      }
+    },
+    {
+      "id": "focused_waveform",
+      "title": "Screen-fitting focused waveform",
+      "bounds": [0.05, 0.305, 0.90, 0.245],
+      "observed_copy": [
+        {"text": "選択 0:21.928 – 0:32.277", "confidence": "exact", "role": "selection readout"},
+        {"text": "ZOOM - / 16.0x / ZOOM + / PREV / NEXT", "confidence": "exact", "role": "viewport controls"}
+      ],
+      "authoritative_copy": ["選択開始と終了", "現在の表示開始と終了", "表示秒数", "ZOOM -", "ZOOM +", "PREV", "NEXT"],
+      "purpose": "長押ししたPADのチョップ全体を画面幅の約80パーセントで最初に見せ、波形内長押し後はその地点中心の最大1秒を見せる",
+      "states": ["initial PAD fit", "one-second focus", "manual zoom", "panned"],
+      "interactions": ["tap nearest boundary", "long press boundary and focus", "pinch zoom", "drag pan", "viewport buttons", "accessibility actions"],
+      "visual_contract": ["初期viewportはpad lengthの1.25倍か1秒の大きい方", "padがviewportの約80パーセントを占める", "1秒focusは押下点中心で端ではclamp", "START/END handlesは可視範囲外なら無理に表示しない"],
+      "implementation": {
+        "fidelity": "adapted",
+        "target": "WaveformEditor initial viewport plus PadTrimEditor state",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/WaveformEditor.kt", "shared/src/commonMain/kotlin/com/choplab/sampler/model/SamplerCommands.kt"],
+        "deviation": "生成案の固定時刻ではなく実audio/pad frameから計算する"
+      }
+    },
+    {
+      "id": "boundary_controls",
+      "title": "START and END precision controls",
+      "bounds": [0.05, 0.605, 0.90, 0.158],
+      "observed_copy": [
+        {"text": "ここから / START", "confidence": "exact", "role": "start boundary"},
+        {"text": "ここまで / END", "confidence": "exact", "role": "end boundary"},
+        {"text": "1 FRAME / 1 ms / 10 ms", "confidence": "exact", "role": "precision choices"}
+      ],
+      "authoritative_copy": ["ここから / START", "ここまで / END", "1 FRAME", "1 ms", "10 ms"],
+      "purpose": "選択境界と調整粒度を直接操作する",
+      "states": ["START active", "END active", "FRAME active", "1 ms active", "10 ms active", "clamped"],
+      "interactions": ["tap boundary", "vertical wheel scroll", "tap precision", "accessibility nudge"],
+      "visual_contract": ["START green、END orange", "active boundaryは3dp outline", "数値は読みやすく中央", "touch target 48dp以上"],
+      "implementation": {
+        "fidelity": "semantic",
+        "target": "PrecisionTrimControls.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/PrecisionTrimControls.kt"],
+        "deviation": "現在のtested wheel semanticsを保持しつつgenerated hierarchyを採用"
+      }
+    },
+    {
+      "id": "audition_and_safety_actions",
+      "title": "Audition, rollback and transport actions",
+      "bounds": [0.05, 0.770, 0.90, 0.112],
+      "observed_copy": [
+        {"text": "調整したPADを聴く / PREVIEW", "confidence": "exact", "role": "audition"},
+        {"text": "編集前へ戻す / REVERT", "confidence": "exact", "role": "rollback"},
+        {"text": "元曲を再生/停止 / SOURCE", "confidence": "exact", "role": "source transport"},
+        {"text": "すべて停止 / STOP ALL", "confidence": "exact", "role": "safety action"}
+      ],
+      "authoritative_copy": ["調整したPADを聴く / PREVIEW", "編集前へ戻す / REVERT", "元曲を再生/停止 / SOURCE", "すべて停止 / STOP ALL"],
+      "purpose": "変更結果を聴き、戻し、再生を安全に制御する",
+      "states": ["preview available", "revert disabled", "revert enabled", "source playing", "stopped"],
+      "interactions": ["tap", "keyboard or accessibility activate"],
+      "visual_contract": ["2x2 group", "破壊的でない", "REVERTのdisabled truthを保つ"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "PadTrimEditor action rows in OtohiroiDeck.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt"],
+        "deviation": "なし"
+      }
+    },
+    {
+      "id": "status_strip",
+      "title": "Persistent status strip",
+      "bounds": [0.03, 0.895, 0.94, 0.043],
+      "observed_copy": [
+        {"text": "チョップ 曲を頭から流し、空PADを叩いて切ります / すべての再生音を停止しました", "confidence": "exact", "role": "status"}
+      ],
+      "authoritative_copy": ["現在の工程", "現在のstatusMessage"],
+      "purpose": "操作結果と次の安全な状態を常設する",
+      "states": ["info", "warning", "error", "playing", "stopped"],
+      "interactions": ["read", "accessibility live region"],
+      "visual_contract": ["画面下端に固定", "1行またはlarge-text 2行", "developer diagnosticを表示しない"],
+      "implementation": {
+        "fidelity": "exact",
+        "target": "ConsoleStatusStrip in OtohiroiDeck.kt",
+        "evidence": ["shared/src/commonMain/kotlin/com/choplab/sampler/ui/OtohiroiDeck.kt"],
+        "deviation": "runtime stateのみを表示する"
+      }
+    }
+  ],
+  "screen_state_acceptance": [
+    {
+      "state": "baseline current trim screen",
+      "required_regions": ["machine_header", "workflow_and_pad_tabs", "coach_and_context", "focused_waveform", "boundary_controls", "audition_and_safety_actions", "status_strip"],
+      "evidence": "C:/Users/rambo/Documents/ChatGPT/pad/.codex-remote-attachments/01a03422-fee8-74f3-82be-f50e0ebc7a56/d9f9e7be-233f-4890-a13a-04e3e035128c/1-Photo-1.jpg"
+    },
+    {
+      "state": "generated hierarchy candidate only",
+      "required_regions": ["machine_header", "workflow_and_pad_tabs", "coach_and_context", "focused_waveform", "boundary_controls", "audition_and_safety_actions"],
+      "evidence": "C:/Users/rambo/Documents/ChatGPT/pad/outputs/ChopLab-precision-trim-imagegen-target-20260825.png"
+    },
+    {
+      "state": "implemented initial PAD fit on API 36 AVD",
+      "required_regions": ["machine_header", "workflow_and_pad_tabs", "coach_and_context", "focused_waveform", "boundary_controls", "audition_and_safety_actions", "status_strip"],
+      "evidence": "C:/Users/rambo/Documents/ChatGPT/pad/outputs/ChopLab-precision-trim-implemented-20260825.png"
+    }
+  ],
+  "completion_criteria": [
+    "PAD長押し直後のmain waveformが選択chopを約80パーセント幅で表示する",
+    "1秒より短いchopでも最初の表示は最低1秒contextを持つ",
+    "長いchopは1.25倍contextまで広げ、source全体を超えない",
+    "波形内長押しは近い境界を安全に移動して押下点中心の最大1秒へ拡大する",
+    "full-source overviewで選択chopとmain viewportの相対位置が分かる",
+    "既存の全操作、Undo/Revert、frame semantics、accessibility actionsを保持する",
+    "reference validator、focused tests、full local gate、同state runtime captureを通す"
+  ]
+}

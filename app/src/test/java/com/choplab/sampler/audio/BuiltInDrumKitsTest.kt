@@ -4,8 +4,10 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.stepKey
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -93,5 +95,23 @@ class BuiltInDrumKitsTest {
 
         assertSame(existing, BuiltInDrumKits.installStarterKit(existing))
         assertFalse(BuiltInDrumKits.isPristineStarterProduction(existing))
+    }
+
+    @Test
+    fun editedBVariationOrSongOrderIsNeverClassifiedAsPristineStarterWork() {
+        val installed = BuiltInDrumKits.installStarterKit(SamplerUiState())
+        val withPatternB = installed.copy(
+            patternArrangement = PatternArrangement(
+                storedStepsBySlot = listOf(emptySet(), setOf(stepKey(0, 0))),
+            ),
+        )
+        val withSongMode = installed.copy(
+            patternArrangement = PatternArrangement(songModeEnabled = true),
+        )
+
+        assertFalse(BuiltInDrumKits.hasUntouchedStarterDrums(withPatternB))
+        assertFalse(BuiltInDrumKits.isPristineStarterProduction(withPatternB))
+        assertFalse(BuiltInDrumKits.hasUntouchedStarterDrums(withSongMode))
+        assertFalse(BuiltInDrumKits.isPristineStarterProduction(withSongMode))
     }
 }

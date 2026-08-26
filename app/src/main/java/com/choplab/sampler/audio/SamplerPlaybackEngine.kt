@@ -31,6 +31,9 @@ interface SamplerPlaybackEngine {
     fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float)
     fun stopSource()
     fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float)
+    fun setPatternSequence(patterns: List<Set<Int>>, bpm: Float, swing: Float) {
+        setPattern(patterns.firstOrNull() ?: emptySet(), bpm, swing)
+    }
     fun startTransport()
     fun stopTransport()
     fun stopAllVoices()

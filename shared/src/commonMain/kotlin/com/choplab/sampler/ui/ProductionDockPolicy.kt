@@ -3,6 +3,7 @@ package com.choplab.sampler.ui
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
+import com.choplab.sampler.model.canCreateQuickSketch
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sourceUiPhase
 
@@ -13,8 +14,10 @@ enum class ProductionDockIntent {
     OPEN_PAD_EDIT,
     OPEN_ADD,
     OPEN_SCRATCH,
+    CREATE_QUICK_SKETCH,
     SHOW_QUICK,
     SHOW_STEPS,
+    OPEN_ARRANGE,
 }
 
 data class ProductionDockItem(
@@ -63,19 +66,28 @@ fun captureProductionDockItems(state: SamplerUiState): List<ProductionDockItem> 
 fun chopProductionDockItems(state: SamplerUiState): List<ProductionDockItem> {
     val hasAssignedPad = state.pads.any(PadModel::isAssigned)
     val selectedPadAssigned = state.selectedPadModel().isAssigned
+    val quickSketchReady = canCreateQuickSketch(state)
     return listOf(
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_BEAT,
-            label = "ビートへ\nBEAT",
+            label = if (hasAssignedPad) "ビートへ\nBEAT" else "1音入れる\nTHEN BEAT",
             enabled = hasAssignedPad,
             active = hasAssignedPad,
             weight = 1.15f,
         ),
-        ProductionDockItem(
-            intent = ProductionDockIntent.OPEN_PAD_EDIT,
-            label = "微調整\nPAD EDIT",
-            enabled = selectedPadAssigned,
-        ),
+        if (quickSketchReady) {
+            ProductionDockItem(
+                intent = ProductionDockIntent.CREATE_QUICK_SKETCH,
+                label = "8つの下書き\nQUICK SKETCH",
+                active = true,
+            )
+        } else {
+            ProductionDockItem(
+                intent = ProductionDockIntent.OPEN_PAD_EDIT,
+                label = "微調整\nPAD EDIT",
+                enabled = selectedPadAssigned,
+            )
+        },
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_ADD,
             label = "音を足す\nADD",
@@ -99,6 +111,10 @@ fun beatProductionDockItems(stepsVisible: Boolean): List<ProductionDockItem> =
             intent = ProductionDockIntent.SHOW_STEPS,
             label = "並べる詳細\nSTEPS",
             active = stepsVisible,
+        ),
+        ProductionDockItem(
+            intent = ProductionDockIntent.OPEN_ARRANGE,
+            label = "曲にする\nA/B SONG",
         ),
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_ADD,

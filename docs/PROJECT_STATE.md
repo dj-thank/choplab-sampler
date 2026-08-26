@@ -1,6 +1,15 @@
 # Project state
 
-## Current snapshot — 2026-08-25 guided first-screen review-repair candidate
+## Current snapshot — 2026-08-27 consolidated GitHub integration candidate
+
+This snapshot binds one review surface to the existing PR #58 branch. The integration starts at `d56244aa9c8208604341b08592db37dc3c3b816e`, retains exact `main@4f56a693b86540d1be13a6eb2153a3cf96ef9396`, and merges the clean heads of PR #64 (`9785d82`), PR #76 (`330d576`), PR #77 (`92db434`) plus Wave 10 closeout `600211f`. It does not rewrite `v0.17.0` or claim a new release.
+
+- Product scope: guided first entry and GATE ownership, Desktop autosave/recovery and source readiness, iOS recording-permission cancellation, Java Sound exact-once start failure cleanup, CHOKE loop-session ownership, A/B Song arrangement, 1/2-channel PCM identity, reverse-tail parity and bounded streaming decode all remain in one ancestry.
+- Merge contract: per-voice ownership is combined with same-PAD monophonic retrigger; CHOKE stops the published loop owner/companion set before a new trigger; Android and Windows retain audio frames under `min(30,000,000, sampleRate × 600秒)` while stereo capacity is channel-aware; reverse non-loop rendering keeps realtime cursor order; offline Song timing keeps the carried fractional countdown across bars.
+- Current local read-back: shared Android/Desktop, JVM-core, Desktop and Android unit-test tasks compile and pass after conflict repair. The full configured validation, artifact read-back, independent Standards/Spec review and hosted exact-head checks are still required before merge.
+- Gate ceiling: local integration candidate only. Physical device, provider, signing, public release and `HUMAN_GO` remain separate.
+
+## Historical snapshot — 2026-08-25 guided first-screen review-repair candidate
 
 This snapshot is the current product behavior anchor for first entry and shared navigation. Moving GitHub `main` and hosted workflow identities are provider read-backs, while the immutable implementation claim is bound to the product commit below.
 
@@ -158,6 +167,249 @@ This snapshot is the current product behavior anchor for first entry and shared 
 - Scope: release policy and its Python regression tests only. Product/audio/UI bytes, signing configuration, tags, and Releases are unchanged. Current-container policy gates are run before PR publication; hosted CI is required before promotion.
 
 ## Previous snapshot — 2026-08-24 iOS import/recording exclusion local candidate
+
+## Historical snapshot — 2026-08-27 stereo channel identity tracer
+
+This is the current local product truth for wave 10. It preserves one- and two-channel PCM identity through import, playback, project persistence and Pattern/Song export without claiming pan, stems or physical-device listening.
+
+- Observed/read back at: `2026-08-27T00:23:54+09:00`.
+- Product source: `codex/choplab-stereo-tracer-20260826@66d3911f57dfb56baed682cf8c0ec9a0aed85164`, tree `e60216ab70ef540f48815524e0b645de16817007`, based on Wave 9 closeout `d6c22434f1bfd9fa5bc505717d0be4fa4a552a3d`. The dirty canonical preservation root remains untouched.
+- User outcome: asymmetric stereo remains left/right-distinct through Android and Windows source/PAD/scratch playback, schema-7 `.choplab` save/reopen, and Pattern/Song WAV export. Mono imports and mono-only exports remain one channel. Import preserves two channels; one channel stays mono; 3–8 channels retain the legacy average-mono policy rather than guessing a speaker layout.
+- Frame truth: `PcmAudio.samples` is interleaved PCM-16, while every range, cursor, duration, trim, waveform and transient location uses per-channel audio frames. Audible paths preserve L/R; visual and mono analysis paths use an explicit channel average. Partial frames, unsupported stored shapes and frame/PCM resource overflow fail closed.
+- Persistence: schema 7 adds manifest `channelCount` and strict mono/stereo PCM-16 WAV validation. Schema 1–6 continue to load as mono. The reader cross-checks manifest frames/channels/rate against WAV RIFF, byte-rate, block-align and data length, and counts every interleaved sample against resident and archive budgets.
+- Realtime/offline: Android keeps its stereo `AudioTrack`, advances one cursor once per frame, filters and limits L/R independently, and preallocates one output buffer plus three mutable stereo frames before the loop. Release bytecode has zero `new` instructions in the steady sample loop, zero monitor instructions and zero `java.io`/`java.nio` references. The asymmetric full-bar Android/offline oracle differs by at most one PCM unit per channel.
+- TDD/review: RED controls exposed missing channel APIs, schema-6 mono decoding of stereo bytes, mono-only host render shape, interleaved sample/frame confusion at zero crossing, and a post-output decoder format-change gap. GREEN controls cover 1/2ch identity, 3–8ch downmix, schema migration/mismatch/budgets, mono-only WAV shape, Windows PCM format and stable sample-rate/channel shape. Local Standards/Spec review has unresolved findings `0/0`.
+- Validation: clean configured gate `BUILD SUCCESSFUL` in 4m31s, 197 tasks (192 executed / 5 up-to-date). Android 264 / 46 suites, shared Android/Desktop 58/58 / 11+11 suites, JVM-core 68 / 8 suites and Desktop 89 / 19 suites: 537 tests / 95 suites, failures/errors/skips 0. Lint debug/release each: fatal 0, errors 0, warnings 7. Configured validation 18 tasks, Python policy 59, reachable-history public surface 429 and `git diff --check` PASS.
+- Artifact read-back: debug APK 31,672,434 / `F1C13E9A163BAB2652D1EE3703C359A564F2EFEC1DCB0FCBB5379AD87911AE67`; androidTest APK 10,878,659 / `19002E0EBB2B62B599FAE7CF1738AC275B7D4CBEC610F0348D3B9C871A90E4AC`; unsigned release APK 24,192,116 / `7F180B3A48452179B3277D8FA3633820E6C093B8A759CD43E3B4464D6259016A`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- Release/package policy: the exact unsigned APK passes package/version, manifest allowlists, non-debuggable, exported-component, 16-KiB alignment and `manifest_tool=aapt2` inspection. `--require-signed` rejects it with exit 1 as expected. Windows app-image is 405 files / 176,614,704 bytes with sorted path-size-file-hash manifest SHA-256 `9F97268C312E570D5B051C5B5BB06F7A142EE42EE610BE2ADB3FE202A186CB2A`. CycloneDX 1.6 is `com.choplab:ChopLab:0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `EA59D6FD8BA9B87C206F35396A2B21B98673DDE637CFC55B8FACB8AD984BCD39`.
+- Review/portfolio: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE10_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE10_REVIEW_20260827.md`.
+- Scope/gate: no signer identity, key, secret, workflow, tag, GitHub/Release, OAuth/provider, ADB/device, recording or Human action occurred. Strongest fresh result is `LOCAL_PASS`; physical L/R output, route/focus/Bluetooth/USB, latency/xRun, sound quality, TalkBack/Narrator, `DEVICE_PASS`, `PROVIDER_PASS`, `PUBLIC_PASS` and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 build-tools-only Android release verification
+
+This is the current local release-preparation truth for wave 9. It removes a tool-availability false negative without changing application, package, signing or workflow bytes.
+
+- Observed/read back at: `2026-08-26T23:22:11+09:00`.
+- Release-verifier source: `codex/choplab-android-verifier-fallback-20260826@e5229075150bcfb219eb05c666f46fd9eba05ad8`, tree `514e5161dd73ba49436756afa53782eeb16c47d5`, based on Wave 8 closeout `a484a96dedb1c1b6c9025d332d22de602017ae64`. The dirty canonical preservation root remains untouched.
+- Prior failure: on the installed Android SDK, the canonical verifier stopped before inspection with `Cannot find Android SDK tool: apkanalyzer`, although build-tools `36.0.0` contained `aapt2`, `zipalign` and `apksigner`.
+- Backend contract: `apkanalyzer manifest print` remains primary when installed. Only absence selects `aapt2 dump xmltree`; a discovered-but-failing primary is never hidden by fallback. Strict parsing rejects malformed lines, orphan/duplicate attributes, multiple roots, ambiguous namespaces/quoting and nonliteral security booleans before applying the one existing manifest policy.
+- Policy truth: both backends share package/version, permission/declaration allowlists, non-debuggable, exported-component/permission and forbidden-tooling checks. Alignment and signature code and CLI arguments are unchanged. `--require-signed` still rejects the exact unsigned candidate.
+- TDD/validation: missing fallback API produced the intended ImportError RED. Final Python discovery passes 59 tests, including primary/fallback selection and malformed/package/version/application/permission/declaration/debuggable/exported/profile-receiver negative controls. Configured validation passes public-surface, 18 Gradle JVM-core/Desktop tasks, six XML files, executable modes, wrapper SHA and UTF-8 policy. Current plus reachable-history public-surface 425 and `git diff --check` pass.
+- Exact artifact read-back: existing Wave 8 unsigned APK, 24,175,732 bytes / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`, passes canonical verification as `com.choplab.sampler` version `0.17.0` / code `27`, `manifest_tool=aapt2`, expected manifest policy, 16-KiB-aware alignment and unsigned-candidate policy. Requiring a signature exits `1` as expected.
+- Reused product evidence: `app`, `shared`, `jvm-core`, `desktop`, `build.gradle.kts`, `settings.gradle.kts` and `gradle.properties` tree objects exactly match Wave 8 base. Therefore the completed 190-task/511-test app gate and existing APK/Windows/SBOM bytes remain applicable; they were not rerun solely because the Git commit changed. CycloneDX read-back remains 1.6 / 650 components / 651 dependencies / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`.
+- Scope/gate: no key, signing identity, secret, workflow, tag, Release, GitHub, device, OAuth/provider, audio recording or Human state was read or changed. Strongest fresh result is `LOCAL_PASS`; `DEVICE_PASS`, `PROVIDER_PASS`, `PUBLIC_PASS` and `HUMAN_GO` remain separate.
+- Reviews: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE9_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE9_REVIEW_20260826.md`. Next local product candidate is one bounded mono→stereo import/live/save/export tracer; another verifier-only wave is not selected.
+
+## Current snapshot — 2026-08-26 A/B four-bar Song tracer
+
+This is the current local product truth for wave 8. It turns one 16-step beat into two bounded variations and one saved, playable and exportable four-bar arrangement without claiming the advanced Pro Song editor.
+
+- Observed/read back at: `2026-08-26T23:00:00+09:00`.
+- Product source: `codex/choplab-ab-song-tracer-20260826@d70d5fcae1b6655241c2cc81a2596873f1cb4f45`, tree `5a0024f88281ab1fd08641c47f5e0c3b7d2855a7`, based on wave-7 closeout `41d715c7bca702ddd5582a798e69511287241f62`. The dirty canonical preservation root remains untouched.
+- User outcome: BEATの`曲にする / A/B SONG`から、exactly two 16-step patternsを選択・複製し、exactly four one-bar sectionsをA/Bへ割り当てる。Pattern modeは選択中patternを1小節再生／4小節WAVへ反復し、Song modeは4 sectionの順序をAndroid/Windows playbackとWAV exportで共有する。
+- Durable truth: arrangement edits use the shared `ProductionCommand` / history / autosave path. Project schema 6 stores selected slot, A/B steps, four sections and mode; schema 1–5 migrate to A + empty B + A/A/A/A + Pattern mode. Malformed slot/section/duplicate/mismatched selected bytes fail closed. New schema-6 files are not claimed to open in older clients.
+- Realtime/offline truth: Android precompiles the Song into primitive `int[][][]` data and the callback advances a primitive bar/step cursor. Release bytecode contains no sequence compiler, collection construction, blocking, I/O, log or UI call in `processTransportFrame`. Windows emits the same bar/step order on its wall-clock transport. Odd BPM 123 / swing 57 full-PCM A/B/A/B live-versus-offline parity is within the existing tolerance.
+- Safety/UX: arrangement mutation is rejected while transport plays; copying over different non-empty work requires a second click and remains undoable. Inactive B/Song work now participates in pristine/new-project/readiness/clear/replacement decisions. The modal is vertically scrollable and has an explicit return-to-step action; physical touch, focus order and spoken labels remain device/Human gates.
+- Validation: 190-task full Gradle gate exit `0` (134 executed / 56 up-to-date). Android 257, shared Android/Desktop 53/53, JVM-core 61, Desktop 87; 511 tests / 92 suites, failures/errors/skips 0. Lint debug/release each report 0 fatal, 0 errors and 7 warnings. Configured validation 18 tasks, Python policy 40, public-surface 424 and `git diff --check` PASS.
+- Artifact read-back: debug APK 31,656,050 / `C800E7B8FBB19B628AEC19600B451D6AB62553ED8983E74E21B0A61856AC6090`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,175,732 / `09B43846CBEF6356089BA3B063E22C500B0F6484A2E2E5E42B313905FF6A8944`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- Final unsigned APK: `com.choplab.sampler`, version `0.17.0` / code `27`, min/target `29/36`; expected permission and exported-component allowlists match, 16-KiB-aware zip alignment passes, and `apksigner` confirms no signature. The configured Python verifier could not start because this SDK lacks `apkanalyzer`; equivalent `aapt2` / `zipalign` / `apksigner` read-back was performed without installing tools or touching signing material.
+- SBOM/Windows image: CycloneDX 1.6, product `0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `23509E6C543E2C7B6E6F6FC49A6DDC7E5C463BCE4D72516AD8152697951B4FC8`. Windows app-image contains 405 files / 176,604,385 bytes; its sorted path-size-file-hash manifest SHA-256 is `0541DEFF54C196B24B59E0B06BF88EBEC58FEF7C58905087BC5F4BA6E173C7DD`.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio and review live in parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE8_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE8_REVIEW_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, xRun/latency/route loss, compact touch, TalkBack/Narrator, iOS runtime integration, device/provider/public/signing and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 Android live terminal-sample parity
+
+This is the current local product truth for wave 7. It fixes the actual Android PAD mix call site rather than extending the earlier primitive/offline oracle.
+
+- Observed/read back at: `2026-08-26T21:47:28+09:00`.
+- Product source: `codex/choplab-polyphonic-pattern-parity-20260826@2948c6a59ab18ba18a0813e9033098b4e31e41a6`, tree `52059c3dce144ef3ad3a3f81b863709edbe8c9c6`, based on wave-6 closeout `6a0649d80e3e1c62bb10742b0ec01765f0a2c45b`. The branch name records the initial portfolio choice before stronger evidence caused a recompute. Dirty canonical preservation root remains untouched.
+- Defect and repair: `SamplerEngine.renderLoop` previously deactivated a PAD voice and skipped its return when the same `Voice.render()` call marked the voice finished. The loop now captures the value, retires immediately when finished, and mixes that captured terminal sample exactly once; subsequent calls return zero.
+- TDD evidence: the behavior-preserving actual-mix seam was RED twice. Natural completion lost frame `402` (`-0.0012556206` versus `0.0`); a 48-frame release lost frame `47` (`0.0040690107` versus `0.0`). Both fixtures and existing primitive/offline parity are GREEN after the one-variable ordering repair.
+- Realtime boundary: the same-file helper is `internal inline`; release bytecode contains no helper invocation at the call site. The relevant path remains render → finished check → deactivate → mix captured value, with no new allocation, blocking, I/O, logging or UI call. Pitch, tone, gain, envelope, CHOKE selection, event order, loop ownership and project bytes are unchanged.
+- Validation: 190-task full gate exit `0`. Android 252, shared Android/Desktop 40/40, JVM-core 55, Desktop 84; 471 tests / 87 suites, failures/errors/skips 0. Lint debug/release each report 0 fatal, 0 errors and 7 warnings. Configured validation 18 tasks, Python policy 40, public-surface 418 and `git diff --check` PASS.
+- Artifact read-back: debug APK 31,590,514 / `5B2D88932F3F8AA1B79E4123585464EB35221AB99C130B2AB122D6565F4C978C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `0AFAEEE1887DE5AD872D1F190D328E6710807A0B1F78E01F3B5097C1105D86DC`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`.
+- SBOM/read-back: CycloneDX 1.6, product version `0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `50B03C65FEC1B35E159FB539A446ED9957813D745F5A3E240E658823F59B35F2`. All listed artifacts are newer than the product commit.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio and review: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE7_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE7_REVIEW_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, click/pop, DAC/output capture, latency, sustained polyphony, route loss, device/provider/public/signing and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 CHOKE live/export loop-session parity
+
+This is the current local product truth for wave 6. It makes offline WAV select the same unambiguous Beat-loop owner and eligible vocal companions as live loop start.
+
+- Observed/read back at: `2026-08-26T21:14:49+09:00`.
+- Product source: `codex/choplab-choke-export-parity-20260826@b445c18a6bb50abfd878f95a2d2e6c3397cb3222`, tree `a650dae4c5bc7a18d321c303fdcad8c268f2888e`, based on wave-5 integrated closeout `611a58932fff6faf4ae6178acdc1f7c575cb0a7b`. Dirty canonical preservation root remains untouched.
+- Defect and repair: offline frame-zero events previously started every non-loop VOCAL after the loop owner, so a same-nonzero-CHOKE companion silenced only the exported owner. `PatternRenderer` now reuses the shared live companion-selection policy for exactly one assigned loop owner.
+- Preserved behavior: CHOKE OFF and other-group vocals remain intentional layers. No-loop and multiple-assigned-loop inputs preserve historical non-loop VOCAL inclusion instead of inventing an ambiguous owner.
+- Oracle: before repair, the same-group full-bar comparison reached maximum delta `9,262` PCM units at frame `49` (`offline=7,121`, `realtime=-2,141`). Repaired owner-only and other-group-layer fixtures match Android realtime `SamplerEngine.Voice` plus the shared limiter within `<=1` for every frame.
+- Boundary: no realtime engine/callback, Java Sound, project/history/autosave/schema/audio asset, UI, provider/device/public/signing or Human behavior changed.
+- Validation: the unchanged product commit completed the 190-task full gate with exit `0`. Android 250, shared Android/Desktop 40/40, JVM-core 55, Desktop 84; 469 tests / 87 suites, failures/errors/skips 0. Lint errors 0/warnings 7; configured validation, Python policy 40, product-checkpoint public-surface 417 and `git diff --check` PASS. The closeout-only tree passes Python policy 40, public-surface 418 and `git diff --check` without rebuilding product bytes.
+- Artifact read-back: debug APK 31,590,514 / `9DAF4879CA8C2A3A0AE3A7AA448E1DE1E29C63383FEEC1715ED7E90E9E0B1789`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `F33392832B1A203FAF45D35BEF1E853868CB76EABB190525EEF7299FE09E266C`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- SBOM/read-back: CycloneDX 1.6, product version `0.17.0`, 650 components / 651 dependencies, 1,581,101 bytes / `68E245F9C1D7B6003201BC4FAC28987EDD00F787EFD04FEBC4D7165624ED11EB`. Every test XML and listed artifact is newer than the product commit; current worktree was clean before closeout and no matching long-running process remained.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio and review: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE6_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE6_REVIEW_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, click/pop and latency, route/device behavior, provider/public and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 CHOKE loop-session ownership
+
+This is the current local product truth for wave 5. It repairs controller-owned playback state and companion ownership without changing project or audio bytes.
+
+- Observed at: `2026-08-26T05:09:07+09:00`.
+- Product source: `codex/choplab-goal-ux-20260826@1853659ef56d40117e9f61d1c7f01a752ed02f33`, tree `e07a07c46500f14aaa09619f4463682a07890eef`, based on wave-4 closeout `639d513`. Dirty canonical preservation root remains untouched.
+- Defect: a PAD in the active Beat-loop owner's nonzero CHOKE group stopped the owner voice inside the engine but left controller loop state and owned vocal companions behind. Windows had no engine read-back; Android could later clear only the owner while companions/status remained.
+- New ownership truth: one shared pure transition plans every actually owned companion plus owner exactly once, clears loop/playhead truth, and both controllers issue those stops before the requested trigger. Group 0, different groups, same owner, invalid pads and unrelated polyphony are unchanged. Desktop stop failure rejects the trigger and keeps published loop truth.
+- Loop-start challenge: a vocal companion in the owner's same nonzero CHOKE group is no longer started, because it would immediately silence the owner. Group 0 or another group remains an intentional vocal layer.
+- Boundary: no project/history/autosave/schema/audio samples, UI copy/layout, realtime callback, provider/device/public or Human behavior changed.
+- Validation: full 190-task gate PASS. Android 248, shared Android/Desktop 40/40, JVM-core 54, Desktop 84; 466 total tests, failures/errors/skips 0. Lint errors 0/warnings 7; configured validation, Python policy 40, product public-surface 416 / documentation-inclusive 417 PASS.
+- Artifacts: debug APK 32,560,016 / `D36C4C21C02CFA384D76BE17F683DADFBE647F7951BF061BC0BF03766F77032A`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E3EA26BDFEA2C4C4E0EF0CA6209095D88DCE8A7485B831653BD78C4D6C6AADE1`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Reviews: local parent Standards/Spec findings 0/0. Portfolio: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE5_20260826.md`.
+- Gate ceiling: `LOCAL_PASS`. Physical click/pop quality, realtime fade perception, device/audio, provider/public and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 wide first-entry integrated goal line
+
+This is the current integrated local line after the first non-copy `/goal` experiment. Earlier wave sections remain immutable evidence for their source revisions.
+
+- Observed at: `2026-08-26T04:39:53+09:00`.
+- Integrated product source: `codex/choplab-goal-ux-20260826@b6eed97215bac6c27d3bef66b0f1c8c0e2e0b569`, tree `8f65157dae53050f48dac1c733bbdeb21689c523`. It contains the prior three UX waves, wide-layout product `8b3751e`, shared Capture vocabulary `7d45164`, and wide closeout merge `b6eed97`. Dirty canonical preservation root remains untouched.
+- User-visible result: regular normal-text landscape uses a 2×2 own-audio action column with a separate optional DUSTY JAZZ demo panel. Compact landscape, portrait and large text remain stacked. The same 1200×900 pristine state visibly shortens the scan and preserves NEXT/document feedback.
+- Maintainability: stacked and wide compositions share one `CaptureEntryActionPresentation`; labels/demo guidance cannot silently drift between layouts. State policy, recording controls, callbacks and document admission were already shared and remain unchanged.
+- Current visual evidence: parent PAD `work/CHOPLAB_WIDE_CAPTURE_EVIDENCE_20260826/{01-baseline-empty,02-after-wide-empty,03-before-after}.png`. Runtime used isolated app data, no user audio/project or provider/device action, and exact processes closed gracefully.
+- Final integrated validation: full 190-task gate PASS. Android 248, shared Android/Desktop 37/37, JVM-core 54 and Desktop 80 tests; 456 total, failures/errors/skips 0. Lint errors 0/warnings 7; Android three APKs, Windows app-image, CycloneDX and public-surface 415 PASS.
+- Final artifacts: debug APK 32,560,016 / `317ECA6F5E4ADAB34F20F60DB799FC3AE8F5BEE4B639C26C963258408EBA0B7E`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,126,580 / `E28538D965C3210E263B9D04E5FF8554D6ADE72A69D6C21BA17A791944A80FBE`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Reviews: fixed-point local parent Standards and Spec passes have no unresolved finding. Portfolio receipt: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE4_20260826.md`.
+- Gate ceiling: `LOCAL_PASS` plus scoped Windows visual. No additional desktop-only visual or copy lane should start before compact/device/Human evidence; physical audio/touch/speech, provider/public and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 continuous goal UX integration
+
+This is the current integrated local product line for the first three `/goal` UX waves. Individual sections below remain revision-bound evidence for each source branch.
+
+- Observed at: `2026-08-26T04:17:07+09:00`.
+- Integrated source: `codex/choplab-goal-ux-20260826@c660ce946764a5ef7d80e74fbbb8481d7f7b5d07`, tree `eb76832b79dec3491258744cc38584dcf7bc3955`. It combines workflow NEXT/locked reasons (`a9f2245`/`bbd6850`), document cancellation/completion truth (`e2a76d8`/`2bdf60d`) and Finish action truth (`c4f0ca4`/`e97ae36`). The dirty canonical preservation checkout remains untouched.
+- User-visible result: the fixed four-stage flow always names one next action; disabled stages explain their prerequisite; Android/Windows document cancellation and success distinguish external files from the retained Production; SAVE names both project preservation and WAV export; pattern clear no longer implies whole-project deletion.
+- Privacy/data boundary: document displays use sanitized bounded leaf names only. No I/O, archive schema, autosave, audio renderer/callback, Source/PAD/project bytes or destructive callback changed.
+- Integrated validation: full 190-task gate PASS. Android 247, shared Android/Desktop 36/36, JVM-core 54 and Desktop 80 tests; 453 total, failures/errors/skips 0. Debug/release Lint errors 0/warnings 7; Android three APKs, Windows app-image, CycloneDX and public-surface 413 PASS.
+- Integrated artifacts: debug APK 32,535,756 / `D21EF9D3A380D1CAA9781BB9F2C91E1E7E331C37B97BE7687B3F51A4A6D1153C`; androidTest 10,878,631 / `37F3AEDB16F4FD2BFCEC1D429D7E44A38A7ED157CAE30A6FB052CE0FB7093290`; unsigned release 24,110,196 / `264FF124462B9F02E4E8D491DF435CAB3513EE05548025F758D415D4D8628C0E`; Windows EXE 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`.
+- Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence for the Finish state. No ADB/device, recording, physical audio/touch, TalkBack/VoiceOver speech, OAuth/provider, GitHub/public/release or Human action was performed.
+- Portfolio boundary: three local presentation/copy waves are now complete. Do not add a fourth copy-only experiment without Human/device evidence; the next local wave must recompute and select a non-copy product lane.
+
+## Current snapshot — 2026-08-26 Finish action truth UX
+
+This snapshot makes the SAVE stage describe the exact artifacts it preserves or removes. It is a shared presentation/copy change, not a persistence or audio-engine change.
+
+- Observed at: `2026-08-26T04:06:29+09:00`.
+- Product source: `codex/choplab-goal-ux-20260826@c4f0ca429b944f1b30ec5ce1d4452e037a1715f4`, tree `ff2a26e2d8e4c13016e277eb3428c97b569e599e`, based on integrated workflow-NEXT closeout `bbd6850`. The dirty canonical preservation checkout remains untouched.
+- UX truth: the ready headline is `制作を保存・書き出し`; guidance distinguishes automatic app-private recovery, optional portable project save and four-bar WAV export after playback confirmation. The destructive control is `ビート配置を消す / CLEAR STEPS` with `もう一度で配置を削除`.
+- Behavior boundary: the callback remains `clearAllPattern`. Source audio, PAD assignments, project files, autosave generations, Undo/Redo, WAV readiness and document-action admission are unchanged.
+- Visual evidence: fresh 1200×900 baseline/implementation captures use an isolated Windows app-data root and self-created WAV. `work/CHOPLAB_GOAL_UX_AUDIT_20260826/07-save-before-after.png` shows both longer labels uncropped.
+- Validation: focused RED/GREEN; clean full Gradle gate 197 tasks PASS. Android 244, shared Android/Desktop 36/36, JVM-core 54 and Desktop 80 tests; failures/errors/skips 0. Debug/release Lint errors 0/warnings 7; Android debug/androidTest/unsigned-release APK, Windows app-image and CycloneDX 650-component/651-dependency SBOM PASS. Configured validation, Python policy 40, product public-surface 412 / documentation-inclusive 413 and `git diff --check` PASS.
+- Reviews: local parent Standards and Spec passes found no unresolved issue. No child-model claim was made.
+- Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence. Physical touch, TalkBack/VoiceOver speech, audio usefulness, device/provider/public and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-26 wide first-entry UX
+
+This snapshot fixes an evidence-backed maximized-Windows layout problem without changing the compact, portrait or large-text contracts.
+
+- Product source: `codex/choplab-wide-capture-ux-20260826@8b3751e5f56b9b2dd0b0c74f1003283064e45e5b`, tree `2dcbb42bc31c98778d1705182ecec5afbae01e90`, based on document-outcome closeout `2bdf60d21252d490c4d50576375528e395b8f426`. Dirty canonical checkout remains untouched.
+- Current-run audit: maximized Windows baseline, WAV-only chooser and cancel feedback were captured under isolated app data. The baseline placed every first-entry action at the top and left more than half the window as unexplained black canvas; NEXT/cancel behavior itself was correct.
+- Layout policy: only regular landscape with normal text uses `WIDE_SPLIT`. Compact landscape (including 640×360), portrait and font scale 1.2+ remain stacked.
+- Wide surface: LOAD/OPEN and MIC/DEVICE fill a 2×2 own-audio column; optional DUSTY JAZZ demo owns a separate right panel. Wide actions use normal machine typography. Existing four stages, NEXT strip, document cancellation and all callbacks remain unchanged.
+- Visual read-back: same maximized viewport and pristine state after screenshot removes the whole-window dead region and retains cancel reassurance. Baseline/after evidence is in parent PAD `work/CHOPLAB_GOAL_WAVE3_AUDIT/`.
+- Validation: focused RED/GREEN; full 190 tasks. Android 248, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; APKs, Windows package, CycloneDX, configured validation, Python 40, public-surface baseline 411 and documentation-inclusive final 412 PASS.
+- Gate ceiling: `LOCAL_PASS` plus scoped exact-package Windows visual evidence. No compact/device screenshot, Narrator/TalkBack/VoiceOver speech, physical audio, provider/public or Human acceptance was run.
+
+## Current snapshot — 2026-08-26 document operation outcome confidence
+
+This snapshot makes document dialog outcomes explicit across Android and Windows. It changes feedback copy, not the document bytes or persistence/rendering pipelines.
+
+- Product source: `codex/choplab-document-outcome-ux-20260826@e2a76d80340dcad97856e5c39c1b74596cc2f42f`, tree `96c14bd39f82036bd8770e64628682a8f6c887aa`, based on workflow-NEXT closeout `bbd6850d1ed79dffadc402048ac3ae59cefe9f93`. Dirty canonical checkout remains untouched.
+- Prior gap: Android audio/open/save/export picker cancellation and Windows audio/export/project cancellation returned silently. Success copy differed by platform and did not consistently distinguish the exported file from the production retained in the app.
+- New contract: cancellation names the operation and preserved state. WAV success confirms the selected destination and retained production; project-save success confirms external destination plus app safety copy. Failures retain their existing actionable error paths.
+- Platform binding: all four Android nullable activity results and three Windows chooser/dialog families use the shared contract. Android/Windows save and export completion use the same presentation vocabulary.
+- Privacy: runtime display accepts only a sanitized leaf name; full path, control characters, extra lines and overlong labels are rejected/truncated. No path or outcome is added to project state, archive schema, autosave or receipts.
+- Validation: focused RED/GREEN; full 190-task gate. Android 247, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; APKs, Windows package and CycloneDX build PASS; configured validation, Python 40, public-surface baseline 410 and documentation-inclusive final 411 PASS.
+- Gate ceiling: `LOCAL_PASS`. Real document-provider UI/destination, Windows dialog visual result, screen-reader speech, Human confidence, provider/public and device gates remain unverified.
+
+## Current snapshot — 2026-08-26 workflow NEXT and locked-stage reasons
+
+This snapshot improves comprehension of the existing four-stage product without adding a tutorial modal, screen, scroll path, schema or audio-engine behavior.
+
+- Product source: isolated branch `codex/choplab-next-action-ux-20260826`, checkpoint `a9f2245abd1673ce02b9a94f231b66d5fe87a4ea`, tree `05d84e34c62f83057ef28175ea2d4d3d9d7de96a`, based on `8b9c00ba2a382705c3478c1ce8984225d30a6c8d`. Dirty canonical checkout remains untouched.
+- Constraint: unavailable workflow tabs previously exposed only disabled state. They did not say which prerequisite was missing, while the bottom strip repeated current-stage guidance rather than naming the single next unlock action.
+- New truth: empty/pristine demo → `NEXT 1 入れる`; loaded source without its own chop → `NEXT 2 チョップ`; playable PAD without audible pattern → `NEXT 3 ビート`; loop/vocal/audible pattern → `NEXT 4 保存`. Loading and recording own `NEXT 待つ` / `NEXT 録音を止める` so navigation never competes with a live operation.
+- Accessibility: each locked stage has a concrete Japanese `stateDescription`. The status strip uses one merged semantic announcement containing current stage, next action, guidance and runtime status, avoiding duplicate child announcements.
+- Negative controls: starter demo remains an explicit optional route instead of being misclassified as completed user work; source+starter still points to CHOP; PAD-only projects are not sent back to CAPTURE; loop content remains export-ready; fixed copy budgets prevent status-strip growth.
+- Validation: focused RED/Green tests; full 190-task local gate. Android unit 244, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; Android debug/androidTest/unsigned-release APK, Windows app-image and CycloneDX build PASS; configured validation baseline 409 and documentation-inclusive final public-surface 410 PASS; Python policy 40 PASS.
+- Gate ceiling: `LOCAL_PASS`. No device/emulator screenshot, touch, TalkBack/VoiceOver speech, OAuth/provider, GitHub/public, physical audio or Human acceptance was run.
+
+## Current snapshot — 2026-08-26 Android signer verifier recovery
+
+This snapshot closes one local release-preparation failure exposed by the existing `v0.17.0` publication path. It does not re-observe GitHub, Spotify, Pixel or any other external gate.
+
+- Observed at: `2026-08-26T01:24:58+09:00`.
+- Product source: isolated branch `codex/choplab-release-verifier-recovery-20260826`, code checkpoint `807ef56d53eb99a8fcf4c8e779b4486136563f4e`, tree `482fdd141336a1528bce66b049891b44494b7c68`, based on completed local product branch `4978c4c715fdc7116364e748f0a34cb1c2964e48`. The dirty canonical checkout remains untouched.
+- Reconciled release truth: local `v0.17.0` recovery assets resolve to tag commit `ab68d2d9eaf2e5b9021a131f9ecc34d5063825bf`; manifest, sidecars, APK signature verification, Windows metadata, iOS Simulator archive and SBOM remain internally consistent. Historical attempt 2 completed signing setup, tests, Lint, APK build and SBOM, then failed closed while parsing the signer digest.
+- Root cause boundary: the verifier trusted an ambient `PATH` tool before the configured SDK and searched only captured stdout. It now prefers the configured SDK-owned toolchain, reads stdout and stderr, accepts one unique normalized digest and rejects missing or conflicting values. Manifest, exported-component, alignment, signed-release and expected-certificate checks are unchanged.
+- Focused evidence: 13 verifier tests PASS; the new output-channel test was RED before implementation. Full Python policy is 40 PASS. Exact local `v0.17.0` APK verification passed with identity output suppressed.
+- Project validation: final public-surface 409 candidates, executable modes, JVM-core/Desktop 18 Gradle tasks, six Android XML files, wrapper checksum and UTF-8 policy PASS. A fresh Android unit/Lint/release APK/CycloneDX gate passed 111 tasks; Android unit 239 with failures/errors/skips 0, unsigned local release APK `911C43FF…`, and SBOM 650 components / 651 dependencies. `git diff --check` PASS.
+- History boundary: Windows v0.17 packaging/install receipts remain local or historical scope; Spotify is implemented as metadata/control-only but real authorization remains provider-blocked; Pixel evidence remains revision-bound scoped history. No OAuth, GitHub, ADB/device, signer/secret mutation, publication or Human action occurred.
+- Gate ceiling: `LOCAL_PASS` for this verifier slice. Hosted Actions, a newer-version release, current physical audio/route loss, TalkBack/VoiceOver speech, Spotify provider behavior and `HUMAN_GO` remain separate.
+
+## Current snapshot — 2026-08-25 monophonic PAD retrigger and loop-session ownership
+
+This snapshot removes accidental duplicate audio without removing performance layering between different PADs. It is source/host evidence, not a physical listening claim.
+
+- Observed at: `2026-08-25T17:21:15.5921041+09:00`.
+- Product source: `codex/choplab-creative-improvement-20260825@be52047124cf502feec8275f8e74451d400872c8`, tree `6159ef8f08bd133ca23e0c9b6dddc7bfbc705da2`, parent `dfe9a223309cd4f439ffa348039428117161d2a1`.
+- Root cause: a selected VOCAL PAD was started once as the loop owner and again by the “play every vocal take at loop start” path. Long ONE SHOT retriggers also accumulated same-PAD voices in Android, Windows and offline WAV rendering. Windows loop stop did not stop the companion vocal takes it started.
+- Ownership contract: one physical PAD owns at most one live voice; retrigger restarts that PAD. Different PADs remain intentional layers. A loop owner is excluded from its vocal companions, and starting/stopping the loop owns the same companion set on Android and Windows.
+- Renderer parity: repeated events for one PAD replace its previous offline voice; an independent negative control proves two different PADs at the same event still sum as layers.
+- Realtime safety: the Android helper scans the fixed preallocated voice array and deactivates matching owners. Compiled `startVoice`/helper bytecode has no new-allocation instruction. Existing sequenced urgent Stop All and source/loop boundary remain unchanged.
+- Verification: clean 191-task gate and exact-commit 184-task read-back PASS. Shared Android host 34, shared Desktop 34, Android 239, JVM-core 54 and Desktop 80 tests; failures/errors/skips 0. Lint errors 0/warnings 7, Python 36 PASS, public-surface 408 PASS, XML/wrapper/mode/diff checks PASS.
+- Built artifacts: debug APK `14BE56FC…` (31,541,362 bytes), androidTest `37F3AEDB…`, unsigned release `911C43FF…`, Windows EXE `05BA3007…` in a 405-file app-image. They were built offline and were not installed or published.
+- iOS boundary: the preview already calls `stopPlayers()` before Source or PAD play and therefore owns one global audition voice; no Swift code changed and macOS/Simulator was not run.
+- Gate ceiling: `LOCAL_PASS`. Physical listening, click/pop quality, latency, device/route loss, recording, Spotify/provider, public release, accessibility speech and `HUMAN_GO` remain unverified.
+
+## Current snapshot — 2026-08-25 image-guided screen-fitting precision trim
+
+This snapshot binds a screenshot/ImageGen-guided UI improvement to live shared Compose and pure viewport contracts. The generated image is not packaged and is not runtime proof.
+
+- Product source: `codex/choplab-creative-improvement-20260825@6befe1193a91d099bc8ecd5f736eb4d2fea64d24`, tree `71cd3941580e80346549bbad4af0669bc5739112`, parent `25792b9`.
+- Reference contract: user-supplied 570 × 1280 current screenshot plus one built-in ImageGen hierarchy candidate were mapped into 7 regions (`exact 4 / semantic 1 / adapted 2`). The contract validator passes with baseline, generated-candidate and implemented-AVD states.
+- User outcome: long-pressing an assigned PAD now opens TRIM with that chop already fitted. Visible frames are `max(1 second, ceil(PAD length × 1.25))`, capped by the source, so ordinary chops occupy about 80% while tiny chops keep useful context. Source-edge windows retain the same requested size where possible.
+- Visual hierarchy: a compact full-source overview shows the selected PAD, current editable viewport and focus line above the main waveform. At heights below 500dp it is omitted to preserve compact landscape editing space. No generated raster or fake state enters the product.
+- Existing interaction: waveform long-press still moves the nearer START/END boundary through the existing safe trim reducer and focuses a maximum one-second window. Tap, pinch/pan, viewport buttons, boundary wheels, precision choices, Preview, Revert, Source and Stop All remain.
+- AVD evidence: on dedicated API 36 AVD with a synthetic four-second WAV, A01 `0:00.000–0:00.500` initially opened at `0:00.000–0:01.000`; overview announced the same exact ranges. Two focused instrumentation tests for initial focus and waveform-long-press one-second focus passed. The tracked emulator was gracefully stopped and its lease read back `already-exited`.
+- Verification: clean 191-task gate PASS; final 184-task full read-back PASS. Shared Android host 32, shared Desktop 32, Android unit 238, JVM-core 52, Desktop 79, plus two focused AVD instrumentation tests; 435 total, failures/errors/skips 0. Lint errors 0, warnings 7; Python 36 PASS; final public-surface 406 PASS; UI validator/diff/debug-marker checks PASS.
+- Evidence: parent PAD `work/PAD_CHOPLAB_PRECISION_TRIM_IMAGEGEN_LOCAL_RECEIPT_20260825.md`; outputs `ChopLab-precision-trim-imagegen-target-20260825.png`, `ChopLab-precision-trim-implemented-20260825.png`, and `ChopLab-precision-trim-comparison-20260825.png`.
+- Gate ceiling: `LOCAL_PASS` plus scoped emulator interaction. Physical touch, TalkBack speech, physical audio quality/latency, provider/public and `HUMAN_GO` remain unverified.
+
+## Current snapshot — 2026-08-25 supported-audio picker local candidate
+
+This snapshot fixes platform picker truth. It does not claim that every document provider or physical device renders an identical picker.
+
+- Product source: `codex/choplab-creative-improvement-20260825@a72d4ea485ff786072a9e6d9d9d75a4800422f41`, tree `a16f2bcc57226f58e872d8c7cf14a756e28bf7ef`, parent `47e5637`.
+- Reproduced root cause: AndroidX `OpenDocument` put the requested `audio/*` only in `EXTRA_MIME_TYPES` while its base Intent type remained unrestricted. The JDK source states that AWT `FileDialog.filenameFilter` does not function on Microsoft Windows. Both paths could therefore present an All Files surface.
+- Android repair: a dedicated contract now emits `ACTION_OPEN_DOCUMENT + CATEGORY_OPENABLE + audio/*` as the authoritative type. The compiled class was read back with `javap`; it contains that exact action/category/type and no MIME-types extra. `MediaExtractor` still requires a decodable audio track and all existing duration/format/resource limits.
+- Windows repair: import now uses `JFileChooser` with All Files disabled and a single `音声ファイル（WAV）` filter, followed by the existing file/extension and WAV-content checks. MP3 is not advertised on Windows because the packaged implementation has no MP3 decoder. Android continues to accept MP3 and other platform-supported audio MIME types.
+- Fresh local gate: clean 191-task cross-platform build PASS. Shared Android host 32, shared Desktop 32, Android unit 234, JVM-core 52 and Desktop 79 tests; failures/errors/skips 0. New Android intent instrumentation test compiled into the test APK. Lint errors 0, warnings 7; Python 36 PASS; public-surface 401 PASS; diff check PASS.
+- Windows runtime: the exact candidate chooser showed only `音声ファイル（WAV）` and no All Files option in isolated app data; exact launcher/UI processes were stopped.
+- Evidence: parent PAD `work/PAD_CHOPLAB_AUDIO_PICKER_LOCAL_RECEIPT_20260825.md` and `work/CHOPLAB_AUDIO_PICKER_EVIDENCE_20260825/windows-wav-picker.png`.
+- Gate ceiling: `LOCAL_PASS`. The connected Pixel was not touched; physical Android picker/provider behavior, MP3 decode on that exact device, device audio, provider/public and `HUMAN_GO` remain unverified.
+
+## Current snapshot — 2026-08-25 reversible Quick Sketch local candidate
+
+This snapshot records one bounded cross-platform creative workflow. It does not promote a synthetic Windows prototype into physical-device or human musical-quality evidence.
+
+- Observed at: `2026-08-25T00:59:33.8483853+09:00`.
+- Product source: `codex/choplab-creative-improvement-20260825@143a96919120273795805a6c1b95a203339cd4b9`, tree `707a40df56ebbdaff2f5c1688a4cd8dd13d20abc`, based on `main@8fa1dac79b76f851e035cd8abaa5db8f9b1f5532`. The dirty canonical checkout and external surfaces remain untouched.
+- User outcome: an empty melody project with a loaded source offers `8つの下書き / QUICK SKETCH` in the existing four-slot CHOP dock. One action creates exactly eight contiguous zero-crossing-safe chops on A01–A08 and places them once each on alternating 16-step positions, while preserving starter drums and all B/C/D content.
+- Safety: any existing A PAD, A step, manual marker, loading/recording state, missing/short range or unsafe boundary rejects without a project mutation. The accepted sketch is one ProductionSession revision, Undo/Redo unit and autosave unit; the UI stops source playback before dispatch. No archive schema, audio callback or native engine changed.
+- Cross-platform contract: shared reducer and policy tests run on Android host and Desktop JVM. Android applies eight existing `RefreshPad` effects plus `RefreshPattern`; Desktop reads the committed pads/pattern on the next trigger/tick. Existing effect-failure feedback remains authoritative.
+- Fresh local gate: full Android/shared/JVM/Desktop task set `BUILD SUCCESSFUL` with 184 actionable tasks on final read-back. Shared Android host 32, shared Desktop 32, Android unit 234, JVM-core 52 and Desktop 78 tests; failures/errors/skips 0. Debug/release Lint errors 0, warnings 7. Python policy 34 PASS, configured project validation PASS, public-surface 397 candidates PASS and `git diff --check` PASS.
+- Runtime prototype: a generated four-second mono sine fixture—not user/Spotify/third-party audio—showed the context button and produced seven markers, A01–A08, and melody step keys `0,18,36,54,72,90,108,126` in an isolated Windows autosave while retaining starter-drum keys. Exact runtime processes were stopped and real projects were never opened.
+- Review: final Spec review P0–P3 none. Standards found no source issue; its sole P2 was missing closeout docs/plan state and is repaired by this snapshot, feature matrix, validation entry and completed plan.
+- Evidence: parent PAD `work/PAD_CHOPLAB_QUICK_SKETCH_LOCAL_RECEIPT_20260825.md` and `work/CHOPLAB_QUICK_SKETCH_EVIDENCE_20260825/`.
+- Gate ceiling: `LOCAL_PASS`. Physical touch, TalkBack speech, listening/click quality, latency, recording, device, provider, public release and `HUMAN_GO` remain unverified.
+
+## Historical snapshot — 2026-08-24 iOS import/recording exclusion local candidate
 
 This snapshot records a bounded iOS preview safety correction. It does not promote Simulator source inspection into physical recording or audio evidence.
 
