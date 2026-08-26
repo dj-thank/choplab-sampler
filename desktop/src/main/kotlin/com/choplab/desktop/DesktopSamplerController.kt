@@ -7,11 +7,11 @@ import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
+import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
-import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
@@ -177,15 +177,14 @@ class DesktopSamplerController(
         }
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
-            runCatching {
-                PatternRenderer.renderSequenceToWav(
-                    outputFile = outputFile,
+            try {
+                DesktopBeatFiles.export(
+                    target = outputFile,
                     pads = snapshot.pads,
                     patternSequence = exportSequence,
                     bpm = snapshot.bpm,
                     swing = snapshot.swing,
                 )
-            }.onSuccess {
                 projectOperations.completeIfCurrent(operation) {
                     mutableState.update {
                         it.copy(
@@ -198,7 +197,7 @@ class DesktopSamplerController(
                         )
                     }
                 }
-            }.onFailure { error ->
+            } catch (error: Exception) {
                 projectOperations.completeIfCurrent(operation) {
                     mutableState.update { it.copy(isLoading = false, statusMessage = "WAV書き出し失敗: ${error.message ?: error.javaClass.simpleName}") }
                 }
