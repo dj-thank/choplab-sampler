@@ -37,6 +37,51 @@ internal fun pcm16AudioInputStream(
 }
 
 /**
+ * Prepares a newly owned resource and abandons it if preparation fails.
+ */
+internal fun <T> prepareCandidateOrAbandon(
+    candidate: T,
+    prepareCandidate: (T) -> Unit,
+    abandonCandidate: (T) -> Unit,
+): T {
+    try {
+        prepareCandidate(candidate)
+    } catch (failure: Throwable) {
+        try {
+            abandonCandidate(candidate)
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+    return candidate
+}
+
+/**
+ * Starts a prepared replacement before retiring voices it supersedes.
+ * The candidate owner must make both cleanup callbacks idempotent.
+ */
+internal fun <T> startReplacementBeforeRetiringConflicts(
+    candidate: T,
+    conflicts: List<T>,
+    startCandidate: (T) -> Unit,
+    abandonCandidate: (T) -> Unit,
+    retireConflict: (T) -> Unit,
+) {
+    try {
+        startCandidate(candidate)
+    } catch (failure: Throwable) {
+        try {
+            abandonCandidate(candidate)
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+    conflicts.forEach(retireConflict)
+}
+
+/**
  * Java Sound engine for the Windows deck.
  *
  * Source playback and PAD voices have separate ownership so a PAD hit never
@@ -112,25 +157,41 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
     @Synchronized
     override fun triggerPad(pad: PadModel, forceLoop: Boolean) {
         if (!pad.isAssigned) return
-        activeVoices
+        val conflicts = activeVoices
             .filter { voice ->
                 samePadVoiceConflictsForRetrigger(voice.pad.globalIndex, pad.globalIndex) ||
                     (pad.chokeGroup > 0 && voice.pad.chokeGroup == pad.chokeGroup)
             }
             .toList()
-            .forEach(::closeVoice)
         val audio = requireNotNull(pad.audio)
         val rendered = PadPcmRenderer.renderInterleaved(pad)
         val clip = createClip(rendered.samples, audio.sampleRate, rendered.channelCount)
         val mode = if (forceLoop) PadPlayMode.LOOP else pad.playMode
         val voice = ActiveVoice(pad, mode, clip)
         activeVoices += voice
-        clip.addLineListener { event ->
-            if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
-                synchronized(this) { closeVoice(voice) }
+        try {
+            clip.addLineListener { event ->
+                if (event.type == LineEvent.Type.STOP && clip.framePosition >= clip.frameLength) {
+                    synchronized(this) { closeVoice(voice) }
+                }
             }
+        } catch (failure: Throwable) {
+            closeVoice(voice)
+            throw failure
         }
-        if (mode == PadPlayMode.LOOP) clip.loop(Clip.LOOP_CONTINUOUSLY) else clip.start()
+        startReplacementBeforeRetiringConflicts(
+            candidate = voice,
+            conflicts = conflicts,
+            startCandidate = { replacement ->
+                if (replacement.mode == PadPlayMode.LOOP) {
+                    replacement.clip.loop(Clip.LOOP_CONTINUOUSLY)
+                } else {
+                    replacement.clip.start()
+                }
+            },
+            abandonCandidate = ::closeVoice,
+            retireConflict = ::closeVoice,
+        )
     }
 
     @Synchronized
@@ -167,8 +228,13 @@ class JavaSoundWavPlayer : DesktopSamplerAudioEngine {
 
     private fun createClip(samples: ShortArray, sampleRate: Int, channelCount: Int): Clip {
         val clip = AudioSystem.getClip()
-        pcm16AudioInputStream(samples, sampleRate, channelCount).use(clip::open)
-        return clip
+        return prepareCandidateOrAbandon(
+            candidate = clip,
+            prepareCandidate = { candidate ->
+                pcm16AudioInputStream(samples, sampleRate, channelCount).use(candidate::open)
+            },
+            abandonCandidate = Clip::close,
+        )
     }
 
     private fun replaceSource(newClip: Clip) {

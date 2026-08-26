@@ -838,12 +838,28 @@ class DesktopSamplerController(
     }
 
     private fun updateSelected(mergeKey: String? = null, transform: (PadModel) -> PadModel) {
-        val selected = mutableState.value.selectedPad
-        commitEdit(mergeKey) { state -> state.copy(pads = state.pads.toMutableList().also { it[state.selectedPad] = transform(it[state.selectedPad]) }) }
-        val current = mutableState.value
-        if (current.loopingPadIndex == selected && current.pads[selected].isAssigned) {
-            player.stopPad(selected)
-            player.triggerPad(current.pads[selected], forceLoop = true)
+        val before = mutableState.value
+        if (before.isLoading) return setStatus("現在の処理が終わってから編集してください")
+        if (rejectEditWhileRecording()) return
+        val selected = before.selectedPad
+        val currentPad = before.pads.getOrNull(selected) ?: return
+        val candidate = transform(currentPad)
+        if (candidate == currentPad) return
+
+        if (before.loopingPadIndex == selected && candidate.isAssigned) {
+            val failure = runCatching {
+                player.triggerPad(candidate, forceLoop = true)
+            }.exceptionOrNull()
+            if (failure != null) {
+                return setStatus(
+                    "ループ音を更新できないため編集を適用しませんでした: " +
+                        (failure.message ?: failure.javaClass.simpleName),
+                )
+            }
+        }
+
+        commitEdit(mergeKey) { state ->
+            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate })
         }
     }
 

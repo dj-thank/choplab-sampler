@@ -52,9 +52,15 @@ controllerはeditable snapshotからcandidate PADをpureに作り、loading/reco
 ## Progress
 
 - [x] 2026-08-27T01:48+09:00 — Wave 11 exact closeoutとcurrent sourceをread-backし、active-loop editのcommit/stop/trigger failure splitとrejected-edit retriggerを選定。専用clean worktreeを作成。
-- [ ] Milestone 1 RED。
-- [ ] Milestone 2 GREEN。
+- [x] 2026-08-27T01:51+09:00 — Milestone 1 RED。controller failure／recording rejectionの2 testsが既存実装で2/2 failure。adapter start-order helperはmissing API compile RED、candidate open cleanupもmissing API compile REDを確認。
+- [x] 2026-08-27T01:51+09:00 — Milestone 2 GREEN。admission→candidate replacement→project commit、candidate prepare/start failure cleanup、success後だけconflict retireを実装し、focused正負controlとdesktop full testをPASS。
 - [ ] Milestone 3 full gate and closeout。
+
+## Discoveries
+
+- `updateSelected`は`commitEdit`がloading/recordingを拒否しても後続のstop/triggerを実行していた。録音中の編集値は保護されても、再生adapterには副作用が漏れていた。
+- Java SoundはPCM render／Clip open／listener登録／startのいずれでも失敗し得る。conflict setを先にsnapshotし、candidate resourceを各段階でowned cleanupしてからsuccess時だけretireする必要がある。
+- same-PAD monophonyとCHOKE retirementは`triggerPad`自身の責務なので、controllerの先行`stopPad`はtransactionを壊す重複ownerだった。
 
 ## Decision log
 
@@ -65,6 +71,9 @@ controllerはeditable snapshotからcandidate PADをpureに作り、loading/reco
 ## Validation log
 
 - baseline: clean branch `7e8603c` / tree `2ca0ce1`、Wave 11 full gateは完了済み。product bytes変更前に同一高コストgateは再実行しない。
+- controller RED: `failedActiveLoopEditKeepsTheOldPadLoopAndHistoryFrontier`と`rejectedRecordingTimePadEditDoesNotRetriggerTheLoop`が既存実装で2/2 failure。GREEN後はsuccess/no-op/history controlを含む3 controller testsがPASS。
+- adapter RED/GREEN: missing `startReplacementBeforeRetiringConflicts`と`prepareCandidateOrAbandon`でそれぞれcompile RED。GREENはprepare failureでcandidate close、start failureでcandidate abandonのみ、successでstart→same-PAD/choke conflict retire順を固定。
+- `:desktop:test` full PASS。actual endpoint/Clip driverは現host unavailableのため未観測。
 
 ## Risks and rollback
 
