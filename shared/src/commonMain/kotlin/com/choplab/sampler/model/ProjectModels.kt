@@ -257,22 +257,37 @@ object LegacyProjectAdapter {
                 ProjectPad(pad.globalIndex)
             }
         }
-        val events = state.activeSteps.mapNotNull { key ->
-            val padIndex = key / SamplerConfig.STEP_COUNT
-            val stepIndex = key % SamplerConfig.STEP_COUNT
-            if (padIndex in 0 until SamplerConfig.PAD_COUNT && stepIndex in 0 until SamplerConfig.STEP_COUNT) {
-                PatternStep(padIndex, stepIndex)
-            } else {
-                null
-            }
-        }.distinct().sortedWith(compareBy(PatternStep::stepIndex, PatternStep::padIndex))
+        val arrangement = state.materializedPatternArrangement()
+        val patternIds = listOf("pattern-a", "pattern-b")
+        val patterns = arrangement.storedStepsBySlot.mapIndexed { slot, steps ->
+            val events = steps.mapNotNull { key ->
+                val padIndex = key / SamplerConfig.STEP_COUNT
+                val stepIndex = key % SamplerConfig.STEP_COUNT
+                if (padIndex in 0 until SamplerConfig.PAD_COUNT && stepIndex in 0 until SamplerConfig.STEP_COUNT) {
+                    PatternStep(padIndex, stepIndex)
+                } else {
+                    null
+                }
+            }.distinct().sortedWith(compareBy(PatternStep::stepIndex, PatternStep::padIndex))
+            ProjectPattern(
+                id = patternIds[slot],
+                name = "Pattern ${patternVariationLabel(slot)}",
+                lengthSteps = SamplerConfig.STEP_COUNT,
+                events = events,
+            )
+        }
 
         return ProjectSnapshot(
             projectId = "legacy-${state.currentAudio?.id ?: 0L}",
             name = projectName.ifBlank { "Untitled" }.take(ProjectLimits.MAX_PROJECT_NAME_CHARS),
             audioAssets = assets,
             pads = pads,
-            patterns = listOf(ProjectPattern("pattern-1", "Pattern 1", SamplerConfig.STEP_COUNT, events)),
+            patterns = patterns,
+            songSections = if (arrangement.songModeEnabled) {
+                arrangement.songSections.map { slot -> SongSection(patternIds[slot]) }
+            } else {
+                emptyList()
+            },
             tempoBpm = state.bpm.coerceIn(40f, 240f),
             swingPercent = state.swing.coerceIn(50f, 75f),
         )

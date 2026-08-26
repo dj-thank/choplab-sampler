@@ -95,12 +95,14 @@ import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.activePhaseFor
+import com.choplab.sampler.model.audiblePlaybackStepCount
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.focusPadTrimAtFrame
-import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.hasAnyPatternSteps
+import com.choplab.sampler.model.hasAudiblePlaybackPatternContent
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nearestPadTrimBoundary
 import com.choplab.sampler.model.precisionTrimWindow
@@ -214,6 +216,7 @@ fun OtohiroiDeck(
     var padPageName by rememberSaveable(state.currentAudio?.id) { mutableStateOf(PadEditorPage.PARAM.name) }
     var showPadDetails by rememberSaveable(state.currentAudio?.id) { mutableStateOf(false) }
     var layerStudioPageName by rememberSaveable(state.currentAudio?.id) { mutableStateOf<String?>(null) }
+    var showArrangementStudio by rememberSaveable(state.currentAudio?.id) { mutableStateOf(false) }
     val stage = restoreWorkflowStage(stageName)
     val padPage = PadEditorPage.entries.firstOrNull { it.name == padPageName } ?: PadEditorPage.PARAM
     val layerStudioPage = LayerStudioPage.entries.firstOrNull { it.name == layerStudioPageName }
@@ -224,6 +227,7 @@ fun OtohiroiDeck(
             stageName = reconciled.name
             showPadDetails = false
             layerStudioPageName = null
+            showArrangementStudio = false
         }
     }
 
@@ -368,6 +372,10 @@ fun OtohiroiDeck(
                                         showPadDetails = true
                                     },
                                     onOpenLayerStudio = { layerStudioPageName = it.name },
+                                    onOpenArrangementStudio = {
+                                        layerStudioPageName = null
+                                        showArrangementStudio = true
+                                    },
                                     viewModel = viewModel,
                                 )
                             }
@@ -403,6 +411,13 @@ fun OtohiroiDeck(
                 initialPage = layerStudioPage,
                 onDismiss = { layerStudioPageName = null },
                 onToggleVocalRecording = onToggleVocalRecording,
+                viewModel = viewModel,
+            )
+        }
+        if (showArrangementStudio) {
+            ArrangementStudio(
+                state = state,
+                onDismiss = { showArrangementStudio = false },
                 viewModel = viewModel,
             )
         }
@@ -2243,6 +2258,7 @@ private fun SequenceWorkspace(
     onOpenPadDetails: (Int) -> Unit,
     onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    onOpenArrangementStudio: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
@@ -2254,6 +2270,7 @@ private fun SequenceWorkspace(
             onOpenPadDetails = onOpenPadDetails,
             onOpenPadTrim = onOpenPadTrim,
             onOpenLayerStudio = onOpenLayerStudio,
+            onOpenArrangementStudio = onOpenArrangementStudio,
             onShowFineControls = { showFineControls = true },
             viewModel = viewModel,
         )
@@ -2293,6 +2310,7 @@ private fun SequenceWorkspace(
                 state = state,
                 metrics = metrics,
                 onOpenLayerStudio = onOpenLayerStudio,
+                onOpenArrangementStudio = onOpenArrangementStudio,
                 showFineControls = true,
                 onShowFineControls = { showFineControls = it },
                 viewModel = viewModel,
@@ -2360,6 +2378,7 @@ private fun SequenceWorkspace(
                 height = metrics.productionDockHeightDp.dp,
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
                 onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+                onOpenArrange = onOpenArrangementStudio,
                 onStepsVisibleChange = { showFineControls = it },
             )
         }
@@ -2373,6 +2392,7 @@ private fun BeatChopSurface(
     onOpenPadDetails: (Int) -> Unit,
     onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    onOpenArrangementStudio: () -> Unit,
     onShowFineControls: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
@@ -2406,6 +2426,7 @@ private fun BeatChopSurface(
             height = metrics.productionDockHeightDp.dp,
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+            onOpenArrange = onOpenArrangementStudio,
             onStepsVisibleChange = { if (it) onShowFineControls() },
         )
     }
@@ -2546,6 +2567,7 @@ private fun SequenceControlDeck(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    onOpenArrangementStudio: () -> Unit,
     showFineControls: Boolean,
     onShowFineControls: (Boolean) -> Unit,
     viewModel: SamplerDeckController,
@@ -2580,6 +2602,7 @@ private fun SequenceControlDeck(
                 height = metrics.productionDockHeightDp.dp,
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
                 onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+                onOpenArrange = onOpenArrangementStudio,
                 onStepsVisibleChange = onShowFineControls,
             )
             return@Column
@@ -2655,6 +2678,7 @@ private fun SequenceControlDeck(
             height = metrics.productionDockHeightDp.dp,
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+            onOpenArrange = onOpenArrangementStudio,
             onStepsVisibleChange = onShowFineControls,
         )
     }
@@ -2871,6 +2895,7 @@ private fun BeatProductionDock(
     height: Dp,
     onOpenAdd: () -> Unit,
     onOpenScratch: () -> Unit,
+    onOpenArrange: () -> Unit,
     onStepsVisibleChange: (Boolean) -> Unit,
 ) {
     ProductionDock(
@@ -2880,10 +2905,206 @@ private fun BeatProductionDock(
         handlers = mapOf(
             ProductionDockIntent.SHOW_QUICK to { onStepsVisibleChange(false) },
             ProductionDockIntent.SHOW_STEPS to { onStepsVisibleChange(true) },
+            ProductionDockIntent.OPEN_ARRANGE to onOpenArrange,
             ProductionDockIntent.OPEN_ADD to onOpenAdd,
             ProductionDockIntent.OPEN_SCRATCH to onOpenScratch,
         ),
     )
+}
+
+@Composable
+private fun ArrangementStudio(
+    state: SamplerUiState,
+    onDismiss: () -> Unit,
+    viewModel: SamplerDeckController,
+) {
+    val presentation = arrangementStudioPresentation(state)
+    var copyConfirmationPending by remember { mutableStateOf(false) }
+    LaunchedEffect(presentation.selectedSlot, presentation.copyNeedsConfirmation) {
+        copyConfirmationPending = false
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xCC070604))
+                .padding(horizontal = 12.dp, vertical = 18.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                color = DeckPanel,
+                contentColor = DeckInk,
+                shape = ConsoleShape,
+                shadowElevation = 14.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.82f)
+                    .widthIn(max = 720.dp)
+                    .border(2.dp, DeckLamp, ConsoleShape),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(DeckInk, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                "A/B SONG",
+                                color = DeckLamp,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                            )
+                            Text(
+                                "4小節の曲を作る",
+                                color = DeckGreen,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                            )
+                        }
+                        MachineButton(
+                            label = "閉じる\nCLOSE",
+                            onClick = onDismiss,
+                            modifier = Modifier.width(86.dp).fillMaxHeight(),
+                            compact = true,
+                        )
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DeckInk, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            presentation.selectedPatternLabel,
+                            color = DeckLamp,
+                            fontFamily = DeckFont,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.sp,
+                        )
+                        Text(
+                            presentation.guidance,
+                            color = DeckGreen,
+                            fontFamily = DeckFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                        )
+                    }
+                    Text(
+                        "1. 編集するA/Bを選ぶ",
+                        color = DeckInk,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 10.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(58.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf("A", "B").forEachIndexed { slot, label ->
+                            MachineButton(
+                                label = "パターン${label}\n編集する",
+                                onClick = { viewModel.selectPatternVariation(slot) },
+                                enabled = presentation.editEnabled,
+                                active = presentation.selectedSlot == slot,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                            )
+                        }
+                    }
+                    MachineButton(
+                        label = if (copyConfirmationPending) {
+                            "${presentation.copyDestinationLabel}を上書きします\nもう一度で確定"
+                        } else {
+                            "${presentation.copyLabel}\nCOPY THEN EDIT"
+                        },
+                        onClick = {
+                            if (presentation.copyNeedsConfirmation && !copyConfirmationPending) {
+                                copyConfirmationPending = true
+                            } else {
+                                copyConfirmationPending = false
+                                viewModel.duplicateSelectedPatternToOther()
+                            }
+                        },
+                        enabled = presentation.editEnabled,
+                        active = copyConfirmationPending,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
+                    Text(
+                        "2. 4小節をタップして A/B を切り替え",
+                        color = DeckInk,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 10.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(62.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        presentation.sectionLabels.forEachIndexed { index, label ->
+                            MachineButton(
+                                label = label,
+                                onClick = { viewModel.toggleSongSectionPattern(index) },
+                                enabled = presentation.editEnabled,
+                                active = presentation.sectionSlots[index] == 1,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                                compact = true,
+                            )
+                        }
+                    }
+                    Text(
+                        "3. 再生・WAV書出しの長さを選ぶ",
+                        color = DeckInk,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 10.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        MachineButton(
+                            label = presentation.playbackModeLabel,
+                            onClick = viewModel::toggleSongMode,
+                            enabled = presentation.editEnabled,
+                            active = presentation.songModeEnabled,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                        ValueDisplay(
+                            label = "書き出し",
+                            value = if (presentation.songModeEnabled) "4小節 A/B" else "選択Pattern ×4",
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                    MachineButton(
+                        label = "閉じて16ステップを編集\nEDIT SELECTED PATTERN",
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -3641,8 +3862,8 @@ private fun FinishWorkspace(
 ) {
     val gap = metrics.gapDp.dp
     val assignedPads = state.pads.count(PadModel::isAssigned)
-    val audibleSteps = state.activeSteps.audibleStepKeys(state.pads).size
-    val ready = state.activeSteps.hasAudiblePatternContent(state.pads)
+    val audibleSteps = state.audiblePlaybackStepCount()
+    val ready = state.hasAudiblePlaybackPatternContent()
     val readiness = finishReadinessPresentation(ready)
     val clearAction = finishClearActionPresentation()
     val summary: @Composable (Modifier) -> Unit = { modifier ->
@@ -3766,7 +3987,7 @@ private fun FinishWorkspace(
                     label = clearAction.label,
                     confirmLabel = clearAction.confirmLabel,
                     onConfirm = viewModel::clearAllPattern,
-                    enabled = state.activeSteps.isNotEmpty(),
+                    enabled = state.hasAnyPatternSteps(),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }

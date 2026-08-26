@@ -4,8 +4,10 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.materializedPatternArrangement
 import com.choplab.sampler.model.starterDrumKitInstallationAllowed
 import com.choplab.sampler.model.stepKey
 import kotlin.math.PI
@@ -42,6 +44,9 @@ object BuiltInDrumKits {
 
     private val defaultStarterPattern: Set<Int> by lazy {
         starterPattern(DEFAULT_STARTER_KIT_ID, SamplerConfig.DRUM_BANK_INDEX)
+    }
+    private val untouchedStarterArrangement: PatternArrangement by lazy {
+        PatternArrangement(storedStepsBySlot = listOf(defaultStarterPattern, emptySet()))
     }
 
     fun createBankPads(kitId: String, bankIndex: Int): List<PadModel> {
@@ -109,7 +114,8 @@ object BuiltInDrumKits {
             state.selectedDrumKitId != DEFAULT_STARTER_KIT_ID ||
             state.bpm != DEFAULT_BPM ||
             state.swing != DEFAULT_SWING ||
-            state.activeSteps != defaultStarterPattern
+            state.activeSteps != defaultStarterPattern ||
+            state.materializedPatternArrangement() != untouchedStarterArrangement
         ) {
             return false
         }

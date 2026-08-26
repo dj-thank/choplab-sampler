@@ -5,7 +5,7 @@ import java.util.concurrent.locks.LockSupport
 
 /** Single-owner 16-step transport for the Windows Java Sound adapter. */
 class DesktopTransport(
-    private val onStep: (Int) -> Unit,
+    private val onStep: (barIndex: Int, stepIndex: Int) -> Unit,
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
     @Volatile private var bpm = 92f
@@ -40,18 +40,19 @@ class DesktopTransport(
     }
 
     private fun runLoop() {
-        var step = 0
+        val cursor = DesktopTransportCursor()
         try {
             while (running.get()) {
-                onStep(step)
-                val deadline = System.nanoTime() + DesktopTransportTiming.stepDurationNanos(step, bpm, swing)
+                onStep(cursor.barIndex, cursor.stepIndex)
+                val deadline = System.nanoTime() +
+                    DesktopTransportTiming.stepDurationNanos(cursor.stepIndex, bpm, swing)
                 while (running.get()) {
                     val remaining = deadline - System.nanoTime()
                     if (remaining <= 0L) break
                     LockSupport.parkNanos(minOf(remaining, 5_000_000L))
                     if (Thread.interrupted() && !running.get()) return
                 }
-                step = (step + 1) % 16
+                cursor.advance()
             }
         } finally {
             running.set(false)
@@ -61,6 +62,28 @@ class DesktopTransport(
 
     override fun close() = stop()
 }
+
+internal class DesktopTransportCursor {
+    var barIndex: Int = 0
+        private set
+    var stepIndex: Int = 0
+        private set
+
+    fun reset() {
+        barIndex = 0
+        stepIndex = 0
+    }
+
+    fun advance() {
+        if (stepIndex == 15) {
+            stepIndex = 0
+            barIndex = if (barIndex == Int.MAX_VALUE) 0 else barIndex + 1
+        } else {
+            stepIndex++
+        }
+    }
+}
+
 object DesktopTransportTiming {
     fun stepDurationNanos(step: Int, bpm: Float, swing: Float): Long {
         val safeBpm = bpm.coerceIn(40f, 240f)

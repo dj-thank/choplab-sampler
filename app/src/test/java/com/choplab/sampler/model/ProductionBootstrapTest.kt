@@ -55,6 +55,11 @@ class ProductionBootstrapTest {
                 blankWithSource.copy(activeSteps = setOf(stepKey(0, 0))),
             ),
         )
+        assertFalse(
+            starterDrumKitInstallationAllowed(
+                blankWithSource.copy(patternArrangement = PatternArrangement(songModeEnabled = true)),
+            ),
+        )
     }
 
     @Test
@@ -73,6 +78,16 @@ class ProductionBootstrapTest {
         assertEquals(ScratchReturnTarget.PadLoop(0), selectScratchReturnTarget(loop))
         assertEquals(ScratchReturnTarget.Transport, selectScratchReturnTarget(transport))
         assertEquals(ScratchReturnTarget.None, selectScratchReturnTarget(SamplerUiState()))
+        val songTransport = transport.copy(
+            activeSteps = emptySet(),
+            patternArrangement = PatternArrangement(
+                storedStepsBySlot = listOf(emptySet(), setOf(stepKey(1, 4))),
+                songSections = listOf(1, 0, 1, 0),
+                songModeEnabled = true,
+            ),
+        )
+        assertEquals(ScratchReturnTarget.Transport, selectScratchReturnTarget(songTransport))
+        assertTrue(scratchReturnTargetIsValid(ScratchReturnTarget.Transport, songTransport))
         assertTrue(scratchReturnTargetIsValid(ScratchReturnTarget.PadLoop(0), loop))
         assertFalse(
             scratchReturnTargetIsValid(

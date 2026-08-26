@@ -54,7 +54,47 @@ class ProjectModelsTest {
         assertEquals(100L, snapshot.pads[3].startFrame)
         assertEquals(300L, snapshot.pads[3].endFrame)
         assertEquals(1.1f, snapshot.pads[3].gain)
-        assertEquals(listOf(PatternStep(padIndex = 3, stepIndex = 7)), snapshot.patterns.single().events)
+        assertEquals(2, snapshot.patterns.size)
+        assertEquals(listOf(PatternStep(padIndex = 3, stepIndex = 7)), snapshot.patterns[0].events)
+        assertEquals(emptyList<PatternStep>(), snapshot.patterns[1].events)
+        assertEquals(emptyList<SongSection>(), snapshot.songSections)
+    }
+
+    @Test
+    fun legacySnapshotPreservesBothVariationsAndEnabledSongOrder() {
+        val patternA = setOf(stepKey(2, 0), stepKey(2, 8))
+        val patternB = setOf(stepKey(3, 4), stepKey(3, 12))
+        val state = SamplerUiState(
+            activeSteps = patternB,
+            patternArrangement = PatternArrangement(
+                storedStepsBySlot = listOf(patternA, emptySet()),
+                selectedSlot = 1,
+                songSections = listOf(0, 1, 1, 0),
+                songModeEnabled = true,
+            ),
+        )
+
+        val snapshot = LegacyProjectAdapter.toSnapshot(state, projectName = "A/B Song")
+
+        assertEquals(listOf("pattern-a", "pattern-b"), snapshot.patterns.map(ProjectPattern::id))
+        assertEquals(
+            listOf(
+                PatternStep(padIndex = 2, stepIndex = 0),
+                PatternStep(padIndex = 2, stepIndex = 8),
+            ),
+            snapshot.patterns[0].events,
+        )
+        assertEquals(
+            listOf(
+                PatternStep(padIndex = 3, stepIndex = 4),
+                PatternStep(padIndex = 3, stepIndex = 12),
+            ),
+            snapshot.patterns[1].events,
+        )
+        assertEquals(
+            listOf("pattern-a", "pattern-b", "pattern-b", "pattern-a"),
+            snapshot.songSections.map(SongSection::patternId),
+        )
     }
 
     @Test

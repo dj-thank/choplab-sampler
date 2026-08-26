@@ -12,6 +12,43 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
+internal fun calculateContinuousPatternEventFrames(
+    sampleRate: Int,
+    bpm: Float,
+    swing: Float,
+    bars: Int,
+): IntArray = calculateContinuousPatternBoundaries(sampleRate, bpm, swing, bars)
+    .copyOf(SamplerConfig.STEP_COUNT * bars)
+
+private fun calculateContinuousPatternBoundaries(
+    sampleRate: Int,
+    bpm: Float,
+    swing: Float,
+    bars: Int,
+): IntArray {
+    require(bars in 1..64) { "bars must be between 1 and 64" }
+    val safeBpm = SamplerDspPrimitives.bpm(bpm)
+    val safeSwing = SamplerDspPrimitives.swing(swing)
+    val eventCount = SamplerConfig.STEP_COUNT * bars
+    val boundaries = IntArray(eventCount + 1)
+    var frame = 0
+    var framesUntilNextStep = 0.0
+    repeat(eventCount) { eventIndex ->
+        boundaries[eventIndex] = frame
+        framesUntilNextStep += SamplerDspPrimitives.stepLengthFrames(
+            sampleRate = sampleRate,
+            bpm = safeBpm,
+            swing = safeSwing,
+            step = eventIndex % SamplerConfig.STEP_COUNT,
+        )
+        val framesToAdvance = ceil(framesUntilNextStep).toInt().coerceAtLeast(1)
+        framesUntilNextStep -= framesToAdvance
+        frame += framesToAdvance
+    }
+    boundaries[eventCount] = frame.coerceAtLeast(1)
+    return boundaries
+}
+
 data class PatternRenderSummary(
     val bars: Int,
     val sampleRate: Int,
@@ -47,16 +84,36 @@ object PatternRenderer : PatternRenderService {
         swing: Float,
         bars: Int,
         outputSampleRate: Int,
+    ): PatternRenderSummary = renderSequenceToWav(
+        outputFile = outputFile,
+        pads = pads,
+        patternSequence = List(bars) { activeSteps },
+        bpm = bpm,
+        swing = swing,
+        outputSampleRate = outputSampleRate,
+    )
+
+    fun renderSequenceToWav(
+        outputFile: File,
+        pads: List<PadModel>,
+        patternSequence: List<Set<Int>>,
+        bpm: Float,
+        swing: Float,
+        outputSampleRate: Int = 48_000,
     ): PatternRenderSummary {
         require(pads.size == SamplerConfig.PAD_COUNT) { "Expected ${SamplerConfig.PAD_COUNT} pads" }
-        require(bars in 1..64) { "bars must be between 1 and 64" }
+        require(patternSequence.size in 1..64) { "pattern sequence must contain between 1 and 64 bars" }
         require(outputSampleRate in 8_000..192_000) { "Unsupported output sample rate" }
 
         val safeBpm = SamplerDspPrimitives.bpm(bpm)
         val safeSwing = SamplerDspPrimitives.swing(swing)
-        val stepStarts = calculateStepStarts(outputSampleRate, safeBpm, safeSwing)
-        val barFrames = ceil(stepStarts.last()).toInt().coerceAtLeast(1)
-        val totalFrames = barFrames * bars
+        val boundaries = calculateContinuousPatternBoundaries(
+            sampleRate = outputSampleRate,
+            bpm = safeBpm,
+            swing = safeSwing,
+            bars = patternSequence.size,
+        )
+        val totalFrames = boundaries.last()
 
         val events = HashMap<Int, MutableList<PadSnapshot>>()
         pads.asSequence()
@@ -68,10 +125,10 @@ object PatternRenderer : PatternRenderService {
             .filter { it.globalIndex in frameZeroVocalPadIndices }
             .mapNotNull(PadSnapshot::from)
             .forEach { vocal -> events.getOrPut(0) { mutableListOf() } += vocal }
-        repeat(bars) { bar ->
-            val barOffset = bar * barFrames
+        patternSequence.forEachIndexed { bar, activeSteps ->
             repeat(SamplerConfig.STEP_COUNT) { step ->
-                val eventFrame = (barOffset + stepStarts[step]).toInt().coerceIn(0, totalFrames - 1)
+                val eventFrame = boundaries[bar * SamplerConfig.STEP_COUNT + step]
+                    .coerceIn(0, totalFrames - 1)
                 repeat(SamplerConfig.PAD_COUNT) { padIndex ->
                     if (
                         pads[padIndex].playMode != PadPlayMode.LOOP &&
@@ -136,24 +193,11 @@ object PatternRenderer : PatternRenderService {
         }
 
         return PatternRenderSummary(
-            bars = bars,
+            bars = patternSequence.size,
             sampleRate = outputSampleRate,
             frameCount = totalFrames,
             peak = peak,
         )
-    }
-
-    private fun calculateStepStarts(
-        sampleRate: Int,
-        bpm: Float,
-        swing: Float,
-    ): DoubleArray {
-        val starts = DoubleArray(SamplerConfig.STEP_COUNT + 1)
-        repeat(SamplerConfig.STEP_COUNT) { step ->
-            val length = SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
-            starts[step + 1] = starts[step] + length
-        }
-        return starts
     }
 
     private data class PadSnapshot(

@@ -12,14 +12,16 @@ fun inferProjectLaunchTarget(
 ): ProjectLaunchTarget = when {
     starterOnly && state.currentAudio != null -> ProjectLaunchTarget.CHOP
     starterOnly -> ProjectLaunchTarget.CAPTURE
-    state.activeSteps.hasAudiblePatternContent(state.pads) -> ProjectLaunchTarget.BEAT
+    state.hasAudiblePlaybackPatternContent() -> ProjectLaunchTarget.BEAT
     state.currentAudio != null -> ProjectLaunchTarget.CHOP
     state.pads.any(PadModel::isAssigned) -> ProjectLaunchTarget.BEAT
     else -> ProjectLaunchTarget.CAPTURE
 }
 
 fun starterDrumKitInstallationAllowed(state: SamplerUiState): Boolean =
-    state.pads.none(PadModel::isAssigned) && state.activeSteps.isEmpty()
+    state.pads.none(PadModel::isAssigned) &&
+        state.activeSteps.isEmpty() &&
+        state.materializedPatternArrangement() == PatternArrangement()
 
 sealed interface ScratchReturnTarget {
     data object None : ScratchReturnTarget
@@ -31,7 +33,7 @@ fun selectScratchReturnTarget(state: SamplerUiState): ScratchReturnTarget {
     state.loopingPadIndex
         ?.takeIf { index -> state.pads.getOrNull(index)?.isAssigned == true }
         ?.let { return ScratchReturnTarget.PadLoop(it) }
-    return if (state.transportPlaying && state.activeSteps.hasAudiblePatternContent(state.pads)) {
+    return if (state.transportPlaying && state.hasAudiblePlaybackPatternContent()) {
         ScratchReturnTarget.Transport
     } else {
         ScratchReturnTarget.None
@@ -43,6 +45,6 @@ fun scratchReturnTargetIsValid(
     state: SamplerUiState,
 ): Boolean = when (target) {
     ScratchReturnTarget.None -> false
-    ScratchReturnTarget.Transport -> state.activeSteps.hasAudiblePatternContent(state.pads)
+    ScratchReturnTarget.Transport -> state.hasAudiblePlaybackPatternContent()
     is ScratchReturnTarget.PadLoop -> state.pads.getOrNull(target.padIndex)?.isAssigned == true
 }

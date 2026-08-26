@@ -4,6 +4,7 @@ import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
@@ -13,8 +14,9 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activePhaseFor
 import com.choplab.sampler.model.bankRoleFor
-import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.hasAudiblePlaybackPatternContent
 import com.choplab.sampler.model.inferProjectLaunchTarget
+import com.choplab.sampler.model.materializedPatternArrangement
 
 enum class WorkflowStage(
     val label: String,
@@ -204,7 +206,7 @@ fun workflowNextActionPresentation(state: SamplerUiState): WorkflowNextActionPre
             title = "NEXT 2 チョップ",
             guidance = "曲を流し、空PADを押します",
         )
-        !state.activeSteps.hasAudiblePatternContent(state.pads) -> WorkflowNextActionPresentation(
+        !state.hasAudiblePlaybackPatternContent() -> WorkflowNextActionPresentation(
             stage = WorkflowStage.BEAT,
             title = "NEXT 3 ビート",
             guidance = "音ありPADをループするか、鳴るマスを置きます",
@@ -462,7 +464,8 @@ fun requiresNewProjectConfirmation(state: SamplerUiState): Boolean =
     !BuiltInDrumKits.isPristineStarterProduction(state) && (
         state.currentAudio != null ||
             state.pads.any(PadModel::isAssigned) ||
-            state.activeSteps.isNotEmpty()
+            state.activeSteps.isNotEmpty() ||
+            state.materializedPatternArrangement() != PatternArrangement()
         )
 
 data class ChopSessionPresentation(

@@ -10,10 +10,79 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PatternRendererTest {
+    @Test
+    fun fourBarSequenceRendersTheRequestedABOrderInsteadOfRepeatingOnePattern() {
+        val sampleRate = 8_000
+        val positive = PcmAudio(name = "pattern-a", samples = ShortArray(256) { 12_000 }, sampleRate = sampleRate)
+        val negative = PcmAudio(name = "pattern-b", samples = ShortArray(256) { -12_000 }, sampleRate = sampleRate)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> PadModel(index, positive, 0, positive.frameCount)
+                1 -> PadModel(index, negative, 0, negative.frameCount)
+                else -> PadModel(index)
+            }
+        }
+        val patterns = listOf(
+            setOf(stepKey(0, 0)),
+            setOf(stepKey(1, 0)),
+            setOf(stepKey(0, 0)),
+            setOf(stepKey(1, 0)),
+        )
+        val file = File.createTempFile("choplab-ab-song", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderSequenceToWav(
+                outputFile = file,
+                pads = pads,
+                patternSequence = patterns,
+                bpm = 120f,
+                swing = 50f,
+                outputSampleRate = sampleRate,
+            )
+            val pcm = readPcm16(file)
+            val barFrames = summary.frameCount / patterns.size
+
+            assertEquals(4, summary.bars)
+            assertTrue(pcm[64] > 0)
+            assertTrue(pcm[barFrames + 64] < 0)
+            assertTrue(pcm[barFrames * 2 + 64] > 0)
+            assertTrue(pcm[barFrames * 3 + 64] < 0)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun continuousEventScheduleMatchesAndroidCountdownAcrossFractionalBarBoundaries() {
+        val sampleRate = 8_000
+        val bpm = 123f
+        val swing = 57f
+        val bars = 4
+        val expected = mutableListOf<Int>()
+        var remaining = 0.0
+        var step = 0
+        var frame = 0
+        while (expected.size < SamplerConfig.STEP_COUNT * bars) {
+            if (remaining <= 0.0) {
+                expected += frame
+                remaining += SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
+                step = (step + 1) % SamplerConfig.STEP_COUNT
+            }
+            remaining -= 1.0
+            frame++
+        }
+
+        assertArrayEquals(
+            expected.toIntArray(),
+            calculateContinuousPatternEventFrames(sampleRate, bpm, swing, bars),
+        )
+    }
+
     @Test
     fun noOrMultipleLoopOwnersPreserveAllNonLoopVocals() {
         val audio = PcmAudio(

@@ -8,6 +8,7 @@ import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerConfig
@@ -15,6 +16,7 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.selectedPadPage
+import com.choplab.sampler.model.materializedPatternArrangement
 import com.choplab.sampler.persistence.AtomicProjectStore
 import java.nio.file.Files
 import java.io.File
@@ -165,6 +167,104 @@ class DesktopSamplerControllerTest {
             assertEquals(133f, controller.state.value.bpm)
             assertEquals(64f, controller.state.value.swing)
             assertEquals("session.choplabを開きました", controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun arrangementCommandsShareHistoryAndSurviveProjectRoundTrip() {
+        val directory = Files.createTempDirectory("choplab-controller-arrangement").toFile()
+        val project = directory.resolve("ab-song.choplab")
+        val controller = controller()
+        try {
+            controller.ensurePlayablePadSelected()
+            val patternA = controller.state.value.activeSteps
+            controller.duplicateSelectedPatternToOther()
+            controller.toggleStep(15)
+            val patternB = controller.state.value.activeSteps
+            assertNotEquals(patternA, patternB)
+
+            controller.toggleSongSectionPattern(1)
+            assertEquals(listOf(0, 1, 0, 0), controller.state.value.patternArrangement.songSections)
+            controller.undoEdit()
+            assertEquals(listOf(0, 0, 0, 0), controller.state.value.patternArrangement.songSections)
+            controller.redoEdit()
+            controller.toggleSongSectionPattern(3)
+            controller.toggleSongMode()
+            val expected = controller.state.value.materializedPatternArrangement()
+
+            controller.saveProject(project)
+            awaitCondition { project.isFile && !controller.state.value.isLoading }
+            controller.selectPatternVariation(0)
+            controller.toggleSongMode()
+
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "ab-song.choplabを開きました" }
+
+            val restored = controller.state.value
+            assertEquals(expected, restored.patternArrangement)
+            assertEquals(expected.storedStepsBySlot[expected.selectedSlot], restored.activeSteps)
+            assertEquals(listOf(patternA, patternB), restored.patternArrangement.storedStepsBySlot)
+            assertTrue(restored.patternArrangement.songModeEnabled)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun songModeDesktopExportUsesTheSavedABABOrder() {
+        val directory = Files.createTempDirectory("choplab-controller-song-export").toFile()
+        val output = directory.resolve("ab-song.wav")
+        val store = AtomicProjectStore(directory.resolve("autosave"))
+        val positive = PcmAudio(name = "pattern-a.wav", samples = ShortArray(256) { 12_000 }, sampleRate = 8_000)
+        val negative = PcmAudio(name = "pattern-b.wav", samples = ShortArray(256) { -12_000 }, sampleRate = 8_000)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> PadModel(index, positive, 0, positive.frameCount)
+                1 -> PadModel(index, negative, 0, negative.frameCount)
+                else -> PadModel(index)
+            }
+        }
+        val patternA = setOf(stepKey(0, 0))
+        val patternB = setOf(stepKey(1, 0))
+        store.save(
+            SamplerUiState(
+                pads = pads,
+                activeSteps = patternA,
+                patternArrangement = PatternArrangement(
+                    storedStepsBySlot = listOf(patternA, patternB),
+                    songSections = listOf(0, 1, 0, 1),
+                    songModeEnabled = true,
+                ),
+                bpm = 120f,
+                swing = 50f,
+            ),
+        )
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+        )
+        try {
+            awaitCondition { !controller.state.value.isLoading }
+
+            controller.exportBeat(output)
+            awaitCondition { output.isFile && !controller.state.value.isLoading }
+
+            val bytes = output.readBytes()
+            val pcm = ShortArray((bytes.size - 44) / Short.SIZE_BYTES) { index ->
+                java.nio.ByteBuffer.wrap(bytes, 44 + index * Short.SIZE_BYTES, Short.SIZE_BYTES)
+                    .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                    .short
+            }
+            val barFrames = pcm.size / 4
+            assertTrue(pcm[64] > 0)
+            assertTrue(pcm[barFrames + 64] < 0)
+            assertTrue(pcm[barFrames * 2 + 64] > 0)
+            assertTrue(pcm[barFrames * 3 + 64] < 0)
         } finally {
             controller.close()
             directory.deleteRecursively()

@@ -26,6 +26,7 @@ import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.assignLiveChopToPad
 import com.choplab.sampler.model.chokeLoopSessionTransition
+import com.choplab.sampler.model.clearEveryPattern
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.restorePadTrimSnapshot
@@ -44,6 +45,10 @@ import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.editingRequestAllowedDuringRecording
 import com.choplab.sampler.model.drumKitApplyDecision
 import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
+import com.choplab.sampler.model.patternSequenceForExport
+import com.choplab.sampler.model.patternSequenceForPlayback
+import com.choplab.sampler.model.removePadFromEveryPattern
+import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
@@ -167,10 +172,19 @@ class DesktopSamplerController(
     fun exportBeat(outputFile: File) {
         val operation = projectOperations.begin()
         val snapshot = mutableState.value
+        val exportSequence = snapshot.patternSequenceForExport().map { steps ->
+            steps.audibleStepKeys(snapshot.pads)
+        }
         mutableState.update { it.copy(isLoading = true, statusMessage = "4小節WAVを書き出しています") }
         ioExecutor.execute {
             runCatching {
-                PatternRenderer.renderToWav(outputFile, snapshot.pads, snapshot.activeSteps, snapshot.bpm, snapshot.swing)
+                PatternRenderer.renderSequenceToWav(
+                    outputFile = outputFile,
+                    pads = snapshot.pads,
+                    patternSequence = exportSequence,
+                    bpm = snapshot.bpm,
+                    swing = snapshot.swing,
+                )
             }.onSuccess {
                 projectOperations.completeIfCurrent(operation) {
                     mutableState.update {
@@ -692,9 +706,8 @@ class DesktopSamplerController(
         val selected = mutableState.value.selectedPad
         player.stopPad(selected)
         commitEdit { state ->
-            state.copy(
+            state.removePadFromEveryPattern(selected).copy(
                 pads = state.pads.toMutableList().also { it[selected] = PadModel(selected) },
-                activeSteps = state.activeSteps.filterNot { key -> key / SamplerConfig.STEP_COUNT == selected }.toSet(),
                 loopingPadIndex = state.loopingPadIndex?.takeUnless { it == selected },
                 loopPlayheadFrame = if (state.loopingPadIndex == selected) -1 else state.loopPlayheadFrame,
                 statusMessage = "選択PADを消去しました",
@@ -710,7 +723,7 @@ class DesktopSamplerController(
         val pad = state.pads[state.selectedPad]
         state.copy(activeSteps = state.activeSteps.togglePadStep(pad, step))
     }
-    override fun clearAllPattern() = commitEdit { it.copy(activeSteps = emptySet()) }
+    override fun clearAllPattern() = commitEdit { it.clearEveryPattern() }
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
         val index = state.loopingPadIndex ?: state.selectedPad
@@ -799,14 +812,15 @@ class DesktopSamplerController(
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.copy(
+            state.replaceBankStepsAcrossPatterns(
+                bankStart = bankStart,
+                bankEndExclusive = bankEnd,
+                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            ).copy(
                 pads = pads,
                 selectedBank = bankIndex,
                 selectedPad = bankStart,
                 selectedDrumKitId = kitId,
-                activeSteps = state.activeSteps
-                    .filterNotTo(linkedSetOf()) { key -> key / SamplerConfig.STEP_COUNT in bankStart until bankEnd } +
-                    BuiltInDrumKits.starterPattern(kitId, bankIndex),
                 loopingPadIndex = state.loopingPadIndex?.takeUnless { it in bankStart until bankEnd },
                 loopPlayheadFrame = if (state.loopingPadIndex in bankStart until bankEnd) -1 else state.loopPlayheadFrame,
                 statusMessage = "${BuiltInDrumKits.catalog.first { it.id == kitId }.name} を BANK B ドラムにセット",
@@ -937,11 +951,12 @@ class DesktopSamplerController(
         }
     }
 
-    private fun onTransportStep(step: Int) {
+    private fun onTransportStep(barIndex: Int, step: Int) {
         val snapshot = mutableState.value
         if (!snapshot.transportPlaying) return
         mutableState.update { current -> if (current.transportPlaying) current.copy(currentStep = step) else current }
-        val audible = snapshot.activeSteps.audibleStepKeys(snapshot.pads)
+        val sequence = snapshot.patternSequenceForPlayback()
+        val audible = sequence[barIndex % sequence.size].audibleStepKeys(snapshot.pads)
         snapshot.pads.forEach { pad ->
             if (stepKey(pad.globalIndex, step) in audible) player.triggerPad(pad)
         }

@@ -14,6 +14,10 @@ sealed interface ProductionCommand {
     data class SelectSliceAt(val frame: Int) : ProductionCommand
     data object ToggleSelectedPadPerformanceMode : ProductionCommand
     data object CreateQuickSketch : ProductionCommand
+    data class SelectPatternVariation(val slot: Int) : ProductionCommand
+    data object DuplicateSelectedPatternToOther : ProductionCommand
+    data class ToggleSongSectionPattern(val sectionIndex: Int) : ProductionCommand
+    data object ToggleSongMode : ProductionCommand
 }
 
 /** Whether the accepted command changed durable music, only this session, or nothing. */
@@ -59,6 +63,19 @@ fun reduceProductionCommand(
         is ProductionCommand.SelectSliceAt -> error("Selection is handled before edit admission")
         ProductionCommand.ToggleSelectedPadPerformanceMode -> toggleSelectedPadPerformanceMode(state)
         ProductionCommand.CreateQuickSketch -> createQuickSketch(state)
+        is ProductionCommand.SelectPatternVariation -> arrangementCommandResult(
+            state,
+            state.selectPatternVariation(command.slot),
+        )
+        ProductionCommand.DuplicateSelectedPatternToOther -> arrangementCommandResult(
+            state,
+            state.duplicateSelectedPatternToOther(),
+        )
+        is ProductionCommand.ToggleSongSectionPattern -> arrangementCommandResult(
+            state,
+            state.toggleSongSectionPattern(command.sectionIndex),
+        )
+        ProductionCommand.ToggleSongMode -> arrangementCommandResult(state, state.toggleSongMode())
     }
 }
 
@@ -407,6 +424,26 @@ private fun classifiedResult(
         mutation = ProductionMutation.SESSION,
     )
     else -> unchanged(before)
+}
+
+private fun arrangementCommandResult(
+    before: SamplerUiState,
+    after: SamplerUiState,
+): ProductionCommandResult {
+    val projectChanged = before.activeSteps != after.activeSteps ||
+        before.patternArrangement != after.patternArrangement
+    return when {
+        projectChanged -> ProductionCommandResult(
+            state = after,
+            mutation = ProductionMutation.PROJECT,
+            effects = listOf(ProductionEffect.RefreshPattern),
+        )
+        after != before -> ProductionCommandResult(
+            state = after,
+            mutation = ProductionMutation.SESSION,
+        )
+        else -> unchanged(before)
+    }
 }
 
 private fun sessionFeedback(

@@ -17,6 +17,7 @@ enum class ProductionDockIntent {
     CREATE_QUICK_SKETCH,
     SHOW_QUICK,
     SHOW_STEPS,
+    OPEN_ARRANGE,
 }
 
 data class ProductionDockItem(
@@ -110,6 +111,10 @@ fun beatProductionDockItems(stepsVisible: Boolean): List<ProductionDockItem> =
             intent = ProductionDockIntent.SHOW_STEPS,
             label = "並べる詳細\nSTEPS",
             active = stepsVisible,
+        ),
+        ProductionDockItem(
+            intent = ProductionDockIntent.OPEN_ARRANGE,
+            label = "曲にする\nA/B SONG",
         ),
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_ADD,

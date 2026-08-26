@@ -5,9 +5,11 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLimits
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
+import com.choplab.sampler.model.materializedPatternArrangement
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -37,7 +39,8 @@ object ProjectArchiveCodec {
     private const val WAV_SCHEMA_VERSION = 2
     private const val CONTENT_KIND_SCHEMA_VERSION = 4
     private const val PAGED_BANK_SCHEMA_VERSION = 5
-    private const val SCHEMA_VERSION = PAGED_BANK_SCHEMA_VERSION
+    private const val ARRANGEMENT_SCHEMA_VERSION = 6
+    private const val SCHEMA_VERSION = ARRANGEMENT_SCHEMA_VERSION
     private const val LEGACY_LAYOUT_PAD_COUNT = 64
     private const val LEGACY_PADS_PER_BANK = 16
     private const val MANIFEST_ENTRY = "project.txt"
@@ -160,60 +163,74 @@ object ProjectArchiveCodec {
         state: SamplerUiState,
         audio: List<PcmAudio>,
         audioIndexById: Map<Long, Int>,
-    ): String = buildString {
-        appendLine("CHOPLAB_PROJECT\t$SCHEMA_VERSION")
-        appendLine("audioCount\t${audio.size}")
-        audio.forEachIndexed { index, value ->
+    ): String {
+        val arrangement = state.materializedPatternArrangement()
+        return buildString {
+            appendLine("CHOPLAB_PROJECT\t$SCHEMA_VERSION")
+            appendLine("audioCount\t${audio.size}")
+            audio.forEachIndexed { index, value ->
+                appendLine(
+                    listOf(
+                        "audio",
+                        index,
+                        value.id,
+                        value.sampleRate,
+                        value.frameCount,
+                        encodeText(value.name),
+                        audioEntry(index, SCHEMA_VERSION),
+                    ).joinToString("\t"),
+                )
+            }
             appendLine(
                 listOf(
-                    "audio",
-                    index,
-                    value.id,
-                    value.sampleRate,
-                    value.frameCount,
-                    encodeText(value.name),
-                    audioEntry(index, SCHEMA_VERSION),
+                    "state",
+                    state.rangeStartFrame,
+                    state.rangeEndFrame,
+                    state.activeSliceIndex ?: -1,
+                    state.manualChopEnabled.toFlag(),
+                    state.selectedBank,
+                    state.selectedPad,
+                    state.autoNextPad.toFlag(),
+                    state.bpm,
+                    state.swing,
+                    state.sourcePlayheadFrame,
+                    state.masterPitchSemitones,
+                    state.currentAudio?.let { audioIndexById[it.id] } ?: -1,
+                    encodeText(state.selectedDrumKitId),
                 ).joinToString("\t"),
             )
-        }
-        appendLine(
-            listOf(
-                "state",
-                state.rangeStartFrame,
-                state.rangeEndFrame,
-                state.activeSliceIndex ?: -1,
-                state.manualChopEnabled.toFlag(),
-                state.selectedBank,
-                state.selectedPad,
-                state.autoNextPad.toFlag(),
-                state.bpm,
-                state.swing,
-                state.sourcePlayheadFrame,
-                state.masterPitchSemitones,
-                state.currentAudio?.let { audioIndexById[it.id] } ?: -1,
-                encodeText(state.selectedDrumKitId),
-            ).joinToString("\t"),
-        )
-        appendLine("slices\t${state.sliceMarkers.joinToString(",")}")
-        appendLine("steps\t${state.activeSteps.sorted().joinToString(",")}")
-        appendLine("padCount\t${state.pads.size}")
-        state.pads.forEach { pad ->
+            appendLine("slices\t${state.sliceMarkers.joinToString(",")}")
+            appendLine("steps\t${state.activeSteps.sorted().joinToString(",")}")
             appendLine(
                 listOf(
-                    "pad",
-                    pad.globalIndex,
-                    pad.audio?.let { audioIndexById[it.id] } ?: -1,
-                    pad.startFrame,
-                    pad.endFrame,
-                    pad.pitchSemitones,
-                    pad.tone,
-                    pad.gain,
-                    pad.reverse.toFlag(),
-                    pad.playMode.name,
-                    pad.contentKind.name,
-                    pad.chokeGroup,
+                    "arrangement",
+                    arrangement.selectedSlot,
+                    arrangement.songModeEnabled.toFlag(),
+                    arrangement.songSections.joinToString(","),
                 ).joinToString("\t"),
             )
+            arrangement.storedStepsBySlot.forEachIndexed { slot, patternSteps ->
+                appendLine("pattern\t$slot\t${patternSteps.sorted().joinToString(",")}")
+            }
+            appendLine("padCount\t${state.pads.size}")
+            state.pads.forEach { pad ->
+                appendLine(
+                    listOf(
+                        "pad",
+                        pad.globalIndex,
+                        pad.audio?.let { audioIndexById[it.id] } ?: -1,
+                        pad.startFrame,
+                        pad.endFrame,
+                        pad.pitchSemitones,
+                        pad.tone,
+                        pad.gain,
+                        pad.reverse.toFlag(),
+                        pad.playMode.name,
+                        pad.contentKind.name,
+                        pad.chokeGroup,
+                    ).joinToString("\t"),
+                )
+            }
         }
     }
 
@@ -268,6 +285,38 @@ object ProjectArchiveCodec {
         require(state.size == expectedStateFields) { "stateが不正です" }
         val slices = next("slices").also { require(it.size in 1..2) { "slicesが不正です" } }
         val steps = next("steps").also { require(it.size in 1..2) { "stepsが不正です" } }
+        val activeSteps = steps.getOrNull(1).toIntList("steps").also { parsed ->
+            require(parsed.distinct().size == parsed.size) { "stepsが重複しています" }
+        }.toSet()
+        val patternArrangement = if (schemaVersion >= ARRANGEMENT_SCHEMA_VERSION) {
+            val values = next("arrangement")
+            require(values.size == 4) { "arrangementが不正です" }
+            val selectedSlot = values[1].toIntStrict("arrangement.selectedSlot")
+            val songModeEnabled = values[2].toBooleanStrict("arrangement.songMode")
+            val songSections = values[3].toIntList("arrangement.sections")
+            val storedSteps = List(2) { expectedSlot ->
+                val pattern = next("pattern")
+                require(pattern.size in 2..3) { "patternが不正です" }
+                require(pattern[1].toIntStrict("pattern.slot") == expectedSlot) {
+                    "pattern slotが連続していません"
+                }
+                val parsed = pattern.getOrNull(2).toIntList("pattern.steps")
+                require(parsed.distinct().size == parsed.size) { "pattern stepが重複しています" }
+                parsed.toSet()
+            }
+            PatternArrangement(
+                storedStepsBySlot = storedSteps,
+                selectedSlot = selectedSlot,
+                songSections = songSections,
+                songModeEnabled = songModeEnabled,
+            ).also { arrangement ->
+                require(arrangement.storedStepsBySlot[arrangement.selectedSlot] == activeSteps) {
+                    "選択中patternとstepsが一致しません"
+                }
+            }
+        } else {
+            PatternArrangement(storedStepsBySlot = listOf(activeSteps, emptySet()))
+        }
         val padCountLine = next("padCount")
         require(padCountLine.size == 2) { "padCountが不正です" }
         val padCount = padCountLine[1].toIntStrict("padCount")
@@ -323,7 +372,8 @@ object ProjectArchiveCodec {
                 "dusty-jazz"
             },
             sliceMarkers = slices.getOrNull(1).toIntList("slices"),
-            activeSteps = steps.getOrNull(1).toIntList("steps").toSet(),
+            activeSteps = activeSteps,
+            patternArrangement = patternArrangement,
             pads = pads,
         )
     }
@@ -388,11 +438,15 @@ object ProjectArchiveCodec {
                 chokeGroup = pad.chokeGroup,
             )
         }
-        val restoredSteps = activeSteps.mapTo(mutableSetOf()) { key ->
+        fun migrateSteps(steps: Set<Int>): Set<Int> = steps.mapTo(mutableSetOf()) { key ->
             val storedPad = key / SamplerConfig.STEP_COUNT
             val step = key % SamplerConfig.STEP_COUNT
             currentPadIndex(storedPad) * SamplerConfig.STEP_COUNT + step
         }
+        val restoredSteps = migrateSteps(activeSteps)
+        val restoredArrangement = patternArrangement.copy(
+            storedStepsBySlot = patternArrangement.storedStepsBySlot.map(::migrateSteps),
+        )
         val restoredSelectedPad = currentPadIndex(selectedPad)
         return SamplerUiState(
             statusMessage = "プロジェクトを復元しました",
@@ -407,6 +461,7 @@ object ProjectArchiveCodec {
             autoNextPad = autoNextPad,
             pads = restoredPads,
             activeSteps = restoredSteps,
+            patternArrangement = restoredArrangement,
             bpm = bpm,
             swing = swing,
             sourcePlayheadFrame = sourcePlayheadFrame.coerceIn(0, (safeEnd - 1).coerceAtLeast(0)),
@@ -433,6 +488,7 @@ object ProjectArchiveCodec {
         val selectedDrumKitId: String,
         val sliceMarkers: List<Int>,
         val activeSteps: Set<Int>,
+        val patternArrangement: PatternArrangement,
         val pads: List<PadManifest>,
     )
 

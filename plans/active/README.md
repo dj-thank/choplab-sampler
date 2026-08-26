@@ -6,6 +6,8 @@
 
 ## Current selection
 
+**wave 8 in progress:** `ab-song-variation-tracer-20260826.md`。exact Wave 7 closeout `41d715c` / tree `091f6a30`から、A/B二つの16-step variationを4小節へ並べ、Android/Windows playback、schema 6 save/reopen、offline WAVを一つの順序truthへ接続するbounded vertical tracer。arbitrary Song editor、stereo、stems、48dp responsive redesign、device/provider/public/Humanは含めない。odd BPM/swing timingはSong full-PCM REDが実証した場合だけ同じslice内で修復する。
+
 **wave 7 completed local:** `../completed/android-live-final-sample-parity-20260826.md`。actual Android render loopが`Voice.render()`のterminal returnを破棄していた不一致を、natural finish／48-frame releaseのactual mix seamでRED再現し、mix-before-retireへ修復。471 tests / 190-task gate、release bytecode、APK/EXE/SBOM read-backまで`LOCAL_PASS`。multi-PAD/stereo/Songとphysical/device/provider/public/Humanは未選択の別wave。
 
 **wave 6 completed local:** `../completed/choke-export-parity-20260826.md`。offline WAVのsame-group VOICEがloop ownerをsilenceするlive/export不一致をshared companion policyで修復。owner-only／other-group layerのfull-bar最大PCM差≤1、no-loop／multiple-loop controls、469 tests / 190-task gateで`LOCAL_PASS`。

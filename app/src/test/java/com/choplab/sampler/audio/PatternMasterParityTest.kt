@@ -16,6 +16,77 @@ import org.junit.Test
 
 class PatternMasterParityTest {
     @Test
+    fun oddTempoABSongFullPcmMatchesAndroidCountdownVoiceAndMaster() {
+        val sampleRate = 8_000
+        val bpm = 123f
+        val swing = 57f
+        fun audio(name: String, sign: Int) = PcmAudio(
+            name = name,
+            samples = ShortArray(640) { frame ->
+                (sign * (2_000 + (frame * 37 % 8_000))).coerceIn(-12_000, 12_000).toShort()
+            },
+            sampleRate = sampleRate,
+        )
+        val first = audio("song-a.wav", 1)
+        val second = audio("song-b.wav", -1)
+        val padA = PadModel(0, first, 0, first.frameCount, pitchSemitones = 2f, tone = 0.45f, gain = 0.7f)
+        val padB = PadModel(1, second, 0, second.frameCount, pitchSemitones = -1f, tone = 0.8f, gain = 0.65f)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> padA
+                1 -> padB
+                else -> PadModel(index)
+            }
+        }
+        val sequence = listOf(
+            setOf(stepKey(0, 0)),
+            setOf(stepKey(1, 0)),
+            setOf(stepKey(0, 0)),
+            setOf(stepKey(1, 0)),
+        )
+        val output = File.createTempFile("choplab-ab-song-master-parity", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderSequenceToWav(
+                outputFile = output,
+                pads = pads,
+                patternSequence = sequence,
+                bpm = bpm,
+                swing = swing,
+                outputSampleRate = sampleRate,
+            )
+            val actual = readPcm16(output)
+            val cursor = PatternSequenceCursor()
+            var framesUntilNextStep = 0.0
+            var voice: SamplerEngine.Voice? = null
+            val expected = ShortArray(summary.frameCount) {
+                if (framesUntilNextStep <= 0.0) {
+                    val step = cursor.stepIndex
+                    val active = sequence[cursor.sectionIndex]
+                    val pad = when {
+                        stepKey(0, step) in active -> padA
+                        stepKey(1, step) in active -> padB
+                        else -> null
+                    }
+                    if (pad != null) {
+                        voice = SamplerEngine.Voice(SamplerEngine.PadSnapshot.from(pad), sampleRate)
+                    }
+                    framesUntilNextStep += SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
+                    cursor.advance(sequence.size)
+                }
+                framesUntilNextStep -= 1.0
+                val mix = voice?.let { current -> renderPadVoiceFrameForMix(current, sampleRate) } ?: 0f
+                val limited = SamplerDspPrimitives.softLimit(mix)
+                (limited.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
+            }
+
+            assertFullPcmParity(expected, actual, label = "odd-tempo A/B Song")
+        } finally {
+            output.delete()
+        }
+    }
+
+    @Test
     fun sameGroupVocalExportMatchesRealtimeLoopOwnership() {
         val sampleRate = 8_000
         val loopAudio = PcmAudio(

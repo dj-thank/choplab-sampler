@@ -21,6 +21,46 @@ import kotlin.math.max
 
 internal const val PREVIEW_PAD_INDEX = -1
 
+internal fun compilePatternSequence(patterns: List<Set<Int>>): Array<Array<IntArray>> {
+    val source = patterns.ifEmpty { listOf(emptySet()) }
+    return Array(source.size) { patternIndex ->
+        val activeSteps = source[patternIndex]
+        Array(SamplerConfig.STEP_COUNT) { step ->
+            (0 until SamplerConfig.PAD_COUNT)
+                .filter { pad -> stepKey(pad, step) in activeSteps }
+                .toIntArray()
+        }
+    }
+}
+
+/** Mutable primitive cursor used directly by the realtime callback without allocation. */
+internal class PatternSequenceCursor {
+    var sectionIndex: Int = 0
+        private set
+    var stepIndex: Int = 0
+        private set
+
+    fun reset() {
+        sectionIndex = 0
+        stepIndex = 0
+    }
+
+    fun constrain(sectionCount: Int) {
+        require(sectionCount > 0) { "Pattern sequence must not be empty" }
+        if (sectionIndex >= sectionCount) sectionIndex = 0
+    }
+
+    fun advance(sectionCount: Int) {
+        require(sectionCount > 0) { "Pattern sequence must not be empty" }
+        if (stepIndex == SamplerConfig.STEP_COUNT - 1) {
+            stepIndex = 0
+            sectionIndex = (sectionIndex + 1) % sectionCount
+        } else {
+            stepIndex++
+        }
+    }
+}
+
 /**
  * Low-latency streaming sampler and sample-accurate 16-step sequencer.
  *
@@ -49,11 +89,12 @@ class SamplerEngine(
     @Volatile private var audioTrack: AudioTrack? = null
     @Volatile private var audioThread: Thread? = null
 
-    private var pattern: Array<IntArray> = Array(SamplerConfig.STEP_COUNT) { IntArray(0) }
+    private var patternSequence: Array<Array<IntArray>> =
+        arrayOf(Array(SamplerConfig.STEP_COUNT) { IntArray(0) })
+    private val patternCursor = PatternSequenceCursor()
     private var bpm = 92f
     private var swing = 54f
     private val transportState = TransportRuntimeState()
-    private var nextPatternStep = 0
     private var framesUntilNextStep = 0.0
 
     override val currentStep: Int
@@ -282,14 +323,13 @@ class SamplerEngine(
     }
 
     override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) {
-        val steps = Array(SamplerConfig.STEP_COUNT) { step ->
-            (0 until SamplerConfig.PAD_COUNT)
-                .filter { pad -> stepKey(pad, step) in activeSteps }
-                .toIntArray()
-        }
+        setPatternSequence(listOf(activeSteps), bpm, swing)
+    }
+
+    override fun setPatternSequence(patterns: List<Set<Int>>, bpm: Float, swing: Float) {
         enqueue(
             EngineCommand.SetPattern(
-                steps = steps,
+                patterns = compilePatternSequence(patterns),
                 bpm = SamplerDspPrimitives.bpm(bpm),
                 swing = SamplerDspPrimitives.swing(swing),
             ),
@@ -501,13 +541,14 @@ class SamplerEngine(
                     }
                 }
                 is EngineCommand.SetPattern -> {
-                    pattern = command.steps
+                    patternSequence = command.patterns
+                    patternCursor.constrain(patternSequence.size)
                     bpm = command.bpm
                     swing = command.swing
                 }
                 EngineCommand.StartTransport -> {
                     transportState.start()
-                    nextPatternStep = 0
+                    patternCursor.reset()
                     framesUntilNextStep = 0.0
                 }
                 EngineCommand.StopTransport -> {
@@ -620,9 +661,9 @@ class SamplerEngine(
 
     private fun processTransportFrame() {
         if (framesUntilNextStep <= 0.0) {
-            val stepToPlay = nextPatternStep
+            val stepToPlay = patternCursor.stepIndex
             transportState.publishStep(stepToPlay)
-            val stepPads = pattern[stepToPlay]
+            val stepPads = patternSequence[patternCursor.sectionIndex][stepToPlay]
             var stepPadIndex = 0
             while (stepPadIndex < stepPads.size) {
                 val pad = padKit.getOrNull(stepPads[stepPadIndex])
@@ -631,7 +672,7 @@ class SamplerEngine(
             }
 
             framesUntilNextStep += stepLengthFrames(stepToPlay)
-            nextPatternStep = (stepToPlay + 1) % SamplerConfig.STEP_COUNT
+            patternCursor.advance(patternSequence.size)
         }
         framesUntilNextStep -= 1.0
     }
@@ -713,7 +754,7 @@ class SamplerEngine(
         data class PlaySource(val source: PadSnapshot, val generation: Long) : EngineCommand
         data class StopSource(val generation: Long) : EngineCommand
         data class SetPattern(
-            val steps: Array<IntArray>,
+            val patterns: Array<Array<IntArray>>,
             val bpm: Float,
             val swing: Float,
         ) : EngineCommand

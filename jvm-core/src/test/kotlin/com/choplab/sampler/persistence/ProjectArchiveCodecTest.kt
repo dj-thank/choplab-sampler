@@ -4,6 +4,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -41,13 +42,87 @@ class ProjectArchiveCodecTest {
     }
 
     @Test
-    fun archiveUsesSchemaFiveForPagedRoleBanks() {
+    fun archiveUsesSchemaSixForABSongArrangement() {
         val manifest = unzip(archiveFor(SamplerUiState()))
             .single { (name, _) -> name == "project.txt" }
             .second
             .toString(Charsets.UTF_8)
 
-        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t5\n"))
+        assertTrue(manifest.startsWith("CHOPLAB_PROJECT\t6\n"))
+        assertTrue(manifest.contains("arrangement\t0\t0\t0,0,0,0\n"))
+        assertTrue(manifest.contains("pattern\t0\t\n"))
+        assertTrue(manifest.contains("pattern\t1\t\n"))
+    }
+
+    @Test
+    fun schemaSixRoundTripPreservesSelectedPatternInactivePatternSectionsAndMode() {
+        val patternA = setOf(stepKey(0, 0), stepKey(1, 4))
+        val patternB = setOf(stepKey(0, 8), stepKey(2, 12))
+        val original = SamplerUiState(
+            activeSteps = patternB,
+            patternArrangement = PatternArrangement(
+                storedStepsBySlot = listOf(patternA, emptySet()),
+                selectedSlot = 1,
+                songSections = listOf(0, 1, 0, 1),
+                songModeEnabled = true,
+            ),
+        )
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(archiveFor(original)))
+
+        assertEquals(patternB, restored.activeSteps)
+        assertEquals(1, restored.patternArrangement.selectedSlot)
+        assertEquals(listOf(patternA, patternB), restored.patternArrangement.storedStepsBySlot)
+        assertEquals(listOf(0, 1, 0, 1), restored.patternArrangement.songSections)
+        assertTrue(restored.patternArrangement.songModeEnabled)
+    }
+
+    @Test
+    fun schemaFiveArchiveMigratesItsOnlyPatternToA() {
+        val steps = setOf(stepKey(0, 0), stepKey(1, 8))
+        val entries = unzip(archiveFor(SamplerUiState(activeSteps = steps))).map { (name, bytes) ->
+            if (name != "project.txt") return@map name to bytes
+            name to bytes.toString(Charsets.UTF_8)
+                .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t5")
+                .removeSchemaSixFields()
+                .toByteArray(Charsets.UTF_8)
+        }
+
+        val restored = ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+
+        assertEquals(steps, restored.activeSteps)
+        assertEquals(listOf(steps, emptySet()), restored.patternArrangement.storedStepsBySlot)
+        assertEquals(0, restored.patternArrangement.selectedSlot)
+        assertEquals(listOf(0, 0, 0, 0), restored.patternArrangement.songSections)
+        assertFalse(restored.patternArrangement.songModeEnabled)
+    }
+
+    @Test
+    fun schemaSixRejectsSelectedStepsThatDisagreeWithSelectedPattern() {
+        val entries = unzip(archiveFor(SamplerUiState(activeSteps = setOf(stepKey(0, 0))))).map { (name, bytes) ->
+            if (name != "project.txt") return@map name to bytes
+            name to bytes.toString(Charsets.UTF_8)
+                .replace("steps\t0", "steps\t1")
+                .toByteArray(Charsets.UTF_8)
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+        }
+    }
+
+    @Test
+    fun schemaSixRejectsSongSectionsThatReferenceAnUnknownPattern() {
+        val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
+            if (name != "project.txt") return@map name to bytes
+            name to bytes.toString(Charsets.UTF_8)
+                .replace("arrangement\t0\t0\t0,0,0,0", "arrangement\t0\t0\t0,2,0,0")
+                .toByteArray(Charsets.UTF_8)
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ProjectArchiveCodec.read(ByteArrayInputStream(zip(entries)))
+        }
     }
 
     @Test
@@ -152,6 +227,7 @@ class ProjectArchiveCodecTest {
             val migratedLines = bytes.toString(Charsets.UTF_8).lineSequence().mapNotNull { line ->
                 when {
                     line.startsWith("CHOPLAB_PROJECT\t") -> "CHOPLAB_PROJECT\t4"
+                    line.startsWith("arrangement\t") || line.startsWith("pattern\t") -> null
                     line.startsWith("padCount\t") -> "padCount\t64"
                     line.startsWith("state\t") -> line.split('\t').toMutableList().also { it[6] = "16" }.joinToString("\t")
                     line.startsWith("steps\t") -> "steps\t${stepKey(16, 3)}"
@@ -231,8 +307,9 @@ class ProjectArchiveCodecTest {
         val schemaOneEntries = schemaTwoEntries.map { (name, bytes) ->
             when (name) {
                 "project.txt" -> name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t1")
+                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t1")
                     .replace("audio/0.wav", "audio/0.pcm")
+                    .removeSchemaSixFields()
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
                 "audio/0.wav" -> "audio/0.pcm" to bytes.copyOfRange(44, bytes.size)
@@ -254,7 +331,8 @@ class ProjectArchiveCodecTest {
         ).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t2")
+                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t2")
+                    .removeSchemaSixFields()
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
             } else {
@@ -284,7 +362,8 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(state)).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t3")
+                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t3")
+                    .removeSchemaSixFields()
                     .removeSchemaFourFields()
                     .toByteArray(Charsets.UTF_8)
             } else {
@@ -303,7 +382,7 @@ class ProjectArchiveCodecTest {
         val entries = unzip(archiveFor(SamplerUiState())).map { (name, bytes) ->
             if (name == "project.txt") {
                 name to bytes.toString(Charsets.UTF_8)
-                    .replace("CHOPLAB_PROJECT\t5", "CHOPLAB_PROJECT\t999")
+                    .replace("CHOPLAB_PROJECT\t6", "CHOPLAB_PROJECT\t999")
                     .toByteArray(Charsets.UTF_8)
             } else {
                 name to bytes
@@ -473,6 +552,11 @@ class ProjectArchiveCodecTest {
                 else -> line
             }
         } + "\n"
+
+    private fun String.removeSchemaSixFields(): String =
+        lineSequence()
+            .filterNot { line -> line.startsWith("arrangement\t") || line.startsWith("pattern\t") }
+            .joinToString("\n", postfix = "\n")
 
     private fun unzip(bytes: ByteArray): List<Pair<String, ByteArray>> = buildList {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->

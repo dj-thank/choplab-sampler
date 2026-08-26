@@ -5,6 +5,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.ProjectLaunchTarget
 import com.choplab.sampler.model.RecordingKind
 import com.choplab.sampler.model.RecordingPhase
@@ -55,6 +56,11 @@ class GuidedWorkflowTest {
         assertTrue(requiresNewProjectConfirmation(SamplerUiState(currentAudio = audio)))
         assertTrue(requiresNewProjectConfirmation(SamplerUiState(pads = assignedPads)))
         assertTrue(requiresNewProjectConfirmation(SamplerUiState(activeSteps = setOf(stepKey(0, 0)))))
+        assertTrue(
+            requiresNewProjectConfirmation(
+                SamplerUiState(patternArrangement = PatternArrangement(songModeEnabled = true)),
+            ),
+        )
     }
 
     @Test
@@ -237,6 +243,14 @@ class GuidedWorkflowTest {
         }
         val playable = loaded.copy(pads = pads)
         val exportReady = playable.copy(activeSteps = setOf(stepKey(0, 0)))
+        val songReady = playable.copy(
+            activeSteps = emptySet(),
+            patternArrangement = PatternArrangement(
+                storedStepsBySlot = listOf(emptySet(), setOf(stepKey(0, 0))),
+                songSections = listOf(1, 0, 1, 0),
+                songModeEnabled = true,
+            ),
+        )
 
         assertEquals(
             WorkflowNextActionPresentation(
@@ -258,6 +272,7 @@ class GuidedWorkflowTest {
         assertEquals("曲を流し、空PADを押します", workflowNextActionPresentation(loaded).guidance)
         assertEquals(WorkflowStage.BEAT, workflowNextActionPresentation(playable).stage)
         assertEquals(WorkflowStage.FINISH, workflowNextActionPresentation(exportReady).stage)
+        assertEquals(WorkflowStage.FINISH, workflowNextActionPresentation(songReady).stage)
     }
 
     @Test

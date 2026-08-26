@@ -123,6 +123,7 @@ data class SamplerUiState(
     val autoNextPad: Boolean = true,
     val pads: List<PadModel> = List(SamplerConfig.PAD_COUNT) { PadModel(it) },
     val activeSteps: Set<Int> = emptySet(),
+    val patternArrangement: PatternArrangement = PatternArrangement(),
     val bpm: Float = 92f,
     val swing: Float = 54f,
     val transportPlaying: Boolean = false,
