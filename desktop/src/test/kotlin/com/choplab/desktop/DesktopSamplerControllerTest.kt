@@ -3,6 +3,7 @@ package com.choplab.desktop
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.audio.DesktopAudioRecorder
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
+import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
@@ -16,15 +17,26 @@ import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.persistence.AtomicProjectStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.nio.file.Files
 import java.io.File
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 import com.choplab.sampler.ui.WorkflowStage
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
@@ -392,6 +404,272 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun closeFlushesTheLatestEditBeforeTheAutosaveDebounceExpires() {
+        val directory = Files.createTempDirectory("choplab-controller-close-autosave").toFile()
+        val store = AtomicProjectStore(directory)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(137f)
+
+            controller.close()
+
+            assertEquals(137f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeFlushesTheLatestEditEvenWhenAudioTeardownThrows() {
+        val directory = Files.createTempDirectory("choplab-controller-close-teardown-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine().apply {
+            failNextStopAll = true
+            failClose = true
+        }
+        val microphone = FakeRecorder().apply { failClose = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = microphone,
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(146f)
+
+            val closeResult = runCatching { controller.close() }
+
+            assertTrue(closeResult.isSuccess)
+            assertEquals(146f, store.load()?.bpm)
+            assertEquals(1, engine.stopAllCalls)
+            assertEquals(1, engine.closeCalls)
+            assertEquals(1, microphone.closeCalls)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeWaitsForTheRunningAutosaveWithoutWritingTheSameSnapshotTwice() {
+        val directory = Files.createTempDirectory("choplab-controller-running-autosave").toFile()
+        val store = AtomicProjectStore(directory)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            synchronized(store) {
+                controller.setBpm(143f)
+                awaitAutosaveBlockedOnStore()
+
+                closeThread = thread(name = "ChopLab-Test-Close") { controller.close() }
+                awaitThreadWaiting(closeThread)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(143f, store.load()?.bpm)
+            assertTrue(directory.resolve("autosave.choplab").isFile)
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
+            assertFalse(directory.resolve("autosave.previous2.choplab").exists())
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeStopsLiveIoBeforeWaitingForTheRunningAutosave() {
+        val directory = Files.createTempDirectory("choplab-controller-close-order").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine()
+        val microphone = FakeRecorder()
+        val systemAudio = FakeRecorder()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = microphone,
+            systemAudio = systemAudio,
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            synchronized(store) {
+                controller.setBpm(144f)
+                awaitAutosaveBlockedOnStore()
+                controller.toggleMicrophoneRecording()
+                controller.toggleTransport()
+                engine.stopAllCalls = 0
+
+                closeThread = thread(name = "ChopLab-Test-Ordered-Close") { controller.close() }
+                awaitCondition {
+                    microphone.closeCalls == 1 && systemAudio.closeCalls == 1 && engine.closeCalls == 1
+                }
+                awaitThreadWaiting(closeThread)
+
+                assertFalse(microphone.isRecording)
+                assertEquals(1, microphone.closeCalls)
+                assertEquals(1, systemAudio.closeCalls)
+                assertEquals(1, engine.stopAllCalls)
+                assertEquals(1, engine.closeCalls)
+                assertFalse(controller.state.value.transportPlaying)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(144f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closePersistsNewerAsyncProjectAfterWaitingForOlderRunningAutosave() {
+        val directory = Files.createTempDirectory("choplab-controller-close-newer-project").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            val audio = PcmAudio(
+                name = "newer-project.wav",
+                samples = ShortArray(64) { it.toShort() },
+                sampleRate = 48_000,
+            )
+            val newerProject = DesktopProjectFiles.save(
+                directory.resolve("newer-project.choplab"),
+                SamplerUiState(
+                    currentAudio = audio,
+                    rangeEndFrame = audio.frameCount,
+                    bpm = 151f,
+                ),
+            )
+            synchronized(store) {
+                controller.setBpm(143f)
+                awaitAutosaveBlockedOnStore()
+
+                controller.openProject(newerProject)
+                engine.awaitBlockedLoad()
+                assertEquals(151f, controller.state.value.bpm)
+
+                closeThread = thread(name = "ChopLab-Test-Newer-Project-Close") { controller.close() }
+                awaitCondition { closeThread.state == Thread.State.BLOCKED }
+                engine.releaseBlockedLoad()
+                awaitThreadWaiting(closeThread)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(151f, store.load()?.bpm)
+            assertEquals(
+                143f,
+                DesktopProjectFiles.load(directory.resolve("autosave.previous.choplab")).bpm,
+            )
+            assertFalse(directory.resolve("autosave.previous2.choplab").exists())
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeInvalidatesLoadBeforeCapturingItsPublishedProject() {
+        val directory = Files.createTempDirectory("choplab-controller-close-load").toFile()
+        val store = AtomicProjectStore(directory)
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val source = directory.resolve("close-race.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(64) { it.toShort() })
+        }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        lateinit var closeThread: Thread
+        try {
+            controller.loadWav(source)
+            engine.awaitBlockedLoad()
+            assertEquals(null, controller.state.value.currentAudio)
+
+            closeThread = thread(name = "ChopLab-Test-Load-Close") { controller.close() }
+            awaitCondition { closeThread.state == Thread.State.BLOCKED }
+            engine.releaseBlockedLoad()
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            val recovered = requireNotNull(store.load())
+            assertEquals(source.name, recovered.currentAudio?.name)
+            assertEquals(64, recovered.currentAudio?.frameCount)
+            assertEquals(64, recovered.rangeEndFrame)
+            // Launch target/revision are runtime routing hints and intentionally are
+            // not fields in the project archive; ProjectArchiveCodecTest binds that.
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeRetriesTheLatestAutosaveAfterATransientStoreFailure() {
+        val root = Files.createTempDirectory("choplab-controller-close-retry").toFile()
+        val blockedDirectory = root.resolve("autosave-target").apply {
+            writeText("not a directory")
+        }
+        val store = AtomicProjectStore(blockedDirectory)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+        )
+        try {
+            controller.setBpm(149f)
+            awaitCondition { controller.state.value.statusMessage.startsWith("自動保存失敗:") }
+            assertTrue(blockedDirectory.delete())
+            assertTrue(blockedDirectory.mkdir())
+
+            controller.close()
+
+            assertEquals(149f, store.load()?.bpm)
+            assertFalse(blockedDirectory.resolve("autosave.previous.choplab").exists())
+        } finally {
+            controller.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sourceRecordingRoutesTheProductionToChopAfterDecode() {
         val recorder = FakeRecorder()
         val controller = DesktopSamplerController(
@@ -461,6 +739,633 @@ class DesktopSamplerControllerTest {
 
             awaitCondition { runCatching { store.load()?.bpm == 139f }.getOrDefault(false) }
             assertEquals(139f, store.load()?.bpm)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedExplicitStartupProjectDoesNotReplaceTheExistingAutosaveWithAPlaceholder() {
+        val directory = Files.createTempDirectory("choplab-explicit-startup-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 117f), revision = 4L)
+        val primary = directory.resolve("autosave.choplab")
+        val originalArchive = primary.readBytes()
+        val invalidStartup = directory.resolve("invalid-startup.wav").apply {
+            writeText("not a wav", Charsets.UTF_8)
+        }
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = false,
+            preserveAutosaveUntilInitialProjectReplacement = true,
+        )
+        try {
+            controller.loadWav(invalidStartup)
+            awaitCondition { controller.state.value.statusMessage.startsWith("WAV読込失敗:") }
+
+            controller.close()
+
+            assertEquals(117f, store.load()?.bpm)
+            assertTrue(originalArchive.contentEquals(primary.readBytes()))
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeWaitsForStartupRecoveryWithoutRotatingAnUnchangedArchive() {
+        val directory = Files.createTempDirectory("choplab-close-startup-recovery").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "startup-recovery.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+                bpm = 127f,
+            ),
+            revision = 7L,
+        )
+        val originalArchive = directory.resolve("autosave.choplab").readBytes()
+        val engine = FakeAudioEngine()
+        var controller: DesktopSamplerController? = null
+        lateinit var closeThread: Thread
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 0L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+                assertTrue(created.state.value.isLoading)
+
+                closeThread = thread(name = "ChopLab-Test-Recovery-Close") { created.close() }
+                awaitThreadWaiting(closeThread)
+                assertTrue(closeThread.isAlive)
+            }
+            closeThread.join(2_000L)
+
+            assertFalse(closeThread.isAlive)
+            assertEquals(0, engine.loadPcmCalls)
+            assertEquals(127f, store.load()?.bpm)
+            assertTrue(originalArchive.contentEquals(directory.resolve("autosave.choplab").readBytes()))
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
+            assertFalse(directory.resolve("autosave.previous2.choplab").exists())
+        } finally {
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun saveAndExportStatusWorkCannotCancelRecoveredAudioHydration() {
+        val directory = Files.createTempDirectory("choplab-recovery-save-export").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "recovered-for-save.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val manualProject = directory.resolve("manual-save.choplab")
+        val beatExport = directory.resolve("manual-export.wav")
+        val engine = FakeAudioEngine()
+        val statusWorkStarted = CountDownLatch(1)
+        var controller: DesktopSamplerController? = null
+        var recoveryObserver: Job? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 0L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+                recoveryObserver = CoroutineScope(Dispatchers.Unconfined).launch {
+                    created.state
+                        .filter { it.statusMessage == "前回の自動保存を復元しました" }
+                        .first()
+                    created.saveProject(manualProject)
+                    created.exportBeat(beatExport)
+                    statusWorkStarted.countDown()
+                }
+            }
+
+            assertTrue(statusWorkStarted.await(2L, TimeUnit.SECONDS))
+            awaitCondition { engine.loadedAudioNames == listOf(recoveredAudio.name) }
+
+            assertTrue(manualProject.isFile)
+            assertTrue(beatExport.isFile)
+            assertEquals(recoveredAudio.name, controller?.state?.value?.currentAudio?.name)
+        } finally {
+            recoveryObserver?.cancel()
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun recoveredAudioHydrationCannotOverwriteAPitchEditPublishedBeforeItRuns() {
+        val directory = Files.createTempDirectory("choplab-recovery-pitch-edit").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "recovered-before-pitch.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val engine = FakeAudioEngine()
+        val pitchEdited = CountDownLatch(1)
+        var controller: DesktopSamplerController? = null
+        var recoveryObserver: Job? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 60_000L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+                recoveryObserver = CoroutineScope(Dispatchers.Unconfined).launch {
+                    created.state
+                        .filter { it.statusMessage == "前回の自動保存を復元しました" }
+                        .first()
+                    created.setMasterPitch(7f)
+                    pitchEdited.countDown()
+                }
+            }
+
+            assertTrue(pitchEdited.await(2L, TimeUnit.SECONDS))
+            awaitCondition { engine.loadedPitchSemitones.isNotEmpty() }
+            Thread.sleep(100L)
+
+            assertEquals(7f, controller?.state?.value?.masterPitchSemitones)
+            assertEquals(listOf(7f), engine.loadedPitchSemitones)
+            controller?.playSourceFrom(0)
+            assertEquals(1, engine.playFromCalls)
+            assertTrue(controller?.state?.value?.sourcePlaying == true)
+        } finally {
+            recoveryObserver?.cancel()
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun resetRevokesRecoveredAudioHydrationAdmittedBeforeSourceLoad() {
+        val directory = Files.createTempDirectory("choplab-reset-recovery-hydration").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "discarded-recovery-hydration.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val engine = FakeAudioEngine()
+        val hydrationAdmitted = CountDownLatch(1)
+        val releaseHydration = CountDownLatch(1)
+        val saveBarrier = directory.resolve("reset-save-barrier.choplab")
+        var controller: DesktopSamplerController? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 60_000L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                created.recoveredHydrationAdmission = {
+                    hydrationAdmitted.countDown()
+                    check(releaseHydration.await(2L, TimeUnit.SECONDS)) {
+                        "Timed out holding admitted recovered hydration"
+                    }
+                }
+                awaitAutosaveBlockedOnStore()
+            }
+
+            assertTrue(hydrationAdmitted.await(2L, TimeUnit.SECONDS))
+            controller?.resetProject()
+            releaseHydration.countDown()
+            controller?.saveProject(saveBarrier)
+            awaitCondition(saveBarrier::isFile)
+
+            assertEquals(0, engine.loadPcmCalls)
+            assertNull(controller?.state?.value?.currentAudio)
+        } finally {
+            releaseHydration.countDown()
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeDoesNotWaitForAnAdmittedRecoveredAudioDeviceLoad() {
+        val directory = Files.createTempDirectory("choplab-close-recovery-hydration").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "blocked-recovery-hydration.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val closeFinished = CountDownLatch(1)
+        var closeThread: Thread? = null
+        try {
+            engine.awaitBlockedLoad()
+            val closing = thread(name = "ChopLab-Recovery-Hydration-Close") {
+                controller.close()
+                closeFinished.countDown()
+            }
+            closeThread = closing
+
+            assertTrue(closeFinished.await(1L, TimeUnit.SECONDS))
+            closing.join(1_000L)
+            assertFalse(closing.isAlive)
+            awaitCondition { engine.closeCalls == 1 }
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            closeThread?.join(2_000L)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sourcePlayDuringRecoveredAudioHydrationReportsPendingThenSucceeds() {
+        val directory = Files.createTempDirectory("choplab-recovery-hydration-play").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "pending-recovery-hydration.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            engine.awaitBlockedLoad()
+
+            controller.playSourceFrom(0)
+
+            assertEquals(0, engine.playFromCalls)
+            assertFalse(controller.state.value.sourcePlaying)
+            assertEquals("音声の再生を準備しています", controller.state.value.statusMessage)
+
+            engine.releaseBlockedLoad()
+            awaitCondition { controller.state.value.statusMessage == "前回の自動保存を復元しました" }
+
+            controller.playSourceFrom(0)
+
+            assertEquals(1, engine.playFromCalls)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedUserLoadDuringStartupFallsBackToRecoveredProject() {
+        val directory = Files.createTempDirectory("choplab-recovery-failed-user-load").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 129f), revision = 8L)
+        val originalArchive = directory.resolve("autosave.choplab").readBytes()
+        val invalidWav = directory.resolve("invalid-user-selection.wav").apply {
+            writeText("not a wav", Charsets.UTF_8)
+        }
+        var controller: DesktopSamplerController? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    FakeAudioEngine(),
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 0L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+
+                created.loadWav(invalidWav)
+                awaitCondition { created.state.value.statusMessage.startsWith("WAV読込失敗:") }
+            }
+
+            val created = requireNotNull(controller)
+            awaitCondition { created.state.value.bpm == 129f && !created.state.value.isLoading }
+            created.close()
+
+            assertEquals(129f, created.state.value.bpm)
+            assertEquals(129f, store.load()?.bpm)
+            assertTrue(originalArchive.contentEquals(directory.resolve("autosave.choplab").readBytes()))
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
+        } finally {
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun successfulUserLoadSurvivesAStaleStartupRecoveryFailureDuringClose() {
+        val directory = Files.createTempDirectory("choplab-recovery-stale-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 129f), revision = 8L)
+        val replacement = directory.resolve("successful-user-selection.wav")
+        WavFileWriter(replacement, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(64) { it.toShort() })
+        }
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        var controller: DesktopSamplerController? = null
+        var closeThread: Thread? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 60_000L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+                directory.resolve("autosave.choplab")
+                    .writeText("corrupt startup archive", Charsets.UTF_8)
+
+                created.loadWav(replacement)
+                engine.awaitBlockedLoad()
+                closeThread = thread(name = "ChopLab-Stale-Recovery-Failure-Close") {
+                    created.close()
+                }
+                awaitThreadWaiting(requireNotNull(closeThread))
+                engine.releaseBlockedLoad()
+                awaitCondition { created.state.value.currentAudio?.name == replacement.name }
+            }
+
+            requireNotNull(closeThread).join(2_000L)
+            assertFalse(requireNotNull(closeThread).isAlive)
+            assertEquals(replacement.name, store.load()?.currentAudio?.name)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller?.close()
+            closeThread?.join(2_000L)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun recoveredAudioHydrationCannotSupersedeAUserLoadStartedAfterPublication() {
+        val directory = Files.createTempDirectory("choplab-recovery-user-load").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "recovered-startup.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 5L,
+        )
+        val replacement = directory.resolve("user-selected.wav")
+        WavFileWriter(replacement, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(4_000_000) { index -> (index * 31).toShort() })
+        }
+        val engine = FakeAudioEngine()
+        val userLoadStarted = CountDownLatch(1)
+        var controller: DesktopSamplerController? = null
+        var recoveryObserver: Job? = null
+        try {
+            synchronized(store) {
+                val created = DesktopSamplerController(
+                    engine,
+                    microphone = FakeRecorder(),
+                    systemAudio = FakeRecorder(),
+                    autosaveStore = store,
+                    autosaveDelayMillis = 0L,
+                    recoverAutosaveOnStart = true,
+                )
+                controller = created
+                awaitAutosaveBlockedOnStore()
+                recoveryObserver = CoroutineScope(Dispatchers.Unconfined).launch {
+                    created.state
+                        .filter { it.statusMessage == "前回の自動保存を復元しました" }
+                        .first()
+                    created.loadWav(replacement)
+                    userLoadStarted.countDown()
+                }
+            }
+
+            assertTrue(userLoadStarted.await(2L, TimeUnit.SECONDS))
+            val created = requireNotNull(controller)
+            awaitCondition { created.state.value.currentAudio?.name == replacement.name }
+
+            assertEquals(listOf(replacement.name), engine.loadedAudioNames)
+            assertEquals(replacement.name, created.state.value.currentAudio?.name)
+        } finally {
+            recoveryObserver?.cancel()
+            controller?.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun startupRecoveryReportsRecoveredAudioDeviceFailureWithoutDiscardingTheSource() {
+        val directory = Files.createTempDirectory("choplab-recovery-device-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "device-failure.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 6L,
+        )
+        val engine = FakeAudioEngine().apply { failNextLoad = true }
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition {
+                controller.state.value.statusMessage.startsWith(
+                    "音声は読込済みですが再生機器を開けません:",
+                )
+            }
+
+            assertEquals(recoveredAudio.name, controller.state.value.currentAudio?.name)
+            assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
+            assertEquals(listOf(recoveredAudio.name), engine.loadedAudioNames)
+            val deviceFailureStatus = controller.state.value.statusMessage
+
+            val playbackResult = runCatching {
+                controller.playSourceFrom(0)
+                controller.toggleSourcePlayback()
+            }
+
+            assertTrue(playbackResult.isSuccess)
+            assertEquals(0, engine.playFromCalls)
+            assertFalse(controller.state.value.sourcePlaying)
+            assertEquals(deviceFailureStatus, controller.state.value.statusMessage)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedPitchReloadStopsThePreviouslyPlayingSource() {
+        val directory = Files.createTempDirectory("choplab-pitch-reload-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        val recoveredAudio = PcmAudio(
+            name = "playing-before-pitch.wav",
+            samples = ShortArray(32) { it.toShort() },
+            sampleRate = 48_000,
+        )
+        store.save(
+            SamplerUiState(
+                currentAudio = recoveredAudio,
+                rangeEndFrame = recoveredAudio.frameCount,
+            ),
+            revision = 6L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(0)
+            assertTrue(controller.state.value.sourcePlaying)
+            assertTrue(engine.isSourcePlaying)
+            engine.failNextLoad = true
+
+            controller.setMasterPitch(5f)
+
+            assertFalse(controller.state.value.sourcePlaying)
+            assertFalse(engine.isSourcePlaying)
+            assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun closeDoesNotPersistAStartupRecoveryErrorPlaceholder() {
+        val directory = Files.createTempDirectory("choplab-close-recovery-error").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(SamplerUiState(bpm = 131f), revision = 9L)
+        val primary = directory.resolve("autosave.choplab")
+        val validArchive = primary.readBytes()
+        primary.writeText("corrupt startup archive", Charsets.UTF_8)
+        val controller = DesktopSamplerController(
+            FakeAudioEngine(),
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 0L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition {
+                controller.state.value.statusMessage.startsWith("自動保存を復元できません:")
+            }
+            primary.writeBytes(validArchive)
+
+            controller.close()
+
+            assertEquals(131f, store.load()?.bpm)
+            assertTrue(validArchive.contentEquals(primary.readBytes()))
+            assertFalse(directory.resolve("autosave.previous.choplab").exists())
         } finally {
             controller.close()
             directory.deleteRecursively()
@@ -584,7 +1489,17 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    private fun awaitAutosaveBlockedOnStore() = awaitCondition {
+        Thread.getAllStackTraces().keys.any { thread ->
+            thread.name == "ChopLab-Windows-Autosave" && thread.state == Thread.State.BLOCKED
+        }
+    }
+
+    private fun awaitThreadWaiting(thread: Thread) = awaitCondition { thread.state == Thread.State.WAITING }
+
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
+        private val loadEntered = CountDownLatch(1)
+        private val loadRelease = CountDownLatch(1)
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = CopyOnWriteArrayList<Pair<PadModel, Boolean>>()
@@ -594,8 +1509,38 @@ class DesktopSamplerControllerTest {
         private var nextVoiceOwnership: Long = 0L
         var failNextTrigger: Boolean = false
         var failNextStopPad: Boolean = false
-        override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) = Unit
-        override fun playFrom(frame: Int) { sourcePosition = frame; isSourcePlaying = true }
+        var failNextStopAll: Boolean = false
+        var failClose: Boolean = false
+        @Volatile var failNextLoad: Boolean = false
+        @Volatile var blockNextLoad: Boolean = false
+        @Volatile var stopAllCalls: Int = 0
+        @Volatile var closeCalls: Int = 0
+        @Volatile var loadPcmCalls: Int = 0
+        @Volatile var playFromCalls: Int = 0
+        val loadedAudioNames = Collections.synchronizedList(mutableListOf<String>())
+        val loadedPitchSemitones = Collections.synchronizedList(mutableListOf<Float>())
+        override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) {
+            loadPcmCalls++
+            loadedAudioNames += audio.name
+            loadedPitchSemitones += pitchSemitones
+            if (failNextLoad) {
+                failNextLoad = false
+                error("test output unavailable")
+            }
+            if (!blockNextLoad) return
+            blockNextLoad = false
+            loadEntered.countDown()
+            check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+        }
+        fun awaitBlockedLoad() {
+            check(loadEntered.await(2L, TimeUnit.SECONDS)) { "Timed out waiting for the asynchronous project load" }
+        }
+        fun releaseBlockedLoad() = loadRelease.countDown()
+        override fun playFrom(frame: Int) {
+            playFromCalls++
+            sourcePosition = frame
+            isSourcePlaying = true
+        }
         override fun seekSource(frame: Int) { sourcePosition = frame }
         override fun sourceFramePosition(): Int = sourcePosition
         override fun padFramePosition(index: Int): Int? = null
@@ -622,8 +1567,18 @@ class DesktopSamplerControllerTest {
             }
             stoppedPads += index
         }
-        override fun stopAll() { isSourcePlaying = false }
-        override fun close() = Unit
+        override fun stopAll() {
+            isSourcePlaying = false
+            stopAllCalls++
+            if (failNextStopAll) {
+                failNextStopAll = false
+                error("test stop-all unavailable")
+            }
+        }
+        override fun close() {
+            closeCalls++
+            if (failClose) error("test close unavailable")
+        }
     }
 
     private class FakeRecorder : DesktopAudioRecorder {
@@ -631,6 +1586,8 @@ class DesktopSamplerControllerTest {
         val lastOutput: File?
             get() = output
         var failStop: Boolean = false
+        var failClose: Boolean = false
+        @Volatile var closeCalls: Int = 0
         override var isRecording: Boolean = false
             private set
 
@@ -661,6 +1618,8 @@ class DesktopSamplerControllerTest {
 
         override fun close() {
             isRecording = false
+            closeCalls++
+            if (failClose) error("test recorder close unavailable")
         }
     }
 }
