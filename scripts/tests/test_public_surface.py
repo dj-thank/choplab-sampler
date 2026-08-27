@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import struct
 import unittest
 import zipfile
 import zlib
-from io import BytesIO
+from contextlib import redirect_stderr, redirect_stdout
+from io import BytesIO, StringIO
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from scripts.check_public_surface import (
+    main,
     scan_history,
     scan_public_path,
     scan_text,
@@ -55,6 +58,28 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("filename" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
+        self.assertNotIn(token, "\n".join(findings))
+
+    def test_zip_content_scan_limits_ct_sym_exclusion_to_the_jdk_runtime_path(self) -> None:
+        token = "github_pat_" + "c" * 24
+        runtime_archive = BytesIO()
+        with zipfile.ZipFile(runtime_archive, "w") as archive:
+            archive.writestr("ChopLab/runtime/lib/ct.sym", b"PK\x03\x04binary")
+        unrelated_archive = BytesIO()
+        with zipfile.ZipFile(unrelated_archive, "w") as archive:
+            archive.writestr("docs/ct.sym", token)
+
+        runtime_findings = scan_zip(
+            BytesIO(runtime_archive.getvalue()),
+            label="runtime.zip",
+        )
+        unrelated_findings = scan_zip(
+            BytesIO(unrelated_archive.getvalue()),
+            label="unrelated.zip",
+        )
+
+        self.assertEqual([], runtime_findings)
+        self.assertTrue(any("secret-shaped content" in item for item in unrelated_findings))
 
     def test_zip_content_scan_fails_closed_at_member_and_total_limits(self) -> None:
         with TemporaryDirectory() as directory:
@@ -95,6 +120,81 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                     [],
                     scan_zip(BytesIO(candidate.getvalue()), label="supported.zip"),
                 )
+
+    def test_zip_content_scan_rejects_lzma_dictionary_before_decoder_construction(self) -> None:
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_LZMA) as archive:
+            archive.writestr("notes.txt", b"safe text")
+        forged = bytearray(candidate.getvalue())
+        with zipfile.ZipFile(BytesIO(forged)) as archive:
+            info = archive.infolist()[0]
+        name_length, extra_length = struct.unpack_from(
+            "<HH",
+            forged,
+            info.header_offset + 26,
+        )
+        payload_offset = info.header_offset + 30 + name_length + extra_length
+        forged[payload_offset + 5 : payload_offset + 9] = (0xFFFFFFFF).to_bytes(
+            4,
+            "little",
+        )
+
+        with patch(
+            "scripts.check_public_surface.lzma.LZMADecompressor",
+            side_effect=AssertionError("decoder constructor must not be called"),
+        ) as constructor:
+            findings = scan_zip(BytesIO(forged), label="oversized-dictionary.zip")
+
+        constructor.assert_not_called()
+        self.assertTrue(any("LZMA dictionary" in item for item in findings))
+
+    def test_zip_content_scan_caps_compressed_input_across_the_archive(self) -> None:
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("first.txt", b"first safe text")
+            archive.writestr("second.txt", b"second safe text")
+        with zipfile.ZipFile(BytesIO(candidate.getvalue())) as archive:
+            compressed_sizes = [info.compress_size for info in archive.infolist()]
+        aggregate_limit = sum(compressed_sizes) - 1
+        self.assertTrue(all(size <= aggregate_limit for size in compressed_sizes))
+
+        findings = scan_zip(
+            BytesIO(candidate.getvalue()),
+            label="aggregate-input.zip",
+            compressed_input_limit=aggregate_limit,
+            total_scan_limit=1024,
+        )
+
+        self.assertTrue(
+            any("archive compressed input" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_allows_known_large_binary_but_rejects_large_text(self) -> None:
+        known_binary = BytesIO()
+        with zipfile.ZipFile(known_binary, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "ChopLab.app/ChopLab",
+                b"\xca\xfe\xba\xbe" + b"\x00" * (600 * 1024),
+            )
+        large_text = BytesIO()
+        with zipfile.ZipFile(large_text, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("docs/large.txt", b"x" * (600 * 1024))
+
+        binary_findings = scan_zip(
+            BytesIO(known_binary.getvalue()),
+            label="known-binary.zip",
+        )
+        text_findings = scan_zip(
+            BytesIO(large_text.getvalue()),
+            label="large-text.zip",
+        )
+
+        self.assertEqual([], binary_findings)
+        self.assertTrue(
+            any("member content scan limit" in item for item in text_findings),
+            text_findings,
+        )
 
     def test_zip_content_scan_does_not_treat_binary_or_audio_bytes_as_text(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -456,7 +556,12 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         with TemporaryDirectory() as directory:
             safe_link = Path(directory) / "latest.zip"
             secret_link = Path(directory) / "secret.zip"
-            safe_link.symlink_to("releases/missing.zip")
+            try:
+                safe_link.symlink_to("releases/missing.zip")
+            except OSError as error:
+                if getattr(error, "winerror", None) == 1314:
+                    self.skipTest("Windows host does not grant symbolic-link privilege")
+                raise
             secret_link.symlink_to(token)
 
             safe_findings = scan_public_path(safe_link)
@@ -754,11 +859,128 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         policy_tests = workflow.index("python -m unittest discover -s scripts/tests")
         public_scan = workflow.index("python scripts/check_public_surface.py")
         source_archive = workflow.index("git archive --format=zip")
+        archive_scan = workflow.index(
+            "python scripts/check_public_surface.py --archive "
+            "dist/choplab-source-snapshot.zip"
+        )
         source_upload = workflow.index("name: choplab-source-snapshot")
 
         self.assertLess(public_scan, policy_tests)
         self.assertLess(policy_tests, source_archive)
-        self.assertLess(source_archive, source_upload)
+        self.assertLess(source_archive, archive_scan)
+        self.assertLess(archive_scan, source_upload)
+
+    def test_explicit_archive_cli_scans_safe_malicious_and_missing_paths(self) -> None:
+        token = "github_pat_" + "z" * 24
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            safe = root / "safe.zip"
+            malicious = root / "malicious.zip"
+            missing = root / "missing.zip"
+            with zipfile.ZipFile(safe, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("notes.txt", "safe text")
+            with zipfile.ZipFile(malicious, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("notes.txt", token)
+
+            def run_explicit(path: Path) -> tuple[int, str]:
+                output = StringIO()
+                errors = StringIO()
+                with (
+                    patch(
+                        "scripts.check_public_surface.public_candidate_paths",
+                        return_value=[],
+                    ),
+                    patch("sys.argv", ["check_public_surface.py", "--archive", str(path)]),
+                    redirect_stdout(output),
+                    redirect_stderr(errors),
+                ):
+                    exit_code = main()
+                return exit_code, output.getvalue() + errors.getvalue()
+
+            safe_exit, safe_output = run_explicit(safe)
+            malicious_exit, malicious_output = run_explicit(malicious)
+            missing_exit, missing_output = run_explicit(missing)
+
+        self.assertEqual(0, safe_exit, safe_output)
+        self.assertEqual(1, malicious_exit, malicious_output)
+        self.assertIn("secret-shaped content", malicious_output)
+        self.assertEqual(1, missing_exit, missing_output)
+        self.assertIn("preflight failed", missing_output)
+
+    def test_platform_archives_are_scanned_after_creation_before_upload(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        desktop = (root / ".github" / "workflows" / "desktop.yml").read_text(
+            encoding="utf-8"
+        )
+        ios = (root / ".github" / "workflows" / "ios.yml").read_text(
+            encoding="utf-8"
+        )
+
+        desktop_archive = desktop.index("Compress-Archive")
+        desktop_scan = desktop.index(
+            "python scripts/check_public_surface.py --archive $zip"
+        )
+        desktop_upload = desktop.index("name: choplab-windows-app-image")
+        self.assertLess(desktop_archive, desktop_scan)
+        self.assertLess(desktop_scan, desktop_upload)
+
+        ios_archive = ios.index("bash scripts/build-ios-simulator.sh")
+        ios_scan = ios.index("python3 scripts/check_public_surface.py --archive")
+        ios_path = ios.index(
+            '"dist/ChopLab-${CHOPLAB_VERSION}-ios-simulator.app.zip"',
+            ios_scan,
+        )
+        ios_upload = ios.index("name: choplab-ios-simulator-${{ github.sha }}")
+        self.assertLess(ios_archive, ios_scan)
+        self.assertLess(ios_scan, ios_path)
+        self.assertLess(ios_path, ios_upload)
+
+    def test_release_scans_exact_archives_before_manifest_and_publication(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[2] / ".github" / "workflows" / "release.yml"
+        ).read_text(encoding="utf-8")
+
+        ios_build = workflow.index("bash scripts/build-ios-simulator.sh")
+        ios_stage_scan = workflow.index(
+            'python3 scripts/check_public_surface.py --archive "$target_archive"',
+            ios_build,
+        )
+        ios_upload = workflow.index("name: Upload iOS assets", ios_stage_scan)
+        windows_archive = workflow.index("Compress-Archive", ios_upload)
+        windows_stage_scan = workflow.index(
+            "python scripts/check_public_surface.py --archive $archive",
+            windows_archive,
+        )
+        windows_upload = workflow.index(
+            "name: Upload Windows assets",
+            windows_stage_scan,
+        )
+        self.assertLess(ios_build, ios_stage_scan)
+        self.assertLess(ios_stage_scan, ios_upload)
+        self.assertLess(windows_archive, windows_stage_scan)
+        self.assertLess(windows_stage_scan, windows_upload)
+
+        download = workflow.index("name: Download platform assets", windows_upload)
+        scan = workflow.index("name: Scan final public archives", download)
+        ios_archive = workflow.index(
+            'dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip',
+            scan,
+        )
+        final_windows_archive = workflow.index(
+            'dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip',
+            scan,
+        )
+        manifest = workflow.index("name: Write source-bound manifest and checksums")
+        attest = workflow.index("name: Attest build provenance")
+        publish = workflow.index("name: Publish once without asset replacement")
+
+        self.assertLess(download, scan)
+        self.assertLess(scan, ios_archive)
+        self.assertLess(scan, final_windows_archive)
+        self.assertLess(ios_archive, manifest)
+        self.assertLess(final_windows_archive, manifest)
+        self.assertLess(manifest, attest)
+        self.assertLess(attest, publish)
 
 
 if __name__ == "__main__":

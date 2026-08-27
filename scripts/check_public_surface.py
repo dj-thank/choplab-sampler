@@ -56,6 +56,7 @@ ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
     ".jar",
     ".jpeg",
     ".jpg",
+    ".lib",
     ".o",
     ".pdf",
     ".png",
@@ -69,6 +70,7 @@ ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
 ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
 ZIP_COMPRESSION_RATIO_LIMIT = 100
 ZIP_ENTRY_COUNT_LIMIT = 4_096
+ZIP_LZMA_DICTIONARY_LIMIT = 16 * 1024 * 1024
 HISTORICAL_ZIP_BLOB_COUNT_LIMIT = 128
 HISTORICAL_ZIP_CONTAINER_LIMIT = 16 * 1024 * 1024
 HISTORICAL_ZIP_TOTAL_LIMIT = 64 * 1024 * 1024
@@ -91,6 +93,19 @@ ZIP_MAX_COMMENT_LENGTH = (1 << 16) - 1
 ZIP64_UINT16_SENTINEL = (1 << 16) - 1
 ZIP64_UINT32_SENTINEL = (1 << 32) - 1
 ZIP_MEMBER_INPUT_CHUNK = 64 * 1024
+ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT = 64 * 1024
+ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT = 256 * 1024
+ZIP_BINARY_MAGIC_PREFIXES = (
+    b"\x7fELF",
+    b"\xca\xfe\xba\xbe",
+    b"\xbe\xba\xfe\xca",
+    b"\xfe\xed\xfa\xce",
+    b"\xce\xfa\xed\xfe",
+    b"\xfe\xed\xfa\xcf",
+    b"\xcf\xfa\xed\xfe",
+    b"\xda\xda\xfe\xca",
+    b"!<arch>\n",
+)
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -181,6 +196,11 @@ def suspicious_path(path: PurePosixPath) -> str | None:
     return None
 
 
+def is_known_archive_binary_path(path: PurePosixPath) -> bool:
+    parts = tuple(part.lower() for part in path.parts)
+    return parts[-3:] == ("runtime", "lib", "ct.sym")
+
+
 def decode_text_for_secret_scan(content: bytes) -> str:
     # Credential patterns are ASCII. Replacement decoding preserves those bytes
     # even when unrelated malformed bytes appear elsewhere in safe-named text.
@@ -194,6 +214,7 @@ def read_verified_zip_member(
     payload_offset: int,
     output_limit: int,
     compressed_input_limit: int,
+    lzma_dictionary_limit: int,
 ) -> bytes:
     """Decode exactly one declared payload without trusting ZipExtFile's size cap."""
     if info.file_size > output_limit:
@@ -258,6 +279,12 @@ def read_verified_zip_member(
             property_code = properties[0]
             if property_code >= 9 * 5 * 5:
                 raise ValueError("invalid ZIP LZMA filter properties")
+            dictionary_size = int.from_bytes(properties[1:], "little")
+            if dictionary_size > lzma_dictionary_limit:
+                raise ValueError(
+                    f"ZIP LZMA dictionary exceeds the "
+                    f"{lzma_dictionary_limit}-byte memory limit"
+                )
             literal_context_bits = property_code % 9
             remainder = property_code // 9
             literal_position_bits = remainder % 5
@@ -267,7 +294,7 @@ def read_verified_zip_member(
                 filters=[
                     {
                         "id": lzma.FILTER_LZMA1,
-                        "dict_size": int.from_bytes(properties[1:], "little"),
+                        "dict_size": dictionary_size,
                         "lc": literal_context_bits,
                         "lp": literal_position_bits,
                         "pb": position_bits,
@@ -335,6 +362,58 @@ def read_verified_zip_member(
     if (zlib.crc32(output) & ZIP64_UINT32_SENTINEL) != info.CRC:
         raise ValueError("decompressed output CRC does not match central directory")
     return bytes(output)
+
+
+def read_zip_binary_magic(
+    stream: object,
+    info: zipfile.ZipInfo,
+    *,
+    payload_offset: int,
+    compressed_input_limit: int,
+) -> tuple[bytes, int]:
+    """Read only enough bounded stored/deflate input to classify known binaries."""
+    probe_size = max(len(prefix) for prefix in ZIP_BINARY_MAGIC_PREFIXES)
+    if compressed_input_limit <= 0:
+        raise ValueError("archive binary probe input budget is exhausted")
+    stream.seek(payload_offset)
+
+    if info.compress_type == zipfile.ZIP_STORED:
+        read_size = min(info.compress_size, probe_size, compressed_input_limit)
+        prefix = stream.read(read_size)
+        if len(prefix) != read_size:
+            raise ValueError("stored binary probe payload is truncated")
+        return prefix, read_size
+
+    if info.compress_type != zipfile.ZIP_DEFLATED:
+        return b"", 0
+
+    decompressor = zlib.decompressobj(-15)
+    output = bytearray()
+    compressed_remaining = info.compress_size
+    consumed = 0
+    while (
+        len(output) < probe_size
+        and compressed_remaining
+        and consumed < compressed_input_limit
+    ):
+        read_size = min(
+            compressed_remaining,
+            ZIP_MEMBER_INPUT_CHUNK,
+            compressed_input_limit - consumed,
+        )
+        chunk = stream.read(read_size)
+        if not chunk:
+            raise ValueError("deflate binary probe payload is truncated")
+        compressed_remaining -= len(chunk)
+        consumed += len(chunk)
+        output.extend(decompressor.decompress(chunk, probe_size - len(output)))
+        if decompressor.eof:
+            break
+    return bytes(output), consumed
+
+
+def has_known_binary_magic(content: bytes) -> bool:
+    return any(content.startswith(prefix) for prefix in ZIP_BINARY_MAGIC_PREFIXES)
 
 
 def preflight_zip_directory(
@@ -530,11 +609,15 @@ def scan_zip(
     label: str | None = None,
     member_scan_limit: int = ZIP_MEMBER_SCAN_LIMIT,
     total_scan_limit: int = ZIP_TOTAL_SCAN_LIMIT,
+    compressed_input_limit: int = ZIP_TOTAL_SCAN_LIMIT,
     compression_ratio_limit: int = ZIP_COMPRESSION_RATIO_LIMIT,
     entry_count_limit: int = ZIP_ENTRY_COUNT_LIMIT,
+    lzma_dictionary_limit: int = ZIP_LZMA_DICTIONARY_LIMIT,
 ) -> list[str]:
     findings: list[str] = []
     scanned_bytes = 0
+    scanned_compressed_bytes = 0
+    scanned_binary_probe_bytes = 0
     archive_label = label or str(source)
 
     preflight_findings = preflight_zip_directory(
@@ -783,24 +866,15 @@ def scan_zip(
                             "directory-marked entry contains data or compressed payload"
                         )
                     continue
-                if entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES:
+                if (
+                    entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES
+                    or is_known_archive_binary_path(entry)
+                ):
                     continue
                 if local_payload_offset is None:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: local payload "
                         "offset is unavailable"
-                    )
-                    continue
-                if info.file_size > member_scan_limit:
-                    findings.append(
-                        f"{archive_label}: archive entry {name!r}: exceeds "
-                        f"{member_scan_limit}-byte member content scan limit"
-                    )
-                    continue
-                if info.compress_size > total_scan_limit:
-                    findings.append(
-                        f"{archive_label}: archive entry {name!r}: exceeds "
-                        f"{total_scan_limit}-byte compressed payload scan limit"
                     )
                     continue
                 compressed_size = max(info.compress_size, 1)
@@ -810,12 +884,74 @@ def scan_zip(
                         f"{compression_ratio_limit}:1 compression scan limit"
                     )
                     continue
+                if info.file_size > member_scan_limit:
+                    binary_probe_stream = archive.fp
+                    binary_probe_position: int | None = None
+                    try:
+                        if binary_probe_stream is None:
+                            raise ValueError("archive stream is unavailable")
+                        remaining_probe_budget = (
+                            ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT
+                            - scanned_binary_probe_bytes
+                        )
+                        binary_probe_position = binary_probe_stream.tell()
+                        prefix, consumed = read_zip_binary_magic(
+                            binary_probe_stream,
+                            info,
+                            payload_offset=local_payload_offset,
+                            compressed_input_limit=min(
+                                ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT,
+                                remaining_probe_budget,
+                            ),
+                        )
+                        scanned_binary_probe_bytes += consumed
+                    except (OSError, RuntimeError, ValueError, zlib.error) as error:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: binary probe "
+                            f"failed ({type(error).__name__})"
+                        )
+                        continue
+                    finally:
+                        if (
+                            binary_probe_stream is not None
+                            and binary_probe_position is not None
+                        ):
+                            try:
+                                binary_probe_stream.seek(binary_probe_position)
+                            except (OSError, ValueError):
+                                findings.append(
+                                    f"{archive_label}: archive entry {name!r}: binary "
+                                    "probe stream position restore failed"
+                                )
+                    if has_known_binary_magic(prefix):
+                        continue
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: exceeds "
+                        f"{member_scan_limit}-byte member content scan limit"
+                    )
+                    continue
+                if info.compress_size > compressed_input_limit:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: exceeds "
+                        f"{compressed_input_limit}-byte compressed payload scan limit"
+                    )
+                    continue
                 if scanned_bytes + info.file_size > total_scan_limit:
                     findings.append(
                         f"{archive_label}: archive content exceeds "
                         f"{total_scan_limit}-byte total content scan limit"
                     )
                     break
+                if (
+                    scanned_compressed_bytes + info.compress_size
+                    > compressed_input_limit
+                ):
+                    findings.append(
+                        f"{archive_label}: archive compressed input exceeds "
+                        f"the {compressed_input_limit}-byte aggregate scan limit"
+                    )
+                    break
+                scanned_compressed_bytes += info.compress_size
 
                 member_stream = archive.fp
                 member_stream_position: int | None = None
@@ -828,10 +964,12 @@ def scan_zip(
                         info,
                         payload_offset=local_payload_offset,
                         output_limit=member_scan_limit,
-                        compressed_input_limit=total_scan_limit,
+                        compressed_input_limit=compressed_input_limit,
+                        lzma_dictionary_limit=lzma_dictionary_limit,
                     )
                 except (
                     EOFError,
+                    MemoryError,
                     NotImplementedError,
                     OSError,
                     RuntimeError,
@@ -890,9 +1028,17 @@ def scan_zip(
     return findings
 
 
+def redact_secret_text(content: str) -> str:
+    redacted = content
+    for pattern in SECRET_PATTERNS:
+        redacted = pattern.sub("<redacted-secret>", redacted)
+    return redacted
+
+
 def scan_text(label: str, content: str) -> list[str]:
+    safe_label = redact_secret_text(label)
     return [
-        f"{label}: secret-shaped content matched {pattern.pattern!r}"
+        f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
         if pattern.search(content)
     ]
@@ -991,6 +1137,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="also scan reachable historical paths and text patches",
     )
+    parser.add_argument(
+        "--archive",
+        action="append",
+        default=[],
+        type=Path,
+        help="also scan this exact ZIP archive after it has been created",
+    )
     return parser.parse_args()
 
 
@@ -1000,6 +1153,13 @@ def main() -> int:
     findings: list[str] = []
     for path in paths:
         findings.extend(scan_public_path(path))
+    for archive_path in args.archive:
+        if archive_path.is_symlink():
+            findings.append(
+                f"{archive_path}: explicit archive must be a regular file, not a symlink"
+            )
+            continue
+        findings.extend(scan_zip(archive_path, label=str(archive_path)))
 
     if args.history:
         findings.extend(scan_history())
@@ -1007,10 +1167,12 @@ def main() -> int:
     if findings:
         print("PUBLIC SURFACE CHECK: FAIL", file=sys.stderr)
         for finding in sorted(set(findings)):
-            print(f"- {finding}", file=sys.stderr)
+            print(f"- {redact_secret_text(finding)}", file=sys.stderr)
         return 1
 
     scope = "current tree and reachable history" if args.history else "current tree"
+    if args.archive:
+        scope += f" plus {len(args.archive)} explicit archive(s)"
     print(
         f"PUBLIC SURFACE CHECK: PASS ({len(paths)} public candidates; {scope}; "
         "no credential, signing, or audio candidates)"

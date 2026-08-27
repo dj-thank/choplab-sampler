@@ -265,6 +265,7 @@ jobs:
           target_archive="dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
           mv "$source_archive" "$target_archive"
           rm -f "$source_archive.sha256"
+          python3 scripts/check_public_surface.py --archive "$target_archive"
           printf '%s  %s\n' "$(shasum -a 256 "$target_archive" | awk '{print $1}')" "$(basename "$target_archive")" > "$target_archive.sha256"
 
       - name: Upload iOS assets
@@ -324,6 +325,8 @@ jobs:
             -Path 'desktop/build/windows-app-image/ChopLab' `
             -DestinationPath $archive `
             -CompressionLevel Optimal
+          python scripts/check_public_surface.py --archive $archive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $archive)" | Set-Content -Encoding utf8 "$archive.sha256"
 
@@ -372,6 +375,15 @@ jobs:
             echo 'Release commit is no longer reachable from main.' >&2
             exit 1
           }
+
+      - name: Scan final public archives
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          python3 scripts/check_public_surface.py \
+            --archive "dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip" \
+            --archive "dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip"
 
       - name: Write source-bound manifest and checksums
         shell: bash
