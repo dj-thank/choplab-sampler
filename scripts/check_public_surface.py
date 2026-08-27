@@ -12,6 +12,7 @@ import subprocess
 import sys
 import zipfile
 import zlib
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 
@@ -41,9 +42,7 @@ AUDIO_SUFFIXES = {
     ".wav",
 }
 ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
-    ".7z",
-    ".aab",
-    ".apk",
+    ".a",
     ".bin",
     ".class",
     ".dex",
@@ -51,9 +50,7 @@ ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
     ".dylib",
     ".exe",
     ".gif",
-    ".gz",
     ".ico",
-    ".jar",
     ".jpeg",
     ".jpg",
     ".lib",
@@ -61,11 +58,10 @@ ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
     ".pdf",
     ".png",
     ".so",
-    ".tar",
     ".webp",
-    ".xz",
-    ".zip",
 }
+ZIP_NESTED_ARCHIVE_SUFFIXES = {".aab", ".aar", ".apk", ".ipa", ".jar", ".war", ".zip"}
+UNSUPPORTED_NESTED_ARCHIVE_SUFFIXES = {".7z", ".bz2", ".gz", ".tar", ".tgz", ".xz"}
 ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
 ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
 ZIP_COMPRESSION_RATIO_LIMIT = 100
@@ -74,6 +70,11 @@ ZIP_LZMA_DICTIONARY_LIMIT = 16 * 1024 * 1024
 HISTORICAL_ZIP_BLOB_COUNT_LIMIT = 128
 HISTORICAL_ZIP_CONTAINER_LIMIT = 16 * 1024 * 1024
 HISTORICAL_ZIP_TOTAL_LIMIT = 64 * 1024 * 1024
+HISTORICAL_NON_COMMIT_TREE_LIMIT = 128
+ZIP_NESTED_DEPTH_LIMIT = 3
+ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
+ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
+ZIP_NESTED_TOTAL_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"gh" + r"o_[A-Za-z0-9_]{20,}"),
@@ -97,6 +98,13 @@ ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT = 64 * 1024
 ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT = 256 * 1024
 ZIP_JIMAGE_HEADER = struct.Struct("<7I")
 ZIP_JIMAGE_MAGIC = 0xCAFEDADA
+
+
+@dataclass
+class ZipNestedScanBudget:
+    archive_count: int = 0
+    compressed_bytes: int = 0
+    uncompressed_bytes: int = 0
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -173,6 +181,65 @@ def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
     return list(candidates.items())
 
 
+def historical_non_commit_tree_zip_objects() -> tuple[
+    list[tuple[str, PurePosixPath]],
+    list[str],
+]:
+    raw_refs = run_git(
+        [
+            "for-each-ref",
+            "--format=%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00",
+        ]
+    ).replace(b"\0\n", b"\0")
+    fields = raw_refs.split(b"\0")
+    if fields and not fields[-1]:
+        fields.pop()
+    if len(fields) % 4:
+        return [], ["git history ZIP content: invalid non-commit ref metadata"]
+
+    tree_ids: set[str] = set()
+    for index in range(0, len(fields), 4):
+        object_id, object_type, peeled_id, peeled_type = (
+            field.decode("ascii", errors="replace").strip()
+            for field in fields[index : index + 4]
+        )
+        if object_type == "tree":
+            tree_ids.add(object_id)
+        if peeled_type == "tree":
+            tree_ids.add(peeled_id)
+    tree_ids.discard("")
+    if len(tree_ids) > HISTORICAL_NON_COMMIT_TREE_LIMIT:
+        return [], [
+            "git history ZIP content: "
+            f"{len(tree_ids)} non-commit trees exceed the "
+            f"{HISTORICAL_NON_COMMIT_TREE_LIMIT}-tree scan limit"
+        ]
+
+    candidates: dict[str, PurePosixPath] = {}
+    findings: list[str] = []
+    for tree_id in sorted(tree_ids):
+        raw_tree = run_git(["ls-tree", "-rz", "-r", "--full-tree", tree_id])
+        for record in raw_tree.split(b"\0"):
+            if not record:
+                continue
+            try:
+                metadata, raw_path = record.split(b"\t", maxsplit=1)
+                mode, object_type, object_id = metadata.decode("ascii").split()
+            except (UnicodeDecodeError, ValueError):
+                findings.append(
+                    "git history ZIP content: invalid non-commit tree record"
+                )
+                continue
+            path = PurePosixPath(raw_path.decode("utf-8", errors="replace"))
+            if (
+                mode in {"100644", "100755"}
+                and object_type == "blob"
+                and path.suffix.lower() == ".zip"
+            ):
+                candidates.setdefault(object_id, path)
+    return list(candidates.items()), findings
+
+
 def suspicious_path(path: PurePosixPath) -> str | None:
     lower = path.as_posix().lower()
     name = path.name.lower()
@@ -205,10 +272,42 @@ def is_jdk_modules_path(path: PurePosixPath) -> bool:
     return parts[-3:] == ("runtime", "lib", "modules")
 
 
+def is_icu_data_path(path: PurePosixPath) -> bool:
+    return path.name.lower() == "icudtl.dat"
+
+
 def decode_text_for_secret_scan(content: bytes) -> str:
     # Credential patterns are ASCII. Replacement decoding preserves those bytes
     # even when unrelated malformed bytes appear elsewhere in safe-named text.
+    if content.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        return content.decode("utf-32", errors="replace")
+    if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return content.decode("utf-16", errors="replace")
     return content.decode("utf-8-sig", errors="replace")
+
+
+def audio_payload_signature(content: bytes) -> str | None:
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WAVE":
+        return "RIFF/WAVE"
+    if len(content) >= 12 and content[:4] == b"FORM" and content[8:12] in {
+        b"AIFF",
+        b"AIFC",
+    }:
+        return "AIFF"
+    if content.startswith(b"fLaC"):
+        return "FLAC"
+    if content.startswith(b"OggS"):
+        return "Ogg"
+    if content.startswith(b"caff"):
+        return "CAF"
+    if content.startswith(b"ID3"):
+        return "ID3/MP3"
+    if len(content) >= 12 and content[4:8] == b"ftyp" and content[8:12] in {
+        b"M4A ",
+        b"M4B ",
+    }:
+        return "M4A"
+    return None
 
 
 def read_verified_zip_member(
@@ -443,6 +542,31 @@ def has_valid_jimage_header(content: bytes, file_size: int) -> bool:
     )
 
 
+def has_valid_icu_data_header(content: bytes, file_size: int) -> bool:
+    if len(content) < 24:
+        return False
+    header_size = int.from_bytes(content[0:2], "little")
+    info_size = int.from_bytes(content[4:6], "little")
+    return (
+        content[2:4] == b"\xda\x27"
+        and 24 <= header_size <= file_size
+        and 20 <= info_size <= header_size
+        and content[12:16] == b"CmnD"
+    )
+
+
+def has_valid_large_binary_header(
+    path: PurePosixPath,
+    content: bytes,
+    file_size: int,
+) -> bool:
+    if is_jdk_modules_path(path):
+        return has_valid_jimage_header(content, file_size)
+    if is_icu_data_path(path):
+        return has_valid_icu_data_header(content, file_size)
+    return False
+
+
 def preflight_zip_directory(
     source: Path | PurePosixPath | BytesIO,
     *,
@@ -640,12 +764,15 @@ def scan_zip(
     compression_ratio_limit: int = ZIP_COMPRESSION_RATIO_LIMIT,
     entry_count_limit: int = ZIP_ENTRY_COUNT_LIMIT,
     lzma_dictionary_limit: int = ZIP_LZMA_DICTIONARY_LIMIT,
+    _nested_depth: int = 0,
+    _nested_budget: ZipNestedScanBudget | None = None,
 ) -> list[str]:
     findings: list[str] = []
     scanned_bytes = 0
     scanned_compressed_bytes = 0
     scanned_binary_probe_bytes = 0
     archive_label = label or str(source)
+    nested_budget = _nested_budget or ZipNestedScanBudget()
 
     preflight_findings = preflight_zip_directory(
         source,
@@ -887,14 +1014,85 @@ def scan_zip(
                 if local_record_end is not None:
                     claimed_ranges.append((info.header_offset, local_record_end))
                 if info.is_dir():
-                    if info.file_size or info.compress_size:
+                    if info.file_size:
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: "
-                            "directory-marked entry contains data or compressed payload"
+                            "directory-marked entry contains data"
                         )
+                        continue
+                    if info.compress_size:
+                        if local_payload_offset is None:
+                            findings.append(
+                                f"{archive_label}: archive entry {name!r}: directory "
+                                "payload offset is unavailable"
+                            )
+                            continue
+                        if (
+                            scanned_compressed_bytes + info.compress_size
+                            > compressed_input_limit
+                        ):
+                            findings.append(
+                                f"{archive_label}: archive directory compressed input "
+                                f"exceeds the {compressed_input_limit}-byte aggregate "
+                                "scan limit"
+                            )
+                            continue
+                        scanned_compressed_bytes += info.compress_size
+                        directory_stream = archive.fp
+                        directory_stream_position: int | None = None
+                        try:
+                            if directory_stream is None:
+                                raise ValueError("archive stream is unavailable")
+                            directory_stream_position = directory_stream.tell()
+                            directory_content = read_verified_zip_member(
+                                directory_stream,
+                                info,
+                                payload_offset=local_payload_offset,
+                                output_limit=0,
+                                compressed_input_limit=compressed_input_limit,
+                                lzma_dictionary_limit=lzma_dictionary_limit,
+                            )
+                            if directory_content:
+                                raise ValueError("directory output is not empty")
+                        except (
+                            EOFError,
+                            MemoryError,
+                            NotImplementedError,
+                            OSError,
+                            RuntimeError,
+                            ValueError,
+                            lzma.LZMAError,
+                            struct.error,
+                            zipfile.BadZipFile,
+                            zlib.error,
+                        ) as error:
+                            findings.append(
+                                f"{archive_label}: archive entry {name!r}: "
+                                "directory-marked entry contains invalid compressed "
+                                f"payload ({type(error).__name__})"
+                            )
+                        finally:
+                            if (
+                                directory_stream is not None
+                                and directory_stream_position is not None
+                            ):
+                                try:
+                                    directory_stream.seek(directory_stream_position)
+                                except (OSError, ValueError):
+                                    findings.append(
+                                        f"{archive_label}: archive entry {name!r}: "
+                                        "directory stream position restore failed"
+                                    )
+                    continue
+                entry_suffix = entry.suffix.lower()
+                if entry_suffix in UNSUPPORTED_NESTED_ARCHIVE_SUFFIXES:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: nested archive "
+                        f"format {entry_suffix!r} is not supported"
+                    )
                     continue
                 if (
-                    entry.suffix.lower() in ARCHIVE_BINARY_SUFFIXES
+                    entry_suffix in ARCHIVE_BINARY_SUFFIXES
                     or is_known_archive_binary_path(entry)
                 ):
                     continue
@@ -902,6 +1100,113 @@ def scan_zip(
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: local payload "
                         "offset is unavailable"
+                    )
+                    continue
+                if entry_suffix in ZIP_NESTED_ARCHIVE_SUFFIXES:
+                    if _nested_depth >= ZIP_NESTED_DEPTH_LIMIT:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: nested archive "
+                            f"depth exceeds {ZIP_NESTED_DEPTH_LIMIT}"
+                        )
+                        continue
+                    if (
+                        nested_budget.archive_count + 1
+                        > ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: nested archive count exceeds "
+                            f"{ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
+                        )
+                        continue
+                    if (
+                        info.compress_size > ZIP_NESTED_MEMBER_LIMIT
+                        or info.file_size > ZIP_NESTED_MEMBER_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: nested archive "
+                            f"exceeds the {ZIP_NESTED_MEMBER_LIMIT}-byte member limit"
+                        )
+                        continue
+                    if (
+                        nested_budget.compressed_bytes + info.compress_size
+                        > ZIP_NESTED_TOTAL_LIMIT
+                        or nested_budget.uncompressed_bytes + info.file_size
+                        > ZIP_NESTED_TOTAL_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: nested archives exceed the "
+                            f"{ZIP_NESTED_TOTAL_LIMIT}-byte aggregate limit"
+                        )
+                        continue
+                    nested_compressed_size = max(info.compress_size, 1)
+                    if (
+                        info.file_size
+                        > nested_compressed_size * compression_ratio_limit
+                    ):
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: nested archive "
+                            f"exceeds {compression_ratio_limit}:1 compression limit"
+                        )
+                        continue
+                    nested_budget.archive_count += 1
+                    nested_budget.compressed_bytes += info.compress_size
+                    nested_budget.uncompressed_bytes += info.file_size
+                    nested_stream = archive.fp
+                    nested_stream_position: int | None = None
+                    try:
+                        if nested_stream is None:
+                            raise ValueError("archive stream is unavailable")
+                        nested_stream_position = nested_stream.tell()
+                        nested_content = read_verified_zip_member(
+                            nested_stream,
+                            info,
+                            payload_offset=local_payload_offset,
+                            output_limit=ZIP_NESTED_MEMBER_LIMIT,
+                            compressed_input_limit=ZIP_NESTED_MEMBER_LIMIT,
+                            lzma_dictionary_limit=lzma_dictionary_limit,
+                        )
+                    except (
+                        EOFError,
+                        MemoryError,
+                        NotImplementedError,
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                        lzma.LZMAError,
+                        struct.error,
+                        zipfile.BadZipFile,
+                        zlib.error,
+                    ) as error:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: nested archive "
+                            f"read failed ({type(error).__name__})"
+                        )
+                        continue
+                    finally:
+                        if (
+                            nested_stream is not None
+                            and nested_stream_position is not None
+                        ):
+                            try:
+                                nested_stream.seek(nested_stream_position)
+                            except (OSError, ValueError):
+                                findings.append(
+                                    f"{archive_label}: archive entry {name!r}: nested "
+                                    "archive stream position restore failed"
+                                )
+                    findings.extend(
+                        scan_zip(
+                            BytesIO(nested_content),
+                            label=f"{archive_label}: nested archive {name!r}",
+                            member_scan_limit=member_scan_limit,
+                            total_scan_limit=total_scan_limit,
+                            compressed_input_limit=compressed_input_limit,
+                            compression_ratio_limit=compression_ratio_limit,
+                            entry_count_limit=entry_count_limit,
+                            lzma_dictionary_limit=lzma_dictionary_limit,
+                            _nested_depth=_nested_depth + 1,
+                            _nested_budget=nested_budget,
+                        )
                     )
                     continue
                 compressed_size = max(info.compress_size, 1)
@@ -916,7 +1221,7 @@ def scan_zip(
                     and info.file_size <= total_scan_limit
                 )
                 if info.file_size > member_scan_limit and not bounded_app_executable:
-                    if not is_jdk_modules_path(entry):
+                    if not (is_jdk_modules_path(entry) or is_icu_data_path(entry)):
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: exceeds "
                             f"{member_scan_limit}-byte member content scan limit"
@@ -960,11 +1265,11 @@ def scan_zip(
                                     f"{archive_label}: archive entry {name!r}: binary "
                                     "probe stream position restore failed"
                                 )
-                    if has_valid_jimage_header(prefix, info.file_size):
+                    if has_valid_large_binary_header(entry, prefix, info.file_size):
                         continue
                     findings.append(
-                        f"{archive_label}: archive entry {name!r}: JDK modules "
-                        "member has an invalid JIMAGE header"
+                        f"{archive_label}: archive entry {name!r}: large platform "
+                        "binary has an invalid structural header"
                     )
                     continue
                 if info.compress_size > compressed_input_limit:
@@ -1044,6 +1349,11 @@ def scan_zip(
                 scanned_bytes += len(content)
                 text = decode_text_for_secret_scan(content)
                 member_label = f"{archive_label}: archive entry {name!r}"
+                audio_signature = audio_payload_signature(content)
+                if audio_signature:
+                    findings.append(
+                        f"{member_label}: audio signature {audio_signature!r} detected"
+                    )
                 findings.extend(scan_text(member_label, text))
 
             if len(claimed_ranges) == len(entries):
@@ -1131,7 +1441,14 @@ def scan_history() -> list[str]:
         reason = suspicious_path(path)
         if reason:
             findings.append(f"git history path {path}: {reason}")
-    findings.extend(scan_historical_zip_blobs(historical_zip_objects()))
+    non_commit_objects, non_commit_findings = (
+        historical_non_commit_tree_zip_objects()
+    )
+    findings.extend(non_commit_findings)
+    zip_objects = dict(historical_zip_objects())
+    for object_id, path in non_commit_objects:
+        zip_objects.setdefault(object_id, path)
+    findings.extend(scan_historical_zip_blobs(list(zip_objects.items())))
 
     # A textual patch includes every textual addition/deletion reachable from all
     # refs without checking out or materializing historical files. Binary payloads

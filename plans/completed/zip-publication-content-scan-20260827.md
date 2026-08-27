@@ -43,13 +43,14 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] GREEN: dictionary and aggregate budgets, explicit archive CLI and all producer/final consumer calls implemented.
 - [x] Compatibility: exact current-main source, Windows and iOS archives first exposed four legitimate large binaries; narrow bounded classification fixed them while a large text control still fails.
 - [x] Security review: broad `.sym` and two-byte `MZ` exemptions were removed; secret-shaped labels are redacted. Hosted review then reproduced magic-prefix spoofing; generic magic exemptions were removed and the malicious ELF-prefix/app-token controls now fail closed.
+- [x] Final review follow-up: nested archives, BOM-marked UTF-16/32, safe-named audio payloads and non-commit tree refs received direct regressions. Nested recursion and resource caps preserve the exact source/Windows/iOS controls.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
 
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
-- Complete Python policy: 100 tests, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Capable CI hosts still run that test.
+- Complete Python policy: 106 tests, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Capable CI hosts still run that test.
 - Current and reachable-history public scans: 465 candidates, PASS. `py_compile` and `git diff --check`: PASS.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.
 - Exact archive scan: candidate source snapshot 1,542,548 / `F9B63B84A85A5D6336BE5C52FED5878DC6350AD20D09C3B3049015DA35C9B6A0`; current-main Windows ZIP 89,156,340 / `7619DDE24822CC5CF6B38893382AC46DF8752AE777F046844E6322713F42AAA2`; current-main iOS ZIP 318,236 / `5D17C8BD5E3DC6C359FED40F1B79B38CD901D53343735566201AA454BB72475C`; combined PASS.
@@ -66,7 +67,7 @@ The patch follows repository fail-closed/resource-bound rules, uses standard-lib
 
 ### Spec
 
-All six portfolio acceptance items are implemented: pre-constructor dictionary cap, archive aggregate input cap, supported-method controls, explicit safe/malicious/missing archive CLI, create/download→scan→upload/publish ordering, latest-main preservation and relevant checks. Full bounded app-executable scanning, exact JIMAGE validation and label redaction are necessary compatibility/safety repairs, not unrelated scope. Android APK content scanning remains outside this Windows/iOS ZIP experiment and retains its separate manifest/signature verifier. Unresolved findings: `0`.
+All six portfolio acceptance items are implemented: pre-constructor dictionary cap, archive aggregate input cap, supported-method controls, explicit safe/malicious/missing archive CLI, create/download→scan→upload/publish ordering, latest-main preservation and relevant checks. Full bounded app scanning, exact JIMAGE validation, nested recursion, BOM/audio aliases, non-commit refs and label redaction are necessary completeness/compatibility repairs, not unrelated scope. Android APK content scanning remains outside this Windows/iOS ZIP experiment and retains its separate manifest/signature verifier. Unresolved findings: `0`.
 
 ## Stop, rollback and remaining gates
 

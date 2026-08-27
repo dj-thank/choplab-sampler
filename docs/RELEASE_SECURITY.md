@@ -22,11 +22,13 @@ A `v*` run of `.github/workflows/release.yml`:
 
 ### Bounded ZIP content policy
 
-Safe-named ZIP member text, filenames, comments and local/central extra fields are scanned without extraction. The parser validates one contiguous ownership chain across local records, compressed spans, optional descriptors and the central directory before trusting entry metadata. Stored, deflate, BZIP2 and LZMA text must consume their declared input exactly and match declared output size/CRC.
+Safe-named ZIP member text, filenames, comments and local/central extra fields are scanned without extraction. BOM-marked UTF-16/32 is normalized before matching, and supported audio-container signatures are rejected even under a safe text name. The parser validates one contiguous ownership chain across local records, compressed spans, optional descriptors and the central directory before trusting entry metadata. Stored, deflate, BZIP2 and LZMA text must consume their declared input exactly and match declared output size/CRC.
 
 Resource limits are fail-closed: 4,096 entries, 512 KiB ordinary text output per member, 4 MiB metadata/output per archive, 4 MiB aggregate compressed input for decoded text, 100:1 expansion and a 16 MiB LZMA dictionary checked before decoder construction. A bounded `.app` main executable is fully decoded and scanned. Arbitrary oversized safe-named entries are rejected regardless of magic prefix; only exact JDK `runtime/lib/modules` uses a separate 64 KiB/member and 256 KiB/archive probe and must validate as a structurally consistent JIMAGE. Findings redact secret-shaped labels before writing CI logs.
 
 The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
+
+ZIP-compatible nested members are recursively scanned to depth 3 under 64-archive, 16 MiB/member and 64 MiB aggregate compressed/uncompressed limits. Unsupported nested formats are rejected. Reachable non-commit tree refs are enumerated with NUL-safe ref/tree commands so a tree-target tag cannot hide a historical ZIP.
 
 `workflow_dispatch` is deliberately build-only. It may produce an unsigned Android release candidate for inspection, but it cannot publish a GitHub Release.
 

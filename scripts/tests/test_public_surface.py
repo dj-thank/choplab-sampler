@@ -19,6 +19,11 @@ from scripts.check_public_surface import (
     suspicious_path,
 )
 
+NON_COMMIT_REF_ARGUMENTS = [
+    "for-each-ref",
+    "--format=%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00",
+]
+
 
 class PublicSurfacePolicyTest(unittest.TestCase):
     def test_rejects_signing_and_audio_paths(self) -> None:
@@ -239,6 +244,57 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("audio asset", findings[0])
         self.assertNotIn("secret-shaped content", findings[0])
 
+    def test_zip_content_scan_recurses_into_nested_zip_members(self) -> None:
+        token = "github_pat_" + "n" * 24
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", token)
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.zip", inner.getvalue())
+
+        findings = scan_zip(BytesIO(outer.getvalue()), label="outer.zip")
+
+        self.assertTrue(any("payload.zip" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_zip_content_scan_rejects_unsupported_and_overdeep_nested_archives(self) -> None:
+        unsupported = BytesIO()
+        with zipfile.ZipFile(unsupported, "w") as archive:
+            archive.writestr("payload.7z", b"not a supported nested archive")
+
+        nested = b"safe"
+        for depth in range(5):
+            candidate = BytesIO()
+            with zipfile.ZipFile(candidate, "w") as archive:
+                archive.writestr(f"level-{depth}.zip", nested)
+            nested = candidate.getvalue()
+
+        unsupported_findings = scan_zip(
+            BytesIO(unsupported.getvalue()),
+            label="unsupported.zip",
+        )
+        depth_findings = scan_zip(BytesIO(nested), label="overdeep.zip")
+
+        self.assertTrue(
+            any("nested archive format" in item for item in unsupported_findings),
+            unsupported_findings,
+        )
+        self.assertTrue(
+            any("nested archive depth" in item for item in depth_findings),
+            depth_findings,
+        )
+
+    def test_zip_content_scan_detects_safe_named_riff_wave_payload(self) -> None:
+        wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 28
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w") as archive:
+            archive.writestr("docs/readme.txt", wave)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="audio-alias.zip")
+
+        self.assertTrue(any("audio signature" in item for item in findings), findings)
+
     def test_zip_content_scan_reads_archive_and_entry_comments(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         with TemporaryDirectory() as directory:
@@ -283,6 +339,24 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(
             any("docs/notes.txt'" in item and "comment" not in item for item in findings)
         )
+
+    def test_zip_content_scan_decodes_bom_marked_utf16_text(self) -> None:
+        token = "github_pat_" + "u" * 24
+        for encoding in ("utf-16", "utf-32"):
+            with self.subTest(encoding=encoding):
+                candidate = BytesIO()
+                with zipfile.ZipFile(candidate, "w") as archive:
+                    archive.writestr("config.txt", token.encode(encoding))
+
+                findings = scan_zip(
+                    BytesIO(candidate.getvalue()),
+                    label=f"{encoding}.zip",
+                )
+
+                self.assertTrue(
+                    any("secret-shaped content" in item for item in findings),
+                    findings,
+                )
 
     def test_zip_content_scan_reads_bounded_entry_extra_fields(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -428,6 +502,21 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(
             any("compressed payload" in item for item in findings)
         )
+
+    def test_zip_content_scan_accepts_valid_empty_deflated_directory_records(self) -> None:
+        candidate = BytesIO()
+        info = zipfile.ZipInfo("META-INF/")
+        info.compress_type = zipfile.ZIP_DEFLATED
+        with zipfile.ZipFile(candidate, "w") as archive:
+            archive.writestr(info, b"")
+        with zipfile.ZipFile(BytesIO(candidate.getvalue())) as archive:
+            directory = archive.infolist()[0]
+            self.assertEqual(0, directory.file_size)
+            self.assertGreater(directory.compress_size, 0)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="jar.zip")
+
+        self.assertEqual([], findings)
 
     def test_zip_content_scan_rejects_trailing_compressed_stream_data(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -621,6 +710,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return f"{object_id} docs/removed.zip\n".encode("ascii")
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
             if arguments == [
                 "log",
                 "--all",
@@ -669,6 +760,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return f"{object_id} copies/archive.dat\n".encode("ascii")
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
             if arguments == [
                 "log",
                 "--all",
@@ -715,6 +808,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return tree_hints
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
             if arguments == [
                 "log",
                 "--all",
@@ -751,6 +846,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return f"{object_id} releases/latest.zip\n".encode("ascii")
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
             if arguments == [
                 "log",
                 "--all",
@@ -794,6 +891,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return f"{object_id} unrelated/archive.dat\n".encode("ascii")
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
             if arguments == [
                 "log",
                 "--all",
@@ -842,6 +941,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         def fake_run_git(arguments: list[str]) -> bytes:
             if arguments == ["rev-list", "--objects", "--all"]:
                 return f"{object_id} unrelated/archive.dat\n".encode("ascii")
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
             if arguments == [
                 "log",
                 "--all",
@@ -878,6 +979,56 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings = scan_history()
 
         self.assertTrue(any("evil\nname.zip" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_history_scan_reads_zip_from_a_non_commit_tree_ref(self) -> None:
+        tree_id = "f" * 40
+        object_id = "a" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr("notes.txt", "github_pat_" + "r" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{tree_id}\n{object_id} archive.dat\n".encode("ascii")
+            if arguments == [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                ":(icase,glob)**/*.zip",
+            ]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return f"{tree_id}\0tree\0\0\0".encode("ascii")
+            if arguments == ["ls-tree", "-rz", "-r", "--full-tree", tree_id]:
+                return f"100644 blob {object_id}\tarchive.zip\0".encode("ascii")
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("archive.zip" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
