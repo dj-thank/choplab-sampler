@@ -2,6 +2,18 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## Exact public ZIP content gate — 2026-08-27
+
+- Base/integration/product: PR #69 `1abbd8ff004edceafd81fe5ffa6059e2d3692d85`; local latest-main merge `fa4e6d2646e44039ce41662ba4c6ae6970ae9dd6`; policy/workflow product `3ed67101f362e61760c5ceb1839e71e91311aeb5`, tree `70e8f94f4e64cff4e13ea0e474e164632e500770`.
+- RED: a forged ZIP_LZMA property reached the decoder constructor with dictionary `0xffffffff`; `scan_zip` had no archive-wide compressed-input argument; explicit archive CLI and create→scan→upload/publish workflow contracts were absent. All six focused controls failed at the intended boundary.
+- GREEN: dictionary rejection occurs before constructor call; declared compressed spans are aggregated before text decoding; repeatable explicit archives fail closed when malicious/missing and accept safe bytes; source/Windows/iOS producer and final-release ordering controls pass.
+- Bypass/regression review: exact current artifacts first exposed false rejection of iOS Mach-O and Windows JIMAGE/ct.sym/jvm.lib. Bounded magic probes plus narrow known-binary paths fixed those controls without allowing unknown large text. Broad `.sym` and two-byte `MZ` exclusions were rejected. Secret-shaped labels are redacted.
+- Python policy: 100 tests, failures/errors 0, skip 1 only for native symlink creation on this Windows host (`WinError 1314`). The same symlink test remains active on capable CI hosts. `py_compile`, current 465-candidate scan, reachable-history 465-candidate scan and `git diff --check` pass.
+- Configured validator: 18/18 tasks, XML/executable/wrapper/UTF-8 policy PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip. Product subtrees are Git-object identical to merged main, whose exact four hosted workflows already passed; no expensive unchanged Android/iOS product gate is reused as evidence for the changed workflow syntax.
+- Archive read-back: exact HEAD source snapshot 1,542,548 / `F9B63B84A85A5D6336BE5C52FED5878DC6350AD20D09C3B3049015DA35C9B6A0`; exact current-main Windows ZIP 89,156,340 / `7619DDE24822CC5CF6B38893382AC46DF8752AE777F046844E6322713F42AAA2`; exact current-main iOS ZIP 318,236 / `5D17C8BD5E3DC6C359FED40F1B79B38CD901D53343735566201AA454BB72475C`; combined explicit scan PASS.
+- Local review: execution was local parent two-pass due the explicit no-subagent contract. Standards unresolved `0`; Spec unresolved `0`. A local YAML parser was unavailable, so workflow syntax/order is covered by source contracts and remains a fresh hosted-CI gate.
+- Gate: `LOCAL_PASS`. PR #69 remote update, 27 thread replies/resolution, exact-head checks, mergeability, merge and merged-main read-back remain provider steps. No tag/Release, secret, signer, device, OAuth/provider account or Human action occurred.
+
 ## PR #79 loop-admission review repair — 2026-08-27
 
 - Base/product: Wave 18 closeout `fa39c476df239a2c84ec7c9149c69ce70ba9d608` / review-repair product `11d01272758eda774852ea2af1e55fe9d3e5c3b4`, tree `83c205536006518aab5da4d3c33e02500f84c2dd`.

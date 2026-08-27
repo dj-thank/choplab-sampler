@@ -6,9 +6,9 @@
 
 ## Current selection
 
-**Wave 20 active:** `zip-publication-content-scan-20260827.md`。existing PR #69のbounded ZIP parserをlatest `main@0f5b672`へnormal mergeし、LZMA dictionary事前OOM、archive-wide compressed-input cap、exact generated Windows/iOS/source archiveのcreate後scanを一つのrelease-security boundaryとして閉じる。force、新PR、tag/Release、secret/device/provider/Human操作はlocal phaseに含めない。
+**Wave 20 completed local; GitHub integration pending:** `../completed/zip-publication-content-scan-20260827.md`。existing PR #69 parserを`main@0f5b672`へnormal mergeし、LZMA dictionary事前OOM、archive-wide compressed-input cap、secret label redaction、exact source/Windows/iOS archiveのcreate後・publish前scanを一つのboundaryとして閉じた。product `3ed6710` / tree `70e8f94`、Python100、current/history465、exact三archive、configured18 tasks、Standards/Spec unresolved0/0で`LOCAL_PASS`。remote PR #69 update/27 threads/hosted checksは未実行。
 
-**Wave 19 PR review repair completed local; GitHub integration remains active:** `../completed/waves17-18-pr-review-repair-20260827.md`。PR #79の3件の有効指摘を、Windowsのrender/open/startをhandoff lock外へ分離、candidate stagingとcleanup所有権保持、Android rejected vocal takeのstop＋discard専用経路で閉じた。追加raceも反証してproduct `11d0127` / tree `83c2055`、709 tests / 117 suites、197-task gate、package/policy/read-backまで`LOCAL_PASS`。
+**Wave 19 GitHub integration complete:** `../completed/waves17-18-pr-review-repair-20260827.md`。review-hardened exact head `4ae09d8`はPR #79の8/8 checks・threads 0後、`main@0f5b672` / tree `939f954`へnormal merge。merged-main Android/Windows/iOS/Supply 4/4もSUCCESS。`v0.17.0` tag/Releaseは不変。
 
 **次に保持する一つ:** 新しいfeatureは開始せず、既存PR #79を同じbranch/headへ更新する。exact-head 8 workflows、review threads 0、clean mergeabilityとbase/head不変を確認してからだけnormal mergeし、merged-main 4 workflowsをread-backする。tag、Release、署名、device/provider account、Humanは別taskのまま。
 

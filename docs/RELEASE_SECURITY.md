@@ -10,7 +10,7 @@ This document separates controls enforced by committed source from controls that
 
 A `v*` run of `.github/workflows/release.yml`:
 
-1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; ZIP policy first bounds and parses central/local records, requires one contiguous ownership chain through every compressed span and validated signed/signatureless descriptor, verifies both metadata copies, and independently decodes the exact stored/deflate/BZIP2/LZMA span under hard input/output limits so trailing input, undeclared output or CRC disagreement cannot hide content; it scans current symlink targets without following them and enumerates regular historical ZIP blobs through NUL-delimited per-parent merge history under explicit materialization caps;
+1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; ZIP policy first bounds and parses central/local records, requires one contiguous ownership chain through every compressed span and validated signed/signatureless descriptor, verifies both metadata copies, and independently decodes the exact stored/deflate/BZIP2/LZMA span under hard input/output limits so trailing input, undeclared output or CRC disagreement cannot hide content; it scans current symlink targets without following them, enumerates regular historical ZIP blobs through NUL-delimited per-parent merge history, and scans exact generated Windows/iOS archives after creation and again after download before publication;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
 4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
@@ -19,6 +19,14 @@ A `v*` run of `.github/workflows/release.yml`:
 7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files;
 8. creates GitHub artifact provenance and SBOM attestations for the runnable files;
 9. creates a new prerelease once, without `--clobber` or another asset-replacement path.
+
+### Bounded ZIP content policy
+
+Safe-named ZIP member text, filenames, comments and local/central extra fields are scanned without extraction. The parser validates one contiguous ownership chain across local records, compressed spans, optional descriptors and the central directory before trusting entry metadata. Stored, deflate, BZIP2 and LZMA text must consume their declared input exactly and match declared output size/CRC.
+
+Resource limits are fail-closed: 4,096 entries, 512 KiB text output per member, 4 MiB metadata/output per archive, 4 MiB aggregate compressed input for decoded text, 100:1 expansion and a 16 MiB LZMA dictionary checked before decoder construction. Large extensionless binaries require a known magic prefix through a separate 64 KiB/member and 256 KiB/archive probe. Unknown large safe-named content is rejected rather than reclassified. Findings redact secret-shaped labels before writing CI logs.
+
+The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
 
 `workflow_dispatch` is deliberately build-only. It may produce an unsigned Android release candidate for inspection, but it cannot publish a GitHub Release.
 
