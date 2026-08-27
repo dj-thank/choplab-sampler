@@ -28,7 +28,7 @@ Resource limits are fail-closed: 4,096 entries, 512 KiB ordinary text output per
 
 The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
 
-ZIP-compatible nested members are recursively scanned to depth 3 under 64-archive, 16 MiB/member and 64 MiB aggregate compressed/uncompressed limits. Unsupported nested formats are rejected. Reachable non-commit tree refs are enumerated with NUL-safe ref/tree commands so a tree-target tag cannot hide a historical ZIP.
+ZIP-compatible nested members are detected by structure as well as suffix and recursively scanned to depth 3 under 64-archive, 16 MiB/member, 64 MiB compressed-container and shared 64 MiB expanded-work limits. Unsupported nested formats are rejected. Reachable non-commit tree refs are enumerated with NUL-safe ref/tree commands so a tree-target tag cannot hide a historical ZIP.
 
 `workflow_dispatch` is deliberately build-only. It may produce an unsigned Android release candidate for inspection, but it cannot publish a GitHub Release.
 

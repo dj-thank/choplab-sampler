@@ -104,7 +104,7 @@ ZIP_JIMAGE_MAGIC = 0xCAFEDADA
 class ZipNestedScanBudget:
     archive_count: int = 0
     compressed_bytes: int = 0
-    uncompressed_bytes: int = 0
+    expanded_bytes: int = 0
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -308,6 +308,15 @@ def audio_payload_signature(content: bytes) -> str | None:
     }:
         return "M4A"
     return None
+
+
+def is_zip_compatible_payload(content: bytes) -> bool:
+    return content.startswith(
+        (
+            ZIP_LOCAL_FILE_SIGNATURE,
+            ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE,
+        )
+    )
 
 
 def read_verified_zip_member(
@@ -764,6 +773,7 @@ def scan_zip(
     compression_ratio_limit: int = ZIP_COMPRESSION_RATIO_LIMIT,
     entry_count_limit: int = ZIP_ENTRY_COUNT_LIMIT,
     lzma_dictionary_limit: int = ZIP_LZMA_DICTIONARY_LIMIT,
+    nested_total_limit: int = ZIP_NESTED_TOTAL_LIMIT,
     _nested_depth: int = 0,
     _nested_budget: ZipNestedScanBudget | None = None,
 ) -> list[str]:
@@ -1129,13 +1139,13 @@ def scan_zip(
                         continue
                     if (
                         nested_budget.compressed_bytes + info.compress_size
-                        > ZIP_NESTED_TOTAL_LIMIT
-                        or nested_budget.uncompressed_bytes + info.file_size
-                        > ZIP_NESTED_TOTAL_LIMIT
+                        > nested_total_limit
+                        or nested_budget.expanded_bytes + info.file_size
+                        > nested_total_limit
                     ):
                         findings.append(
                             f"{archive_label}: nested archives exceed the "
-                            f"{ZIP_NESTED_TOTAL_LIMIT}-byte aggregate limit"
+                            f"{nested_total_limit}-byte aggregate limit"
                         )
                         continue
                     nested_compressed_size = max(info.compress_size, 1)
@@ -1150,7 +1160,7 @@ def scan_zip(
                         continue
                     nested_budget.archive_count += 1
                     nested_budget.compressed_bytes += info.compress_size
-                    nested_budget.uncompressed_bytes += info.file_size
+                    nested_budget.expanded_bytes += info.file_size
                     nested_stream = archive.fp
                     nested_stream_position: int | None = None
                     try:
@@ -1204,6 +1214,7 @@ def scan_zip(
                             compression_ratio_limit=compression_ratio_limit,
                             entry_count_limit=entry_count_limit,
                             lzma_dictionary_limit=lzma_dictionary_limit,
+                            nested_total_limit=nested_total_limit,
                             _nested_depth=_nested_depth + 1,
                             _nested_budget=nested_budget,
                         )
@@ -1347,6 +1358,69 @@ def scan_zip(
                     )
                     break
                 scanned_bytes += len(content)
+                nested_output_already_charged = False
+                if _nested_depth > 0:
+                    if (
+                        nested_budget.expanded_bytes + len(content)
+                        > nested_total_limit
+                    ):
+                        findings.append(
+                            f"{archive_label}: recursively decoded content exceeds "
+                            f"the {nested_total_limit}-byte nested aggregate limit"
+                        )
+                        continue
+                    nested_budget.expanded_bytes += len(content)
+                    nested_output_already_charged = True
+                if is_zip_compatible_payload(content):
+                    if _nested_depth >= ZIP_NESTED_DEPTH_LIMIT:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: nested archive "
+                            f"depth exceeds {ZIP_NESTED_DEPTH_LIMIT}"
+                        )
+                        continue
+                    if (
+                        nested_budget.archive_count + 1
+                        > ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: nested archive count exceeds "
+                            f"{ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
+                        )
+                        continue
+                    if (
+                        nested_budget.compressed_bytes + info.compress_size
+                        > nested_total_limit
+                        or (
+                            not nested_output_already_charged
+                            and nested_budget.expanded_bytes + info.file_size
+                            > nested_total_limit
+                        )
+                    ):
+                        findings.append(
+                            f"{archive_label}: nested archives exceed the "
+                            f"{nested_total_limit}-byte aggregate limit"
+                        )
+                        continue
+                    nested_budget.archive_count += 1
+                    nested_budget.compressed_bytes += info.compress_size
+                    if not nested_output_already_charged:
+                        nested_budget.expanded_bytes += info.file_size
+                    findings.extend(
+                        scan_zip(
+                            BytesIO(content),
+                            label=f"{archive_label}: nested archive {name!r}",
+                            member_scan_limit=member_scan_limit,
+                            total_scan_limit=total_scan_limit,
+                            compressed_input_limit=compressed_input_limit,
+                            compression_ratio_limit=compression_ratio_limit,
+                            entry_count_limit=entry_count_limit,
+                            lzma_dictionary_limit=lzma_dictionary_limit,
+                            nested_total_limit=nested_total_limit,
+                            _nested_depth=_nested_depth + 1,
+                            _nested_budget=nested_budget,
+                        )
+                    )
+                    continue
                 text = decode_text_for_secret_scan(content)
                 member_label = f"{archive_label}: archive entry {name!r}"
                 audio_signature = audio_payload_signature(content)

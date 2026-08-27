@@ -258,6 +258,41 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("payload.zip" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_zip_content_scan_detects_renamed_nested_zip_payload(self) -> None:
+        token = "github_pat_" + "d" * 24
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", token)
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.dat", inner.getvalue())
+
+        findings = scan_zip(BytesIO(outer.getvalue()), label="renamed.zip")
+
+        self.assertTrue(any("payload.dat" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_zip_content_scan_charges_recursive_output_to_shared_nested_budget(self) -> None:
+        member_content = b"x" * 256
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", member_content)
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("inner.zip", inner.getvalue())
+        nested_limit = len(inner.getvalue()) + len(member_content) - 1
+
+        findings = scan_zip(
+            BytesIO(outer.getvalue()),
+            label="shared-budget.zip",
+            nested_total_limit=nested_limit,
+        )
+
+        self.assertTrue(
+            any("recursively decoded content" in item for item in findings),
+            findings,
+        )
+
     def test_zip_content_scan_rejects_unsupported_and_overdeep_nested_archives(self) -> None:
         unsupported = BytesIO()
         with zipfile.ZipFile(unsupported, "w") as archive:
