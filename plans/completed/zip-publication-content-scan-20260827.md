@@ -25,7 +25,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Preserve complete layout, descriptor, local/central metadata, output-size, CRC, history, symlink and binary/audio exclusion controls from PR #69.
 - Explicit archive paths fail closed when missing or malformed and share the same parser as current/history candidates.
 - Source snapshot and Windows/iOS archives are scanned after creation and before upload; final release Windows/iOS archives are scanned after artifact download and before manifest, attestation or publication.
-- Large unknown safe-named content remains rejected. Known binary compatibility uses bounded magic input rather than a broad filename exemption.
+- Large unknown safe-named content remains rejected regardless of a spoofed magic prefix. A bounded `.app` executable is fully scanned; only exact JDK modules use a bounded, structurally validated JIMAGE probe.
 - Secret-shaped finding labels are redacted before CI output.
 - No force push, duplicate PR, tag/Release, secret, device/provider or Human action in the local phase.
 
@@ -34,7 +34,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - The existing bounded EOCD/central/local/data-descriptor parser remains the single current/history/explicit archive boundary.
 - ZIP_LZMA dictionary properties are checked against 16 MiB before constructing the raw decoder.
 - Decoded text uses separate 512 KiB member-output, 4 MiB archive metadata/output, 4 MiB aggregate compressed-input and 100:1 ratio budgets.
-- Large extensionless members use only a stored/deflate prefix probe capped at 64 KiB/member and 256 KiB/archive. Mach-O, ELF, JIMAGE and ar magic are recognized; exact JDK `runtime/lib/ct.sym` and `.lib` remain bounded binary exclusions.
+- A main `.app` executable up to the 4 MiB archive budget is fully decoded and scanned. Exact JDK `runtime/lib/modules` may exceed that bound only after a stored/deflate prefix probe capped at 64 KiB/member and 256 KiB/archive validates its JIMAGE header and index bounds. Exact `runtime/lib/ct.sym` and `.lib` remain bounded binary exclusions.
 - Repeatable `--archive` arguments scan exact post-build bytes. Producer workflows and the final publication job place the scan between archive creation/download and upload/manifest/attestation/publication.
 
 ## Progress
@@ -42,7 +42,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] RED: six focused controls failed on decoder construction, missing aggregate input API, missing explicit CLI and missing workflow order.
 - [x] GREEN: dictionary and aggregate budgets, explicit archive CLI and all producer/final consumer calls implemented.
 - [x] Compatibility: exact current-main source, Windows and iOS archives first exposed four legitimate large binaries; narrow bounded classification fixed them while a large text control still fails.
-- [x] Security review: broad `.sym` and two-byte `MZ` exemptions were removed; secret-shaped labels are redacted. One separate bypass/regression cycle found no remaining concrete issue.
+- [x] Security review: broad `.sym` and two-byte `MZ` exemptions were removed; secret-shaped labels are redacted. Hosted review then reproduced magic-prefix spoofing; generic magic exemptions were removed and the malicious ELF-prefix/app-token controls now fail closed.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
@@ -62,11 +62,11 @@ Execution: local parent two-pass; no substitute child model used because the tas
 
 ### Standards
 
-The patch follows repository fail-closed/resource-bound rules, uses standard-library decoders only, keeps one scanner boundary and preserves executable/script/workflow conventions. The separate binary-prefix decoder duplicates a small deflate loop but has a distinct prefix-only resource contract and avoids weakening the full CRC/EOF verifier. No documented-standard breach or actionable smell remains. Unresolved findings: `0`.
+The patch follows repository fail-closed/resource-bound rules, uses standard-library decoders only, keeps one scanner boundary and preserves executable/script/workflow conventions. The separate JIMAGE-prefix decoder duplicates a small deflate loop but has a distinct exact-path/resource contract and avoids weakening the full CRC/EOF verifier. No documented-standard breach or actionable smell remains. Unresolved findings: `0`.
 
 ### Spec
 
-All six portfolio acceptance items are implemented: pre-constructor dictionary cap, archive aggregate input cap, supported-method controls, explicit safe/malicious/missing archive CLI, create/download→scan→upload/publish ordering, latest-main preservation and relevant checks. Bounded binary classification and label redaction are necessary compatibility/safety repairs, not unrelated scope. Android APK content scanning remains outside this Windows/iOS ZIP experiment and retains its separate manifest/signature verifier. Unresolved findings: `0`.
+All six portfolio acceptance items are implemented: pre-constructor dictionary cap, archive aggregate input cap, supported-method controls, explicit safe/malicious/missing archive CLI, create/download→scan→upload/publish ordering, latest-main preservation and relevant checks. Full bounded app-executable scanning, exact JIMAGE validation and label redaction are necessary compatibility/safety repairs, not unrelated scope. Android APK content scanning remains outside this Windows/iOS ZIP experiment and retains its separate manifest/signature verifier. Unresolved findings: `0`.
 
 ## Stop, rollback and remaining gates
 

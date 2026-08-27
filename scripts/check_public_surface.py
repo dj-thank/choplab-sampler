@@ -95,17 +95,8 @@ ZIP64_UINT32_SENTINEL = (1 << 32) - 1
 ZIP_MEMBER_INPUT_CHUNK = 64 * 1024
 ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT = 64 * 1024
 ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT = 256 * 1024
-ZIP_BINARY_MAGIC_PREFIXES = (
-    b"\x7fELF",
-    b"\xca\xfe\xba\xbe",
-    b"\xbe\xba\xfe\xca",
-    b"\xfe\xed\xfa\xce",
-    b"\xce\xfa\xed\xfe",
-    b"\xfe\xed\xfa\xcf",
-    b"\xcf\xfa\xed\xfe",
-    b"\xda\xda\xfe\xca",
-    b"!<arch>\n",
-)
+ZIP_JIMAGE_HEADER = struct.Struct("<7I")
+ZIP_JIMAGE_MAGIC = 0xCAFEDADA
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -199,6 +190,19 @@ def suspicious_path(path: PurePosixPath) -> str | None:
 def is_known_archive_binary_path(path: PurePosixPath) -> bool:
     parts = tuple(part.lower() for part in path.parts)
     return parts[-3:] == ("runtime", "lib", "ct.sym")
+
+
+def is_app_main_executable_path(path: PurePosixPath) -> bool:
+    app_directory = path.parent.name
+    return (
+        app_directory.lower().endswith(".app")
+        and path.name == app_directory[:-4]
+    )
+
+
+def is_jdk_modules_path(path: PurePosixPath) -> bool:
+    parts = tuple(part.lower() for part in path.parts)
+    return parts[-3:] == ("runtime", "lib", "modules")
 
 
 def decode_text_for_secret_scan(content: bytes) -> str:
@@ -364,7 +368,7 @@ def read_verified_zip_member(
     return bytes(output)
 
 
-def read_zip_binary_magic(
+def read_zip_binary_prefix(
     stream: object,
     info: zipfile.ZipInfo,
     *,
@@ -372,7 +376,7 @@ def read_zip_binary_magic(
     compressed_input_limit: int,
 ) -> tuple[bytes, int]:
     """Read only enough bounded stored/deflate input to classify known binaries."""
-    probe_size = max(len(prefix) for prefix in ZIP_BINARY_MAGIC_PREFIXES)
+    probe_size = ZIP_JIMAGE_HEADER.size
     if compressed_input_limit <= 0:
         raise ValueError("archive binary probe input budget is exhausted")
     stream.seek(payload_offset)
@@ -412,8 +416,31 @@ def read_zip_binary_magic(
     return bytes(output), consumed
 
 
-def has_known_binary_magic(content: bytes) -> bool:
-    return any(content.startswith(prefix) for prefix in ZIP_BINARY_MAGIC_PREFIXES)
+def has_valid_jimage_header(content: bytes, file_size: int) -> bool:
+    if len(content) < ZIP_JIMAGE_HEADER.size:
+        return False
+    (
+        magic,
+        version,
+        flags,
+        resource_count,
+        table_length,
+        locations_size,
+        strings_size,
+    ) = ZIP_JIMAGE_HEADER.unpack_from(content)
+    index_size = (
+        ZIP_JIMAGE_HEADER.size
+        + table_length * 2 * struct.calcsize("<I")
+        + locations_size
+        + strings_size
+    )
+    return (
+        magic == ZIP_JIMAGE_MAGIC
+        and version >> 16 == 1
+        and flags == 0
+        and 0 < resource_count <= table_length
+        and index_size <= file_size
+    )
 
 
 def preflight_zip_directory(
@@ -884,7 +911,17 @@ def scan_zip(
                         f"{compression_ratio_limit}:1 compression scan limit"
                     )
                     continue
-                if info.file_size > member_scan_limit:
+                bounded_app_executable = (
+                    is_app_main_executable_path(entry)
+                    and info.file_size <= total_scan_limit
+                )
+                if info.file_size > member_scan_limit and not bounded_app_executable:
+                    if not is_jdk_modules_path(entry):
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: exceeds "
+                            f"{member_scan_limit}-byte member content scan limit"
+                        )
+                        continue
                     binary_probe_stream = archive.fp
                     binary_probe_position: int | None = None
                     try:
@@ -895,7 +932,7 @@ def scan_zip(
                             - scanned_binary_probe_bytes
                         )
                         binary_probe_position = binary_probe_stream.tell()
-                        prefix, consumed = read_zip_binary_magic(
+                        prefix, consumed = read_zip_binary_prefix(
                             binary_probe_stream,
                             info,
                             payload_offset=local_payload_offset,
@@ -923,11 +960,11 @@ def scan_zip(
                                     f"{archive_label}: archive entry {name!r}: binary "
                                     "probe stream position restore failed"
                                 )
-                    if has_known_binary_magic(prefix):
+                    if has_valid_jimage_header(prefix, info.file_size):
                         continue
                     findings.append(
-                        f"{archive_label}: archive entry {name!r}: exceeds "
-                        f"{member_scan_limit}-byte member content scan limit"
+                        f"{archive_label}: archive entry {name!r}: JDK modules "
+                        "member has an invalid JIMAGE header"
                     )
                     continue
                 if info.compress_size > compressed_input_limit:
@@ -963,7 +1000,11 @@ def scan_zip(
                         member_stream,
                         info,
                         payload_offset=local_payload_offset,
-                        output_limit=member_scan_limit,
+                        output_limit=(
+                            total_scan_limit
+                            if bounded_app_executable
+                            else member_scan_limit
+                        ),
                         compressed_input_limit=compressed_input_limit,
                         lzma_dictionary_limit=lzma_dictionary_limit,
                     )

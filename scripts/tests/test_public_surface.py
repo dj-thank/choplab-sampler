@@ -180,6 +180,19 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         large_text = BytesIO()
         with zipfile.ZipFile(large_text, "w", zipfile.ZIP_STORED) as archive:
             archive.writestr("docs/large.txt", b"x" * (600 * 1024))
+        spoofed_binary = BytesIO()
+        with zipfile.ZipFile(spoofed_binary, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "payload.dat",
+                b"\x7fELF" + b"x" * (600 * 1024),
+            )
+        secret_app = BytesIO()
+        token = b"github_pat_" + b"m" * 24
+        with zipfile.ZipFile(secret_app, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "ChopLab.app/ChopLab",
+                b"\xca\xfe\xba\xbe" + token + b"\x00" * (600 * 1024),
+            )
 
         binary_findings = scan_zip(
             BytesIO(known_binary.getvalue()),
@@ -189,11 +202,27 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             BytesIO(large_text.getvalue()),
             label="large-text.zip",
         )
+        spoofed_findings = scan_zip(
+            BytesIO(spoofed_binary.getvalue()),
+            label="spoofed-binary.zip",
+        )
+        secret_app_findings = scan_zip(
+            BytesIO(secret_app.getvalue()),
+            label="secret-app.zip",
+        )
 
         self.assertEqual([], binary_findings)
         self.assertTrue(
             any("member content scan limit" in item for item in text_findings),
             text_findings,
+        )
+        self.assertTrue(
+            any("member content scan limit" in item for item in spoofed_findings),
+            spoofed_findings,
+        )
+        self.assertTrue(
+            any("secret-shaped content" in item for item in secret_app_findings),
+            secret_app_findings,
         )
 
     def test_zip_content_scan_does_not_treat_binary_or_audio_bytes_as_text(self) -> None:
