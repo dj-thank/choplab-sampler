@@ -25,7 +25,8 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Preserve complete layout, descriptor, local/central metadata, output-size, CRC, history, symlink and binary/audio exclusion controls from PR #69.
 - Explicit archive paths fail closed when missing or malformed and share the same parser as current/history candidates.
 - Source snapshot and Windows/iOS archives are scanned after creation and before upload; final release Windows/iOS archives are scanned after artifact download and before manifest, attestation or publication.
-- Large unknown safe-named content remains rejected regardless of a spoofed magic prefix. A bounded `.app` executable is fully scanned; only exact JDK modules use a bounded, structurally validated JIMAGE probe.
+- Large unknown safe-named content remains rejected regardless of a spoofed magic prefix or basename. A bounded `.app` executable and the exact bounded Skiko ICU payload are fully scanned; only exact JDK modules use a bounded, structurally validated JIMAGE probe.
+- Current and explicit ZIP roots share count/compressed/expanded work limits. Reachable-history ZIP change records, direct blob refs and non-commit tree listings are streamed or enumerated under explicit caps.
 - Secret-shaped finding labels are redacted before CI output.
 - No force push, duplicate PR, tag/Release, secret, device/provider or Human action in the local phase.
 
@@ -34,7 +35,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - The existing bounded EOCD/central/local/data-descriptor parser remains the single current/history/explicit archive boundary.
 - ZIP_LZMA dictionary properties are checked against 16 MiB before constructing the raw decoder.
 - Decoded text uses separate 512 KiB member-output, 4 MiB archive metadata/output, 4 MiB aggregate compressed-input and 100:1 ratio budgets.
-- A main `.app` executable up to the 4 MiB archive budget is fully decoded and scanned. Exact JDK `runtime/lib/modules` may exceed that bound only after a stored/deflate prefix probe capped at 64 KiB/member and 256 KiB/archive validates its JIMAGE header and index bounds. Exact `runtime/lib/ct.sym` and `.lib` remain bounded binary exclusions.
+- A main `.app` executable up to the 4 MiB archive budget is fully decoded and scanned. Exact JDK `runtime/lib/modules` may exceed that bound only after a stored/deflate prefix probe capped at 64 KiB/member and 256 KiB/archive validates its JIMAGE header and index bounds. Exact `runtime/lib/ct.sym` and `.lib` remain bounded binary exclusions. Root `icudtl.dat` inside `skiko-awt-runtime-windows-*.jar` is capped at 16 MiB, ICU-header validated and fully secret-scanned; unrelated basename aliases remain ordinary bounded content.
 - Repeatable `--archive` arguments scan exact post-build bytes. Producer workflows and the final publication job place the scan between archive creation/download and upload/manifest/attestation/publication.
 
 ## Progress
@@ -45,13 +46,14 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] Security review: broad `.sym` and two-byte `MZ` exemptions were removed; secret-shaped labels are redacted. Hosted review then reproduced magic-prefix spoofing; generic magic exemptions were removed and the malicious ELF-prefix/app-token controls now fail closed.
 - [x] Final review follow-up: nested archives, BOM-marked UTF-16/32, safe-named audio payloads and non-commit tree refs received direct regressions. Nested recursion and resource caps preserve the exact source/Windows/iOS controls.
 - [x] Final-final review follow-up: nested archive content signatures now defeat filename aliases, and recursively decoded outputs consume the same expanded-work budget across every depth.
+- [x] Late hosted review follow-up: prefixed ZIPs, renamed unsupported archives, direct blob refs, ID3-less MP3, ICU basename aliases, cross-root work amplification and unbounded raw history enumeration have direct regressions and fail-closed bounds.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
 
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
-- Complete Python policy: 108 tests, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Capable CI hosts still run that test.
+- Complete Python policy: 116 tests, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Capable CI hosts still run that test.
 - Current and reachable-history public scans: 465 candidates, PASS. `py_compile` and `git diff --check`: PASS.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.
 - Exact archive scan: candidate source snapshot 1,542,548 / `F9B63B84A85A5D6336BE5C52FED5878DC6350AD20D09C3B3049015DA35C9B6A0`; current-main Windows ZIP 89,156,340 / `7619DDE24822CC5CF6B38893382AC46DF8752AE777F046844E6322713F42AAA2`; current-main iOS ZIP 318,236 / `5D17C8BD5E3DC6C359FED40F1B79B38CD901D53343735566201AA454BB72475C`; combined PASS.
@@ -64,15 +66,14 @@ Execution: local parent two-pass; no substitute child model used because the tas
 
 ### Standards
 
-The patch follows repository fail-closed/resource-bound rules, uses standard-library decoders only, keeps one scanner boundary and preserves executable/script/workflow conventions. The separate JIMAGE-prefix decoder duplicates a small deflate loop but has a distinct exact-path/resource contract and avoids weakening the full CRC/EOF verifier. No documented-standard breach or actionable smell remains. Unresolved findings: `0`.
+The patch follows repository fail-closed/resource-bound rules, uses standard-library decoders only, keeps one scanner boundary and preserves executable/script/workflow conventions. Git output is streamed into bounded buffers; recursive, root-candidate, direct-ref and large-compatibility work have separate explicit budgets. The JIMAGE probe remains the sole scan-skipping large-body exception; the bounded Skiko ICU compatibility path still verifies and scans the complete body. No documented-standard breach or actionable smell remains. Unresolved findings: `0`.
 
 ### Spec
 
-All six portfolio acceptance items are implemented: pre-constructor dictionary cap, archive aggregate input cap, supported-method controls, explicit safe/malicious/missing archive CLI, create/download→scan→upload/publish ordering, latest-main preservation and relevant checks. Full bounded app scanning, exact JIMAGE validation, suffix/structure nested recursion with shared expanded budget, BOM/audio aliases, non-commit refs and label redaction are necessary completeness/compatibility repairs, not unrelated scope. Android APK content scanning remains outside this Windows/iOS ZIP experiment and retains its separate manifest/signature verifier. Unresolved findings: `0`.
+All six portfolio acceptance items are implemented: pre-constructor dictionary cap, archive and cross-root aggregate input/output caps, supported-method controls, explicit safe/malicious/missing archive CLI, create/download→scan→upload/publish ordering, latest-main preservation and relevant checks. Full bounded app/Skiko ICU scanning, exact JIMAGE validation, prefix/suffix/structure nested recursion with shared expanded budget, renamed unsupported formats, BOM/audio aliases, non-commit tree/direct-blob refs and label redaction are necessary completeness/compatibility repairs, not unrelated scope. Android APK content scanning remains outside this Windows/iOS ZIP experiment and retains its separate manifest/signature verifier. Unresolved findings: `0`.
 
 ## Stop, rollback and remaining gates
 
-- Rollback is the isolated branch/worktree. Remote PR #69 remains unchanged at its old head until provider authorization/check gates are exercised.
-- PR #69 has 27 unresolved review threads; the prior 25 require fix/read-back confirmation and the final two require replies against this product before resolution.
+- Rollback is the isolated branch/worktree. Existing PR #69 remains the only remote target; its exact head/check/review state must be refreshed after this local repair is committed and pushed normally.
 - Exact-head hosted workflow syntax/execution, clean review, mergeability, normal merge and merged-main read-back remain provider gates.
 - Physical audio, device, provider account, next binary publication and `HUMAN_GO` remain outside this plan.

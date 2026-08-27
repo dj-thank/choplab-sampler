@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import struct
 import unittest
 import zipfile
@@ -11,6 +12,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from scripts.check_public_surface import (
+    ZipCandidateScanBudget,
     main,
     scan_history,
     scan_public_path,
@@ -175,6 +177,31 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings,
         )
 
+    def test_current_zip_candidates_share_one_work_budget(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / "first.zip", root / "second.zip"]
+            for path in paths:
+                with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as archive:
+                    archive.writestr("notes.txt", b"x" * 32)
+            budget = ZipCandidateScanBudget(
+                archive_limit=2,
+                compressed_input_limit=48,
+                expanded_output_limit=48,
+            )
+
+            first_findings = scan_public_path(paths[0], zip_budget=budget)
+            second_findings = scan_public_path(paths[1], zip_budget=budget)
+
+        self.assertEqual([], first_findings)
+        self.assertTrue(
+            any(
+                "current/explicit ZIP compressed input" in item
+                for item in second_findings
+            ),
+            second_findings,
+        )
+
     def test_zip_content_scan_allows_known_large_binary_but_rejects_large_text(self) -> None:
         known_binary = BytesIO()
         with zipfile.ZipFile(known_binary, "w", zipfile.ZIP_STORED) as archive:
@@ -230,6 +257,54 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             secret_app_findings,
         )
 
+    def test_zip_content_scan_does_not_exempt_large_icu_basename_alias(self) -> None:
+        candidate = BytesIO()
+        header = bytearray(24)
+        header[0:2] = (24).to_bytes(2, "little")
+        header[2:4] = b"\xda\x27"
+        header[4:6] = (20).to_bytes(2, "little")
+        header[12:16] = b"CmnD"
+        token = b"github_pat_" + b"i" * 24
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "docs/icudtl.dat",
+                bytes(header) + token + b"x" * (600 * 1024),
+            )
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="icu-alias.zip")
+
+        self.assertTrue(
+            any("member content scan limit" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_reads_full_bounded_skiko_icu_body(self) -> None:
+        header = bytearray(24)
+        header[0:2] = (24).to_bytes(2, "little")
+        header[2:4] = b"\xda\x27"
+        header[4:6] = (20).to_bytes(2, "little")
+        header[12:16] = b"CmnD"
+        token = b"github_pat_" + b"k" * 24
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "icudtl.dat",
+                bytes(header) + b"x" * (600 * 1024) + token,
+            )
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "ChopLab/app/skiko-awt-runtime-windows-x64-0.144.6.jar",
+                inner.getvalue(),
+            )
+
+        findings = scan_zip(BytesIO(outer.getvalue()), label="skiko.zip")
+
+        self.assertTrue(
+            any("secret-shaped content" in item for item in findings),
+            findings,
+        )
+
     def test_zip_content_scan_does_not_treat_binary_or_audio_bytes_as_text(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         with TemporaryDirectory() as directory:
@@ -271,6 +346,38 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("payload.dat" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_zip_content_scan_rejects_prefixed_renamed_nested_zip(self) -> None:
+        token = b"github_pat_" + b"p" * 24
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", token)
+        prefixed = b"MZ" + b"\x00" * 30 + inner.getvalue()
+        with zipfile.ZipFile(BytesIO(prefixed)) as archive:
+            self.assertEqual(token, archive.read("notes.txt"))
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.dat", prefixed)
+
+        findings = scan_zip(BytesIO(outer.getvalue()), label="prefixed-nested.zip")
+
+        self.assertTrue(
+            any("unclaimed prefix bytes" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_rejects_renamed_unsupported_nested_archive(self) -> None:
+        token = b"github_pat_" + b"g" * 24
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("payload.dat", gzip.compress(token))
+
+        findings = scan_zip(BytesIO(outer.getvalue()), label="renamed-gzip.zip")
+
+        self.assertTrue(
+            any("nested archive format '.gz'" in item for item in findings),
+            findings,
+        )
 
     def test_zip_content_scan_charges_recursive_output_to_shared_nested_budget(self) -> None:
         member_content = b"x" * 256
@@ -329,6 +436,19 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         findings = scan_zip(BytesIO(candidate.getvalue()), label="audio-alias.zip")
 
         self.assertTrue(any("audio signature" in item for item in findings), findings)
+
+    def test_zip_content_scan_detects_id3less_mp3_frame(self) -> None:
+        candidate = BytesIO()
+        mpeg1_layer3_frame = b"\xff\xfb\x90\x64" + b"\x00" * 413
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("docs/readme.txt", mpeg1_layer3_frame)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="id3less-mp3.zip")
+
+        self.assertTrue(
+            any("audio signature 'MPEG audio/MP3'" in item for item in findings),
+            findings,
+        )
 
     def test_zip_content_scan_reads_archive_and_entry_comments(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -735,6 +855,41 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("directory-marked entry contains data" in item for item in findings))
 
+    def test_history_zip_change_enumeration_has_a_record_cap(self) -> None:
+        object_id = "a" * 40
+        raw_record = (
+            f":100644 100644 {object_id} {object_id} M\0archive.zip\0"
+        ).encode("ascii")
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
+            if "--raw" in arguments:
+                return raw_record * 2
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with (
+            patch("scripts.check_public_surface.run_git", side_effect=fake_run_git),
+            patch("scripts.check_public_surface.HISTORICAL_ZIP_CHANGE_RECORD_LIMIT", 1),
+        ):
+            findings = scan_history()
+
+        self.assertTrue(
+            any("2 records exceed the 1-record scan limit" in item for item in findings),
+            findings,
+        )
+
     def test_history_scan_reads_reachable_zip_blob_content(self) -> None:
         object_id = "a" * 40
         payload = BytesIO()
@@ -1064,6 +1219,44 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings = scan_history()
 
         self.assertTrue(any("archive.zip" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_history_scan_reads_zip_from_a_direct_blob_ref(self) -> None:
+        object_id = "b" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", "github_pat_" + "b" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if "--raw" in arguments:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return f"{object_id}\0blob\0\0\0".encode("ascii")
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(
+            any("direct-ref-bbbbbbbbbbbb.zip" in item for item in findings),
+            findings,
+        )
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:

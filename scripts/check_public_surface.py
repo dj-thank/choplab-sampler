@@ -75,6 +75,13 @@ ZIP_NESTED_DEPTH_LIMIT = 3
 ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
 ZIP_NESTED_TOTAL_LIMIT = 64 * 1024 * 1024
+CURRENT_ZIP_ARCHIVE_COUNT_LIMIT = 128
+CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 64 * 1024 * 1024
+CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 64 * 1024 * 1024
+HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
+HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
+HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
+GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"gh" + r"o_[A-Za-z0-9_]{20,}"),
@@ -98,6 +105,7 @@ ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT = 64 * 1024
 ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT = 256 * 1024
 ZIP_JIMAGE_HEADER = struct.Struct("<7I")
 ZIP_JIMAGE_MAGIC = 0xCAFEDADA
+ZIP_SKIKO_ICU_SCAN_LIMIT = 16 * 1024 * 1024
 
 
 @dataclass
@@ -107,12 +115,75 @@ class ZipNestedScanBudget:
     expanded_bytes: int = 0
 
 
+@dataclass
+class ZipCandidateScanBudget:
+    archive_limit: int = CURRENT_ZIP_ARCHIVE_COUNT_LIMIT
+    compressed_input_limit: int = CURRENT_ZIP_COMPRESSED_INPUT_LIMIT
+    expanded_output_limit: int = CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT
+    archive_count: int = 0
+    compressed_bytes: int = 0
+    expanded_bytes: int = 0
+
+
+class GitScanLimitError(RuntimeError):
+    """A Git evidence stream exceeded its explicit in-memory/work bound."""
+
+
 def run_git(arguments: list[str]) -> bytes:
-    return subprocess.run(
-        ["git", *arguments],
-        check=True,
-        capture_output=True,
-    ).stdout
+    command = ["git", *arguments]
+    bounded_zip_history = (
+        "--raw" in arguments and ":(icase,glob)**/*.zip" in arguments
+    )
+    output_limit = (
+        HISTORICAL_ZIP_RAW_OUTPUT_LIMIT
+        if bounded_zip_history
+        else GIT_OUTPUT_LIMIT
+    )
+    nul_field_limit = (
+        HISTORICAL_ZIP_CHANGE_RECORD_LIMIT * 2
+        if bounded_zip_history
+        else None
+    )
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if process.stdout is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("git stdout pipe is unavailable")
+
+    output = bytearray()
+    nul_fields = 0
+    try:
+        while True:
+            chunk = process.stdout.read(64 * 1024)
+            if not chunk:
+                break
+            if len(output) + len(chunk) > output_limit:
+                raise GitScanLimitError(
+                    f"git output exceeds the {output_limit}-byte scan limit"
+                )
+            if nul_field_limit is not None:
+                nul_fields += chunk.count(b"\0")
+                if nul_fields > nul_field_limit:
+                    raise GitScanLimitError(
+                        "git ZIP history exceeds the "
+                        f"{HISTORICAL_ZIP_CHANGE_RECORD_LIMIT}-record scan limit"
+                    )
+            output.extend(chunk)
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        process.stdout.close()
+
+    return_code = process.wait()
+    if return_code:
+        raise subprocess.CalledProcessError(return_code, command)
+    return bytes(output)
 
 
 def public_candidate_paths() -> list[PurePosixPath]:
@@ -133,33 +204,43 @@ def historical_paths() -> list[PurePosixPath]:
     return [path for _, path in historical_objects()]
 
 
-def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
+def historical_zip_objects() -> tuple[list[tuple[str, PurePosixPath]], list[str]]:
     """Return every blob version ever reachable through a path ending in .zip.
 
     `rev-list --objects` provides only one path hint for a shared object, so a blob
     reachable as both `copy.dat` and `removed.zip` cannot be selected reliably from
     that output. Raw history records retain the path paired with each old/new blob.
     """
-    raw = run_git(
-        [
-            "log",
-            "--all",
-            "-m",
-            "--format=",
-            "--raw",
-            "--no-abbrev",
-            "--no-renames",
-            "--root",
-            "-z",
-            "--",
-            ":(icase,glob)**/*.zip",
-        ]
-    )
+    try:
+        raw = run_git(
+            [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                ":(icase,glob)**/*.zip",
+            ]
+        )
+    except GitScanLimitError as error:
+        return [], [f"git history ZIP changes: {error}"]
     fields = raw.split(b"\0")
     if fields and not fields[-1]:
         fields.pop()
     if len(fields) % 2:
-        raise RuntimeError("unexpected NUL-delimited git raw history output")
+        return [], ["git history ZIP changes: invalid NUL-delimited raw output"]
+    record_count = len(fields) // 2
+    if record_count > HISTORICAL_ZIP_CHANGE_RECORD_LIMIT:
+        return [], [
+            "git history ZIP changes: "
+            f"{record_count} records exceed the "
+            f"{HISTORICAL_ZIP_CHANGE_RECORD_LIMIT}-record scan limit"
+        ]
 
     candidates: dict[str, PurePosixPath] = {}
     for index in range(0, len(fields), 2):
@@ -178,7 +259,7 @@ def historical_zip_objects() -> list[tuple[str, PurePosixPath]]:
             if object_id == "0" * 40:
                 continue
             candidates.setdefault(object_id, path)
-    return list(candidates.items())
+    return list(candidates.items()), []
 
 
 def historical_non_commit_tree_zip_objects() -> tuple[
@@ -198,6 +279,7 @@ def historical_non_commit_tree_zip_objects() -> tuple[
         return [], ["git history ZIP content: invalid non-commit ref metadata"]
 
     tree_ids: set[str] = set()
+    direct_blob_ids: set[str] = set()
     for index in range(0, len(fields), 4):
         object_id, object_type, peeled_id, peeled_type = (
             field.decode("ascii", errors="replace").strip()
@@ -207,7 +289,12 @@ def historical_non_commit_tree_zip_objects() -> tuple[
             tree_ids.add(object_id)
         if peeled_type == "tree":
             tree_ids.add(peeled_id)
+        if object_type == "blob":
+            direct_blob_ids.add(object_id)
+        if peeled_type == "blob":
+            direct_blob_ids.add(peeled_id)
     tree_ids.discard("")
+    direct_blob_ids.discard("")
     if len(tree_ids) > HISTORICAL_NON_COMMIT_TREE_LIMIT:
         return [], [
             "git history ZIP content: "
@@ -215,10 +302,71 @@ def historical_non_commit_tree_zip_objects() -> tuple[
             f"{HISTORICAL_NON_COMMIT_TREE_LIMIT}-tree scan limit"
         ]
 
-    candidates: dict[str, PurePosixPath] = {}
     findings: list[str] = []
+    if len(direct_blob_ids) > HISTORICAL_NON_COMMIT_BLOB_LIMIT:
+        findings.append(
+            "git history ZIP content: "
+            f"{len(direct_blob_ids)} direct blob refs exceed the "
+            f"{HISTORICAL_NON_COMMIT_BLOB_LIMIT}-blob scan limit"
+        )
+        direct_blob_ids = set(
+            sorted(direct_blob_ids)[:HISTORICAL_NON_COMMIT_BLOB_LIMIT]
+        )
+
+    candidates: dict[str, PurePosixPath] = {}
+    direct_blob_identification_bytes = 0
+    for object_id in sorted(direct_blob_ids):
+        try:
+            size = int(run_git(["cat-file", "-s", object_id]).strip())
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            findings.append(
+                "git history ZIP content: direct blob ref size check failed "
+                f"({type(error).__name__})"
+            )
+            continue
+        if size > HISTORICAL_ZIP_CONTAINER_LIMIT:
+            findings.append(
+                "git history ZIP content: direct blob ref exceeds the "
+                f"{HISTORICAL_ZIP_CONTAINER_LIMIT}-byte identification limit"
+            )
+            continue
+        if (
+            direct_blob_identification_bytes + size
+            > HISTORICAL_ZIP_TOTAL_LIMIT
+        ):
+            findings.append(
+                "git history ZIP content: direct blob ref identification exceeds "
+                f"the {HISTORICAL_ZIP_TOTAL_LIMIT}-byte aggregate limit"
+            )
+            break
+        try:
+            content = run_git(["cat-file", "blob", object_id])
+        except (OSError, GitScanLimitError, subprocess.CalledProcessError) as error:
+            findings.append(
+                "git history ZIP content: direct blob ref read failed "
+                f"({type(error).__name__})"
+            )
+            continue
+        if len(content) != size:
+            findings.append("git history ZIP content: direct blob ref size changed")
+            continue
+        direct_blob_identification_bytes += len(content)
+        if is_zip_compatible_payload(content):
+            candidates.setdefault(
+                object_id,
+                PurePosixPath(f"direct-ref-{object_id[:12]}.zip"),
+            )
+
+    tree_listing_bytes = 0
     for tree_id in sorted(tree_ids):
         raw_tree = run_git(["ls-tree", "-rz", "-r", "--full-tree", tree_id])
+        if tree_listing_bytes + len(raw_tree) > HISTORICAL_ZIP_TOTAL_LIMIT:
+            findings.append(
+                "git history ZIP content: non-commit tree listings exceed the "
+                f"{HISTORICAL_ZIP_TOTAL_LIMIT}-byte aggregate limit"
+            )
+            break
+        tree_listing_bytes += len(raw_tree)
         for record in raw_tree.split(b"\0"):
             if not record:
                 continue
@@ -236,6 +384,15 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                 and object_type == "blob"
                 and path.suffix.lower() == ".zip"
             ):
+                if (
+                    object_id not in candidates
+                    and len(candidates) >= HISTORICAL_ZIP_BLOB_COUNT_LIMIT
+                ):
+                    findings.append(
+                        "git history ZIP content: non-commit refs exceed the "
+                        f"{HISTORICAL_ZIP_BLOB_COUNT_LIMIT}-archive candidate limit"
+                    )
+                    return list(candidates.items()), findings
                 candidates.setdefault(object_id, path)
     return list(candidates.items()), findings
 
@@ -272,8 +429,16 @@ def is_jdk_modules_path(path: PurePosixPath) -> bool:
     return parts[-3:] == ("runtime", "lib", "modules")
 
 
-def is_icu_data_path(path: PurePosixPath) -> bool:
-    return path.name.lower() == "icudtl.dat"
+def is_skiko_icu_data_path(
+    path: PurePosixPath,
+    container_path: PurePosixPath | None,
+) -> bool:
+    return (
+        path.as_posix().lower() == "icudtl.dat"
+        and container_path is not None
+        and container_path.suffix.lower() == ".jar"
+        and container_path.name.lower().startswith("skiko-awt-runtime-windows-")
+    )
 
 
 def decode_text_for_secret_scan(content: bytes) -> str:
@@ -302,6 +467,20 @@ def audio_payload_signature(content: bytes) -> str | None:
         return "CAF"
     if content.startswith(b"ID3"):
         return "ID3/MP3"
+    if len(content) >= 4:
+        version_bits = (content[1] >> 3) & 0x03
+        layer_bits = (content[1] >> 1) & 0x03
+        bitrate_index = (content[2] >> 4) & 0x0F
+        sample_rate_index = (content[2] >> 2) & 0x03
+        if (
+            content[0] == 0xFF
+            and content[1] & 0xE0 == 0xE0
+            and version_bits != 0x01
+            and layer_bits != 0x00
+            and bitrate_index not in {0x00, 0x0F}
+            and sample_rate_index != 0x03
+        ):
+            return "MPEG audio/MP3"
     if len(content) >= 12 and content[4:8] == b"ftyp" and content[8:12] in {
         b"M4A ",
         b"M4B ",
@@ -311,12 +490,31 @@ def audio_payload_signature(content: bytes) -> str | None:
 
 
 def is_zip_compatible_payload(content: bytes) -> bool:
-    return content.startswith(
+    if content.startswith(
         (
             ZIP_LOCAL_FILE_SIGNATURE,
             ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE,
         )
-    )
+    ):
+        return True
+    try:
+        return zipfile.is_zipfile(BytesIO(content))
+    except (OSError, ValueError):
+        return False
+
+
+def unsupported_nested_archive_signature(content: bytes) -> str | None:
+    if content.startswith(b"\x1f\x8b"):
+        return ".gz"
+    if len(content) >= 4 and content[:3] == b"BZh" and content[3:4] in b"123456789":
+        return ".bz2"
+    if content.startswith(b"\xfd7zXZ\x00"):
+        return ".xz"
+    if content.startswith(b"7z\xbc\xaf'\x1c"):
+        return ".7z"
+    if len(content) >= 262 and content[257:262] == b"ustar":
+        return ".tar"
+    return None
 
 
 def read_verified_zip_member(
@@ -571,8 +769,6 @@ def has_valid_large_binary_header(
 ) -> bool:
     if is_jdk_modules_path(path):
         return has_valid_jimage_header(content, file_size)
-    if is_icu_data_path(path):
-        return has_valid_icu_data_header(content, file_size)
     return False
 
 
@@ -776,13 +972,53 @@ def scan_zip(
     nested_total_limit: int = ZIP_NESTED_TOTAL_LIMIT,
     _nested_depth: int = 0,
     _nested_budget: ZipNestedScanBudget | None = None,
+    _candidate_budget: ZipCandidateScanBudget | None = None,
+    _container_path: PurePosixPath | None = None,
 ) -> list[str]:
     findings: list[str] = []
     scanned_bytes = 0
     scanned_compressed_bytes = 0
     scanned_binary_probe_bytes = 0
+    scanned_large_binary_bytes = 0
+    scanned_large_binary_compressed_bytes = 0
     archive_label = label or str(source)
     nested_budget = _nested_budget or ZipNestedScanBudget()
+    candidate_budget = _candidate_budget
+
+    if candidate_budget is not None and _nested_depth == 0:
+        if candidate_budget.archive_count + 1 > candidate_budget.archive_limit:
+            return [
+                f"{archive_label}: current/explicit ZIP candidate count exceeds "
+                f"the {candidate_budget.archive_limit}-archive scan limit"
+            ]
+        candidate_budget.archive_count += 1
+
+    def reserve_candidate_work(compressed_bytes: int, expanded_bytes: int) -> bool:
+        if candidate_budget is None:
+            return True
+        if (
+            candidate_budget.compressed_bytes + compressed_bytes
+            > candidate_budget.compressed_input_limit
+        ):
+            findings.append(
+                f"{archive_label}: current/explicit ZIP compressed input exceeds "
+                f"the {candidate_budget.compressed_input_limit}-byte aggregate "
+                "scan limit"
+            )
+            return False
+        if (
+            candidate_budget.expanded_bytes + expanded_bytes
+            > candidate_budget.expanded_output_limit
+        ):
+            findings.append(
+                f"{archive_label}: current/explicit ZIP decoded output exceeds "
+                f"the {candidate_budget.expanded_output_limit}-byte aggregate "
+                "scan limit"
+            )
+            return False
+        candidate_budget.compressed_bytes += compressed_bytes
+        candidate_budget.expanded_bytes += expanded_bytes
+        return True
 
     preflight_findings = preflight_zip_directory(
         source,
@@ -1047,6 +1283,8 @@ def scan_zip(
                                 "scan limit"
                             )
                             continue
+                        if not reserve_candidate_work(info.compress_size, 0):
+                            continue
                         scanned_compressed_bytes += info.compress_size
                         directory_stream = archive.fp
                         directory_stream_position: int | None = None
@@ -1161,6 +1399,11 @@ def scan_zip(
                     nested_budget.archive_count += 1
                     nested_budget.compressed_bytes += info.compress_size
                     nested_budget.expanded_bytes += info.file_size
+                    if not reserve_candidate_work(
+                        info.compress_size,
+                        info.file_size,
+                    ):
+                        continue
                     nested_stream = archive.fp
                     nested_stream_position: int | None = None
                     try:
@@ -1217,6 +1460,8 @@ def scan_zip(
                             nested_total_limit=nested_total_limit,
                             _nested_depth=_nested_depth + 1,
                             _nested_budget=nested_budget,
+                            _candidate_budget=candidate_budget,
+                            _container_path=entry,
                         )
                     )
                     continue
@@ -1231,8 +1476,16 @@ def scan_zip(
                     is_app_main_executable_path(entry)
                     and info.file_size <= total_scan_limit
                 )
-                if info.file_size > member_scan_limit and not bounded_app_executable:
-                    if not (is_jdk_modules_path(entry) or is_icu_data_path(entry)):
+                bounded_skiko_icu = (
+                    is_skiko_icu_data_path(entry, _container_path)
+                    and info.file_size <= ZIP_SKIKO_ICU_SCAN_LIMIT
+                )
+                if (
+                    info.file_size > member_scan_limit
+                    and not bounded_app_executable
+                    and not bounded_skiko_icu
+                ):
+                    if not is_jdk_modules_path(entry):
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: exceeds "
                             f"{member_scan_limit}-byte member content scan limit"
@@ -1247,6 +1500,20 @@ def scan_zip(
                             ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT
                             - scanned_binary_probe_bytes
                         )
+                        if candidate_budget is not None:
+                            remaining_probe_budget = min(
+                                remaining_probe_budget,
+                                candidate_budget.compressed_input_limit
+                                - candidate_budget.compressed_bytes,
+                            )
+                            if (
+                                candidate_budget.expanded_bytes
+                                + ZIP_JIMAGE_HEADER.size
+                                > candidate_budget.expanded_output_limit
+                            ):
+                                raise ValueError(
+                                    "current/explicit ZIP decoded-output budget is exhausted"
+                                )
                         binary_probe_position = binary_probe_stream.tell()
                         prefix, consumed = read_zip_binary_prefix(
                             binary_probe_stream,
@@ -1276,6 +1543,8 @@ def scan_zip(
                                     f"{archive_label}: archive entry {name!r}: binary "
                                     "probe stream position restore failed"
                                 )
+                    if not reserve_candidate_work(consumed, len(prefix)):
+                        continue
                     if has_valid_large_binary_header(entry, prefix, info.file_size):
                         continue
                     findings.append(
@@ -1283,28 +1552,52 @@ def scan_zip(
                         "binary has an invalid structural header"
                     )
                     continue
-                if info.compress_size > compressed_input_limit:
+                entry_compressed_input_limit = (
+                    ZIP_SKIKO_ICU_SCAN_LIMIT
+                    if bounded_skiko_icu
+                    else compressed_input_limit
+                )
+                if info.compress_size > entry_compressed_input_limit:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: exceeds "
-                        f"{compressed_input_limit}-byte compressed payload scan limit"
+                        f"{entry_compressed_input_limit}-byte compressed payload scan limit"
                     )
                     continue
-                if scanned_bytes + info.file_size > total_scan_limit:
-                    findings.append(
-                        f"{archive_label}: archive content exceeds "
-                        f"{total_scan_limit}-byte total content scan limit"
-                    )
-                    break
-                if (
-                    scanned_compressed_bytes + info.compress_size
-                    > compressed_input_limit
-                ):
-                    findings.append(
-                        f"{archive_label}: archive compressed input exceeds "
-                        f"the {compressed_input_limit}-byte aggregate scan limit"
-                    )
-                    break
-                scanned_compressed_bytes += info.compress_size
+                if bounded_skiko_icu:
+                    if (
+                        scanned_large_binary_bytes + info.file_size
+                        > ZIP_SKIKO_ICU_SCAN_LIMIT
+                        or scanned_large_binary_compressed_bytes + info.compress_size
+                        > ZIP_SKIKO_ICU_SCAN_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: bounded Skiko ICU content exceeds the "
+                            f"{ZIP_SKIKO_ICU_SCAN_LIMIT}-byte aggregate scan limit"
+                        )
+                        continue
+                else:
+                    if scanned_bytes + info.file_size > total_scan_limit:
+                        findings.append(
+                            f"{archive_label}: archive content exceeds "
+                            f"{total_scan_limit}-byte total content scan limit"
+                        )
+                        break
+                    if (
+                        scanned_compressed_bytes + info.compress_size
+                        > compressed_input_limit
+                    ):
+                        findings.append(
+                            f"{archive_label}: archive compressed input exceeds "
+                            f"the {compressed_input_limit}-byte aggregate scan limit"
+                        )
+                        break
+                if not reserve_candidate_work(info.compress_size, info.file_size):
+                    continue
+                if bounded_skiko_icu:
+                    scanned_large_binary_bytes += info.file_size
+                    scanned_large_binary_compressed_bytes += info.compress_size
+                else:
+                    scanned_compressed_bytes += info.compress_size
 
                 member_stream = archive.fp
                 member_stream_position: int | None = None
@@ -1317,11 +1610,15 @@ def scan_zip(
                         info,
                         payload_offset=local_payload_offset,
                         output_limit=(
-                            total_scan_limit
-                            if bounded_app_executable
-                            else member_scan_limit
+                            ZIP_SKIKO_ICU_SCAN_LIMIT
+                            if bounded_skiko_icu
+                            else (
+                                total_scan_limit
+                                if bounded_app_executable
+                                else member_scan_limit
+                            )
                         ),
-                        compressed_input_limit=compressed_input_limit,
+                        compressed_input_limit=entry_compressed_input_limit,
                         lzma_dictionary_limit=lzma_dictionary_limit,
                     )
                 except (
@@ -1351,13 +1648,21 @@ def scan_zip(
                                 f"{archive_label}: archive entry {name!r}: member stream "
                                 "position restore failed"
                             )
-                if scanned_bytes + len(content) > total_scan_limit:
-                    findings.append(
-                        f"{archive_label}: archive content exceeded "
-                        f"{total_scan_limit}-byte total content scan limit while reading"
-                    )
-                    break
-                scanned_bytes += len(content)
+                if bounded_skiko_icu:
+                    if not has_valid_icu_data_header(content, len(content)):
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: bounded Skiko "
+                            "ICU data has an invalid structural header"
+                        )
+                        continue
+                else:
+                    if scanned_bytes + len(content) > total_scan_limit:
+                        findings.append(
+                            f"{archive_label}: archive content exceeded "
+                            f"{total_scan_limit}-byte total content scan limit while reading"
+                        )
+                        break
+                    scanned_bytes += len(content)
                 nested_output_already_charged = False
                 if _nested_depth > 0:
                     if (
@@ -1371,6 +1676,13 @@ def scan_zip(
                         continue
                     nested_budget.expanded_bytes += len(content)
                     nested_output_already_charged = True
+                unsupported_format = unsupported_nested_archive_signature(content)
+                if unsupported_format is not None:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: nested archive "
+                        f"format {unsupported_format!r} is not supported"
+                    )
+                    continue
                 if is_zip_compatible_payload(content):
                     if _nested_depth >= ZIP_NESTED_DEPTH_LIMIT:
                         findings.append(
@@ -1418,6 +1730,8 @@ def scan_zip(
                             nested_total_limit=nested_total_limit,
                             _nested_depth=_nested_depth + 1,
                             _nested_budget=nested_budget,
+                            _candidate_budget=candidate_budget,
+                            _container_path=entry,
                         )
                     )
                     continue
@@ -1510,7 +1824,11 @@ def scan_historical_zip_blobs(
 
 def scan_history() -> list[str]:
     findings: list[str] = []
-    objects = historical_objects()
+    try:
+        objects = historical_objects()
+    except GitScanLimitError as error:
+        findings.append(f"git history object inventory: {error}")
+        objects = []
     for _, path in objects:
         reason = suspicious_path(path)
         if reason:
@@ -1519,7 +1837,9 @@ def scan_history() -> list[str]:
         historical_non_commit_tree_zip_objects()
     )
     findings.extend(non_commit_findings)
-    zip_objects = dict(historical_zip_objects())
+    historical_zip_candidates, historical_zip_findings = historical_zip_objects()
+    findings.extend(historical_zip_findings)
+    zip_objects = dict(historical_zip_candidates)
     for object_id, path in non_commit_objects:
         zip_objects.setdefault(object_id, path)
     findings.extend(scan_historical_zip_blobs(list(zip_objects.items())))
@@ -1527,14 +1847,22 @@ def scan_history() -> list[str]:
     # A textual patch includes every textual addition/deletion reachable from all
     # refs without checking out or materializing historical files. Binary payloads
     # are intentionally not printed; their suspicious names are covered above.
-    history_patch = run_git(
-        ["log", "--all", "--format=", "--no-ext-diff", "--no-textconv", "-p"],
-    ).decode("utf-8", errors="replace")
-    findings.extend(scan_text("git history patch", history_patch))
+    try:
+        history_patch = run_git(
+            ["log", "--all", "--format=", "--no-ext-diff", "--no-textconv", "-p"],
+        ).decode("utf-8", errors="replace")
+    except GitScanLimitError as error:
+        findings.append(f"git history patch: {error}")
+    else:
+        findings.extend(scan_text("git history patch", history_patch))
     return findings
 
 
-def scan_public_path(path: Path | PurePosixPath) -> list[str]:
+def scan_public_path(
+    path: Path | PurePosixPath,
+    *,
+    zip_budget: ZipCandidateScanBudget | None = None,
+) -> list[str]:
     findings: list[str] = []
     reason = suspicious_path(path)
     if reason:
@@ -1551,7 +1879,13 @@ def scan_public_path(path: Path | PurePosixPath) -> list[str]:
         findings.extend(scan_text(f"{path}: symbolic-link target", str(link_target)))
         return findings
     if path.suffix.lower() == ".zip":
-        findings.extend(scan_zip(resolved_path, label=str(path)))
+        findings.extend(
+            scan_zip(
+                resolved_path,
+                label=str(path),
+                _candidate_budget=zip_budget,
+            )
+        )
         return findings
 
     try:
@@ -1583,15 +1917,22 @@ def main() -> int:
     args = parse_args()
     paths = public_candidate_paths()
     findings: list[str] = []
+    zip_budget = ZipCandidateScanBudget()
     for path in paths:
-        findings.extend(scan_public_path(path))
+        findings.extend(scan_public_path(path, zip_budget=zip_budget))
     for archive_path in args.archive:
         if archive_path.is_symlink():
             findings.append(
                 f"{archive_path}: explicit archive must be a regular file, not a symlink"
             )
             continue
-        findings.extend(scan_zip(archive_path, label=str(archive_path)))
+        findings.extend(
+            scan_zip(
+                archive_path,
+                label=str(archive_path),
+                _candidate_budget=zip_budget,
+            )
+        )
 
     if args.history:
         findings.extend(scan_history())
