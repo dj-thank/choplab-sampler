@@ -10,10 +10,172 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PatternRendererTest {
+    @Test
+    fun stereoPatternMasterPreservesLeftAndRightWhileMonoMastersStayMono() {
+        val sampleRate = 8_000
+        val stereo = PcmAudio(
+            name = "stereo-master",
+            samples = ShortArray(512 * 2) { sample -> if (sample % 2 == 0) 12_000 else -6_000 },
+            sampleRate = sampleRate,
+            channelCount = 2,
+        )
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == 0) PadModel(index, stereo, 0, stereo.frameCount, gain = 1f) else PadModel(index)
+        }
+        val file = File.createTempFile("choplab-stereo-master", ".wav")
+        val monoFile = File.createTempFile("choplab-mono-master-control", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderToWav(
+                outputFile = file,
+                pads = pads,
+                activeSteps = setOf(stepKey(0, 0)),
+                bpm = 120f,
+                swing = 50f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            val bytes = file.readBytes()
+            val pcm = readPcm16(file)
+            val energeticFrame = (0 until summary.frameCount).first { frame ->
+                kotlin.math.abs(pcm[frame * 2].toInt()) > 1_000
+            }
+
+            assertEquals(2, summary.channelCount)
+            assertEquals(2, littleEndianShort(bytes, 22))
+            assertEquals(4, littleEndianShort(bytes, 32))
+            assertEquals(summary.frameCount * 2 * Short.SIZE_BYTES, littleEndianInt(bytes, 40))
+            assertTrue(pcm[energeticFrame * 2] > 0)
+            assertTrue(pcm[energeticFrame * 2 + 1] < 0)
+
+            val mono = stereo.copy(
+                name = "mono-master-control",
+                samples = ShortArray(stereo.frameCount) { 6_000 },
+                channelCount = 1,
+            )
+            val monoPads = List(SamplerConfig.PAD_COUNT) { index ->
+                if (index == 0) PadModel(index, mono, 0, mono.frameCount, gain = 1f) else PadModel(index)
+            }
+            val monoSummary = PatternRenderer.renderToWav(
+                outputFile = monoFile,
+                pads = monoPads,
+                activeSteps = setOf(stepKey(0, 0)),
+                bpm = 120f,
+                swing = 50f,
+                bars = 1,
+                outputSampleRate = sampleRate,
+            )
+            val monoBytes = monoFile.readBytes()
+            assertEquals(1, monoSummary.channelCount)
+            assertEquals(1, littleEndianShort(monoBytes, 22))
+            assertEquals(2, littleEndianShort(monoBytes, 32))
+            assertEquals(monoSummary.frameCount * Short.SIZE_BYTES, littleEndianInt(monoBytes, 40))
+        } finally {
+            file.delete()
+            monoFile.delete()
+        }
+    }
+
+    @Test
+    fun fourBarSequenceRendersTheRequestedABOrderInsteadOfRepeatingOnePattern() {
+        val sampleRate = 8_000
+        val positive = PcmAudio(name = "pattern-a", samples = ShortArray(256) { 12_000 }, sampleRate = sampleRate)
+        val negative = PcmAudio(name = "pattern-b", samples = ShortArray(256) { -12_000 }, sampleRate = sampleRate)
+        val pads = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> PadModel(index, positive, 0, positive.frameCount)
+                1 -> PadModel(index, negative, 0, negative.frameCount)
+                else -> PadModel(index)
+            }
+        }
+        val patterns = listOf(
+            setOf(stepKey(0, 0)),
+            setOf(stepKey(1, 0)),
+            setOf(stepKey(0, 0)),
+            setOf(stepKey(1, 0)),
+        )
+        val file = File.createTempFile("choplab-ab-song", ".wav")
+
+        try {
+            val summary = PatternRenderer.renderSequenceToWav(
+                outputFile = file,
+                pads = pads,
+                patternSequence = patterns,
+                bpm = 120f,
+                swing = 50f,
+                outputSampleRate = sampleRate,
+            )
+            val pcm = readPcm16(file)
+            val barFrames = summary.frameCount / patterns.size
+
+            assertEquals(4, summary.bars)
+            assertTrue(pcm[64] > 0)
+            assertTrue(pcm[barFrames + 64] < 0)
+            assertTrue(pcm[barFrames * 2 + 64] > 0)
+            assertTrue(pcm[barFrames * 3 + 64] < 0)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun continuousEventScheduleMatchesAndroidCountdownAcrossFractionalBarBoundaries() {
+        val sampleRate = 8_000
+        val bpm = 123f
+        val swing = 57f
+        val bars = 4
+        val expected = mutableListOf<Int>()
+        var remaining = 0.0
+        var step = 0
+        var frame = 0
+        while (expected.size < SamplerConfig.STEP_COUNT * bars) {
+            if (remaining <= 0.0) {
+                expected += frame
+                remaining += SamplerDspPrimitives.stepLengthFrames(sampleRate, bpm, swing, step)
+                step = (step + 1) % SamplerConfig.STEP_COUNT
+            }
+            remaining -= 1.0
+            frame++
+        }
+
+        assertArrayEquals(
+            expected.toIntArray(),
+            calculateContinuousPatternEventFrames(sampleRate, bpm, swing, bars),
+        )
+    }
+
+    @Test
+    fun noOrMultipleLoopOwnersPreserveAllNonLoopVocals() {
+        val audio = PcmAudio(
+            name = "ambiguous-loop-vocal",
+            samples = ShortArray(128) { 6_000 },
+            sampleRate = 8_000,
+        )
+        val vocal = PadModel(
+            globalIndex = 48,
+            audio = audio,
+            startFrame = 0,
+            endFrame = audio.frameCount,
+            contentKind = PadContentKind.VOCAL,
+            chokeGroup = 1,
+        )
+        val noLoopPads = List(SamplerConfig.PAD_COUNT) { index ->
+            if (index == vocal.globalIndex) vocal else PadModel(index)
+        }
+        val multipleLoopPads = noLoopPads.toMutableList().apply {
+            this[0] = PadModel(0, audio, 0, audio.frameCount, playMode = PadPlayMode.LOOP, chokeGroup = 1)
+            this[1] = PadModel(1, audio, 0, audio.frameCount, playMode = PadPlayMode.LOOP, chokeGroup = 2)
+        }
+
+        assertEquals(setOf(vocal.globalIndex), frameZeroVocalPadIndicesForRender(noLoopPads))
+        assertEquals(setOf(vocal.globalIndex), frameZeroVocalPadIndicesForRender(multipleLoopPads))
+    }
+
     @Test
     fun vocalTakeRendersOnceFromTheStartWithoutStepEvents() {
         val sampleRate = 8_000
@@ -220,6 +382,54 @@ class PatternRendererTest {
     }
 
     @Test
+    fun repeatedEventRestartsTheSamePadInsteadOfDoublingItsVoice() {
+        val sampleRate = 8_000
+        val sustained = ShortArray(4_000) { 8_000 }
+        val pad = PadModel(
+            globalIndex = 0,
+            audio = PcmAudio(name = "repeated-event", samples = sustained, sampleRate = sampleRate),
+            startFrame = 0,
+            endFrame = sustained.size,
+            gain = 0.5f,
+        )
+        val pcm = renderPcm(
+            pads = List(SamplerConfig.PAD_COUNT) { if (it == 0) pad else PadModel(it) },
+            activeSteps = setOf(stepKey(0, 0), stepKey(0, 1)),
+            sampleRate = sampleRate,
+            swing = 50f,
+        )
+
+        val restartDelta = kotlin.math.abs(pcm[100].toInt() - pcm[1_100].toInt())
+        assertTrue("Repeated PAD restart changed level by $restartDelta", restartDelta <= 2)
+    }
+
+    @Test
+    fun differentPadsAtTheSameEventRemainIntentionalLayers() {
+        val sampleRate = 8_000
+        val sustained = ShortArray(4_000) { 8_000 }
+        val audio = PcmAudio(name = "different-pad-layer", samples = sustained, sampleRate = sampleRate)
+        val first = PadModel(0, audio, 0, sustained.size, gain = 0.4f)
+        val second = PadModel(1, audio, 0, sustained.size, gain = 0.4f)
+        fun pads(includeSecond: Boolean) = List(SamplerConfig.PAD_COUNT) { index ->
+            when (index) {
+                0 -> first
+                1 -> if (includeSecond) second else PadModel(index)
+                else -> PadModel(index)
+            }
+        }
+
+        val single = renderPcm(pads(false), setOf(stepKey(0, 0)), sampleRate, swing = 50f)
+        val layered = renderPcm(
+            pads(true),
+            setOf(stepKey(0, 0), stepKey(1, 0)),
+            sampleRate,
+            swing = 50f,
+        )
+
+        assertTrue(windowEnergy(layered, 64, 512) > windowEnergy(single, 64, 512) * 3 / 2)
+    }
+
+    @Test
     fun reversePitchGainAndToneChangeIndependentPcmObservations() {
         val sampleRate = 8_000
         val rising = ShortArray(512) { frame -> (2_000 + frame * 40).coerceAtMost(22_000).toShort() }
@@ -351,6 +561,13 @@ class PatternRendererTest {
         ByteBuffer.wrap(bytes, offset, Int.SIZE_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)
             .int
+
+    private fun littleEndianShort(bytes: ByteArray, offset: Int): Int =
+        ByteBuffer.wrap(bytes, offset, Short.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .short
+            .toInt()
+            .and(0xFFFF)
 
     private fun readPcm16(file: File): ShortArray {
         val bytes = file.readBytes()

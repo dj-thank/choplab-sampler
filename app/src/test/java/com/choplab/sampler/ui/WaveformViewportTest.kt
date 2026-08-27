@@ -41,4 +41,27 @@ class WaveformViewportTest {
         assertTrue(envelope.minimums[1] <= -0.99f)
         assertTrue(envelope.maximums[1] >= 0.99f)
     }
+
+    @Test
+    fun stereoEnvelopeUsesFrameExtentAndExplicitMonoProjection() {
+        val samples = shortArrayOf(
+            0, 0,
+            0, 0,
+            Short.MIN_VALUE, Short.MIN_VALUE,
+            Short.MAX_VALUE, Short.MAX_VALUE,
+        )
+
+        val envelope = buildWaveformEnvelope(
+            samples = samples,
+            channelCount = 2,
+            visibleStart = 0,
+            visibleEnd = 4,
+            pixelWidth = 4,
+            pixelStep = 2,
+        )
+
+        assertEquals(2, envelope.minimums.size)
+        assertTrue(envelope.minimums[1] <= -0.99f)
+        assertTrue(envelope.maximums[1] >= 0.99f)
+    }
 }

@@ -92,6 +92,20 @@ class PadTrimTest {
     }
 
     @Test
+    fun `initial trim window fits the selected chop with context and a one second floor`() {
+        val audio = PcmAudio(12L, "source.wav", ShortArray(480_000), 48_000)
+        val twoSecondPad = PadModel(0, audio, startFrame = 96_000, endFrame = 192_000)
+        val shortPad = PadModel(1, audio, startFrame = 239_500, endFrame = 240_500)
+        val firstPad = PadModel(2, audio, startFrame = 0, endFrame = 96_000)
+        val lastPad = PadModel(3, audio, startFrame = 384_000, endFrame = 480_000)
+
+        assertEquals(SliceRange(84_000, 204_000), padTrimInitialWindow(twoSecondPad))
+        assertEquals(SliceRange(216_000, 264_000), padTrimInitialWindow(shortPad))
+        assertEquals(SliceRange(0, 120_000), padTrimInitialWindow(firstPad))
+        assertEquals(SliceRange(360_000, 480_000), padTrimInitialWindow(lastPad))
+    }
+
+    @Test
     fun `long press chooses the nearer boundary moves it safely and keeps one second focus`() {
         val audio = PcmAudio(9L, "source.wav", ShortArray(10_000), 1_000)
         val pad = PadModel(0, audio, startFrame = 2_000, endFrame = 8_000)

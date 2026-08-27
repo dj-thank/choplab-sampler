@@ -62,6 +62,18 @@ class DesktopPadKeyboardTest {
     }
 
     @Test
+    fun keyUpCarriesTheExactSuccessfulTriggerOwnership() {
+        val owner = DesktopPadKeyOwner()
+        val visiblePage = (0 until 16).toList()
+        val press = owner.press(Key.One, visiblePage, visiblePage.toSet(), inputEnabled = true)
+        assertEquals(DesktopPadKeyAction.Press(0), press)
+
+        owner.bindOwnership(Key.One, ownership = 41L)
+
+        assertEquals(DesktopPadKeyAction.Release(0, ownership = 41L), owner.release(Key.One))
+    }
+
+    @Test
     fun shortcutsDisabledContextsAndEmptyPadsNeverEnterPadOwnership() {
         val owner = DesktopPadKeyOwner()
         val visiblePage = (16 until 32).toList()

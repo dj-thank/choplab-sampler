@@ -6,11 +6,11 @@
 
 Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、音声の取り込み、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APK、iOS Simulator app zip、Windows app-image zipを同時に添付します。
+現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、1/2ch音声の取り込みと左右を保つ再生、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、mono/stereo WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APK、iOS Simulator app zip、Windows app-image zipを同時に添付します。
 
 画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。縦横どちらでも画面スクロールを使わず、`入れる / チョップ / ビート / 保存` の固定4工程から取込、波形チョップ、PAD演奏、16-step制作、WAV書き出しへ直接移動できます。
 
-操作の中心となる16 PADと`ALL STOP`は制作画面で見失わない位置に保ちます。録音中はヘッダーを録音種別ごとの`MIC / DEVICE / VOICE STOP`へ切り替え、準備・録音・停止保存を一つのセッションとして表示します。録音を汚すPAD、元曲、ループ、スクラッチ、トランスポートの追加再生と競合録音を遮断し、Layer Studio内にもSTOPを残します。元曲、範囲試聴、Beat loop、シーケンサー、scratchは切替前に競合音を止めるため、試聴後にループを始めても同じ音が二重になりません。通常PADはその後からドラム等を意図的に重ねられます。`チョップ`では波形タップで頭出しし、空PADで追加、音入りPADで現在素材へ上書き、長押しで開始・終了位置を微調整できます。`ビート`では`PADを選ぶ → 選択音をループ／並べる → 足す／擦る`の順を常時表示し、チョップ範囲の末尾から先頭へ戻る再生位置を実波形上で確認できます。4つ打ち・8分・16分はループとは別の`配置プリセット`として細かい調整に残し、別BANKのドラムを重ねられます。曲と選択中PADのKEY/TONE/LEVELは通常画面から直接変更できます。新しい音源への入れ替えや新しい制作の開始は二度押し確認を挟み、押下、選択、再生、録音の状態を文字と色の両方で示します。
+操作の中心となる16 PADと`ALL STOP`は制作画面で見失わない位置に保ちます。録音中はヘッダーを録音種別ごとの`MIC / DEVICE / VOICE STOP`へ切り替え、準備・録音・停止保存を一つのセッションとして表示します。録音を汚すPAD、元曲、ループ、スクラッチ、トランスポートの追加再生と競合録音を遮断し、Layer Studio内にもSTOPを残します。元曲、範囲試聴、Beat loop、シーケンサー、scratchは同時に主再生を所有しません。WindowsでBeat loopを始めるときは、選択ループと対象VOICEを全て開始できた後だけ旧再生と制作履歴を切り替え、出力準備に失敗した場合は現在の再生とUndo/Redoを保持します。Androidでは選択ループと対象VOICEを一つのrealtime命令として受理できた時だけLOOP状態と制作履歴を公開し、engine停止や操作集中時に無音のループを成功表示しません。通常PADはその後からドラム等を意図的に重ねられます。`チョップ`では波形タップで頭出しし、空PADで追加、音入りPADで現在素材へ上書き、長押しで開始・終了位置を微調整できます。`ビート`では`PADを選ぶ → 選択音をループ／並べる → 足す／擦る`の順を常時表示し、チョップ範囲の末尾から先頭へ戻る再生位置を実波形上で確認できます。4つ打ち・8分・16分はループとは別の`配置プリセット`として細かい調整に残し、別BANKのドラムを重ねられます。曲と選択中PADのKEY/TONE/LEVELは通常画面から直接変更できます。新しい音源への入れ替えや新しい制作の開始は二度押し確認を挟み、押下、選択、再生、録音の状態を文字と色の両方で示します。
 
 ## まず使う
 
@@ -19,6 +19,8 @@ Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー
 1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から、Androidの`debug.apk`、Windowsの`windows-app-image.zip`、またはiOSの`ios-simulator.app.zip`と対応するSHA-256をダウンロードします。
 2. SHA-256を確認してから、Androidの設定で使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
 3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
+
+Androidの素材pickerは、providerが音声として公開するファイルだけを表示します。MP3、AAC/M4A、FLAC、Ogg/Vorbis/Opus、WAVなどは、Android platformと端末decoderが対応するcontainer/形式の範囲で読み込み、選択後も実際のaudio trackと長さ・メモリ上限を検証します。動画はpickerの対象にしません。
 
 ### iOS
 
@@ -30,6 +32,8 @@ Releaseの`ChopLab-*-ios-simulator.app.zip`は、Apple署名を使わない **iO
 
 Releaseの`ChopLab-*-windows-app-image.zip`を展開し、同梱された`ChopLab/ChopLab.exe`を起動します。これはJDK runtimeを含むapp-imageで、単体EXEだけを取り出して実行する配布形式ではありません。現在のRelease previewはコード署名済みinstallerではありません。
 
+Windows版の素材取込は、実装済みdecoderに合わせてWAVだけを表示します。ファイルpickerの「すべてのファイル」は無効です。MP3等を選べるように見せて後から失敗させることはせず、Windows向けMP3 decoderを導入する場合は別の権利・供給網・decode上限レビューを通します。
+
 リリースAPKは現時点ではGitHub Actionsのデバッグ署名による開発プレビューです。端末によっては、別のビルドへ更新する前に既存版のアンインストールが必要です。アンインストール前に「完成」から`.choplab`制作ファイルを書き出してください。個人データを扱う前に、コードと権限要求を確認してください。
 
 録音、保存、権限、端末内データの扱いは[`PRIVACY.md`](PRIVACY.md)、内蔵ドラム音と第三者表示は[`NOTICE`](NOTICE)に記載しています。内蔵5キットはダウンロード音源ではなく、このリポジトリのコードが生成するオリジナルの決定論的PCMです。ユーザー音源、認証情報、署名鍵、provisioning profileはソースにもReleaseにも含めません。
@@ -40,12 +44,12 @@ Releaseの`ChopLab-*-windows-app-image.zip`を展開し、同梱された`ChopLa
 
 - `app/`: 現在のビルド基準線。AudioTrackベースのMVP実装です。
 - `ios/`: SwiftUI + AVFoundationのiOS 16向けプレビューMVP。音源取込、16 PAD、範囲編集、録音、停止を実装し、署名不要のSimulator previewとして検証します。
-- `desktop/`: 元Androidデックの色・工程・PAD vocabularyを踏襲したWindows EXE previewです。ローカルWAV、Spotify PKCE metadata/control、arrange 16-stepまでを対象にし、署名済みinstallerやSpotify音声取込は対象外です。
-- `reference/pro-v0.2/`: Oboe、保存、ステレオ、独立タイムストレッチ、ADSR、LFO、FX、MIDI、Song、ステム書き出しの未統合参照コードと設計資料です。
+- `desktop/`: 元Androidデックの色・工程・PAD vocabularyを踏襲したWindows EXE previewです。ローカルWAV、Spotify PKCE metadata/control、A/B 16-stepと4小節Songまでを対象にし、署名済みinstallerやSpotify音声取込は対象外です。
+- `reference/pro-v0.2/`: Oboe、独立タイムストレッチ、ADSR、LFO、FX、MIDI、pan/mixer、任意数・可変repeatの高度なSong、ステム書き出しの未統合参照コードと設計資料です。
 
 `reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。Codexには、参照コードを盲目的にコピーさせず、MVPへ段階的に統合し、各段階でビルドとテストを通すよう指示しています。
 
-実装済みのMVP範囲と未実装のPro範囲は[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)に記録しています。MVPの制作保存・自動復旧・Undo/Redoは実装済みです。MIDI、独立タイムストレッチ、ネイティブOboeエンジン、ステレオ再生は完成扱いにしていません。
+実装済みのMVP範囲と未実装のPro範囲は[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)に記録しています。MVPの制作保存・自動復旧・Undo/Redo、bounded A/B 4小節Song、Android/Windowsの1/2ch channel identityはローカル実装済みです。物理端末の左右出力と音質は別gateであり、MIDI、pan/mixer、独立タイムストレッチ、ネイティブOboeエンジン、stems、任意数・可変repeatのSong editorは完成扱いにしていません。
 
 ## 最短開始手順
 
@@ -145,6 +149,17 @@ Android SDK込みの標準検査:
 ./gradlew :app:lintDebug
 ./gradlew :app:assembleDebug
 ```
+
+最終APKのpackage/version、permission、debuggable、exported component、16 KiB alignment、署名状態をread-backする場合:
+
+```bash
+python scripts/verify_android_release.py \
+  --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+  --version 0.17.0 \
+  --version-code 27
+```
+
+manifest検査はSDKに`apkanalyzer`があればそれを優先し、未導入ならbuild-toolsの`aapt2`へfail-closedでfallbackします。署名必須の配布候補では`--require-signed`と、CIのsecretから渡す`--expected-cert-sha256`を併用します。certificate値や署名鍵をコマンド履歴・文書・リポジトリへ書きません。
 
 APK:
 

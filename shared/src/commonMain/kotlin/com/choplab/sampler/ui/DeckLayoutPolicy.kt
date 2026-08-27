@@ -15,6 +15,11 @@ enum class PerformanceWorkspaceLayout {
     SPLIT_PAD_GRID,
 }
 
+enum class FocusedCaptureEntryLayout {
+    STACKED,
+    WIDE_SPLIT,
+}
+
 data class DeckLayoutMetrics(
     val orientation: DeckOrientation,
     val density: DeckDensity,
@@ -34,6 +39,9 @@ data class DeckLayoutMetrics(
     val showStatusStrip: Boolean
         get() = orientation != DeckOrientation.LANDSCAPE || density != DeckDensity.COMPACT
 
+    val showInlineHeaderStatus: Boolean
+        get() = !showStatusStrip
+
     val focusedCaptureNeedsScroll: Boolean
         get() = largeText ||
             (orientation == DeckOrientation.LANDSCAPE && density == DeckDensity.COMPACT)
@@ -41,8 +49,14 @@ data class DeckLayoutMetrics(
     val beatWorkspaceNeedsScroll: Boolean
         get() = largeText
 
-    val beatPadGridHeightDp: Int
+    val performanceWorkspaceNeedsScroll: Boolean
+        get() = largeText
+
+    val touchSafePadGridHeightDp: Int
         get() = 4 * maxOf(48, controlHeightDp) + 3 * gapDp
+
+    val beatPadGridHeightDp: Int
+        get() = touchSafePadGridHeightDp
 
     val fixedChromeHeightDp: Int
         get() = headerHeightDp + modeBarHeightDp +
@@ -103,8 +117,19 @@ fun resolveDeckLayout(widthDp: Int, heightDp: Int, fontScale: Float = 1f): DeckL
 }
 
 fun performanceWorkspaceLayout(metrics: DeckLayoutMetrics): PerformanceWorkspaceLayout =
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
+    if (metrics.orientation == DeckOrientation.LANDSCAPE && !metrics.performanceWorkspaceNeedsScroll) {
         PerformanceWorkspaceLayout.SPLIT_PAD_GRID
     } else {
         PerformanceWorkspaceLayout.STACKED
+    }
+
+fun focusedCaptureEntryLayout(metrics: DeckLayoutMetrics): FocusedCaptureEntryLayout =
+    if (
+        metrics.orientation == DeckOrientation.LANDSCAPE &&
+        metrics.density == DeckDensity.REGULAR &&
+        !metrics.largeText
+    ) {
+        FocusedCaptureEntryLayout.WIDE_SPLIT
+    } else {
+        FocusedCaptureEntryLayout.STACKED
     }

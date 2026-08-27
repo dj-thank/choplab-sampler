@@ -30,6 +30,48 @@ import androidx.compose.ui.unit.sp
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.stepKey
 
+internal data class StepCellPresentation(
+    val stepIndex: Int,
+    val stepKey: Int,
+    val row: Int,
+    val column: Int,
+    val active: Boolean,
+    val playhead: Boolean,
+    val contentDescription: String,
+) {
+    val stepNumber: Int
+        get() = stepIndex + 1
+}
+
+internal fun stepCellPresentations(
+    selectedPad: Int,
+    activeSteps: Set<Int>,
+    currentStep: Int,
+    enabled: Boolean,
+    columns: Int,
+): List<StepCellPresentation> {
+    require(columns > 0 && SamplerConfig.STEP_COUNT % columns == 0)
+    return List(SamplerConfig.STEP_COUNT) { stepIndex ->
+        val active = enabled && stepKey(selectedPad, stepIndex) in activeSteps
+        val playhead = currentStep == stepIndex
+        StepCellPresentation(
+            stepIndex = stepIndex,
+            stepKey = stepKey(selectedPad, stepIndex),
+            row = stepIndex / columns,
+            column = stepIndex % columns,
+            active = active,
+            playhead = playhead,
+            contentDescription = "ステップ ${stepIndex + 1} " +
+                if (enabled) {
+                    "${if (active) "オン" else "オフ"}" +
+                        if (playhead) "。現在の再生位置" else ""
+                } else {
+                    "配置できません"
+                },
+        )
+    }
+}
+
 @Composable
 fun StepSequencer(
     selectedPad: Int,
@@ -41,7 +83,13 @@ fun StepSequencer(
     columns: Int = 8,
     gap: Dp = 4.dp,
 ) {
-    require(SamplerConfig.STEP_COUNT % columns == 0)
+    val cells = stepCellPresentations(
+        selectedPad = selectedPad,
+        activeSteps = activeSteps,
+        currentStep = currentStep,
+        enabled = enabled,
+        columns = columns,
+    )
     val rows = SamplerConfig.STEP_COUNT / columns
     Column(
         modifier = modifier.fillMaxSize(),
@@ -55,13 +103,14 @@ fun StepSequencer(
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
                 repeat(columns) { column ->
-                    val step = row * columns + column
+                    val cell = cells[row * columns + column]
                     StepCell(
-                        step = step,
-                        active = enabled && stepKey(selectedPad, step) in activeSteps,
-                        playhead = currentStep == step,
+                        step = cell.stepIndex,
+                        active = cell.active,
+                        playhead = cell.playhead,
                         enabled = enabled,
-                        onClick = { onToggleStep(step) },
+                        accessibilityDescription = cell.contentDescription,
+                        onClick = { onToggleStep(cell.stepIndex) },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight(),
@@ -78,6 +127,7 @@ private fun StepCell(
     active: Boolean,
     playhead: Boolean,
     enabled: Boolean,
+    accessibilityDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -101,13 +151,7 @@ private fun StepCell(
             }
             .semantics {
                 role = Role.Button
-                contentDescription = "ステップ ${step + 1} " +
-                    if (enabled) {
-                        "${if (active) "オン" else "オフ"}" +
-                            if (playhead) "。現在の再生位置" else ""
-                    } else {
-                        "配置できません"
-                    }
+                contentDescription = accessibilityDescription
             },
         contentAlignment = Alignment.Center,
     ) {

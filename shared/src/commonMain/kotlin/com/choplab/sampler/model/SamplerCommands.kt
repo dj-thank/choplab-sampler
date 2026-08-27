@@ -124,10 +124,45 @@ fun precisionTrimWindow(
         .coerceAtLeast(1L)
         .coerceAtMost(totalFrames.toLong())
         .toInt()
+    return centeredFrameWindow(totalFrames, focusFrame, requestedFrames)
+}
+
+/**
+ * Gives an assigned PAD a calm first trim view before one-second precision focus.
+ * The chop occupies about 80% of the viewport, with at least one second of context.
+ */
+fun padTrimInitialWindow(
+    pad: PadModel,
+    minimumDurationMillis: Int = 1_000,
+): SliceRange {
+    val audio = requireNotNull(pad.audio) { "Initial trim view requires assigned audio" }
+    require(pad.isAssigned) { "Initial trim view requires an assigned PAD" }
+    val safeMinimumMillis = minimumDurationMillis.coerceAtLeast(1)
+    val minimumFrames = (audio.sampleRate.coerceAtLeast(1).toLong() * safeMinimumMillis / 1_000L)
+        .coerceAtLeast(1L)
+    val padLength = (pad.endFrame.toLong() - pad.startFrame).coerceAtLeast(1L)
+    val withContext = (padLength * INITIAL_TRIM_CONTEXT_NUMERATOR + INITIAL_TRIM_CONTEXT_DENOMINATOR - 1L) /
+        INITIAL_TRIM_CONTEXT_DENOMINATOR
+    val requestedFrames = maxOf(minimumFrames, withContext)
+        .coerceAtMost(audio.frameCount.toLong())
+        .toInt()
+    val focusFrame = (pad.startFrame.toLong() + padLength / 2L)
+        .coerceIn(0L, (audio.frameCount - 1).coerceAtLeast(0).toLong())
+        .toInt()
+    return centeredFrameWindow(audio.frameCount, focusFrame, requestedFrames)
+}
+
+private fun centeredFrameWindow(
+    totalFrames: Int,
+    focusFrame: Int,
+    requestedFrames: Int,
+): SliceRange {
+    if (totalFrames <= 0) return SliceRange(0, 0)
+    val visibleFrames = requestedFrames.coerceIn(1, totalFrames)
     val focus = focusFrame.coerceIn(0, totalFrames - 1)
-    val maximumStart = totalFrames - requestedFrames
-    val start = (focus - requestedFrames / 2).coerceIn(0, maximumStart)
-    return SliceRange(start, start + requestedFrames)
+    val maximumStart = totalFrames - visibleFrames
+    val start = (focus - visibleFrames / 2).coerceIn(0, maximumStart)
+    return SliceRange(start, start + visibleFrames)
 }
 
 fun nearestPadTrimBoundary(
@@ -141,6 +176,9 @@ fun nearestPadTrimBoundary(
 } else {
     PadTrimBoundary.END
 }
+
+private const val INITIAL_TRIM_CONTEXT_NUMERATOR = 5L
+private const val INITIAL_TRIM_CONTEXT_DENOMINATOR = 4L
 
 fun focusPadTrimAtFrame(
     pad: PadModel,

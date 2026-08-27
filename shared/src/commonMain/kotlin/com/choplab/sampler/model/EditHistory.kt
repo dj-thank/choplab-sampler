@@ -15,6 +15,10 @@ class EditHistory(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) {
     val canRedo: Boolean
         get() = redoEntries.isNotEmpty()
 
+    internal fun peekUndo(): SamplerUiState? = undoEntries.lastOrNull()?.state
+
+    internal fun peekRedo(): SamplerUiState? = redoEntries.lastOrNull()?.state
+
     fun record(state: SamplerUiState, mergeKey: String? = null) {
         if (mergeKey != null && undoEntries.lastOrNull()?.mergeKey == mergeKey) return
         undoEntries.addLast(Entry(state.historySnapshot(), mergeKey))

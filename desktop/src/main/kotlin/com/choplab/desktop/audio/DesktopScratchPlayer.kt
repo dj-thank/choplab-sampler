@@ -37,9 +37,9 @@ class DesktopScratchPlayer : AutoCloseable {
         val start = startFrame.coerceIn(0, (audio.frameCount - 1).coerceAtLeast(0))
         val end = endFrame.coerceIn(start + 1, audio.frameCount)
         val initial = initialFrame.coerceIn(start, end - 1)
-        val format = AudioFormat(audio.sampleRate.toFloat(), 16, 1, true, false)
+        val format = AudioFormat(audio.sampleRate.toFloat(), 16, audio.channelCount, true, false)
         val output = AudioSystem.getSourceDataLine(format)
-        output.open(format, BUFFER_FRAMES * 4)
+        output.open(format, BUFFER_FRAMES * audio.channelCount * Short.SIZE_BYTES * 2)
         output.start()
         line = output
         targetSpeed = 0f
@@ -49,7 +49,7 @@ class DesktopScratchPlayer : AutoCloseable {
             {
                 renderLoop(
                     output,
-                    Target(audio.samples, audio.sampleRate, start, end, initial, pitchSemitones, tone, gain, reverse),
+                    Target(audio, audio.sampleRate, start, end, initial, pitchSemitones, tone, gain, reverse),
                 )
             },
             "ChopLab-Windows-Scratch",
@@ -79,10 +79,10 @@ class DesktopScratchPlayer : AutoCloseable {
     }
 
     private fun renderLoop(output: SourceDataLine, target: Target) {
-        val bytes = ByteArray(BUFFER_FRAMES * 2)
+        val bytes = ByteArray(BUFFER_FRAMES * target.audio.channelCount * Short.SIZE_BYTES)
         val smoother = ScratchSpeedSmoother()
         var position = target.initial.toDouble()
-        var filterState = 0f
+        val filterState = FloatArray(target.audio.channelCount)
         val tone = target.tone.coerceIn(0f, 1f)
         val alpha = if (tone >= 0.995f) 1f else {
             val cutoff = 80.0 * 225.0.pow(tone.toDouble())
@@ -97,21 +97,27 @@ class DesktopScratchPlayer : AutoCloseable {
                     val lower = floor(position).toInt().coerceIn(target.start, target.end - 1)
                     val upper = (lower + 1).coerceAtMost(target.end - 1)
                     val fraction = (position - lower).toFloat().coerceIn(0f, 1f)
-                    val first = target.samples[lower] / 32_768f
-                    val second = target.samples[upper] / 32_768f
-                    val raw = first + (second - first) * fraction
-                    val filtered = if (tone >= 0.995f) raw else {
-                        filterState += alpha * (raw - filterState)
-                        filterState
-                    }
                     val motionGain = (abs(speed) * 10.0).coerceIn(0.0, 1.0).toFloat()
-                    val sample = (filtered * target.gain.coerceIn(0f, 1.5f) * motionGain)
-                        .coerceIn(-1f, 1f)
-                        .times(Short.MAX_VALUE)
-                        .toInt()
-                        .toShort()
-                    bytes[frame * 2] = (sample.toInt() and 0xFF).toByte()
-                    bytes[frame * 2 + 1] = (sample.toInt() shr 8).toByte()
+                    repeat(target.audio.channelCount) { channel ->
+                        val first = target.audio.sampleAt(lower, channel) / 32_768f
+                        val second = target.audio.sampleAt(upper, channel) / 32_768f
+                        val raw = first + (second - first) * fraction
+                        val filtered = if (tone >= 0.995f) {
+                            filterState[channel] = raw
+                            raw
+                        } else {
+                            filterState[channel] += alpha * (raw - filterState[channel])
+                            filterState[channel]
+                        }
+                        val sample = (filtered * target.gain.coerceIn(0f, 1.5f) * motionGain)
+                            .coerceIn(-1f, 1f)
+                            .times(Short.MAX_VALUE)
+                            .toInt()
+                            .toShort()
+                        val sampleIndex = frame * target.audio.channelCount + channel
+                        bytes[sampleIndex * 2] = (sample.toInt() and 0xFF).toByte()
+                        bytes[sampleIndex * 2 + 1] = (sample.toInt() shr 8).toByte()
+                    }
                     position += speed
                     if (position < target.start) {
                         position = target.start.toDouble()
@@ -134,7 +140,7 @@ class DesktopScratchPlayer : AutoCloseable {
     override fun close() = stop()
 
     private data class Target(
-        val samples: ShortArray,
+        val audio: PcmAudio,
         val sampleRate: Int,
         val start: Int,
         val end: Int,

@@ -55,6 +55,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
@@ -94,21 +95,27 @@ import com.choplab.sampler.model.SliceRange
 import com.choplab.sampler.model.SourceUiPhase
 import com.choplab.sampler.model.activeSliceRange
 import com.choplab.sampler.model.activePhaseFor
+import com.choplab.sampler.model.audiblePlaybackStepCount
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.assignedPadCountOnPage
 import com.choplab.sampler.model.bankRoleFor
+import com.choplab.sampler.model.beatLoopControlEnabled
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.focusPadTrimAtFrame
-import com.choplab.sampler.model.hasAudiblePatternContent
+import com.choplab.sampler.model.hasAnyPatternSteps
+import com.choplab.sampler.model.hasAudiblePlaybackPatternContent
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nearestPadTrimBoundary
 import com.choplab.sampler.model.precisionTrimWindow
+import com.choplab.sampler.model.padTrimInitialWindow
+import com.choplab.sampler.model.redoRequestEnabled
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.model.sourceScratchRange
 import com.choplab.sampler.model.sourceUiPhase
 import com.choplab.sampler.model.stepPadTrimBoundary
+import com.choplab.sampler.model.undoRequestEnabled
 import com.choplab.sampler.model.visiblePads
 import kotlin.math.max
 import kotlin.math.abs
@@ -212,6 +219,7 @@ fun OtohiroiDeck(
     var padPageName by rememberSaveable(state.currentAudio?.id) { mutableStateOf(PadEditorPage.PARAM.name) }
     var showPadDetails by rememberSaveable(state.currentAudio?.id) { mutableStateOf(false) }
     var layerStudioPageName by rememberSaveable(state.currentAudio?.id) { mutableStateOf<String?>(null) }
+    var showArrangementStudio by rememberSaveable(state.currentAudio?.id) { mutableStateOf(false) }
     val stage = restoreWorkflowStage(stageName)
     val padPage = PadEditorPage.entries.firstOrNull { it.name == padPageName } ?: PadEditorPage.PARAM
     val layerStudioPage = LayerStudioPage.entries.firstOrNull { it.name == layerStudioPageName }
@@ -222,6 +230,7 @@ fun OtohiroiDeck(
             stageName = reconciled.name
             showPadDetails = false
             layerStudioPageName = null
+            showArrangementStudio = false
         }
     }
 
@@ -240,9 +249,11 @@ fun OtohiroiDeck(
                 .widthIn(max = 980.dp),
         ) {
             val fontScale = LocalDensity.current.fontScale
+            val viewportWidthDp = maxWidth.value.roundToInt()
+            val viewportHeightDp = maxHeight.value.roundToInt()
             val metrics = resolveDeckLayout(
-                widthDp = maxWidth.value.roundToInt(),
-                heightDp = maxHeight.value.roundToInt(),
+                widthDp = viewportWidthDp,
+                heightDp = viewportHeightDp,
                 fontScale = fontScale,
             )
             val gap = metrics.gapDp.dp
@@ -266,6 +277,7 @@ fun OtohiroiDeck(
                         stage = stage,
                         height = metrics.headerHeightDp.dp,
                         largeText = metrics.largeText,
+                        showInlineStatus = metrics.showInlineHeaderStatus,
                         onStopAll = viewModel::stopAllSounds,
                         onStopRecording = viewModel::stopActiveRecording,
                     )
@@ -355,6 +367,8 @@ fun OtohiroiDeck(
                                 SequenceWorkspace(
                                     state = state,
                                     metrics = metrics,
+                                    viewportWidthDp = viewportWidthDp,
+                                    viewportHeightDp = viewportHeightDp,
                                     onOpenPadDetails = { padIndex ->
                                         viewModel.selectPad(padIndex)
                                         padPageName = PadEditorPage.PARAM.name
@@ -366,6 +380,10 @@ fun OtohiroiDeck(
                                         showPadDetails = true
                                     },
                                     onOpenLayerStudio = { layerStudioPageName = it.name },
+                                    onOpenArrangementStudio = {
+                                        layerStudioPageName = null
+                                        showArrangementStudio = true
+                                    },
                                     viewModel = viewModel,
                                 )
                             }
@@ -401,6 +419,13 @@ fun OtohiroiDeck(
                 initialPage = layerStudioPage,
                 onDismiss = { layerStudioPageName = null },
                 onToggleVocalRecording = onToggleVocalRecording,
+                viewModel = viewModel,
+            )
+        }
+        if (showArrangementStudio) {
+            ArrangementStudio(
+                state = state,
+                onDismiss = { showArrangementStudio = false },
                 viewModel = viewModel,
             )
         }
@@ -442,6 +467,7 @@ private fun PerformanceWorkspace(
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
+    val scrollState = rememberScrollState()
     val sourcePhase = state.sourceUiPhase()
     val presentation = chopSessionPresentation(
         sourcePhase = sourcePhase,
@@ -463,7 +489,11 @@ private fun PerformanceWorkspace(
         return
     }
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = if (metrics.performanceWorkspaceNeedsScroll) {
+            Modifier.fillMaxSize().verticalScroll(scrollState)
+        } else {
+            Modifier.fillMaxSize()
+        },
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
         ChopCoachRow(
@@ -476,6 +506,7 @@ private fun PerformanceWorkspace(
             state = state,
             viewModel = viewModel,
             condensed = true,
+            allowVerticalDragPassThrough = metrics.performanceWorkspaceNeedsScroll,
             waveformTapOverride = viewModel::playSourceFrom,
             modifier = Modifier
                 .fillMaxWidth()
@@ -505,10 +536,19 @@ private fun PerformanceWorkspace(
             sourcePhase = sourcePhase,
             onTrigger = viewModel::capturePad,
             onRelease = viewModel::releasePad,
+            onTriggerWithOwnership = viewModel::triggerPadWithOwnership,
+            onReleaseIfOwned = viewModel::releasePadIfOwned,
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
+            deferPadActionUntilTap = metrics.performanceWorkspaceNeedsScroll,
             gap = gap,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = if (metrics.performanceWorkspaceNeedsScroll) {
+                Modifier
+                    .fillMaxWidth()
+                    .height(metrics.touchSafePadGridHeightDp.dp)
+            } else {
+                Modifier.weight(1f).fillMaxWidth()
+            },
         )
         ChopNextActionRow(
             state = state,
@@ -517,6 +557,7 @@ private fun PerformanceWorkspace(
             onOpenDetails = onOpenDetails,
             onContinueToBeat = onContinueToBeat,
             onOpenLayerStudio = onOpenLayerStudio,
+            viewModel = viewModel,
         )
     }
 }
@@ -587,6 +628,7 @@ private fun LandscapePerformanceWorkspace(
                 onOpenDetails = onOpenDetails,
                 onContinueToBeat = onContinueToBeat,
                 onOpenLayerStudio = onOpenLayerStudio,
+                viewModel = viewModel,
             )
         }
         PadGrid(
@@ -596,6 +638,8 @@ private fun LandscapePerformanceWorkspace(
             sourcePhase = sourcePhase,
             onTrigger = viewModel::capturePad,
             onRelease = viewModel::releasePad,
+            onTriggerWithOwnership = viewModel::triggerPadWithOwnership,
+            onReleaseIfOwned = viewModel::releasePadIfOwned,
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
             gap = gap,
@@ -679,6 +723,7 @@ private fun ChopNextActionRow(
     onOpenDetails: () -> Unit,
     onContinueToBeat: () -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    viewModel: SamplerDeckController,
 ) {
     ProductionDock(
         height = height,
@@ -687,6 +732,10 @@ private fun ChopNextActionRow(
         handlers = mapOf(
             ProductionDockIntent.OPEN_BEAT to onContinueToBeat,
             ProductionDockIntent.OPEN_PAD_EDIT to onOpenDetails,
+            ProductionDockIntent.CREATE_QUICK_SKETCH to {
+                viewModel.stopSourceForWorkspaceChange()
+                viewModel.createQuickSketch()
+            },
             ProductionDockIntent.OPEN_ADD to { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             ProductionDockIntent.OPEN_SCRATCH to { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
         ),
@@ -735,6 +784,7 @@ private fun MachineHeader(
     stage: WorkflowStage,
     height: Dp,
     largeText: Boolean,
+    showInlineStatus: Boolean,
     onStopAll: () -> Unit,
     onStopRecording: () -> Unit,
 ) {
@@ -762,11 +812,22 @@ private fun MachineHeader(
                 color = Color(0xFFFFF1CF),
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
-                fontSize = if (largeText) 10.sp else 14.sp,
-                letterSpacing = if (largeText) 1.sp else 1.5.sp,
+                fontSize = if (largeText || showInlineStatus) 10.sp else 14.sp,
+                letterSpacing = if (largeText || showInlineStatus) 1.sp else 1.5.sp,
                 maxLines = 1,
             )
-            if (machineHeaderShowsCaption(fontScale)) {
+            if (showInlineStatus) {
+                Text(
+                    recording?.statusLabel ?: state.statusMessage,
+                    color = if (recording != null) DeckLamp else DeckGreen,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 7.sp,
+                    lineHeight = 8.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else if (machineHeaderShowsCaption(fontScale)) {
                 Text(
                     "${stage.label} / ${stage.caption}",
                     color = Color(0xFF9C906F),
@@ -889,12 +950,14 @@ private fun WorkflowStageRow(
     ) {
         stages.forEach { stage ->
             val index = WorkflowStage.entries.indexOf(stage)
+            val availability = workflowStageAvailability(stage, state)
             WorkflowStageButton(
                 number = index + 1,
                 stage = stage,
                 selected = selected == stage,
                 compact = compact,
-                enabled = workflowStageEnabled(stage, state),
+                enabled = availability.enabled,
+                blockedReason = availability.blockedReason,
                 onClick = { onSelect(stage) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -909,6 +972,7 @@ private fun WorkflowStageButton(
     selected: Boolean,
     compact: Boolean,
     enabled: Boolean,
+    blockedReason: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -937,6 +1001,9 @@ private fun WorkflowStageButton(
             .semantics {
                 role = Role.Tab
                 contentDescription = "工程$number ${stage.label} ${stage.caption}"
+                stateDescription = workflowStageStateDescription(
+                    WorkflowStageAvailability(enabled, blockedReason),
+                )
                 this.selected = selected
                 if (!enabled) disabled()
             },
@@ -1108,6 +1175,24 @@ private fun FocusedCaptureEntry(
         idleLabel = "端末音声を録る\nDEVICE",
         stopLabel = "録音を止める\nDEVICE STOP",
     )
+    val actionCopy = captureEntryActionPresentation()
+    if (focusedCaptureEntryLayout(metrics) == FocusedCaptureEntryLayout.WIDE_SPLIT) {
+        WideFocusedCaptureEntry(
+            entry = entry,
+            actionCopy = actionCopy,
+            state = state,
+            inputPolicy = inputPolicy,
+            microphoneControl = microphoneControl,
+            systemAudioControl = systemAudioControl,
+            gap = metrics.gapDp.dp,
+            onImportAudio = onImportAudio,
+            onOpenProject = onOpenProject,
+            onToggleMicrophoneRecording = onToggleMicrophoneRecording,
+            onToggleSystemAudioRecording = onToggleSystemAudioRecording,
+            onTryStarterDemo = onTryStarterDemo,
+        )
+        return
+    }
     val scrollState = rememberScrollState()
     val gap = metrics.gapDp.dp
     val bodyModifier = if (metrics.focusedCaptureNeedsScroll) {
@@ -1142,13 +1227,13 @@ private fun FocusedCaptureEntry(
             ) {
                 NewSourceActionButton(
                     state = state,
-                    label = "曲を読み込む\nLOAD AUDIO",
+                    label = actionCopy.loadAudioLabel,
                     onConfirm = onImportAudio,
                     enabled = inputPolicy.fileEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 MachineButton(
-                    label = "制作を開く\nOPEN PROJECT",
+                    label = actionCopy.openProjectLabel,
                     onClick = onOpenProject,
                     enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1156,7 +1241,7 @@ private fun FocusedCaptureEntry(
                 )
             }
             Text(
-                text = "録音から始める",
+                text = actionCopy.recordingSectionTitle,
                 color = DeckLamp,
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Bold,
@@ -1194,7 +1279,7 @@ private fun FocusedCaptureEntry(
                             verticalArrangement = Arrangement.spacedBy(gap),
                         ) {
                             Text(
-                                text = "すぐ試す  DUSTY JAZZデモ",
+                                text = actionCopy.starterDemoTitle,
                                 color = DeckGreen,
                                 fontFamily = DeckFont,
                                 fontWeight = FontWeight.Black,
@@ -1202,14 +1287,14 @@ private fun FocusedCaptureEntry(
                                 maxLines = 1,
                             )
                             Text(
-                                text = "PAD、ビート、保存を音入りで試せます",
+                                text = actionCopy.starterDemoGuidance,
                                 color = Color(0xFFE8DDBF),
                                 fontFamily = DeckFont,
                                 fontSize = 8.sp,
                                 maxLines = 2,
                             )
                             MachineButton(
-                                label = "デモを試す",
+                                label = actionCopy.starterDemoCompactActionLabel,
                                 onClick = onTryStarterDemo,
                                 active = true,
                                 modifier = Modifier.fillMaxWidth().height(64.dp),
@@ -1227,7 +1312,7 @@ private fun FocusedCaptureEntry(
                                 verticalArrangement = Arrangement.spacedBy(3.dp),
                             ) {
                                 Text(
-                                    text = "すぐ試す  DUSTY JAZZデモ",
+                                    text = actionCopy.starterDemoTitle,
                                     color = DeckGreen,
                                     fontFamily = DeckFont,
                                     fontWeight = FontWeight.Black,
@@ -1235,7 +1320,7 @@ private fun FocusedCaptureEntry(
                                     maxLines = 1,
                                 )
                                 Text(
-                                    text = "PAD、ビート、保存を音入りで試せます",
+                                    text = actionCopy.starterDemoGuidance,
                                     color = Color(0xFFE8DDBF),
                                     fontFamily = DeckFont,
                                     fontSize = 8.sp,
@@ -1243,7 +1328,7 @@ private fun FocusedCaptureEntry(
                                 )
                             }
                             MachineButton(
-                                label = "デモを試す\nTRY BEAT",
+                                label = actionCopy.starterDemoActionLabel,
                                 onClick = onTryStarterDemo,
                                 active = true,
                                 modifier = Modifier.width(170.dp).fillMaxHeight(),
@@ -1255,6 +1340,137 @@ private fun FocusedCaptureEntry(
             }
             if (metrics.largeText) {
                 Spacer(Modifier.height(metrics.controlHeightDp.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun WideFocusedCaptureEntry(
+    entry: CaptureEntryPresentation,
+    actionCopy: CaptureEntryActionPresentation,
+    state: SamplerUiState,
+    inputPolicy: CaptureInputPolicy,
+    microphoneControl: RecordingControlPresentation,
+    systemAudioControl: RecordingControlPresentation,
+    gap: Dp,
+    onImportAudio: () -> Unit,
+    onOpenProject: () -> Unit,
+    onToggleMicrophoneRecording: () -> Unit,
+    onToggleSystemAudioRecording: () -> Unit,
+    onTryStarterDemo: () -> Unit,
+) {
+    MachinePanel(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            Text(
+                text = entry.title,
+                color = DeckGreen,
+                fontFamily = DeckFont,
+                fontWeight = FontWeight.Black,
+                fontSize = 17.sp,
+                maxLines = 1,
+            )
+            Text(
+                text = entry.guidance,
+                color = Color(0xFFE8DDBF),
+                fontFamily = DeckFont,
+                fontSize = 10.sp,
+                maxLines = 1,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1.25f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        NewSourceActionButton(
+                            state = state,
+                            label = actionCopy.loadAudioLabel,
+                            onConfirm = onImportAudio,
+                            enabled = inputPolicy.fileEnabled,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                        MachineButton(
+                            label = actionCopy.openProjectLabel,
+                            onClick = onOpenProject,
+                            enabled = externalDocumentActionsEnabled(state),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                    }
+                    Text(
+                        text = actionCopy.recordingSectionTitle,
+                        color = DeckLamp,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        NewSourceActionButton(
+                            state = state,
+                            label = microphoneControl.label,
+                            onConfirm = onToggleMicrophoneRecording,
+                            enabled = inputPolicy.microphoneEnabled && microphoneControl.enabled,
+                            active = microphoneControl.active,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                        NewSourceActionButton(
+                            state = state,
+                            label = systemAudioControl.label,
+                            onConfirm = onToggleSystemAudioRecording,
+                            enabled = inputPolicy.systemAudioEnabled && systemAudioControl.enabled,
+                            active = systemAudioControl.active,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            compact = false,
+                        )
+                    }
+                }
+                if (entry.starterDemoAvailable) {
+                    MachinePanel(modifier = Modifier.weight(0.75f).fillMaxHeight()) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            Text(
+                                text = actionCopy.starterDemoTitle,
+                                color = DeckGreen,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = actionCopy.starterDemoGuidance,
+                                color = Color(0xFFE8DDBF),
+                                fontFamily = DeckFont,
+                                fontSize = 10.sp,
+                                maxLines = 2,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            MachineButton(
+                                label = actionCopy.starterDemoActionLabel,
+                                onClick = onTryStarterDemo,
+                                active = true,
+                                modifier = Modifier.fillMaxWidth().height(112.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -1618,6 +1834,8 @@ private fun PadWorkspace(
                     selectedPad = state.selectedPad,
                     onTrigger = viewModel::triggerPad,
                     onRelease = viewModel::releasePad,
+                    onTriggerWithOwnership = viewModel::triggerPadWithOwnership,
+                    onReleaseIfOwned = viewModel::releasePadIfOwned,
                     onSelect = viewModel::selectPad,
                     gap = gap,
                     modifier = Modifier.weight(1f),
@@ -1663,6 +1881,8 @@ private fun PadWorkspace(
                 selectedPad = state.selectedPad,
                 onTrigger = viewModel::triggerPad,
                 onRelease = viewModel::releasePad,
+                onTriggerWithOwnership = viewModel::triggerPadWithOwnership,
+                onReleaseIfOwned = viewModel::releasePadIfOwned,
                 onSelect = viewModel::selectPad,
                 gap = gap,
                 modifier = Modifier.weight(1.15f),
@@ -1782,6 +2002,19 @@ private fun PadTrimEditor(
         )
     }
     val canRestore = pad.startFrame != entrySnapshot.startFrame || pad.endFrame != entrySnapshot.endFrame
+    val initialWindow = remember(
+        pad.globalIndex,
+        audio.id,
+        entryStartFrame,
+        entryEndFrame,
+    ) {
+        padTrimInitialWindow(
+            pad.copy(
+                startFrame = entryStartFrame,
+                endFrame = entryEndFrame,
+            ),
+        )
+    }
     var activeBoundaryName by rememberSaveable(pad.globalIndex, audio.id) {
         mutableStateOf(PadTrimBoundary.START.name)
     }
@@ -1807,123 +2040,147 @@ private fun PadTrimEditor(
         1_024f,
         audio.frameCount.toFloat() / focusWindow.length.coerceAtLeast(1) * 4f,
     ).coerceAtMost(audio.frameCount.toFloat().coerceAtLeast(1f))
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        BeginnerCoachBar(
-            text = "波形を長押し：近い境界を移動して、その場所を1秒拡大",
-            modifier = Modifier.fillMaxWidth().height(30.dp),
+    var visibleViewport by remember(pad.globalIndex, audio.id, initialWindow) {
+        mutableStateOf(
+            focusWaveformViewport(
+                frame = initialWindow.startFrame + initialWindow.length / 2,
+                totalFrames = audio.frameCount,
+                targetVisibleFrames = initialWindow.length,
+            ),
         )
-        MachinePanel(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            WaveformEditor(
-                audio = audio,
-                rangeStartFrame = pad.startFrame,
-                rangeEndFrame = pad.endFrame,
-                sliceMarkers = emptyList(),
-                activeSlice = SliceRange(pad.startFrame, pad.endFrame),
-                manualChopEnabled = false,
-                onRangeStartChange = viewModel::setSelectedPadStartFrame,
-                onRangeEndChange = viewModel::setSelectedPadEndFrame,
-                onSliceMarkerChange = { _, _ -> },
-                onWaveformTap = { frame ->
-                    val boundary = nearestPadTrimBoundary(frame, pad.startFrame, pad.endFrame)
+    }
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val showOverview = precisionTrimOverviewVisible(maxHeight.value.roundToInt())
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            BeginnerCoachBar(
+                text = "長押ししたPADを見やすく表示。波形長押しで近い境界を移動して1秒拡大",
+                modifier = Modifier.fillMaxWidth().height(if (showOverview) 30.dp else 24.dp),
+            )
+            if (showOverview) {
+                PrecisionTrimOverview(
+                    audio = audio,
+                    padRange = SliceRange(pad.startFrame, pad.endFrame),
+                    viewport = visibleViewport,
+                    focusFrame = precisionFocusFrame,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                )
+            }
+            MachinePanel(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                WaveformEditor(
+                    audio = audio,
+                    rangeStartFrame = pad.startFrame,
+                    rangeEndFrame = pad.endFrame,
+                    sliceMarkers = emptyList(),
+                    activeSlice = SliceRange(pad.startFrame, pad.endFrame),
+                    manualChopEnabled = false,
+                    onRangeStartChange = viewModel::setSelectedPadStartFrame,
+                    onRangeEndChange = viewModel::setSelectedPadEndFrame,
+                    onSliceMarkerChange = { _, _ -> },
+                    onWaveformTap = { frame ->
+                        val boundary = nearestPadTrimBoundary(frame, pad.startFrame, pad.endFrame)
+                        activeBoundaryName = boundary.name
+                        precisionFocusFrame = frame
+                        when (boundary) {
+                            PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(frame)
+                            PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(frame)
+                        }
+                    },
+                    onWaveformLongPress = { frame ->
+                        val focused = focusPadTrimAtFrame(pad, frame)
+                        activeBoundaryName = focused.boundary.name
+                        precisionFocusFrame = focused.pressedFrame
+                        when (focused.boundary) {
+                            PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(focused.pad.startFrame)
+                            PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(focused.pad.endFrame)
+                        }
+                    },
+                    longPressFocusFrames = focusWindow.length,
+                    initialFocusFrame = initialWindow.startFrame + initialWindow.length / 2,
+                    initialVisibleFrames = initialWindow.length,
+                    fillCanvas = true,
+                    showViewportControls = false,
+                    compactViewportControls = true,
+                    showTimeReadout = true,
+                    showInteractionHint = false,
+                    maximumZoom = precisionMaximumZoom,
+                    zoomFocusFrame = precisionFocusFrame,
+                    viewportResetKey = viewportResetRevision,
+                    onViewportChanged = { visibleViewport = it },
+                    readoutColor = Color(0xFFE8DDBF),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            PrecisionTrimControls(
+                pad = pad,
+                activeBoundary = activeBoundary,
+                precision = precision,
+                focusWindow = focusWindow,
+                onBoundarySelected = { boundary ->
                     activeBoundaryName = boundary.name
-                    precisionFocusFrame = frame
+                    precisionFocusFrame = when (boundary) {
+                        PadTrimBoundary.START -> pad.startFrame
+                        PadTrimBoundary.END -> pad.endFrame.coerceAtMost(audio.frameCount - 1)
+                    }
+                },
+                onPrecisionSelected = { precisionName = it.name },
+                onBoundaryTicks = { boundary, ticks ->
+                    activeBoundaryName = boundary.name
+                    val updated = stepPadTrimBoundary(pad, boundary, ticks, precision)
                     when (boundary) {
-                        PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(frame)
-                        PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(frame)
+                        PadTrimBoundary.START -> if (updated.startFrame != pad.startFrame) {
+                            viewModel.setSelectedPadStartFrame(updated.startFrame)
+                        }
+                        PadTrimBoundary.END -> if (updated.endFrame != pad.endFrame) {
+                            viewModel.setSelectedPadEndFrame(updated.endFrame)
+                        }
                     }
                 },
-                onWaveformLongPress = { frame ->
-                    val focused = focusPadTrimAtFrame(pad, frame)
-                    activeBoundaryName = focused.boundary.name
-                    precisionFocusFrame = focused.pressedFrame
-                    when (focused.boundary) {
-                        PadTrimBoundary.START -> viewModel.setSelectedPadStartFrame(focused.pad.startFrame)
-                        PadTrimBoundary.END -> viewModel.setSelectedPadEndFrame(focused.pad.endFrame)
-                    }
-                },
-                longPressFocusFrames = focusWindow.length,
-                fillCanvas = true,
-                showViewportControls = false,
-                compactViewportControls = true,
-                showTimeReadout = true,
-                showInteractionHint = false,
-                maximumZoom = precisionMaximumZoom,
-                zoomFocusFrame = precisionFocusFrame,
-                viewportResetKey = viewportResetRevision,
-                readoutColor = Color(0xFFE8DDBF),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().height(144.dp),
             )
-        }
-        PrecisionTrimControls(
-            pad = pad,
-            activeBoundary = activeBoundary,
-            precision = precision,
-            focusWindow = focusWindow,
-            onBoundarySelected = { boundary ->
-                activeBoundaryName = boundary.name
-                precisionFocusFrame = when (boundary) {
-                    PadTrimBoundary.START -> pad.startFrame
-                    PadTrimBoundary.END -> pad.endFrame.coerceAtMost(audio.frameCount - 1)
-                }
-            },
-            onPrecisionSelected = { precisionName = it.name },
-            onBoundaryTicks = { boundary, ticks ->
-                activeBoundaryName = boundary.name
-                val updated = stepPadTrimBoundary(pad, boundary, ticks, precision)
-                when (boundary) {
-                    PadTrimBoundary.START -> if (updated.startFrame != pad.startFrame) {
-                        viewModel.setSelectedPadStartFrame(updated.startFrame)
-                    }
-                    PadTrimBoundary.END -> if (updated.endFrame != pad.endFrame) {
-                        viewModel.setSelectedPadEndFrame(updated.endFrame)
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(144.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            MachineButton(
-                label = "調整したPADを聴く\nPREVIEW",
-                onClick = { viewModel.previewPad(pad.globalIndex) },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "編集前へ戻す\nREVERT",
-                onClick = {
-                    viewModel.restoreSelectedPadTrim(entrySnapshot)
-                    activeBoundaryName = PadTrimBoundary.START.name
-                    precisionFocusFrame = entrySnapshot.startFrame +
-                        (entrySnapshot.endFrame - entrySnapshot.startFrame) / 2
-                    viewportResetRevision++
-                },
-                enabled = canRestore,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            MachineButton(
-                label = "元曲を再生/停止\nSOURCE",
-                onClick = viewModel::toggleSourcePlayback,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
-            MachineButton(
-                label = "すべて停止\nSTOP ALL",
-                onClick = viewModel::stopAllSounds,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                compact = true,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                MachineButton(
+                    label = "調整したPADを聴く\nPREVIEW",
+                    onClick = { viewModel.previewPad(pad.globalIndex) },
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+                MachineButton(
+                    label = "編集前へ戻す\nREVERT",
+                    onClick = {
+                        viewModel.restoreSelectedPadTrim(entrySnapshot)
+                        activeBoundaryName = PadTrimBoundary.START.name
+                        precisionFocusFrame = entrySnapshot.startFrame +
+                            (entrySnapshot.endFrame - entrySnapshot.startFrame) / 2
+                        viewportResetRevision++
+                    },
+                    enabled = canRestore,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                MachineButton(
+                    label = "元曲を再生/停止\nSOURCE",
+                    onClick = viewModel::toggleSourcePlayback,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+                MachineButton(
+                    label = "すべて停止\nSTOP ALL",
+                    onClick = viewModel::stopAllSounds,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    compact = true,
+                )
+            }
         }
     }
 }
@@ -2041,22 +2298,43 @@ private fun PlayModeEditor(
 private fun SequenceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
+    viewportWidthDp: Int,
+    viewportHeightDp: Int,
     onOpenPadDetails: (Int) -> Unit,
     onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    onOpenArrangementStudio: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
-    var showFineControls by rememberSaveable { mutableStateOf(false) }
+    var workspaceModeName by rememberSaveable { mutableStateOf(BeatWorkspaceMode.QUICK.name) }
+    val workspaceMode = restoreBeatWorkspaceMode(workspaceModeName)
+    val surface = beatWorkspaceSurface(workspaceMode)
+    val navigateWorkspace: (BeatWorkspaceAction) -> Unit = { action ->
+        workspaceModeName = transitionBeatWorkspace(workspaceMode, action).name
+    }
     val scrollState = rememberScrollState()
-    if (beatWorkspaceSurface(showFineControls).showPadGrid) {
+    if (surface.showPadGrid) {
         BeatChopSurface(
             state = state,
             metrics = metrics,
             onOpenPadDetails = onOpenPadDetails,
             onOpenPadTrim = onOpenPadTrim,
             onOpenLayerStudio = onOpenLayerStudio,
-            onShowFineControls = { showFineControls = true },
+            onOpenArrangementStudio = onOpenArrangementStudio,
+            onShowFocusedSteps = { navigateWorkspace(BeatWorkspaceAction.SHOW_FOCUSED_STEPS) },
+            viewModel = viewModel,
+        )
+        return
+    }
+    if (surface.showFocusedStepEditor) {
+        FocusedStepEditor(
+            state = state,
+            metrics = metrics,
+            viewportWidthDp = viewportWidthDp,
+            viewportHeightDp = viewportHeightDp,
+            onShowQuick = { navigateWorkspace(BeatWorkspaceAction.SHOW_QUICK) },
+            onShowFineControls = { navigateWorkspace(BeatWorkspaceAction.SHOW_FINE_CONTROLS) },
             viewModel = viewModel,
         )
         return
@@ -2095,8 +2373,17 @@ private fun SequenceWorkspace(
                 state = state,
                 metrics = metrics,
                 onOpenLayerStudio = onOpenLayerStudio,
+                onOpenArrangementStudio = onOpenArrangementStudio,
                 showFineControls = true,
-                onShowFineControls = { showFineControls = it },
+                onShowFineControls = { stepsVisible ->
+                    navigateWorkspace(
+                        if (stepsVisible) {
+                            BeatWorkspaceAction.SHOW_FOCUSED_STEPS
+                        } else {
+                            BeatWorkspaceAction.SHOW_QUICK
+                        },
+                    )
+                },
                 viewModel = viewModel,
                 modifier = Modifier.weight(0.7f).fillMaxHeight(),
             )
@@ -2169,7 +2456,86 @@ private fun SequenceWorkspace(
                 height = metrics.productionDockHeightDp.dp,
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
                 onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
-                onStepsVisibleChange = { showFineControls = it },
+                onOpenArrange = onOpenArrangementStudio,
+                onStepsVisibleChange = { stepsVisible ->
+                    navigateWorkspace(
+                        if (stepsVisible) {
+                            BeatWorkspaceAction.SHOW_FOCUSED_STEPS
+                        } else {
+                            BeatWorkspaceAction.SHOW_QUICK
+                        },
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FocusedStepEditor(
+    state: SamplerUiState,
+    metrics: DeckLayoutMetrics,
+    viewportWidthDp: Int,
+    viewportHeightDp: Int,
+    onShowQuick: () -> Unit,
+    onShowFineControls: () -> Unit,
+    viewModel: SamplerDeckController,
+) {
+    val layout = resolveFocusedStepLayout(metrics, viewportWidthDp, viewportHeightDp)
+    val gap = (layout?.cellGapDp ?: metrics.gapDp.toFloat()).dp
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(FOCUSED_STEP_HEADER_HEIGHT_DP.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            MachineButton(
+                label = "クイックへ戻る\nQUICK",
+                onClick = onShowQuick,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+            MachineButton(
+                label = "BPM・音色\nCONTROLS",
+                onClick = onShowFineControls,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                compact = true,
+            )
+        }
+        if (layout == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(DeckPanelDark, RoundedCornerShape(5.dp))
+                    .border(1.dp, DeckInk, RoundedCornerShape(5.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "この画面サイズでは16ステップを安全な大きさで表示できません",
+                    color = DeckInk,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            StepSequencer(
+                selectedPad = state.selectedPad,
+                activeSteps = state.activeSteps,
+                currentStep = state.currentStep,
+                onToggleStep = viewModel::toggleStep,
+                enabled = state.selectedPadModel().canUsePatternSteps(),
+                columns = layout.columns,
+                gap = layout.cellGapDp.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
             )
         }
     }
@@ -2182,7 +2548,8 @@ private fun BeatChopSurface(
     onOpenPadDetails: (Int) -> Unit,
     onOpenPadTrim: (Int) -> Unit,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
-    onShowFineControls: () -> Unit,
+    onOpenArrangementStudio: () -> Unit,
+    onShowFocusedSteps: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
@@ -2204,6 +2571,8 @@ private fun BeatChopSurface(
             selectedPad = state.selectedPad,
             onTrigger = viewModel::triggerPad,
             onRelease = viewModel::releasePad,
+            onTriggerWithOwnership = viewModel::triggerPadWithOwnership,
+            onReleaseIfOwned = viewModel::releasePadIfOwned,
             onSelect = viewModel::selectPlayablePad,
             onLongPress = onOpenPadTrim,
             deferPadActionUntilTap = metrics.beatWorkspaceNeedsScroll,
@@ -2217,7 +2586,8 @@ private fun BeatChopSurface(
             height = metrics.productionDockHeightDp.dp,
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
-            onStepsVisibleChange = { if (it) onShowFineControls() },
+            onOpenArrange = onOpenArrangementStudio,
+            onStepsVisibleChange = { if (it) onShowFocusedSteps() },
         )
     }
 
@@ -2381,6 +2751,7 @@ private fun SequenceControlDeck(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
+    onOpenArrangementStudio: () -> Unit,
     showFineControls: Boolean,
     onShowFineControls: (Boolean) -> Unit,
     viewModel: SamplerDeckController,
@@ -2415,6 +2786,7 @@ private fun SequenceControlDeck(
                 height = metrics.productionDockHeightDp.dp,
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
                 onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+                onOpenArrange = onOpenArrangementStudio,
                 onStepsVisibleChange = onShowFineControls,
             )
             return@Column
@@ -2490,6 +2862,7 @@ private fun SequenceControlDeck(
             height = metrics.productionDockHeightDp.dp,
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             onOpenScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
+            onOpenArrange = onOpenArrangementStudio,
             onStepsVisibleChange = onShowFineControls,
         )
     }
@@ -2620,7 +2993,7 @@ private fun BeatLoopControl(
             MachineButton(
                 label = beatLoopButtonLabel(looping = loopingPad != null, fontScale = fontScale),
                 onClick = viewModel::toggleBeatLoopControl,
-                enabled = pad.isAssigned || loopingPad != null,
+                enabled = state.beatLoopControlEnabled,
                 active = loopingPad != null,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
@@ -2653,7 +3026,7 @@ private fun LandscapeBeatPlaybackRow(
         MachineButton(
             label = beatLoopButtonLabel(looping = loopingPad != null, fontScale = fontScale),
             onClick = viewModel::toggleBeatLoopControl,
-            enabled = selectedPad.isAssigned || loopingPad != null,
+            enabled = state.beatLoopControlEnabled,
             active = loopingPad != null,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
@@ -2706,6 +3079,7 @@ private fun BeatProductionDock(
     height: Dp,
     onOpenAdd: () -> Unit,
     onOpenScratch: () -> Unit,
+    onOpenArrange: () -> Unit,
     onStepsVisibleChange: (Boolean) -> Unit,
 ) {
     ProductionDock(
@@ -2715,10 +3089,206 @@ private fun BeatProductionDock(
         handlers = mapOf(
             ProductionDockIntent.SHOW_QUICK to { onStepsVisibleChange(false) },
             ProductionDockIntent.SHOW_STEPS to { onStepsVisibleChange(true) },
+            ProductionDockIntent.OPEN_ARRANGE to onOpenArrange,
             ProductionDockIntent.OPEN_ADD to onOpenAdd,
             ProductionDockIntent.OPEN_SCRATCH to onOpenScratch,
         ),
     )
+}
+
+@Composable
+private fun ArrangementStudio(
+    state: SamplerUiState,
+    onDismiss: () -> Unit,
+    viewModel: SamplerDeckController,
+) {
+    val presentation = arrangementStudioPresentation(state)
+    var copyConfirmationPending by remember { mutableStateOf(false) }
+    LaunchedEffect(presentation.selectedSlot, presentation.copyNeedsConfirmation) {
+        copyConfirmationPending = false
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xCC070604))
+                .padding(horizontal = 12.dp, vertical = 18.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                color = DeckPanel,
+                contentColor = DeckInk,
+                shape = ConsoleShape,
+                shadowElevation = 14.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.82f)
+                    .widthIn(max = 720.dp)
+                    .border(2.dp, DeckLamp, ConsoleShape),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(DeckInk, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                "A/B SONG",
+                                color = DeckLamp,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                            )
+                            Text(
+                                "4小節の曲を作る",
+                                color = DeckGreen,
+                                fontFamily = DeckFont,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                            )
+                        }
+                        MachineButton(
+                            label = "閉じる\nCLOSE",
+                            onClick = onDismiss,
+                            modifier = Modifier.width(86.dp).fillMaxHeight(),
+                            compact = true,
+                        )
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DeckInk, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            presentation.selectedPatternLabel,
+                            color = DeckLamp,
+                            fontFamily = DeckFont,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.sp,
+                        )
+                        Text(
+                            presentation.guidance,
+                            color = DeckGreen,
+                            fontFamily = DeckFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                        )
+                    }
+                    Text(
+                        "1. 編集するA/Bを選ぶ",
+                        color = DeckInk,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 10.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(58.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf("A", "B").forEachIndexed { slot, label ->
+                            MachineButton(
+                                label = "パターン${label}\n編集する",
+                                onClick = { viewModel.selectPatternVariation(slot) },
+                                enabled = presentation.editEnabled,
+                                active = presentation.selectedSlot == slot,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                            )
+                        }
+                    }
+                    MachineButton(
+                        label = if (copyConfirmationPending) {
+                            "${presentation.copyDestinationLabel}を上書きします\nもう一度で確定"
+                        } else {
+                            "${presentation.copyLabel}\nCOPY THEN EDIT"
+                        },
+                        onClick = {
+                            if (presentation.copyNeedsConfirmation && !copyConfirmationPending) {
+                                copyConfirmationPending = true
+                            } else {
+                                copyConfirmationPending = false
+                                viewModel.duplicateSelectedPatternToOther()
+                            }
+                        },
+                        enabled = presentation.editEnabled,
+                        active = copyConfirmationPending,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
+                    Text(
+                        "2. 4小節をタップして A/B を切り替え",
+                        color = DeckInk,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 10.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(62.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        presentation.sectionLabels.forEachIndexed { index, label ->
+                            MachineButton(
+                                label = label,
+                                onClick = { viewModel.toggleSongSectionPattern(index) },
+                                enabled = presentation.editEnabled,
+                                active = presentation.sectionSlots[index] == 1,
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
+                                compact = true,
+                            )
+                        }
+                    }
+                    Text(
+                        "3. 再生・WAV書出しの長さを選ぶ",
+                        color = DeckInk,
+                        fontFamily = DeckFont,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 10.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        MachineButton(
+                            label = presentation.playbackModeLabel,
+                            onClick = viewModel::toggleSongMode,
+                            enabled = presentation.editEnabled,
+                            active = presentation.songModeEnabled,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                        ValueDisplay(
+                            label = "書き出し",
+                            value = if (presentation.songModeEnabled) "4小節 A/B" else "選択Pattern ×4",
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
+                    MachineButton(
+                        label = "閉じて16ステップを編集\nEDIT SELECTED PATTERN",
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -3476,9 +4046,10 @@ private fun FinishWorkspace(
 ) {
     val gap = metrics.gapDp.dp
     val assignedPads = state.pads.count(PadModel::isAssigned)
-    val audibleSteps = state.activeSteps.audibleStepKeys(state.pads).size
-    val ready = state.activeSteps.hasAudiblePatternContent(state.pads)
+    val audibleSteps = state.audiblePlaybackStepCount()
+    val ready = state.hasAudiblePlaybackPatternContent()
     val readiness = finishReadinessPresentation(ready)
+    val clearAction = finishClearActionPresentation()
     val summary: @Composable (Modifier) -> Unit = { modifier ->
         MachinePanel(modifier = modifier) {
             Column(
@@ -3574,14 +4145,14 @@ private fun FinishWorkspace(
                 MachineButton(
                     label = "1つ戻す\nUNDO",
                     onClick = viewModel::undoEdit,
-                    enabled = state.canUndo && !state.isLoading && !state.recordingSession.isActive,
+                    enabled = state.undoRequestEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
                 MachineButton(
                     label = "やり直す\nREDO",
                     onClick = viewModel::redoEdit,
-                    enabled = state.canRedo && !state.isLoading && !state.recordingSession.isActive,
+                    enabled = state.redoRequestEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
@@ -3597,10 +4168,10 @@ private fun FinishWorkspace(
                     compact = true,
                 )
                 ConfirmActionButton(
-                    label = "全部消す\nCLEAR",
-                    confirmLabel = "もう一度で削除",
+                    label = clearAction.label,
+                    confirmLabel = clearAction.confirmLabel,
                     onConfirm = viewModel::clearAllPattern,
-                    enabled = state.activeSteps.isNotEmpty(),
+                    enabled = state.hasAnyPatternSteps(),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
@@ -3637,6 +4208,7 @@ private fun SourceEditorWaveform(
     modifier: Modifier,
     condensed: Boolean = false,
     selectSliceOnly: Boolean = false,
+    allowVerticalDragPassThrough: Boolean = false,
     waveformTapOverride: ((Int) -> Unit)? = null,
 ) {
     val audio = state.currentAudio
@@ -3675,6 +4247,7 @@ private fun SourceEditorWaveform(
                 compactViewportControls = !condensed,
                 showTimeReadout = !condensed,
                 showInteractionHint = !condensed || selectSliceOnly,
+                allowVerticalDragPassThrough = allowVerticalDragPassThrough,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -3753,11 +4326,16 @@ private fun ConsoleStatusStrip(
     height: Dp,
     largeText: Boolean,
 ) {
+    val nextAction = workflowNextActionPresentation(state)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
             .background(DeckInk, RoundedCornerShape(5.dp))
+            .clearAndSetSemantics {
+                contentDescription = "現在 ${stage.label}。${nextAction.title}。" +
+                    "${nextAction.guidance}。状態: ${state.statusMessage}"
+            }
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -3768,13 +4346,11 @@ private fun ConsoleStatusStrip(
         )
         if (largeText) {
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics { contentDescription = "${stage.label}。${stage.guidance}。状態: ${state.statusMessage}" },
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = "${stage.label}  ${stage.guidance}",
+                    text = "${nextAction.title}  ${nextAction.guidance}",
                     color = DeckLamp,
                     fontFamily = DeckFont,
                     fontWeight = FontWeight.Black,
@@ -3793,22 +4369,21 @@ private fun ConsoleStatusStrip(
             }
         } else {
             Text(
-                text = stage.label,
+                text = nextAction.title,
                 color = DeckLamp,
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
                 fontSize = 8.sp,
             )
             Text(
-                text = "${stage.guidance}  /  ${state.statusMessage}",
+                text = "${nextAction.guidance}  /  ${state.statusMessage}",
                 color = Color(0xFFE8DDBF),
                 fontFamily = DeckFont,
                 fontSize = 8.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .weight(1f)
-                    .semantics { contentDescription = "状態: ${state.statusMessage}" },
+                    .weight(1f),
             )
         }
     }
@@ -3947,6 +4522,7 @@ private fun NewSourceActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     active: Boolean = false,
+    compact: Boolean = true,
 ) {
     if (requiresNewProjectConfirmation(state) && !active) {
         ConfirmActionButton(
@@ -3955,6 +4531,7 @@ private fun NewSourceActionButton(
             onConfirm = onConfirm,
             enabled = enabled,
             modifier = modifier,
+            compact = compact,
         )
     } else {
         MachineButton(
@@ -3963,7 +4540,7 @@ private fun NewSourceActionButton(
             enabled = enabled,
             active = active,
             modifier = modifier,
-            compact = true,
+            compact = compact,
         )
     }
 }
@@ -3975,6 +4552,7 @@ private fun ConfirmActionButton(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    compact: Boolean = true,
 ) {
     var armed by remember { mutableStateOf(false) }
     MachineButton(
@@ -3990,7 +4568,7 @@ private fun ConfirmActionButton(
         enabled = enabled,
         active = armed,
         modifier = modifier,
-        compact = true,
+        compact = compact,
     )
 }
 
@@ -4092,13 +4670,14 @@ private fun SourceWaveform(
     val visibleFrames = viewport.visibleFrames
     val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
-    val envelope = remember(visibleAudio?.id, visibleStart, visibleEnd) {
+    val envelope = remember(visibleAudio?.id, visibleAudio?.channelCount, visibleStart, visibleEnd) {
         visibleAudio?.let {
             buildWaveformEnvelope(
                 samples = it.samples,
                 visibleStart = visibleStart,
                 visibleEnd = visibleEnd,
                 pixelWidth = 640,
+                channelCount = it.channelCount,
                 pixelStep = 1,
             )
         }

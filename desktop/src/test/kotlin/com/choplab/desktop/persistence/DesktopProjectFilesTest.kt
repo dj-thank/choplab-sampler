@@ -48,6 +48,7 @@ class DesktopProjectFilesTest {
             DesktopProjectFiles.save(target, SamplerUiState(bpm = 111f))
             assertFails { DesktopProjectFiles.save(target, SamplerUiState(pads = emptyList())) }
             assertEquals(111f, DesktopProjectFiles.load(target).bpm)
+            assertEquals(listOf("session.choplab"), directory.list()?.sorted())
         } finally {
             directory.deleteRecursively()
         }
