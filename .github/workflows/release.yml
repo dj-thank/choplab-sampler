@@ -194,6 +194,7 @@ jobs:
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
           cp "${apks[0]}" "$apk_target"
           cp "$sbom" "$sbom_target"
+          python3 scripts/check_public_surface.py --archive "$apk_target"
           for file in "$apk_target" "$sbom_target"; do
             printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"
           done
@@ -382,6 +383,7 @@ jobs:
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: |
           python3 scripts/check_public_surface.py \
+            --archive "dist/ChopLab-${RELEASE_TAG}-android.apk" \
             --archive "dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip" \
             --archive "dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip"
 
