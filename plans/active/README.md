@@ -6,11 +6,11 @@
 
 ## Current selection
 
-**Wave 20 completed local; GitHub integration pending:** `../completed/zip-publication-content-scan-20260827.md`。existing PR #69 parserを`main@0f5b672`へnormal mergeし、LZMA dictionary事前OOM、archive-wide compressed-input cap、secret label redaction、exact source/Windows/iOS archiveのcreate後・publish前scanを一つのboundaryとして閉じた。product `3ed6710` / tree `70e8f94`、Python100、current/history465、exact三archive、configured18 tasks、Standards/Spec unresolved0/0で`LOCAL_PASS`。remote PR #69 update/27 threads/hosted checksは未実行。
+**Wave 20 provider integration in final review repair; merge intentionally pending:** `../completed/zip-publication-content-scan-20260827.md`。existing PR #69 parserを`main@0f5b672`へ統合し、current/historyとexact source/Android APK/Windows/iOS/SBOMのpre-upload/pre-publication scanを一つのbounded ZIP/APK/text boundaryへ閉じる。直近の全成功inputは`8f6dcca` / tree `a7c585b`。本追補はbinary/JIMAGE全body、APK signing pair、SBOM textまで閉じ、Python124、current/history465、exact四archive＋SBOM、configured18 tasksをlocal PASS。本追補を同じPRへ通常更新後、final exact head/check/reviewを再固定する。PRはOPEN、mainは`0f5b672`のまま。
 
 **Wave 19 GitHub integration complete:** `../completed/waves17-18-pr-review-repair-20260827.md`。review-hardened exact head `4ae09d8`はPR #79の8/8 checks・threads 0後、`main@0f5b672` / tree `939f954`へnormal merge。merged-main Android/Windows/iOS/Supply 4/4もSUCCESS。`v0.17.0` tag/Releaseは不変。
 
-**次に保持する一つ:** 新しいfeatureは開始せず、既存PR #79を同じbranch/headへ更新する。exact-head 8 workflows、review threads 0、clean mergeabilityとbase/head不変を確認してからだけnormal mergeし、merged-main 4 workflowsをread-backする。tag、Release、署名、device/provider account、Humanは別taskのまま。
+**次に保持する一つ:** 新しいfeatureやWave 21は開始せず、renewed explicit authorizationがある場合だけexisting PR #69のexact provider-ready headをnormal mergeする。その後にmerged-main 4 workflowsとhead/treeをread-backする。force、branch deletion、`v0.17.0` rewrite、署名、device/provider account、Humanは別taskのまま。
 
 **wave 18 completed local; goal remains active:** `../completed/android-loop-session-admission-20260827.md`。Wave 17 closeout `8065c89` / tree `1c79440`から、Androidのowner＋eligible VOICE loop sessionを一つのbounded realtime commandとしてadmitし、初回project commit、VOICE録音restart、scratch returnをadmission成功後だけ公開する。queue full／engine stoppedはhistory/revision/runtime/autosaveを保持。product `5812c8a` / tree `1255aca`、703 tests / 116 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical AudioTrack output、device/provider/public/signing/Humanは別gate。
 

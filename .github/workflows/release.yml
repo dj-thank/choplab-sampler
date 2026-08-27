@@ -194,7 +194,9 @@ jobs:
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
           cp "${apks[0]}" "$apk_target"
           cp "$sbom" "$sbom_target"
-          python3 scripts/check_public_surface.py --archive "$apk_target"
+          python3 scripts/check_public_surface.py \
+            --archive "$apk_target" \
+            --text-file "$sbom_target"
           for file in "$apk_target" "$sbom_target"; do
             printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"
           done
@@ -385,7 +387,8 @@ jobs:
           python3 scripts/check_public_surface.py \
             --archive "dist/ChopLab-${RELEASE_TAG}-android.apk" \
             --archive "dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip" \
-            --archive "dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip"
+            --archive "dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip" \
+            --text-file "dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
 
       - name: Write source-bound manifest and checksums
         shell: bash

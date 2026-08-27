@@ -66,6 +66,8 @@ ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
 ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
 ZIP_COMPRESSION_RATIO_LIMIT = 100
 ZIP_ENTRY_COUNT_LIMIT = 4_096
+ZIP_CT_SYM_ENTRY_COUNT_LIMIT = 20_000
+ZIP_CT_SYM_TOTAL_SCAN_LIMIT = 128 * 1024 * 1024
 ZIP_LZMA_DICTIONARY_LIMIT = 16 * 1024 * 1024
 HISTORICAL_ZIP_BLOB_COUNT_LIMIT = 128
 HISTORICAL_ZIP_CONTAINER_LIMIT = 16 * 1024 * 1024
@@ -74,10 +76,10 @@ HISTORICAL_NON_COMMIT_TREE_LIMIT = 128
 ZIP_NESTED_DEPTH_LIMIT = 3
 ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
-ZIP_NESTED_TOTAL_LIMIT = 64 * 1024 * 1024
+ZIP_NESTED_TOTAL_LIMIT = 256 * 1024 * 1024
 CURRENT_ZIP_ARCHIVE_COUNT_LIMIT = 128
-CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 128 * 1024 * 1024
-CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 128 * 1024 * 1024
+CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 512 * 1024 * 1024
+CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 512 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
@@ -88,6 +90,9 @@ SECRET_PATTERNS = [
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
+]
+SECRET_BYTE_PATTERNS = [
+    re.compile(pattern.pattern.encode("ascii")) for pattern in SECRET_PATTERNS
 ]
 ZIP_LOCAL_FILE_HEADER = struct.Struct("<4s5H3L2H")
 ZIP_LOCAL_FILE_SIGNATURE = b"PK\x03\x04"
@@ -101,19 +106,18 @@ ZIP_MAX_COMMENT_LENGTH = (1 << 16) - 1
 ZIP64_UINT16_SENTINEL = (1 << 16) - 1
 ZIP64_UINT32_SENTINEL = (1 << 32) - 1
 ZIP_MEMBER_INPUT_CHUNK = 64 * 1024
-ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT = 64 * 1024
-ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT = 256 * 1024
-ZIP_BINARY_AUDIO_PROBE_SIZE = 12
-ZIP_BINARY_AUDIO_PROBE_MEMBER_INPUT_LIMIT = 4 * 1024
-ZIP_BINARY_AUDIO_PROBE_TOTAL_INPUT_LIMIT = 8 * 1024 * 1024
 ZIP_JIMAGE_HEADER = struct.Struct("<7I")
 ZIP_JIMAGE_MAGIC = 0xCAFEDADA
 ZIP_SKIKO_ICU_SCAN_LIMIT = 16 * 1024 * 1024
+ZIP_BINARY_SECRET_MEMBER_LIMIT = 32 * 1024 * 1024
+ZIP_JIMAGE_FULL_SCAN_LIMIT = 128 * 1024 * 1024
+ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
 APK_SIGNING_BLOCK_MAX_SIZE = 16 * 1024 * 1024
 APK_SIGNING_BLOCK_PAIR_LIMIT = 128
 APK_BINARY_MEMBER_SCAN_LIMIT = 32 * 1024 * 1024
 APK_BINARY_TOTAL_SCAN_LIMIT = 64 * 1024 * 1024
+EXPLICIT_TEXT_FILE_LIMIT = 16 * 1024 * 1024
 
 
 @dataclass
@@ -135,6 +139,12 @@ class ZipCandidateScanBudget:
 
 @dataclass
 class ApkContentScanBudget:
+    compressed_bytes: int = 0
+    expanded_bytes: int = 0
+
+
+@dataclass
+class ZipBinaryScanBudget:
     compressed_bytes: int = 0
     expanded_bytes: int = 0
 
@@ -688,59 +698,6 @@ def read_verified_zip_member(
     return bytes(output)
 
 
-def read_zip_binary_prefix(
-    stream: object,
-    info: zipfile.ZipInfo,
-    *,
-    payload_offset: int,
-    compressed_input_limit: int,
-    probe_size: int = ZIP_JIMAGE_HEADER.size,
-    input_chunk_size: int = ZIP_MEMBER_INPUT_CHUNK,
-) -> tuple[bytes, int]:
-    """Read only enough bounded stored/deflate input to classify known binaries."""
-    if compressed_input_limit <= 0:
-        raise ValueError("archive binary probe input budget is exhausted")
-    if probe_size <= 0 or input_chunk_size <= 0:
-        raise ValueError("archive binary probe bounds must be positive")
-    stream.seek(payload_offset)
-
-    if info.compress_type == zipfile.ZIP_STORED:
-        read_size = min(info.compress_size, probe_size, compressed_input_limit)
-        prefix = stream.read(read_size)
-        if len(prefix) != read_size:
-            raise ValueError("stored binary probe payload is truncated")
-        return prefix, read_size
-
-    if info.compress_type != zipfile.ZIP_DEFLATED:
-        raise NotImplementedError(
-            f"compression method {info.compress_type} is not supported for binary probes"
-        )
-
-    decompressor = zlib.decompressobj(-15)
-    output = bytearray()
-    compressed_remaining = info.compress_size
-    consumed = 0
-    while (
-        len(output) < probe_size
-        and compressed_remaining
-        and consumed < compressed_input_limit
-    ):
-        read_size = min(
-            compressed_remaining,
-            input_chunk_size,
-            compressed_input_limit - consumed,
-        )
-        chunk = stream.read(read_size)
-        if not chunk:
-            raise ValueError("deflate binary probe payload is truncated")
-        compressed_remaining -= len(chunk)
-        consumed += len(chunk)
-        output.extend(decompressor.decompress(chunk, probe_size - len(output)))
-        if decompressor.eof:
-            break
-    return bytes(output), consumed
-
-
 def has_valid_jimage_header(content: bytes, file_size: int) -> bool:
     if len(content) < ZIP_JIMAGE_HEADER.size:
         return False
@@ -781,25 +738,15 @@ def has_valid_icu_data_header(content: bytes, file_size: int) -> bool:
     )
 
 
-def has_valid_large_binary_header(
-    path: PurePosixPath,
-    content: bytes,
-    file_size: int,
-) -> bool:
-    if is_jdk_modules_path(path):
-        return has_valid_jimage_header(content, file_size)
-    return False
-
-
-def has_valid_apk_signing_block(
+def read_valid_apk_signing_block_values(
     stream: object,
     *,
     block_start: int,
     central_directory_start: int,
-) -> bool:
+) -> list[bytes] | None:
     block_size = central_directory_start - block_start
     if block_size < 32 or block_size > APK_SIGNING_BLOCK_MAX_SIZE:
-        return False
+        return None
     original_position: int | None = None
     try:
         original_position = stream.tell()
@@ -808,7 +755,7 @@ def has_valid_apk_signing_block(
         stream.seek(central_directory_start - 24)
         trailing = stream.read(24)
         if len(leading_size_bytes) != 8 or len(trailing) != 24:
-            return False
+            return None
         leading_size = int.from_bytes(leading_size_bytes, "little")
         trailing_size = int.from_bytes(trailing[:8], "little")
         if (
@@ -816,26 +763,31 @@ def has_valid_apk_signing_block(
             or leading_size != trailing_size
             or leading_size + 8 != block_size
         ):
-            return False
+            return None
 
         pair_offset = block_start + 8
         pair_end = central_directory_start - 24
-        pair_count = 0
+        pair_values: list[bytes] = []
         while pair_offset < pair_end:
-            if pair_count >= APK_SIGNING_BLOCK_PAIR_LIMIT:
-                return False
+            if len(pair_values) >= APK_SIGNING_BLOCK_PAIR_LIMIT:
+                return None
             stream.seek(pair_offset)
             pair_size_bytes = stream.read(8)
             if len(pair_size_bytes) != 8:
-                return False
+                return None
             pair_size = int.from_bytes(pair_size_bytes, "little")
             if pair_size < 4 or pair_offset + 8 + pair_size > pair_end:
-                return False
+                return None
+            pair_content = stream.read(pair_size)
+            if len(pair_content) != pair_size:
+                return None
+            pair_values.append(pair_content[4:])
             pair_offset += 8 + pair_size
-            pair_count += 1
-        return pair_count > 0 and pair_offset == pair_end
+        if not pair_values or pair_offset != pair_end:
+            return None
+        return pair_values
     except (OSError, ValueError):
-        return False
+        return None
     finally:
         if original_position is not None:
             try:
@@ -1066,12 +1018,11 @@ def scan_zip(
     _container_path: PurePosixPath | None = None,
     _apk_content_context: bool = False,
     _apk_binary_budget: ApkContentScanBudget | None = None,
+    _binary_secret_budget: ZipBinaryScanBudget | None = None,
 ) -> list[str]:
     findings: list[str] = []
     scanned_bytes = 0
     scanned_compressed_bytes = 0
-    scanned_binary_probe_bytes = 0
-    scanned_binary_audio_probe_bytes = 0
     scanned_large_binary_bytes = 0
     scanned_large_binary_compressed_bytes = 0
     archive_label = label or str(source)
@@ -1082,6 +1033,7 @@ def scan_zip(
     apk_binary_budget = _apk_binary_budget
     if apk_content_context and apk_binary_budget is None:
         apk_binary_budget = ApkContentScanBudget()
+    binary_secret_budget = _binary_secret_budget or ZipBinaryScanBudget()
 
     if candidate_budget is not None and _nested_depth == 0:
         if candidate_budget.archive_count + 1 > candidate_budget.archive_limit:
@@ -1443,6 +1395,7 @@ def scan_zip(
                     )
                     continue
                 bounded_apk_binary = False
+                bounded_binary_secret = False
                 if (
                     entry_suffix in ARCHIVE_BINARY_SUFFIXES
                     or is_known_archive_binary_path(entry)
@@ -1461,84 +1414,18 @@ def scan_zip(
                                 "member scan limit"
                             )
                             continue
-                    if not bounded_apk_binary:
-                        if local_payload_offset is None:
+                    else:
+                        if (
+                            info.file_size > ZIP_BINARY_SECRET_MEMBER_LIMIT
+                            or info.compress_size > ZIP_BINARY_SECRET_MEMBER_LIMIT
+                        ):
                             findings.append(
-                                f"{archive_label}: archive entry {name!r}: binary audio "
-                                "probe payload offset is unavailable"
+                                f"{archive_label}: archive entry {name!r}: binary body "
+                                f"exceeds the {ZIP_BINARY_SECRET_MEMBER_LIMIT}-byte "
+                                "full secret-scan limit"
                             )
                             continue
-                        binary_audio_stream = archive.fp
-                        binary_audio_position: int | None = None
-                        try:
-                            if binary_audio_stream is None:
-                                raise ValueError("archive stream is unavailable")
-                            remaining_audio_probe_budget = (
-                                ZIP_BINARY_AUDIO_PROBE_TOTAL_INPUT_LIMIT
-                                - scanned_binary_audio_probe_bytes
-                            )
-                            if candidate_budget is not None:
-                                remaining_audio_probe_budget = min(
-                                    remaining_audio_probe_budget,
-                                    candidate_budget.compressed_input_limit
-                                    - candidate_budget.compressed_bytes,
-                                )
-                            binary_audio_position = binary_audio_stream.tell()
-                            prefix, consumed = read_zip_binary_prefix(
-                                binary_audio_stream,
-                                info,
-                                payload_offset=local_payload_offset,
-                                compressed_input_limit=min(
-                                    ZIP_BINARY_AUDIO_PROBE_MEMBER_INPUT_LIMIT,
-                                    remaining_audio_probe_budget,
-                                ),
-                                probe_size=ZIP_BINARY_AUDIO_PROBE_SIZE,
-                                input_chunk_size=256,
-                            )
-                            required_prefix = min(
-                                info.file_size,
-                                ZIP_BINARY_AUDIO_PROBE_SIZE,
-                            )
-                            if len(prefix) != required_prefix:
-                                raise ValueError(
-                                    "binary audio signature probe did not produce its "
-                                    "declared prefix"
-                                )
-                            scanned_binary_audio_probe_bytes += consumed
-                        except (
-                            MemoryError,
-                            NotImplementedError,
-                            OSError,
-                            RuntimeError,
-                            ValueError,
-                            zlib.error,
-                        ) as error:
-                            findings.append(
-                                f"{archive_label}: archive entry {name!r}: binary audio "
-                                f"signature probe failed ({type(error).__name__})"
-                            )
-                            continue
-                        finally:
-                            if (
-                                binary_audio_stream is not None
-                                and binary_audio_position is not None
-                            ):
-                                try:
-                                    binary_audio_stream.seek(binary_audio_position)
-                                except (OSError, ValueError):
-                                    findings.append(
-                                        f"{archive_label}: archive entry {name!r}: binary "
-                                        "audio probe stream position restore failed"
-                                    )
-                        if not reserve_candidate_work(consumed, len(prefix)):
-                            continue
-                        audio_signature = audio_payload_signature(prefix)
-                        if audio_signature:
-                            findings.append(
-                                f"{archive_label}: archive entry {name!r}: audio "
-                                f"signature {audio_signature!r} detected"
-                            )
-                        continue
+                        bounded_binary_secret = True
                 if local_payload_offset is None:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: local payload "
@@ -1659,6 +1546,7 @@ def scan_zip(
                             _container_path=entry,
                             _apk_content_context=apk_content_context,
                             _apk_binary_budget=apk_binary_budget,
+                            _binary_secret_budget=binary_secret_budget,
                         )
                     )
                     continue
@@ -1677,86 +1565,44 @@ def scan_zip(
                     is_skiko_icu_data_path(entry, _container_path)
                     and info.file_size <= ZIP_SKIKO_ICU_SCAN_LIMIT
                 )
+                bounded_jimage = is_jdk_modules_path(entry)
+                if bounded_jimage and (
+                    info.file_size > ZIP_JIMAGE_FULL_SCAN_LIMIT
+                    or info.compress_size > ZIP_JIMAGE_FULL_SCAN_LIMIT
+                ):
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: JIMAGE body exceeds "
+                        f"the {ZIP_JIMAGE_FULL_SCAN_LIMIT}-byte full scan limit"
+                    )
+                    continue
                 if (
                     info.file_size > member_scan_limit
                     and not bounded_app_executable
                     and not bounded_skiko_icu
                     and not bounded_apk_binary
+                    and not bounded_binary_secret
+                    and not bounded_jimage
                 ):
-                    if not is_jdk_modules_path(entry):
-                        findings.append(
-                            f"{archive_label}: archive entry {name!r}: exceeds "
-                            f"{member_scan_limit}-byte member content scan limit"
-                        )
-                        continue
-                    binary_probe_stream = archive.fp
-                    binary_probe_position: int | None = None
-                    try:
-                        if binary_probe_stream is None:
-                            raise ValueError("archive stream is unavailable")
-                        remaining_probe_budget = (
-                            ZIP_BINARY_PROBE_TOTAL_INPUT_LIMIT
-                            - scanned_binary_probe_bytes
-                        )
-                        if candidate_budget is not None:
-                            remaining_probe_budget = min(
-                                remaining_probe_budget,
-                                candidate_budget.compressed_input_limit
-                                - candidate_budget.compressed_bytes,
-                            )
-                            if (
-                                candidate_budget.expanded_bytes
-                                + ZIP_JIMAGE_HEADER.size
-                                > candidate_budget.expanded_output_limit
-                            ):
-                                raise ValueError(
-                                    "current/explicit ZIP decoded-output budget is exhausted"
-                                )
-                        binary_probe_position = binary_probe_stream.tell()
-                        prefix, consumed = read_zip_binary_prefix(
-                            binary_probe_stream,
-                            info,
-                            payload_offset=local_payload_offset,
-                            compressed_input_limit=min(
-                                ZIP_BINARY_PROBE_MEMBER_INPUT_LIMIT,
-                                remaining_probe_budget,
-                            ),
-                        )
-                        scanned_binary_probe_bytes += consumed
-                    except (OSError, RuntimeError, ValueError, zlib.error) as error:
-                        findings.append(
-                            f"{archive_label}: archive entry {name!r}: binary probe "
-                            f"failed ({type(error).__name__})"
-                        )
-                        continue
-                    finally:
-                        if (
-                            binary_probe_stream is not None
-                            and binary_probe_position is not None
-                        ):
-                            try:
-                                binary_probe_stream.seek(binary_probe_position)
-                            except (OSError, ValueError):
-                                findings.append(
-                                    f"{archive_label}: archive entry {name!r}: binary "
-                                    "probe stream position restore failed"
-                                )
-                    if not reserve_candidate_work(consumed, len(prefix)):
-                        continue
-                    if has_valid_large_binary_header(entry, prefix, info.file_size):
-                        continue
                     findings.append(
-                        f"{archive_label}: archive entry {name!r}: large platform "
-                        "binary has an invalid structural header"
+                        f"{archive_label}: archive entry {name!r}: exceeds "
+                        f"{member_scan_limit}-byte member content scan limit"
                     )
                     continue
                 entry_compressed_input_limit = (
                     APK_BINARY_MEMBER_SCAN_LIMIT
                     if bounded_apk_binary
                     else (
-                        ZIP_SKIKO_ICU_SCAN_LIMIT
-                        if bounded_skiko_icu
-                        else compressed_input_limit
+                        ZIP_JIMAGE_FULL_SCAN_LIMIT
+                        if bounded_jimage
+                        else (
+                            ZIP_BINARY_SECRET_MEMBER_LIMIT
+                            if bounded_binary_secret
+                            else (
+                                ZIP_SKIKO_ICU_SCAN_LIMIT
+                                if bounded_skiko_icu
+                                else compressed_input_limit
+                            )
+                        )
                     )
                 )
                 if info.compress_size > entry_compressed_input_limit:
@@ -1776,6 +1622,18 @@ def scan_zip(
                         findings.append(
                             f"{archive_label}: APK binary content exceeds the "
                             f"{APK_BINARY_TOTAL_SCAN_LIMIT}-byte aggregate scan limit"
+                        )
+                        continue
+                elif bounded_binary_secret or bounded_jimage:
+                    if (
+                        binary_secret_budget.expanded_bytes + info.file_size
+                        > ZIP_BINARY_SECRET_TOTAL_LIMIT
+                        or binary_secret_budget.compressed_bytes + info.compress_size
+                        > ZIP_BINARY_SECRET_TOTAL_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: binary/JIMAGE content exceeds the "
+                            f"{ZIP_BINARY_SECRET_TOTAL_LIMIT}-byte aggregate scan limit"
                         )
                         continue
                 elif bounded_skiko_icu:
@@ -1812,6 +1670,9 @@ def scan_zip(
                     assert apk_binary_budget is not None
                     apk_binary_budget.expanded_bytes += info.file_size
                     apk_binary_budget.compressed_bytes += info.compress_size
+                elif bounded_binary_secret or bounded_jimage:
+                    binary_secret_budget.expanded_bytes += info.file_size
+                    binary_secret_budget.compressed_bytes += info.compress_size
                 elif bounded_skiko_icu:
                     scanned_large_binary_bytes += info.file_size
                     scanned_large_binary_compressed_bytes += info.compress_size
@@ -1832,12 +1693,20 @@ def scan_zip(
                             APK_BINARY_MEMBER_SCAN_LIMIT
                             if bounded_apk_binary
                             else (
-                                ZIP_SKIKO_ICU_SCAN_LIMIT
-                                if bounded_skiko_icu
+                                ZIP_JIMAGE_FULL_SCAN_LIMIT
+                                if bounded_jimage
                                 else (
-                                    total_scan_limit
-                                    if bounded_app_executable
-                                    else member_scan_limit
+                                    ZIP_BINARY_SECRET_MEMBER_LIMIT
+                                    if bounded_binary_secret
+                                    else (
+                                        ZIP_SKIKO_ICU_SCAN_LIMIT
+                                        if bounded_skiko_icu
+                                        else (
+                                            total_scan_limit
+                                            if bounded_app_executable
+                                            else member_scan_limit
+                                        )
+                                    )
                                 )
                             )
                         ),
@@ -1871,14 +1740,25 @@ def scan_zip(
                                 f"{archive_label}: archive entry {name!r}: member stream "
                                 "position restore failed"
                             )
-                if bounded_skiko_icu:
+                if bounded_jimage:
+                    if not has_valid_jimage_header(content, len(content)):
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: JIMAGE body "
+                            "has an invalid structural header"
+                        )
+                        continue
+                elif bounded_skiko_icu:
                     if not has_valid_icu_data_header(content, len(content)):
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: bounded Skiko "
                             "ICU data has an invalid structural header"
                         )
                         continue
-                elif not bounded_apk_binary:
+                elif (
+                    not bounded_apk_binary
+                    and not bounded_binary_secret
+                    and not bounded_jimage
+                ):
                     if scanned_bytes + len(content) > total_scan_limit:
                         findings.append(
                             f"{archive_label}: archive content exceeded "
@@ -1945,10 +1825,22 @@ def scan_zip(
                             BytesIO(content),
                             label=f"{archive_label}: nested archive {name!r}",
                             member_scan_limit=member_scan_limit,
-                            total_scan_limit=total_scan_limit,
-                            compressed_input_limit=compressed_input_limit,
+                            total_scan_limit=(
+                                ZIP_CT_SYM_TOTAL_SCAN_LIMIT
+                                if is_known_archive_binary_path(entry)
+                                else total_scan_limit
+                            ),
+                            compressed_input_limit=(
+                                ZIP_CT_SYM_TOTAL_SCAN_LIMIT
+                                if is_known_archive_binary_path(entry)
+                                else compressed_input_limit
+                            ),
                             compression_ratio_limit=compression_ratio_limit,
-                            entry_count_limit=entry_count_limit,
+                            entry_count_limit=(
+                                ZIP_CT_SYM_ENTRY_COUNT_LIMIT
+                                if is_known_archive_binary_path(entry)
+                                else entry_count_limit
+                            ),
                             lzma_dictionary_limit=lzma_dictionary_limit,
                             nested_total_limit=nested_total_limit,
                             _nested_depth=_nested_depth + 1,
@@ -1957,17 +1849,28 @@ def scan_zip(
                             _container_path=entry,
                             _apk_content_context=apk_content_context,
                             _apk_binary_budget=apk_binary_budget,
+                            _binary_secret_budget=binary_secret_budget,
                         )
                     )
                     continue
-                text = decode_text_for_secret_scan(content)
                 member_label = f"{archive_label}: archive entry {name!r}"
                 audio_signature = audio_payload_signature(content)
                 if audio_signature:
                     findings.append(
                         f"{member_label}: audio signature {audio_signature!r} detected"
                     )
-                findings.extend(scan_text(member_label, text))
+                if (
+                    bounded_apk_binary
+                    or bounded_binary_secret
+                    or bounded_jimage
+                    or bounded_skiko_icu
+                    or bounded_app_executable
+                ):
+                    findings.extend(scan_secret_bytes(member_label, content))
+                else:
+                    findings.extend(
+                        scan_text(member_label, decode_text_for_secret_scan(content))
+                    )
 
             if len(claimed_ranges) == len(entries):
                 expected_offset = 0
@@ -1982,20 +1885,37 @@ def scan_zip(
                 else:
                     if expected_offset != archive.start_dir:
                         stream = archive.fp
-                        valid_apk_signing_block = (
-                            apk_archive
-                            and stream is not None
-                            and has_valid_apk_signing_block(
+                        pair_values = (
+                            read_valid_apk_signing_block_values(
                                 stream,
                                 block_start=expected_offset,
                                 central_directory_start=archive.start_dir,
                             )
+                            if apk_archive and stream is not None
+                            else None
                         )
-                        if not valid_apk_signing_block:
+                        if pair_values is None:
                             findings.append(
                                 f"{archive_label}: ZIP local records leave unclaimed "
                                 "bytes before the central directory"
                             )
+                        else:
+                            block_size = archive.start_dir - expected_offset
+                            if reserve_candidate_work(block_size, block_size):
+                                for index, value in enumerate(pair_values):
+                                    pair_label = (
+                                        f"{archive_label}: APK signing-block pair "
+                                        f"{index + 1} value"
+                                    )
+                                    audio_signature = audio_payload_signature(value)
+                                    if audio_signature:
+                                        findings.append(
+                                            f"{pair_label}: audio signature "
+                                            f"{audio_signature!r} detected"
+                                        )
+                                    findings.extend(
+                                        scan_secret_bytes(pair_label, value)
+                                    )
     except (OSError, zipfile.BadZipFile) as error:
         findings.append(
             f"{archive_label}: archive content scan failed ({type(error).__name__})"
@@ -2016,6 +1936,15 @@ def scan_text(label: str, content: str) -> list[str]:
         f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
         if pattern.search(content)
+    ]
+
+
+def scan_secret_bytes(label: str, content: bytes) -> list[str]:
+    safe_label = redact_secret_text(label)
+    return [
+        f"{safe_label}: secret-shaped content matched {text_pattern.pattern!r}"
+        for text_pattern, byte_pattern in zip(SECRET_PATTERNS, SECRET_BYTE_PATTERNS)
+        if byte_pattern.search(content)
     ]
 
 
@@ -2132,6 +2061,37 @@ def scan_public_path(
     return findings
 
 
+def scan_explicit_text_file(
+    path: Path,
+    *,
+    size_limit: int = EXPLICIT_TEXT_FILE_LIMIT,
+) -> list[str]:
+    if path.is_symlink():
+        return [f"{path}: explicit text file must be a regular file, not a symlink"]
+    try:
+        size = path.stat().st_size
+    except OSError as error:
+        return [
+            f"{path}: explicit text file preflight failed ({type(error).__name__})"
+        ]
+    if size > size_limit:
+        return [
+            f"{path}: explicit text file exceeds the {size_limit}-byte scan limit"
+        ]
+    try:
+        content = path.read_bytes()
+    except OSError as error:
+        return [f"{path}: explicit text file read failed ({type(error).__name__})"]
+    if len(content) != size:
+        return [f"{path}: explicit text file size changed while reading"]
+    findings: list[str] = []
+    audio_signature = audio_payload_signature(content)
+    if audio_signature:
+        findings.append(f"{path}: audio signature {audio_signature!r} detected")
+    findings.extend(scan_text(str(path), decode_text_for_secret_scan(content)))
+    return findings
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -2144,7 +2104,14 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         type=Path,
-        help="also scan this exact ZIP archive after it has been created",
+        help="also scan this exact ZIP-compatible archive after it has been created",
+    )
+    parser.add_argument(
+        "--text-file",
+        action="append",
+        default=[],
+        type=Path,
+        help="also scan this exact bounded text artifact after it has been created",
     )
     return parser.parse_args()
 
@@ -2169,6 +2136,8 @@ def main() -> int:
                 _candidate_budget=zip_budget,
             )
         )
+    for text_path in args.text_file:
+        findings.extend(scan_explicit_text_file(text_path))
 
     if args.history:
         findings.extend(scan_history())
@@ -2182,6 +2151,8 @@ def main() -> int:
     scope = "current tree and reachable history" if args.history else "current tree"
     if args.archive:
         scope += f" plus {len(args.archive)} explicit archive(s)"
+    if args.text_file:
+        scope += f" plus {len(args.text_file)} explicit text file(s)"
     print(
         f"PUBLIC SURFACE CHECK: PASS ({len(paths)} public candidates; {scope}; "
         "no credential, signing, or audio candidates)"

@@ -71,7 +71,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         token = "github_pat_" + "c" * 24
         runtime_archive = BytesIO()
         with zipfile.ZipFile(runtime_archive, "w") as archive:
-            archive.writestr("ChopLab/runtime/lib/ct.sym", b"PK\x03\x04binary")
+            archive.writestr("ChopLab/runtime/lib/ct.sym", b"bounded binary")
         unrelated_archive = BytesIO()
         with zipfile.ZipFile(unrelated_archive, "w") as archive:
             archive.writestr("docs/ct.sym", token)
@@ -305,7 +305,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings,
         )
 
-    def test_zip_content_scan_does_not_treat_binary_or_audio_bytes_as_text(self) -> None:
+    def test_zip_content_scan_secret_scans_binary_and_flags_audio_path(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "assets.zip"
@@ -315,9 +315,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
             findings = scan_zip(archive_path)
 
-        self.assertEqual(1, len(findings))
-        self.assertIn("audio asset", findings[0])
-        self.assertNotIn("secret-shaped content", findings[0])
+        self.assertTrue(any("audio asset" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
 
     def test_zip_content_scan_detects_audio_under_binary_suffix(self) -> None:
         wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 28
@@ -329,6 +328,48 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(
             any("audio signature 'RIFF/WAVE'" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_reads_secret_inside_nested_class_binary(self) -> None:
+        token = b"github_pat_" + b"c" * 24
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("Generated.class", b"\xca\xfe\xba\xbe" + token)
+        outer = BytesIO()
+        with zipfile.ZipFile(outer, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("generated.jar", inner.getvalue())
+
+        findings = scan_zip(BytesIO(outer.getvalue()), label="compiled.zip")
+
+        self.assertTrue(
+            any("Generated.class" in item and "secret-shaped" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_reads_beyond_valid_jimage_header(self) -> None:
+        token = b"github_pat_" + b"j" * 24
+        header = struct.pack(
+            "<7I",
+            0xCAFEDADA,
+            0x00010000,
+            0,
+            1,
+            1,
+            0,
+            0,
+        )
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr(
+                "ChopLab/runtime/lib/modules",
+                header + token + b"\x00" * (512 * 1024),
+            )
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="jimage.zip")
+
+        self.assertTrue(
+            any("secret-shaped content" in item for item in findings),
             findings,
         )
 
@@ -687,6 +728,45 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertEqual([], findings)
 
+        token_pair_value = b"github_pat_" + b"s" * 24
+        token_pair = (
+            struct.pack("<Q", 4 + len(token_pair_value))
+            + struct.pack("<I", 0x42726577)
+            + token_pair_value
+        )
+        token_signing_size = len(token_pair) + 24
+        token_signing_block = (
+            struct.pack("<Q", token_signing_size)
+            + token_pair
+            + struct.pack("<Q", token_signing_size)
+            + b"APK Sig Block 42"
+        )
+        token_apk = bytearray(
+            archive_bytes[:central_directory_start]
+            + token_signing_block
+            + archive_bytes[central_directory_start:]
+        )
+        token_eocd = eocd_offset + len(token_signing_block)
+        struct.pack_into(
+            "<L",
+            token_apk,
+            token_eocd + 16,
+            central_directory_start + len(token_signing_block),
+        )
+        with TemporaryDirectory() as directory:
+            token_apk_path = Path(directory) / "token.apk"
+            token_apk_path.write_bytes(token_apk)
+            token_findings = scan_zip(token_apk_path, label="token.apk")
+
+        self.assertTrue(
+            any("APK signing-block pair" in item for item in token_findings),
+            token_findings,
+        )
+        self.assertTrue(
+            any("secret-shaped content" in item for item in token_findings),
+            token_findings,
+        )
+
     def test_apk_content_scan_reads_secret_inside_dex_binary(self) -> None:
         token = b"github_pat_" + b"x" * 24
         with TemporaryDirectory() as directory:
@@ -879,7 +959,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("at least 3 entries", findings[0])
         self.assertIn("2-entry content scan limit", findings[0])
 
-    def test_public_zip_is_not_rescanned_as_one_text_container(self) -> None:
+    def test_public_zip_scans_binary_member_without_rescanning_container(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         with TemporaryDirectory() as directory:
             archive_path = Path(directory) / "assets.zip"
@@ -904,7 +984,11 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             self.assertIn(token.decode("ascii"), archive_path.read_text(encoding="utf-8"))
             findings = scan_public_path(archive_path)
 
-        self.assertEqual([], findings)
+        self.assertTrue(
+            any("archive entry 'data.bin'" in item for item in findings),
+            findings,
+        )
+        self.assertTrue(any("secret-shaped content" in item for item in findings))
 
     def test_current_zip_symlink_is_scanned_without_following_target(self) -> None:
         token = "github_pat_" + "a" * 24
@@ -1397,6 +1481,44 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertEqual(1, missing_exit, missing_output)
         self.assertIn("preflight failed", missing_output)
 
+    def test_explicit_text_file_cli_scans_safe_malicious_and_missing_paths(self) -> None:
+        token = "github_pat_" + "t" * 24
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            safe = root / "safe.json"
+            malicious = root / "malicious.json"
+            missing = root / "missing.json"
+            safe.write_text('{"components": []}', encoding="utf-8")
+            malicious.write_text(
+                '{"repository": "' + token + '"}',
+                encoding="utf-8",
+            )
+
+            def run_explicit(path: Path) -> tuple[int, str]:
+                output = StringIO()
+                errors = StringIO()
+                with (
+                    patch(
+                        "scripts.check_public_surface.public_candidate_paths",
+                        return_value=[],
+                    ),
+                    patch("sys.argv", ["check_public_surface.py", "--text-file", str(path)]),
+                    redirect_stdout(output),
+                    redirect_stderr(errors),
+                ):
+                    exit_code = main()
+                return exit_code, output.getvalue() + errors.getvalue()
+
+            safe_exit, safe_output = run_explicit(safe)
+            malicious_exit, malicious_output = run_explicit(malicious)
+            missing_exit, missing_output = run_explicit(missing)
+
+        self.assertEqual(0, safe_exit, safe_output)
+        self.assertEqual(1, malicious_exit, malicious_output)
+        self.assertIn("secret-shaped content", malicious_output)
+        self.assertEqual(1, missing_exit, missing_output)
+        self.assertIn("preflight failed", missing_output)
+
     def test_platform_archives_are_scanned_after_creation_before_upload(self) -> None:
         root = Path(__file__).resolve().parents[2]
         desktop = (root / ".github" / "workflows" / "desktop.yml").read_text(
@@ -1425,6 +1547,18 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertLess(ios_scan, ios_path)
         self.assertLess(ios_path, ios_upload)
 
+    def test_active_plan_registry_points_next_action_to_pr69(self) -> None:
+        registry = (
+            Path(__file__).resolve().parents[2] / "plans" / "active" / "README.md"
+        ).read_text(encoding="utf-8")
+        current_selection = registry.split(
+            "**wave 18 completed local; goal remains active:**",
+            maxsplit=1,
+        )[0]
+
+        self.assertIn("existing PR #69", current_selection)
+        self.assertNotIn("既存PR #79を同じbranch/headへ更新", current_selection)
+
     def test_release_scans_exact_archives_before_manifest_and_publication(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[2] / ".github" / "workflows" / "release.yml"
@@ -1434,12 +1568,20 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             'apk_target="dist/ChopLab-${RELEASE_TAG}-android.apk"'
         )
         android_stage_scan = workflow.index(
-            'python3 scripts/check_public_surface.py --archive "$apk_target"',
+            "python3 scripts/check_public_surface.py \\",
             android_stage,
+        )
+        android_stage_apk = workflow.index(
+            '--archive "$apk_target"',
+            android_stage_scan,
+        )
+        android_stage_sbom = workflow.index(
+            '--text-file "$sbom_target"',
+            android_stage_apk,
         )
         android_upload = workflow.index(
             "name: Upload Android and SBOM assets",
-            android_stage_scan,
+            android_stage_sbom,
         )
         ios_build = workflow.index("bash scripts/build-ios-simulator.sh")
         ios_stage_scan = workflow.index(
@@ -1457,7 +1599,9 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             windows_stage_scan,
         )
         self.assertLess(android_stage, android_stage_scan)
-        self.assertLess(android_stage_scan, android_upload)
+        self.assertLess(android_stage_scan, android_stage_apk)
+        self.assertLess(android_stage_apk, android_stage_sbom)
+        self.assertLess(android_stage_sbom, android_upload)
         self.assertLess(ios_build, ios_stage_scan)
         self.assertLess(ios_stage_scan, ios_upload)
         self.assertLess(windows_archive, windows_stage_scan)
@@ -1477,6 +1621,10 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             'dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip',
             scan,
         )
+        final_sbom = workflow.index(
+            'dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json',
+            final_windows_archive,
+        )
         manifest = workflow.index("name: Write source-bound manifest and checksums")
         attest = workflow.index("name: Attest build provenance")
         publish = workflow.index("name: Publish once without asset replacement")
@@ -1485,9 +1633,11 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertLess(scan, android_archive)
         self.assertLess(scan, ios_archive)
         self.assertLess(scan, final_windows_archive)
+        self.assertLess(final_windows_archive, final_sbom)
         self.assertLess(android_archive, manifest)
         self.assertLess(ios_archive, manifest)
         self.assertLess(final_windows_archive, manifest)
+        self.assertLess(final_sbom, manifest)
         self.assertLess(manifest, attest)
         self.assertLess(attest, publish)
 
