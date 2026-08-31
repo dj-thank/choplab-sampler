@@ -31,7 +31,8 @@ Verify Windows/JVM mouse long-press on the existing shared PAD deck opens that a
 ## Milestones
 
 ### Milestone 1: assigned PAD tracer
-- Files: `desktop/build.gradle.kts`, `desktop/src/test/kotlin/com/choplab/desktop/ui/DesktopLongPressUiTest.kt`.
+
+- Files: `desktop/build.gradle.kts`, `desktop/src/main/kotlin/com/choplab/desktop/DesktopSamplerController.kt`, `desktop/src/test/kotlin/com/choplab/desktop/DesktopSamplerControllerTest.kt`, `desktop/src/test/kotlin/com/choplab/desktop/ui/DesktopLongPressUiTest.kt`.
 - Dedicated `:desktop:desktopLongPressUiTest`, one class/fork, headless/software, no default desktop suite.
 - Expected range is a worked literal: 8 kHz/10 s Source, selected Chop 2–4 s, initial viewport 1.750–4.250 s.
 - Record short-click sensitivity failure separately, then actual hold result with real selection/range/viewport/layout.
