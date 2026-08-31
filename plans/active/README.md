@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**H13 active, bounded Desktop input fixture:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで、実shared deck＋実Desktop controllerをoffscreen JVM mouse入力で検証する。CHOP長押し前の既存範囲上書きを実REDで再現し、root承認済みのcapturePad-only shared routing修正を含む。provider/device/実audioは対象外、rootが固定candidate後のV21を所有する。下記Wave/PR記録は保持履歴であり、H13から再開しない。
+
+## Retained prior selection
+
 **Wave 19 PR review repair completed local; GitHub integration remains active:** `../completed/waves17-18-pr-review-repair-20260827.md`。PR #79の3件の有効指摘を、Windowsのrender/open/startをhandoff lock外へ分離、candidate stagingとcleanup所有権保持、Android rejected vocal takeのstop＋discard専用経路で閉じた。追加raceも反証してproduct `11d0127` / tree `83c2055`、709 tests / 117 suites、197-task gate、package/policy/read-backまで`LOCAL_PASS`。
 
 **次に保持する一つ:** 新しいfeatureは開始せず、既存PR #79を同じbranch/headへ更新する。exact-head 8 workflows、review threads 0、clean mergeabilityとbase/head不変を確認してからだけnormal mergeし、merged-main 4 workflowsをread-backする。tag、Release、署名、device/provider account、Humanは別taskのまま。

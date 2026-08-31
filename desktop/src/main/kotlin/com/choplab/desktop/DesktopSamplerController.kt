@@ -16,6 +16,8 @@ import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPressAction
+import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.DrumKitApplyDecision
@@ -31,6 +33,7 @@ import com.choplab.sampler.model.chokeLoopSessionTransition
 import com.choplab.sampler.model.clearEveryPattern
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
+import com.choplab.sampler.model.resolvePadPressAction
 import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.selectPlayableBank
 import com.choplab.sampler.model.selectPlayablePad
@@ -533,9 +536,34 @@ class DesktopSamplerController(
 
     override fun capturePad(index: Int) {
         val state = mutableState.value
-        val observedFrame = if (state.sourcePlaying) player.sourceFramePosition() else state.sourcePlayheadFrame
-        val start = observedFrame.coerceIn(0, (state.rangeEndFrame - 1).coerceAtLeast(0))
-        commitEdit { assignLiveChopToPad(it, index, start).state }
+        val pad = state.pads.getOrNull(index) ?: return
+        if (state.isLoading) return setStatus("現在の処理が終わってから編集してください")
+        // CHOP pointer-down can precede a long press. Only a playing source may
+        // overwrite a Chop; stopped assigned PADs must reach the existing audition path.
+        when (
+            resolvePadPressAction(
+                sourcePlaying = state.sourcePlaying,
+                padAssigned = pad.isAssigned,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+                pendingSourceCommand = state.pendingSourceCommand,
+                recordingSession = state.recordingSession,
+            )
+        ) {
+            PadPressAction.CAPTURE_CHOP -> {
+                val start = player.sourceFramePosition().coerceIn(0, (state.rangeEndFrame - 1).coerceAtLeast(0))
+                commitEdit { assignLiveChopToPad(it, index, start).state }
+            }
+            PadPressAction.PLAY_ASSIGNED -> triggerPad(index)
+            PadPressAction.SELECT_ONLY -> selectPad(index)
+            PadPressAction.BLOCKED_DURING_RECORDING -> setStatus("録音をSTOPしてから編集してください")
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION -> setStatus(
+                if (state.pendingSourceCommand == PendingSourceCommand.START) {
+                    "元曲の再生準備中です。音が鳴ってからPADを叩いてください"
+                } else {
+                    "元曲の停止処理中です。停止してからPADを叩いてください"
+                },
+            )
+        }
     }
 
     override fun triggerPad(index: Int) {

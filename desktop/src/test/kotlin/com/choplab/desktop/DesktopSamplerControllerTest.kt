@@ -2459,6 +2459,125 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test
+    fun h13CapturePadWhileStoppedAuditionsWithoutOverwritingTheAssignedChop() = withH13CaptureFixture { controller, engine, _ ->
+        val before = controller.state.value
+        assertFalse(before.sourcePlaying)
+        assertEquals(16_000, before.pads[1].startFrame)
+        assertEquals(32_000, before.pads[1].endFrame)
+
+        controller.capturePad(1)
+
+        assertEquals(16_000, controller.state.value.pads[1].startFrame)
+        assertEquals(32_000, controller.state.value.pads[1].endFrame)
+        assertTrue(before.pads == controller.state.value.pads, "Stopped PAD audition must preserve every assignment")
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertEquals(1, controller.state.value.selectedPad)
+        assertEquals(1, engine.triggered.single().first.globalIndex)
+    }
+
+    @Test
+    fun h13CapturePadWhileSourcePlaysStillCapturesTheObservedPosition() = withH13CaptureFixture { controller, engine, _ ->
+        controller.playSourceFrom(24_000)
+        assertTrue(controller.state.value.sourcePlaying)
+        assertFalse(controller.state.value.pads[2].isAssigned)
+
+        controller.capturePad(2)
+
+        assertTrue(controller.state.value.pads[2].isAssigned)
+        assertEquals(24_000, controller.state.value.pads[2].startFrame)
+        // Existing live-chop contract: the last chop extends to the Source selection end.
+        assertEquals(80_000, controller.state.value.pads[2].endFrame)
+        assertTrue(controller.state.value.sourcePlaying)
+        assertTrue(engine.triggered.isEmpty(), "Live capture must not start a PAD audition")
+    }
+
+    @Test
+    fun h13CapturePadDuringRecordingNeitherEditsNorAuditions() = withH13CaptureFixture { controller, engine, recorder ->
+        controller.toggleMicrophoneRecording()
+        awaitCondition { recorder.isRecording && controller.state.value.recordingSession is RecordingSession.Active }
+        val before = controller.state.value
+
+        controller.capturePad(1)
+
+        assertTrue(before.pads == controller.state.value.pads, "Recording must keep the assigned Chop unchanged")
+        assertEquals(before.recordingSession, controller.state.value.recordingSession)
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertTrue(engine.triggered.isEmpty())
+        assertEquals("録音をSTOPしてから編集してください", controller.state.value.statusMessage)
+    }
+
+    @Test
+    fun h13CapturePadDuringPendingSourceImportNeitherEditsNorAuditions() = withH13CaptureFixture { controller, engine, _ ->
+        val input = File.createTempFile("h13-pending-source-", ".wav", File(System.getProperty("java.io.tmpdir")))
+        WavFileWriter(input, sampleRate = 8_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(8_000), 8_000)
+        }
+        engine.blockNextLoad = true
+        try {
+            controller.loadWav(input)
+            engine.awaitBlockedLoad()
+            val before = controller.state.value
+            assertTrue(before.isLoading)
+
+            controller.capturePad(1)
+
+            assertTrue(before.pads == controller.state.value.pads, "Pending import must preserve the current Chop")
+            assertEquals(before.canUndo, controller.state.value.canUndo)
+            assertTrue(engine.triggered.isEmpty())
+            assertEquals("現在の処理が終わってから編集してください", controller.state.value.statusMessage)
+        } finally {
+            engine.releaseBlockedLoad()
+            awaitCondition { !controller.state.value.isLoading }
+            input.delete()
+        }
+    }
+
+    @Test
+    fun h13CapturePadWhileStoppedOnlySelectsAnUnassignedPad() = withH13CaptureFixture { controller, engine, _ ->
+        val before = controller.state.value
+
+        controller.capturePad(2)
+
+        assertEquals(2, controller.state.value.selectedPad)
+        assertFalse(controller.state.value.pads[2].isAssigned)
+        assertTrue(before.pads == controller.state.value.pads)
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertTrue(engine.triggered.isEmpty())
+    }
+
+    private fun withH13CaptureFixture(block: (DesktopSamplerController, FakeAudioEngine, FakeRecorder) -> Unit) {
+        val directory = Files.createTempDirectory(File(System.getProperty("java.io.tmpdir")).toPath(), "h13-capture-").toFile()
+        val audio = PcmAudio(name = "H13 synthetic source", samples = ShortArray(80_000) { 1_000 }, sampleRate = 8_000)
+        val initial = SamplerUiState(
+            currentAudio = audio,
+            rangeEndFrame = audio.frameCount,
+            selectedPad = 0,
+            activeSteps = emptySet(),
+            pads = List(SamplerConfig.PAD_COUNT) { index ->
+                when (index) {
+                    0 -> PadModel(0, audio, 8_000, 12_000)
+                    1 -> PadModel(1, audio, 16_000, 32_000)
+                    else -> PadModel(index)
+                }
+            },
+        )
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(engine, microphone = recorder, systemAudio = FakeRecorder(), autosaveStore = null)
+        try {
+            val project = DesktopProjectFiles.save(File(directory, "input.choplab"), initial)
+            controller.openProject(project)
+            awaitCondition { !controller.state.value.isLoading }
+            assertEquals(16_000, controller.state.value.pads[1].startFrame)
+            assertEquals(32_000, controller.state.value.pads[1].endFrame)
+            block(controller, engine, recorder)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
     private fun awaitCondition(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 2_000_000_000L
         while (!condition()) {
