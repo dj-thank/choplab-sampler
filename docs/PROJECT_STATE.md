@@ -1,5 +1,18 @@
 # Project state
 
+## Current snapshot — 2026-09-01 H13 Desktop offscreen long-press candidate
+
+This is a bounded Desktop Compose/JVM input receipt, not a Windows OS-pointer, physical-audio or Human acceptance claim. Root owns the independent V21 Standards/Spec review after this candidate.
+
+- Exact base: `0f5b672afb0e6b67e95290c31900ff5c8abc0ef4` / tree `939f954e978b86b509ed162ed68cc4dd5f091372`. Sole-writer lane: `F:/CodexWork/choplab-desktop-longpress-20260901`, branch `codex/desktop-longpress-ui-20260901`.
+- Tested implementation: `1f96ef8db2e6f55efb7b8764900293338e70fd2d` / tree `738c27018ad635631847f36b5382802e2d80f1aa`. Only production delta is `DesktopSamplerController.capturePad` plus its existing-shared-routing imports; shared UI/trim math, audio, decoder, Spotify and other platforms are unchanged.
+- Actual RED: a Mouse Press/700 ms hold/Release in CHOP with Source STOPPED opened TRIM after first overwriting A02 from 16000..32000 to 0..8000. Correct before-state and an unchanged-production BEAT→TRIM control excluded fixture loading and TRIM-fit math. Root read the XML/render/source and explicitly authorized the one-entry correction.
+- Repair: use existing shared CAPTURE routing. A stopped assigned PAD auditions without editing, an empty PAD only selects, a playing Source still captures its observed position, and loading/recording/pending-source guards stay connected. No replacement UI or duplicate state model was added.
+- Fixture: real `OtohiroiDeck`/theme + real Desktop controller in public `ImageComposeScene`; actual Mouse events and rendered semantics/layout. Audio/recorders are synthetic ports, autosave is disabled, and initial synthetic project data enters through public `openProject`. Native app launcher and provider UI are not constructed.
+- Exact-commit readback: `:desktop:desktopLongPressUiTest` PASS, 16 tasks, 14 tests (9 UI / 5 controller), failures/errors/skips 0. Windows 11 10.0, existing JDK17.0.20, Gradle9.7.1, Compose1.11.1; headless/software 1100×1000. Short-click negative deliberately fails missing-TRIM expectations and is not counted as a product RED. Normal/empty click, live capture, nearest-boundary focus and both source edges pass.
+- Evidence: [H13 receipt](../outputs/H13-desktop-longpress-20260901.md) binds commands, test XML, source hashes, raw input traces and before/after PNGs. New dependency/download/version changes 0; only a local F-cache snapshot was used. No packageWindows, APK build, old full suite, ADB, real recording/audio, visible window, OS setting or provider/public action ran.
+- Gate ceiling: `LOCAL_PASS / Desktop component input`. Independent root V21 is pending. Real window/DPI/OS pointer delivery, audio/latency, accessibility speech, device/provider/public and Human gates remain separate. Old primary6033 status digest and creative4978/carrierf305 refs were read back unchanged.
+
 ## Current snapshot — 2026-08-27 Waves 17–18 review-hardened integration bytes
 
 Observed/read back at `2026-08-27T07:20:00+09:00`. Exact input is Wave 18 closeout `fa39c476df239a2c84ec7c9149c69ce70ba9d608`, tree `54a57715ba08b3f528cd1c10f48067bcba1663d1`. Review-repair product anchor is `11d01272758eda774852ea2af1e55fe9d3e5c3b4`, tree `83c205536006518aab5da4d3c33e02500f84c2dd`, on the existing PR #79 branch.

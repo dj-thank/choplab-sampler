@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**H13 active, bounded Desktop input fixture:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで、実shared deck＋実Desktop controllerをoffscreen JVM mouse入力で検証する。CHOP長押し前の既存範囲上書きを実REDで再現し、root承認済みのcapturePad-only shared routing修正を含む。provider/device/実audioは対象外、rootが固定candidate後のV21を所有する。下記Wave/PR記録は保持履歴であり、H13から再開しない。
+**H13 local candidate ready for root V21:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。独立V21とprovider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
 ## Retained prior selection
 

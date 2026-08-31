@@ -60,7 +60,9 @@ Verify Windows/JVM mouse long-press on the existing shared PAD deck opens that a
 - [x] Run17 waveform ordinary click edits without precision zoom; run18 real mouse live-capture and run19 direct empty-PAD selection PASS.
 - [x] Run20 repeats the short-click sensitivity negative on final fixture code; expected missing-TRIM failure, not a product defect.
 - [x] Run21 full H13 target: 9 actual UI input tests + 5 existing-controller regressions, failure/error/skip 0, 16 tasks in 26 seconds. No other suite/package task ran.
-- [ ] Fixed candidate evidence/SSOT and root V21 handoff.
+- [x] Implementation checkpoint `1f96ef8db2e6f55efb7b8764900293338e70fd2d` / tree `738c27018ad635631847f36b5382802e2d80f1aa`; run22 exact-commit readback executes 14/14 with failure/error/skip 0 in 27 seconds.
+- [x] Source/evidence hashes, rendered output, process exit and old-source readback recorded in `outputs/H13-desktop-longpress-20260901.md`; bounded SSOT/feature matrix updated.
+- [ ] Independent V21 Standards/Spec: owned by root after fixed candidate; not an owner self-review promotion.
 
 ## Discoveries
 
@@ -89,6 +91,6 @@ Verify Windows/JVM mouse long-press on the existing shared PAD deck opens that a
 - Platform capability or coroutine/frame scheduling may prevent safe headless input; report the exact gap rather than fake success or launch a visible/real-audio app.
 - Fixture edits are isolated and revertible by one local commit; preserve worktree/evidence, no reset/clean/broad deletion.
 
-## Remaining device validation
+## Remaining review and device validation
 
-Windows OS pointer delivery, real window/DPI/insets, physical audio, accessibility speech and Human visual/gesture acceptance are outside H13.
+Independent root V21 remains pending. Windows OS pointer delivery, real window/DPI/insets, physical audio, accessibility speech and Human visual/gesture acceptance are outside H13.
