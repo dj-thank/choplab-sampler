@@ -6,7 +6,9 @@
 
 ## Current selection
 
-**H13 local candidate ready for root V21:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。独立V21とprovider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
+**進行中:** `h13-github-release-20260902.md`。H13のaccepted product/test intentを現行GitHub `main@41be4ff`へ統合し、H16/H19の軽量provenanceと`0.17.1 (28)` metadataを加える。local verification、PRの4系統CI、merge、immutable tag workflow、Release read-backを順に通し、失敗時は該当gateで停止する。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+
+**直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
 ## Retained prior selection
 
@@ -150,6 +152,8 @@
 - `../completed/android-production-continuity-20260820.md`（完了済み）
 - `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
 - `full-release-audio-hardening-20260821.md`（統合入力）
+- `h13-desktop-longpress-20260901.md`（完了済みH13本文）
+- `h13-github-release-20260902.md`（current selection）
 - `spotify-connect-ux-lifecycle-20260823.md`（統合入力）
 - `cross-platform-production-continuity-20260823.md`（統合入力）
 - `../completed/session-integration-20260823.md`（完了済み統合plan）

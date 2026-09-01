@@ -297,7 +297,7 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:packageWindows
+        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:packageWindows
 
       - name: Test data-preserving Windows user install
         shell: pwsh

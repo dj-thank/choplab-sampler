@@ -1,5 +1,17 @@
 # Project state
 
+## Current integration candidate — 2026-09-02 H13 / v0.17.1
+
+This candidate rebases the accepted H13 Desktop input correction onto the current GitHub baseline and prepares a new immutable patch release. It does not rewrite the historical H13 evidence or the existing `v0.17.0` Release.
+
+- Exact GitHub base: `41be4ffda904e3317e0ef3802bff90b3887f99b2` / tree `12852e6b918834b91cf79f25bf4152fcaf7f0319`. The only upstream delta from the original H13 base is the merged Android build dependency update in root `build.gradle.kts`.
+- Replayed H13 commits: `ed1acff` (product/tests), `a3534e1` (receipt/state), and `c5ec02d` (documentary review closure). Their production/test intent is unchanged; the original exact execution remains bound to `1f96ef8` and the accepted documentary successor `0dcf618`.
+- Version candidate: `0.17.1 (28)`. The tag must be created only after the exact PR merge is reachable from `main`; the workflow must rebuild all distributed bytes from that merged commit.
+- GitHub guard: both `.github/workflows/desktop.yml` and the release Windows job explicitly run `:desktop:desktopLongPressUiTest` before `:desktop:packageWindows`; policy tests fail if either connection is removed.
+- Retained provenance: [H16 package](../outputs/H16-windows-package-20260901.md) and [H19 startup](../outputs/H19-windows-startup-smoke-20260901.md) record the exact older `0dcf618` local package/startup result. Their hashes do not claim equality with the forthcoming `v0.17.1` assets.
+- Root acceptance of H13 at `0dcf618` closed the V21 Standards/Spec findings: Standards documentary findings 2 were repaired, Spec findings 0, and the nonblocking fixture-refactor notes were deferred without broadening the correction.
+- Current selected execution plan: [H13 GitHub integration and v0.17.1 release](../plans/active/h13-github-release-20260902.md). Local, PR/provider, public binary, device/provider-account, and Human gates remain separate until their exact revision/bytes are read back.
+
 ## Current snapshot — 2026-09-01 H13 Desktop offscreen long-press candidate
 
 This is a bounded Desktop Compose/JVM input receipt, not a Windows OS-pointer, physical-audio or Human acceptance claim. Root owns the independent V21 Standards/Spec review after this candidate.
