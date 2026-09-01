@@ -11,6 +11,7 @@ This candidate rebases the accepted H13 Desktop input correction onto the curren
 - Retained provenance: [H16 package](../outputs/H16-windows-package-20260901.md) and [H19 startup](../outputs/H19-windows-startup-smoke-20260901.md) record the exact older `0dcf618` local package/startup result. Their hashes do not claim equality with the forthcoming `v0.17.1` assets.
 - Root acceptance of H13 at `0dcf618` closed the V21 Standards/Spec findings: Standards documentary findings 2 were repaired, Spec findings 0, and the nonblocking fixture-refactor notes were deferred without broadening the correction.
 - Current selected execution plan: [H13 GitHub integration and v0.17.1 release](../plans/active/h13-github-release-20260902.md). Local, PR/provider, public binary, device/provider-account, and Human gates remain separate until their exact revision/bytes are read back.
+- Exact local candidate: `a7f4b08a1c891a67dd8879bd2007e71f5224774d` / tree `54cb789c445f384bbd1c20d3e596411340b36ccf`. Its post-commit offline rerun passed 27/27 executed tasks, 358 test executions (353 unique), package/version verification, 66 policy tests, history scan, and final Standards/Spec review with 0/0 unresolved findings. See the [integration receipt](../outputs/H13-v0171-integration-20260902.md).
 
 ## Current snapshot — 2026-09-01 H13 Desktop offscreen long-press candidate
 

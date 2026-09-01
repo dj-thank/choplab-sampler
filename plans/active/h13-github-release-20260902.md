@@ -34,3 +34,7 @@ Rollback before merge is branch deletion or PR closure; after merge it is a new 
 ## Evidence ceiling
 
 Local tests can establish only `LOCAL_PASS`. Successful PR/merge/read-back establishes the scoped GitHub provider result. A successful immutable tag workflow and anonymous asset/read-back establish the binary publication result. Physical audio, device behavior, screen-reader speech, Spotify provider behavior, and `HUMAN_GO` remain out of scope.
+
+## Local checkpoint
+
+Product/release candidate `a7f4b08a1c891a67dd8879bd2007e71f5224774d` / tree `54cb789c445f384bbd1c20d3e596411340b36ccf` passed the exact post-commit offline Windows workflow rerun: 27/27 executed tasks, 358 test executions (353 unique), failure/error/skip 0, app-image ProductVersion `0.17.1`, Python policy 66, history scan, and final Standards/Spec unresolved 0/0. The next frontier is branch push and hosted PR verification; no provider/public gate is inferred from this local checkpoint.
