@@ -73,8 +73,21 @@ class SamplerDspPrimitivesTest {
     fun limiterNeverPublishesNonFiniteOutput() {
         assertEquals(0f, SamplerDspPrimitives.softLimit(Float.NaN))
         assertEquals(0f, SamplerDspPrimitives.softLimit(Float.POSITIVE_INFINITY))
-        assertEquals(0.5f, SamplerDspPrimitives.softLimit(1f), 0f)
         assertTrue(SamplerDspPrimitives.softLimit(Float.MAX_VALUE).isFinite())
+    }
+
+    @Test
+    fun limiterIsTransparentAtNormalProgramLevelAndOnlyShapesOverload() {
+        for (sample in listOf(-0.9f, -0.5f, 0f, 0.5f, 0.9f)) {
+            assertEquals(sample, SamplerDspPrimitives.softLimit(sample), 0f)
+        }
+
+        val nearPeak = SamplerDspPrimitives.softLimit(1f)
+        val overload = SamplerDspPrimitives.softLimit(4f)
+        assertTrue(nearPeak in 0.9f..0.98f)
+        assertTrue(overload > nearPeak)
+        assertTrue(overload < 0.98f)
+        assertEquals(-overload, SamplerDspPrimitives.softLimit(-4f), 0f)
     }
 
     @Test
