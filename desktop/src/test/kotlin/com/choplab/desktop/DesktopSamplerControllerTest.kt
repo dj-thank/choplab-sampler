@@ -2707,7 +2707,7 @@ class DesktopSamplerControllerTest {
     }
 
     private fun awaitCondition(condition: () -> Boolean) {
-        val deadline = System.nanoTime() + 2_000_000_000L
+        val deadline = System.nanoTime() + 5_000_000_000L
         while (!condition()) {
             if (System.nanoTime() >= deadline) error("Timed out waiting for asynchronous desktop state")
             Thread.sleep(20L)

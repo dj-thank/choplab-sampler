@@ -38,3 +38,5 @@ Exact teardown repair: `df61ac4406481b0837d9ac4582eaee906f4a658c` / tree `aaa17d
 - JDK 17 local H13 target: 25 tests / 0 failures; `BUILD SUCCESSFUL in 2m 36s`. No product code, device, install, ADB, audio, or credential operation was involved.
 
 A full combined local gate subsequently showed `successfulUserLoadSurvivesAStaleStartupRecoveryFailureDuringClose` finishing in 2.37 seconds while its test joined for exactly 2 seconds. The product correctly waits for the released recovery future; only the outer test observation budget is raised to 5 seconds, with the same assertion that close must terminate and persist the successful user selection.
+
+The same combined suite also observed a successful zero-delay autosave after the former shared two-second polling deadline. All controller tests now use one five-second asynchronous observation budget; production debounce, recorder, playback, and close deadlines are unchanged.
