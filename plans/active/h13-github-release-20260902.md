@@ -75,7 +75,7 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 
 - PR #84 head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` was normally merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; its four merged-main workflows passed.
 - PR #85 head `a7bf79fe790adff178e9dc3c0ed840ba2b489168` was normally merged as `e71e0fde2e8a7ef82020cfc905d07473b95c073b`; it advances release identity to `0.17.2 (29)` and repairs PEM-backed signer verification. Publication remains held for product convergence.
-- Audio product checkpoint `b63ed650e47c5555f4a328171c222ca4888a88ae`; decoder/master hardening `9dc71a4652c943ded89c62bb50d9512270182d20`; final review hardening `7e7c7ae5a5b30f7f3e526ba887825fe60b400fd1` / tree `b45b0d7f8afca04684e2149505cf4b3e869ef2ed`.
+- Audio product checkpoint `b63ed650e47c5555f4a328171c222ca4888a88ae`; decoder/master hardening `9dc71a4652c943ded89c62bb50d9512270182d20`; dense invariants `7e7c7ae5a5b30f7f3e526ba887825fe60b400fd1`; final review repair `2b0da00c7c117c0b188683739c6a495f13958664` / tree `7cc6a11584b89a165a855db67015207925202c53`.
 - Exact working branch is `codex/choplab-android-clipping-20260902`; the dirty canonical checkout and all existing tags/releases remain untouched.
 
 ### Constraints and invariants
@@ -107,7 +107,8 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 - [x] 2026-09-02 — Old master distortion reproduced and repaired at `b63ed65`; shared Android/Desktop hosts and Android/offline parity passed.
 - [x] 2026-09-02 — Decoder/master negative paths repaired at `9dc71a4`; focused RED then bounded-memory GREEN.
 - [x] 2026-09-02 — Whole-signal DC confirmation and explicit/dense invariants completed at `7e7c7ae`.
-- [x] 2026-09-02 — Exact final-code full gate: shared 87+87, Android 288, JVM core 88, lint/APK/AndroidTest compile; 99 selected tasks executed, failure/error/skip 0.
+- [x] 2026-09-02 — Raw PCM_FLOAT Infinity review RED fixed before clamping at `2b0da00`.
+- [x] 2026-09-02 — Exact final-code full gate: shared 87+87, Android 289, JVM core 88, lint/APK/AndroidTest compile; 99 selected tasks executed, failure/error/skip 0.
 - [ ] Audio PR exact-head review/CI/normal merge and merged-main read-back.
 - [ ] PR #69, release hardening, UI brush-up, final exact-main gates and publication.
 
@@ -126,8 +127,8 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 
 ### Validation log
 
-- `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:assembleDebug :jvm-core:test --rerun-tasks` — 2026-09-02, exact `7e7c7ae`, JDK 17, one worker, bounded heap/in-process compiler, serial 256 MiB test forks — PASS, 99/99 tasks executed.
-- Test XML totals — shared Desktop 87, shared Android host 87, Android unit 288, JVM core 88; failure/error/skip 0.
+- `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:assembleDebug :jvm-core:test --rerun-tasks` — 2026-09-02, exact `2b0da00`, JDK 17, one worker, bounded heap/in-process compiler, serial 256 MiB test forks — PASS, 99/99 tasks executed.
+- Test XML totals — shared Desktop 87, shared Android host 87, Android unit 289, JVM core 88; failure/error/skip 0.
 - Android API source assumption — `AudioFormat.ENCODING_PCM_FLOAT` nominal range and finite warning: https://developer.android.com/reference/android/media/AudioFormat
 
 ### Risks and rollback
