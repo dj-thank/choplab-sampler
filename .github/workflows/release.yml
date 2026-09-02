@@ -276,7 +276,7 @@ jobs:
           retention-days: 7
 
   build-windows:
-    name: Windows app-image preview
+    name: Windows app-image verification
     needs: metadata
     runs-on: windows-latest
     timeout-minutes: 45
@@ -327,10 +327,10 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $archive)" | Set-Content -Encoding utf8 "$archive.sha256"
 
-      - name: Upload Windows assets
+      - name: Upload Windows verification artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: choplab-windows-release-assets
+          name: choplab-windows-verification-assets
           if-no-files-found: error
           path: dist/*
           retention-days: 7
@@ -406,7 +406,6 @@ jobs:
           subject-path: |
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
-            dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-release-manifest.json
           subject-version: ${{ needs.metadata.outputs.version }}
 
@@ -416,7 +415,6 @@ jobs:
           subject-path: |
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
-            dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
           subject-version: ${{ needs.metadata.outputs.version }}
           sbom-path: dist/ChopLab-${{ needs.metadata.outputs.tag }}-sbom.cdx.json
 

@@ -23,11 +23,11 @@ Integrate the accepted Windows CHOP long-press correction onto the current GitHu
 ## Verification and stop conditions
 
 1. Run `git diff --check`, the current/history public-surface scan, release-policy tests, and release-metadata validation.
-2. Run the dedicated 14-test Desktop input target and the repository's Desktop/shared/JVM verification on the final local candidate.
+2. Run the dedicated 24-test Desktop input target and the repository's Desktop/shared/JVM verification on the final local candidate.
 3. Review the complete diff against the fixed base for both repository standards and the H13/release specification.
 4. Push the branch, open a PR, require the Android, Windows, iOS, and supply-chain checks to finish successfully, and read back mergeability before merge.
 5. After merge, create a new annotated `v0.17.1` tag only at the exact merged commit. Never move or replace `v0.17.0` or any published asset.
-6. Require the tag workflow to build, attest, and publish every platform asset. If signing, workflow, permissions, CI, or immutable-publication policy fails, stop at that exact gate without manually weakening or replacing it.
+6. Require the tag workflow to verify Android, iOS and Windows, then attest and publish only the declared Android/iOS public assets. Windows remains a short-lived verification artifact. If signing, workflow, permissions, CI, or immutable-publication policy fails, stop at that exact gate without manually weakening or replacing it.
 
 Rollback before merge is branch deletion or PR closure; after merge it is a new corrective PR. Published tags/assets are immutable and are never rolled back by rewriting history.
 

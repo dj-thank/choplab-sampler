@@ -2244,6 +2244,28 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun failedInitialLoopRetirementAbandonsStartedCandidatesAndPreservesState() {
+        val engine = FakeAudioEngine().apply { failNextExclusiveRetire = true }
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            val before = controller.state.value
+
+            val failure = assertFailsWith<IllegalStateException> {
+                controller.toggleBeatLoopControl()
+            }
+
+            assertEquals("test loop retirement failure", failure.message)
+            assertEquals(before, controller.state.value)
+            assertEquals(1, engine.exclusiveAbandonCount)
+            assertTrue(engine.triggered.isEmpty())
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun slowFailedInitialBeatLoopPreparationDoesNotPauseExistingTransport() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -2710,6 +2732,7 @@ class DesktopSamplerControllerTest {
         var failNextTrigger: Boolean = false
         var failAfterNextTrigger: Boolean = false
         var failNextExclusiveStart: Boolean = false
+        var failNextExclusiveRetire: Boolean = false
         var failTriggerPad: Int? = null
         var failNextStopPad: Boolean = false
         var failNextStopAll: Boolean = false
@@ -2719,6 +2742,7 @@ class DesktopSamplerControllerTest {
         var exclusiveRetireHook: (() -> Unit)? = null
         @Volatile var exclusiveStartCount: Int = 0
         @Volatile var exclusiveRetireCount: Int = 0
+        @Volatile var exclusiveAbandonCount: Int = 0
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
@@ -2804,12 +2828,23 @@ class DesktopSamplerControllerTest {
                     triggered += pad to forceLoop
                     nextVoiceOwnership += 1L
                 }
-                DesktopStartedLoopSession {
-                    exclusiveRetireHook?.invoke()
-                    triggered.clear()
-                    triggered.addAll(candidates)
-                    exclusiveRetireCount++
-                    isSourcePlaying = false
+                object : DesktopStartedLoopSession {
+                    override fun retirePriorPlayback() {
+                        exclusiveRetireHook?.invoke()
+                        if (failNextExclusiveRetire) {
+                            failNextExclusiveRetire = false
+                            error("test loop retirement failure")
+                        }
+                        triggered.clear()
+                        triggered.addAll(candidates)
+                        exclusiveRetireCount++
+                        isSourcePlaying = false
+                    }
+
+                    override fun abandonCandidates() {
+                        triggered.clear()
+                        exclusiveAbandonCount++
+                    }
                 }
             }
         }

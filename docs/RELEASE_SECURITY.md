@@ -15,10 +15,10 @@ A `v*` run of `.github/workflows/release.yml`:
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
 4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
 5. compiles the declared Kotlin/Native iOS Simulator framework, runs the Swift tests, and verifies embedded iOS version/build metadata;
-6. runs the shared common-source contract on a Desktop JVM host, tests and packages the Windows app-image, and verifies its embedded product version;
-7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files;
-8. creates GitHub artifact provenance and SBOM attestations for the runnable files;
-9. creates a new prerelease once, without `--clobber` or another asset-replacement path.
+6. runs the shared common-source contract on a Desktop JVM host, tests and packages the Windows app-image, verifies its embedded product version, and retains it only as a short-lived Actions verification artifact;
+7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files for the declared Android/iOS public surface;
+8. creates GitHub artifact provenance and SBOM attestations for the Android/iOS public files;
+9. creates a new Android/iOS prerelease once, without `--clobber` or another asset-replacement path. Windows bytes are never downloaded into the publication job.
 
 `workflow_dispatch` is deliberately build-only. It may produce an unsigned Android release candidate for inspection, but it cannot publish a GitHub Release.
 

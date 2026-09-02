@@ -366,9 +366,13 @@ class JavaSoundWavPlayerTest {
                 started.retirePriorPlayback()
             }
 
+            started.abandonCandidates()
+
             assertEquals("stop failed", failure.message)
             assertEquals(0, oldPad.stopCount)
             assertEquals(1, loop.loopCount)
+            assertEquals(1, loop.stopCount)
+            assertEquals(1, loop.closeCount)
         } finally {
             player.close()
         }

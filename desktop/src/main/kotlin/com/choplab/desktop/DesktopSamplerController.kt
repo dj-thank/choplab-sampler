@@ -973,6 +973,11 @@ class DesktopSamplerController(
                 startedSession.retirePriorPlayback()
             } catch (failure: Throwable) {
                 productionSession.cancel(plan)
+                try {
+                    startedSession.abandonCandidates()
+                } catch (cleanupFailure: Throwable) {
+                    failure.addSuppressed(cleanupFailure)
+                }
                 throw failure
             }
 

@@ -518,13 +518,22 @@ class JavaSoundWavPlayer internal constructor(
     private inner class StartedLoopSession(
         private val candidates: List<ActiveVoice>,
     ) : DesktopStartedLoopSession {
-        private var retired = false
+        private var resolved = false
 
         override fun retirePriorPlayback() {
             synchronized(this@JavaSoundWavPlayer) {
-                check(!retired) { "Started loop session was already retired" }
-                retired = true
+                check(!resolved) { "Started loop session was already resolved" }
                 retirePriorPlayback(candidates)
+                resolved = true
+            }
+        }
+
+        override fun abandonCandidates() {
+            synchronized(this@JavaSoundWavPlayer) {
+                check(!resolved) { "Started loop session was already resolved" }
+                val cleanupFailure = abandonCandidateSession(candidates, emptyList())
+                resolved = true
+                if (cleanupFailure != null) throw cleanupFailure
             }
         }
     }

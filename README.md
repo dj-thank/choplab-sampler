@@ -6,7 +6,7 @@
 
 Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、1/2ch音声の取り込みと左右を保つ再生、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、mono/stereo WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APK、iOS Simulator app zip、Windows app-image zipを同時に添付します。
+現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、1/2ch音声の取り込みと左右を保つ再生、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、mono/stereo WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APKとiOS Simulator app zipを添付します。Windows app-imageは同じtag workflowで検証しますが、公開Release assetには含めません。
 
 画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。縦横どちらでも画面スクロールを使わず、`入れる / チョップ / ビート / 保存` の固定4工程から取込、波形チョップ、PAD演奏、16-step制作、WAV書き出しへ直接移動できます。
 
@@ -16,7 +16,7 @@ Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー
 
 ### Android
 
-1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から、Androidの`debug.apk`、Windowsの`windows-app-image.zip`、またはiOSの`ios-simulator.app.zip`と対応するSHA-256をダウンロードします。
+1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から、AndroidのAPKまたはiOSの`ios-simulator.app.zip`と対応するSHA-256をダウンロードします。
 2. SHA-256を確認してから、Androidの設定で使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
 3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
 
@@ -30,7 +30,7 @@ Releaseの`ChopLab-*-ios-simulator.app.zip`は、Apple署名を使わない **iO
 
 ### Windows
 
-Releaseの`ChopLab-*-windows-app-image.zip`を展開し、同梱された`ChopLab/ChopLab.exe`を起動します。これはJDK runtimeを含むapp-imageで、単体EXEだけを取り出して実行する配布形式ではありません。現在のRelease previewはコード署名済みinstallerではありません。
+Windows app-imageはローカルの`:desktop:packageWindows`とGitHub Actionsで構築・検証しますが、現在の公開`v*` Releaseには添付しません。Actionsの短期verification artifactを使うか、ソースからbuildした`desktop/build/windows-app-image/ChopLab`をそのまま使用します。これはJDK runtimeを含むapp-imageで、単体EXEだけを取り出して実行する配布形式ではなく、コード署名済みinstallerでもありません。
 
 Windows版の素材取込は、実装済みdecoderに合わせてWAVだけを表示します。ファイルpickerの「すべてのファイル」は無効です。MP3等を選べるように見せて後から失敗させることはせず、Windows向けMP3 decoderを導入する場合は別の権利・供給網・decode上限レビューを通します。
 
@@ -155,8 +155,8 @@ Android SDK込みの標準検査:
 ```bash
 python scripts/verify_android_release.py \
   --apk app/build/outputs/apk/release/app-release-unsigned.apk \
-  --version 0.17.0 \
-  --version-code 27
+  --version 0.17.1 \
+  --version-code 28
 ```
 
 manifest検査はSDKに`apkanalyzer`があればそれを優先し、未導入ならbuild-toolsの`aapt2`へfail-closedでfallbackします。署名必須の配布候補では`--require-signed`と、CIのsecretから渡す`--expected-cert-sha256`を併用します。certificate値や署名鍵をコマンド履歴・文書・リポジトリへ書きません。
@@ -174,7 +174,7 @@ xcodegen generate --spec project.yml
 bash scripts/build-ios-simulator.sh
 ```
 
-GitHub Actionsは、Android、iOS Simulator、Windows app-imageのテスト、public-surface scan、SHA-256作成を行い、`v*`タグで三平台のpreview artifactを同じGitHub Releaseへ添付します。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
+GitHub Actionsは、Android、iOS Simulator、Windows app-imageのテスト、public-surface scan、SHA-256作成を行います。`v*`タグの公開Releaseへ添付するのはAndroid APKとiOS Simulator previewだけで、Windows app-imageはverification artifactに留めます。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
 
 ## Codex運用の基本
 

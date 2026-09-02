@@ -14,6 +14,8 @@ SHA256_SUFFIX = ".sha256"
 EXPECTED_BINARY_PATTERNS = {
     "android": re.compile(r"^ChopLab-v[^/]+-android\.apk$"),
     "ios_simulator": re.compile(r"^ChopLab-v[^/]+-ios-simulator\.app\.zip$"),
+}
+FORBIDDEN_PUBLIC_PATTERNS = {
     "windows": re.compile(r"^ChopLab-v[^/]+-windows-app-image\.zip$"),
 }
 EXPECTED_SBOM_PATTERN = re.compile(r"^ChopLab-v[^/]+-sbom\.cdx\.json$")
@@ -63,6 +65,10 @@ def validate_expected_binaries(assets: list[ReleaseAsset], version: str) -> None
                 f"{platform} binary version mismatch: expected prefix {expected_prefix!r}, "
                 f"found {matches[0]!r}"
             )
+    for platform, pattern in FORBIDDEN_PUBLIC_PATTERNS.items():
+        matches = sorted(name for name in binary_names if pattern.fullmatch(name))
+        if matches:
+            raise ValueError(f"Forbidden public {platform} binary: {matches}")
 
 
 def validate_checksum_sidecars(

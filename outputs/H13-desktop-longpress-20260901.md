@@ -17,8 +17,9 @@ mainのCHOPでSource STOPPEDの割当済みPADを長押しすると、TRIMへ移
 - Base: `0f5b672afb0e6b67e95290c31900ff5c8abc0ef4` / tree `939f954e978b86b509ed162ed68cc4dd5f091372`
 - Tested implementation commit: `1f96ef8db2e6f55efb7b8764900293338e70fd2d`
 - Tested implementation tree: `738c27018ad635631847f36b5382802e2d80f1aa`
-- Production/test/build bytes remain frozen at the tested implementation above. Root authorized one documentation-only successor commit for this receipt and the four prepared SSOT/plan documents. Its final V21 input HEAD/tree, clean status and unchanged-code proof are recorded in [final-state.json](../work/h13-local/final-state.json).
+- Production/test/build bytes remain frozen at the tested implementation above. Root authorized one documentation-only successor commit for this receipt and the four prepared SSOT/plan documents. The original `work/h13-local/final-state.json` is local-only historical evidence and is not available in a clean clone.
 - Scope and root's accepted production correction: `C:/Users/rambo/Documents/Codex/2026-08-29/new-chat-3/work/session-governance-20260831/choplab-h13-desktop-longpress-scope.md`
+- Clean-clone equivalents are the committed [controller tests](../desktop/src/test/kotlin/com/choplab/desktop/DesktopSamplerControllerTest.kt), [actual-input tests](../desktop/src/test/kotlin/com/choplab/desktop/ui/DesktopLongPressUiTest.kt), and the later [v0.17.1 review-repair receipt](PR83-second-review-repair-20260902.md). Raw run logs and PNGs listed below remain hash-addressed provenance only; they were deliberately not published as repository files.
 
 ## 実入力と期待値
 
@@ -73,7 +74,7 @@ C:/Users/rambo/.gradle/wrapper/dists/gradle-9.7.1-bin/1w1c7tv4s851m17nbqdsro2tv/
 -Djava.io.tmpdir=F:/CodexWork/choplab-desktop-longpress-20260901/work/h13-local/tmp
 ```
 
-`JAVA_HOME`は既存JDK17、`GRADLE_USER_HOME`は当laneの`work/gradle-user-home`、TEMP/TMPは`work/h13-local/tmp`へprocess限定。上の最後の`-Dorg.gradle.jvmargs`は実commandでは一引数で、正確な引数配列・PID・creation・cwdは[process.json](../work/h13-local/runs/22-fixed-product-readback/process.json)を参照。
+`JAVA_HOME`は既存JDK17、`GRADLE_USER_HOME`は当laneの`work/gradle-user-home`、TEMP/TMPは`work/h13-local/tmp`へprocess限定。上の最後の`-Dorg.gradle.jvmargs`は実commandでは一引数だった。正確な引数配列・PID・creation・cwdを持つ元の`work/h13-local/runs/22-fixed-product-readback/process.json`はlocal-onlyで、clean cloneには含まれない。
 
 run22は`BUILD SUCCESSFUL in 27s`、16 tasks（3 executed/13 up-to-date）。UI9 tests=14.472秒、controller5 tests=0.798秒。No Android/packageWindows/full historical suite。同じ14件を別runで再実行してもunique test数を加算しない。
 
@@ -88,15 +89,15 @@ run22は`BUILD SUCCESSFUL in 27s`、16 tasks（3 executed/13 up-to-date）。UI9
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| [assigned-before.png](../work/h13-local/runs/22-fixed-product-readback/evidence/assigned-before.png) | 69289 | `D188383973034148EE9A7DC15EB7D782EF23886DBACC0940C5EBC6A5788A6749` |
-| [assigned-after.png](../work/h13-local/runs/22-fixed-product-readback/evidence/assigned-after.png) | 97283 | `1B9AAECC2C97B5645AE1F1B79155C5C2573AF1940D10CE68A361911D3E07E0C6` |
-| [waveform-end-focus.png](../work/h13-local/runs/22-fixed-product-readback/evidence/waveform-end-focus.png) | 99218 | `49ABF6CFC2AAEC73A26D09B62A592648DD78F33D9D9412F4FE1E2E0413991E06` |
-| [source-start-focus.png](../work/h13-local/runs/22-fixed-product-readback/evidence/source-start-focus.png) | 98437 | `3B5150BE9DE2F95E52BC5EA3CA5AF60431468D6AE1FBFCFE927E4AC17B252673` |
-| [source-end-focus.png](../work/h13-local/runs/22-fixed-product-readback/evidence/source-end-focus.png) | 98861 | `5E802F33309C5AA13F3D98F9CE44CD5837B1F40BAA8817196EC1DA98357716BB` |
-| [assigned-after.txt](../work/h13-local/runs/22-fixed-product-readback/evidence/assigned-after.txt) | 14333 | `D522BC3198CC04FE76419D96EA5A78DA62DB4783D328A45B9C0639D3927EDA86` |
-| [test-results.xml](../work/h13-local/runs/03-real-mouse-hold/test-results.xml) | 3215 | `20093F69D7BA0E170C5A5626D6123ED9754E38C7B4D6E02E6321639D2836CA65` |
-| [assigned-after.png](../work/h13-local/runs/03-real-mouse-hold/evidence/assigned-after.png) | 99215 | `7E137B5E02099AC45F40EA67B12E2405915959159DCDDC7C41517FCD5ACFCCB6` |
-| [test-results.xml](../work/h13-local/runs/20-final-short-sensitivity/test-results.xml) | 3274 | `76BBBB88A1119AE4CD6D834756748C0ED00E504322DCB7012A8456F2DB5C8696` |
+| `assigned-before.png` (local-only) | 69289 | `D188383973034148EE9A7DC15EB7D782EF23886DBACC0940C5EBC6A5788A6749` |
+| `assigned-after.png` (local-only) | 97283 | `1B9AAECC2C97B5645AE1F1B79155C5C2573AF1940D10CE68A361911D3E07E0C6` |
+| `waveform-end-focus.png` (local-only) | 99218 | `49ABF6CFC2AAEC73A26D09B62A592648DD78F33D9D9412F4FE1E2E0413991E06` |
+| `source-start-focus.png` (local-only) | 98437 | `3B5150BE9DE2F95E52BC5EA3CA5AF60431468D6AE1FBFCFE927E4AC17B252673` |
+| `source-end-focus.png` (local-only) | 98861 | `5E802F33309C5AA13F3D98F9CE44CD5837B1F40BAA8817196EC1DA98357716BB` |
+| `assigned-after.txt` (local-only) | 14333 | `D522BC3198CC04FE76419D96EA5A78DA62DB4783D328A45B9C0639D3927EDA86` |
+| `run03/test-results.xml` (local-only) | 3215 | `20093F69D7BA0E170C5A5626D6123ED9754E38C7B4D6E02E6321639D2836CA65` |
+| `run03/assigned-after.png` (local-only) | 99215 | `7E137B5E02099AC45F40EA67B12E2405915959159DCDDC7C41517FCD5ACFCCB6` |
+| `run20/test-results.xml` (local-only) | 3274 | `76BBBB88A1119AE4CD6D834756748C0ED00E504322DCB7012A8456F2DB5C8696` |
 
 PNGはruntime出力の観測でありgolden expected imageではない。現在の後置state、波形viewport、画像boundsはテストassertで確認している。
 
