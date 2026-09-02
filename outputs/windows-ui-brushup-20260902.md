@@ -5,11 +5,11 @@
 - Current base: PR #83 head `13e41af589ee32018ae6857623b857b9c0356f21` (branch `codex/choplab-h13-v0171-20260902`).
 - Current product: `822305c` on lane `work/choplab-ui-brushup-20260902`, branch `codex/choplab-ui-brushup-pr83-latest-20260902`.
 - Current integration checkpoint: `68296f2079349ac0c61df2fb4e34e03fce250e16`, tree `2e6dea9f2da62d072407edf35419660cf3553bfb`, incorporating `main@b737b17` and PR #87 head `07f3ad9`.
-- Scanner successor: `e0a93678eb203954f8e18ebded964b90e51c04e0`, tree `9d33a999a8ffca717fb5848ae8a4bcdfd9449e67`, incorporating PR #87 head `bb4ba86`; product/build objects remain byte-identical to `68296f2`.
+- Final main-ancestry integration: `ee1ea293af37037846c0bd16a9b0087001b5c170`, tree `b28c2fc333223b43d3537979fb117d94f11fd3da`, incorporating merged `main@61147bf`; product/build objects remain byte-identical to `68296f2`.
 - Preserved predecessor: `a5f5a17` on `codex/choplab-ui-brushup-20260902`, based on PR #83's earlier `f16218d` head. Its local startup timings remain historical evidence for those bytes.
 - Plan: [windows-ui-brushup-20260902](../plans/active/windows-ui-brushup-20260902.md).
 
-This is local evidence only. No push, PR, tag, Release, device, provider, or Human action was performed.
+This section records local evidence. Tag, Release, device, provider-account and Human gates remain separate.
 
 ## Product changes
 
@@ -37,7 +37,7 @@ This is local evidence only. No push, PR, tag, Release, device, provider, or Hum
 - New tests: `WaveformWheelGestureTest` (4), `BoundedPcmBuilderTest` (3), rapid superseding KEY resume and ALL STOP late-resume denial; the pitch-failure case awaits the asynchronous failure report.
 - `:desktop:packageWindows` PASS: 405 files, 176,816,561 bytes. `ChopLab.exe` SHA-256 `4e2a8ad0ea2a114309f28bf80b15478b66e5b7acd0a375fc6319d812d702d7bf`; `desktop-0.17.1.jar` `cf08eda79b68e21b7c528c7499d7aca0bf17bfab9ba2738331a850843d840909`; `shared-desktop-0.17.1.jar` `6d5570f0e720dc82a4dd6f266f94caecb5532826bf9def281de0919f6f93eb6e`. `ChopLab.cfg` carries the three new java-options.
 - Exact integration checkpoint `68296f2`: shared Desktop 91, shared Android host 91, Android unit 289, JVM core 88, Desktop 185, long-press UI 24; failures/errors/skips 0. Android lint, debug APK, AndroidTest compilation and Windows package all pass. Full Python policy 207 passes with one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
-- Scanner successor `e0a9367`: full Python policy 210 passes with the same one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
+- Final main-ancestry integration `ee1ea29`: full Python policy 213 passes with the same one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
 
 ## Predecessor startup smoke (`a5f5a17`, packaged app image, 3840×2160 @150 %)
 

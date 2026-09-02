@@ -1,12 +1,12 @@
 # ExecPlan registry
 
-更新: 2026-09-02
+更新: 2026-09-03
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中（単一product convergence / Windows UI brush-up統合）:** `h13-github-release-20260902.md`。PR #86 Android音質とPR #69 scannerは`main@b737b17`まで通常統合済み。PR #87 `bb4ba86`が未解決10境界、hosted追加指摘、Windows timeoutを修正し、provider checks/review中。UI product `822305c`はasync KEY resume、WAV bulk import、chooser/startup、hover/wheel/layout/confirmation修正を保持し、PR #87 successorまで統合・local exact gate済み。次はPR #87 normal merge、UI PR、release hardening、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
+**進行中（単一product convergence / Windows UI brush-up統合）:** `h13-github-release-20260902.md`。PR #86 Android音質、PR #69 scanner、PR #87 corrective follow-upは`main@61147bf`まで通常統合済み。UI product `822305c`はasync KEY resume、WAV bulk import、chooser/startup、hover/wheel/layout/confirmation修正を保持し、final main ancestry `ee1ea29`でlocal exact gate済み。次はUI PR、release hardening、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
 
 **Historical H13 pre-tag snapshot:** PR #83は`2864117`、setup-java v6 PR #82と当時のCompose PR #80を含むmainは`d3291a5`だった。後続PR #84でCompose 1.11.1へ戻り、`v0.17.1` tagは`f6cbfdc`に作成後、公開前verifier失敗でReleaseなしのまま保持されている。
 
