@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from scripts.check_public_surface import (
     ZipCandidateScanBudget,
+    historical_non_commit_tree_zip_objects,
     main,
     scan_history,
     scan_historical_zip_blobs,
@@ -389,6 +390,29 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                     apk_findings,
                 )
 
+    def test_zip_content_scan_detects_bomless_utf16_binary_secrets_without_broad_matches(self) -> None:
+        token = "github_pat_" + "d" * 24
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            for encoding in ("utf-16-le", "utf-16-be"):
+                archive.writestr(
+                    f"resource-{encoding}.dll",
+                    b"MZ\x90\x00" + token.encode(encoding),
+                )
+            archive.writestr(
+                "ordinary-resource.dll",
+                b"MZ\x90\x00" + "ordinary resource string".encode("utf-16-le"),
+            )
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="bomless-binary.zip")
+
+        self.assertEqual(2, sum("secret-shaped content" in item for item in findings), findings)
+        self.assertTrue(
+            all("ordinary-resource.dll" not in item for item in findings),
+            findings,
+        )
+        self.assertNotIn(token, "\n".join(findings))
+
     def test_zip_content_scan_does_not_classify_bom_text_as_mpeg(self) -> None:
         token = "github_pat_" + "c" * 24
         encoded_values = (
@@ -439,6 +463,19 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             any("audio signature 'ADTS/AAC'" in item for item in findings),
             findings,
         )
+
+    def test_zip_content_scan_detects_m4a_compatible_brand_under_neutral_name(self) -> None:
+        brands = b"isom" + (0).to_bytes(4, "big") + b"mp42" + b"M4A "
+        ftyp = (8 + len(brands)).to_bytes(4, "big") + b"ftyp" + brands
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("payload.dat", ftyp)
+            archive.writestr("truncated.dat", b"\x00\x00\x00\x20ftypisom")
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="m4a-compatible.zip")
+
+        self.assertEqual(1, sum("audio signature 'M4A'" in item for item in findings), findings)
+        self.assertTrue(any("payload.dat" in item for item in findings), findings)
 
     def test_zip_content_scan_rejects_zst_suffix_and_zstandard_magic(self) -> None:
         zstandard_magic = b"\x28\xb5\x2f\xfd" + b"\x00" * 12
@@ -917,6 +954,53 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             any("secret-shaped content" in item for item in findings),
             findings,
         )
+
+    def test_apk_content_scan_recurses_into_archive_valued_signing_pair(self) -> None:
+        token = b"github_pat_" + b"p" * 24
+        nested = BytesIO()
+        with zipfile.ZipFile(nested, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", token)
+
+        base = BytesIO()
+        with zipfile.ZipFile(base, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("notes.txt", b"safe text")
+        archive_bytes = bytearray(base.getvalue())
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            central_directory_start = archive.start_dir
+        eocd_offset = archive_bytes.rfind(b"PK\x05\x06")
+        pair_value = nested.getvalue()
+        pair = (
+            struct.pack("<Q", 4 + len(pair_value))
+            + struct.pack("<I", 0x42726577)
+            + pair_value
+        )
+        signing_size = len(pair) + 24
+        signing_block = (
+            struct.pack("<Q", signing_size)
+            + pair
+            + struct.pack("<Q", signing_size)
+            + b"APK Sig Block 42"
+        )
+        signed_apk = bytearray(
+            archive_bytes[:central_directory_start]
+            + signing_block
+            + archive_bytes[central_directory_start:]
+        )
+        shifted_eocd = eocd_offset + len(signing_block)
+        struct.pack_into(
+            "<L",
+            signed_apk,
+            shifted_eocd + 16,
+            central_directory_start + len(signing_block),
+        )
+
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "archive-valued-pair.apk"
+            apk_path.write_bytes(signed_apk)
+            findings = scan_zip(apk_path, label="archive-valued-pair.apk")
+
+        self.assertTrue(any("nested archive" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
 
     def test_zip_content_scan_rejects_unclaimed_interior_bytes(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -1650,6 +1734,47 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("annotated tag peel" in item for item in findings), findings)
 
+    def test_history_scan_bounds_aggregate_annotated_tag_peeling(self) -> None:
+        tag_ids = ("1" * 40, "2" * 40)
+        cat_file_calls = 0
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            nonlocal cat_file_calls
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return (
+                    f"{tag_ids[0]}\0tag\0\0\0"
+                    f"{tag_ids[1]}\0tag\0\0\0"
+                ).encode("ascii")
+            if arguments == ["cat-file", "-p", tag_ids[0]]:
+                cat_file_calls += 1
+                return f"object {'3' * 40}\ntype commit\n\n".encode("ascii")
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with (
+            patch("scripts.check_public_surface.run_git", side_effect=fake_run_git),
+            patch("scripts.check_public_surface.HISTORICAL_TAG_PEEL_OPERATION_LIMIT", 1),
+        ):
+            candidates, findings = historical_non_commit_tree_zip_objects()
+
+        self.assertEqual([], candidates)
+        self.assertEqual(1, cat_file_calls)
+        self.assertTrue(any("annotated tag peel" in item for item in findings), findings)
+
+    def test_history_scan_bounds_non_commit_ref_inventory_before_peeling(self) -> None:
+        refs = (
+            f"{'4' * 40}\0tag\0\0\0"
+            f"{'5' * 40}\0tag\0\0\0"
+        ).encode("ascii")
+        with (
+            patch("scripts.check_public_surface.run_git", return_value=refs) as run_git,
+            patch("scripts.check_public_surface.HISTORICAL_NON_COMMIT_REF_LIMIT", 1),
+        ):
+            candidates, findings = historical_non_commit_tree_zip_objects()
+
+        self.assertEqual([], candidates)
+        self.assertEqual(1, run_git.call_count)
+        self.assertTrue(any("non-commit refs exceed" in item for item in findings), findings)
+
     def test_history_zip_roots_and_children_share_decoder_work_budgets(self) -> None:
         object_ids = ("c" * 40, "d" * 40)
         archive_bytes = BytesIO()
@@ -1692,6 +1817,34 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         ):
             self.assertIn(key, observed[0])
             self.assertIs(observed[0][key], observed[1][key])
+
+    def test_current_zip_candidates_scan_renamed_zip_payload(self) -> None:
+        token = "github_pat_" + "r" * 24
+        with TemporaryDirectory() as directory:
+            renamed = Path(directory) / "payload.dat"
+            with zipfile.ZipFile(renamed, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("notes.txt", token)
+
+            findings = scan_public_path(renamed, zip_budget=ZipCandidateScanBudget())
+
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+        self.assertNotIn(token, "\n".join(findings))
+
+    def test_release_security_documents_actual_nested_limits(self) -> None:
+        document = (
+            Path(__file__).resolve().parents[2] / "docs" / "RELEASE_SECURITY.md"
+        ).read_text(encoding="utf-8")
+
+        for marker in (
+            "depth 3",
+            "64-archive",
+            "16 MiB/member",
+            "256 MiB compressed-container",
+            "256 MiB expanded-work",
+            "512-operation peel budget",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, document)
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (

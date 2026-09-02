@@ -81,6 +81,7 @@ HISTORICAL_ZIP_BLOB_COUNT_LIMIT = 128
 HISTORICAL_ZIP_CONTAINER_LIMIT = 16 * 1024 * 1024
 HISTORICAL_ZIP_TOTAL_LIMIT = 64 * 1024 * 1024
 HISTORICAL_NON_COMMIT_TREE_LIMIT = 128
+HISTORICAL_NON_COMMIT_REF_LIMIT = 4_096
 ZIP_NESTED_DEPTH_LIMIT = 3
 ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
@@ -92,6 +93,7 @@ HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
 HISTORICAL_TAG_PEEL_LIMIT = 8
+HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
@@ -134,6 +136,13 @@ TEXT_BOM_PREFIXES = (
     b"\xfe\xff",
 )
 ZSTANDARD_MAGIC = b"\x28\xb5\x2f\xfd"
+SECRET_TEXT_PREFIXES = (
+    "-----BEGIN ",
+    "gho_",
+    "github_pat_",
+    "AKIA",
+    "AIza",
+)
 
 
 @dataclass
@@ -164,6 +173,11 @@ class ApkContentScanBudget:
 class ZipBinaryScanBudget:
     compressed_bytes: int = 0
     expanded_bytes: int = 0
+
+
+@dataclass
+class GitTagPeelBudget:
+    operations: int = 0
 
 
 class GitScanLimitError(RuntimeError):
@@ -308,6 +322,8 @@ def peel_annotated_tag(
     object_type: str,
     peeled_id: str,
     peeled_type: str,
+    *,
+    budget: GitTagPeelBudget | None = None,
 ) -> tuple[str, str]:
     """Peel tag objects to their final object with an explicit depth bound."""
     current_id = peeled_id or object_id
@@ -320,6 +336,13 @@ def peel_annotated_tag(
         if current_id in seen_ids:
             raise ValueError("annotated tag peel cycle detected")
         seen_ids.add(current_id)
+        if budget is not None:
+            if budget.operations + 1 > HISTORICAL_TAG_PEEL_OPERATION_LIMIT:
+                raise GitScanLimitError(
+                    "annotated tag peel operations exceed the "
+                    f"{HISTORICAL_TAG_PEEL_OPERATION_LIMIT}-operation aggregate limit"
+                )
+            budget.operations += 1
         raw_tag = run_git(["cat-file", "-p", current_id])
         header = raw_tag.splitlines()
         if len(header) < 2:
@@ -355,10 +378,18 @@ def historical_non_commit_tree_zip_objects() -> tuple[
         fields.pop()
     if len(fields) % 4:
         return [], ["git history ZIP content: invalid non-commit ref metadata"]
+    ref_count = len(fields) // 4
+    if ref_count > HISTORICAL_NON_COMMIT_REF_LIMIT:
+        return [], [
+            "git history ZIP content: "
+            f"{ref_count} non-commit refs exceed the "
+            f"{HISTORICAL_NON_COMMIT_REF_LIMIT}-ref scan limit"
+        ]
 
     tree_ids: set[str] = set()
     direct_blob_ids: set[str] = set()
     findings: list[str] = []
+    peel_budget = GitTagPeelBudget()
     for index in range(0, len(fields), 4):
         object_id, object_type, peeled_id, peeled_type = (
             field.decode("ascii", errors="replace").strip()
@@ -371,6 +402,7 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                     object_type,
                     peeled_id,
                     peeled_type,
+                    budget=peel_budget,
                 )
             except (
                 GitScanLimitError,
@@ -608,12 +640,29 @@ def audio_payload_signature(content: bytes) -> str | None:
             and sample_rate_index != 0x03
         ):
             return "MPEG audio/MP3"
-    if len(content) >= 12 and content[4:8] == b"ftyp" and content[8:12] in {
-        b"M4A ",
-        b"M4B ",
-    }:
+    if has_m4a_compatible_brand(content):
         return "M4A"
     return None
+
+
+def has_m4a_compatible_brand(content: bytes) -> bool:
+    """Recognize one bounded ISO-BMFF ftyp box carrying an M4A/M4B brand."""
+    if len(content) < 16 or content[4:8] != b"ftyp":
+        return False
+    declared_size = int.from_bytes(content[:4], "big")
+    if declared_size == 0:
+        box_size = len(content)
+    elif declared_size == 1:
+        return False
+    else:
+        box_size = declared_size
+    if box_size < 16 or box_size > len(content) or (box_size - 16) % 4:
+        return False
+    brands = [content[8:12]] + [
+        content[offset : offset + 4]
+        for offset in range(16, box_size, 4)
+    ]
+    return any(brand in {b"M4A ", b"M4B "} for brand in brands)
 
 
 def is_zip_compatible_payload(content: bytes) -> bool:
@@ -2018,6 +2067,71 @@ def scan_zip(
                                         f"{archive_label}: APK signing-block pair "
                                         f"{index + 1} value"
                                     )
+                                    unsupported_format = (
+                                        unsupported_nested_archive_signature(value)
+                                    )
+                                    if unsupported_format is not None:
+                                        findings.append(
+                                            f"{pair_label}: nested archive format "
+                                            f"{unsupported_format!r} is not supported"
+                                        )
+                                        continue
+                                    if is_zip_compatible_payload(value):
+                                        if _nested_depth >= ZIP_NESTED_DEPTH_LIMIT:
+                                            findings.append(
+                                                f"{pair_label}: nested archive depth "
+                                                f"exceeds {ZIP_NESTED_DEPTH_LIMIT}"
+                                            )
+                                            continue
+                                        if (
+                                            nested_budget.archive_count + 1
+                                            > ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+                                        ):
+                                            findings.append(
+                                                f"{archive_label}: nested archive count "
+                                                f"exceeds {ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
+                                            )
+                                            continue
+                                        if (
+                                            nested_budget.compressed_bytes + len(value)
+                                            > nested_total_limit
+                                            or nested_budget.expanded_bytes + len(value)
+                                            > nested_total_limit
+                                        ):
+                                            findings.append(
+                                                f"{archive_label}: nested archives exceed "
+                                                f"the {nested_total_limit}-byte aggregate limit"
+                                            )
+                                            continue
+                                        if not reserve_candidate_work(
+                                            len(value),
+                                            len(value),
+                                        ):
+                                            continue
+                                        nested_budget.archive_count += 1
+                                        nested_budget.compressed_bytes += len(value)
+                                        nested_budget.expanded_bytes += len(value)
+                                        findings.extend(
+                                            scan_zip(
+                                                BytesIO(value),
+                                                label=f"{pair_label}: nested archive",
+                                                member_scan_limit=member_scan_limit,
+                                                total_scan_limit=total_scan_limit,
+                                                compressed_input_limit=compressed_input_limit,
+                                                compression_ratio_limit=compression_ratio_limit,
+                                                entry_count_limit=entry_count_limit,
+                                                lzma_dictionary_limit=lzma_dictionary_limit,
+                                                nested_total_limit=nested_total_limit,
+                                                _nested_depth=_nested_depth + 1,
+                                                _nested_budget=nested_budget,
+                                                _candidate_budget=candidate_budget,
+                                                _container_path=PurePosixPath("pair.zip"),
+                                                _apk_content_context=apk_content_context,
+                                                _apk_binary_budget=apk_binary_budget,
+                                                _binary_secret_budget=binary_secret_budget,
+                                            )
+                                        )
+                                        continue
                                     audio_signature = audio_payload_signature(value)
                                     if audio_signature:
                                         findings.append(
@@ -2062,6 +2176,19 @@ def scan_secret_bytes(label: str, content: bytes) -> list[str]:
         matched_patterns.update(
             pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
         )
+    else:
+        for encoding in ("utf-16-le", "utf-16-be"):
+            encoded_prefixes = [prefix.encode(encoding) for prefix in SECRET_TEXT_PREFIXES]
+            offsets = {
+                index % 2
+                for prefix in encoded_prefixes
+                if (index := content.find(prefix)) >= 0
+            }
+            for offset in offsets:
+                decoded = content[offset:].decode(encoding, errors="replace")
+                matched_patterns.update(
+                    pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
+                )
     return [
         f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
@@ -2193,8 +2320,21 @@ def scan_public_path(
         return findings
 
     try:
-        content = resolved_path.read_bytes().decode("utf-8")
-    except (OSError, UnicodeDecodeError):
+        raw_content = resolved_path.read_bytes()
+    except OSError:
+        return findings
+    if is_zip_compatible_payload(raw_content):
+        findings.extend(
+            scan_zip(
+                BytesIO(raw_content),
+                label=str(path),
+                _candidate_budget=zip_budget,
+            )
+        )
+        return findings
+    try:
+        content = raw_content.decode("utf-8")
+    except UnicodeDecodeError:
         return findings
     findings.extend(scan_text(str(path), content))
     return findings
