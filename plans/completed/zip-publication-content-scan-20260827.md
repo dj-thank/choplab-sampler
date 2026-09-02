@@ -54,13 +54,14 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] Final hosted follow-up: APK signing pair values, every bounded binary/JIMAGE body and exact SBOM text are secret-scanned; active registry next action now points to PR #69.
 - [x] PR #69 review follow-up: prefixed historical ZIPs, BOM-less UTF-16 metadata, bounded recursive findings, neutral-name DER signing material, annotated-tag messages, direct non-ZIP blobs, every release-glob asset, and lazy ISO brand probing now have focused regressions.
 - [x] Post-hosted Windows compatibility: valid PE Authenticode certificates and trusted-certificate-only JDK JKS stores remain publishable, while embedded private-key material still fails closed.
+- [x] Late review closure: SEC1 EC keys, full annotated-tag message policy, non-commit-tree symlink targets, neutral-name PEM certificates and bounded DER candidate work now have direct regressions.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
 
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
-- Exact current-tree policy suite: 176 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. The earlier 124/151/173-test receipts remain historical evidence for their predecessor trees; capable CI hosts still run the skipped symlink test.
+- Exact current-tree policy suite: 180 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. The earlier 124/151/173/176-test receipts remain historical evidence for their predecessor trees; capable CI hosts still run the skipped symlink test.
 - Current and reachable-history public scans: 479 candidates, PASS. `py_compile` and `git diff --check`: PASS.
 - Windows compatibility regression: preserved v0.17.0 app-image ZIP `AC0552B51EA0C614AFC4B41C7B5FEC2C40247B641177385CB8AC777F26A17435` passes as one explicit archive after the PE/JKS refinement.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.

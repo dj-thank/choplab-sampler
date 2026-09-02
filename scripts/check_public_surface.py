@@ -95,6 +95,7 @@ HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
 HISTORICAL_TAG_PEEL_LIMIT = 8
 HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
+HISTORICAL_TAG_BODY_TOTAL_LIMIT = 16 * 1024 * 1024
 HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT = 16_384
 HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT = 256 * 1024 * 1024
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
@@ -105,6 +106,12 @@ SECRET_PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
 ]
+PEM_CERTIFICATE_PATTERN = re.compile(
+    r"-----BEGIN " + r"(?:X509 )?CERTIFICATE-----"
+)
+PEM_CERTIFICATE_BYTE_PATTERN = re.compile(
+    PEM_CERTIFICATE_PATTERN.pattern.encode("ascii")
+)
 SECRET_BYTE_PATTERNS = [
     re.compile(pattern.pattern.encode("ascii")) for pattern in SECRET_PATTERNS
 ]
@@ -160,6 +167,7 @@ DER_SIGNING_OIDS = (
     bytes.fromhex("06032b6570"),  # Ed25519
     bytes.fromhex("06032b6571"),  # Ed448
 )
+DER_SEQUENCE_CANDIDATE_LIMIT = 524_288
 JKS_MAGIC = b"\xfe\xed\xfe\xed"
 JKS_TRUSTED_CERTIFICATE_ENTRY = 2
 JKS_ENTRY_LIMIT = 4_096
@@ -198,6 +206,7 @@ class ZipBinaryScanBudget:
 @dataclass
 class GitTagPeelBudget:
     operations: int = 0
+    body_bytes: int = 0
     cache: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
@@ -638,13 +647,13 @@ def peel_annotated_tag(
                 )
             budget.operations += 1
         raw_tag = run_git(["cat-file", "-p", current_id])
-        if findings is not None:
-            findings.extend(
-                scan_secret_bytes(
-                    f"git history annotated tag {current_id[:12]}",
-                    raw_tag,
+        if budget is not None:
+            if budget.body_bytes + len(raw_tag) > HISTORICAL_TAG_BODY_TOTAL_LIMIT:
+                raise GitScanLimitError(
+                    "annotated tag bodies exceed the "
+                    f"{HISTORICAL_TAG_BODY_TOTAL_LIMIT}-byte aggregate scan limit"
                 )
-            )
+            budget.body_bytes += len(raw_tag)
         header = raw_tag.splitlines()
         if len(header) < 2:
             raise ValueError("annotated tag object header is truncated")
@@ -656,6 +665,16 @@ def peel_annotated_tag(
         current_type = type_line[5:].strip()
         if not current_id or not current_type:
             raise ValueError("annotated tag object target is missing")
+        _, separator, tag_message = raw_tag.partition(b"\n\n")
+        if not separator:
+            raise ValueError("annotated tag object message separator is missing")
+        if findings is not None:
+            findings.extend(
+                scan_blob_content(
+                    f"git history annotated tag {visited_tag_id[:12]}",
+                    tag_message,
+                )
+            )
         if budget is not None:
             budget.cache[visited_tag_id] = (current_id, current_type)
         if current_type != "tag":
@@ -804,7 +823,7 @@ def historical_non_commit_tree_zip_objects() -> tuple[
             )
 
     tree_listing_bytes = 0
-    tree_blob_entries: dict[str, PurePosixPath] = {}
+    tree_blob_entries: dict[tuple[str, str], PurePosixPath] = {}
     for tree_id in sorted(tree_ids):
         raw_tree = run_git(["ls-tree", "-rz", "-r", "--full-tree", tree_id])
         if tree_listing_bytes + len(raw_tree) > HISTORICAL_ZIP_TOTAL_LIMIT:
@@ -826,24 +845,26 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                 )
                 continue
             path = PurePosixPath(raw_path.decode("utf-8", errors="replace"))
-            if mode not in {"100644", "100755"} or object_type != "blob":
+            if mode not in {"100644", "100755", "120000"} or object_type != "blob":
                 continue
             reason = suspicious_path(path)
             if reason:
                 findings.append(f"git history tree path {path}: {reason}")
             if path.suffix.lower() == ".zip":
-                if (
-                    object_id not in candidates
-                    and len(candidates) >= HISTORICAL_ZIP_BLOB_COUNT_LIMIT
-                ):
-                    findings.append(
-                        "git history ZIP content: non-commit refs exceed the "
-                        f"{HISTORICAL_ZIP_BLOB_COUNT_LIMIT}-archive candidate limit"
-                    )
-                    return list(candidates.items()), findings
-                candidates.setdefault(object_id, path)
-                continue
-            if object_id in direct_blob_ids or object_id in tree_blob_entries:
+                if mode != "120000":
+                    if (
+                        object_id not in candidates
+                        and len(candidates) >= HISTORICAL_ZIP_BLOB_COUNT_LIMIT
+                    ):
+                        findings.append(
+                            "git history ZIP content: non-commit refs exceed the "
+                            f"{HISTORICAL_ZIP_BLOB_COUNT_LIMIT}-archive candidate limit"
+                        )
+                        return list(candidates.items()), findings
+                    candidates.setdefault(object_id, path)
+                    continue
+            blob_key = (object_id, mode)
+            if object_id in direct_blob_ids or blob_key in tree_blob_entries:
                 continue
             if len(tree_blob_entries) >= HISTORICAL_NON_COMMIT_BLOB_LIMIT:
                 findings.append(
@@ -851,9 +872,9 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                     f"{HISTORICAL_NON_COMMIT_BLOB_LIMIT}-blob scan limit"
                 )
                 return list(candidates.items()), findings
-            tree_blob_entries[object_id] = path
+            tree_blob_entries[blob_key] = path
 
-    for object_id, path in tree_blob_entries.items():
+    for (object_id, mode), path in tree_blob_entries.items():
         try:
             size = int(run_git(["cat-file", "-s", object_id]).strip())
         except (OSError, ValueError, subprocess.CalledProcessError) as error:
@@ -886,6 +907,14 @@ def historical_non_commit_tree_zip_objects() -> tuple[
             findings.append("git history tree blob size changed while reading")
             continue
         direct_blob_identification_bytes += len(content)
+        if mode == "120000":
+            findings.extend(
+                scan_text_bytes(
+                    f"git history tree symlink {path} ({object_id[:12]})",
+                    content,
+                )
+            )
+            continue
         if is_zip_compatible_payload(content):
             if (
                 object_id not in candidates
@@ -1066,8 +1095,13 @@ def der_tlv_value_bounds(
 
 
 def iter_der_sequence_offsets(content: bytes):
+    candidates = 0
     offset = content.find(b"\x30")
     while offset >= 0:
+        if candidates >= DER_SEQUENCE_CANDIDATE_LIMIT:
+            yield -1
+            return
+        candidates += 1
         yield offset
         offset = content.find(b"\x30", offset + 1)
 
@@ -1075,6 +1109,8 @@ def iter_der_sequence_offsets(content: bytes):
 def der_private_key_material_signature(content: bytes) -> str | None:
     """Recognize bounded PKCS#8 or OID-less PKCS#1 private-key shapes."""
     for offset in iter_der_sequence_offsets(content):
+        if offset < 0:
+            return "DER private-key sequence candidate scan limit exceeded"
         outer = der_tlv_value_bounds(content, offset)
         if outer is None or outer[0] != 0x30:
             continue
@@ -1100,6 +1136,29 @@ def der_private_key_material_signature(content: bytes) -> str | None:
                     oid in content[second[1] : second[2]]
                     for oid in DER_SIGNING_OIDS
                 )
+            ):
+                return "DER signing material (private-key)"
+
+        if first[0] == 0x02 and second[0] == 0x04:
+            version = content[first[1] : first[2]]
+            private_value_size = second[2] - second[1]
+            cursor = second[2]
+            valid_optional_fields = True
+            while cursor < outer[2]:
+                child = der_tlv_value_bounds(content, cursor)
+                if (
+                    child is None
+                    or child[2] > outer[2]
+                    or child[0] not in {0xA0, 0xA1}
+                ):
+                    valid_optional_fields = False
+                    break
+                cursor = child[2]
+            if (
+                version == b"\x01"
+                and 16 <= private_value_size <= 66
+                and valid_optional_fields
+                and cursor == outer[2]
             ):
                 return "DER signing material (private-key)"
 
@@ -1130,6 +1189,8 @@ def der_signing_material_signature(content: bytes) -> str | None:
     if private_signature:
         return private_signature
     for offset in iter_der_sequence_offsets(content):
+        if offset < 0:
+            return "DER sequence candidate scan limit exceeded"
         outer = der_tlv_value_bounds(content, offset)
         if outer is None or outer[0] != 0x30:
             continue
@@ -2614,7 +2675,18 @@ def scan_zip(
                     or bounded_skiko_icu
                     or bounded_app_executable
                 ):
-                    findings.extend(scan_secret_bytes(member_label, content))
+                    findings.extend(
+                        scan_secret_bytes(
+                            member_label,
+                            content,
+                            allow_public_certificates=(
+                                public_certificate_container
+                                or bounded_jimage
+                                or bounded_skiko_icu
+                                or bounded_app_executable
+                            ),
+                        )
+                    )
                 else:
                     findings.extend(
                         scan_text_bytes(member_label, content)
@@ -2766,32 +2838,43 @@ def scan_text(label: str, content: str) -> list[str]:
 
 def scan_text_bytes(label: str, content: bytes) -> list[str]:
     """Scan ordinary bounded bytes through UTF-8 and targeted BOM-less UTF-16 views."""
+    decoded_candidates = tuple(iter_text_scan_candidates(content))
     matched_patterns = {
         pattern.pattern
-        for decoded in iter_text_scan_candidates(content)
+        for decoded in decoded_candidates
         for pattern in SECRET_PATTERNS
         if pattern.search(decoded)
     }
     safe_label = redact_secret_text(label)
-    return [
+    findings = [
         f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
         if pattern.pattern in matched_patterns
     ]
+    if any(PEM_CERTIFICATE_PATTERN.search(decoded) for decoded in decoded_candidates):
+        findings.append(f"{safe_label}: PEM certificate material detected")
+    return findings
 
 
-def scan_secret_bytes(label: str, content: bytes) -> list[str]:
+def scan_secret_bytes(
+    label: str,
+    content: bytes,
+    *,
+    allow_public_certificates: bool = False,
+) -> list[str]:
     safe_label = redact_secret_text(label)
     matched_patterns = {
         text_pattern.pattern
         for text_pattern, byte_pattern in zip(SECRET_PATTERNS, SECRET_BYTE_PATTERNS)
         if byte_pattern.search(content)
     }
+    certificate_found = PEM_CERTIFICATE_BYTE_PATTERN.search(content) is not None
     if content.startswith(TEXT_BOM_PREFIXES):
         decoded = decode_text_for_secret_scan(content)
         matched_patterns.update(
             pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
         )
+        certificate_found = certificate_found or PEM_CERTIFICATE_PATTERN.search(decoded) is not None
     else:
         for encoding in ("utf-16-le", "utf-16-be"):
             encoded_prefixes = [prefix.encode(encoding) for prefix in SECRET_TEXT_PREFIXES]
@@ -2805,11 +2888,18 @@ def scan_secret_bytes(label: str, content: bytes) -> list[str]:
                 matched_patterns.update(
                     pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
                 )
-    return [
+                certificate_found = (
+                    certificate_found
+                    or PEM_CERTIFICATE_PATTERN.search(decoded) is not None
+                )
+    findings = [
         f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
         if pattern.pattern in matched_patterns
     ]
+    if certificate_found and not allow_public_certificates:
+        findings.append(f"{safe_label}: PEM certificate material detected")
+    return findings
 
 
 def scan_blob_content(label: str, content: bytes) -> list[str]:
