@@ -13,7 +13,7 @@ import sys
 import tempfile
 import zipfile
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 
@@ -152,6 +152,9 @@ SECRET_TEXT_PREFIXES = (
 )
 DER_SIGNING_OIDS = (
     bytes.fromhex("06092a864886f70d010101"),  # rsaEncryption
+    bytes.fromhex("06092a864886f70d010107"),  # id-RSAES-OAEP
+    bytes.fromhex("06092a864886f70d01010a"),  # id-RSASSA-PSS
+    bytes.fromhex("06092a864886f70d01050d"),  # PBES2 encrypted PKCS#8
     bytes.fromhex("06072a8648ce3d0201"),  # id-ecPublicKey
     bytes.fromhex("06072a8648ce380401"),  # id-dsa
     bytes.fromhex("06032b6570"),  # Ed25519
@@ -192,6 +195,7 @@ class ZipBinaryScanBudget:
 @dataclass
 class GitTagPeelBudget:
     operations: int = 0
+    cache: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 class GitScanLimitError(RuntimeError):
@@ -603,8 +607,12 @@ def peel_annotated_tag(
     findings: list[str] | None = None,
 ) -> tuple[str, str]:
     """Peel tag objects to their final object with an explicit depth bound."""
-    current_id = peeled_id or object_id
-    current_type = peeled_type or object_type
+    if object_type == "tag":
+        current_id = object_id
+        current_type = object_type
+    else:
+        current_id = peeled_id or object_id
+        current_type = peeled_type or object_type
     if current_type != "tag":
         return current_id, current_type
 
@@ -613,6 +621,12 @@ def peel_annotated_tag(
         if current_id in seen_ids:
             raise ValueError("annotated tag peel cycle detected")
         seen_ids.add(current_id)
+        visited_tag_id = current_id
+        if budget is not None and current_id in budget.cache:
+            current_id, current_type = budget.cache[current_id]
+            if current_type != "tag":
+                return current_id, current_type
+            continue
         if budget is not None:
             if budget.operations + 1 > HISTORICAL_TAG_PEEL_OPERATION_LIMIT:
                 raise GitScanLimitError(
@@ -639,6 +653,8 @@ def peel_annotated_tag(
         current_type = type_line[5:].strip()
         if not current_id or not current_type:
             raise ValueError("annotated tag object target is missing")
+        if budget is not None:
+            budget.cache[visited_tag_id] = (current_id, current_type)
         if current_type != "tag":
             return current_id, current_type
     raise GitScanLimitError(
@@ -777,24 +793,15 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                 PurePosixPath(f"direct-ref-{object_id[:12]}.zip"),
             )
         else:
-            direct_label = f"git history direct-ref-{object_id[:12]}"
-            unsupported_format = unsupported_nested_archive_signature(content)
-            if unsupported_format is not None:
-                findings.append(
-                    f"{direct_label}: nested archive format "
-                    f"{unsupported_format!r} is not supported"
+            findings.extend(
+                scan_blob_content(
+                    f"git history direct-ref-{object_id[:12]}",
+                    content,
                 )
-            audio_signature = audio_payload_signature(content)
-            if audio_signature:
-                findings.append(
-                    f"{direct_label}: audio signature {audio_signature!r} detected"
-                )
-            der_signature = der_signing_material_signature(content)
-            if der_signature:
-                findings.append(f"{direct_label}: {der_signature} detected")
-            findings.extend(scan_secret_bytes(direct_label, content))
+            )
 
     tree_listing_bytes = 0
+    tree_blob_entries: dict[str, PurePosixPath] = {}
     for tree_id in sorted(tree_ids):
         raw_tree = run_git(["ls-tree", "-rz", "-r", "--full-tree", tree_id])
         if tree_listing_bytes + len(raw_tree) > HISTORICAL_ZIP_TOTAL_LIMIT:
@@ -816,11 +823,12 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                 )
                 continue
             path = PurePosixPath(raw_path.decode("utf-8", errors="replace"))
-            if (
-                mode in {"100644", "100755"}
-                and object_type == "blob"
-                and path.suffix.lower() == ".zip"
-            ):
+            if mode not in {"100644", "100755"} or object_type != "blob":
+                continue
+            reason = suspicious_path(path)
+            if reason:
+                findings.append(f"git history tree path {path}: {reason}")
+            if path.suffix.lower() == ".zip":
                 if (
                     object_id not in candidates
                     and len(candidates) >= HISTORICAL_ZIP_BLOB_COUNT_LIMIT
@@ -831,6 +839,68 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                     )
                     return list(candidates.items()), findings
                 candidates.setdefault(object_id, path)
+                continue
+            if object_id in direct_blob_ids or object_id in tree_blob_entries:
+                continue
+            if len(tree_blob_entries) >= HISTORICAL_NON_COMMIT_BLOB_LIMIT:
+                findings.append(
+                    "git history tree content: non-commit refs exceed the "
+                    f"{HISTORICAL_NON_COMMIT_BLOB_LIMIT}-blob scan limit"
+                )
+                return list(candidates.items()), findings
+            tree_blob_entries[object_id] = path
+
+    for object_id, path in tree_blob_entries.items():
+        try:
+            size = int(run_git(["cat-file", "-s", object_id]).strip())
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            findings.append(
+                "git history tree blob size check failed "
+                f"({type(error).__name__})"
+            )
+            continue
+        if size > HISTORICAL_ZIP_CONTAINER_LIMIT:
+            findings.append(
+                f"git history tree blob {path}: exceeds the "
+                f"{HISTORICAL_ZIP_CONTAINER_LIMIT}-byte identification limit"
+            )
+            continue
+        if direct_blob_identification_bytes + size > HISTORICAL_ZIP_TOTAL_LIMIT:
+            findings.append(
+                "git history tree blob content exceeds the "
+                f"{HISTORICAL_ZIP_TOTAL_LIMIT}-byte aggregate identification limit"
+            )
+            break
+        try:
+            content = run_git(["cat-file", "blob", object_id])
+        except (OSError, GitScanLimitError, subprocess.CalledProcessError) as error:
+            findings.append(
+                "git history tree blob read failed "
+                f"({type(error).__name__})"
+            )
+            continue
+        if len(content) != size:
+            findings.append("git history tree blob size changed while reading")
+            continue
+        direct_blob_identification_bytes += len(content)
+        if is_zip_compatible_payload(content):
+            if (
+                object_id not in candidates
+                and len(candidates) >= HISTORICAL_ZIP_BLOB_COUNT_LIMIT
+            ):
+                findings.append(
+                    "git history ZIP content: non-commit refs exceed the "
+                    f"{HISTORICAL_ZIP_BLOB_COUNT_LIMIT}-archive candidate limit"
+                )
+                break
+            candidates.setdefault(object_id, path)
+        else:
+            findings.extend(
+                scan_blob_content(
+                    f"git history tree-ref {path} ({object_id[:12]})",
+                    content,
+                )
+            )
     return list(candidates.items()), findings
 
 
@@ -965,16 +1035,6 @@ def audio_payload_signature(content: bytes) -> str | None:
     return None
 
 
-def der_signing_material_signature(content: bytes) -> str | None:
-    """Recognize a complete DER sequence carrying a standard key algorithm OID."""
-    outer = der_tlv_value_bounds(content)
-    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
-        return None
-    if any(oid in content for oid in DER_SIGNING_OIDS):
-        return "DER signing material"
-    return None
-
-
 def der_tlv_value_bounds(
     content: bytes,
     offset: int = 0,
@@ -1002,27 +1062,75 @@ def der_tlv_value_bounds(
     return content[offset], value_start, value_end
 
 
+def iter_der_sequence_offsets(content: bytes):
+    offset = content.find(b"\x30")
+    while offset >= 0:
+        yield offset
+        offset = content.find(b"\x30", offset + 1)
+
+
 def der_private_key_material_signature(content: bytes) -> str | None:
-    """Recognize the bounded INTEGER/algorithm/OCTET shape of an unencrypted PKCS#8 key."""
-    outer = der_tlv_value_bounds(content)
-    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
-        return None
-    first = der_tlv_value_bounds(content, outer[1])
-    if first is None:
-        return None
-    second = der_tlv_value_bounds(content, first[2])
-    if second is None:
-        return None
-    third = der_tlv_value_bounds(content, second[2])
-    if (
-        third is None
-        or first[0] != 0x02
-        or second[0] != 0x30
-        or third[0] != 0x04
-        or not any(oid in content[second[1] : second[2]] for oid in DER_SIGNING_OIDS)
-    ):
-        return None
-    return "DER private-key material"
+    """Recognize bounded PKCS#8 or OID-less PKCS#1 private-key shapes."""
+    for offset in iter_der_sequence_offsets(content):
+        outer = der_tlv_value_bounds(content, offset)
+        if outer is None or outer[0] != 0x30:
+            continue
+        first = der_tlv_value_bounds(content, outer[1])
+        if first is None:
+            continue
+        second = der_tlv_value_bounds(content, first[2])
+        if second is None:
+            continue
+        if (
+            first[0] == 0x30
+            and second[0] == 0x04
+            and any(oid in content[first[1] : first[2]] for oid in DER_SIGNING_OIDS)
+        ):
+            return "DER signing material (private-key)"
+        if first[0] == 0x02 and second[0] == 0x30:
+            third = der_tlv_value_bounds(content, second[2])
+            if (
+                third is not None
+                and third[0] == 0x04
+                and any(
+                    oid in content[second[1] : second[2]]
+                    for oid in DER_SIGNING_OIDS
+                )
+            ):
+                return "DER signing material (private-key)"
+
+        if first[0] == 0x02 and second[0] == 0x02:
+            integer_count = 2
+            cursor = second[2]
+            while integer_count < 9:
+                child = der_tlv_value_bounds(content, cursor)
+                if child is None or child[0] != 0x02:
+                    break
+                integer_count += 1
+                cursor = child[2]
+            version = content[first[1] : first[2]]
+            modulus = content[second[1] : second[2]]
+            if (
+                integer_count == 9
+                and version in {b"\x00", b"\x01"}
+                and len(modulus) >= 8
+            ):
+                return "DER signing material (private-key)"
+    return None
+
+
+def der_signing_material_signature(content: bytes) -> str | None:
+    """Recognize bounded DER signing material even with surrounding bytes."""
+    private_signature = der_private_key_material_signature(content)
+    if private_signature:
+        return private_signature
+    for offset in iter_der_sequence_offsets(content):
+        outer = der_tlv_value_bounds(content, offset)
+        if outer is None or outer[0] != 0x30:
+            continue
+        if any(oid in content[outer[1] : outer[2]] for oid in DER_SIGNING_OIDS):
+            return "DER signing material"
+    return None
 
 
 def has_m4a_compatible_brand(content: bytes) -> bool:
@@ -2440,7 +2548,7 @@ def scan_zip(
                     findings.extend(scan_secret_bytes(member_label, content))
                 else:
                     findings.extend(
-                        scan_text(member_label, decode_text_for_secret_scan(content))
+                        scan_text_bytes(member_label, content)
                     )
 
             if len(claimed_ranges) == len(entries):
@@ -2544,6 +2652,11 @@ def scan_zip(
                                             )
                                         )
                                         continue
+                                    der_signature = der_private_key_material_signature(value)
+                                    if der_signature:
+                                        findings.append(
+                                            f"{pair_label}: {der_signature} detected"
+                                        )
                                     audio_signature = audio_payload_signature(value)
                                     if audio_signature:
                                         findings.append(
@@ -2628,6 +2741,24 @@ def scan_secret_bytes(label: str, content: bytes) -> list[str]:
         for pattern in SECRET_PATTERNS
         if pattern.pattern in matched_patterns
     ]
+
+
+def scan_blob_content(label: str, content: bytes) -> list[str]:
+    """Scan one bounded non-ZIP blob through the shared binary/text dispatcher."""
+    findings: list[str] = []
+    unsupported_format = unsupported_nested_archive_signature(content)
+    if unsupported_format is not None:
+        findings.append(
+            f"{label}: nested archive format {unsupported_format!r} is not supported"
+        )
+    audio_signature = audio_payload_signature(content)
+    if audio_signature:
+        findings.append(f"{label}: audio signature {audio_signature!r} detected")
+    der_signature = der_signing_material_signature(content)
+    if der_signature:
+        findings.append(f"{label}: {der_signature} detected")
+    findings.extend(scan_secret_bytes(label, content))
+    return findings
 
 
 def scan_historical_zip_blobs(
@@ -2775,7 +2906,7 @@ def scan_public_path(
             )
         )
         return findings
-    findings.extend(scan_text_bytes(str(path), raw_content))
+    findings.extend(scan_blob_content(str(path), raw_content))
     return findings
 
 
@@ -2803,9 +2934,20 @@ def scan_explicit_text_file(
     if len(content) != size:
         return [f"{path}: explicit text file size changed while reading"]
     findings: list[str] = []
+    if is_zip_compatible_payload(content):
+        findings.append(f"{path}: explicit text file contains a ZIP-compatible archive")
+    unsupported_format = unsupported_nested_archive_signature(content)
+    if unsupported_format is not None:
+        findings.append(
+            f"{path}: explicit text file contains unsupported archive format "
+            f"{unsupported_format!r}"
+        )
     audio_signature = audio_payload_signature(content)
     if audio_signature:
         findings.append(f"{path}: audio signature {audio_signature!r} detected")
+    der_signature = der_signing_material_signature(content)
+    if der_signature:
+        findings.append(f"{path}: {der_signature} detected")
     findings.extend(scan_text_bytes(str(path), content))
     return findings
 

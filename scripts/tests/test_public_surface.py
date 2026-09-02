@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import gzip
 import struct
+import subprocess
+import sys
 import unittest
 import zipfile
 import zlib
@@ -20,6 +22,7 @@ from scripts.check_public_surface import (
     main,
     scan_history,
     scan_historical_zip_blobs,
+    scan_explicit_text_file,
     scan_public_path,
     scan_text,
     scan_zip,
@@ -498,6 +501,25 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(has_m4a_compatible_brand(HugeSizeZeroFtyp()))
 
+    def test_m4a_brand_probe_handles_size_zero_no_match_and_malformed_boxes(self) -> None:
+        class HugeSizeZeroNoMatch:
+            def __len__(self) -> int:
+                return 1_000_000
+
+            def __getitem__(self, key: object) -> bytes:
+                if key == slice(0, 4):
+                    return b"\x00\x00\x00\x00"
+                if key == slice(4, 8):
+                    return b"ftyp"
+                if key == slice(8, 12):
+                    return b"isom"
+                return b"nope"
+
+        self.assertFalse(has_m4a_compatible_brand(HugeSizeZeroNoMatch()))
+        self.assertFalse(has_m4a_compatible_brand(b"\x00\x00\x00\x0cftypisom"))
+        self.assertFalse(has_m4a_compatible_brand(b"\x00\x00\x00\x01ftypisom"))
+        self.assertFalse(has_m4a_compatible_brand(b"\x00\x00\x00\x13ftypisomxxxx"))
+
     def test_zip_content_scan_rejects_zst_suffix_and_zstandard_magic(self) -> None:
         zstandard_magic = b"\x28\xb5\x2f\xfd" + b"\x00" * 12
         candidate = BytesIO()
@@ -569,9 +591,54 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertEqual(
             1,
-            sum("DER private-key material" in item for item in findings),
+            sum("DER signing material (private-key)" in item for item in findings),
             findings,
         )
+
+    def test_der_scan_detects_oidless_pkcs1_encrypted_and_pss_keys_with_wrappers(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            length = len(value)
+            if length < 0x80:
+                encoded_length = bytes([length])
+            else:
+                raw_length = length.to_bytes((length.bit_length() + 7) // 8, "big")
+                encoded_length = bytes([0x80 | len(raw_length)]) + raw_length
+            return bytes([tag]) + encoded_length + value
+
+        integer_values = (
+            b"\x00",
+            b"\x01" + b"\x00" * 31,
+            b"\x01\x00\x01",
+            b"\x01" + b"\x11" * 31,
+            b"\x01" + b"\x22" * 15,
+            b"\x01" + b"\x33" * 15,
+            b"\x01" + b"\x44" * 15,
+            b"\x01" + b"\x55" * 15,
+            b"\x01" + b"\x66" * 15,
+        )
+        pkcs1 = der(0x30, b"".join(der(0x02, value) for value in integer_values))
+        pbes2 = bytes.fromhex("06092a864886f70d01050d")
+        pss = bytes.fromhex("06092a864886f70d01010a")
+        encrypted_pkcs8 = der(0x30, der(0x30, pbes2) + der(0x04, b"ciphertext"))
+        pss_pkcs8 = der(0x30, der(0x02, b"\x00") + der(0x30, pss) + der(0x04, b"key"))
+        wrapped_pkcs1 = b"prefix" + pkcs1 + b"trailing"
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("payload-pkcs1.dat", wrapped_pkcs1)
+            archive.writestr("payload-encrypted.dat", encrypted_pkcs8)
+            archive.writestr("payload-pss.dat", pss_pkcs8)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="der-variants.zip")
+
+        self.assertEqual(3, sum("DER" in item and "material" in item for item in findings), findings)
+        self.assertNotIn(pkcs1.hex(), "\n".join(findings))
+
+        with TemporaryDirectory() as directory:
+            text_path = Path(directory) / "key.dat"
+            text_path.write_bytes(wrapped_pkcs1)
+            text_findings = scan_explicit_text_file(text_path)
+
+        self.assertTrue(any("DER" in item for item in text_findings), text_findings)
 
     def test_zip_content_scan_reads_secret_inside_nested_class_binary(self) -> None:
         token = b"github_pat_" + b"c" * 24
@@ -609,6 +676,29 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertLessEqual(len(findings), 256)
         self.assertLessEqual(sum(len(item.encode("utf-8")) for item in findings), 64 * 1024)
+        self.assertTrue(
+            any("finding" in item and "limit" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_keeps_secret_and_marker_across_deep_shared_finding_budget(self) -> None:
+        token = "github_pat_" + "r" * 24
+        deepest = BytesIO()
+        with zipfile.ZipFile(deepest, "w", zipfile.ZIP_STORED) as archive:
+            for index in range(4_096):
+                archive.writestr(f"{index}-{token}.txt", b"safe")
+        nested = deepest.getvalue()
+        for _ in range(2):
+            wrapper = BytesIO()
+            with zipfile.ZipFile(wrapper, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr(f"{'y' * 65_000}.zip", nested)
+            nested = wrapper.getvalue()
+
+        findings = scan_zip(BytesIO(nested), label="deep-finding-budget.zip")
+
+        self.assertLessEqual(len(findings), 256)
+        self.assertLessEqual(sum(len(item.encode("utf-8")) for item in findings), 64 * 1024)
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
         self.assertTrue(
             any("finding" in item and "limit" in item for item in findings),
             findings,
@@ -874,6 +964,24 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         )
         self.assertNotIn(token, "\n".join(findings))
 
+    def test_zip_content_scan_decodes_bomless_utf16_le_and_be_at_odd_offsets_with_malformed_tail(self) -> None:
+        token = "github_pat_" + "w" * 24
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w") as archive:
+            for encoding in ("utf-16-le", "utf-16-be"):
+                archive.writestr(
+                    f"payload-{encoding}.txt",
+                    b"x" + token.encode(encoding) + b"\xff",
+                )
+
+        findings = scan_zip(
+            BytesIO(candidate.getvalue()),
+            label="bomless-odd-offset.zip",
+        )
+
+        self.assertEqual(2, sum("secret-shaped content" in item for item in findings), findings)
+        self.assertNotIn(token, "\n".join(findings))
+
     def test_zip_content_scan_reads_bounded_entry_extra_fields(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         with TemporaryDirectory() as directory:
@@ -1134,6 +1242,56 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("nested archive" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+
+    def test_apk_content_scan_rejects_private_der_inside_signing_pair(self) -> None:
+        private_key = bytes.fromhex(
+            "3015020100300d06092a864886f70d0101010500040178"
+        )
+        base = BytesIO()
+        with zipfile.ZipFile(base, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("notes.txt", b"safe text")
+        archive_bytes = bytearray(base.getvalue())
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            central_directory_start = archive.start_dir
+        eocd_offset = archive_bytes.rfind(b"PK\x05\x06")
+        pair = (
+            struct.pack("<Q", 4 + len(private_key))
+            + struct.pack("<I", 0x7109871A)
+            + private_key
+        )
+        signing_size = len(pair) + 24
+        signing_block = (
+            struct.pack("<Q", signing_size)
+            + pair
+            + struct.pack("<Q", signing_size)
+            + b"APK Sig Block 42"
+        )
+        signed_apk = bytearray(
+            archive_bytes[:central_directory_start]
+            + signing_block
+            + archive_bytes[central_directory_start:]
+        )
+        shifted_eocd = eocd_offset + len(signing_block)
+        struct.pack_into(
+            "<L",
+            signed_apk,
+            shifted_eocd + 16,
+            central_directory_start + len(signing_block),
+        )
+
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "private-signing-pair.apk"
+            apk_path.write_bytes(signed_apk)
+            findings = scan_zip(apk_path, label="private-signing-pair.apk")
+
+        self.assertTrue(
+            any(
+                "APK signing-block pair" in item
+                and "DER signing material (private-key)" in item
+                for item in findings
+            ),
+            findings,
+        )
 
     def test_zip_content_scan_rejects_unclaimed_interior_bytes(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
@@ -1583,6 +1741,50 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("unclaimed prefix" in item for item in findings), findings)
 
+    def test_history_scan_real_git_integration_rejects_prefixed_zip_with_special_path(self) -> None:
+        token = "github_pat_" + "t" * 24
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", token)
+
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+            target = repository / "deleted" / "neutral payload_日本語.dat"
+            target.parent.mkdir()
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments],
+                    cwd=repository,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            target.write_bytes(b"MZ" + payload.getvalue())
+            git("add", "deleted/neutral payload_日本語.dat")
+            git("commit", "--quiet", "-m", "add neutral archive")
+            target.unlink()
+            git("add", "-u")
+            git("commit", "--quiet", "-m", "remove neutral archive")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"],
+                cwd=repository,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("unclaimed prefix", result.stderr)
+
     def test_history_scan_keeps_zip_alias_when_rev_list_uses_another_path(self) -> None:
         object_id = "b" * 40
         payload = BytesIO()
@@ -1864,6 +2066,68 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("archive.zip" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_history_scan_non_commit_tree_dispatches_neutral_text_zip_and_der(self) -> None:
+        tree_id = "0" * 40
+        text_id = "1" * 40
+        zip_id = "2" * 40
+        der_id = "3" * 40
+        text_content = ("github_pat_" + "k" * 24).encode("ascii")
+        zip_payload = BytesIO()
+        with zipfile.ZipFile(zip_payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", "github_pat_" + "l" * 24)
+        der_content = bytes.fromhex(
+            "3015020100300d06092a864886f70d0101010500040178"
+        )
+        contents = {text_id: text_content, zip_id: zip_payload.getvalue(), der_id: der_content}
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if arguments == [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+                "--",
+                ":(icase,glob)**/*.zip",
+            ]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return f"{tree_id}\0tree\0\0\0".encode("ascii")
+            if arguments == ["ls-tree", "-rz", "-r", "--full-tree", tree_id]:
+                return (
+                    f"100644 blob {text_id}\tnotes.dat\0"
+                    f"100644 blob {zip_id}\tpayload.bin\0"
+                    f"100644 blob {der_id}\tkey.dat\0"
+                ).encode("ascii")
+            for object_id, content in contents.items():
+                if arguments == ["cat-file", "-s", object_id]:
+                    return f"{len(content)}\n".encode("ascii")
+                if arguments == ["cat-file", "blob", object_id]:
+                    return content
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("git history tree-ref notes.dat" in item for item in findings), findings)
+        self.assertTrue(any("git history tree-ref key.dat" in item for item in findings), findings)
+        self.assertTrue(any("payload.bin" in item and "secret-shaped" in item for item in findings), findings)
+
     def test_history_scan_reads_zip_from_a_direct_blob_ref(self) -> None:
         object_id = "b" * 40
         payload = BytesIO()
@@ -1951,9 +2215,9 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 return f"{first_tag_id}\0tag\0{second_tag_id}\0tag\0".encode(
                     "ascii"
                 )
-            if arguments == ["cat-file", "-p", second_tag_id]:
-                return f"object {first_tag_id}\ntype tag\n\n".encode("ascii")
             if arguments == ["cat-file", "-p", first_tag_id]:
+                return f"object {second_tag_id}\ntype tag\n\n".encode("ascii")
+            if arguments == ["cat-file", "-p", second_tag_id]:
                 return f"object {blob_id}\ntype blob\n\n".encode("ascii")
             if arguments == ["cat-file", "-s", blob_id]:
                 return f"{len(archive_bytes)}\n".encode("ascii")
@@ -2017,6 +2281,86 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
         self.assertNotIn(token, "\n".join(findings))
 
+    def test_history_scan_reads_original_peeled_tag_message_before_using_target(self) -> None:
+        tag_id = "2" * 40
+        blob_id = "3" * 40
+        token = "github_pat_" + "j" * 24
+        safe_blob = b"safe blob"
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return f"{tag_id}\0tag\0{blob_id}\0blob\0".encode("ascii")
+            if arguments == ["cat-file", "-p", tag_id]:
+                return (
+                    f"object {blob_id}\ntype blob\n\nrelease {token}\n"
+                ).encode("ascii")
+            if arguments == ["cat-file", "-s", blob_id]:
+                return f"{len(safe_blob)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", blob_id]:
+                return safe_blob
+            if "--raw" in arguments:
+                return b""
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("annotated tag" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+        self.assertNotIn(token, "\n".join(findings))
+
+    def test_history_scan_caches_repeated_annotated_tag_bodies(self) -> None:
+        tag_id = "4" * 40
+        blob_id = "5" * 40
+        safe_blob = b"safe blob"
+        tag_reads = 0
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            nonlocal tag_reads
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return (
+                    f"{tag_id}\0tag\0{blob_id}\0blob\0"
+                    f"{tag_id}\0tag\0{blob_id}\0blob\0"
+                ).encode("ascii")
+            if arguments == ["cat-file", "-p", tag_id]:
+                tag_reads += 1
+                return f"object {blob_id}\ntype blob\n\nrelease note\n".encode("ascii")
+            if arguments == ["cat-file", "-s", blob_id]:
+                return f"{len(safe_blob)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", blob_id]:
+                return safe_blob
+            if "--raw" in arguments:
+                return b""
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertEqual(1, tag_reads)
+        self.assertEqual([], findings)
+
     def test_history_scan_bounds_recursive_annotated_tag_peeling(self) -> None:
         first_tag_id = "f" * 40
         second_tag_id = "a" * 40
@@ -2033,9 +2377,9 @@ class PublicSurfacePolicyTest(unittest.TestCase):
                 return f"{first_tag_id}\0tag\0{second_tag_id}\0tag\0".encode(
                     "ascii"
                 )
-            if arguments == ["cat-file", "-p", second_tag_id]:
-                return f"object {first_tag_id}\ntype tag\n\n".encode("ascii")
             if arguments == ["cat-file", "-p", first_tag_id]:
+                return f"object {second_tag_id}\ntype tag\n\n".encode("ascii")
+            if arguments == ["cat-file", "-p", second_tag_id]:
                 return f"object {blob_id}\ntype blob\n\n".encode("ascii")
             if arguments == ["cat-file", "-s", blob_id]:
                 return f"{len(archive_bytes)}\n".encode("ascii")
@@ -2270,6 +2614,65 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertEqual(1, missing_exit, missing_output)
         self.assertIn("preflight failed", missing_output)
 
+    def test_explicit_archive_and_text_file_cli_scan_der_pairs(self) -> None:
+        certificate = bytes.fromhex("3010020100300b06092a864886f70d010101")
+        private_key = bytes.fromhex(
+            "3015020100300d06092a864886f70d0101010500040178"
+        )
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            apk = root / "candidate.apk"
+            key = root / "key.dat"
+            with zipfile.ZipFile(apk, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("META-INF/CERT.RSA", certificate)
+                archive.writestr("payload.dat", private_key)
+            key.write_bytes(b"prefix" + private_key + b"trailing")
+
+            output = StringIO()
+            errors = StringIO()
+            with (
+                patch(
+                    "scripts.check_public_surface.public_candidate_paths",
+                    return_value=[],
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "check_public_surface.py",
+                        "--archive",
+                        str(apk),
+                        "--text-file",
+                        str(key),
+                    ],
+                ),
+                redirect_stdout(output),
+                redirect_stderr(errors),
+            ):
+                exit_code = main()
+
+        self.assertEqual(1, exit_code, output.getvalue() + errors.getvalue())
+        self.assertIn("DER signing material", errors.getvalue())
+
+    def test_explicit_text_file_rejects_neutral_archive_payloads(self) -> None:
+        token = ("github_pat_" + "m" * 24).encode("ascii")
+        nested = BytesIO()
+        with zipfile.ZipFile(nested, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("notes.txt", token)
+        payloads = (
+            nested.getvalue(),
+            gzip.compress(token),
+            b"\x28\xb5\x2f\xfd" + token,
+        )
+
+        with TemporaryDirectory() as directory:
+            for index, payload in enumerate(payloads):
+                with self.subTest(index=index):
+                    path = Path(directory) / f"payload-{index}.dat"
+                    path.write_bytes(payload)
+                    findings = scan_explicit_text_file(path)
+                    self.assertTrue(findings, payload)
+                    self.assertNotIn(token.decode("ascii"), "\n".join(findings))
+
     def test_platform_archives_are_scanned_after_creation_before_upload(self) -> None:
         root = Path(__file__).resolve().parents[2]
         desktop = (root / ".github" / "workflows" / "desktop.yml").read_text(
@@ -2420,6 +2823,13 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn('scan_args+=(--archive "$asset")', workflow[scan_all:publication_scan])
         self.assertIn('scan_args+=(--text-file "$asset")', workflow[scan_all:publication_scan])
         self.assertIn('find dist -maxdepth 1 -type f -print0', workflow[publication_scan:publish])
+        self.assertIn("expected_assets=(", workflow[scan_all:publication_scan])
+        self.assertIn("find dist -maxdepth 1 -type l", workflow[scan_all:publication_scan])
+        self.assertIn("unsupported release asset", workflow[scan_all:publication_scan])
+        self.assertIn("expected_assets=(", workflow[publication_scan:publish])
+        self.assertIn("find dist -maxdepth 1 -type l", workflow[publication_scan:publish])
+        self.assertIn("find dist -mindepth 1 -maxdepth 1 ! -type f", workflow[scan_all:publication_scan])
+        self.assertIn("find dist -mindepth 1 -maxdepth 1 ! -type f", workflow[publication_scan:publish])
 
 
 if __name__ == "__main__":

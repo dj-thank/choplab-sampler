@@ -392,14 +392,49 @@ jobs:
 
       - name: Scan every release asset
         shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: |
+          expected_assets=(
+            "ChopLab-${RELEASE_TAG}-android.apk"
+            "ChopLab-${RELEASE_TAG}-android.apk.sha256"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip.sha256"
+            "ChopLab-${RELEASE_TAG}-windows-app-image.zip"
+            "ChopLab-${RELEASE_TAG}-windows-app-image.zip.sha256"
+            "ChopLab-${RELEASE_TAG}-windows-metadata.json"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json.sha256"
+          )
           mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
           [[ "${#release_assets[@]}" -gt 0 ]] || {
             echo 'No downloaded release assets found.' >&2
             exit 1
           }
+          if find dist -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+            echo 'unsupported release asset: non-regular top-level entry.' >&2
+            exit 1
+          fi
+          if find dist -maxdepth 1 -type l -print -quit | grep -q .; then
+            echo 'unsupported release asset: symbolic links are not allowed.' >&2
+            exit 1
+          fi
+          for expected in "${expected_assets[@]}"; do
+            [[ -f "dist/$expected" && ! -L "dist/$expected" ]] || {
+              echo "missing expected release asset: $expected" >&2
+              exit 1
+            }
+          done
           scan_args=()
           for asset in "${release_assets[@]}"; do
+            name="${asset##*/}"
+            case " ${expected_assets[*]} " in
+              *" $name "*) ;;
+              *)
+                echo "unsupported release asset: $name" >&2
+                exit 1
+                ;;
+            esac
             case "$asset" in
               *.apk|*.aab|*.aar|*.ipa|*.jar|*.war|*.zip)
                 scan_args+=(--archive "$asset")
@@ -440,14 +475,51 @@ jobs:
 
       - name: Scan final publication glob
         shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: |
+          expected_assets=(
+            "ChopLab-${RELEASE_TAG}-android.apk"
+            "ChopLab-${RELEASE_TAG}-android.apk.sha256"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip.sha256"
+            "ChopLab-${RELEASE_TAG}-windows-app-image.zip"
+            "ChopLab-${RELEASE_TAG}-windows-app-image.zip.sha256"
+            "ChopLab-${RELEASE_TAG}-windows-metadata.json"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json.sha256"
+            "ChopLab-${RELEASE_TAG}-release-manifest.json"
+            "SHA256SUMS"
+          )
           mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
           [[ "${#release_assets[@]}" -gt 0 ]] || {
             echo 'No final release assets found.' >&2
             exit 1
           }
+          if find dist -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+            echo 'unsupported release asset: non-regular top-level entry.' >&2
+            exit 1
+          fi
+          if find dist -maxdepth 1 -type l -print -quit | grep -q .; then
+            echo 'unsupported release asset: symbolic links are not allowed.' >&2
+            exit 1
+          fi
+          for expected in "${expected_assets[@]}"; do
+            [[ -f "dist/$expected" && ! -L "dist/$expected" ]] || {
+              echo "missing expected release asset: $expected" >&2
+              exit 1
+            }
+          done
           scan_args=()
           for asset in "${release_assets[@]}"; do
+            name="${asset##*/}"
+            case " ${expected_assets[*]} " in
+              *" $name "*) ;;
+              *)
+                echo "unsupported release asset: $name" >&2
+                exit 1
+                ;;
+            esac
             case "$asset" in
               *.apk|*.aab|*.aar|*.ipa|*.jar|*.war|*.zip)
                 scan_args+=(--archive "$asset")
