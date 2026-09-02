@@ -7,6 +7,7 @@ import argparse
 import bz2
 import lzma
 import re
+import stat
 import struct
 import subprocess
 import sys
@@ -95,6 +96,7 @@ CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 512 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT = 262_144
+HISTORICAL_COMMIT_OBJECT_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
 HISTORICAL_TAG_PEEL_LIMIT = 8
 HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
@@ -175,6 +177,14 @@ DER_SIGNING_OIDS = (
     bytes.fromhex("06032b6570"),  # Ed25519
     bytes.fromhex("06032b6571"),  # Ed448
 )
+PKCS7_SIGNED_DATA_OID = bytes.fromhex("06092a864886f70d010702")
+PKCS7_CONTENT_OIDS = (
+    bytes.fromhex("06092a864886f70d010701"),  # data
+    PKCS7_SIGNED_DATA_OID,
+    bytes.fromhex("06092a864886f70d010703"),  # envelopedData
+    bytes.fromhex("06092a864886f70d010706"),  # encryptedData
+)
+PKCS12_LEGACY_PBE_OID_PREFIX = bytes.fromhex("060a2a864886f70d010c01")
 DER_SEQUENCE_CANDIDATE_LIMIT = 524_288
 JKS_MAGIC = b"\xfe\xed\xfe\xed"
 JKS_TRUSTED_CERTIFICATE_ENTRY = 2
@@ -462,23 +472,23 @@ def read_git_blob_prefixes(object_ids: list[str], byte_limit: int = 4) -> dict[s
     return prefixes
 
 
-def should_scan_historical_binary(prefix: bytes) -> bool:
-    if not prefix:
+def should_scan_historical_binary(content: bytes) -> bool:
+    if not content:
         return False
     if (
-        prefix.startswith(TEXT_BOM_PREFIXES)
-        or prefix.startswith(JKS_MAGIC)
-        or prefix[:1] == b"\x30"
-        or b"\0" in prefix
-        or audio_payload_signature(prefix) is not None
-        or unsupported_nested_archive_signature(prefix) is not None
+        content.startswith(TEXT_BOM_PREFIXES)
+        or content.startswith(JKS_MAGIC)
+        or content[:1] == b"\x30"
+        or b"\0" in content
+        or audio_payload_signature(content) is not None
+        or unsupported_nested_archive_signature(content) is not None
     ):
         return True
     try:
-        prefix.decode("utf-8")
+        content.decode("utf-8")
     except UnicodeDecodeError:
         return True
-    return any(byte < 0x20 and byte not in b"\t\n\r\f" for byte in prefix)
+    return any(byte < 0x20 and byte not in b"\t\n\r\f" for byte in content)
 
 
 def read_git_blob_structural_candidates(
@@ -539,9 +549,8 @@ def read_git_blob_structural_candidates(
                     pass
                 if not is_zip and binary_findings is not None:
                     body.seek(0)
-                    prefix = body.read(min(size, 4_096))
-                    if should_scan_historical_binary(prefix):
-                        body.seek(0)
+                    content = body.read()
+                    if should_scan_historical_binary(content):
                         label_path = (
                             candidate_paths.get(object_id)
                             if candidate_paths is not None
@@ -550,7 +559,7 @@ def read_git_blob_structural_candidates(
                         binary_findings.extend(
                             scan_blob_content(
                                 f"git history binary {label_path} ({object_id[:12]})",
-                                body.read(),
+                                content,
                             )
                         )
         process.stdin.close()
@@ -764,10 +773,16 @@ def peel_annotated_tag(
         current_type = type_line[5:].strip()
         if not current_id or not current_type:
             raise ValueError("annotated tag object target is missing")
-        _, separator, tag_message = raw_tag.partition(b"\n\n")
+        tag_header, separator, tag_message = raw_tag.partition(b"\n\n")
         if not separator:
             raise ValueError("annotated tag object message separator is missing")
         if findings is not None:
+            findings.extend(
+                scan_secret_bytes(
+                    f"git history annotated tag {visited_tag_id[:12]} header",
+                    tag_header,
+                )
+            )
             findings.extend(
                 scan_blob_content(
                     f"git history annotated tag {visited_tag_id[:12]}",
@@ -1105,12 +1120,17 @@ def iter_text_scan_candidates(content: bytes):
     yield decode_text_for_secret_scan(content)
     if content.startswith(TEXT_BOM_PREFIXES):
         return
-    for encoding in ("utf-16-le", "utf-16-be"):
+    for encoding, alignment in (
+        ("utf-16-le", 2),
+        ("utf-16-be", 2),
+        ("utf-32-le", 4),
+        ("utf-32-be", 4),
+    ):
         encoded_prefixes = (
             prefix.encode(encoding) for prefix in SECRET_TEXT_PREFIXES
         )
         offsets = {
-            index % 2
+            index % alignment
             for prefix in encoded_prefixes
             if (index := content.find(prefix)) >= 0
         }
@@ -1302,6 +1322,9 @@ def der_signing_material_signature(content: bytes) -> str | None:
     private_signature = der_private_key_material_signature(content)
     if private_signature:
         return private_signature
+    pkcs12_signature = pkcs12_container_signature(content)
+    if pkcs12_signature:
+        return pkcs12_signature
     for offset in iter_der_sequence_offsets(content):
         if offset < 0:
             return "DER sequence candidate scan limit exceeded"
@@ -1311,6 +1334,85 @@ def der_signing_material_signature(content: bytes) -> str | None:
         if any(oid in content[outer[1] : outer[2]] for oid in DER_SIGNING_OIDS):
             return "DER signing material"
     return None
+
+
+def pkcs12_container_signature(content: bytes) -> str | None:
+    """Recognize a complete PFX container, including legacy encrypted variants."""
+    outer = der_tlv_value_bounds(content, 0)
+    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
+        return None
+    version = der_tlv_value_bounds(content, outer[1])
+    if version is None or version[0] != 0x02 or content[version[1] : version[2]] != b"\x03":
+        return None
+    auth_safe = der_tlv_value_bounds(content, version[2])
+    if auth_safe is None or auth_safe[0] != 0x30 or auth_safe[2] > outer[2]:
+        return None
+    auth_safe_body = content[auth_safe[1] : auth_safe[2]]
+    if not any(oid in auth_safe_body for oid in PKCS7_CONTENT_OIDS):
+        return None
+    if PKCS12_LEGACY_PBE_OID_PREFIX in content or any(
+        oid in content for oid in DER_SIGNING_OIDS
+    ):
+        return "DER signing material (PKCS#12 container)"
+    # A structurally complete PFX is signing material even when its safe contents
+    # use an algorithm OID not otherwise known to this scanner.
+    return "DER signing material (PKCS#12 container)"
+
+
+def is_pkcs7_signed_data(content: bytes) -> bool:
+    """Accept only a complete PKCS#7 SignedData ContentInfo wrapper."""
+    outer = der_tlv_value_bounds(content, 0)
+    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
+        return False
+    content_type = der_tlv_value_bounds(content, outer[1])
+    if (
+        content_type is None
+        or content_type[0] != 0x06
+        or content[outer[1] : content_type[2]] != PKCS7_SIGNED_DATA_OID
+    ):
+        return False
+    wrapped = der_tlv_value_bounds(content, content_type[2])
+    if wrapped is None or wrapped[0] != 0xA0 or wrapped[2] != outer[2]:
+        return False
+    signed_data = der_tlv_value_bounds(content, wrapped[1])
+    if signed_data is None or signed_data[0] != 0x30 or signed_data[2] != wrapped[2]:
+        return False
+    cursor = signed_data[1]
+    version = der_tlv_value_bounds(content, cursor)
+    if version is None or version[0] != 0x02 or version[2] > signed_data[2]:
+        return False
+    digest_algorithms = der_tlv_value_bounds(content, version[2])
+    if (
+        digest_algorithms is None
+        or digest_algorithms[0] != 0x31
+        or digest_algorithms[2] > signed_data[2]
+    ):
+        return False
+    encapsulated = der_tlv_value_bounds(content, digest_algorithms[2])
+    if encapsulated is None or encapsulated[0] != 0x30 or encapsulated[2] > signed_data[2]:
+        return False
+    encapsulated_type = der_tlv_value_bounds(content, encapsulated[1])
+    if (
+        encapsulated_type is None
+        or encapsulated_type[0] != 0x06
+        or not any(
+            content[encapsulated[1] : encapsulated_type[2]] == oid
+            for oid in PKCS7_CONTENT_OIDS
+        )
+    ):
+        return False
+    cursor = encapsulated[2]
+    while cursor < signed_data[2] and content[cursor] in {0xA0, 0xA1}:
+        optional = der_tlv_value_bounds(content, cursor)
+        if optional is None or optional[2] > signed_data[2]:
+            return False
+        cursor = optional[2]
+    signer_infos = der_tlv_value_bounds(content, cursor)
+    return (
+        signer_infos is not None
+        and signer_infos[0] == 0x31
+        and signer_infos[2] == signed_data[2]
+    )
 
 
 def pe_authenticode_certificate_ranges(
@@ -1532,9 +1634,26 @@ def unsupported_nested_archive_signature(content: bytes) -> str | None:
         and content[3] == 0x18
     ):
         return ".zst"
-    if len(content) >= 262 and content[257:262] == b"ustar":
+    if has_valid_tar_header(content):
         return ".tar"
     return None
+
+
+def has_valid_tar_header(content: bytes) -> bool:
+    """Recognize checksum-valid V7/POSIX TAR without relying on the ustar marker."""
+    if len(content) < 512 or not any(content[:100]):
+        return False
+    checksum_field = content[148:156]
+    try:
+        declared = int(checksum_field.rstrip(b"\0 ") or b"0", 8)
+        size = int(content[124:136].rstrip(b"\0 ") or b"0", 8)
+    except ValueError:
+        return False
+    calculated = sum(content[:148]) + 8 * 0x20 + sum(content[156:512])
+    if declared != calculated:
+        return False
+    padded_end = 512 + ((size + 511) // 512) * 512
+    return size >= 0 and padded_end <= len(content)
 
 
 def read_verified_zip_member(
@@ -1809,6 +1928,10 @@ def is_apk_signature_path(path: PurePosixPath, apk_content_context: bool) -> boo
         and parts[-2] == "meta-inf"
         and path.suffix.lower() in APK_SIGNATURE_SUFFIXES
     )
+
+
+def is_zip_symbolic_link(info: zipfile.ZipInfo) -> bool:
+    return info.create_system == 3 and stat.S_ISLNK((info.external_attr >> 16) & 0xFFFF)
 
 
 def preflight_zip_directory(
@@ -2810,6 +2933,27 @@ def scan_zip(
                         continue
                     nested_budget.expanded_bytes += len(content)
                     nested_output_already_charged = True
+                if is_zip_symbolic_link(info):
+                    try:
+                        link_target = content.decode("utf-8", errors="strict")
+                    except UnicodeDecodeError:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: symbolic-link "
+                            "target is not valid UTF-8"
+                        )
+                        continue
+                    if not link_target or "\0" in link_target:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: symbolic-link "
+                            "target is empty or contains NUL"
+                        )
+                        continue
+                    target_reason = unsafe_archive_entry_path(link_target)
+                    if target_reason:
+                        findings.append(
+                            f"{archive_label}: archive entry {name!r}: symbolic-link "
+                            f"target: {target_reason}"
+                        )
                 unsupported_format = unsupported_nested_archive_signature(content)
                 if unsupported_format is not None:
                     findings.append(
@@ -2907,10 +3051,14 @@ def scan_zip(
                     findings.append(
                         f"{member_label}: invalid JKS trusted-certificate store detected"
                     )
-                public_certificate_container = (
-                    is_apk_signature_path(entry, apk_content_context)
-                    or trusted_jdk_cacerts
-                )
+                apk_signature_path = is_apk_signature_path(entry, apk_content_context)
+                validated_apk_signature = apk_signature_path and is_pkcs7_signed_data(content)
+                if apk_signature_path and not validated_apk_signature:
+                    findings.append(
+                        f"{member_label}: APK signature entry is not a valid PKCS#7 "
+                        "SignedData container"
+                    )
+                public_certificate_container = validated_apk_signature or trusted_jdk_cacerts
                 if pe_certificate_ranges:
                     der_signature = der_signing_material_outside_ranges(
                         content,
@@ -3123,29 +3271,11 @@ def scan_secret_bytes(
         if byte_pattern.search(content)
     }
     certificate_found = PEM_CERTIFICATE_BYTE_PATTERN.search(content) is not None
-    if content.startswith(TEXT_BOM_PREFIXES):
-        decoded = decode_text_for_secret_scan(content)
+    for decoded in iter_text_scan_candidates(content):
         matched_patterns.update(
             pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
         )
         certificate_found = certificate_found or PEM_CERTIFICATE_PATTERN.search(decoded) is not None
-    else:
-        for encoding in ("utf-16-le", "utf-16-be"):
-            encoded_prefixes = [prefix.encode(encoding) for prefix in SECRET_TEXT_PREFIXES]
-            offsets = {
-                index % 2
-                for prefix in encoded_prefixes
-                if (index := content.find(prefix)) >= 0
-            }
-            for offset in offsets:
-                decoded = content[offset:].decode(encoding, errors="replace")
-                matched_patterns.update(
-                    pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
-                )
-                certificate_found = (
-                    certificate_found
-                    or PEM_CERTIFICATE_PATTERN.search(decoded) is not None
-                )
     findings = [
         f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
@@ -3264,11 +3394,42 @@ def scan_history(*, include_commit_messages: bool = False) -> list[str]:
 
     if include_commit_messages:
         try:
-            commit_messages = run_git(["log", "--all", "--format=%B%x00"])
+            commit_ids = [
+                line.decode("ascii")
+                for line in run_git(["rev-list", "--all"]).splitlines()
+                if line
+            ]
+            if len(commit_ids) > HISTORICAL_COMMIT_OBJECT_LIMIT:
+                raise GitScanLimitError(
+                    "reachable commit count exceeds the "
+                    f"{HISTORICAL_COMMIT_OBJECT_LIMIT}-commit scan limit"
+                )
+            commit_bytes = 0
+            for commit_id in commit_ids:
+                if not re.fullmatch(r"[0-9a-f]{40}", commit_id):
+                    raise GitScanLimitError("reachable commit inventory is invalid")
+                raw_commit = run_git(["cat-file", "-p", commit_id])
+                commit_bytes += len(raw_commit)
+                if commit_bytes > GIT_OUTPUT_LIMIT:
+                    raise GitScanLimitError(
+                        "reachable commit objects exceed the "
+                        f"{GIT_OUTPUT_LIMIT}-byte aggregate scan limit"
+                    )
+                commit_header, separator, commit_message = raw_commit.partition(b"\n\n")
+                if not separator:
+                    raise GitScanLimitError(
+                        f"reachable commit {commit_id[:12]} has no message separator"
+                    )
+                label = f"git history commit {commit_id[:12]}"
+                findings.extend(scan_secret_bytes(f"{label} header", commit_header))
+                findings.extend(
+                    scan_blob_content(
+                        f"git history commit message {commit_id[:12]}",
+                        commit_message,
+                    )
+                )
         except GitScanLimitError as error:
-            findings.append(f"git history commit messages: {error}")
-        else:
-            findings.extend(scan_blob_content("git history commit message", commit_messages))
+            findings.append(f"git history commits: {error}")
 
     # A textual patch includes every textual addition/deletion reachable from all
     # refs without checking out or materializing historical files. Binary payloads

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import stat
 import struct
 import subprocess
 import sys
@@ -422,6 +423,18 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         )
         self.assertNotIn(token, "\n".join(findings))
 
+    def test_zip_content_scan_detects_bomless_utf32_secrets(self) -> None:
+        token = "github_pat_" + "u" * 24
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("little.dat", token.encode("utf-32-le"))
+            archive.writestr("big.dat", token.encode("utf-32-be"))
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="bomless-utf32.zip")
+
+        self.assertEqual(2, sum("secret-shaped content" in item for item in findings), findings)
+        self.assertNotIn(token, "\n".join(findings))
+
     def test_zip_content_scan_does_not_classify_bom_text_as_mpeg(self) -> None:
         token = "github_pat_" + "c" * 24
         encoded_values = (
@@ -792,7 +805,10 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("candidate scan limit exceeded" in item for item in findings), findings)
 
     def test_zip_content_scan_allows_conventional_apk_signature_certificate(self) -> None:
-        certificate = bytes.fromhex("3010020100300b06092a864886f70d010101")
+        certificate = bytes.fromhex(
+            "302306092a864886f70d010702a01630140201013100300b"
+            "06092a864886f70d0107013100"
+        )
         private_key = bytes.fromhex(
             "3015020100300d06092a864886f70d0101010500040178"
         )
@@ -809,6 +825,47 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             sum("DER signing material (private-key)" in item for item in findings),
             findings,
         )
+
+    def test_apk_signature_suffix_does_not_exempt_bare_x509_certificate(self) -> None:
+        bare_certificate = bytes.fromhex("3010020100300b06092a864886f70d010101")
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "bare-certificate.apk"
+            with zipfile.ZipFile(apk_path, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("META-INF/EVIL.RSA", bare_certificate)
+
+            findings = scan_zip(apk_path)
+
+        self.assertTrue(any("not a valid PKCS#7" in item for item in findings), findings)
+        self.assertTrue(any("DER signing material" in item for item in findings), findings)
+
+    def test_apk_signature_suffix_rejects_empty_signeddata_wrapper(self) -> None:
+        incomplete_signed_data = bytes.fromhex("300f06092a864886f70d010702a0023000")
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "incomplete-signature.apk"
+            with zipfile.ZipFile(apk_path, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("META-INF/EMPTY.RSA", incomplete_signed_data)
+
+            findings = scan_zip(apk_path)
+
+        self.assertTrue(any("not a valid PKCS#7" in item for item in findings), findings)
+
+    def test_zip_content_scan_rejects_legacy_pkcs12_under_neutral_name(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes((tag, len(value))) + value
+
+        data_oid = bytes.fromhex("06092a864886f70d010701")
+        legacy_pbe_oid = bytes.fromhex("060a2a864886f70d010c0103")
+        pfx = der(
+            0x30,
+            der(0x02, b"\x03") + der(0x30, data_oid) + der(0x30, legacy_pbe_oid),
+        )
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.dat", pfx)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="legacy-pfx.zip")
+
+        self.assertTrue(any("PKCS#12 container" in item for item in findings), findings)
 
     def test_der_scan_detects_oidless_pkcs1_encrypted_and_pss_keys_with_wrappers(self) -> None:
         def der(tag: int, value: bytes) -> bytes:
@@ -1736,6 +1793,41 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertEqual([], safe_findings)
         self.assertTrue(any("symbolic-link target" in item for item in secret_findings))
         self.assertTrue(any("secret-shaped content" in item for item in secret_findings))
+
+    def test_zip_symlink_rejects_parent_traversal_target(self) -> None:
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            info = zipfile.ZipInfo("safe-link")
+            info.create_system = 3
+            info.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(info, "../../escape")
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="symlink.zip")
+
+        self.assertTrue(any("symbolic-link target" in item for item in findings), findings)
+        self.assertTrue(any("parent traversal" in item for item in findings), findings)
+
+    def test_zip_content_scan_recognizes_checksum_valid_v7_tar(self) -> None:
+        payload = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\0" * 28
+        header = bytearray(512)
+        header[:8] = b"clip.wav"
+        header[100:108] = b"0000644\0"
+        header[108:116] = b"0000000\0"
+        header[116:124] = b"0000000\0"
+        header[124:136] = f"{len(payload):011o}\0".encode("ascii")
+        header[136:148] = b"00000000000\0"
+        header[148:156] = b"        "
+        header[156:157] = b"0"
+        checksum = sum(header)
+        header[148:156] = f"{checksum:06o}\0 ".encode("ascii")
+        tar_bytes = bytes(header) + payload + b"\0" * (512 - len(payload)) + b"\0" * 1024
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.dat", tar_bytes)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="v7-tar.zip")
+
+        self.assertTrue(any("nested archive format '.tar'" in item for item in findings), findings)
 
     def test_directory_marked_zip_entry_with_payload_is_rejected(self) -> None:
         token = "github_pat_" + "a" * 24
@@ -3350,6 +3442,125 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("audio signature", result.stderr)
+
+    def test_history_scan_classifies_binary_bytes_after_first_four_kib(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+            target = repository / "payload.dat"
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments], cwd=repository, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            token = b"github_pat_" + b"z" * 24
+            target.write_bytes(b"A" * 5_000 + b"\0" + token)
+            git("add", "payload.dat")
+            git("commit", "--quiet", "-m", "add payload")
+            target.unlink()
+            git("add", "-u")
+            git("commit", "--quiet", "-m", "remove payload")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"], cwd=repository,
+                check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("history binary", result.stderr)
+        self.assertIn("secret-shaped content", result.stderr)
+        self.assertNotIn(token.decode("ascii"), result.stderr)
+
+    def test_history_scan_dispatches_each_commit_message_independently(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments], cwd=repository, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            git("commit", "--quiet", "--allow-empty", "-m", "RIFF1234WAVE")
+            git("commit", "--quiet", "--allow-empty", "-m", "safe newest message")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"], cwd=repository,
+                check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("commit", result.stderr)
+        self.assertIn("RIFF/WAVE", result.stderr)
+
+    def test_history_scan_rejects_commit_header_credentials(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments], cwd=repository, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+
+            token = "github_pat_" + "h" * 24
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", token)
+            git("commit", "--quiet", "--allow-empty", "-m", "safe message")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"], cwd=repository,
+                check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("commit", result.stderr)
+        self.assertIn("header", result.stderr)
+        self.assertNotIn(token, result.stderr)
+
+    def test_history_scan_rejects_annotated_tag_header_credentials(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments], cwd=repository, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+
+            token = "github_pat_" + "t" * 24
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            git("commit", "--quiet", "--allow-empty", "-m", "safe commit")
+            git("config", "user.name", token)
+            git("tag", "-a", "v-fixture", "-m", "safe tag message")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"], cwd=repository,
+                check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("annotated tag", result.stderr)
+        self.assertIn("header", result.stderr)
+        self.assertNotIn(token, result.stderr)
 
 
 if __name__ == "__main__":
