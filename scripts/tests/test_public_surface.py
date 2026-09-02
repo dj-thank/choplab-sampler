@@ -576,6 +576,119 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertEqual(2, sum("DER signing material" in item for item in findings), findings)
 
+    def test_zip_content_scan_allows_pe_certificates_but_rejects_embedded_private_keys(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes([tag, len(value)]) + value
+
+        rsa_oid = bytes.fromhex("06092a864886f70d010101")
+        algorithm = der(0x30, rsa_oid + der(0x05, b""))
+        certificate = der(0x30, der(0x30, algorithm) + der(0x03, b"\x00cert"))
+        private_key = der(
+            0x30,
+            der(0x02, b"\x00") + algorithm + der(0x04, b"synthetic-key"),
+        )
+
+        def pe_image(payload: bytes) -> bytes:
+            header = bytearray(0x84)
+            header[:2] = b"MZ"
+            header[0x3C:0x40] = (0x80).to_bytes(4, "little")
+            header[0x80:0x84] = b"PE\0\0"
+            return bytes(header) + payload
+
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("signed.dll", pe_image(certificate))
+            archive.writestr("keyed.dll", pe_image(private_key))
+            archive.writestr("renamed.dat", pe_image(certificate))
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="pe-signing.zip")
+
+        self.assertFalse(any("signed.dll" in item and "DER" in item for item in findings), findings)
+        self.assertTrue(
+            any("keyed.dll" in item and "private-key" in item for item in findings),
+            findings,
+        )
+        self.assertTrue(
+            any("renamed.dat" in item and "DER signing material" in item for item in findings),
+            findings,
+        )
+
+    def test_der_scan_requires_oidless_pkcs1_to_fill_its_sequence(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes([tag, len(value)]) + value
+
+        integers = [b"\x00", b"\x01" + b"\x00" * 7] + [b"\x01"] * 7
+        certificate_like = der(
+            0x30,
+            b"".join(der(0x02, value) for value in integers)
+            + der(0x04, b"public-certificate-tail"),
+        )
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("runtime/lib/security/cacerts", certificate_like)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="cacerts-shape.zip")
+
+        self.assertFalse(any("private-key" in item for item in findings), findings)
+
+    def test_zip_content_scan_accepts_trusted_jdk_cacerts_but_rejects_key_entries(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes([tag, len(value)]) + value
+
+        rsa_oid = bytes.fromhex("06092a864886f70d010101")
+        certificate = der(0x30, der(0x30, rsa_oid) + der(0x03, b"\x00cert"))
+        private_key = der(
+            0x30,
+            der(0x02, b"\x00")
+            + der(0x30, rsa_oid + der(0x05, b""))
+            + der(0x04, b"synthetic-key"),
+        )
+
+        def utf(value: bytes) -> bytes:
+            return len(value).to_bytes(2, "big") + value
+
+        trusted_entry = (
+            (2).to_bytes(4, "big")
+            + utf(b"trusted")
+            + (0).to_bytes(8, "big")
+            + utf(b"X.509")
+            + len(certificate).to_bytes(4, "big")
+            + certificate
+        )
+        key_entry = (
+            (1).to_bytes(4, "big")
+            + utf(b"private")
+            + (0).to_bytes(8, "big")
+            + len(private_key).to_bytes(4, "big")
+            + private_key
+            + (0).to_bytes(4, "big")
+        )
+
+        def jks(entry: bytes) -> bytes:
+            return (
+                bytes.fromhex("feedfeed")
+                + (2).to_bytes(4, "big")
+                + (1).to_bytes(4, "big")
+                + entry
+                + b"\x00" * 20
+            )
+
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("safe/runtime/lib/security/cacerts", jks(trusted_entry))
+            archive.writestr("unsafe/runtime/lib/security/cacerts", jks(key_entry))
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="jdk-truststores.zip")
+
+        self.assertFalse(
+            any("archive entry 'safe/runtime" in item and "DER" in item for item in findings),
+            findings,
+        )
+        self.assertTrue(
+            any("unsafe/runtime" in item and "private-key" in item for item in findings),
+            findings,
+        )
+
     def test_zip_content_scan_allows_conventional_apk_signature_certificate(self) -> None:
         certificate = bytes.fromhex("3010020100300b06092a864886f70d010101")
         private_key = bytes.fromhex(

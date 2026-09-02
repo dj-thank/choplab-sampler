@@ -160,6 +160,9 @@ DER_SIGNING_OIDS = (
     bytes.fromhex("06032b6570"),  # Ed25519
     bytes.fromhex("06032b6571"),  # Ed448
 )
+JKS_MAGIC = b"\xfe\xed\xfe\xed"
+JKS_TRUSTED_CERTIFICATE_ENTRY = 2
+JKS_ENTRY_LIMIT = 4_096
 
 
 @dataclass
@@ -1076,10 +1079,10 @@ def der_private_key_material_signature(content: bytes) -> str | None:
         if outer is None or outer[0] != 0x30:
             continue
         first = der_tlv_value_bounds(content, outer[1])
-        if first is None:
+        if first is None or first[2] > outer[2]:
             continue
         second = der_tlv_value_bounds(content, first[2])
-        if second is None:
+        if second is None or second[2] > outer[2]:
             continue
         if (
             first[0] == 0x30
@@ -1091,6 +1094,7 @@ def der_private_key_material_signature(content: bytes) -> str | None:
             third = der_tlv_value_bounds(content, second[2])
             if (
                 third is not None
+                and third[2] <= outer[2]
                 and third[0] == 0x04
                 and any(
                     oid in content[second[1] : second[2]]
@@ -1104,7 +1108,7 @@ def der_private_key_material_signature(content: bytes) -> str | None:
             cursor = second[2]
             while integer_count < 9:
                 child = der_tlv_value_bounds(content, cursor)
-                if child is None or child[0] != 0x02:
+                if child is None or child[2] > outer[2] or child[0] != 0x02:
                     break
                 integer_count += 1
                 cursor = child[2]
@@ -1114,6 +1118,7 @@ def der_private_key_material_signature(content: bytes) -> str | None:
                 integer_count == 9
                 and version in {b"\x00", b"\x01"}
                 and len(modulus) >= 8
+                and cursor == outer[2]
             ):
                 return "DER signing material (private-key)"
     return None
@@ -1131,6 +1136,62 @@ def der_signing_material_signature(content: bytes) -> str | None:
         if any(oid in content[outer[1] : outer[2]] for oid in DER_SIGNING_OIDS):
             return "DER signing material"
     return None
+
+
+def is_pe_executable(content: bytes) -> bool:
+    """Recognize a bounded PE image before allowing its public Authenticode certs."""
+    if len(content) < 0x40 or content[:2] != b"MZ":
+        return False
+    pe_offset = int.from_bytes(content[0x3C:0x40], "little")
+    return pe_offset <= len(content) - 4 and content[pe_offset : pe_offset + 4] == b"PE\0\0"
+
+
+def is_trusted_jdk_cacerts(path: PurePosixPath, content: bytes) -> bool:
+    """Accept a structurally bounded JDK JKS only when every entry is a trusted cert."""
+    parts = tuple(part.lower() for part in path.parts)
+    if parts[-4:] != ("runtime", "lib", "security", "cacerts"):
+        return False
+    if len(content) < 12 + 20 or not content.startswith(JKS_MAGIC):
+        return False
+    version = int.from_bytes(content[4:8], "big")
+    entry_count = int.from_bytes(content[8:12], "big")
+    if version not in {1, 2} or entry_count > JKS_ENTRY_LIMIT:
+        return False
+
+    cursor = 12
+    payload_end = len(content) - 20  # JKS integrity digest
+
+    def read_u16_length() -> int | None:
+        nonlocal cursor
+        if cursor + 2 > payload_end:
+            return None
+        length = int.from_bytes(content[cursor : cursor + 2], "big")
+        cursor += 2
+        if cursor + length > payload_end:
+            return None
+        cursor += length
+        return length
+
+    for _ in range(entry_count):
+        if cursor + 4 > payload_end:
+            return False
+        tag = int.from_bytes(content[cursor : cursor + 4], "big")
+        cursor += 4
+        if tag != JKS_TRUSTED_CERTIFICATE_ENTRY or read_u16_length() is None:
+            return False
+        if cursor + 8 > payload_end:
+            return False
+        cursor += 8  # creation timestamp
+        if version == 2 and read_u16_length() is None:
+            return False
+        if cursor + 4 > payload_end:
+            return False
+        certificate_size = int.from_bytes(content[cursor : cursor + 4], "big")
+        cursor += 4
+        if cursor + certificate_size > payload_end:
+            return False
+        cursor += certificate_size
+    return cursor == payload_end
 
 
 def has_m4a_compatible_brand(content: bytes) -> bool:
@@ -2531,9 +2592,17 @@ def scan_zip(
                     findings.append(
                         f"{member_label}: audio signature {audio_signature!r} detected"
                     )
+                public_certificate_container = (
+                    is_apk_signature_path(entry, apk_content_context)
+                    or (
+                        entry_suffix in {".dll", ".exe"}
+                        and is_pe_executable(content)
+                    )
+                    or is_trusted_jdk_cacerts(entry, content)
+                )
                 der_signature = (
                     der_private_key_material_signature(content)
-                    if is_apk_signature_path(entry, apk_content_context)
+                    if public_certificate_container
                     else der_signing_material_signature(content)
                 )
                 if der_signature:
