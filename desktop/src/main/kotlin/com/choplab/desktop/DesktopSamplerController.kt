@@ -687,26 +687,26 @@ class DesktopSamplerController(
             )
         }
     }
-    override fun playSourceFrom(frame: Int) {
+    override fun playSourceFrom(frame: Int) = synchronized(sourcePitchResumeLock) {
         val state = mutableState.value
-        if (state.currentAudio == null) return
-        if (!sourcePlaybackIsReady()) return
+        if (state.currentAudio == null) return@synchronized
+        if (!sourcePlaybackIsReady()) return@synchronized
         val safe = frame.coerceIn(0, state.rangeEndFrame)
         stopCompetingPlayback()
         val playbackFailure = runCatching { player.playFrom(safe) }.exceptionOrNull()
         if (playbackFailure != null) {
             publishSourcePlaybackFailure(playbackFailure)
-            return
+            return@synchronized
         }
         mutableState.update { it.copy(sourcePlayheadFrame = safe, sourcePlaying = true, statusMessage = "元曲を再生中です") }
     }
-    override fun seekSourcePlayback(frame: Int) {
-        if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return
+    override fun seekSourcePlayback(frame: Int) = synchronized(sourcePitchResumeLock) {
+        if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return@synchronized
         val safe = frame.coerceIn(0, mutableState.value.rangeEndFrame)
         val playbackFailure = runCatching { player.seekSource(safe) }.exceptionOrNull()
         if (playbackFailure != null) {
             publishSourcePlaybackFailure(playbackFailure)
-            return
+            return@synchronized
         }
         mutableState.update { it.copy(sourcePlayheadFrame = safe) }
     }
@@ -836,16 +836,16 @@ class DesktopSamplerController(
         resumeAfterScratch(target)
     }
 
-    private fun toggleSource(shouldPlay: Boolean) {
+    private fun toggleSource(shouldPlay: Boolean) = synchronized(sourcePitchResumeLock) {
         val state = mutableState.value
-        if (state.currentAudio == null) return
+        if (state.currentAudio == null) return@synchronized
         if (shouldPlay) {
-            if (!sourcePlaybackIsReady()) return
+            if (!sourcePlaybackIsReady()) return@synchronized
             stopCompetingPlayback()
             val playbackFailure = runCatching { player.playFrom(state.sourcePlayheadFrame) }.exceptionOrNull()
             if (playbackFailure != null) {
                 publishSourcePlaybackFailure(playbackFailure)
-                return
+                return@synchronized
             }
             mutableState.update { it.copy(sourcePlaying = true, statusMessage = "元曲を再生中です") }
         } else {

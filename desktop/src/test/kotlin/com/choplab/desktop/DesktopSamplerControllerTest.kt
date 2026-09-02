@@ -1787,6 +1787,59 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun sourcePlayWaitingOnFailedPitchResumeRechecksAvailability() {
+        val directory = Files.createTempDirectory("choplab-play-after-pitch-resume-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "failed-resume-play.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        var playThread: Thread? = null
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.blockNextPlayFrom = true
+            engine.failNextPlayFrom = true
+
+            controller.setMasterPitch(3f)
+            engine.awaitBlockedPlayFrom()
+            playThread = thread(name = "ChopLab-Test-Play-After-Pitch-Failure") {
+                controller.toggleSourcePlayback()
+            }
+            awaitCondition { requireNotNull(playThread).state == Thread.State.BLOCKED }
+            engine.releaseBlockedPlayFrom()
+            requireNotNull(playThread).join(10_000L)
+
+            assertFalse(requireNotNull(playThread).isAlive)
+            assertEquals(2, engine.playFromCalls)
+            assertFalse(engine.isSourcePlaying)
+            assertFalse(controller.state.value.sourcePlaying)
+            assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
+        } finally {
+            engine.releaseBlockedPlayFrom()
+            playThread?.join(10_000L)
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun closeDoesNotPersistAStartupRecoveryErrorPlaceholder() {
         val directory = Files.createTempDirectory("choplab-close-recovery-error").toFile()
         val store = AtomicProjectStore(directory)
@@ -2934,6 +2987,8 @@ class DesktopSamplerControllerTest {
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
         private val loadEntered = CountDownLatch(1)
         private val loadRelease = CountDownLatch(1)
+        private val playFromEntered = CountDownLatch(1)
+        private val playFromRelease = CountDownLatch(1)
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = CopyOnWriteArrayList<Pair<PadModel, Boolean>>()
@@ -2957,6 +3012,8 @@ class DesktopSamplerControllerTest {
         @Volatile var exclusiveAbandonCount: Int = 0
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
+        @Volatile var blockNextPlayFrom: Boolean = false
+        @Volatile var failNextPlayFrom: Boolean = false
         @Volatile var stopAllCalls: Int = 0
         @Volatile var stopAllCount: Int = 0
         @Volatile var closeCalls: Int = 0
@@ -2986,9 +3043,26 @@ class DesktopSamplerControllerTest {
         fun releaseBlockedLoad() = loadRelease.countDown()
         override fun playFrom(frame: Int) {
             playFromCalls++
+            if (blockNextPlayFrom) {
+                blockNextPlayFrom = false
+                playFromEntered.countDown()
+                check(playFromRelease.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding source playback startup"
+                }
+            }
+            if (failNextPlayFrom) {
+                failNextPlayFrom = false
+                error("test output unavailable")
+            }
             sourcePosition = frame
             isSourcePlaying = true
         }
+        fun awaitBlockedPlayFrom() {
+            check(playFromEntered.await(2L, TimeUnit.SECONDS)) {
+                "Timed out waiting for source playback startup"
+            }
+        }
+        fun releaseBlockedPlayFrom() = playFromRelease.countDown()
         override fun seekSource(frame: Int) { sourcePosition = frame }
         override fun sourceFramePosition(): Int = sourcePosition
         override fun padFramePosition(index: Int): Int? = null
