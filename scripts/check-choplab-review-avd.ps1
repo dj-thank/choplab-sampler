@@ -28,11 +28,13 @@ $avdManager = if ([string]::IsNullOrWhiteSpace($AndroidSdkRoot)) {
 }
 $avdConfig = Join-Path $AvdHome ($manifest.avdName + '.avd\config.ini')
 $avdIni = Join-Path $AvdHome ($manifest.avdName + '.ini')
+$completeAvdExists = (Test-Path -LiteralPath $avdConfig -PathType Leaf) -and
+    (Test-Path -LiteralPath $avdIni -PathType Leaf)
 
 if ($null -eq $imagePath -or -not (Test-Path -LiteralPath $imagePath -PathType Container)) {
     $reasons.Add("Required system image is absent: $($manifest.systemImageId)")
 }
-if ($null -eq $avdManager -or -not (Test-Path -LiteralPath $avdManager -PathType Leaf)) {
+if (-not $completeAvdExists -and ($null -eq $avdManager -or -not (Test-Path -LiteralPath $avdManager -PathType Leaf))) {
     $reasons.Add('avdmanager.bat is absent')
 }
 if ((Test-Path -LiteralPath $avdConfig) -xor (Test-Path -LiteralPath $avdIni)) {
@@ -67,8 +69,7 @@ $result = [ordered]@{
     imagePath = $imagePath
     imagePresent = $null -ne $imagePath -and (Test-Path -LiteralPath $imagePath -PathType Container)
     avdManagerPresent = $null -ne $avdManager -and (Test-Path -LiteralPath $avdManager -PathType Leaf)
-    existingPinnedAvd = (Test-Path -LiteralPath $avdConfig -PathType Leaf) -and
-        (Test-Path -LiteralPath $avdIni -PathType Leaf)
+    existingPinnedAvd = $completeAvdExists
     avdHome = $AvdHome
     mutationPerformed = $false
     reasons = @($reasons)

@@ -16,7 +16,7 @@ class RepositoryReleaseContractTest(unittest.TestCase):
             if line.startswith("## ")
         ]
 
-        self.assertTrue(headings[0].startswith("## Current snapshot — 2026-09-02"))
+        self.assertTrue(headings[0].startswith("## Current snapshot — 2026-09-03"))
         self.assertEqual(1, sum(heading.startswith("## Current snapshot") for heading in headings))
 
     def test_readme_android_verifier_matches_release_metadata(self) -> None:

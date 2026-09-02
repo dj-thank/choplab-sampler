@@ -26,15 +26,6 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-// Compose Multiplatform 1.12.0 publishes license-only JetBrains compatibility
-// markers next to the AndroidX desktop implementations. Both use the same
-// filename, so omit only those marker coordinates from the packaged runtime;
-// the AndroidX implementation jars remain on the classpath.
-configurations.named("runtimeClasspath") {
-    exclude(group = "org.jetbrains.compose.runtime", module = "runtime-desktop")
-    exclude(group = "org.jetbrains.compose.runtime", module = "runtime-saveable-desktop")
-}
-
 tasks.test {
     useJUnitPlatform()
     // The offscreen input fixture has its own bounded, explicitly headless target.
@@ -69,6 +60,10 @@ tasks.register<Test>("desktopLongPressUiTest") {
     testLogging {
         events("passed", "failed", "skipped")
         showStandardStreams = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
     }
 }
 
@@ -101,5 +96,10 @@ tasks.register<Exec>("packageWindows") {
         "--app-version", choplabVersion.get(),
         "--description", "ChopLab original-style おとひろい desktop sampler",
         "--copyright", "ChopLab contributors",
+        // Startup trims that stay valid on the JDK 17 CI runtime: skip the hsperfdata mmap and
+        // start with a heap that already fits the deck so the first frames avoid resize GCs.
+        "--java-options", "-XX:-UsePerfData",
+        "--java-options", "-Xms160m",
+        "--java-options", "-Dfile.encoding=UTF-8",
     )
 }

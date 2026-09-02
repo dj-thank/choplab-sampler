@@ -209,7 +209,8 @@ class PatternRendererTest {
 
             assertTrue(summary.peak > 0f)
             val pcm = readPcm16(file)
-            assertTrue(pcm[60].toInt() in 7_500..9_000)
+            // A normal-level vocal must survive the real WAV master path without harmonic shaping.
+            assertTrue(pcm[60].toInt() in 10_798..10_800)
             assertTrue(pcm.copyOfRange(100, 1_900).all { it == pcm[100] })
             assertTrue(pcm.copyOfRange(vocal.size, pcm.size).all { it.toInt() == 0 })
         } finally {

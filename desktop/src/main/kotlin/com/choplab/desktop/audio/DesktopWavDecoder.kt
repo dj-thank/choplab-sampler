@@ -6,6 +6,8 @@ import com.choplab.sampler.model.ProjectLimits
 import com.choplab.sampler.model.persistableAudioDisplayName
 import com.choplab.sampler.model.retainedChannelCountForImport
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
@@ -79,6 +81,10 @@ object DesktopWavDecoder {
         val frameBytes = channels * Short.SIZE_BYTES
         val bufferSize = (STREAM_BUFFER_BYTES / frameBytes).coerceAtLeast(1) * frameBytes
         val buffer = ByteArray(bufferSize)
+        // Mono and stereo sources keep every stored sample as-is, so whole chunks can be copied
+        // through a little-endian view instead of one bounds-checked append per sample.
+        val copiesWholeFrames = storedChannelCount == channels
+        val chunk = if (copiesWholeFrames) ShortArray(bufferSize / Short.SIZE_BYTES) else ShortArray(0)
 
         while (true) {
             val read = stream.read(buffer, 0, buffer.size)
@@ -86,6 +92,12 @@ object DesktopWavDecoder {
             require(read > 0) { "音声ストリームからデータを読み込めません" }
             require(read % frameBytes == 0) { "音声データに不完全なPCMフレームがあります" }
 
+            if (copiesWholeFrames) {
+                val count = read / Short.SIZE_BYTES
+                ByteBuffer.wrap(buffer, 0, read).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(chunk, 0, count)
+                builder.appendAll(chunk, count)
+                continue
+            }
             var offset = 0
             while (offset < read) {
                 if (storedChannelCount == 2) {
@@ -163,12 +175,27 @@ internal class BoundedPcmBuilder(
         if (size >= maximumSize) {
             error("展開後の音声が大きすぎます。短い範囲に切った音声を使用してください")
         }
-        if (size == values.size) {
-            val doubled = values.size.toLong() * 2L
-            val nextSize = minOf(maximumSize.toLong(), doubled).toInt()
-            values = values.copyOf(nextSize)
-        }
+        ensureCapacity(size + 1)
         values[size++] = value
+    }
+
+    /** Appends the first [count] samples of [source] under the same bound as [append]. */
+    fun appendAll(source: ShortArray, count: Int) {
+        require(count in 0..source.size) { "count must address samples inside source" }
+        if (count == 0) return
+        if (size.toLong() + count > maximumSize) {
+            error("展開後の音声が大きすぎます。短い範囲に切った音声を使用してください")
+        }
+        ensureCapacity(size + count)
+        System.arraycopy(source, 0, values, size, count)
+        size += count
+    }
+
+    private fun ensureCapacity(required: Int) {
+        if (required <= values.size) return
+        var nextSize = values.size.toLong().coerceAtLeast(1L)
+        while (nextSize < required) nextSize *= 2L
+        values = values.copyOf(minOf(maximumSize.toLong(), nextSize).toInt())
     }
 
     fun toArray(): ShortArray = values.copyOf(size)

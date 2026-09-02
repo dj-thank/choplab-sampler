@@ -71,7 +71,10 @@ jobs:
         env:
           CHOPLAB_VERSION: ${{ steps.release.outputs.version }}
           CHOPLAB_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
-        run: bash scripts/build-ios-simulator.sh
+        run: |
+          bash scripts/build-ios-simulator.sh
+          python3 scripts/check_public_surface.py --archive \
+            "dist/ChopLab-${CHOPLAB_VERSION}-ios-simulator.app.zip"
 
       - name: Upload iOS Simulator artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

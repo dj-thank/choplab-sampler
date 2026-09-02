@@ -14,6 +14,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Pcm16ArrayBuilderTest {
@@ -58,6 +59,30 @@ class Pcm16ArrayBuilderTest {
     }
 
     @Test
+    fun decodedPcmEncodingCannotChangeAfterOutputStarts() {
+        assertEquals(
+            AudioFormat.ENCODING_PCM_16BIT,
+            validateStableDecodedPcmEncoding(null, AudioFormat.ENCODING_PCM_16BIT),
+        )
+        assertEquals(
+            AudioFormat.ENCODING_PCM_16BIT,
+            validateStableDecodedPcmEncoding(
+                AudioFormat.ENCODING_PCM_16BIT,
+                AudioFormat.ENCODING_PCM_16BIT,
+            ),
+        )
+        assertThrows(IllegalStateException::class.java) {
+            validateStableDecodedPcmEncoding(
+                AudioFormat.ENCODING_PCM_16BIT,
+                AudioFormat.ENCODING_PCM_FLOAT,
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            validateStableDecodedPcmEncoding(null, AudioFormat.ENCODING_INVALID)
+        }
+    }
+
+    @Test
     fun decodedPcmCannotGrowPastTheHardFrameLimit() {
         val builder = Pcm16ArrayBuilder(
             initialFrameCapacity = 1,
@@ -74,6 +99,60 @@ class Pcm16ArrayBuilderTest {
         assertEquals(2, builder.frameCount)
         assertEquals(4, builder.toArray().size)
         assertThrows(IllegalStateException::class.java) { builder.append(0f) }
+    }
+
+    @Test
+    fun decodedPcmRejectsNonFiniteSamplesAndExplicitlyClampsNominalOverrange() {
+        val builder = Pcm16ArrayBuilder(initialCapacity = 1, maximumSize = 2)
+        assertThrows(IllegalArgumentException::class.java) { builder.append(Float.NaN) }
+        assertThrows(IllegalArgumentException::class.java) { builder.append(Float.POSITIVE_INFINITY) }
+
+        builder.append(-1.25f)
+        builder.append(1.25f)
+        assertArrayEquals(shortArrayOf(Short.MIN_VALUE, Short.MAX_VALUE), builder.toArray())
+    }
+
+    @Test
+    fun decodedFloatPcmRejectsInfinityBeforeNominalRangeClamping() {
+        val source = ByteBuffer.allocate(Float.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .apply {
+                putFloat(Float.POSITIVE_INFINITY)
+                flip()
+            }
+        val destination = Pcm16ArrayBuilder(initialCapacity = 1, maximumSize = 1)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            appendDecodedPcm(
+                source = source,
+                encoding = AudioFormat.ENCODING_PCM_FLOAT,
+                sourceChannelCount = 1,
+                destination = destination,
+            )
+        }
+        assertEquals(0, destination.size)
+    }
+
+    @Test
+    fun dcRemovalNeverCreatesClippedPcmPeaks() {
+        val safe = ShortArray(100) { 1_000 }
+        removeTinyDcOffsetWithoutClipping(safe, channelCount = 1)
+        assertTrue(safe.all { it == 0.toShort() })
+
+        val negativePeak = ShortArray(100) { 1_000 }.also { it[0] = Short.MIN_VALUE }
+        val original = negativePeak.copyOf()
+        removeTinyDcOffsetWithoutClipping(negativePeak, channelCount = 1)
+        assertArrayEquals(original, negativePeak)
+
+        val positivePeak = ShortArray(100) { -1_000 }.also { it[0] = Short.MAX_VALUE }
+        val positiveOriginal = positivePeak.copyOf()
+        removeTinyDcOffsetWithoutClipping(positivePeak, channelCount = 1)
+        assertArrayEquals(positiveOriginal, positivePeak)
+
+        val biasedProbe = ShortArray(480_000) { frame -> if (frame < 240_000) 1_000 else -1_000 }
+        val biasedOriginal = biasedProbe.copyOf()
+        removeTinyDcOffsetWithoutClipping(biasedProbe, channelCount = 1)
+        assertArrayEquals(biasedOriginal, biasedProbe)
     }
 
     @Test

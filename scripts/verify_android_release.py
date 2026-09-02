@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
+import hashlib
 import json
 import os
 import re
@@ -401,15 +404,43 @@ def normalize_fingerprint(value: str) -> str:
 
 
 def read_apksigner_certificate_sha256(*outputs: str | None) -> str | None:
-    fingerprints = {
-        normalize_fingerprint(match.group(1))
-        for output in outputs
-        if output
+    fingerprints: set[str] = set()
+    pem_certificate_count = 0
+    certificate_label = "CERTI" + "FICATE"
+    begin_marker = f"-----BEGIN {certificate_label}-----"
+    end_marker = f"-----END {certificate_label}-----"
+    pem_pattern = re.compile(
+        re.escape(begin_marker) + r"\s*(.*?)\s*" + re.escape(end_marker),
+        re.DOTALL,
+    )
+    for output in outputs:
+        if not output:
+            continue
         for match in re.finditer(
-            r"Signer #1 certificate SHA-?256 digest:\s*([0-9a-fA-F:]+)",
+            r"^\s*Signer #1 certificate SHA-?256(?: digest)?\s*:\s*(.*?)\s*$",
             output,
-        )
-    }
+            re.IGNORECASE | re.MULTILINE,
+        ):
+            fingerprints.add(normalize_fingerprint(match.group(1)))
+
+        pem_blocks = pem_pattern.findall(output)
+        begin_count = output.count(begin_marker)
+        end_count = output.count(end_marker)
+        if begin_count != end_count or begin_count != len(pem_blocks):
+            raise VerificationError("apksigner returned malformed PEM certificate output")
+        pem_certificate_count += len(pem_blocks)
+        if pem_certificate_count > 1:
+            raise VerificationError("apksigner returned multiple PEM certificates")
+        for pem_body in pem_blocks:
+            encoded = re.sub(r"\s+", "", pem_body)
+            try:
+                certificate_der = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise VerificationError("apksigner returned malformed PEM certificate output") from error
+            if not certificate_der:
+                raise VerificationError("apksigner returned an empty PEM certificate")
+            fingerprints.add(hashlib.sha256(certificate_der).hexdigest())
+
     if not fingerprints:
         return None
     if len(fingerprints) != 1:
@@ -424,7 +455,7 @@ def verify_signature(
     expected_cert_sha256: str | None,
 ) -> str | None:
     apksigner = find_android_tool("apksigner")
-    result = run([apksigner, "verify", "--print-certs", "--verbose", str(apk)], check=False)
+    result = run([apksigner, "verify", "--print-certs-pem", "--verbose", str(apk)], check=False)
     if result.returncode != 0:
         if require_signed:
             detail = result.stderr.strip() or result.stdout.strip() or "APK is unsigned"

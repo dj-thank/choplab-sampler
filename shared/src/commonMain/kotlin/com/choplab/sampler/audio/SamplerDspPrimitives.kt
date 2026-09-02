@@ -68,8 +68,23 @@ object SamplerDspPrimitives {
         ).coerceAtLeast(0.0).toFloat()
     }
 
-    fun softLimit(sample: Float): Float =
-        if (sample.isFinite()) sample / (1f + abs(sample)) else 0f
+    /**
+     * Transparent master safety curve.
+     *
+     * Normal program material remains bit-for-bit linear. Only peaks above the threshold enter
+     * a continuously differentiable knee that approaches, but never exceeds, the output ceiling.
+     * This avoids the former `x / (1 + |x|)` curve, which distorted every non-zero sample and
+     * reduced a full-scale source to half level even when no voices overlapped.
+     */
+    fun softLimit(sample: Float): Float {
+        if (!sample.isFinite()) return 0f
+        val magnitude = abs(sample)
+        if (magnitude <= MASTER_LIMITER_THRESHOLD) return sample
+        val knee = MASTER_LIMITER_CEILING - MASTER_LIMITER_THRESHOLD
+        val excess = magnitude - MASTER_LIMITER_THRESHOLD
+        val limited = MASTER_LIMITER_THRESHOLD + knee * excess / (excess + knee)
+        return if (sample < 0f) -limited else limited
+    }
 
     fun stepLengthFrames(
         sampleRate: Int,
@@ -107,6 +122,9 @@ object SamplerDspPrimitives {
     const val STRAIGHT_SWING = 50f
     const val TONE_BYPASS_THRESHOLD = 0.995f
     const val BOUNDARY_FADE_SOURCE_FRAMES = 48.0
+    // The default PAD gain is 0.9, so even a full-scale imported sample stays completely linear.
+    const val MASTER_LIMITER_THRESHOLD = 0.9f
+    const val MASTER_LIMITER_CEILING = 0.98f
     const val MIN_SAMPLE_RATE = 8_000
     const val MAX_SAMPLE_RATE = 192_000
 }

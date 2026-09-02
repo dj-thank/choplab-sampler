@@ -242,6 +242,9 @@ jobs:
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
           cp "${debug_apks[0]}" "$apk_target"
           cp "$sbom" "$sbom_target"
+          python3 scripts/check_public_surface.py \
+            --archive "$apk_target" \
+            --text-file "$sbom_target"
           for file in "$apk_target" "$sbom_target"; do
             printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"
           done
@@ -313,6 +316,7 @@ jobs:
           target_archive="dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
           mv "$source_archive" "$target_archive"
           rm -f "$source_archive.sha256"
+          python3 scripts/check_public_surface.py --archive "$target_archive"
           printf '%s  %s\n' "$(shasum -a 256 "$target_archive" | awk '{print $1}')" "$(basename "$target_archive")" > "$target_archive.sha256"
 
       - name: Upload iOS assets
@@ -372,6 +376,8 @@ jobs:
             -Path 'desktop/build/windows-app-image/ChopLab' `
             -DestinationPath $archive `
             -CompressionLevel Optimal
+          python scripts/check_public_surface.py --archive $archive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $archive)" | Set-Content -Encoding utf8 "$archive.sha256"
 
@@ -412,12 +418,17 @@ jobs:
             --check-monotonic \
             --reachable-ref "$GITHUB_SHA"
 
-      - name: Download platform assets
+      - name: Download Android release assets
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: choplab-*-release-assets
+          name: choplab-android-release-assets
           path: dist
-          merge-multiple: true
+
+      - name: Download iOS release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: choplab-ios-release-assets
+          path: dist
 
       - name: Refuse mutable or incomplete publication
         shell: bash
@@ -434,6 +445,69 @@ jobs:
             echo 'Release commit is no longer reachable from main.' >&2
             exit 1
           }
+
+      - name: Scan final public archives
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          python3 scripts/check_public_surface.py \
+            --archive "dist/ChopLab-${RELEASE_TAG}-android-debug.apk" \
+            --archive "dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip" \
+            --text-file "dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
+
+      - name: Scan every release asset
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          expected_assets=(
+            "ChopLab-${RELEASE_TAG}-android-debug.apk"
+            "ChopLab-${RELEASE_TAG}-android-debug.apk.sha256"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip.sha256"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json.sha256"
+          )
+          mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
+          [[ "${#release_assets[@]}" -gt 0 ]] || {
+            echo 'No downloaded release assets found.' >&2
+            exit 1
+          }
+          if find dist -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+            echo 'unsupported release asset: non-regular top-level entry.' >&2
+            exit 1
+          fi
+          if find dist -maxdepth 1 -type l -print -quit | grep -q .; then
+            echo 'unsupported release asset: symbolic links are not allowed.' >&2
+            exit 1
+          fi
+          for expected in "${expected_assets[@]}"; do
+            [[ -f "dist/$expected" && ! -L "dist/$expected" ]] || {
+              echo "missing expected release asset: $expected" >&2
+              exit 1
+            }
+          done
+          scan_args=()
+          for asset in "${release_assets[@]}"; do
+            name="${asset##*/}"
+            case " ${expected_assets[*]} " in
+              *" $name "*) ;;
+              *)
+                echo "unsupported release asset: $name" >&2
+                exit 1
+                ;;
+            esac
+            case "$asset" in
+              *.apk|*.aab|*.aar|*.ipa|*.jar|*.war|*.zip)
+                scan_args+=(--archive "$asset")
+                ;;
+              *)
+                scan_args+=(--text-file "$asset")
+                ;;
+            esac
+          done
+          python3 scripts/check_public_surface.py "${scan_args[@]}"
 
       - name: Write source-bound manifest and checksums
         shell: bash
@@ -461,6 +535,61 @@ jobs:
               | sort -z \
               | xargs -0 sha256sum
           ) > dist/SHA256SUMS
+
+      - name: Scan final publication glob
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          expected_assets=(
+            "ChopLab-${RELEASE_TAG}-android-debug.apk"
+            "ChopLab-${RELEASE_TAG}-android-debug.apk.sha256"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip"
+            "ChopLab-${RELEASE_TAG}-ios-simulator.app.zip.sha256"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json"
+            "ChopLab-${RELEASE_TAG}-sbom.cdx.json.sha256"
+            "ChopLab-${RELEASE_TAG}-release-manifest.json"
+            "SHA256SUMS"
+          )
+          mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
+          [[ "${#release_assets[@]}" -gt 0 ]] || {
+            echo 'No final release assets found.' >&2
+            exit 1
+          }
+          if find dist -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+            echo 'unsupported release asset: non-regular top-level entry.' >&2
+            exit 1
+          fi
+          if find dist -maxdepth 1 -type l -print -quit | grep -q .; then
+            echo 'unsupported release asset: symbolic links are not allowed.' >&2
+            exit 1
+          fi
+          for expected in "${expected_assets[@]}"; do
+            [[ -f "dist/$expected" && ! -L "dist/$expected" ]] || {
+              echo "missing expected release asset: $expected" >&2
+              exit 1
+            }
+          done
+          scan_args=()
+          for asset in "${release_assets[@]}"; do
+            name="${asset##*/}"
+            case " ${expected_assets[*]} " in
+              *" $name "*) ;;
+              *)
+                echo "unsupported release asset: $name" >&2
+                exit 1
+                ;;
+            esac
+            case "$asset" in
+              *.apk|*.aab|*.aar|*.ipa|*.jar|*.war|*.zip)
+                scan_args+=(--archive "$asset")
+                ;;
+              *)
+                scan_args+=(--text-file "$asset")
+                ;;
+            esac
+          done
+          python3 scripts/check_public_surface.py "${scan_args[@]}"
 
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2

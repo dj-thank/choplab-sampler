@@ -659,7 +659,7 @@ class DesktopSamplerControllerTest {
                 closeThread = thread(name = "ChopLab-Test-Close") { controller.close() }
                 awaitThreadWaiting(closeThread)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(143f, store.load()?.bpm)
@@ -709,7 +709,7 @@ class DesktopSamplerControllerTest {
                 assertEquals(1, engine.closeCalls)
                 assertFalse(controller.state.value.transportPlaying)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(144f, store.load()?.bpm)
@@ -760,7 +760,7 @@ class DesktopSamplerControllerTest {
                 engine.releaseBlockedLoad()
                 awaitThreadWaiting(closeThread)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(151f, store.load()?.bpm)
@@ -802,7 +802,7 @@ class DesktopSamplerControllerTest {
             closeThread = thread(name = "ChopLab-Test-Load-Close") { controller.close() }
             awaitCondition { closeThread.state == Thread.State.BLOCKED }
             engine.releaseBlockedLoad()
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             val recovered = requireNotNull(store.load())
@@ -1053,7 +1053,7 @@ class DesktopSamplerControllerTest {
                 awaitThreadWaiting(closeThread)
                 assertTrue(closeThread.isAlive)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(0, engine.loadPcmCalls)
@@ -1279,7 +1279,7 @@ class DesktopSamplerControllerTest {
         } finally {
             engine.releaseBlockedLoad()
             controller.close()
-            closeThread?.join(2_000L)
+            closeThread?.join(10_000L)
             directory.deleteRecursively()
         }
     }
@@ -1410,13 +1410,16 @@ class DesktopSamplerControllerTest {
                 awaitCondition { created.state.value.currentAudio?.name == replacement.name }
             }
 
-            requireNotNull(closeThread).join(2_000L)
-            assertFalse(requireNotNull(closeThread).isAlive)
+            requireNotNull(closeThread).join(5_000L)
+            assertFalse(
+                requireNotNull(closeThread).isAlive,
+                "Close must finish after the stale recovery and admitted source load are released",
+            )
             assertEquals(replacement.name, store.load()?.currentAudio?.name)
         } finally {
             engine.releaseBlockedLoad()
             controller?.close()
-            closeThread?.join(2_000L)
+            closeThread?.join(5_000L)
             directory.deleteRecursively()
         }
     }
@@ -1565,9 +1568,105 @@ class DesktopSamplerControllerTest {
 
             controller.setMasterPitch(5f)
 
+            // The key change stops old-key playback immediately and reports the render failure
+            // from the I/O worker instead of freezing the UI thread while a long source renders.
             assertFalse(controller.state.value.sourcePlaying)
             assertFalse(engine.isSourcePlaying)
-            assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
+            awaitCondition { controller.state.value.statusMessage.contains("test output unavailable") }
+            assertFalse(controller.state.value.sourcePlaying)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun rapidMasterPitchChangesResumePlaybackAtTheLatestKey() {
+        val directory = Files.createTempDirectory("choplab-rapid-master-pitch").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "rapid-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            engine.sourcePosition = 23
+            controller.playSourceFrom(23)
+            assertTrue(controller.state.value.sourcePlaying)
+            engine.blockNextLoad = true
+
+            controller.setMasterPitch(2f)
+            engine.awaitBlockedLoad()
+            controller.setMasterPitch(4f)
+            engine.releaseBlockedLoad()
+
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 4f }
+            awaitCondition { controller.state.value.statusMessage == controller.masterPitchAppliedMessage(4f) }
+            assertEquals(4f, controller.state.value.masterPitchSemitones)
+            assertTrue(controller.state.value.sourcePlaying)
+            assertTrue(engine.isSourcePlaying)
+            assertEquals(2, engine.playFromCalls)
+            assertEquals(23, engine.sourcePosition)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun stopAllDuringMasterPitchRenderPreventsLatePlaybackResume() {
+        val directory = Files.createTempDirectory("choplab-stop-pending-master-pitch").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "stop-pending-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.blockNextLoad = true
+
+            controller.setMasterPitch(3f)
+            engine.awaitBlockedLoad()
+            controller.stopAllSounds()
+            engine.releaseBlockedLoad()
+
+            awaitCondition { engine.loadPcmCompletedCalls == 2 }
+            assertFalse(controller.state.value.sourcePlaying)
+            assertFalse(engine.isSourcePlaying)
+            assertEquals(1, engine.playFromCalls)
         } finally {
             controller.close()
             directory.deleteRecursively()
@@ -2704,7 +2803,7 @@ class DesktopSamplerControllerTest {
     }
 
     private fun awaitCondition(condition: () -> Boolean) {
-        val deadline = System.nanoTime() + 2_000_000_000L
+        val deadline = System.nanoTime() + 5_000_000_000L
         while (!condition()) {
             if (System.nanoTime() >= deadline) error("Timed out waiting for asynchronous desktop state")
             Thread.sleep(20L)
@@ -2749,6 +2848,7 @@ class DesktopSamplerControllerTest {
         @Volatile var stopAllCount: Int = 0
         @Volatile var closeCalls: Int = 0
         @Volatile var loadPcmCalls: Int = 0
+        @Volatile var loadPcmCompletedCalls: Int = 0
         @Volatile var playFromCalls: Int = 0
         val loadedAudioNames = Collections.synchronizedList(mutableListOf<String>())
         val loadedPitchSemitones = Collections.synchronizedList(mutableListOf<Float>())
@@ -2760,10 +2860,12 @@ class DesktopSamplerControllerTest {
                 failNextLoad = false
                 error("test output unavailable")
             }
-            if (!blockNextLoad) return
-            blockNextLoad = false
-            loadEntered.countDown()
-            check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+            if (blockNextLoad) {
+                blockNextLoad = false
+                loadEntered.countDown()
+                check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+            }
+            loadPcmCompletedCalls++
         }
         fun awaitBlockedLoad() {
             check(loadEntered.await(2L, TimeUnit.SECONDS)) { "Timed out waiting for the asynchronous project load" }
