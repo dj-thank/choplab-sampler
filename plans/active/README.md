@@ -6,6 +6,12 @@
 
 ## Current selection
 
+**進行中（LOCAL_PASS / PR #83第4修正のhosted再検証待ち）:** `h13-github-release-20260902.md`。第3修正headも8/8 checksをPASSしたがfresh review 3件でmerge停止。`6070204`はpublic debug staging変数、API 36 proxy ownership、未知non-exported tooling拒否を修復。policy 75、AndroidTest compile 42 tasks、actual debug APK、history scan、local review 0/0がPASS。次は新headの8 checks、3 threads解決、fresh review、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+
+**直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
+
+## Retained prior selection
+
 **Wave 19 PR review repair completed local; GitHub integration remains active:** `../completed/waves17-18-pr-review-repair-20260827.md`。PR #79の3件の有効指摘を、Windowsのrender/open/startをhandoff lock外へ分離、candidate stagingとcleanup所有権保持、Android rejected vocal takeのstop＋discard専用経路で閉じた。追加raceも反証してproduct `11d0127` / tree `83c2055`、709 tests / 117 suites、197-task gate、package/policy/read-backまで`LOCAL_PASS`。
 
 **次に保持する一つ:** 新しいfeatureは開始せず、既存PR #79を同じbranch/headへ更新する。exact-head 8 workflows、review threads 0、clean mergeabilityとbase/head不変を確認してからだけnormal mergeし、merged-main 4 workflowsをread-backする。tag、Release、署名、device/provider account、Humanは別taskのまま。
@@ -146,6 +152,8 @@
 - `../completed/android-production-continuity-20260820.md`（完了済み）
 - `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
 - `full-release-audio-hardening-20260821.md`（統合入力）
+- `h13-desktop-longpress-20260901.md`（完了済みH13本文）
+- `h13-github-release-20260902.md`（current selection）
 - `spotify-connect-ux-lifecycle-20260823.md`（統合入力）
 - `cross-platform-production-continuity-20260823.md`（統合入力）
 - `../completed/session-integration-20260823.md`（完了済み統合plan）

@@ -16,6 +16,9 @@ import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPressAction
+import com.choplab.sampler.model.PerformancePadPressAction
+import com.choplab.sampler.model.PadSurfaceMode
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.DrumKitApplyDecision
@@ -31,6 +34,8 @@ import com.choplab.sampler.model.chokeLoopSessionTransition
 import com.choplab.sampler.model.clearEveryPattern
 import com.choplab.sampler.model.clearPadSteps
 import com.choplab.sampler.model.replacePadSteps
+import com.choplab.sampler.model.resolvePadPressAction
+import com.choplab.sampler.model.resolvePerformancePadPressAction
 import com.choplab.sampler.model.restorePadTrimSnapshot
 import com.choplab.sampler.model.selectPlayableBank
 import com.choplab.sampler.model.selectPlayablePad
@@ -74,6 +79,7 @@ import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadS
 import com.choplab.sampler.model.scratchReturnTargetIsValid
 import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
+import com.choplab.sampler.ui.PadTriggerOwnership
 import com.choplab.sampler.ui.DocumentAction
 import com.choplab.sampler.ui.documentCompletionMessage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -532,10 +538,62 @@ class DesktopSamplerController(
     override fun selectPlayablePad(index: Int) = mutableState.update { selectPlayablePad(it, index) }
 
     override fun capturePad(index: Int) {
+        capturePadWithOwnership(index)
+    }
+
+    override fun capturePadWithOwnership(index: Int): Long {
         val state = mutableState.value
-        val observedFrame = if (state.sourcePlaying) player.sourceFramePosition() else state.sourcePlayheadFrame
-        val start = observedFrame.coerceIn(0, (state.rangeEndFrame - 1).coerceAtLeast(0))
-        commitEdit { assignLiveChopToPad(it, index, start).state }
+        val pad = state.pads.getOrNull(index) ?: return PadTriggerOwnership.NONE
+        if (state.isLoading) {
+            setStatus("現在の処理が終わってから編集してください")
+            return PadTriggerOwnership.NONE
+        }
+        // CHOP pointer-down can precede a long press. Only a playing source may
+        // overwrite a Chop; stopped assigned PADs must reach the existing audition path.
+        return when (
+            resolvePadPressAction(
+                sourcePlaying = state.sourcePlaying,
+                padAssigned = pad.isAssigned,
+                surfaceMode = PadSurfaceMode.CAPTURE,
+                pendingSourceCommand = state.pendingSourceCommand,
+                recordingSession = state.recordingSession,
+            )
+        ) {
+            PadPressAction.CAPTURE_CHOP -> {
+                val start = player.sourceFramePosition().coerceIn(0, (state.rangeEndFrame - 1).coerceAtLeast(0))
+                commitEdit { assignLiveChopToPad(it, index, start).state }
+                PadTriggerOwnership.NONE
+            }
+            PadPressAction.PLAY_ASSIGNED -> {
+                try {
+                    triggerPadAndReturnOwnership(index) ?: PadTriggerOwnership.NONE
+                } catch (failure: Exception) {
+                    setStatus(
+                        "PAD ${index + 1}を再生できませんでした: " +
+                            (failure.message ?: failure.javaClass.simpleName),
+                    )
+                    PadTriggerOwnership.NONE
+                }
+            }
+            PadPressAction.SELECT_ONLY -> {
+                selectPad(index)
+                PadTriggerOwnership.NONE
+            }
+            PadPressAction.BLOCKED_DURING_RECORDING -> {
+                setStatus("録音をSTOPしてから編集してください")
+                PadTriggerOwnership.NONE
+            }
+            PadPressAction.BLOCKED_DURING_SOURCE_TRANSITION -> {
+                setStatus(
+                    if (state.pendingSourceCommand == PendingSourceCommand.START) {
+                        "元曲の再生準備中です。音が鳴ってからPADを叩いてください"
+                    } else {
+                        "元曲の停止処理中です。停止してからPADを叩いてください"
+                    },
+                )
+                PadTriggerOwnership.NONE
+            }
+        }
     }
 
     override fun triggerPad(index: Int) {
@@ -543,11 +601,28 @@ class DesktopSamplerController(
     }
 
     override fun triggerPadWithOwnership(index: Int): Long =
-        triggerPadAndReturnOwnership(index) ?: 0L
+        triggerPadAndReturnOwnership(index) ?: PadTriggerOwnership.NONE
 
     private fun triggerPadAndReturnOwnership(index: Int): Long? {
-        val pad = mutableState.value.pads.getOrNull(index)
+        val state = mutableState.value
+        val pad = state.pads.getOrNull(index)
         if (pad?.isAssigned == true) {
+            when (
+                resolvePerformancePadPressAction(
+                    pad = pad,
+                    recordArmed = state.recordArmed,
+                    transportPlaying = state.transportPlaying,
+                )
+            ) {
+                PerformancePadPressAction.TOGGLE_LOOP -> {
+                    selectPad(index)
+                    toggleBeatLoop(index)
+                    return null
+                }
+                PerformancePadPressAction.TRIGGER_ONLY,
+                PerformancePadPressAction.TRIGGER_AND_RECORD_STEP,
+                -> Unit
+            }
             if (!stopChokedLoopSessionBeforeTrigger(index)) return null
             val ownership = triggerPlayerPad(pad)
             val beforeRecord = mutableState.value
@@ -567,7 +642,9 @@ class DesktopSamplerController(
     }
 
     override fun releasePadIfOwned(index: Int, ownership: Long) {
-        if (ownership != 0L) player.releasePadIfOwned(index, ownership)
+        if (ownership != 0L && ownership != PadTriggerOwnership.NONE) {
+            player.releasePadIfOwned(index, ownership)
+        }
     }
 
     private fun triggerPlayerPad(pad: PadModel, forceLoop: Boolean = false): Long =
@@ -591,8 +668,19 @@ class DesktopSamplerController(
     }
 
     override fun previewPad(index: Int) {
+        val pad = mutableState.value.pads.getOrNull(index)
+        if (pad?.isAssigned != true) return
         stopCompetingPlayback()
-        triggerPad(index)
+        try {
+            // TRIM preview is a bounded audition, never a performance LOOP/GATE action.
+            triggerPlayerPad(pad.copy(playMode = PadPlayMode.ONE_SHOT))
+            mutableState.update { it.copy(selectedPad = index, statusMessage = "PAD ${index + 1}を試聴中です") }
+        } catch (failure: Exception) {
+            setStatus(
+                "PAD ${index + 1}を試聴できませんでした: " +
+                    (failure.message ?: failure.javaClass.simpleName),
+            )
+        }
     }
     override fun playSourceFrom(frame: Int) {
         val state = mutableState.value
@@ -816,7 +904,11 @@ class DesktopSamplerController(
     override fun clearAllPattern() = commitEdit { it.clearEveryPattern() }
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
-        val index = state.loopingPadIndex ?: state.selectedPad
+        toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
+    }
+
+    private fun toggleBeatLoop(index: Int) {
+        val state = mutableState.value
         val pad = state.pads.getOrNull(index)
         if (pad?.isAssigned != true) return setStatus("先に音の入ったPADを選んでください")
         if (state.loopingPadIndex == index) {
@@ -881,6 +973,11 @@ class DesktopSamplerController(
                 startedSession.retirePriorPlayback()
             } catch (failure: Throwable) {
                 productionSession.cancel(plan)
+                try {
+                    startedSession.abandonCandidates()
+                } catch (cleanupFailure: Throwable) {
+                    failure.addSuppressed(cleanupFailure)
+                }
                 throw failure
             }
 

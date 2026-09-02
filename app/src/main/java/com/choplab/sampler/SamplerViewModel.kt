@@ -1252,6 +1252,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         handlePadPress(globalIndex, PadSurfaceMode.CAPTURE)
     }
 
+    override fun capturePadWithOwnership(index: Int): Long =
+        handlePadPress(index, PadSurfaceMode.CAPTURE) ?: PadTriggerOwnership.NONE
+
     override fun triggerPad(globalIndex: Int) {
         handlePadPress(globalIndex, PadSurfaceMode.PERFORMANCE)
     }

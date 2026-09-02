@@ -82,7 +82,18 @@ internal fun <T> startReplacementBeforeRetiringConflicts(
         }
         throw failure
     }
-    conflicts.forEach(retireConflict)
+    try {
+        conflicts.forEach(retireConflict)
+    } catch (failure: Throwable) {
+        // The candidate is already audible. If retirement cannot complete, fail closed by
+        // abandoning the new owner before reporting the old-owner failure.
+        try {
+            abandonCandidate(candidate)
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
 }
 
 /**
@@ -507,13 +518,22 @@ class JavaSoundWavPlayer internal constructor(
     private inner class StartedLoopSession(
         private val candidates: List<ActiveVoice>,
     ) : DesktopStartedLoopSession {
-        private var retired = false
+        private var resolved = false
 
         override fun retirePriorPlayback() {
             synchronized(this@JavaSoundWavPlayer) {
-                check(!retired) { "Started loop session was already retired" }
-                retired = true
+                check(!resolved) { "Started loop session was already resolved" }
                 retirePriorPlayback(candidates)
+                resolved = true
+            }
+        }
+
+        override fun abandonCandidates() {
+            synchronized(this@JavaSoundWavPlayer) {
+                check(!resolved) { "Started loop session was already resolved" }
+                val cleanupFailure = abandonCandidateSession(candidates, emptyList())
+                resolved = true
+                if (cleanupFailure != null) throw cleanupFailure
             }
         }
     }

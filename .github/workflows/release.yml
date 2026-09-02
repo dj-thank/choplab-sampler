@@ -145,14 +145,16 @@ jobs:
             echo "CHOPLAB_ANDROID_CERT_SHA256=$CERT_SHA256"
           } >> "$GITHUB_ENV"
 
-      - name: Validate, test, lint, build release APK, and generate SBOM
+      - name: Validate, test, lint, build debug preview and signed release candidate, and generate SBOM
         shell: bash
         run: |
           ./scripts/validate_project.sh
           ./gradlew --stacktrace \
             :shared:testAndroidHostTest \
             :app:testDebugUnitTest \
+            :app:lintDebug \
             :app:lintRelease \
+            :app:assembleDebug \
             :app:assembleRelease \
             cyclonedxBom
 
@@ -164,13 +166,13 @@ jobs:
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
           IS_TAG_RELEASE: ${{ needs.metadata.outputs.is_tag_release }}
         run: |
-          mapfile -t apks < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print)
-          [[ "${#apks[@]}" -eq 1 ]] || {
-            printf 'Expected one release APK, found %s: %s\n' "${#apks[@]}" "${apks[*]}" >&2
+          mapfile -t release_apks < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print)
+          [[ "${#release_apks[@]}" -eq 1 ]] || {
+            printf 'Expected one release APK, found %s: %s\n' "${#release_apks[@]}" "${release_apks[*]}" >&2
             exit 1
           }
           verify_args=(
-            --apk "${apks[0]}"
+            --apk "${release_apks[0]}"
             --version "$RELEASE_VERSION"
             --version-code "$RELEASE_BUILD_NUMBER"
           )
@@ -178,6 +180,18 @@ jobs:
             verify_args+=(--require-signed --expected-cert-sha256 "$CHOPLAB_ANDROID_CERT_SHA256")
           fi
           python3 scripts/verify_android_release.py "${verify_args[@]}"
+
+          mapfile -t debug_apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print)
+          [[ "${#debug_apks[@]}" -eq 1 ]] || {
+            printf 'Expected one public debug APK, found %s: %s\n' "${#debug_apks[@]}" "${debug_apks[*]}" >&2
+            exit 1
+          }
+          python3 scripts/verify_android_release.py \
+            --apk "${debug_apks[0]}" \
+            --version "$RELEASE_VERSION" \
+            --version-code "$RELEASE_BUILD_NUMBER" \
+            --require-signed \
+            --allow-debug-preview
 
           sbom='build/reports/cyclonedx/bom.json'
           [[ -s "$sbom" ]] || {
@@ -190,9 +204,9 @@ jobs:
             --name ChopLab \
             --version "$RELEASE_VERSION"
           mkdir -p dist
-          apk_target="dist/ChopLab-${RELEASE_TAG}-android.apk"
+          apk_target="dist/ChopLab-${RELEASE_TAG}-android-debug.apk"
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
-          cp "${apks[0]}" "$apk_target"
+          cp "${debug_apks[0]}" "$apk_target"
           cp "$sbom" "$sbom_target"
           for file in "$apk_target" "$sbom_target"; do
             printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"
@@ -276,7 +290,7 @@ jobs:
           retention-days: 7
 
   build-windows:
-    name: Windows app-image preview
+    name: Windows app-image verification
     needs: metadata
     runs-on: windows-latest
     timeout-minutes: 45
@@ -297,7 +311,7 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:packageWindows
+        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:packageWindows
 
       - name: Test data-preserving Windows user install
         shell: pwsh
@@ -327,10 +341,10 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $(Split-Path -Leaf $archive)" | Set-Content -Encoding utf8 "$archive.sha256"
 
-      - name: Upload Windows assets
+      - name: Upload Windows verification artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: choplab-windows-release-assets
+          name: choplab-windows-verification-assets
           if-no-files-found: error
           path: dist/*
           retention-days: 7
@@ -404,9 +418,8 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
-            dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-android-debug.apk
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
-            dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-release-manifest.json
           subject-version: ${{ needs.metadata.outputs.version }}
 
@@ -414,9 +427,8 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
-            dist/ChopLab-${{ needs.metadata.outputs.tag }}-android.apk
+            dist/ChopLab-${{ needs.metadata.outputs.tag }}-android-debug.apk
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
-            dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
           subject-version: ${{ needs.metadata.outputs.version }}
           sbom-path: dist/ChopLab-${{ needs.metadata.outputs.tag }}-sbom.cdx.json
 

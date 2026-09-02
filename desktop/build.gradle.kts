@@ -28,6 +28,39 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // The offscreen input fixture has its own bounded, explicitly headless target.
+    exclude("**/ui/DesktopLongPressUiTest*")
+}
+
+tasks.register<Test>("desktopLongPressUiTest") {
+    group = "verification"
+    description = "Exercise the real shared deck with offscreen Desktop mouse input and silent audio ports"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.choplab.desktop.ui.DesktopLongPressUiTest")
+        includeTestsMatching("com.choplab.desktop.DesktopSamplerControllerTest.h13*")
+    }
+    maxParallelForks = 1
+    // An explicit input-evidence invocation must execute, not reuse a prior XML receipt.
+    outputs.upToDateWhen { false }
+    systemProperty("java.awt.headless", "true")
+    systemProperty("skiko.renderApi", "SOFTWARE")
+    val evidenceDirectory = layout.buildDirectory.dir("reports/tests/desktopLongPressUiTest/evidence")
+    val temporaryDirectory = layout.buildDirectory.dir("tmp/desktopLongPressUiTest")
+    systemProperty("h13.evidenceDir", evidenceDirectory.get().asFile.absolutePath)
+    systemProperty("java.io.tmpdir", temporaryDirectory.get().asFile.absolutePath)
+    systemProperty("user.home", temporaryDirectory.get().dir("home").asFile.absolutePath)
+    systemProperty("h13.negativeShortPress", providers.gradleProperty("h13NegativeShortPress").orElse("false").get())
+    doFirst {
+        evidenceDirectory.get().asFile.mkdirs()
+        temporaryDirectory.get().dir("home").asFile.mkdirs()
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
 }
 
 tasks.register<JavaExec>("runWasapiProbe") {
