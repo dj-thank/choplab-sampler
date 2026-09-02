@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（PR #84 Compose 1.11.1 stable-pinのhosted再検証待ち）:** `h13-github-release-20260902.md`。PR #83 head `13e41af`はmerge commit `2864117`としてmainへ統合済み。Compose 1.12のoffscreen `RectManager`破損がclose-only filter後のrenderにも再発したため、current `deed143` / tree `bb01345`はplugin/runtime/foundation/UIを実績ある1.11.1へpinし、例外filter/classifierを撤去した。JDK 17 local H13 24/24、Desktop 180/180、`installDist`、AndroidTest compile 50 tasks、policy 75/75、public scan 479/0がPASS。次はcurrent headの全checks、threads 0、fresh review、merge、merged-main checks、immutable `v0.17.1` tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+**進行中（v0.17.2 signer-verifier recoveryのPR待ち）:** `h13-github-release-20260902.md`。PR #84はexact head `51238b1`の8/8 checks・no-finding review・threads 0後に`main@f6cbfdc`へ統合され、merged-main 4/4もPASS。immutable `v0.17.1` tag workflowはbuild/tests/SBOM後、signer label解析でstaging前に停止しReleaseなし。current `cb7ba1f` / tree `66b5cfd`はPEM DER SHA-256をtext digestと相互確認し、versionを`0.17.2 (29)`へ進めた。新PEM 4/4、verifier 38/38、policy 79/79、actual debug APK、public scan 481/0がLOCAL PASS。次は新PRのchecks/review/merge、merged-main checks、immutable `v0.17.2` tag workflow、Release read-back。`v0.17.0`/`v0.17.1`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
