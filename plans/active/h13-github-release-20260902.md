@@ -1,22 +1,22 @@
-# H13 GitHub integration and v0.17.1 release
+# H13 GitHub integration and v0.17.2 release recovery
 
 ## Purpose
 
-Integrate the accepted Windows CHOP long-press correction onto the current GitHub `main`, retain the lightweight H16/H19 provenance without committing local binaries or profiles, and publish immutable `v0.17.1` artifacts only after the merged revision passes the repository's release contract.
+Keep the accepted Windows CHOP long-press correction on GitHub `main`, preserve H16/H19 and PR #83/#84 evidence, and recover the failed immutable `v0.17.1` tag workflow through a new `v0.17.2` revision whose signer verification and release contract pass end to end.
 
 ## Exact starting point and ownership
 
 - Sole writer: the root integrator for this bounded task.
 - Remote: `https://github.com/dj-thank/choplab-sampler.git`.
-- Current base: `origin/main@d3291a522699633d5b7426e4fff66ca4f7b55c09`, tree `c664812a0f213bd33532db6f900ebd62685044e4`. It contains merged PR #83, setup-java PR #82, and Compose Multiplatform 1.12.0 PR #80.
-- Current integration branch/worktree: `codex/choplab-a11y-stability-20260902` in the dedicated clean H13/v0.17.1 worktree.
+- Current base: `origin/main@e71e0fde2e8a7ef82020cfc905d07473b95c073b`, tree `3117c7f36307217e6d5ce7d27091eaa7ec133695`. It contains merged PR #83, PR #84, and the v0.17.2 signer-verifier recovery PR #85.
+- Current integration branch/worktree: `codex/choplab-android-clipping-20260902` in the dedicated clean Android audio worktree.
 - Preserved boundary: the canonical `agent/gpt-pro-ui-integration@6033d85b` checkout remains dirty and must not be staged, reset, cleaned, or used for the merge.
 
 ## Change set
 
 - Replay the three accepted H13 commits without changing their production/test intent.
 - Record the exact H16 local package and H19 isolated-startup outcomes as lightweight Markdown only.
-- Advance `choplabVersion` from `0.17.0` to `0.17.1` and `choplabBuildNumber` from 27 to 28.
+- Preserve the immutable failed `v0.17.1` tag and advance embedded identity to `0.17.2 (29)` for the corrected release attempt.
 - Run the dedicated H13 input target in both Windows PR verification and immutable Release packaging.
 - Add release notes that keep local component, package, startup, provider/public, device, and Human gates separate.
 
@@ -26,7 +26,7 @@ Integrate the accepted Windows CHOP long-press correction onto the current GitHu
 2. Run the dedicated 24-test Desktop input target (12 product UI interactions + 12 controller tests) and the repository's Desktop/shared/JVM verification on the final local candidate.
 3. Review the complete diff against the fixed base for both repository standards and the H13/release specification.
 4. Push the branch, open a PR, require the Android, Windows, iOS, and supply-chain checks to finish successfully, and read back mergeability before merge.
-5. After merge, create a new annotated `v0.17.1` tag only at the exact merged commit. Never move or replace `v0.17.0` or any published asset.
+5. After merge, create a new annotated `v0.17.2` tag only at the exact merged commit. Never move or replace `v0.17.0`, `v0.17.1`, or any published asset.
 6. Require the tag workflow to verify Android, iOS and Windows, then attest and publish only the declared Android/iOS public assets. Windows remains a short-lived verification artifact. If signing, workflow, permissions, CI, or immutable-publication policy fails, stop at that exact gate without manually weakening or replacing it.
 
 Rollback before merge is branch deletion or PR closure; after merge it is a new corrective PR. Published tags/assets are immutable and are never rolled back by rewriting history.
@@ -59,15 +59,20 @@ Documentation successor `f47519f75a9e52e6358643c70dbd8487d2458eaf` reproduced th
 
 Current repair `deed143171806f282768a82d0b9e4fb1fea2a4f8` / tree `bb01345e8bc2c29e5e530229565fb33ea94660ff` pins Compose plugin/runtime/foundation/UI to the previously verified 1.11.1 line, removes the 1.12-only runtime exclusions, and removes the exception filter/classifier. Pointer-target and Android framework-tree readiness remain. JDK 17 local verification passes H13 24/24, Desktop 180/180, `installDist`, AndroidTest Kotlin compile (50 tasks), policy 75/75, public scan 479/0, and `git diff --check`. The current frontier is exact-head hosted CI and fresh review, then PR #84 merge, merged-main checks, immutable `v0.17.1` tag workflow, and Release read-back.
 
+PR #84 exact head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` passed checks 8/8, no-finding review and six resolved threads, then merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; merged-main checks passed 4/4. Annotated `v0.17.1` tag object `20f1beeaf68bc88da9913bf059bcb2aff9a5dcd4` peels to that merge and remains immutable. Release run `33622584694` built/tests/lint/SBOM successfully but Android job `100222855379` stopped before staging because the verifier could not read a textual signer-certificate SHA-256 label. No Release was published.
+
+Signer recovery `cb7ba1fe6b8f40f0fc849d25d0953fd32e422bde` / tree `66b5cfd1acad5b05fa7ab956754db183d5b3d8a0` requests PEM signer evidence, hashes DER bytes, cross-checks any text digest, and rejects missing/malformed/multiple/conflicting evidence. Embedded identity is `0.17.2 (29)`. PR #85 head `a7bf79f` merged as `e71e0fde2e8a7ef82020cfc905d07473b95c073b`; merged-main checks remain a current read-back gate. Publication stays held until the product-convergence milestones below finish.
+
 ## Product convergence extension — Android fidelity and final main
 
 ### Purpose and user-visible outcome
 
-Ship one current `main` where Android no longer applies audible nonlinear shaping to every normal sample, all accepted UI/security/release changes coexist, and `v0.17.1` is built only from the final verified merge.
+Ship one current `main` where Android no longer applies audible nonlinear shaping to every normal sample, all accepted UI/security/release changes coexist, and a new `v0.17.2` is built only from the final verified merge.
 
 ### Current state
 
 - PR #84 head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` was normally merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; its four merged-main workflows passed.
+- PR #85 head `a7bf79fe790adff178e9dc3c0ed840ba2b489168` was normally merged as `e71e0fde2e8a7ef82020cfc905d07473b95c073b`; it advances release identity to `0.17.2 (29)` and repairs PEM-backed signer verification. Publication remains held for product convergence.
 - Audio product checkpoint `b63ed650e47c5555f4a328171c222ca4888a88ae`; decoder/master hardening `9dc71a4652c943ded89c62bb50d9512270182d20`; final review hardening `7e7c7ae5a5b30f7f3e526ba887825fe60b400fd1` / tree `b45b0d7f8afca04684e2149505cf4b3e869ef2ed`.
 - Exact working branch is `codex/choplab-android-clipping-20260902`; the dirty canonical checkout and all existing tags/releases remain untouched.
 
@@ -90,11 +95,12 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 3. Merge the reviewed PR #69 scanner, CI/release hardening, and Windows/UI brush-up in dependency order; rerun each successor against current main.
 4. Reconcile definition-of-done and feature matrix to the production MVP, prove open PR/TODO zero for admitted scope, configure final branch/tag protections, and run exact-main Windows/Android/iOS/supply-chain gates.
 5. Run available Android AVD and Windows package/audio E2E on exact final bytes. Keep physical-device, Spotify-account, screen-reader speech and Human listening claims unpromoted unless actually observed.
-6. Create only a new annotated `v0.17.1` tag at final main, allow the hardened workflow to rebuild/publish, then reverse-download and verify manifests, hashes, attestations and anonymous access.
+6. Create only a new annotated `v0.17.2` tag at final main, allow the hardened workflow to rebuild/publish, then reverse-download and verify manifests, hashes, attestations and anonymous access. Never move the failed `v0.17.1` tag.
 
 ### Progress
 
 - [x] 2026-09-02 — PR #84 merged normally; exact merged-main workflows 4/4 succeeded.
+- [x] 2026-09-02 — PR #85 signer recovery merged normally as `e71e0fd`; merged-main read-back remains separate.
 - [x] 2026-09-02 — Old master distortion reproduced and repaired at `b63ed65`; shared Android/Desktop hosts and Android/offline parity passed.
 - [x] 2026-09-02 — Decoder/master negative paths repaired at `9dc71a4`; focused RED then bounded-memory GREEN.
 - [x] 2026-09-02 — Whole-signal DC confirmation and explicit/dense invariants completed at `7e7c7ae`.
