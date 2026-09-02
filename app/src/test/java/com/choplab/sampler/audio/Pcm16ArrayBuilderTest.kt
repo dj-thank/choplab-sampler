@@ -113,6 +113,27 @@ class Pcm16ArrayBuilderTest {
     }
 
     @Test
+    fun decodedFloatPcmRejectsInfinityBeforeNominalRangeClamping() {
+        val source = ByteBuffer.allocate(Float.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .apply {
+                putFloat(Float.POSITIVE_INFINITY)
+                flip()
+            }
+        val destination = Pcm16ArrayBuilder(initialCapacity = 1, maximumSize = 1)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            appendDecodedPcm(
+                source = source,
+                encoding = AudioFormat.ENCODING_PCM_FLOAT,
+                sourceChannelCount = 1,
+                destination = destination,
+            )
+        }
+        assertEquals(0, destination.size)
+    }
+
+    @Test
     fun dcRemovalNeverCreatesClippedPcmPeaks() {
         val safe = ShortArray(100) { 1_000 }
         removeTinyDcOffsetWithoutClipping(safe, channelCount = 1)

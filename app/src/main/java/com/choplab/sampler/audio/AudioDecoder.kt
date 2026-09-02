@@ -108,7 +108,13 @@ internal fun appendDecodedPcm(
         AudioFormat.ENCODING_PCM_FLOAT -> {
             val values = source.asFloatBuffer()
             while (values.remaining() >= channels) {
-                appendFrame { values.get().coerceIn(-1f, 1f) }
+                appendFrame {
+                    val value = values.get()
+                    require(value.isFinite()) {
+                        "デコード音声に非有限PCMサンプルが含まれています"
+                    }
+                    value.coerceIn(-1f, 1f)
+                }
             }
         }
 
