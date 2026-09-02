@@ -194,9 +194,6 @@ class SourceWaveformDeviceTest {
 
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(100, 5_000)
-        val root = requireNotNull(automation.rootInActiveWindow) {
-            "UiAutomation must expose the active accessibility window"
-        }
         val orderedDescriptions = listOf(
             "選択開始ハンドル",
             "選択終了ハンドル",
@@ -206,6 +203,18 @@ class SourceWaveformDeviceTest {
             "チョップ4 の位置",
             "チョップ5 の位置",
         )
+        // UiAutomation can expose the active window before Compose has populated every
+        // framework node. Reacquire the root until the complete tree is observable instead
+        // of retaining an early, permanently incomplete AccessibilityNodeInfo snapshot.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            val currentRoot = automation.rootInActiveWindow ?: return@waitUntil false
+            orderedDescriptions.all { description ->
+                currentRoot.findNodeByContentDescription(description) != null
+            }
+        }
+        val root = requireNotNull(automation.rootInActiveWindow) {
+            "UiAutomation must expose the active accessibility window"
+        }
         val frameworkNodes = orderedDescriptions.map { description ->
             requireNotNull(root.findNodeByContentDescription(description)) {
                 "$description must be present in the framework accessibility tree"
