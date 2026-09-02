@@ -1,6 +1,6 @@
 # Release security and repository controls
 
-Updated: 2026-09-02
+Updated: 2026-09-03
 
 This document separates controls enforced by committed source from controls that require a GitHub repository administrator. Do not report an administrator control as complete until its setting has been read back from GitHub.
 
@@ -26,7 +26,7 @@ Safe-named ZIP member text, filenames, comments and local/central extra fields a
 
 Resource limits are fail-closed: 4,096 entries, 512 KiB ordinary text output per member, 4 MiB metadata/output per archive, 4 MiB aggregate compressed input for decoded text, 100:1 expansion and a 16 MiB LZMA dictionary checked before decoder construction. A bounded `.app` main executable is fully decoded and scanned. Arbitrary oversized safe-named entries are rejected regardless of magic prefix; only exact JDK `runtime/lib/modules` may be fully decoded up to 128 MiB per JIMAGE under the shared 384 MiB binary-secret body budget, and it must validate as a structurally consistent JIMAGE before its full body is scanned. Findings redact secret-shaped labels before writing CI logs.
 
-The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
+The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. The exact committed-source review snapshot uses a separate `--source-archive` boundary of 4 MiB/member and 16 MiB total, without weakening the generic 4 MiB archive total. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
 
 ZIP-compatible nested members are detected by structure as well as suffix and recursively scanned to depth 3 under a 64-archive count, 16 MiB/member bound, and shared 256 MiB compressed-container and 256 MiB expanded-work limits. Current/explicit root candidates also share separate 128-archive and 512 MiB compressed/expanded aggregate budgets; historical roots use their stricter 128-archive and 64 MiB container/decoded aggregate budgets. Unsupported nested formats are rejected. Reachable non-commit refs are enumerated with NUL-safe commands, bounded before peeling, and annotated tags share a 512-operation peel budget so a tag chain cannot hide a historical ZIP or cause unbounded `cat-file` work.
 
@@ -90,7 +90,7 @@ After downloading a runnable file and `SHA256SUMS`, verify the digest and GitHub
 
 ```bash
 sha256sum --check SHA256SUMS
-gh attestation verify ChopLab-v0.17.1-android-debug.apk --repo dj-thank/choplab-sampler
+gh attestation verify ChopLab-v0.17.2-android-debug.apk --repo dj-thank/choplab-sampler
 ```
 
 The attestation binds an artifact to a repository workflow and source revision. It does not prove the program has no vulnerabilities, and it does not replace platform code signing or user review of requested permissions.
