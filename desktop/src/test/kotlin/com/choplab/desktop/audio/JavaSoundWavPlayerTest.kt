@@ -1,5 +1,6 @@
 package com.choplab.desktop.audio
 
+import com.choplab.sampler.audio.RenderedPcm
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
@@ -8,6 +9,7 @@ import java.util.ArrayDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import javax.sound.sampled.Clip
 import javax.sound.sampled.LineEvent
 import javax.sound.sampled.LineListener
@@ -17,6 +19,54 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class JavaSoundWavPlayerTest {
+    @Test
+    fun sourceRenderDoesNotHoldTheEngineMonitor() {
+        val probe = ClipProbe()
+        val renderEntered = CountDownLatch(1)
+        val releaseRender = CountDownLatch(1)
+        val loadFailure = AtomicReference<Throwable?>(null)
+        val player = JavaSoundWavPlayer(
+            clipFactory = DesktopClipFactory { probe.clip },
+            sourceRenderer = { audio, _ ->
+                renderEntered.countDown()
+                check(releaseRender.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding the detached source render"
+                }
+                RenderedPcm(audio.samples.copyOf(), audio.channelCount)
+            },
+        )
+        val loadThread = Thread({
+            loadFailure.set(
+                runCatching { player.loadPcm(testAudio(), pitchSemitones = 5f) }
+                    .exceptionOrNull(),
+            )
+        }, "ChopLab-Test-Detached-Source-Render")
+        val stopCompleted = CountDownLatch(1)
+        try {
+            loadThread.start()
+            assertTrue(renderEntered.await(2L, TimeUnit.SECONDS))
+            Thread {
+                player.stopAll()
+                stopCompleted.countDown()
+            }.start()
+
+            assertTrue(
+                stopCompleted.await(1L, TimeUnit.SECONDS),
+                "Audio actions must not wait for the whole source render",
+            )
+            releaseRender.countDown()
+            loadThread.join(5_000L)
+
+            assertTrue(!loadThread.isAlive)
+            assertEquals(null, loadFailure.get())
+            assertEquals(1, probe.openCount)
+        } finally {
+            releaseRender.countDown()
+            loadThread.join(5_000L)
+            player.close()
+        }
+    }
+
     @Test
     fun failedClipOpenClosesTheUnpublishedLineExactlyOnce() {
         val probe = ClipProbe(failOn = "open")

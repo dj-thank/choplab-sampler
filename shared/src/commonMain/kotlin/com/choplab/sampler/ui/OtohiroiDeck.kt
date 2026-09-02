@@ -4789,8 +4789,14 @@ private fun SourceWaveform(
                     detectTransformGestures { centroid, pan, zoomChange, _ ->
                         if (size.width <= 0) return@detectTransformGestures
                         val total = visibleAudio?.frameCount ?: 1
-                        val focusFrame = waveformFrameAtX(centroid.x, size.width.toFloat(), visibleStart, visibleFrames, total)
-                        val next = zoomViewportAtFocus(focusFrame, total, zoom, zoomChange, 64f)
+                        val next = zoomViewportAtAnchor(
+                            totalFrames = total,
+                            zoom = zoom,
+                            scroll = scroll,
+                            zoomChange = zoomChange,
+                            maximumZoom = 64f,
+                            anchorFraction = centroid.x / size.width,
+                        )
                         val panned = panWaveformViewport(total, next.zoom, next.scroll, -pan.x / size.width)
                         scroll = panned.scroll
                         zoom = panned.zoom
@@ -4804,8 +4810,14 @@ private fun SourceWaveform(
                             val change = event.changes.firstOrNull() ?: continue
                             val total = visibleAudio?.frameCount ?: continue
                             val wheel = resolveWaveformWheelGesture(change.scrollDelta.x, change.scrollDelta.y)
-                            val focusFrame = waveformFrameAtX(change.position.x, size.width.toFloat(), visibleStart, visibleFrames, total)
-                            val next = zoomViewportAtFocus(focusFrame, total, zoom, wheel.zoomChange, 64f)
+                            val next = zoomViewportAtAnchor(
+                                totalFrames = total,
+                                zoom = zoom,
+                                scroll = scroll,
+                                zoomChange = wheel.zoomChange,
+                                maximumZoom = 64f,
+                                anchorFraction = change.position.x / size.width,
+                            )
                             val panned = panWaveformViewport(total, next.zoom, next.scroll, wheel.panFraction)
                             scroll = panned.scroll
                             zoom = panned.zoom

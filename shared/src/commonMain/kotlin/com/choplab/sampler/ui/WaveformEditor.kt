@@ -329,14 +329,14 @@ fun WaveformEditor(
                                 if (event.type != PointerEventType.Scroll || canvasSize.width <= 0) continue
                                 val change = event.changes.firstOrNull() ?: continue
                                 val wheel = resolveWaveformWheelGesture(change.scrollDelta.x, change.scrollDelta.y)
-                                val focusFrame = waveformFrameAtX(
-                                    change.position.x,
-                                    canvasSize.width.toFloat(),
-                                    visibleStart,
-                                    visibleFrames,
-                                    totalFrames,
+                                val next = zoomViewportAtAnchor(
+                                    totalFrames = totalFrames,
+                                    zoom = zoom,
+                                    scroll = scroll,
+                                    zoomChange = wheel.zoomChange,
+                                    maximumZoom = maximumZoom,
+                                    anchorFraction = change.position.x / canvasSize.width,
                                 )
-                                val next = zoomViewportAtFocus(focusFrame, totalFrames, zoom, wheel.zoomChange, maximumZoom)
                                 val panned = panWaveformViewport(
                                     totalFrames = totalFrames,
                                     zoom = next.zoom,
@@ -359,14 +359,14 @@ fun WaveformEditor(
                             allowVerticalDragPassThrough = allowVerticalDragPassThrough,
                         ) { centroid, pan, zoomChange ->
                             if (canvasSize.width <= 0) return@detectWaveformTransformGestures
-                            val focusFrame = waveformFrameAtX(
-                                centroid.x,
-                                canvasSize.width.toFloat(),
-                                visibleStart,
-                                visibleFrames,
-                                totalFrames,
+                            val next = zoomViewportAtAnchor(
+                                totalFrames = totalFrames,
+                                zoom = zoom,
+                                scroll = scroll,
+                                zoomChange = zoomChange,
+                                maximumZoom = maximumZoom,
+                                anchorFraction = centroid.x / canvasSize.width,
                             )
-                            val next = zoomViewportAtFocus(focusFrame, totalFrames, zoom, zoomChange, maximumZoom)
                             val panned = panWaveformViewport(
                                 totalFrames = totalFrames,
                                 zoom = next.zoom,
