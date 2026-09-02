@@ -23,7 +23,7 @@ Exact follow-up source commit: `8b58e4b294d73e24a75c7a47c06d08502182d69a` / tree
 
 ## Gate
 
-Exact heads `a1fdc80` and `a4030ea` each completed Android, Windows, iOS, and supply-chain push/PR checks 8/8, establishing scoped PR/provider evidence for those revisions. The current documentation successor still requires its own checks and review closure; merge read-back, merged-main checks, and the still-absent `v0.17.1` tag/Release remain mandatory. Physical device/audio, Spotify account/provider, screen-reader speech, and Human gates remain unclaimed.
+Exact heads `a1fdc80` and `a4030ea` each completed Android, Windows, iOS, and supply-chain push/PR checks 8/8, establishing scoped PR/provider evidence only for those revisions. Head `f47519f` later reproduced Compose 1.12 scene corruption during render and is not release-eligible. Current repair `deed143` remains `LOCAL_PASS` until its own checks and review closure; merge read-back, merged-main checks, and the still-absent `v0.17.1` tag/Release remain mandatory. Physical device/audio, Spotify account/provider, screen-reader speech, and Human gates remain unclaimed.
 
 ## Hosted follow-up and offscreen harness repair
 
@@ -31,7 +31,7 @@ The first follow-up head `b6d88a4` passed its Android push run, but the parallel
 
 The harness reacquires each pointer target immediately before input and waits at most one second for exactly one finite, non-empty node fully inside the 1100 × 1000 offscreen viewport. A missing or duplicate node remains a hard failure with the last observed descriptions and bounds. The dedicated Gradle task also emits full exception causes and stack traces on future failures.
 
-Exact teardown repair: `df61ac4406481b0837d9ac4582eaee906f4a658c` / tree `aaa17d7f4893315dcc4c5ca60f18b77064a2310d`.
+Superseded teardown diagnostic: `df61ac4406481b0837d9ac4582eaee906f4a658c` / tree `aaa17d7f4893315dcc4c5ca60f18b77064a2310d`.
 
 - Only the exact Compose 1.12 offscreen close signature is classified: `IllegalArgumentException`, message `LayoutNode <digits> not found in RectList`, a `RectManager.remove` frame, and an `ImageComposeScene.close` frame must all be present.
 - Unexpected close failures still escape. A deterministic classifier test covers the known signature plus missing-stack and wrong-message negative cases.
@@ -40,3 +40,13 @@ Exact teardown repair: `df61ac4406481b0837d9ac4582eaee906f4a658c` / tree `aaa17d
 A full combined local gate subsequently showed `successfulUserLoadSurvivesAStaleStartupRecoveryFailureDuringClose` finishing in 2.37 seconds while its test joined for exactly 2 seconds. The product correctly waits for the released recovery future; only the outer test observation budget is raised to 5 seconds, with the same assertion that close must terminate and persist the successful user selection.
 
 The same combined suite also observed a successful zero-delay autosave after the former shared two-second polling deadline. Only the shared `awaitCondition` polling helper (`e911b417ef1740f69b230731d25c07a158d2147a` / tree `8a28eccc521636f11065cf5f63feca5560687095`) and the one stale-recovery close join (`75025c51754f8c693b81ed0cef7dd6a852aef7c8` / tree `52b24bfd4a2c9a76fa8a3407b643d930adb730e5`) use the five-second observation budget; other two-second/one-second joins, latches, and future deadlines are unchanged. Integrated head `a4030ea8973b278da1e9e04a37231b8178d32d4b` / tree `e2c36cd58008af6759fd2100bb04bdf529de5696` passed all eight hosted push/PR checks.
+
+## Stable dependency repair
+
+Head `f47519f75a9e52e6358643c70dbd8487d2458eaf`, Android PR run `33619352222`, job `100212539931`, proved the close-only diagnostic insufficient. The known close signature was observed and filtered, then the same `LayoutNode 1231 not found in RectList` corruption escaped from `RectManager.recalculateRectIfDirty` during the next `ImageComposeScene.render()`/`settle()`. One test failed; Android build and instrumentation were correctly skipped.
+
+Exact current repair: `deed143171806f282768a82d0b9e4fb1fea2a4f8` / tree `bb01345e8bc2c29e5e530229565fb33ea94660ff`.
+
+- Compose plugin/runtime/foundation/UI are pinned from 1.12.0 back to the previously verified 1.11.1 line. The 1.12-only Desktop runtime exclusions are removed.
+- The close exception filter and synthetic classifier test are removed. Offscreen render and close failures are again fully fail-closed; laid-out pointer-target reacquisition and Android framework-tree readiness remain.
+- JDK 17 local verification: H13 24/24, Desktop 180/180, `installDist` PASS, AndroidTest Kotlin compile PASS (50 tasks), policy 75/75, public-surface 479 with credential/signing/audio candidates 0, and `git diff --check` PASS.
