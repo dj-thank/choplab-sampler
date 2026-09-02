@@ -212,11 +212,11 @@ class SourceWaveformDeviceTest {
                 currentRoot.findNodeByContentDescription(description) != null
             }
         }
-        val root = requireNotNull(automation.rootInActiveWindow) {
-            "UiAutomation must expose the active accessibility window"
+        val readyRoot = requireNotNull(automation.rootInActiveWindow) {
+            "UiAutomation must expose the ready accessibility window"
         }
         val frameworkNodes = orderedDescriptions.map { description ->
-            requireNotNull(root.findNodeByContentDescription(description)) {
+            requireNotNull(readyRoot.findNodeByContentDescription(description)) {
                 "$description must be present in the framework accessibility tree"
             }
         }
@@ -224,7 +224,7 @@ class SourceWaveformDeviceTest {
         assertEquals(
             "Framework depth-first tree order must follow S, E, then numbered chop markers",
             orderedDescriptions,
-            root.depthFirstDescriptions().filter { it in orderedDescriptions },
+            readyRoot.depthFirstDescriptions().filter { it in orderedDescriptions },
         )
         frameworkNodes.forEachIndexed { index, node ->
             assertTrue(

@@ -6,9 +6,7 @@
 
 ## Current selection
 
-**進行中（LOCAL_PASS / push・PR承認待ち）:** `windows-ui-brushup-20260902.md`。PR #83 最新 head `13e41af` へ predecessor を移植し、review repair product `822305c` で連続KEY変更のresume race、ALL STOP後のlate resume、確認対象変更後の誤確定を追加修復。shared 90 / jvm-core 88 / desktop 185 / H13 24 / Android unit 284、AndroidTest compile、policy 75、public surface、project validator、`packageWindows` がPASS。旧 `a5f5a17` は元branchに保全し、公開・tag・canonical checkout は変更しない。
-
-**直前の selection（PR #83 待ち）:** `h13-github-release-20260902.md`。第4修正 head `13e41af` は同一 bytes の push run で Android を含む4 workflowがPASSした一方、同時の pull_request run は `SourceWaveformDeviceTest` の accessibility tree 待機が1件失敗し、PR は `UNSTABLE`。公開、merge、tag、Release は未実施で、旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+**進行中（単一product convergence / Windows UI brush-up統合）:** `h13-github-release-20260902.md`。PR #86 Android音質はexact review/checks後`main@012b131`へ統合済み。UI product `822305c`はasync KEY resume、WAV bulk import、chooser/startup、hover/wheel/layout/confirmation修正を保持し、旧local gateはshared 90 / JVM 88 / Desktop 185 / H13 24 / Android 284 / package PASS。次はcurrent main統合の再検証、PR #69 merge、UI PR、release hardening、final-main全gate、immutable `v0.17.2` publication。既存tag/Release、dirty canonical checkoutは変更しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
