@@ -475,6 +475,16 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(VerificationError, "malformed PEM"):
             read_apksigner_certificate_sha256(output)
 
+    def test_rejects_multiple_identical_apksigner_pem_certificates(self) -> None:
+        certificate = b"repeated signer certificate DER"
+        pem = (
+            "-----BEGIN CERTIFICATE-----\n"
+            f"{base64.b64encode(certificate).decode('ascii')}\n"
+            "-----END CERTIFICATE-----\n"
+        )
+        with self.assertRaisesRegex(VerificationError, "multiple PEM"):
+            read_apksigner_certificate_sha256(pem + pem)
+
 
 if __name__ == "__main__":
     unittest.main()
