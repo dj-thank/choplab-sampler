@@ -1,6 +1,6 @@
-# Pro reference gaps
+# Historical Pro reference gaps
 
-The files in `reference/pro-v0.2/` are partial artifacts. Codex must reconstruct interfaces and verify behavior instead of assuming missing files existed.
+The files in `reference/pro-v0.2/` are partial historical design artifacts. They do not define the current supported product and the items below are not current release TODOs. If a future specification explicitly adopts this direction, interfaces must be reconstructed and verified instead of assuming missing files existed.
 
 ## Native audio gaps
 
@@ -68,7 +68,7 @@ Not supplied in the Pro tree:
 - app startup/load/recovery path
 - updated manifest/resources/tests
 
-## Correct integration strategy
+## Historical integration sketch, not an active plan
 
 1. Keep the MVP compiling.
 2. Derive and test the new domain model.

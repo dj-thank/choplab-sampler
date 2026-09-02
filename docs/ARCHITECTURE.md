@@ -173,9 +173,9 @@ import sample rateはproject/archive契約と同じ8–192 kHzです。Android�
 
 次段階では、memory-mapped PCM cache、LRU source cache、background waveform pyramid、streaming decoderを導入する余地があります。
 
-## 9. 製品化ロードマップ
+## 9. Historical option set（inactive）
 
-優先順位の高い順:
+以下は将来仕様を選ぶ際の候補であり、現行releaseのTODOや優先順位ではありません:
 
 1. shared `ProductionCommand` / effect spineと、編集履歴・revision・autosaveを持つ`ProductionSession`
 2. persistent Production、session selection、実適用済みruntime stateの分離

@@ -1,6 +1,6 @@
 # Target architecture
 
-This document is a starting constraint, not proof that the current code implements it.
+This document is a historical/future starting constraint, not proof that the current code implements it and not an active implementation checklist. Current normative scope is [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md).
 
 ## Layers
 
