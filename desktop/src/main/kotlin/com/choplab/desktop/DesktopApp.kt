@@ -34,6 +34,7 @@ import com.choplab.sampler.ui.DocumentAction
 import com.choplab.sampler.ui.documentPickerCanceledMessage
 import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
+import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.event.WindowAdapter
@@ -138,6 +139,10 @@ fun main(args: Array<String>) = application {
             }
         },
     ) {
+        LaunchedEffect(window) {
+            // The shared deck needs at least this much room before rows start clipping.
+            window.minimumSize = Dimension(MINIMUM_WINDOW_WIDTH_PX, MINIMUM_WINDOW_HEIGHT_PX)
+        }
         DisposableEffect(window, padKeyOwner) {
             val focusListener = object : WindowAdapter() {
                 override fun windowLostFocus(event: WindowEvent) {
@@ -252,19 +257,36 @@ fun main(args: Array<String>) = application {
     }
 }
 
-private fun chooseWav(controller: DesktopSamplerController) {
-    val chooser = JFileChooser().apply {
+internal const val MINIMUM_WINDOW_WIDTH_PX = 760
+internal const val MINIMUM_WINDOW_HEIGHT_PX = 600
+
+/** Last folder any document picker used, so consecutive open/save dialogs start where the person was. */
+private var lastDocumentDirectory: String? = null
+
+/**
+ * Building a Swing file chooser walks the Windows shell namespace, which costs seconds on the
+ * first open. Keep one instance for the process so later imports open instantly and remember
+ * the previous folder.
+ */
+private val importChooser: JFileChooser by lazy {
+    JFileChooser().apply {
         dialogTitle = "ChopLabで音声を開く（Windows版はWAV）"
         fileSelectionMode = JFileChooser.FILES_ONLY
         isMultiSelectionEnabled = false
         isAcceptAllFileFilterUsed = false
         fileFilter = DesktopAudioImportPolicy.fileFilter
     }
+}
+
+private fun chooseWav(controller: DesktopSamplerController) {
+    val chooser = importChooser
+    lastDocumentDirectory?.let { directory -> chooser.currentDirectory = File(directory) }
     if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
         controller.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
         return
     }
     val file = chooser.selectedFile ?: return
+    file.parentFile?.let { lastDocumentDirectory = it.absolutePath }
     if (!DesktopAudioImportPolicy.accepts(file)) {
         controller.setStatus("Windows版ではWAV音声を選んでください")
         return
@@ -275,6 +297,7 @@ private fun chooseWav(controller: DesktopSamplerController) {
 
 private fun chooseExportWav(controller: DesktopSamplerController) {
     val dialog = FileDialog(null as Frame?, "書き出すWAVの保存先", FileDialog.SAVE).apply {
+        lastDocumentDirectory?.let { directory = it }
         file = "choplab-export-4-bars.wav"
         filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".wav", ignoreCase = true) }
         isVisible = true
@@ -283,6 +306,7 @@ private fun chooseExportWav(controller: DesktopSamplerController) {
         controller.setStatus(documentPickerCanceledMessage(DocumentAction.EXPORT_WAV))
         return
     }
+    dialog.directory?.let { lastDocumentDirectory = it }
     val output = File(dialog.directory, selected).let { file ->
         if (file.extension.equals("wav", ignoreCase = true)) file else File(file.parentFile, "${file.nameWithoutExtension}.wav")
     }
@@ -296,6 +320,7 @@ private fun chooseProject(controller: DesktopSamplerController, mode: Int) {
         if (saving) "ChopLab制作を保存" else "ChopLab制作を開く",
         mode,
     ).apply {
+        lastDocumentDirectory?.let { directory = it }
         if (saving) file = "choplab-project.choplab"
         filenameFilter = java.io.FilenameFilter { _, name -> name.endsWith(".choplab", ignoreCase = true) }
         isVisible = true
@@ -308,6 +333,7 @@ private fun chooseProject(controller: DesktopSamplerController, mode: Int) {
         )
         return
     }
+    dialog.directory?.let { lastDocumentDirectory = it }
     val file = File(dialog.directory, selected)
     if (saving) controller.saveProject(file) else controller.openProject(file)
 }

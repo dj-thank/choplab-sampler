@@ -45,6 +45,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -321,6 +322,33 @@ fun WaveformEditor(
                             },
                         )
                     }
+                    .pointerInput(audio.id, visibleStart, visibleFrames, canvasSize, maximumZoom) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type != PointerEventType.Scroll || canvasSize.width <= 0) continue
+                                val change = event.changes.firstOrNull() ?: continue
+                                val wheel = resolveWaveformWheelGesture(change.scrollDelta.x, change.scrollDelta.y)
+                                val next = zoomViewportAtAnchor(
+                                    totalFrames = totalFrames,
+                                    zoom = zoom,
+                                    scroll = scroll,
+                                    zoomChange = wheel.zoomChange,
+                                    maximumZoom = maximumZoom,
+                                    anchorFraction = change.position.x / canvasSize.width,
+                                )
+                                val panned = panWaveformViewport(
+                                    totalFrames = totalFrames,
+                                    zoom = next.zoom,
+                                    scroll = next.scroll,
+                                    fraction = wheel.panFraction,
+                                )
+                                scroll = panned.scroll
+                                zoom = panned.zoom
+                                change.consume()
+                            }
+                        }
+                    }
                     .pointerInput(
                         audio.id,
                         visibleStart,
@@ -331,14 +359,14 @@ fun WaveformEditor(
                             allowVerticalDragPassThrough = allowVerticalDragPassThrough,
                         ) { centroid, pan, zoomChange ->
                             if (canvasSize.width <= 0) return@detectWaveformTransformGestures
-                            val focusFrame = waveformFrameAtX(
-                                centroid.x,
-                                canvasSize.width.toFloat(),
-                                visibleStart,
-                                visibleFrames,
-                                totalFrames,
+                            val next = zoomViewportAtAnchor(
+                                totalFrames = totalFrames,
+                                zoom = zoom,
+                                scroll = scroll,
+                                zoomChange = zoomChange,
+                                maximumZoom = maximumZoom,
+                                anchorFraction = centroid.x / canvasSize.width,
                             )
-                            val next = zoomViewportAtFocus(focusFrame, totalFrames, zoom, zoomChange, maximumZoom)
                             val panned = panWaveformViewport(
                                 totalFrames = totalFrames,
                                 zoom = next.zoom,
@@ -607,6 +635,35 @@ fun WaveformEditor(
             }
         }
     }
+}
+
+/** One mouse-wheel notch resolved into a zoom multiplier around the cursor and a viewport pan fraction. */
+data class WaveformWheelGesture(
+    val zoomChange: Float,
+    val panFraction: Float,
+)
+
+/** Zoom applied per vertical wheel notch; horizontal notches (or shift-wheel) pan by a fifth of the view. */
+const val WAVEFORM_WHEEL_ZOOM_STEP = 1.25f
+const val WAVEFORM_WHEEL_PAN_FRACTION = 0.2f
+
+fun resolveWaveformWheelGesture(deltaX: Float, deltaY: Float): WaveformWheelGesture {
+    val horizontal = deltaX.takeIf(Float::isFinite) ?: 0f
+    val vertical = deltaY.takeIf(Float::isFinite) ?: 0f
+    if (horizontal != 0f && abs(horizontal) >= abs(vertical)) {
+        return WaveformWheelGesture(
+            zoomChange = 1f,
+            panFraction = if (horizontal > 0f) WAVEFORM_WHEEL_PAN_FRACTION else -WAVEFORM_WHEEL_PAN_FRACTION,
+        )
+    }
+    return WaveformWheelGesture(
+        zoomChange = when {
+            vertical < 0f -> WAVEFORM_WHEEL_ZOOM_STEP
+            vertical > 0f -> 1f / WAVEFORM_WHEEL_ZOOM_STEP
+            else -> 1f
+        },
+        panFraction = 0f,
+    )
 }
 
 fun initialWaveformViewport(

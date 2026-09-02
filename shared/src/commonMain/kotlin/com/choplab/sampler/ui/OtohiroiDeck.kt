@@ -10,11 +10,11 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -80,6 +81,7 @@ import com.choplab.sampler.audio.scratchProgress
 import com.choplab.sampler.audio.scratchDirectionLabel
 import com.choplab.sampler.audio.scratchSpeedFromGesture
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimPrecision
@@ -123,6 +125,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 internal val DeckBackground = Color(0xFF0F0D08)
 internal val DeckPanel = Color(0xFFEDE2C8)
@@ -133,8 +136,16 @@ internal val DeckGreen = Color(0xFF9FD46B)
 internal val DeckPad = Color(0xFF262116)
 internal val DeckPadAssigned = Color(0xFF38301D)
 internal val DeckPadLit = Color(0xFFFFB25E)
+internal val DeckPanelHover = Color(0xFFE4D8BA)
+internal val DeckLampHover = Color(0xFFFF8A3A)
 
 private val DeckFont = FontFamily.Monospace
+
+/** Widest console the shared deck spreads to; larger windows keep the console centered. */
+const val DECK_MAX_WIDTH_DP = 1600
+
+/** An armed destructive confirmation disarms itself after this delay so a stray first tap never lingers. */
+const val CONFIRM_ACTION_ARM_TIMEOUT_MILLIS = 4_000L
 private val ConsoleShape = RoundedCornerShape(13.dp)
 private val PanelShape = RoundedCornerShape(8.dp)
 private val PlacementPresetChoices = listOf(
@@ -244,9 +255,11 @@ fun OtohiroiDeck(
         contentAlignment = Alignment.Center,
     ) {
         BoxWithConstraints(
+            // fillMaxHeight + widthIn keeps the console at most DECK_MAX_WIDTH_DP wide and centered;
+            // fillMaxSize would pin the minimum width to the window and silently defeat the cap.
             modifier = Modifier
-                .fillMaxSize()
-                .widthIn(max = 980.dp),
+                .fillMaxHeight()
+                .widthIn(max = DECK_MAX_WIDTH_DP.dp),
         ) {
             val fontScale = LocalDensity.current.fontScale
             val viewportWidthDp = maxWidth.value.roundToInt()
@@ -582,7 +595,7 @@ private fun LandscapePerformanceWorkspace(
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
         Column(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1.1f).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             ChopCoachRow(
@@ -614,6 +627,7 @@ private fun LandscapePerformanceWorkspace(
                     height = metrics.controlHeightDp.dp,
                     onSelectBank = viewModel::selectBank,
                     modifier = Modifier.weight(1.6f),
+                    compactLabels = true,
                 )
                 PadPageStrip(
                     state = state,
@@ -645,7 +659,9 @@ private fun LandscapePerformanceWorkspace(
             onSelect = viewModel::selectPad,
             onLongPress = onOpenTrim,
             gap = gap,
-            modifier = Modifier.fillMaxHeight().aspectRatio(1f),
+            // The grid centers its own square inside this half, so a nearly square window can no
+            // longer starve the waveform column by claiming width == height.
+            modifier = Modifier.weight(1f).fillMaxHeight(),
         )
     }
 }
@@ -750,6 +766,7 @@ private fun ProductionDock(
     height: Dp,
     gap: Dp,
     handlers: Map<ProductionDockIntent, () -> Unit>,
+    confirmationKey: Any? = Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
@@ -763,6 +780,7 @@ private fun ProductionDock(
                     label = item.label,
                     confirmLabel = item.confirmLabel,
                     onConfirm = onClick,
+                    confirmationKey = confirmationKey to item.intent,
                     enabled = item.enabled,
                     modifier = modifier,
                 )
@@ -980,16 +998,18 @@ private fun WorkflowStageButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val hovered by interactionSource.collectIsHoveredAsState()
     val background = when {
         pressed -> DeckPadLit
-        selected -> DeckLamp
+        selected -> if (hovered && enabled) DeckLampHover else DeckLamp
+        hovered && enabled -> DeckPanelHover
         else -> DeckPanelDark
     }
     Surface(
         color = background,
         contentColor = DeckInk,
         shape = RoundedCornerShape(6.dp),
-        shadowElevation = if (pressed) 0.dp else 2.dp,
+        shadowElevation = if (pressed) 0.dp else if (hovered && enabled) 4.dp else 2.dp,
         modifier = modifier
             .alpha(if (enabled) 1f else 0.38f)
             .border(1.5.dp, DeckInk, RoundedCornerShape(6.dp))
@@ -1493,6 +1513,7 @@ private fun CaptureNextRow(
             ProductionDockIntent.RESET_ALL to onReset,
             ProductionDockIntent.START_CHOP to onContinue,
         ),
+        confirmationKey = destructiveProjectConfirmationKey(state),
     )
 }
 
@@ -2290,6 +2311,7 @@ private fun PlayModeEditor(
             label = "このPADを空に\nCLEAR PAD",
             confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPad,
+            confirmationKey = pad.globalIndex,
             enabled = pad.isAssigned,
             modifier = Modifier
                 .fillMaxWidth()
@@ -2638,6 +2660,7 @@ private fun BeatChopSurface(
                         height = metrics.controlHeightDp.dp,
                         onSelectBank = viewModel::selectPlayableBank,
                         modifier = Modifier.weight(1.6f),
+                        compactLabels = true,
                     )
                     PadPageStrip(
                         state = state,
@@ -3501,6 +3524,7 @@ private fun SampleLayerStudio(
                 label = "配置を消す\nCLEAR",
                 confirmLabel = "もう一度で削除",
                 onConfirm = viewModel::clearSelectedPadPattern,
+                confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
@@ -3544,6 +3568,7 @@ private fun DrumKitStudio(
                     label = "Bの音色を入替\nKEEP SAFE",
                     confirmLabel = "もう一度で入替",
                     onConfirm = { onApply(true) },
+                    confirmationKey = selectedKitId,
                     modifier = Modifier.weight(1.6f).fillMaxHeight(),
                 )
             } else {
@@ -4003,6 +4028,7 @@ private fun SequenceTransportRow(
             label = "この音を消す\nCLEAR STEPS",
             confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPadPattern,
+            confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
@@ -4384,7 +4410,7 @@ private fun ConsoleStatusStrip(
                 text = "${nextAction.guidance}  /  ${state.statusMessage}",
                 color = Color(0xFFE8DDBF),
                 fontFamily = DeckFont,
-                fontSize = 8.sp,
+                fontSize = 9.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -4534,6 +4560,7 @@ private fun NewSourceActionButton(
             label = label,
             confirmLabel = "PAD・ビート消去\nもう一度",
             onConfirm = onConfirm,
+            confirmationKey = destructiveProjectConfirmationKey(state),
             enabled = enabled,
             modifier = modifier,
             compact = compact,
@@ -4550,16 +4577,59 @@ private fun NewSourceActionButton(
     }
 }
 
+internal data class DestructiveProjectConfirmationKey(
+    val projectLaunchRevision: Long,
+    val sourceId: Long?,
+    val rangeStartFrame: Int,
+    val rangeEndFrame: Int,
+    val sliceMarkers: List<Int>,
+    val manualChopEnabled: Boolean,
+    val pads: List<PadModel>,
+    val activeSteps: Set<Int>,
+    val patternArrangement: PatternArrangement,
+    val bpm: Float,
+    val swing: Float,
+    val selectedDrumKitId: String,
+    val masterPitchSemitones: Float,
+)
+
+internal fun destructiveProjectConfirmationKey(
+    state: SamplerUiState,
+): DestructiveProjectConfirmationKey = DestructiveProjectConfirmationKey(
+    projectLaunchRevision = state.projectLaunchRevision,
+    sourceId = state.currentAudio?.id,
+    rangeStartFrame = state.rangeStartFrame,
+    rangeEndFrame = state.rangeEndFrame,
+    sliceMarkers = state.sliceMarkers,
+    manualChopEnabled = state.manualChopEnabled,
+    pads = state.pads,
+    activeSteps = state.activeSteps,
+    patternArrangement = state.patternArrangement,
+    bpm = state.bpm,
+    swing = state.swing,
+    selectedDrumKitId = state.selectedDrumKitId,
+    masterPitchSemitones = state.masterPitchSemitones,
+)
+
 @Composable
 private fun ConfirmActionButton(
     label: String,
     confirmLabel: String,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    confirmationKey: Any? = Unit,
     enabled: Boolean = true,
     compact: Boolean = true,
 ) {
-    var armed by remember { mutableStateOf(false) }
+    var armed by remember(confirmationKey, label, confirmLabel) { mutableStateOf(false) }
+    LaunchedEffect(armed, enabled) {
+        if (!enabled) {
+            armed = false
+        } else if (armed) {
+            delay(CONFIRM_ACTION_ARM_TIMEOUT_MILLIS)
+            armed = false
+        }
+    }
     MachineButton(
         label = if (armed) confirmLabel else label,
         onClick = {
@@ -4590,9 +4660,12 @@ private fun MachineButton(
     val fontScale = LocalDensity.current.fontScale
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val hoverLift = hovered && enabled && !pressed
     val background = when {
         pressed -> DeckPadLit
-        active == true -> DeckLamp
+        active == true -> if (hoverLift) DeckLampHover else DeckLamp
+        hoverLift -> DeckPanelHover
         else -> DeckPanelDark
     }
     val foreground = if (pressed || active == true) Color(0xFF2A1000) else DeckInk
@@ -4600,7 +4673,7 @@ private fun MachineButton(
         color = background,
         contentColor = foreground,
         shape = RoundedCornerShape(6.dp),
-        shadowElevation = if (enabled && !pressed) 2.dp else 0.dp,
+        shadowElevation = if (!enabled || pressed) 0.dp else if (hoverLift) 4.dp else 2.dp,
         modifier = modifier
             .graphicsLayer { translationY = if (pressed) 1.5.dp.toPx() else 0f }
             .alpha(if (enabled) 1f else 0.38f)
@@ -4716,15 +4789,44 @@ private fun SourceWaveform(
                     detectTransformGestures { centroid, pan, zoomChange, _ ->
                         if (size.width <= 0) return@detectTransformGestures
                         val total = visibleAudio?.frameCount ?: 1
-                        val focusFrame = waveformFrameAtX(centroid.x, size.width.toFloat(), visibleStart, visibleFrames, total)
-                        val next = zoomViewportAtFocus(focusFrame, total, zoom, zoomChange, 64f)
+                        val next = zoomViewportAtAnchor(
+                            totalFrames = total,
+                            zoom = zoom,
+                            scroll = scroll,
+                            zoomChange = zoomChange,
+                            maximumZoom = 64f,
+                            anchorFraction = centroid.x / size.width,
+                        )
                         val panned = panWaveformViewport(total, next.zoom, next.scroll, -pan.x / size.width)
                         scroll = panned.scroll
                         zoom = panned.zoom
                     }
                 }
+                .pointerInput(visibleAudio?.id, visibleStart, visibleFrames) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type != PointerEventType.Scroll || size.width <= 0) continue
+                            val change = event.changes.firstOrNull() ?: continue
+                            val total = visibleAudio?.frameCount ?: continue
+                            val wheel = resolveWaveformWheelGesture(change.scrollDelta.x, change.scrollDelta.y)
+                            val next = zoomViewportAtAnchor(
+                                totalFrames = total,
+                                zoom = zoom,
+                                scroll = scroll,
+                                zoomChange = wheel.zoomChange,
+                                maximumZoom = 64f,
+                                anchorFraction = change.position.x / size.width,
+                            )
+                            val panned = panWaveformViewport(total, next.zoom, next.scroll, wheel.panFraction)
+                            scroll = panned.scroll
+                            zoom = panned.zoom
+                            change.consume()
+                        }
+                    }
+                }
                 .semantics {
-                    contentDescription = "ソース波形。タップで再生位置を移動。2本指で拡大と左右移動"
+                    contentDescription = "ソース波形。タップで再生位置を移動。2本指またはホイールで拡大と左右移動"
                     stateDescription = waveformViewportStateDescription(viewport)
                     customActions = waveformViewportAccessibilityActions(
                         onPrevious = {

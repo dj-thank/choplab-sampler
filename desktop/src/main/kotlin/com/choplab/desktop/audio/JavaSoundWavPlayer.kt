@@ -129,6 +129,7 @@ internal fun exclusiveLoopCompanionPads(
  */
 class JavaSoundWavPlayer internal constructor(
     private val clipFactory: DesktopClipFactory,
+    private val sourceRenderer: (PcmAudio, Float) -> RenderedPcm = ::renderDesktopSourcePcm,
 ) : DesktopSamplerAudioEngine {
     constructor() : this(DesktopClipFactory { AudioSystem.getClip() })
 
@@ -142,24 +143,22 @@ class JavaSoundWavPlayer internal constructor(
     override val isSourcePlaying: Boolean
         @Synchronized get() = sourceClip?.isRunning == true
 
-    @Synchronized
     override fun loadPcm(audio: PcmAudio, pitchSemitones: Float) {
-        val rendered = if (pitchSemitones == 0f) {
-            RenderedPcm(audio.samples.copyOf(), audio.channelCount)
-        } else {
-            PadPcmRenderer.renderInterleaved(
-                PadModel(
-                    globalIndex = 0,
-                    audio = audio,
-                    startFrame = 0,
-                    endFrame = audio.frameCount,
-                    pitchSemitones = pitchSemitones,
-                    gain = 1f,
-                ),
-            )
+        val rendered = sourceRenderer(audio, pitchSemitones)
+        val candidate = createClip(rendered.samples, audio.sampleRate, rendered.channelCount)
+        try {
+            synchronized(this) {
+                replaceSource(candidate)
+                sourceOriginalFrames = audio.frameCount
+            }
+        } catch (failure: Throwable) {
+            try {
+                candidate.close()
+            } catch (cleanupFailure: Throwable) {
+                failure.addSuppressed(cleanupFailure)
+            }
+            throw failure
         }
-        replaceSource(createClip(rendered.samples, audio.sampleRate, rendered.channelCount))
-        sourceOriginalFrames = audio.frameCount
     }
 
     @Synchronized
@@ -554,6 +553,24 @@ class JavaSoundWavPlayer internal constructor(
     private data class LoopSessionRequest(
         val pad: PadModel,
         val forceLoop: Boolean,
+    )
+}
+
+internal fun renderDesktopSourcePcm(
+    audio: PcmAudio,
+    pitchSemitones: Float,
+): RenderedPcm = if (pitchSemitones == 0f) {
+    RenderedPcm(audio.samples.copyOf(), audio.channelCount)
+} else {
+    PadPcmRenderer.renderInterleaved(
+        PadModel(
+            globalIndex = 0,
+            audio = audio,
+            startFrame = 0,
+            endFrame = audio.frameCount,
+            pitchSemitones = pitchSemitones,
+            gain = 1f,
+        ),
     )
 }
 

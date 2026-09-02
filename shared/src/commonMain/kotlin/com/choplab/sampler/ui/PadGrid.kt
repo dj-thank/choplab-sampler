@@ -6,6 +6,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -313,6 +316,8 @@ private fun PerformancePad(
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
+    val hoverSource = remember(pad.globalIndex) { MutableInteractionSource() }
+    val hovered by hoverSource.collectIsHoveredAsState()
     var localGateOwnership by remember(pad.globalIndex) { mutableStateOf(0L) }
     val semanticsScope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
@@ -322,7 +327,8 @@ private fun PerformancePad(
     val accent = bankRoleAccent(pad.bankIndex)
     val background = when {
         pressed -> accent
-        pad.isAssigned -> accent.copy(alpha = 0.72f)
+        pad.isAssigned -> accent.copy(alpha = if (hovered) 0.86f else 0.72f)
+        hovered -> DeckPadAssigned
         else -> DeckPad
     }
     val foreground = when {
@@ -376,9 +382,14 @@ private fun PerformancePad(
             .background(background)
             .border(
                 width = if (selected) 3.dp else 1.5.dp,
-                color = if (selected) DeckLamp else Color.Black,
+                color = when {
+                    selected -> DeckLamp
+                    hovered -> DeckPadLit.copy(alpha = 0.7f)
+                    else -> Color.Black
+                },
                 shape = shape,
             )
+            .hoverable(hoverSource)
             .pointerInput(
                 pad.globalIndex,
                 pad.isAssigned,

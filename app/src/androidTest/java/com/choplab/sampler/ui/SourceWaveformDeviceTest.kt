@@ -203,7 +203,10 @@ class SourceWaveformDeviceTest {
             "チョップ4 の位置",
             "チョップ5 の位置",
         )
-        composeRule.waitUntil(timeoutMillis = 10_000) {
+        // UiAutomation can expose the active window before Compose has populated every
+        // framework node. Reacquire the root until the complete tree is observable instead
+        // of retaining an early, permanently incomplete AccessibilityNodeInfo snapshot.
+        composeRule.waitUntil(timeoutMillis = 30_000) {
             val currentRoot = automation.rootInActiveWindow ?: return@waitUntil false
             orderedDescriptions.all { description ->
                 currentRoot.findNodeByContentDescription(description) != null

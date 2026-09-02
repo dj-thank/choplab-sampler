@@ -126,6 +126,9 @@ class DesktopSamplerController(
     private val sourceLoadOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     internal var recoveredHydrationAdmission: () -> Unit = {}
+    internal var sourcePitchWorkerAdmission: () -> Unit = {}
+    internal var sourcePitchResumeAfterPlayAdmission: () -> Unit = {}
+    internal var sourcePitchFailureAdmission: () -> Unit = {}
     private val playbackTransitionLock = ReentrantLock()
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
@@ -159,6 +162,8 @@ class DesktopSamplerController(
     private var sourcePlayerClosed = false
     private val sourcePlaybackStateLock = Any()
     private var sourcePlaybackAvailability: SourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
+    private val sourcePitchResumeLock = Any()
+    private var pendingSourcePitchResumeFrame: Int? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
     private val projectLaunchRevision = AtomicLong(0L)
@@ -460,7 +465,7 @@ class DesktopSamplerController(
         statusOperations.invalidate()
         projectOperations.invalidate()
         recoveryOperations.invalidate()
-        sourceLoadOperations.invalidate()
+        invalidateSourceLoadOperations()
         stopCompetingPlayback()
         synchronized(sourcePlaybackStateLock) {
             sourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
@@ -470,6 +475,7 @@ class DesktopSamplerController(
     }
 
     override fun stopAllSounds() {
+        clearPendingSourcePitchResume()
         scratchReturnTarget = ScratchReturnTarget.None
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
@@ -682,26 +688,26 @@ class DesktopSamplerController(
             )
         }
     }
-    override fun playSourceFrom(frame: Int) {
+    override fun playSourceFrom(frame: Int) = synchronized(sourcePitchResumeLock) {
         val state = mutableState.value
-        if (state.currentAudio == null) return
-        if (!sourcePlaybackIsReady()) return
+        if (state.currentAudio == null) return@synchronized
+        if (!sourcePlaybackIsReady()) return@synchronized
         val safe = frame.coerceIn(0, state.rangeEndFrame)
         stopCompetingPlayback()
         val playbackFailure = runCatching { player.playFrom(safe) }.exceptionOrNull()
         if (playbackFailure != null) {
             publishSourcePlaybackFailure(playbackFailure)
-            return
+            return@synchronized
         }
         mutableState.update { it.copy(sourcePlayheadFrame = safe, sourcePlaying = true, statusMessage = "元曲を再生中です") }
     }
-    override fun seekSourcePlayback(frame: Int) {
-        if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return
+    override fun seekSourcePlayback(frame: Int) = synchronized(sourcePitchResumeLock) {
+        if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return@synchronized
         val safe = frame.coerceIn(0, mutableState.value.rangeEndFrame)
         val playbackFailure = runCatching { player.seekSource(safe) }.exceptionOrNull()
         if (playbackFailure != null) {
             publishSourcePlaybackFailure(playbackFailure)
-            return
+            return@synchronized
         }
         mutableState.update { it.copy(sourcePlayheadFrame = safe) }
     }
@@ -831,16 +837,16 @@ class DesktopSamplerController(
         resumeAfterScratch(target)
     }
 
-    private fun toggleSource(shouldPlay: Boolean) {
+    private fun toggleSource(shouldPlay: Boolean) = synchronized(sourcePitchResumeLock) {
         val state = mutableState.value
-        if (state.currentAudio == null) return
+        if (state.currentAudio == null) return@synchronized
         if (shouldPlay) {
-            if (!sourcePlaybackIsReady()) return
+            if (!sourcePlaybackIsReady()) return@synchronized
             stopCompetingPlayback()
             val playbackFailure = runCatching { player.playFrom(state.sourcePlayheadFrame) }.exceptionOrNull()
             if (playbackFailure != null) {
                 publishSourcePlaybackFailure(playbackFailure)
-                return
+                return@synchronized
             }
             mutableState.update { it.copy(sourcePlaying = true, statusMessage = "元曲を再生中です") }
         } else {
@@ -852,17 +858,118 @@ class DesktopSamplerController(
 
     override fun setMasterPitch(value: Float) {
         val pitch = value.coerceIn(-24f, 24f)
-        val wasPlaying = mutableState.value.sourcePlaying
-        val frame = mutableState.value.sourcePlayheadFrame
-        commitEdit("master-pitch") { it.copy(masterPitchSemitones = pitch) }
-        mutableState.value.currentAudio?.let { audio ->
-            val loadFailure = loadSourcePcm(audio, pitch)
-            if (loadFailure != null) {
+        val request = synchronized(sourcePitchResumeLock) {
+            val before = mutableState.value
+            commitEdit("master-pitch") { it.copy(masterPitchSemitones = pitch) }
+            val audio = mutableState.value.currentAudio ?: return@synchronized null
+            if (mutableState.value.masterPitchSemitones != pitch) return@synchronized null
+            // Snapshot playback, carry resume ownership, and publish Pending as one boundary.
+            // A previous render cannot publish playback between this decision and the stop.
+            val wasPlaying = before.sourcePlaying
+            val resumeFrame = if (wasPlaying) {
+                player.sourceFramePosition().coerceIn(0, before.rangeEndFrame)
+            } else {
+                pendingSourcePitchResumeFrame ?: before.sourcePlayheadFrame
+            }
+            if (wasPlaying) {
+                pendingSourcePitchResumeFrame = resumeFrame
                 runCatching { player.stop() }
-                publishSourcePlaybackFailure(loadFailure)
-            } else if (wasPlaying) {
-                val playbackFailure = runCatching { player.playFrom(frame) }.exceptionOrNull()
-                if (playbackFailure != null) publishSourcePlaybackFailure(playbackFailure)
+                mutableState.update {
+                    it.copy(sourcePlaying = false, sourcePlayheadFrame = resumeFrame)
+                }
+            }
+            val operation = sourceLoadOperations.begin()
+            val applyingMessage = masterPitchApplyingMessage(pitch)
+            val previousAvailability = synchronized(sourcePlaybackStateLock) {
+                sourcePlaybackAvailability.also {
+                    sourcePlaybackAvailability = SourcePlaybackAvailability.Pending(applyingMessage)
+                }
+            }
+            mutableState.update { it.copy(statusMessage = applyingMessage) }
+            SourcePitchRenderRequest(
+                audio = audio,
+                pitch = pitch,
+                operation = operation,
+                applyingMessage = applyingMessage,
+                previousAvailability = previousAvailability,
+            )
+        } ?: return
+        val submitted = runCatching {
+            ioExecutor.execute {
+                sourcePitchWorkerAdmission()
+                if (!sourceLoadOperations.isCurrent(request.operation) || controllerIsClosed()) return@execute
+                val result = loadSourcePcmIfCurrent(request.audio, request.pitch, request.operation)
+                if (!result.applied) return@execute
+                val failure = result.failure
+                if (failure != null) {
+                    sourcePitchFailureAdmission()
+                    synchronized(sourcePitchResumeLock) {
+                        if (
+                            sourceLoadOperations.isCurrent(request.operation) &&
+                            !controllerIsClosed()
+                        ) {
+                            pendingSourcePitchResumeFrame = null
+                            runCatching { player.stop() }
+                            publishSourcePlaybackFailure(failure)
+                        }
+                    }
+                    return@execute
+                }
+                synchronized(sourcePitchResumeLock) {
+                    val pendingResumeFrame = pendingSourcePitchResumeFrame
+                    val resumeResult = pendingResumeFrame?.let { frame ->
+                        runCatching { player.playFrom(frame) }
+                    }
+                    if (resumeResult?.isSuccess == true) {
+                        sourcePitchResumeAfterPlayAdmission()
+                    }
+                    if (
+                        !sourceLoadOperations.isCurrent(request.operation) ||
+                        controllerIsClosed() ||
+                        pendingSourcePitchResumeFrame != pendingResumeFrame
+                    ) {
+                        if (resumeResult?.isSuccess == true) runCatching { player.stop() }
+                        return@synchronized
+                    }
+                    pendingSourcePitchResumeFrame = null
+                    val resumeFailure = resumeResult?.exceptionOrNull()
+                    if (resumeFailure != null) {
+                        runCatching { player.stop() }
+                        publishSourcePlaybackFailure(resumeFailure)
+                        return@synchronized
+                    }
+                    val resumed = resumeResult?.isSuccess == true
+                    mutableState.update { current ->
+                        current.copy(
+                            sourcePlaying = if (pendingResumeFrame != null) {
+                                resumed
+                            } else {
+                                current.sourcePlaying
+                            },
+                            statusMessage = if (current.statusMessage == request.applyingMessage) {
+                                masterPitchAppliedMessage(request.pitch)
+                            } else {
+                                current.statusMessage
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (submitted.isFailure) {
+            invalidateSourceLoadOperations()
+            synchronized(sourcePlaybackStateLock) {
+                val pending = sourcePlaybackAvailability as? SourcePlaybackAvailability.Pending
+                if (pending?.restoreStatus == request.applyingMessage) {
+                    sourcePlaybackAvailability = request.previousAvailability
+                }
+            }
+            mutableState.update {
+                it.copy(
+                    sourcePlaying = false,
+                    statusMessage = "曲キーを適用できません: " +
+                        (submitted.exceptionOrNull()?.message ?: "I/O worker unavailable"),
+                )
             }
         }
     }
@@ -1459,7 +1566,10 @@ class DesktopSamplerController(
                             recoveredRevision = recovered.revision,
                         )
                         sourceLoadOperation = transition.state.currentAudio
-                            ?.let { sourceLoadOperations.begin() }
+                            ?.let {
+                                clearPendingSourcePitchResume()
+                                sourceLoadOperations.begin()
+                            }
                         applyHistoryState(
                             restored = transition.state,
                             message = "前回の自動保存を復元しました",
@@ -1533,6 +1643,7 @@ class DesktopSamplerController(
     }
 
     private fun loadSourcePcm(audio: PcmAudio?, pitchSemitones: Float = 0f): Throwable? {
+        clearPendingSourcePitchResume()
         val operation = sourceLoadOperations.begin()
         return loadSourcePcmIfCurrent(audio, pitchSemitones, operation).failure
     }
@@ -1597,6 +1708,15 @@ class DesktopSamplerController(
 
     private fun controllerIsClosed(): Boolean = synchronized(autosaveLifecycleLock) { closed }
 
+    private fun clearPendingSourcePitchResume() = synchronized(sourcePitchResumeLock) {
+        pendingSourcePitchResumeFrame = null
+    }
+
+    private fun invalidateSourceLoadOperations() {
+        clearPendingSourcePitchResume()
+        sourceLoadOperations.invalidate()
+    }
+
     private fun sourcePlaybackIsReady(): Boolean = synchronized(sourcePlaybackStateLock) {
         when (val availability = sourcePlaybackAvailability) {
             SourcePlaybackAvailability.Ready -> true
@@ -1634,6 +1754,17 @@ class DesktopSamplerController(
         }
     }
 
+    internal fun masterPitchApplyingMessage(pitch: Float): String =
+        "曲キー ${signedSemitones(pitch)} を適用しています"
+
+    internal fun masterPitchAppliedMessage(pitch: Float): String =
+        "曲キー ${signedSemitones(pitch)} を適用しました"
+
+    private fun signedSemitones(pitch: Float): String {
+        val rounded = pitch.toInt()
+        return if (rounded > 0) "+$rounded" else rounded.toString()
+    }
+
     private fun sourcePlaybackFailureMessage(error: Throwable): String =
         "音声は読込済みですが再生機器を開けません: ${error.message ?: error.javaClass.simpleName}"
 
@@ -1653,6 +1784,7 @@ class DesktopSamplerController(
         preserveScratchReturn: Boolean = false,
         stopAudioEngine: Boolean = true,
     ) {
+        clearPendingSourcePitchResume()
         if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
@@ -1795,7 +1927,7 @@ class DesktopSamplerController(
             closed = true
             startupRecoveryFuture
         }
-        sourceLoadOperations.invalidate()
+        invalidateSourceLoadOperations()
         closePlayerAfterSourceLoad = true
         // Recovery owns the persistence executor before any close-time save. Wait for
         // its state publication so an initial loading snapshot cannot supersede it.
@@ -1880,6 +2012,14 @@ class DesktopSamplerController(
     private data class SourcePcmLoadResult(
         val applied: Boolean,
         val failure: Throwable? = null,
+    )
+
+    private data class SourcePitchRenderRequest(
+        val audio: PcmAudio,
+        val pitch: Float,
+        val operation: Long,
+        val applyingMessage: String,
+        val previousAvailability: SourcePlaybackAvailability,
     )
 
     private class AutosaveWork(

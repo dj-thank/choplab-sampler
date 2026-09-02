@@ -72,6 +72,36 @@ fun zoomViewportAtFocus(
     return WaveformViewport(safeTotal, nextZoom, scroll, centeredStart, visibleFrames)
 }
 
+fun zoomViewportAtAnchor(
+    totalFrames: Int,
+    zoom: Float,
+    scroll: Float,
+    zoomChange: Float,
+    maximumZoom: Float,
+    anchorFraction: Float,
+): WaveformViewport {
+    val current = resolveWaveformViewport(totalFrames, zoom, scroll)
+    val safeMaximum = maximumZoom.takeIf(Float::isFinite)?.coerceAtLeast(1f) ?: 1f
+    val safeChange = zoomChange.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val nextZoom = (current.zoom * safeChange).coerceIn(1f, safeMaximum)
+    val visibleFrames = (current.totalFrames / nextZoom).roundToInt()
+        .coerceIn(1, current.totalFrames)
+    val maximumStart = (current.totalFrames - visibleFrames).coerceAtLeast(0)
+    val anchor = anchorFraction.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0.5f
+    val anchorFrame = current.visibleStart + current.visibleFrames * anchor
+    val anchoredStart = (anchorFrame - visibleFrames * anchor)
+        .roundToInt()
+        .coerceIn(0, maximumStart)
+    val nextScroll = if (maximumStart == 0) 0f else anchoredStart.toFloat() / maximumStart
+    return WaveformViewport(
+        totalFrames = current.totalFrames,
+        zoom = nextZoom,
+        scroll = nextScroll,
+        visibleStart = anchoredStart,
+        visibleFrames = visibleFrames,
+    )
+}
+
 fun panWaveformViewport(
     totalFrames: Int,
     zoom: Float,

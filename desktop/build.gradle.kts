@@ -96,5 +96,10 @@ tasks.register<Exec>("packageWindows") {
         "--app-version", choplabVersion.get(),
         "--description", "ChopLab original-style おとひろい desktop sampler",
         "--copyright", "ChopLab contributors",
+        // Startup trims that stay valid on the JDK 17 CI runtime: skip the hsperfdata mmap and
+        // start with a heap that already fits the deck so the first frames avoid resize GCs.
+        "--java-options", "-XX:-UsePerfData",
+        "--java-options", "-Xms160m",
+        "--java-options", "-Dfile.encoding=UTF-8",
     )
 }

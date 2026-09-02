@@ -1568,10 +1568,396 @@ class DesktopSamplerControllerTest {
 
             controller.setMasterPitch(5f)
 
+            // The key change stops old-key playback immediately and reports the render failure
+            // from the I/O worker instead of freezing the UI thread while a long source renders.
             assertFalse(controller.state.value.sourcePlaying)
             assertFalse(engine.isSourcePlaying)
+            awaitCondition { controller.state.value.statusMessage.contains("test output unavailable") }
+            assertFalse(controller.state.value.sourcePlaying)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sourcePlaybackCannotStartBeforeQueuedPitchRenderClaimsPendingState() {
+        val directory = Files.createTempDirectory("choplab-pitch-queued-pending").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "queued-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val workerEntered = CountDownLatch(1)
+        val releaseWorker = CountDownLatch(1)
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.sourcePitchWorkerAdmission = {
+                workerEntered.countDown()
+                check(releaseWorker.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding the queued pitch worker"
+                }
+            }
+
+            controller.setMasterPitch(6f)
+            assertTrue(workerEntered.await(2L, TimeUnit.SECONDS))
+            controller.toggleSourcePlayback()
+
+            assertEquals(0, engine.playFromCalls)
+            assertFalse(engine.isSourcePlaying)
+            assertFalse(controller.state.value.sourcePlaying)
+            releaseWorker.countDown()
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 6f }
+
+            controller.toggleSourcePlayback()
+            assertEquals(1, engine.playFromCalls)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            releaseWorker.countDown()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun rapidMasterPitchChangesResumePlaybackAtTheLatestKey() {
+        val directory = Files.createTempDirectory("choplab-rapid-master-pitch").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "rapid-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            engine.sourcePosition = 23
+            controller.playSourceFrom(23)
+            assertTrue(controller.state.value.sourcePlaying)
+            engine.blockNextLoad = true
+
+            controller.setMasterPitch(2f)
+            engine.awaitBlockedLoad()
+            controller.setMasterPitch(4f)
+            engine.releaseBlockedLoad()
+
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 4f }
+            awaitCondition { controller.state.value.statusMessage == controller.masterPitchAppliedMessage(4f) }
+            assertEquals(4f, controller.state.value.masterPitchSemitones)
+            assertTrue(controller.state.value.sourcePlaying)
+            assertTrue(engine.isSourcePlaying)
+            assertEquals(2, engine.playFromCalls)
+            assertEquals(23, engine.sourcePosition)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun stopAllDuringMasterPitchRenderPreventsLatePlaybackResume() {
+        val directory = Files.createTempDirectory("choplab-stop-pending-master-pitch").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "stop-pending-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.blockNextLoad = true
+
+            controller.setMasterPitch(3f)
+            engine.awaitBlockedLoad()
+            controller.stopAllSounds()
+            engine.releaseBlockedLoad()
+
+            awaitCondition { engine.loadPcmCompletedCalls == 2 }
+            assertFalse(controller.state.value.sourcePlaying)
+            assertFalse(engine.isSourcePlaying)
+            assertEquals(1, engine.playFromCalls)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun stopAllAfterPitchResumeStartsWinsBeforeResumeStatePublication() {
+        val directory = Files.createTempDirectory("choplab-stop-after-pitch-resume").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "stop-after-resume.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val resumeStarted = CountDownLatch(1)
+        val releaseResume = CountDownLatch(1)
+        var stopThread: Thread? = null
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            controller.sourcePitchResumeAfterPlayAdmission = {
+                resumeStarted.countDown()
+                check(releaseResume.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding pitch resume publication"
+                }
+            }
+
+            controller.setMasterPitch(3f)
+            assertTrue(resumeStarted.await(2L, TimeUnit.SECONDS))
+            stopThread = thread(name = "ChopLab-Test-Stop-After-Pitch-Resume") {
+                controller.stopAllSounds()
+            }
+            awaitCondition { requireNotNull(stopThread).state == Thread.State.BLOCKED }
+            releaseResume.countDown()
+            requireNotNull(stopThread).join(10_000L)
+
+            assertFalse(requireNotNull(stopThread).isAlive)
+            assertEquals(2, engine.playFromCalls)
+            assertFalse(engine.isSourcePlaying)
+            assertFalse(controller.state.value.sourcePlaying)
+        } finally {
+            releaseResume.countDown()
+            stopThread?.join(10_000L)
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun newerPitchDuringResumeCarriesPlaybackToTheLatestKey() {
+        val directory = Files.createTempDirectory("choplab-newer-pitch-during-resume").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "newer-pitch-during-resume.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val resumeStarted = CountDownLatch(1)
+        val releaseResume = CountDownLatch(1)
+        var newerPitchThread: Thread? = null
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            controller.sourcePitchResumeAfterPlayAdmission = {
+                resumeStarted.countDown()
+                check(releaseResume.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding pitch resume before the newer key"
+                }
+            }
+
+            controller.setMasterPitch(3f)
+            assertTrue(resumeStarted.await(2L, TimeUnit.SECONDS))
+            newerPitchThread = thread(name = "ChopLab-Test-Newer-Pitch-During-Resume") {
+                controller.setMasterPitch(4f)
+            }
+            awaitCondition { requireNotNull(newerPitchThread).state == Thread.State.BLOCKED }
+            releaseResume.countDown()
+            requireNotNull(newerPitchThread).join(10_000L)
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 4f }
+            awaitCondition {
+                controller.state.value.statusMessage == controller.masterPitchAppliedMessage(4f)
+            }
+
+            assertFalse(requireNotNull(newerPitchThread).isAlive)
+            assertEquals(3, engine.playFromCalls)
+            assertEquals(19, engine.sourcePosition)
+            assertTrue(engine.isSourcePlaying)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            releaseResume.countDown()
+            newerPitchThread?.join(10_000L)
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun newerPitchAfterOlderRenderFailureKeepsTheCarriedResume() {
+        val directory = Files.createTempDirectory("choplab-newer-pitch-after-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "newer-pitch-after-failure.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val failureReachedCleanup = CountDownLatch(1)
+        val releaseFailureCleanup = CountDownLatch(1)
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.failNextLoad = true
+            controller.sourcePitchFailureAdmission = {
+                failureReachedCleanup.countDown()
+                check(releaseFailureCleanup.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding stale pitch failure cleanup"
+                }
+            }
+
+            controller.setMasterPitch(3f)
+            assertTrue(failureReachedCleanup.await(2L, TimeUnit.SECONDS))
+            val newerPitchThread = thread(name = "ChopLab-Test-Newer-Pitch-After-Failure") {
+                controller.setMasterPitch(4f)
+            }
+            newerPitchThread.join(10_000L)
+            assertFalse(newerPitchThread.isAlive)
+            releaseFailureCleanup.countDown()
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 4f }
+            awaitCondition {
+                controller.state.value.statusMessage == controller.masterPitchAppliedMessage(4f)
+            }
+
+            assertEquals(2, engine.playFromCalls)
+            assertEquals(19, engine.sourcePosition)
+            assertTrue(engine.isSourcePlaying)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            releaseFailureCleanup.countDown()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sourcePlayWaitingOnFailedPitchResumeRechecksAvailability() {
+        val directory = Files.createTempDirectory("choplab-play-after-pitch-resume-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "failed-resume-play.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        var playThread: Thread? = null
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.blockNextPlayFrom = true
+            engine.failNextPlayFrom = true
+
+            controller.setMasterPitch(3f)
+            engine.awaitBlockedPlayFrom()
+            playThread = thread(name = "ChopLab-Test-Play-After-Pitch-Failure") {
+                controller.toggleSourcePlayback()
+            }
+            awaitCondition { requireNotNull(playThread).state == Thread.State.BLOCKED }
+            engine.releaseBlockedPlayFrom()
+            requireNotNull(playThread).join(10_000L)
+
+            assertFalse(requireNotNull(playThread).isAlive)
+            assertEquals(2, engine.playFromCalls)
+            assertFalse(engine.isSourcePlaying)
+            assertFalse(controller.state.value.sourcePlaying)
             assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
         } finally {
+            engine.releaseBlockedPlayFrom()
+            playThread?.join(10_000L)
             controller.close()
             directory.deleteRecursively()
         }
@@ -2725,6 +3111,8 @@ class DesktopSamplerControllerTest {
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
         private val loadEntered = CountDownLatch(1)
         private val loadRelease = CountDownLatch(1)
+        private val playFromEntered = CountDownLatch(1)
+        private val playFromRelease = CountDownLatch(1)
         override var isSourcePlaying: Boolean = false
         var sourcePosition: Int = 0
         val triggered = CopyOnWriteArrayList<Pair<PadModel, Boolean>>()
@@ -2748,10 +3136,13 @@ class DesktopSamplerControllerTest {
         @Volatile var exclusiveAbandonCount: Int = 0
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
+        @Volatile var blockNextPlayFrom: Boolean = false
+        @Volatile var failNextPlayFrom: Boolean = false
         @Volatile var stopAllCalls: Int = 0
         @Volatile var stopAllCount: Int = 0
         @Volatile var closeCalls: Int = 0
         @Volatile var loadPcmCalls: Int = 0
+        @Volatile var loadPcmCompletedCalls: Int = 0
         @Volatile var playFromCalls: Int = 0
         val loadedAudioNames = Collections.synchronizedList(mutableListOf<String>())
         val loadedPitchSemitones = Collections.synchronizedList(mutableListOf<Float>())
@@ -2763,10 +3154,12 @@ class DesktopSamplerControllerTest {
                 failNextLoad = false
                 error("test output unavailable")
             }
-            if (!blockNextLoad) return
-            blockNextLoad = false
-            loadEntered.countDown()
-            check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+            if (blockNextLoad) {
+                blockNextLoad = false
+                loadEntered.countDown()
+                check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+            }
+            loadPcmCompletedCalls++
         }
         fun awaitBlockedLoad() {
             check(loadEntered.await(2L, TimeUnit.SECONDS)) { "Timed out waiting for the asynchronous project load" }
@@ -2774,9 +3167,26 @@ class DesktopSamplerControllerTest {
         fun releaseBlockedLoad() = loadRelease.countDown()
         override fun playFrom(frame: Int) {
             playFromCalls++
+            if (blockNextPlayFrom) {
+                blockNextPlayFrom = false
+                playFromEntered.countDown()
+                check(playFromRelease.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding source playback startup"
+                }
+            }
+            if (failNextPlayFrom) {
+                failNextPlayFrom = false
+                error("test output unavailable")
+            }
             sourcePosition = frame
             isSourcePlaying = true
         }
+        fun awaitBlockedPlayFrom() {
+            check(playFromEntered.await(2L, TimeUnit.SECONDS)) {
+                "Timed out waiting for source playback startup"
+            }
+        }
+        fun releaseBlockedPlayFrom() = playFromRelease.countDown()
         override fun seekSource(frame: Int) { sourcePosition = frame }
         override fun sourceFramePosition(): Int = sourcePosition
         override fun padFramePosition(index: Int): Int? = null

@@ -3077,7 +3077,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         public_scan = workflow.index("python scripts/check_public_surface.py")
         source_archive = workflow.index("git archive --format=zip")
         archive_scan = workflow.index(
-            "python scripts/check_public_surface.py --archive "
+            "python scripts/check_public_surface.py --source-archive "
             "dist/choplab-source-snapshot.zip"
         )
         source_upload = workflow.index("name: choplab-source-snapshot")
@@ -3123,6 +3123,50 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("secret-shaped content", malicious_output)
         self.assertEqual(1, missing_exit, missing_output)
         self.assertIn("preflight failed", missing_output)
+
+    def test_source_archive_cli_uses_dedicated_bounded_limits(self) -> None:
+        token = "github_pat_" + "q" * 24
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            safe = root / "source.zip"
+            malicious = root / "malicious-source.zip"
+            oversized = root / "oversized-source.zip"
+            with zipfile.ZipFile(safe, "w", zipfile.ZIP_STORED) as archive:
+                for index in range(6):
+                    archive.writestr(f"source-{index}.txt", "a" * (1024 * 1024))
+            with zipfile.ZipFile(malicious, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("notes.txt", token)
+            with zipfile.ZipFile(oversized, "w", zipfile.ZIP_STORED) as archive:
+                for index in range(17):
+                    archive.writestr(f"source-{index}.txt", "b" * (1024 * 1024))
+
+            def run_source(path: Path) -> tuple[int, str]:
+                output = StringIO()
+                errors = StringIO()
+                with (
+                    patch(
+                        "scripts.check_public_surface.public_candidate_paths",
+                        return_value=[],
+                    ),
+                    patch(
+                        "sys.argv",
+                        ["check_public_surface.py", "--source-archive", str(path)],
+                    ),
+                    redirect_stdout(output),
+                    redirect_stderr(errors),
+                ):
+                    exit_code = main()
+                return exit_code, output.getvalue() + errors.getvalue()
+
+            safe_exit, safe_output = run_source(safe)
+            malicious_exit, malicious_output = run_source(malicious)
+            oversized_exit, oversized_output = run_source(oversized)
+
+        self.assertEqual(0, safe_exit, safe_output)
+        self.assertEqual(1, malicious_exit, malicious_output)
+        self.assertIn("secret-shaped content", malicious_output)
+        self.assertEqual(1, oversized_exit, oversized_output)
+        self.assertIn("16777216-byte", oversized_output)
 
     def test_explicit_text_file_cli_scans_safe_malicious_and_missing_paths(self) -> None:
         token = "github_pat_" + "t" * 24
