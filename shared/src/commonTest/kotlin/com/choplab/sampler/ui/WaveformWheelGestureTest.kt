@@ -54,4 +54,24 @@ class WaveformWheelGestureTest {
         }
         assertEquals(1f, zoom)
     }
+
+    @Test
+    fun wheelZoomKeepsThePointedFrameUnderTheCursor() {
+        val anchor = 0.2f
+        val before = resolveWaveformViewport(totalFrames = 1_000, zoom = 4f, scroll = 0.5f)
+        val pointedFrame = before.visibleStart + before.visibleFrames * anchor
+
+        val after = zoomViewportAtAnchor(
+            totalFrames = 1_000,
+            zoom = before.zoom,
+            scroll = before.scroll,
+            zoomChange = WAVEFORM_WHEEL_ZOOM_STEP,
+            maximumZoom = 32f,
+            anchorFraction = anchor,
+        )
+        val frameAfterZoom = after.visibleStart + after.visibleFrames * anchor
+
+        assertTrue(kotlin.math.abs(frameAfterZoom - pointedFrame) <= 1f)
+        assertTrue(after.visibleStart > before.visibleStart)
+    }
 }
