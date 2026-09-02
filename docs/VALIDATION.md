@@ -2,6 +2,14 @@
 
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
+## PR #69 final main integration — 2026-09-02
+
+- Exact checkpoint: `a5cfeac20b7f1062beeecbf8579b15f1e6e0a5a1` / tree `2f55b89aafa7f78284337c3edda107f107c8a3d0`, second parent `main@012b131784394b2fd641d580aaf4cd2d56b907f4`.
+- Scanner review closure: AMR, classic GitHub tokens, PuTTY PPK, extended-size M4A, PE Authenticode table validation, NUL-safe historical filename inventory, ZIP traversal/root paths, and every earlier bounded ZIP/APK/JIMAGE/SBOM rule have direct controls.
+- Python: full policy 192 and focused scanner 116; failure/error 0, one Windows-only symlink privilege skip. Current and reachable-history scans each pass 483 candidates.
+- JDK 17: 111/111 selected Gradle tasks executed. Shared Desktop 87, shared Android host 87, Android 289, JVM core 88, Desktop 180, H13 24; failure/error/skip 0. Android lint/APK/AndroidTest compile and Windows package pass.
+- Gate: `LOCAL_PASS`. Exact PR head hosted checks/review/threads/mergeability, normal merge, and merged-main workflow read-back remain provider gates. No tag, Release, device/provider account, or Human gate is claimed.
+
 ## Exact public ZIP content gate — 2026-08-27
 
 - Base/integration/product: PR #69 `1abbd8ff004edceafd81fe5ffa6059e2d3692d85`; local latest-main merge `fa4e6d2646e44039ce41662ba4c6ae6970ae9dd6`; policy/workflow product `3ed67101f362e61760c5ceb1839e71e91311aeb5`, tree `70e8f94f4e64cff4e13ea0e474e164632e500770`.

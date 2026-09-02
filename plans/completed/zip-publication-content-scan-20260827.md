@@ -9,6 +9,8 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Existing PR lineage: PR #69 head `1abbd8ff004edceafd81fe5ffa6059e2d3692d85`.
 - Current-main integration anchor: `42aa1a30eae9626ac90cac7f6f1a9f20219987a3`, tree `b0c4f9456ecf4e798c0c30f28f0ff29263e25c54`, parents review repair `8a5218e` and `main@d3291a5`.
 - Product checkpoint: `3ed67101f362e61760c5ceb1839e71e91311aeb5`, tree `70e8f94f4e64cff4e13ea0e474e164632e500770`.
+- Final review checkpoints: `e1306935312ce4e6bebe5600c972c6f0efd1c569` and bounded-inventory successor `181701beeaa9d02f737f284e3fc92ce33e438ff2`.
+- Current-main integration: `a5cfeac20b7f1062beeecbf8579b15f1e6e0a5a1`, tree `2f55b89aafa7f78284337c3edda107f107c8a3d0`, second parent `main@012b131784394b2fd641d580aaf4cd2d56b907f4`.
 - Product subtrees and build configuration match `main@d3291a5` exactly; the PR-specific delta is release policy/tests/workflow wiring and documentation.
 
 ## Initial findings
@@ -55,18 +57,21 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] PR #69 review follow-up: prefixed historical ZIPs, BOM-less UTF-16 metadata, bounded recursive findings, neutral-name DER signing material, annotated-tag messages, direct non-ZIP blobs, every release-glob asset, and lazy ISO brand probing now have focused regressions.
 - [x] Post-hosted Windows compatibility: valid PE Authenticode certificates and trusted-certificate-only JDK JKS stores remain publishable, while embedded private-key material still fails closed.
 - [x] Late review closure: SEC1 EC keys, full annotated-tag message policy, non-commit-tree symlink targets, neutral-name PEM certificates and bounded DER candidate work now have direct regressions.
+- [x] Final review closure: AMR-NB/WB, classic GitHub token families, PuTTY PPK, extended-size ISO-BMFF `ftyp`, validated Authenticode certificate tables, NUL-safe historical filenames, and traversal/absolute/drive-root ZIP paths have direct regressions.
+- [x] Current-main integration preserves the v0.17.2 signer verifier and avoids scanner self-detection by constructing PEM fixture markers at runtime.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
 
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
-- Exact current-tree policy suite: 180 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. The earlier 124/151/173/176-test receipts remain historical evidence for their predecessor trees; capable CI hosts still run the skipped symlink test.
-- Current and reachable-history public scans: 479 candidates, PASS. `py_compile` and `git diff --check`: PASS.
+- Exact current-tree policy suite: 192 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Focused scanner is 116. Earlier counts remain historical evidence for predecessor trees; capable CI hosts still run the skipped symlink test.
+- Current and reachable-history public scans: 483 candidates, PASS. `py_compile`/import execution and `git diff --check`: PASS.
 - Windows compatibility regression: preserved v0.17.0 app-image ZIP `AC0552B51EA0C614AFC4B41C7B5FEC2C40247B641177385CB8AC777F26A17435` passes as one explicit archive after the PE/JKS refinement.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.
 - Exact artifact scan: candidate source snapshot 1,542,548 / `F9B63B84A85A5D6336BE5C52FED5878DC6350AD20D09C3B3049015DA35C9B6A0`; signed Android APK 24,035,572 / `F8DCDBF5E7B13AF567F0388A5EFD885E61CFEA306F74AF590650DE677766772C`; Windows ZIP 89,156,340 / `7619DDE24822CC5CF6B38893382AC46DF8752AE777F046844E6322713F42AAA2`; iOS ZIP 318,236 / `5D17C8BD5E3DC6C359FED40F1B79B38CD901D53343735566201AA454BB72475C`; CycloneDX SBOM 1,581,101 / `413688DEDDBED53F235D311B7BE7B9472D6202B72ABD9F531D2EFA9D86A63DF2`; combined PASS.
-- Product byte preservation: `app/`, `desktop/`, `shared/`, `jvm-core/`, `ios/` and build configuration are identical to `main@d3291a5`; exact-head hosted workflows remain a separate provider gate.
+- Exact current-main Gradle rerun: 111/111 tasks executed; shared Desktop 87, shared Android host 87, Android 289, JVM core 88, Desktop 180 and H13 24, failure/error/skip 0. Android lint/APK/AndroidTest compile and Windows package pass.
+- Product inheritance: runtime subtrees are inherited from `main@012b131`; PR #69's product delta remains scanner/policy/workflow/evidence only. Exact-head hosted workflows remain a separate provider gate.
 - YAML parser unavailable locally; workflow source-order contracts pass, and syntax/execution remains an explicit hosted-CI gate.
 
 ## Review

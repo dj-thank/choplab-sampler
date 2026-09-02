@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（単一product convergence / PR #69 main統合）:** `h13-github-release-20260902.md`。PR #86 Android音質はexact head `0e32770`の8/8 checks・threads 0・fresh review後、`main@012b131`へ通常統合済み。PR #69 `181701b`はAMR/token/PPK/extended M4A/Authenticode/NUL-safe history/traversalまで閉じ、full policy 187、scanner 116、current/history 479がLOCAL PASS。次はcurrent main merge resultの全検証、PR #69 fresh review/checks/normal merge、UI brush-up、release hardening、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
+**進行中（単一product convergence / PR #69 provider再検証）:** `h13-github-release-20260902.md`。PR #86 Android音質はexact head `0e32770`の8/8 checks・threads 0・fresh review後、`main@012b131`へ通常統合済み。PR #69 `a5cfeac`はAMR/token/PPK/extended M4A/Authenticode/NUL-safe history/traversalまでcurrent mainへ統合し、full policy 192、scanner 116、current/history 483、Gradle 111/111、Windows packageがLOCAL PASS。次はPR #69 fresh review/checks/normal merge、UI brush-up、release hardening、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
 
 **Historical H13 pre-tag snapshot:** PR #83は`2864117`、setup-java v6 PR #82と当時のCompose PR #80を含むmainは`d3291a5`だった。後続PR #84でCompose 1.11.1へ戻り、`v0.17.1` tagは`f6cbfdc`に作成後、公開前verifier失敗でReleaseなしのまま保持されている。
 

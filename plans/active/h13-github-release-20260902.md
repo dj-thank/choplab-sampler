@@ -110,7 +110,8 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 - [x] 2026-09-02 — Raw PCM_FLOAT Infinity review RED fixed before clamping at `2b0da00`.
 - [x] 2026-09-02 — Exact final-code full gate: shared 87+87, Android 289, JVM core 88, lint/APK/AndroidTest compile; 99 selected tasks executed, failure/error/skip 0.
 - [x] 2026-09-02 — Audio PR #86 exact head passed 8/8 checks, threads 0 and fresh review, then merged normally as `012b131`.
-- [ ] PR #86 merged-main read-back; PR #69 integrated checks/review/merge; release hardening, UI brush-up, final exact-main gates and publication.
+- [x] 2026-09-02 — PR #69 merged current main locally at `a5cfeac`; policy 192, scanner 116, current/history 483, Gradle 111/111 and Windows package pass.
+- [ ] PR #86 merged-main read-back; PR #69 exact-head checks/review/merge; release hardening, UI brush-up, final exact-main gates and publication.
 
 ### Discoveries
 
