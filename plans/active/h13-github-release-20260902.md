@@ -8,8 +8,8 @@ Integrate the accepted Windows CHOP long-press correction onto the current GitHu
 
 - Sole writer: the root integrator for this bounded task.
 - Remote: `https://github.com/dj-thank/choplab-sampler.git`.
-- Base: `origin/main@41be4ffda904e3317e0ef3802bff90b3887f99b2`, tree `12852e6b918834b91cf79f25bf4152fcaf7f0319`.
-- Integration branch/worktree: `codex/choplab-h13-v0171-20260902` in a dedicated clean worktree.
+- Current base: `origin/main@d3291a522699633d5b7426e4fff66ca4f7b55c09`, tree `c664812a0f213bd33532db6f900ebd62685044e4`. It contains merged PR #83, setup-java PR #82, and Compose Multiplatform 1.12.0 PR #80.
+- Current integration branch/worktree: `codex/choplab-a11y-stability-20260902` in the dedicated clean H13/v0.17.1 worktree.
 - Preserved boundary: the canonical `agent/gpt-pro-ui-integration@6033d85b` checkout remains dirty and must not be staged, reset, cleaned, or used for the merge.
 
 ## Change set
@@ -23,7 +23,7 @@ Integrate the accepted Windows CHOP long-press correction onto the current GitHu
 ## Verification and stop conditions
 
 1. Run `git diff --check`, the current/history public-surface scan, release-policy tests, and release-metadata validation.
-2. Run the dedicated 24-test Desktop input target and the repository's Desktop/shared/JVM verification on the final local candidate.
+2. Run the dedicated 25-test Desktop input target (12 product UI interactions + 1 offscreen teardown-classifier harness test + 12 controller tests) and the repository's Desktop/shared/JVM verification on the final local candidate.
 3. Review the complete diff against the fixed base for both repository standards and the H13/release specification.
 4. Push the branch, open a PR, require the Android, Windows, iOS, and supply-chain checks to finish successfully, and read back mergeability before merge.
 5. After merge, create a new annotated `v0.17.1` tag only at the exact merged commit. Never move or replace `v0.17.0` or any published asset.
@@ -48,3 +48,9 @@ The third head resolved all seven review threads but one Windows PR-event H13 UI
 That head passed all eight hosted checks, but the exact fresh review found one P1 and five P2 findings. Product/repository repair `7b22b19fcc10da7cc9371bf72a9a933f79701680` / tree `37b718efe193b5ea8b9d0de4f56618cda69ade93` adds exclusive-loop abort and closes snapshot/README/local-gate/H13-link/public-Windows contracts. Public-preview successor `acc13aa57dd8549f3f45180cef1136ddd8f6333e` / tree `de3922470ca40969c000c5d6a88b8e978fc11e7d` verifies but does not publish stable-signed Android or Windows, and publishes only an explicitly verified Android debug APK plus iOS Simulator archive. Policy 74/74, updated validator, focused loop tests, actual debug APK build/verification, history scan, and local review 0/0 pass. Host paging-file exhaustion prevents a complete local all-task rerun, so new-head hosted CI remains mandatory.
 
 The next exact head also passed all eight hosted checks, but fresh review found three P2 staging/proxy/tooling paths. Repair `6070204f9175ae9f09613eedaebc8c7e7a2b17f5` / tree `732f516e3b5d820f7ee0ef9c56f50063f7f2b759` copies the declared debug array, handles capture ownership in the API 36 proxy, and permits only two named debug tooling components. Policy 75/75, AndroidTest Kotlin compile, actual debug APK verification, and local review 0/0 pass. The next frontier is exact-head hosted CI, three thread replies/resolution, and fresh review.
+
+PR #83 exact head `13e41af589ee32018ae6857623b857b9c0356f21` completed its hosted gate and was merged by `dj-thank` as `2864117fe3c81b308033155dae337a6030165344`. Main then advanced through setup-java PR #82 and Compose 1.12.0 PR #80 to the current base above. The old PR #83 pending statements are retained chronology, not the current frontier.
+
+PR #84 follows up two independent harness races without changing product behavior: Android framework accessibility readiness (`8b58e4b`), laid-out offscreen pointer target reacquisition/full stacks (`f34065e`), and the exact Compose 1.12 `RectManager.remove` → `ImageComposeScene.close` classifier (`df61ac4`). Local JDK 17 H13 is 25/25; policy is 75/75; current-tree public scan is 479 with credential/signing/audio candidates 0. Head `a1fdc80` completed hosted checks 8/8.
+
+Post-`a1fdc80` test-only milestones `75025c51754f8c693b81ed0cef7dd6a852aef7c8` / tree `52b24bfd4a2c9a76fa8a3407b643d930adb730e5` and `e911b417ef1740f69b230731d25c07a158d2147a` / tree `8a28eccc521636f11065cf5f63feca5560687095` raise only one stale-recovery close join and the shared `awaitCondition` observation budget to five seconds. Other test waits and all production deadlines remain unchanged. Integrated head `a4030ea8973b278da1e9e04a37231b8178d32d4b` / tree `e2c36cd58008af6759fd2100bb04bdf529de5696` completed hosted checks 8/8; its fresh review found four documentation/SSOT consistency findings. The current frontier is this documentation successor's fresh checks and review closure, then PR #84 merge, merged-main checks, immutable `v0.17.1` tag workflow, and Release read-back.

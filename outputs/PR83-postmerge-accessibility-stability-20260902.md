@@ -23,7 +23,7 @@ Exact follow-up source commit: `8b58e4b294d73e24a75c7a47c06d08502182d69a` / tree
 
 ## Gate
 
-Ceiling remains `LOCAL_PASS`. A dedicated follow-up PR, all exact-head hosted checks, merge read-back, merged-main checks, and the still-absent `v0.17.1` tag/Release remain mandatory before public release.
+Exact heads `a1fdc80` and `a4030ea` each completed Android, Windows, iOS, and supply-chain push/PR checks 8/8, establishing scoped PR/provider evidence for those revisions. The current documentation successor still requires its own checks and review closure; merge read-back, merged-main checks, and the still-absent `v0.17.1` tag/Release remain mandatory. Physical device/audio, Spotify account/provider, screen-reader speech, and Human gates remain unclaimed.
 
 ## Hosted follow-up and offscreen harness repair
 
@@ -39,4 +39,4 @@ Exact teardown repair: `df61ac4406481b0837d9ac4582eaee906f4a658c` / tree `aaa17d
 
 A full combined local gate subsequently showed `successfulUserLoadSurvivesAStaleStartupRecoveryFailureDuringClose` finishing in 2.37 seconds while its test joined for exactly 2 seconds. The product correctly waits for the released recovery future; only the outer test observation budget is raised to 5 seconds, with the same assertion that close must terminate and persist the successful user selection.
 
-The same combined suite also observed a successful zero-delay autosave after the former shared two-second polling deadline. All controller tests now use one five-second asynchronous observation budget; production debounce, recorder, playback, and close deadlines are unchanged.
+The same combined suite also observed a successful zero-delay autosave after the former shared two-second polling deadline. Only the shared `awaitCondition` polling helper (`e911b417ef1740f69b230731d25c07a158d2147a` / tree `8a28eccc521636f11065cf5f63feca5560687095`) and the one stale-recovery close join (`75025c51754f8c693b81ed0cef7dd6a852aef7c8` / tree `52b24bfd4a2c9a76fa8a3407b643d930adb730e5`) use the five-second observation budget; other two-second/one-second joins, latches, and future deadlines are unchanged. Integrated head `a4030ea8973b278da1e9e04a37231b8178d32d4b` / tree `e2c36cd58008af6759fd2100bb04bdf529de5696` passed all eight hosted push/PR checks.
