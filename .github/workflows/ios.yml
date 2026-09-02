@@ -2,6 +2,8 @@ name: iOS verification
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -14,6 +16,7 @@ concurrency:
 
 jobs:
   verify:
+    name: iOS verification
     runs-on: macos-14
     timeout-minutes: 55
     steps:

@@ -170,7 +170,7 @@ app/build/outputs/apk/debug/app-debug.apk
 iOS Simulator preview:
 
 ```bash
-xcodegen generate --spec project.yml
+xcodegen generate --spec ios/project.yml
 bash scripts/build-ios-simulator.sh
 ```
 

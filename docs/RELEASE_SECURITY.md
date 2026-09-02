@@ -1,19 +1,19 @@
 # Release security and repository controls
 
-Updated: 2026-08-21
+Updated: 2026-09-02
 
 This document separates controls enforced by committed source from controls that require a GitHub repository administrator. Do not report an administrator control as complete until its setting has been read back from GitHub.
 
 ## Source-enforced release contract
 
-`gradle.properties` is the only source for `choplabVersion` and `choplabBuildNumber`. A public tag must be exactly `v${choplabVersion}` and point to a commit already reachable from `main`.
+`gradle.properties` is the only source for `choplabVersion` and `choplabBuildNumber`. A public tag must be exactly `v${choplabVersion}`, be an annotated tag object peeling to a commit, and its peeled target must equal the exact `GITHUB_SHA` at both the metadata and publication boundaries. Release metadata also compares every reachable historical `v*` tag (including legacy tags whose build number is read from the old Android source) and fails closed unless both version ordering and Android build number are monotonic. The source-bound public manifest allows exactly one Android debug APK, one iOS Simulator app archive, and one CycloneDX SBOM for that version; checksum sidecars and `SHA256SUMS` are the only accompanying publication records.
 
 A `v*` run of `.github/workflows/release.yml`:
 
 1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256 for a non-public continuity candidate;
-4. runs the shared common-source contract on an Android JVM host, verifies the stable-signed non-debuggable candidate without uploading it, and separately builds the declared public debug preview. The preview verifier requires debuggable=true, the default debug signature, exact version/build metadata, and only the known Compose debug components while retaining permission/export/alignment checks;
+4. runs the shared common-source contract on an Android JVM host, verifies the stable-signed non-debuggable candidate without uploading it, and separately builds the declared public debug preview. Before any Android build, CI captures the debug keystore's certificate SHA-256 through `keytool` without exporting or logging private-key material. The preview verifier compares the final APK signer to that pre-build identity (an artifact self-digest is not sufficient), requires debuggable=true, exact version/build metadata, and only the known Compose debug components while retaining permission/export/alignment checks;
 5. compiles the declared Kotlin/Native iOS Simulator framework, runs the Swift tests, and verifies embedded iOS version/build metadata;
 6. runs the shared common-source contract on a Desktop JVM host, tests and packages the Windows app-image, verifies its embedded product version, and retains it only as a short-lived Actions verification artifact;
 7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files for the declared Android/iOS public surface;
@@ -44,7 +44,7 @@ Keep an offline encrypted backup of the keystore and its recovery information. L
 - Require at least one approval and require review from CODEOWNERS.
 - Dismiss stale approvals when the head changes.
 - Require conversation resolution.
-- Require the Android, Windows, iOS, and `Supply-chain policy / History scan and dependency SBOM` checks.
+- Require the unique `Android verification`, `iOS verification`, `Windows desktop verification`, and `Supply-chain policy` check runs. The Windows workflow intentionally has no pull-request path filter, so its required check is created even when a change does not touch desktop files; its push trigger remains limited to `main` to avoid duplicate PR push runs.
 - Require the branch to be current before merge.
 - Block force-push and deletion.
 - Limit bypass to an explicit emergency maintainer role and record each bypass.
