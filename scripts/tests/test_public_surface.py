@@ -435,6 +435,21 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertEqual(2, sum("secret-shaped content" in item for item in findings), findings)
         self.assertNotIn(token, "\n".join(findings))
 
+    def test_bomless_utf32_decoy_cannot_suppress_a_later_alignment(self) -> None:
+        token = "github_pat_" + "v" * 24
+        encoded_prefix = "github_pat_".encode("utf-32-le")
+        decoy = b"X" + encoded_prefix
+        padding = b"Q" * ((-len(decoy)) % 4)
+        content = decoy + padding + token.encode("utf-32-le")
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("aligned.dat", content)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="utf32-alignments.zip")
+
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+        self.assertNotIn(token, "\n".join(findings))
+
     def test_zip_content_scan_does_not_classify_bom_text_as_mpeg(self) -> None:
         token = "github_pat_" + "c" * 24
         encoded_values = (
@@ -805,10 +820,29 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("candidate scan limit exceeded" in item for item in findings), findings)
 
     def test_zip_content_scan_allows_conventional_apk_signature_certificate(self) -> None:
-        certificate = bytes.fromhex(
-            "302306092a864886f70d010702a01630140201013100300b"
-            "06092a864886f70d0107013100"
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes((tag, len(value))) + value
+
+        signed_data_oid = bytes.fromhex("06092a864886f70d010702")
+        data_oid = bytes.fromhex("06092a864886f70d010701")
+        sha256_oid = bytes.fromhex("0609608648016503040201")
+        algorithm = der(0x30, sha256_oid)
+        signer = der(
+            0x30,
+            der(0x02, b"\x01")
+            + der(0x30, der(0x30, b"") + der(0x02, b"\x01"))
+            + algorithm
+            + algorithm
+            + der(0x04, b"x"),
         )
+        signed_data = der(
+            0x30,
+            der(0x02, b"\x01")
+            + der(0x31, algorithm)
+            + der(0x30, data_oid)
+            + der(0x31, signer),
+        )
+        certificate = der(0x30, signed_data_oid + der(0xA0, signed_data))
         private_key = bytes.fromhex(
             "3015020100300d06092a864886f70d0101010500040178"
         )
@@ -864,6 +898,24 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             archive.writestr("payload.dat", pfx)
 
         findings = scan_zip(BytesIO(candidate.getvalue()), label="legacy-pfx.zip")
+
+        self.assertTrue(any("PKCS#12 container" in item for item in findings), findings)
+
+    def test_zip_content_scan_rejects_embedded_legacy_pkcs12(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes((tag, len(value))) + value
+
+        data_oid = bytes.fromhex("06092a864886f70d010701")
+        legacy_pbe_oid = bytes.fromhex("060a2a864886f70d010c0103")
+        pfx = der(
+            0x30,
+            der(0x02, b"\x03") + der(0x30, data_oid) + der(0x30, legacy_pbe_oid),
+        )
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("resource.dat", b"RESOURCE-PREFIX" + pfx + b"TRAILER")
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="embedded-pfx.zip")
 
         self.assertTrue(any("PKCS#12 container" in item for item in findings), findings)
 
@@ -1826,6 +1878,32 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             archive.writestr("payload.dat", tar_bytes)
 
         findings = scan_zip(BytesIO(candidate.getvalue()), label="v7-tar.zip")
+
+        self.assertTrue(any("nested archive format '.tar'" in item for item in findings), findings)
+
+    def test_zip_content_scan_recognizes_gnu_tar_base256_size(self) -> None:
+        payload = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\0" * 28
+        header = bytearray(512)
+        header[:8] = b"clip.wav"
+        header[100:108] = b"0000644\0"
+        header[108:116] = b"0000000\0"
+        header[116:124] = b"0000000\0"
+        encoded_size = bytearray(len(header[124:136]))
+        encoded_size[-4:] = len(payload).to_bytes(4, "big")
+        encoded_size[0] = 0x80
+        header[124:136] = encoded_size
+        header[136:148] = b"00000000000\0"
+        header[148:156] = b"        "
+        header[156:157] = b"0"
+        header[257:263] = b"ustar "
+        checksum = sum(header)
+        header[148:156] = f"{checksum:06o}\0 ".encode("ascii")
+        tar_bytes = bytes(header) + payload + b"\0" * (512 - len(payload)) + b"\0" * 1024
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("payload.dat", tar_bytes)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="gnu-base256-tar.zip")
 
         self.assertTrue(any("nested archive format '.tar'" in item for item in findings), findings)
 
