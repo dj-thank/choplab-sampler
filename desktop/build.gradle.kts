@@ -69,6 +69,10 @@ tasks.register<Test>("desktopLongPressUiTest") {
     testLogging {
         events("passed", "failed", "skipped")
         showStandardStreams = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
     }
 }
 

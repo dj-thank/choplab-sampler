@@ -48,10 +48,10 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("チョップ開始"), 40)
+                fixture.mousePress("チョップ開始", 40)
                 assertTrue(fixture.controller.state.value.sourcePlaying)
                 fixture.audio.advanceSourceTo(24_000)
-                fixture.mousePress(fixture.nodeWithDescription("PAD 03 空"), 40)
+                fixture.mousePress("PAD 03 空", 40)
                 fixture.capture("live-source-empty-click")
 
                 assertEquals(2, fixture.controller.state.value.selectedPad)
@@ -72,8 +72,8 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
-                fixture.mousePress(fixture.nodeWithDescription("音声波形。タップで近い境界"), 40, fractionX = 0.75f)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                fixture.mousePress("音声波形。タップで近い境界", 40, fractionX = 0.75f)
                 // Waveform supports double-click; allow its real single-click decision to settle.
                 fixture.settle(350)
                 fixture.capture("waveform-short-click")
@@ -96,13 +96,13 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, targetStart = 76_000, targetEnd = 80_000)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
                 fixture.capture("source-end-initial")
                 assertEquals(
                     "全体波形。PAD範囲 0:09.500 から 0:10.000。編集表示 0:09.000 から 0:10.000",
                     fixture.nodeWithDescription("全体波形。PAD範囲").description(),
                 )
-                fixture.mousePress(fixture.nodeWithDescription("音声波形。タップで近い境界"), 700, fractionX = 0.8f)
+                fixture.mousePress("音声波形。タップで近い境界", 700, fractionX = 0.8f)
                 fixture.capture("source-end-focus")
 
                 assertEquals(76_000, fixture.controller.state.value.pads[1].startFrame)
@@ -122,13 +122,13 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, targetStart = 0, targetEnd = 4_000)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
                 fixture.capture("source-start-initial")
                 assertEquals(
                     "全体波形。PAD範囲 0:00.000 から 0:00.500。編集表示 0:00.000 から 0:01.000",
                     fixture.nodeWithDescription("全体波形。PAD範囲").description(),
                 )
-                fixture.mousePress(fixture.nodeWithDescription("音声波形。タップで近い境界"), 700, fractionX = 0.25f)
+                fixture.mousePress("音声波形。タップで近い境界", 700, fractionX = 0.25f)
                 fixture.capture("source-start-focus")
 
                 // At the midpoint of this half-second Chop, the existing tie rule chooses START.
@@ -150,7 +150,7 @@ class DesktopLongPressUiTest {
             for (holdMillis in listOf(40L, 700L)) {
                 val fixture = DeckFixture.create(coroutineContext)
                 try {
-                    fixture.mousePress(fixture.nodeWithDescription("PAD 03 空"), holdMillis)
+                fixture.mousePress("PAD 03 空", holdMillis)
                     fixture.capture("unassigned-$holdMillis")
 
                     assertEquals(2, fixture.controller.state.value.selectedPad)
@@ -170,7 +170,7 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 40)
+                fixture.mousePress("PAD 02 割り当て済み", 40)
                 fixture.capture("assigned-short-click")
 
                 assertEquals(1, fixture.controller.state.value.selectedPad)
@@ -223,9 +223,9 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("工程3 ビート BEAT"), 40)
+                fixture.mousePress("工程3 ビート BEAT", 40)
                 fixture.capture("beat-before")
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
                 fixture.capture("beat-after")
 
                 assertEquals(1, fixture.controller.state.value.selectedPad)
@@ -255,9 +255,9 @@ class DesktopLongPressUiTest {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
-                fixture.mousePress(fixture.nodeWithDescription("工程3 ビート BEAT"), 40)
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
-                fixture.mousePress(fixture.nodeWithDescription("音声波形。タップで近い境界"), 700, fractionX = 0.75f)
+                fixture.mousePress("工程3 ビート BEAT", 40)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                fixture.mousePress("音声波形。タップで近い境界", 700, fractionX = 0.75f)
                 fixture.capture("waveform-end-focus")
 
                 assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
@@ -283,7 +283,7 @@ class DesktopLongPressUiTest {
             try {
                 fixture.audio.failNextTrigger = true
 
-                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
 
                 assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
                 assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
@@ -358,6 +358,33 @@ private class DeckFixture private constructor(
 
     fun hasDescription(prefix: String): Boolean = nodes().any { it.description().startsWith(prefix) }
 
+    private suspend fun readyNodeWithDescription(prefix: String): SemanticsNode {
+        var lastMatches: List<SemanticsNode> = emptyList()
+        repeat(100) {
+            scene.render(System.nanoTime()).close()
+            lastMatches = nodes().filter { it.description().startsWith(prefix) }
+            val ready = lastMatches.singleOrNull()?.takeIf { node ->
+                val bounds = node.boundsInRoot
+                bounds.left.isFinite() &&
+                    bounds.top.isFinite() &&
+                    bounds.right.isFinite() &&
+                    bounds.bottom.isFinite() &&
+                    bounds.width > 0f &&
+                    bounds.height > 0f &&
+                    bounds.left >= 0f &&
+                    bounds.top >= 0f &&
+                    bounds.right <= 1_100f &&
+                    bounds.bottom <= 1_000f
+            }
+            if (ready != null) return ready
+            delay(10)
+        }
+        error(
+            "Timed out waiting for one laid-out '$prefix' node; " +
+                "matches=${lastMatches.map { node -> "${node.description()}@${node.boundsInRoot}" }}",
+        )
+    }
+
     fun semanticsClick(node: SemanticsNode) {
         val action = requireNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action)
         assertTrue(action())
@@ -386,6 +413,10 @@ private class DeckFixture private constructor(
             button = PointerButton.Primary,
         )
         settle(100)
+    }
+
+    suspend fun mousePress(description: String, holdMillis: Long, fractionX: Float = 0.5f) {
+        mousePress(readyNodeWithDescription(description), holdMillis, fractionX)
     }
 
     suspend fun settle(durationMillis: Long = 100) {
