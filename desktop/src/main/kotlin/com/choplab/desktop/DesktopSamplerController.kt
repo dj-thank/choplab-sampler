@@ -126,6 +126,7 @@ class DesktopSamplerController(
     private val sourceLoadOperations = ProjectOperationEpoch()
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     internal var recoveredHydrationAdmission: () -> Unit = {}
+    internal var sourcePitchWorkerAdmission: () -> Unit = {}
     private val playbackTransitionLock = ReentrantLock()
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
@@ -878,9 +879,16 @@ class DesktopSamplerController(
             mutableState.update { it.copy(sourcePlaying = false, sourcePlayheadFrame = resumeFrame) }
         }
         val operation = sourceLoadOperations.begin()
-        mutableState.update { it.copy(statusMessage = masterPitchApplyingMessage(pitch)) }
+        val applyingMessage = masterPitchApplyingMessage(pitch)
+        val previousAvailability = synchronized(sourcePlaybackStateLock) {
+            sourcePlaybackAvailability.also {
+                sourcePlaybackAvailability = SourcePlaybackAvailability.Pending(applyingMessage)
+            }
+        }
+        mutableState.update { it.copy(statusMessage = applyingMessage) }
         val submitted = runCatching {
             ioExecutor.execute {
+                sourcePitchWorkerAdmission()
                 if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) return@execute
                 val result = loadSourcePcmIfCurrent(audio, pitch, operation)
                 if (!result.applied) return@execute
@@ -925,7 +933,22 @@ class DesktopSamplerController(
                 }
             }
         }
-        if (submitted.isFailure) invalidateSourceLoadOperations()
+        if (submitted.isFailure) {
+            invalidateSourceLoadOperations()
+            synchronized(sourcePlaybackStateLock) {
+                val pending = sourcePlaybackAvailability as? SourcePlaybackAvailability.Pending
+                if (pending?.restoreStatus == applyingMessage) {
+                    sourcePlaybackAvailability = previousAvailability
+                }
+            }
+            mutableState.update {
+                it.copy(
+                    sourcePlaying = false,
+                    statusMessage = "曲キーを適用できません: " +
+                        (submitted.exceptionOrNull()?.message ?: "I/O worker unavailable"),
+                )
+            }
+        }
     }
     override fun setSelectedPadPitch(value: Float) = updateSelected("pad-pitch") { it.copy(pitchSemitones = value.coerceIn(-24f, 24f)) }
     override fun setSelectedPadTone(value: Float) = updateSelected("pad-tone") { it.copy(tone = value.coerceIn(0f, 1f)) }

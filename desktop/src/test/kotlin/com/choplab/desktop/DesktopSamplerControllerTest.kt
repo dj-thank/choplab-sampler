@@ -1581,6 +1581,61 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun sourcePlaybackCannotStartBeforeQueuedPitchRenderClaimsPendingState() {
+        val directory = Files.createTempDirectory("choplab-pitch-queued-pending").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "queued-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val workerEntered = CountDownLatch(1)
+        val releaseWorker = CountDownLatch(1)
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.sourcePitchWorkerAdmission = {
+                workerEntered.countDown()
+                check(releaseWorker.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding the queued pitch worker"
+                }
+            }
+
+            controller.setMasterPitch(6f)
+            assertTrue(workerEntered.await(2L, TimeUnit.SECONDS))
+            controller.toggleSourcePlayback()
+
+            assertEquals(0, engine.playFromCalls)
+            assertFalse(engine.isSourcePlaying)
+            assertFalse(controller.state.value.sourcePlaying)
+            releaseWorker.countDown()
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 6f }
+
+            controller.toggleSourcePlayback()
+            assertEquals(1, engine.playFromCalls)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            releaseWorker.countDown()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rapidMasterPitchChangesResumePlaybackAtTheLatestKey() {
         val directory = Files.createTempDirectory("choplab-rapid-master-pitch").toFile()
         val store = AtomicProjectStore(directory)

@@ -81,6 +81,7 @@ import com.choplab.sampler.audio.scratchProgress
 import com.choplab.sampler.audio.scratchDirectionLabel
 import com.choplab.sampler.audio.scratchSpeedFromGesture
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PatternArrangement
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimPrecision
@@ -765,6 +766,7 @@ private fun ProductionDock(
     height: Dp,
     gap: Dp,
     handlers: Map<ProductionDockIntent, () -> Unit>,
+    confirmationKey: Any? = Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(height),
@@ -778,6 +780,7 @@ private fun ProductionDock(
                     label = item.label,
                     confirmLabel = item.confirmLabel,
                     onConfirm = onClick,
+                    confirmationKey = confirmationKey to item.intent,
                     enabled = item.enabled,
                     modifier = modifier,
                 )
@@ -1510,6 +1513,7 @@ private fun CaptureNextRow(
             ProductionDockIntent.RESET_ALL to onReset,
             ProductionDockIntent.START_CHOP to onContinue,
         ),
+        confirmationKey = destructiveProjectConfirmationKey(state),
     )
 }
 
@@ -4556,6 +4560,7 @@ private fun NewSourceActionButton(
             label = label,
             confirmLabel = "PAD・ビート消去\nもう一度",
             onConfirm = onConfirm,
+            confirmationKey = destructiveProjectConfirmationKey(state),
             enabled = enabled,
             modifier = modifier,
             compact = compact,
@@ -4571,6 +4576,40 @@ private fun NewSourceActionButton(
         )
     }
 }
+
+internal data class DestructiveProjectConfirmationKey(
+    val projectLaunchRevision: Long,
+    val sourceId: Long?,
+    val rangeStartFrame: Int,
+    val rangeEndFrame: Int,
+    val sliceMarkers: List<Int>,
+    val manualChopEnabled: Boolean,
+    val pads: List<PadModel>,
+    val activeSteps: Set<Int>,
+    val patternArrangement: PatternArrangement,
+    val bpm: Float,
+    val swing: Float,
+    val selectedDrumKitId: String,
+    val masterPitchSemitones: Float,
+)
+
+internal fun destructiveProjectConfirmationKey(
+    state: SamplerUiState,
+): DestructiveProjectConfirmationKey = DestructiveProjectConfirmationKey(
+    projectLaunchRevision = state.projectLaunchRevision,
+    sourceId = state.currentAudio?.id,
+    rangeStartFrame = state.rangeStartFrame,
+    rangeEndFrame = state.rangeEndFrame,
+    sliceMarkers = state.sliceMarkers,
+    manualChopEnabled = state.manualChopEnabled,
+    pads = state.pads,
+    activeSteps = state.activeSteps,
+    patternArrangement = state.patternArrangement,
+    bpm = state.bpm,
+    swing = state.swing,
+    selectedDrumKitId = state.selectedDrumKitId,
+    masterPitchSemitones = state.masterPitchSemitones,
+)
 
 @Composable
 private fun ConfirmActionButton(
