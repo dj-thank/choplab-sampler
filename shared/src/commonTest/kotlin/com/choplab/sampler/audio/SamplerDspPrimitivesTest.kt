@@ -88,6 +88,16 @@ class SamplerDspPrimitivesTest {
         assertTrue(overload > nearPeak)
         assertTrue(overload < 0.98f)
         assertEquals(-overload, SamplerDspPrimitives.softLimit(-4f), 0f)
+
+        var previous = SamplerDspPrimitives.MASTER_LIMITER_THRESHOLD
+        repeat(1_000) { index ->
+            val input = SamplerDspPrimitives.MASTER_LIMITER_THRESHOLD + (index + 1) * 0.01f
+            val current = SamplerDspPrimitives.softLimit(input)
+            assertTrue(current >= previous)
+            assertTrue(current < SamplerDspPrimitives.MASTER_LIMITER_CEILING)
+            assertEquals(-current, SamplerDspPrimitives.softLimit(-input), 0f)
+            previous = current
+        }
     }
 
     @Test

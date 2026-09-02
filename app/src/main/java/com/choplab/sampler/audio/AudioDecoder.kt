@@ -50,7 +50,7 @@ internal fun validateStableDecodedPcmFormat(
     }
 }
 
-internal fun validateStableDecodedPcmEncoding(storedEncoding: Int?, decodedEncoding: Int): Int {
+internal fun validateDecodedPcmEncoding(decodedEncoding: Int): Int {
     require(
         decodedEncoding == AudioFormat.ENCODING_PCM_8BIT ||
             decodedEncoding == AudioFormat.ENCODING_PCM_16BIT ||
@@ -60,10 +60,15 @@ internal fun validateStableDecodedPcmEncoding(storedEncoding: Int?, decodedEncod
     ) {
         "対応できないPCM形式です: $decodedEncoding"
     }
+    return decodedEncoding
+}
+
+internal fun validateStableDecodedPcmEncoding(storedEncoding: Int?, decodedEncoding: Int): Int {
+    val validatedEncoding = validateDecodedPcmEncoding(decodedEncoding)
     check(storedEncoding == null || storedEncoding == decodedEncoding) {
         "デコード中にPCM形式が変わりました"
     }
-    return decodedEncoding
+    return validatedEncoding
 }
 
 internal fun appendDecodedPcm(
@@ -73,7 +78,7 @@ internal fun appendDecodedPcm(
     destination: Pcm16ArrayBuilder,
 ) {
     val channels = sourceChannelCount
-    validateStableDecodedPcmEncoding(storedEncoding = null, decodedEncoding = encoding)
+    validateDecodedPcmEncoding(encoding)
     check(channels in 1..8) { "Decoded channel count was not validated" }
     check(destination.channelCount == retainedChannelCountForImport(channels)) {
         "Decoded channel layout changed after PCM output started"
