@@ -150,7 +150,7 @@ class DesktopLongPressUiTest {
             for (holdMillis in listOf(40L, 700L)) {
                 val fixture = DeckFixture.create(coroutineContext)
                 try {
-                fixture.mousePress("PAD 03 空", holdMillis)
+                    fixture.mousePress("PAD 03 空", holdMillis)
                     fixture.capture("unassigned-$holdMillis")
 
                     assertEquals(2, fixture.controller.state.value.selectedPad)
@@ -332,6 +332,23 @@ class DesktopLongPressUiTest {
             }
         }
     }
+
+    @Test
+    fun composeRectManagerCloseRaceClassifierRemainsFailClosed() {
+        val knownRace = IllegalArgumentException("LayoutNode 1239 not found in RectList").apply {
+            stackTrace = arrayOf(
+                StackTraceElement("androidx.compose.ui.spatial.RectManager", "remove", "RectManager.kt", 481),
+                StackTraceElement("androidx.compose.ui.ImageComposeScene", "close", "ImageComposeScene.skiko.kt", 226),
+            )
+        }
+        assertTrue(knownRace.isKnownComposeRectManagerSceneCloseRace())
+        assertFalse(IllegalArgumentException(knownRace.message).isKnownComposeRectManagerSceneCloseRace())
+        assertFalse(
+            IllegalArgumentException("LayoutNode 1239 not found elsewhere").apply {
+                stackTrace = knownRace.stackTrace
+            }.isKnownComposeRectManagerSceneCloseRace(),
+        )
+    }
 }
 
 private class DeckFixture private constructor(
@@ -479,7 +496,12 @@ private class DeckFixture private constructor(
 
     override fun close() {
         try {
-            scene.close()
+            try {
+                scene.close()
+            } catch (failure: IllegalArgumentException) {
+                if (!failure.isKnownComposeRectManagerSceneCloseRace()) throw failure
+                System.err.println("Ignored known Compose 1.12 offscreen scene-close race: ${failure.message}")
+            }
         } finally {
             try {
                 controller.close()
@@ -567,6 +589,18 @@ private class DeckFixture private constructor(
         }
     }
 }
+
+private val composeRectManagerSceneCloseMessage = Regex("LayoutNode \\d+ not found in RectList")
+
+private fun Throwable.isKnownComposeRectManagerSceneCloseRace(): Boolean =
+    this is IllegalArgumentException &&
+        composeRectManagerSceneCloseMessage.matches(message.orEmpty()) &&
+        stackTrace.any { frame ->
+            frame.className == "androidx.compose.ui.spatial.RectManager" && frame.methodName == "remove"
+        } &&
+        stackTrace.any { frame ->
+            frame.className == "androidx.compose.ui.ImageComposeScene" && frame.methodName == "close"
+        }
 
 private fun SemanticsNode.description(): String =
     config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString().orEmpty()
