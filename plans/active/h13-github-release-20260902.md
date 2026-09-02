@@ -1,22 +1,22 @@
-# H13 GitHub integration and v0.17.1 release
+# H13 GitHub integration and v0.17.2 release recovery
 
 ## Purpose
 
-Integrate the accepted Windows CHOP long-press correction onto the current GitHub `main`, retain the lightweight H16/H19 provenance without committing local binaries or profiles, and publish immutable `v0.17.1` artifacts only after the merged revision passes the repository's release contract.
+Keep the accepted Windows CHOP long-press correction on GitHub `main`, preserve H16/H19 and PR #83/#84 evidence, and recover the failed immutable `v0.17.1` tag workflow through a new `v0.17.2` revision whose signer verification and release contract pass end to end.
 
 ## Exact starting point and ownership
 
 - Sole writer: the root integrator for this bounded task.
 - Remote: `https://github.com/dj-thank/choplab-sampler.git`.
-- Current base: `origin/main@d3291a522699633d5b7426e4fff66ca4f7b55c09`, tree `c664812a0f213bd33532db6f900ebd62685044e4`. It contains merged PR #83, setup-java PR #82, and Compose Multiplatform 1.12.0 PR #80.
-- Current integration branch/worktree: `codex/choplab-a11y-stability-20260902` in the dedicated clean H13/v0.17.1 worktree.
+- Current base: `origin/main@f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`, tree `e91ae3dacf1d436f5697be149c21a458d1a639a6`. It contains merged PR #83 and PR #84 plus the Compose 1.11.1 stable pin.
+- Current integration branch/worktree: `codex/choplab-v0172-apksigner-pem-20260902` in the dedicated clean H13/release worktree.
 - Preserved boundary: the canonical `agent/gpt-pro-ui-integration@6033d85b` checkout remains dirty and must not be staged, reset, cleaned, or used for the merge.
 
 ## Change set
 
 - Replay the three accepted H13 commits without changing their production/test intent.
 - Record the exact H16 local package and H19 isolated-startup outcomes as lightweight Markdown only.
-- Advance `choplabVersion` from `0.17.0` to `0.17.1` and `choplabBuildNumber` from 27 to 28.
+- Preserve the immutable failed `v0.17.1` tag and advance embedded identity to `0.17.2 (29)` for the corrected release attempt.
 - Run the dedicated H13 input target in both Windows PR verification and immutable Release packaging.
 - Add release notes that keep local component, package, startup, provider/public, device, and Human gates separate.
 
@@ -26,7 +26,7 @@ Integrate the accepted Windows CHOP long-press correction onto the current GitHu
 2. Run the dedicated 24-test Desktop input target (12 product UI interactions + 12 controller tests) and the repository's Desktop/shared/JVM verification on the final local candidate.
 3. Review the complete diff against the fixed base for both repository standards and the H13/release specification.
 4. Push the branch, open a PR, require the Android, Windows, iOS, and supply-chain checks to finish successfully, and read back mergeability before merge.
-5. After merge, create a new annotated `v0.17.1` tag only at the exact merged commit. Never move or replace `v0.17.0` or any published asset.
+5. After merge, create a new annotated `v0.17.2` tag only at the exact merged commit. Never move or replace `v0.17.0`, `v0.17.1`, or any published asset.
 6. Require the tag workflow to verify Android, iOS and Windows, then attest and publish only the declared Android/iOS public assets. Windows remains a short-lived verification artifact. If signing, workflow, permissions, CI, or immutable-publication policy fails, stop at that exact gate without manually weakening or replacing it.
 
 Rollback before merge is branch deletion or PR closure; after merge it is a new corrective PR. Published tags/assets are immutable and are never rolled back by rewriting history.
@@ -58,3 +58,7 @@ Post-`a1fdc80` test-only milestones `75025c51754f8c693b81ed0cef7dd6a852aef7c8` /
 Documentation successor `f47519f75a9e52e6358643c70dbd8487d2458eaf` reproduced the Compose 1.12 defect beyond teardown: Android PR run `33619352222`, job `100212539931`, first observed the known close failure and then failed from `RectManager.recalculateRectIfDirty` during `ImageComposeScene.render()`. The close-only filter therefore cannot qualify the candidate.
 
 Current repair `deed143171806f282768a82d0b9e4fb1fea2a4f8` / tree `bb01345e8bc2c29e5e530229565fb33ea94660ff` pins Compose plugin/runtime/foundation/UI to the previously verified 1.11.1 line, removes the 1.12-only runtime exclusions, and removes the exception filter/classifier. Pointer-target and Android framework-tree readiness remain. JDK 17 local verification passes H13 24/24, Desktop 180/180, `installDist`, AndroidTest Kotlin compile (50 tasks), policy 75/75, public scan 479/0, and `git diff --check`. The current frontier is exact-head hosted CI and fresh review, then PR #84 merge, merged-main checks, immutable `v0.17.1` tag workflow, and Release read-back.
+
+PR #84 exact head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` passed checks 8/8, no-finding review and six resolved threads, then merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; merged-main checks passed 4/4. Annotated `v0.17.1` tag object `20f1beeaf68bc88da9913bf059bcb2aff9a5dcd4` peels to that merge and remains immutable. Release run `33622584694` built/tests/lint/SBOM successfully but Android job `100222855379` stopped before staging because the verifier could not read a textual signer-certificate SHA-256 label. No Release was published.
+
+Current recovery `cb7ba1fe6b8f40f0fc849d25d0953fd32e422bde` / tree `66b5cfd1acad5b05fa7ab956754db183d5b3d8a0` requests PEM signer evidence, hashes DER bytes, cross-checks any text digest, and rejects missing/malformed/multiple/conflicting evidence. Embedded identity is `0.17.2 (29)`. New PEM cases 4/4, verifier 38/38, policy 79/79, release metadata, public scan 481/0, and actual 31,836,270-byte debug APK verification pass. The current frontier is a new PR and exact-head review/CI, merged-main checks, new immutable `v0.17.2` tag workflow, and Release read-back.
