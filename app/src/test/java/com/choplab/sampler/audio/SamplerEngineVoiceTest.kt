@@ -57,10 +57,14 @@ class SamplerEngineVoiceTest {
         repeat(64) { voice.renderStereo(48_000, frame) }
 
         assertTrue(frame.left in 0.89f..0.9f)
-        assertEquals(frame.left, SamplerDspPrimitives.softLimit(frame.left), 0f)
-        val overloaded = SamplerDspPrimitives.softLimit(frame.left * 4f)
-        assertTrue(overloaded > SamplerDspPrimitives.MASTER_LIMITER_THRESHOLD)
-        assertTrue(overloaded < SamplerDspPrimitives.MASTER_LIMITER_CEILING)
+        assertEquals(frame.left, masterSampleForAudioTrack(frame.left), 0f)
+        val twoVoices = masterSampleForAudioTrack(frame.left * 2f)
+        val thirtyTwoVoices = masterSampleForAudioTrack(frame.left * 32f)
+        assertTrue(twoVoices > SamplerDspPrimitives.MASTER_LIMITER_THRESHOLD)
+        assertTrue(thirtyTwoVoices >= twoVoices)
+        assertTrue(thirtyTwoVoices < SamplerDspPrimitives.MASTER_LIMITER_CEILING)
+        assertTrue(thirtyTwoVoices.isFinite())
+        assertEquals(-thirtyTwoVoices, masterSampleForAudioTrack(frame.left * -32f), 0f)
     }
 
     @Test

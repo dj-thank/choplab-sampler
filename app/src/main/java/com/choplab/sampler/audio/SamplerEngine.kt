@@ -21,6 +21,9 @@ import kotlin.math.max
 
 internal const val PREVIEW_PAD_INDEX = -1
 
+/** Exact allocation-free master seam used by the Android AudioTrack render loop. */
+internal fun masterSampleForAudioTrack(mix: Float): Float = SamplerDspPrimitives.softLimit(mix)
+
 internal fun compilePatternSequence(patterns: List<Set<Int>>): Array<Array<IntArray>> {
     val source = patterns.ifEmpty { listOf(emptySet()) }
     return Array(source.size) { patternIndex ->
@@ -444,8 +447,8 @@ class SamplerEngine(
 
                     // Smooth saturating limiter protects against polyphonic overload.
                     val outputIndex = frame * 2
-                    output[outputIndex] = SamplerDspPrimitives.softLimit(leftMix)
-                    output[outputIndex + 1] = SamplerDspPrimitives.softLimit(rightMix)
+                    output[outputIndex] = masterSampleForAudioTrack(leftMix)
+                    output[outputIndex + 1] = masterSampleForAudioTrack(rightMix)
                 }
                 if (latestSourceFrame >= 0) currentSourceFrameValue.set(latestSourceFrame)
                 if (monitoredLoopPad >= 0) {
