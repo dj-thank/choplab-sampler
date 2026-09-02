@@ -1,5 +1,7 @@
 # PR #83 hosted H13 timeout repair — 2026-09-02
 
+> Successor note: the next exact-head review found six additional lifecycle/repository/publication findings. Their repair is recorded in [PR83-third-review-repair-20260902.md](PR83-third-review-repair-20260902.md).
+
 ## Hosted observation
 
 The third PR head `4d6792ebbcb66de05f60a9432f9dd50af35f5e8d` started eight push/pull-request checks. The two supply-chain checks passed. The Windows push-event run `33579553035` passed the complete workflow, including all 24 H13 tests. The Windows pull-request run `33579555787` failed only in `DesktopLongPressUiTest.beatPadMouseLongPressPreservesItsRangeAndOpensFittedTrim` with `TimeoutCancellationException` from its per-test 15-second harness budget.
