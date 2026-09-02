@@ -32,7 +32,7 @@ This section records local evidence. Tag, Release, device, provider-account and 
 
 ## Verification (JDK 17.0.20, Gradle 9.7.1, Windows 11)
 
-- `:shared:desktopTest` 90 / `:jvm-core:test` 88 / `:desktop:test` 185 / `:desktop:desktopLongPressUiTest` 24 / `:app:testDebugUnitTest` 284 — failures/errors/skips 0; `:app:compileDebugAndroidTestKotlin` PASS.
+- Initial product `822305c` checkpoint: `:shared:desktopTest` 90 / `:jvm-core:test` 88 / `:desktop:test` 185 / `:desktop:desktopLongPressUiTest` 24 / `:app:testDebugUnitTest` 284 — failures/errors/skips 0; `:app:compileDebugAndroidTestKotlin` PASS. The current integrated counts are recorded below.
 - `python -m unittest discover -s scripts/tests` 75 OK; `scripts/check_public_surface.py` PASS (482 candidates); `scripts/validate_project.sh` PASS through Git Bash.
 - New tests: `WaveformWheelGestureTest` (4), `BoundedPcmBuilderTest` (3), rapid superseding KEY resume and ALL STOP late-resume denial; the pitch-failure case awaits the asynchronous failure report.
 - `:desktop:packageWindows` PASS: 405 files, 176,816,561 bytes. `ChopLab.exe` SHA-256 `4e2a8ad0ea2a114309f28bf80b15478b66e5b7acd0a375fc6319d812d702d7bf`; `desktop-0.17.1.jar` `cf08eda79b68e21b7c528c7499d7aca0bf17bfab9ba2738331a850843d840909`; `shared-desktop-0.17.1.jar` `6d5570f0e720dc82a4dd6f266f94caecb5532826bf9def281de0919f6f93eb6e`. `ChopLab.cfg` carries the three new java-options.

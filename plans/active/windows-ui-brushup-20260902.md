@@ -32,7 +32,8 @@ Windows デスクトップ版を主対象として、実測・コード読解で
 
 ## 検証
 
-- Exact product `822305c`: `JAVA_HOME=JDK17 ./gradlew :shared:desktopTest :jvm-core:test :desktop:test` → shared 90 / jvm-core 88 / desktop 185、failure/error/skip 0
+- Pre-main product checkpoint `822305c`: `JAVA_HOME=JDK17 ./gradlew :shared:desktopTest :jvm-core:test :desktop:test` → shared 90 / jvm-core 88 / desktop 185、failure/error/skip 0
 - `:app:testDebugUnitTest :app:compileDebugAndroidTestKotlin` → Android unit 284、AndroidTest compile PASS
 - `python -m unittest discover -s scripts/tests` → 75 OK（picker/release contract を含む）、public surface 482 candidates PASS
 - `:desktop:desktopLongPressUiTest :desktop:packageWindows` → H13 24 tests、Windows package PASS。receipt `outputs/windows-ui-brushup-20260902.md` を参照
+- Current main-integration checkpoint: shared 91 / Android host 91 / Android unit 289 / jvm-core 88 / desktop 185 / H13 24、policy 214、Android lint/APK/AndroidTest compile、Windows package PASS
