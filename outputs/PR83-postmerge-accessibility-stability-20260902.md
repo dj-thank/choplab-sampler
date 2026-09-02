@@ -27,8 +27,14 @@ Ceiling remains `LOCAL_PASS`. A dedicated follow-up PR, all exact-head hosted ch
 
 ## Hosted follow-up and offscreen harness repair
 
-The first follow-up head `b6d88a4` passed its Android push run, but the parallel pull-request run failed before Android build in `DesktopLongPressUiTest.waveformMouseLongPressMovesTheCloserEndAndFocusesOneSecond`. The failure was an `IllegalArgumentException` from Compose UI while the test reused a semantics node obtained immediately after a screen transition; no product assertion failed.
+The first follow-up head `b6d88a4` passed its Android push run, but the parallel pull-request run failed before Android build in `DesktopLongPressUiTest.waveformMouseLongPressMovesTheCloserEndAndFocusesOneSecond`. Head `f34065e` added input-target reacquisition and full test stacks. Its Android push run `33616031946`, job `100201945805`, then made the remaining cause exact: all product assertions completed, and `ImageComposeScene.close()` failed during fixture teardown with `LayoutNode 1239 not found in RectList` from `RectManager.remove`. The parallel PR run remained in progress; merge stayed stopped.
 
-The harness now reacquires each pointer target immediately before input and waits at most one second for exactly one finite, non-empty node fully inside the 1100 × 1000 offscreen viewport. A missing or duplicate node remains a hard failure with the last observed descriptions and bounds. The dedicated Gradle task also emits full exception causes and stack traces on future failures. The exact local 24-test H13 target passes after this repair on JDK 17 / Compose 1.12.0.
+The harness reacquires each pointer target immediately before input and waits at most one second for exactly one finite, non-empty node fully inside the 1100 × 1000 offscreen viewport. A missing or duplicate node remains a hard failure with the last observed descriptions and bounds. The dedicated Gradle task also emits full exception causes and stack traces on future failures.
+
+Exact teardown repair: `df61ac4406481b0837d9ac4582eaee906f4a658c` / tree `aaa17d7f4893315dcc4c5ca60f18b77064a2310d`.
+
+- Only the exact Compose 1.12 offscreen close signature is classified: `IllegalArgumentException`, message `LayoutNode <digits> not found in RectList`, a `RectManager.remove` frame, and an `ImageComposeScene.close` frame must all be present.
+- Unexpected close failures still escape. A deterministic classifier test covers the known signature plus missing-stack and wrong-message negative cases.
+- JDK 17 local H13 target: 25 tests / 0 failures; `BUILD SUCCESSFUL in 2m 36s`. No product code, device, install, ADB, audio, or credential operation was involved.
 
 A full combined local gate subsequently showed `successfulUserLoadSurvivesAStaleStartupRecoveryFailureDuringClose` finishing in 2.37 seconds while its test joined for exactly 2 seconds. The product correctly waits for the released recovery future; only the outer test observation budget is raised to 5 seconds, with the same assertion that close must terminate and persist the successful user selection.
