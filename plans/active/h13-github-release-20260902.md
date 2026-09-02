@@ -8,8 +8,8 @@ Keep the accepted Windows CHOP long-press correction on GitHub `main`, preserve 
 
 - Sole writer: the root integrator for this bounded task.
 - Remote: `https://github.com/dj-thank/choplab-sampler.git`.
-- Current base: `origin/main@f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`, tree `e91ae3dacf1d436f5697be149c21a458d1a639a6`. It contains merged PR #83 and PR #84 plus the Compose 1.11.1 stable pin.
-- Current integration branch/worktree: `codex/choplab-v0172-apksigner-pem-20260902` in the dedicated clean H13/release worktree.
+- Current base: `origin/main@e71e0fde2e8a7ef82020cfc905d07473b95c073b`, tree `3117c7f36307217e6d5ce7d27091eaa7ec133695`. It contains merged PR #83, PR #84, and the v0.17.2 signer-verifier recovery PR #85.
+- Current integration branch/worktree: `codex/choplab-android-clipping-20260902` in the dedicated clean Android audio worktree.
 - Preserved boundary: the canonical `agent/gpt-pro-ui-integration@6033d85b` checkout remains dirty and must not be staged, reset, cleaned, or used for the merge.
 
 ## Change set
@@ -61,4 +61,80 @@ Current repair `deed143171806f282768a82d0b9e4fb1fea2a4f8` / tree `bb01345e8bc2c2
 
 PR #84 exact head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` passed checks 8/8, no-finding review and six resolved threads, then merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; merged-main checks passed 4/4. Annotated `v0.17.1` tag object `20f1beeaf68bc88da9913bf059bcb2aff9a5dcd4` peels to that merge and remains immutable. Release run `33622584694` built/tests/lint/SBOM successfully but Android job `100222855379` stopped before staging because the verifier could not read a textual signer-certificate SHA-256 label. No Release was published.
 
-Current recovery `cb7ba1fe6b8f40f0fc849d25d0953fd32e422bde` / tree `66b5cfd1acad5b05fa7ab956754db183d5b3d8a0` requests PEM signer evidence, hashes DER bytes, cross-checks any text digest, and rejects missing/malformed/multiple/conflicting evidence. Embedded identity is `0.17.2 (29)`. New PEM cases 4/4, verifier 38/38, policy 79/79, release metadata, public scan 481/0, and actual 31,836,270-byte debug APK verification pass. The current frontier is a new PR and exact-head review/CI, merged-main checks, new immutable `v0.17.2` tag workflow, and Release read-back.
+Signer recovery `cb7ba1fe6b8f40f0fc849d25d0953fd32e422bde` / tree `66b5cfd1acad5b05fa7ab956754db183d5b3d8a0` requests PEM signer evidence, hashes DER bytes, cross-checks any text digest, and rejects missing/malformed/multiple/conflicting evidence. Embedded identity is `0.17.2 (29)`. PR #85 head `a7bf79f` merged as `e71e0fde2e8a7ef82020cfc905d07473b95c073b`; merged-main Android `33625076385`, Windows `33625076392`, iOS `33625076368`, and supply-chain `33625076363` all succeeded. Publication stays held until the product-convergence milestones below finish.
+
+PR #86 follow-up `231da39e4c42b26d135bb3f5d7ce366fc6a540af` / tree `6ee130640e6c02228208b944627fcca5d8ff1605` adds a RED→GREEN duplicate-PEM case and rejects more than one PEM block even when identical certificates would collapse to one digest. Verifier 39/39, policy 80/80, actual debug APK verification, public scan and `git diff --check` pass locally.
+
+## Product convergence extension — Android fidelity and final main
+
+### Purpose and user-visible outcome
+
+Ship one current `main` where Android no longer applies audible nonlinear shaping to every normal sample, all accepted UI/security/release changes coexist, and a new `v0.17.2` is built only from the final verified merge.
+
+### Current state
+
+- PR #84 head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` was normally merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; its four merged-main workflows passed.
+- PR #85 head `a7bf79fe790adff178e9dc3c0ed840ba2b489168` was normally merged as `e71e0fde2e8a7ef82020cfc905d07473b95c073b`; it advances release identity to `0.17.2 (29)` and repairs PEM-backed signer verification. Publication remains held for product convergence.
+- Audio product checkpoint `b63ed650e47c5555f4a328171c222ca4888a88ae`; decoder/master hardening `9dc71a4652c943ded89c62bb50d9512270182d20`; dense invariants `7e7c7ae5a5b30f7f3e526ba887825fe60b400fd1`; final review repair `2b0da00c7c117c0b188683739c6a495f13958664` / tree `7cc6a11584b89a165a855db67015207925202c53`.
+- Exact working branch is `codex/choplab-android-clipping-20260902`; the dirty canonical checkout and all existing tags/releases remain untouched.
+
+### Constraints and invariants
+
+- Android realtime callback remains allocation/lock/I/O/log-free. Realtime and offline output share one limiter.
+- Default gain 0.9 is linear; overload remains finite, monotonic, symmetric and below 0.98.
+- Decoder never reinterprets already emitted bytes under a changed PCM encoding and never creates clipping while removing DC.
+- Evidence remains separated as `LOCAL_PASS -> DEVICE_PASS -> PROVIDER_PASS -> PUBLIC_PASS -> HUMAN_GO`.
+- No force push, tag rewrite, user-data clear, credential exposure, or speculative Pro-v0.2 implementation.
+
+### Architecture and interfaces
+
+`SamplerDspPrimitives.softLimit` owns the shared arithmetic. `masterSampleForAudioTrack` is the exact Android output call seam. `PatternRenderer` uses the same primitive. `AudioDecoder` validates PCM encoding alongside sample rate/channel stability, quantizes finite decoded values, and performs peak-safe whole-signal DC correction on its I/O worker.
+
+### Milestones
+
+1. Android fidelity: RED/GREEN primitive, realtime master, offline WAV, encoding-drift, non-finite and DC-clipping tests; full relevant Gradle gate; docs and receipt.
+2. Normal PR integration: push without rewriting history, fresh review, all exact-head checks, threads 0, normal merge, merged-main 4/4 read-back.
+3. Merge the reviewed PR #69 scanner, CI/release hardening, and Windows/UI brush-up in dependency order; rerun each successor against current main.
+4. Reconcile definition-of-done and feature matrix to the production MVP, prove open PR/TODO zero for admitted scope, configure final branch/tag protections, and run exact-main Windows/Android/iOS/supply-chain gates.
+5. Run available Android AVD and Windows package/audio E2E on exact final bytes. Keep physical-device, Spotify-account, screen-reader speech and Human listening claims unpromoted unless actually observed.
+6. Create only a new annotated `v0.17.2` tag at final main, allow the hardened workflow to rebuild/publish, then reverse-download and verify manifests, hashes, attestations and anonymous access. Never move the failed `v0.17.1` tag.
+
+### Progress
+
+- [x] 2026-09-02 — PR #84 merged normally; exact merged-main workflows 4/4 succeeded.
+- [x] 2026-09-02 — PR #85 signer recovery merged normally as `e71e0fd`; merged-main workflows 4/4 succeeded.
+- [x] 2026-09-02 — Duplicate-identical signer PEM evidence rejected at `231da39`; verifier 39 and policy 80 pass.
+- [x] 2026-09-02 — Old master distortion reproduced and repaired at `b63ed65`; shared Android/Desktop hosts and Android/offline parity passed.
+- [x] 2026-09-02 — Decoder/master negative paths repaired at `9dc71a4`; focused RED then bounded-memory GREEN.
+- [x] 2026-09-02 — Whole-signal DC confirmation and explicit/dense invariants completed at `7e7c7ae`.
+- [x] 2026-09-02 — Raw PCM_FLOAT Infinity review RED fixed before clamping at `2b0da00`.
+- [x] 2026-09-02 — Exact final-code full gate: shared 87+87, Android 289, JVM core 88, lint/APK/AndroidTest compile; 99 selected tasks executed, failure/error/skip 0.
+- [ ] Audio PR exact-head review/CI/normal merge and merged-main read-back.
+- [ ] PR #69, release hardening, UI brush-up, final exact-main gates and publication.
+
+### Discoveries
+
+- The prior limiter was not merely an overload guard: it altered every non-zero sample and halved full-scale amplitude.
+- A decoder output-format event could change PCM encoding after bytes had already populated a builder while rate/channel validation still passed.
+- Float PCM's Android nominal range is `[-1,1]`; NaN handling is undefined, so non-finite decoder output is rejected before quantization.
+- The host had only about 2.1 GiB free virtual memory when a 4 GiB Gradle daemon failed. One worker, 1.5 GiB heap and in-process compilation passed the exact source.
+
+### Decision log
+
+- 2026-09-02 — Use a transparent stateless knee instead of a stateful lookahead limiter. It fixes normal-level distortion without adding callback state/latency or breaking offline parity; intentional overload remains bounded saturation.
+- 2026-09-02 — Preserve Android's documented nominal over-range clamp, but reject NaN/Infinity and forbid format reinterpretation.
+- 2026-09-02 — Calculate DC offset from the whole signal and reduce/skip it when the requested shift would clip a peak.
+
+### Validation log
+
+- `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:assembleDebug :jvm-core:test --rerun-tasks` — 2026-09-02, exact `2b0da00`, JDK 17, one worker, bounded heap/in-process compiler, serial 256 MiB test forks — PASS, 99/99 tasks executed.
+- Test XML totals — shared Desktop 87, shared Android host 87, Android unit 289, JVM core 88; failure/error/skip 0.
+- Android API source assumption — `AudioFormat.ENCODING_PCM_FLOAT` nominal range and finite warning: https://developer.android.com/reference/android/media/AudioFormat
+
+### Risks and rollback
+
+Before merge, the branch can be closed without touching main. After merge, corrections use a new PR. The limiter threshold/ceiling are centralized constants; rollback never rewrites a published tag. AVD or host audio cannot substitute for physical route listening.
+
+### Remaining device validation
+
+Install the exact final APK without clearing data, exercise imported clean tone/source/PAD/polyphony/export and route interruption, inspect fatal/ANR/AudioTrack logs, and compare exported PCM. Physical speaker, wired/Bluetooth route quality, TalkBack speech, and Human listening require an attached device/person and remain explicitly separate until observed.

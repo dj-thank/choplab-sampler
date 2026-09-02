@@ -405,6 +405,7 @@ def normalize_fingerprint(value: str) -> str:
 
 def read_apksigner_certificate_sha256(*outputs: str | None) -> str | None:
     fingerprints: set[str] = set()
+    pem_certificate_count = 0
     pem_pattern = re.compile(
         r"-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----",
         re.DOTALL,
@@ -424,6 +425,9 @@ def read_apksigner_certificate_sha256(*outputs: str | None) -> str | None:
         end_count = output.count("-----END CERTIFICATE-----")
         if begin_count != end_count or begin_count != len(pem_blocks):
             raise VerificationError("apksigner returned malformed PEM certificate output")
+        pem_certificate_count += len(pem_blocks)
+        if pem_certificate_count > 1:
+            raise VerificationError("apksigner returned multiple PEM certificates")
         for pem_body in pem_blocks:
             encoded = re.sub(r"\s+", "", pem_body)
             try:
