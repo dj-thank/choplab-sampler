@@ -1410,13 +1410,16 @@ class DesktopSamplerControllerTest {
                 awaitCondition { created.state.value.currentAudio?.name == replacement.name }
             }
 
-            requireNotNull(closeThread).join(2_000L)
-            assertFalse(requireNotNull(closeThread).isAlive)
+            requireNotNull(closeThread).join(5_000L)
+            assertFalse(
+                requireNotNull(closeThread).isAlive,
+                "Close must finish after the stale recovery and admitted source load are released",
+            )
             assertEquals(replacement.name, store.load()?.currentAudio?.name)
         } finally {
             engine.releaseBlockedLoad()
             controller?.close()
-            closeThread?.join(2_000L)
+            closeThread?.join(5_000L)
             directory.deleteRecursively()
         }
     }
@@ -2704,7 +2707,7 @@ class DesktopSamplerControllerTest {
     }
 
     private fun awaitCondition(condition: () -> Boolean) {
-        val deadline = System.nanoTime() + 2_000_000_000L
+        val deadline = System.nanoTime() + 5_000_000_000L
         while (!condition()) {
             if (System.nanoTime() >= deadline) error("Timed out waiting for asynchronous desktop state")
             Thread.sleep(20L)

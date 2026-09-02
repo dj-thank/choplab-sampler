@@ -133,7 +133,7 @@ import sample rateはproject/archive契約と同じ8–192 kHzです。Android�
 - One Shot / Gate
 - Choke group: 同groupを48 framesでfast release
 - 境界クリック抑制: source boundaryの短いfade-in/fade-out
-- Mix protection: `x / (1 + abs(x))` soft limiter
+- Mix protection: `abs(x) <= 0.9` は bit-for-bit linear、超過時だけ C1 連続の rational knee で `0.98` 未満へ漸近する shared master limiter。Android AudioTrack と offline WAV が同じ関数を使用
 
 ### Sequencer
 
@@ -153,7 +153,7 @@ import sample rateはproject/archive契約と同じ8–192 kHzです。Android�
 - 実際に発音する素材がmonoだけなら48 kHz mono、stereoを含むなら48 kHz interleaved stereo PCM-16をchunk単位で`WavFileWriter`へ送る
 - UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
 
-リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、soft limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持ちます。single PAD / single event / full barではmonoと左右非対称stereoの両方をrealtime Voice + shared limiterとoffline WAVで全frame比較し、channelごと最大1 PCM unitをgateとします。polyphony/choke/loop/vocalをさらに拡張してから共通Voice kernelまたはnative moduleへ進みます。
+リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、master limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持ちます。default gain 0.9のfull-scale source/PADはmasterで非線形変形せず、2〜32 voice相当の過負荷だけを有限・正負対称・単調な0.98未満へ制限します。single PAD / single event / full barではmonoと左右非対称stereoの両方をrealtime Voice + shared limiterとoffline WAVで全frame比較し、channelごと最大1 PCM unitをgateとします。polyphony/choke/loop/vocalをさらに拡張してから共通Voice kernelまたはnative moduleへ進みます。
 
 ### 7.1 制作archive
 

@@ -50,6 +50,27 @@ internal fun validateStableDecodedPcmFormat(
     }
 }
 
+internal fun validateDecodedPcmEncoding(decodedEncoding: Int): Int {
+    require(
+        decodedEncoding == AudioFormat.ENCODING_PCM_8BIT ||
+            decodedEncoding == AudioFormat.ENCODING_PCM_16BIT ||
+            decodedEncoding == AudioFormat.ENCODING_PCM_24BIT_PACKED ||
+            decodedEncoding == AudioFormat.ENCODING_PCM_32BIT ||
+            decodedEncoding == AudioFormat.ENCODING_PCM_FLOAT,
+    ) {
+        "対応できないPCM形式です: $decodedEncoding"
+    }
+    return decodedEncoding
+}
+
+internal fun validateStableDecodedPcmEncoding(storedEncoding: Int?, decodedEncoding: Int): Int {
+    val validatedEncoding = validateDecodedPcmEncoding(decodedEncoding)
+    check(storedEncoding == null || storedEncoding == decodedEncoding) {
+        "デコード中にPCM形式が変わりました"
+    }
+    return validatedEncoding
+}
+
 internal fun appendDecodedPcm(
     source: ByteBuffer,
     encoding: Int,
@@ -57,6 +78,7 @@ internal fun appendDecodedPcm(
     destination: Pcm16ArrayBuilder,
 ) {
     val channels = sourceChannelCount
+    validateDecodedPcmEncoding(encoding)
     check(channels in 1..8) { "Decoded channel count was not validated" }
     check(destination.channelCount == retainedChannelCountForImport(channels)) {
         "Decoded channel layout changed after PCM output started"
@@ -86,7 +108,13 @@ internal fun appendDecodedPcm(
         AudioFormat.ENCODING_PCM_FLOAT -> {
             val values = source.asFloatBuffer()
             while (values.remaining() >= channels) {
-                appendFrame { values.get().coerceIn(-1f, 1f) }
+                appendFrame {
+                    val value = values.get()
+                    require(value.isFinite()) {
+                        "デコード音声に非有限PCMサンプルが含まれています"
+                    }
+                    value.coerceIn(-1f, 1f)
+                }
             }
         }
 
@@ -173,6 +201,7 @@ class AudioDecoder(private val context: Context) {
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
             var output: Pcm16ArrayBuilder? = null
             var pcmSampleRate: Int? = null
+            var outputPcmEncoding: Int? = null
             val info = MediaCodec.BufferInfo()
             var inputEnded = false
             var outputEnded = false
@@ -221,9 +250,12 @@ class AudioDecoder(private val context: Context) {
                         )
                         outputSampleRate = decodedFormat.sampleRate
                         outputChannels = decodedFormat.channelCount
-                        pcmEncoding = format.intOrDefault(
-                            MediaFormat.KEY_PCM_ENCODING,
-                            AudioFormat.ENCODING_PCM_16BIT,
+                        pcmEncoding = validateStableDecodedPcmEncoding(
+                            storedEncoding = outputPcmEncoding,
+                            decodedEncoding = format.intOrDefault(
+                                MediaFormat.KEY_PCM_ENCODING,
+                                AudioFormat.ENCODING_PCM_16BIT,
+                            ),
                         )
                         idleCount = 0
                     }
@@ -254,6 +286,7 @@ class AudioDecoder(private val context: Context) {
                                 ).also {
                                     output = it
                                     pcmSampleRate = outputSampleRate
+                                    outputPcmEncoding = pcmEncoding
                                 }
                                 validateStableDecodedPcmFormat(
                                     storedChannelCount = destination.channelCount,
@@ -282,7 +315,7 @@ class AudioDecoder(private val context: Context) {
                 sampleRate = outputSampleRate,
             )
 
-            removeTinyDcOffset(samples, destination.channelCount)
+            removeTinyDcOffsetWithoutClipping(samples, destination.channelCount)
             PcmAudio(
                 name = resolveDisplayName(uri),
                 samples = samples,
@@ -338,28 +371,6 @@ class AudioDecoder(private val context: Context) {
         return persistableAudioDisplayName(providerName, fallbackName)
     }
 
-    private fun removeTinyDcOffset(samples: ShortArray, channelCount: Int) {
-        val frameCount = samples.size / channelCount
-        val checkFrames = minOf(frameCount, 240_000)
-        if (checkFrames <= 0) return
-        repeat(channelCount) { channel ->
-            var sum = 0L
-            for (frame in 0 until checkFrames) {
-                sum += samples[frame * channelCount + channel].toLong()
-            }
-            val mean = sum.toFloat() / checkFrames
-            if (kotlin.math.abs(mean) in 16f..2_621f) {
-                for (frame in 0 until frameCount) {
-                    val index = frame * channelCount + channel
-                    samples[index] = (samples[index] - mean)
-                        .roundToInt()
-                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                        .toShort()
-                }
-            }
-        }
-    }
-
     private fun estimateInitialCapacity(durationUs: Long, sampleRate: Int): Int {
         if (durationUs <= 0L) return 1 shl 18
         val estimated = durationUs / 1_000_000.0 * max(8_000, sampleRate)
@@ -372,6 +383,45 @@ class AudioDecoder(private val context: Context) {
     private companion object {
         const val CODEC_TIMEOUT_US = 10_000L
         const val MAX_IDLE_POLLS = 500
+    }
+}
+
+internal fun removeTinyDcOffsetWithoutClipping(samples: ShortArray, channelCount: Int) {
+    require(channelCount in 1..2 && samples.size % channelCount == 0) {
+        "PCM must contain complete mono or stereo frames"
+    }
+    val frameCount = samples.size / channelCount
+    if (frameCount <= 0) return
+    repeat(channelCount) { channel ->
+        val probeFrames = minOf(frameCount, 240_000)
+        var probeSum = 0L
+        for (frame in 0 until probeFrames) {
+            probeSum += samples[frame * channelCount + channel].toLong()
+        }
+        val probeOffset = (probeSum.toDouble() / probeFrames).roundToInt()
+        if (kotlin.math.abs(probeOffset) !in 16..2_621) return@repeat
+
+        var sum = 0L
+        var minimum = Short.MAX_VALUE.toInt()
+        var maximum = Short.MIN_VALUE.toInt()
+        for (frame in 0 until frameCount) {
+            val sample = samples[frame * channelCount + channel].toInt()
+            sum += sample.toLong()
+            if (sample < minimum) minimum = sample
+            if (sample > maximum) maximum = sample
+        }
+        val requestedOffset = (sum.toDouble() / frameCount).roundToInt()
+        if (kotlin.math.abs(requestedOffset) !in 16..2_621) return@repeat
+
+        val safeOffset = requestedOffset.coerceIn(
+            minimumValue = maximum - Short.MAX_VALUE.toInt(),
+            maximumValue = minimum - Short.MIN_VALUE.toInt(),
+        )
+        if (kotlin.math.abs(safeOffset) !in 16..2_621) return@repeat
+        for (frame in 0 until frameCount) {
+            val index = frame * channelCount + channel
+            samples[index] = (samples[index].toInt() - safeOffset).toShort()
+        }
     }
 }
 
@@ -419,6 +469,7 @@ internal class Pcm16ArrayBuilder(
             val nextSize = minOf(maximumSize.toLong(), values.size.toLong() * 2L).toInt()
             values = values.copyOf(nextSize)
         }
+        require(value.isFinite()) { "デコード音声に非有限PCMサンプルが含まれています" }
         val normalized = value.coerceIn(-1f, 1f)
         values[size++] = when {
             normalized <= -1f -> Short.MIN_VALUE

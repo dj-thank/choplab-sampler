@@ -41,6 +41,33 @@ class SamplerEngineVoiceTest {
     }
 
     @Test
+    fun realtimeMasterKeepsDefaultGainFullScaleLinearAndCapsPolyphonicOverload() {
+        val audio = PcmAudio(
+            name = "master-headroom.wav",
+            samples = ShortArray(512) { Short.MAX_VALUE },
+            sampleRate = 48_000,
+        )
+        val voice = SamplerEngine.Voice(
+            SamplerEngine.PadSnapshot.from(
+                PadModel(0, audio, 0, audio.frameCount),
+            ),
+            48_000,
+        )
+        val frame = MutableStereoFrame()
+        repeat(64) { voice.renderStereo(48_000, frame) }
+
+        assertTrue(frame.left in 0.89f..0.9f)
+        assertEquals(frame.left, masterSampleForAudioTrack(frame.left), 0f)
+        val twoVoices = masterSampleForAudioTrack(frame.left * 2f)
+        val thirtyTwoVoices = masterSampleForAudioTrack(frame.left * 32f)
+        assertTrue(twoVoices > SamplerDspPrimitives.MASTER_LIMITER_THRESHOLD)
+        assertTrue(thirtyTwoVoices >= twoVoices)
+        assertTrue(thirtyTwoVoices < SamplerDspPrimitives.MASTER_LIMITER_CEILING)
+        assertTrue(thirtyTwoVoices.isFinite())
+        assertEquals(-thirtyTwoVoices, masterSampleForAudioTrack(frame.left * -32f), 0f)
+    }
+
+    @Test
     fun toneFilterCoefficientIsBoundedAndComputedAtTheControlBoundary() {
         assertEquals(1f, SamplerDspPrimitives.toneFilterAlpha(tone = 1f, outputSampleRate = 48_000), 0f)
         val dark = SamplerDspPrimitives.toneFilterAlpha(tone = 0.15f, outputSampleRate = 48_000)
