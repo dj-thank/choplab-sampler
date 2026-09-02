@@ -39,6 +39,7 @@ This section records local evidence. Tag, Release, device, provider-account and 
 - Exact integration checkpoint `68296f2`: shared Desktop 91, shared Android host 91, Android unit 289, JVM core 88, Desktop 185, long-press UI 24; failures/errors/skips 0. Android lint, debug APK, AndroidTest compilation and Windows package all pass. Full Python policy 207 passes with one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
 - Final main-ancestry integration `ee1ea29`: full Python policy 213 passes with the same one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
 - PR #88 source-snapshot correction `69e4873`: the exact committed `git archive` passes a dedicated fail-closed 16 MiB total / 4 MiB member source boundary; full policy 214 and current/history scans 488 each pass.
+- PR #88 final product candidate `133951b`: shared Desktop/Android host 94 each, Android unit 289, JVM core 88, Desktop 191, H13 24 and Android instrumentation 29 pass in hosted exact-head workflows. Queue/latest/failure pitch ownership, detached JavaSound source rendering, content-keyed confirmations and pointer-anchored zoom have direct regressions; policy 214 and current/history scans 489 each pass.
 
 ## Predecessor startup smoke (`a5f5a17`, packaged app image, 3840×2160 @150 %)
 
