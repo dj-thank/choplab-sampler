@@ -94,6 +94,7 @@ CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 512 * 1024 * 1024
 CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 512 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
+HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT = 262_144
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
 HISTORICAL_TAG_PEEL_LIMIT = 8
 HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
@@ -371,6 +372,11 @@ def historical_objects() -> list[tuple[str, PurePosixPath]]:
         fields.pop()
     if len(fields) % 2:
         raise GitScanLimitError("NUL-delimited historical object inventory is invalid")
+    if len(fields) // 2 > HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT:
+        raise GitScanLimitError(
+            "NUL-delimited historical object inventory exceeds the "
+            f"{HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT}-record scan limit"
+        )
     candidates: dict[tuple[str, str], PurePosixPath] = {}
     for index in range(0, len(fields), 2):
         header = fields[index].decode("ascii", errors="replace").strip().split()

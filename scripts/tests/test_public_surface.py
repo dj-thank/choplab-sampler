@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 from scripts.check_public_surface import (
     DER_SEQUENCE_CANDIDATE_LIMIT,
+    GitScanLimitError,
     ZIP_LOCAL_FILE_SIGNATURE,
     ZipCandidateScanBudget,
     historical_non_commit_tree_zip_objects,
@@ -3167,6 +3168,26 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertIn((audio_id, PurePosixPath("d/neutral\nclip.wav")), objects)
         self.assertIn((safe_id, PurePosixPath("docs/safe.txt")), objects)
+
+    def test_nul_safe_historical_object_inventory_is_record_bounded(self) -> None:
+        object_ids = ("a" * 40, "b" * 40)
+        malformed = f"{object_ids[0]} d/neutral\nclip.wav\n".encode("utf-8")
+        nul_safe = b"".join(
+            f":000000 100644 {'0' * 40} {object_id} A\0path-{index}.dat\0".encode("ascii")
+            for index, object_id in enumerate(object_ids)
+        )
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return malformed
+            return nul_safe
+
+        with (
+            patch("scripts.check_public_surface.run_git", side_effect=fake_run_git),
+            patch("scripts.check_public_surface.HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT", 1),
+            self.assertRaisesRegex(GitScanLimitError, "record scan limit"),
+        ):
+            historical_objects()
 
     def test_history_scan_real_git_rejects_deleted_audio_with_newline_path(self) -> None:
         with TemporaryDirectory() as directory:
