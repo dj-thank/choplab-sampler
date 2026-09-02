@@ -28,11 +28,13 @@ SENSITIVE_SUFFIXES = {
     ".p12",
     ".pfx",
     ".pem",
+    ".ppk",
     ".private",
     ".provisionprofile",
 }
 AUDIO_SUFFIXES = {
     ".aac",
+    ".amr",
     ".aiff",
     ".caf",
     ".flac",
@@ -101,7 +103,8 @@ HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT = 256 * 1024 * 1024
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
-    re.compile(r"gh" + r"o_[A-Za-z0-9_]{20,}"),
+    re.compile(r"PuTTY-User-Key-File-[23]:"),
+    re.compile(r"gh" + r"[pousr]_[A-Za-z0-9_]{20,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
@@ -153,6 +156,10 @@ ZSTANDARD_MAGIC = b"\x28\xb5\x2f\xfd"
 SECRET_TEXT_PREFIXES = (
     "-----BEGIN ",
     "gho_",
+    "ghp_",
+    "ghr_",
+    "ghs_",
+    "ghu_",
     "github_pat_",
     "AKIA",
     "AIza",
@@ -331,12 +338,52 @@ def public_candidate_paths() -> list[PurePosixPath]:
 
 
 def historical_objects() -> list[tuple[str, PurePosixPath]]:
+    raw = run_git(["rev-list", "--objects", "--all"])
     objects: list[tuple[str, PurePosixPath]] = []
-    for raw_line in run_git(["rev-list", "--objects", "--all"]).splitlines():
+    malformed_record = False
+    for raw_line in raw.splitlines():
         parts = raw_line.decode("utf-8", errors="replace").split(" ", maxsplit=1)
         if len(parts) == 2 and parts[1]:
-            objects.append((parts[0], PurePosixPath(parts[1])))
-    return objects
+            if parts[1].startswith('"'):
+                malformed_record = True
+            else:
+                objects.append((parts[0], PurePosixPath(parts[1])))
+        elif raw_line and not re.fullmatch(rb"[0-9a-f]{40}", raw_line):
+            malformed_record = True
+    if not malformed_record:
+        return objects
+
+    raw_changes = run_git(
+        [
+            "log",
+            "--all",
+            "-m",
+            "--format=",
+            "--raw",
+            "--no-abbrev",
+            "--no-renames",
+            "--root",
+            "-z",
+        ]
+    )
+    fields = raw_changes.split(b"\0")
+    if fields and not fields[-1]:
+        fields.pop()
+    if len(fields) % 2:
+        raise GitScanLimitError("NUL-delimited historical object inventory is invalid")
+    candidates: dict[tuple[str, str], PurePosixPath] = {}
+    for index in range(0, len(fields), 2):
+        header = fields[index].decode("ascii", errors="replace").strip().split()
+        if len(header) != 5 or not header[0].startswith(":"):
+            raise GitScanLimitError("historical object inventory contains an invalid raw record")
+        path = PurePosixPath(fields[index + 1].decode("utf-8", errors="replace"))
+        old_mode = header[0][1:]
+        new_mode, old_id, new_id = header[1:4]
+        for mode, object_id in ((old_mode, old_id), (new_mode, new_id)):
+            if mode not in {"100644", "100755", "120000"} or object_id == "0" * 40:
+                continue
+            candidates.setdefault((object_id, mode), path)
+    return [(object_id, path) for (object_id, _), path in candidates.items()]
 
 
 def historical_paths() -> list[PurePosixPath]:
@@ -950,6 +997,17 @@ def suspicious_path(path: PurePosixPath) -> str | None:
     return None
 
 
+def unsafe_archive_entry_path(name: str) -> str | None:
+    normalized = name.replace("\\", "/")
+    if normalized.startswith("/"):
+        return "absolute archive path"
+    if re.match(r"^[A-Za-z]:/", normalized):
+        return "drive-rooted archive path"
+    if ".." in PurePosixPath(normalized).parts:
+        return "parent traversal archive path"
+    return None
+
+
 def is_known_archive_binary_path(path: PurePosixPath) -> bool:
     parts = tuple(part.lower() for part in path.parts)
     return parts[-3:] == ("runtime", "lib", "ct.sym")
@@ -1046,6 +1104,10 @@ def audio_payload_signature(content: bytes) -> str | None:
         return "CAF"
     if content.startswith(b"ID3"):
         return "ID3/MP3"
+    if content.startswith(b"#!AMR-WB\n"):
+        return "AMR-WB"
+    if content.startswith(b"#!AMR\n"):
+        return "AMR-NB"
     if has_valid_adts_frame(content):
         return "ADTS/AAC"
     if len(content) >= 4:
@@ -1199,12 +1261,94 @@ def der_signing_material_signature(content: bytes) -> str | None:
     return None
 
 
-def is_pe_executable(content: bytes) -> bool:
-    """Recognize a bounded PE image before allowing its public Authenticode certs."""
+def pe_authenticode_certificate_ranges(
+    content: bytes,
+) -> tuple[tuple[int, int], ...] | None:
+    """Return validated WIN_CERTIFICATE payload ranges, or None for a malformed PE."""
     if len(content) < 0x40 or content[:2] != b"MZ":
-        return False
+        return None
     pe_offset = int.from_bytes(content[0x3C:0x40], "little")
-    return pe_offset <= len(content) - 4 and content[pe_offset : pe_offset + 4] == b"PE\0\0"
+    if pe_offset > len(content) - 24 or content[pe_offset : pe_offset + 4] != b"PE\0\0":
+        return None
+    optional_size = int.from_bytes(content[pe_offset + 20 : pe_offset + 22], "little")
+    optional_start = pe_offset + 24
+    optional_end = optional_start + optional_size
+    if optional_size < 2 or optional_end > len(content):
+        return None
+    magic = int.from_bytes(content[optional_start : optional_start + 2], "little")
+    if magic == 0x10B:
+        directory_count_offset = optional_start + 92
+        directories_offset = optional_start + 96
+    elif magic == 0x20B:
+        directory_count_offset = optional_start + 108
+        directories_offset = optional_start + 112
+    else:
+        return None
+    security_directory_offset = directories_offset + 4 * 8
+    if security_directory_offset + 8 > optional_end:
+        return None
+    directory_count = int.from_bytes(
+        content[directory_count_offset : directory_count_offset + 4],
+        "little",
+    )
+    if directory_count < 5:
+        return None
+    certificate_offset = int.from_bytes(
+        content[security_directory_offset : security_directory_offset + 4],
+        "little",
+    )
+    certificate_size = int.from_bytes(
+        content[security_directory_offset + 4 : security_directory_offset + 8],
+        "little",
+    )
+    if certificate_offset == 0 and certificate_size == 0:
+        return ()
+    if (
+        certificate_offset % 8
+        or certificate_size < 8
+        or certificate_offset < optional_end
+        or certificate_offset + certificate_size > len(content)
+    ):
+        return None
+
+    table_end = certificate_offset + certificate_size
+    cursor = certificate_offset
+    ranges: list[tuple[int, int]] = []
+    while cursor < table_end:
+        if cursor + 8 > table_end:
+            return None
+        record_size = int.from_bytes(content[cursor : cursor + 4], "little")
+        revision = int.from_bytes(content[cursor + 4 : cursor + 6], "little")
+        certificate_type = int.from_bytes(content[cursor + 6 : cursor + 8], "little")
+        record_end = cursor + record_size
+        if (
+            record_size < 8
+            or record_end > table_end
+            or revision not in {0x0100, 0x0200}
+            or certificate_type not in {0x0001, 0x0002}
+        ):
+            return None
+        ranges.append((cursor + 8, record_end))
+        cursor = (record_end + 7) & ~7
+    if cursor != table_end:
+        return None
+    return tuple(ranges)
+
+
+def der_signing_material_outside_ranges(
+    content: bytes,
+    excluded_ranges: tuple[tuple[int, int], ...],
+) -> str | None:
+    private_signature = der_private_key_material_signature(content)
+    if private_signature:
+        return private_signature
+    cursor = 0
+    for start, end in excluded_ranges:
+        signature = der_signing_material_signature(content[cursor:start])
+        if signature:
+            return signature
+        cursor = end
+    return der_signing_material_signature(content[cursor:])
 
 
 def is_trusted_jdk_cacerts(path: PurePosixPath, content: bytes) -> bool:
@@ -1260,20 +1404,30 @@ def has_m4a_compatible_brand(content: bytes) -> bool:
     if len(content) < 16 or content[4:8] != b"ftyp":
         return False
     declared_size = int.from_bytes(content[:4], "big")
+    header_size = 8
     if declared_size == 0:
         box_size = len(content)
     elif declared_size == 1:
-        return False
+        if len(content) < 24:
+            return False
+        box_size = int.from_bytes(content[8:16], "big")
+        header_size = 16
     else:
         box_size = declared_size
-    if box_size < 16 or box_size > len(content) or (box_size - 16) % 4:
+    brand_start = header_size
+    compatible_start = brand_start + 8
+    if (
+        box_size < compatible_start
+        or box_size > len(content)
+        or (box_size - compatible_start) % 4
+    ):
         return False
     compatible_brands = {b"M4A ", b"M4B "}
-    if content[8:12] in compatible_brands:
+    if content[brand_start : brand_start + 4] in compatible_brands:
         return True
     return any(
         content[offset : offset + 4] in compatible_brands
-        for offset in range(16, box_size, 4)
+        for offset in range(compatible_start, box_size, 4)
     )
 
 
@@ -1917,6 +2071,11 @@ def scan_zip(
                         "separators are not allowed"
                     )
                 entry = PurePosixPath(name.replace("\\", "/"))
+                unsafe_reason = unsafe_archive_entry_path(name)
+                if unsafe_reason:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: {unsafe_reason}"
+                    )
                 reason = suspicious_path(entry)
                 if reason:
                     findings.append(f"{archive_label}: archive entry {name!r}: {reason}")
@@ -2653,19 +2812,24 @@ def scan_zip(
                     findings.append(
                         f"{member_label}: audio signature {audio_signature!r} detected"
                     )
+                pe_certificate_ranges = (
+                    pe_authenticode_certificate_ranges(content)
+                    if entry_suffix in {".dll", ".exe"}
+                    else None
+                )
                 public_certificate_container = (
                     is_apk_signature_path(entry, apk_content_context)
-                    or (
-                        entry_suffix in {".dll", ".exe"}
-                        and is_pe_executable(content)
-                    )
                     or is_trusted_jdk_cacerts(entry, content)
                 )
-                der_signature = (
-                    der_private_key_material_signature(content)
-                    if public_certificate_container
-                    else der_signing_material_signature(content)
-                )
+                if pe_certificate_ranges:
+                    der_signature = der_signing_material_outside_ranges(
+                        content,
+                        pe_certificate_ranges,
+                    )
+                elif public_certificate_container:
+                    der_signature = der_private_key_material_signature(content)
+                else:
+                    der_signature = der_signing_material_signature(content)
                 if der_signature:
                     findings.append(f"{member_label}: {der_signature} detected")
                 if (

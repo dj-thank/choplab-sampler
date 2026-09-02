@@ -20,6 +20,7 @@ from scripts.check_public_surface import (
     historical_non_commit_tree_zip_objects,
     historical_structural_zip_objects,
     has_m4a_compatible_brand,
+    historical_objects,
     main,
     scan_history,
     scan_historical_zip_blobs,
@@ -590,11 +591,34 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         )
 
         def pe_image(payload: bytes) -> bytes:
-            header = bytearray(0x84)
+            pe_offset = 0x80
+            optional_start = pe_offset + 24
+            optional_size = 144
+            certificate_offset = optional_start + optional_size
+            record_size = 8 + len(payload)
+            table_size = (record_size + 7) & ~7
+            header = bytearray(certificate_offset)
             header[:2] = b"MZ"
-            header[0x3C:0x40] = (0x80).to_bytes(4, "little")
-            header[0x80:0x84] = b"PE\0\0"
-            return bytes(header) + payload
+            header[0x3C:0x40] = pe_offset.to_bytes(4, "little")
+            header[pe_offset : pe_offset + 4] = b"PE\0\0"
+            header[pe_offset + 20 : pe_offset + 22] = optional_size.to_bytes(2, "little")
+            header[optional_start : optional_start + 2] = (0x10B).to_bytes(2, "little")
+            header[optional_start + 92 : optional_start + 96] = (16).to_bytes(4, "little")
+            security_directory = optional_start + 96 + 4 * 8
+            header[security_directory : security_directory + 4] = certificate_offset.to_bytes(
+                4,
+                "little",
+            )
+            header[security_directory + 4 : security_directory + 8] = table_size.to_bytes(
+                4,
+                "little",
+            )
+            record = bytearray(table_size)
+            record[:4] = record_size.to_bytes(4, "little")
+            record[4:6] = (0x0200).to_bytes(2, "little")
+            record[6:8] = (0x0002).to_bytes(2, "little")
+            record[8:record_size] = payload
+            return bytes(header + record)
 
         candidate = BytesIO()
         with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
@@ -3044,6 +3068,162 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("find dist -maxdepth 1 -type l", workflow[publication_scan:publish])
         self.assertIn("find dist -mindepth 1 -maxdepth 1 ! -type f", workflow[scan_all:publication_scan])
         self.assertIn("find dist -mindepth 1 -maxdepth 1 ! -type f", workflow[publication_scan:publish])
+
+    def test_zip_scan_rejects_amr_classic_github_tokens_and_putty_keys(self) -> None:
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("audio.dat", b"#!AMR\n" + b"\x04" + b"\x00" * 12)
+            archive.writestr("credential.txt", "ghp_" + "a" * 36)
+            archive.writestr(
+                "neutral.dat",
+                "PuTTY-" + "User-Key-File-" + "3: ssh-ed25519\n"
+                "Encryption: aes256-cbc\nPrivate-Lines: 1\nAAAA\n",
+            )
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="review-boundaries.zip")
+
+        self.assertTrue(any("AMR-NB" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+        self.assertTrue(any("PuTTY" in item or "private-key" in item for item in findings), findings)
+        self.assertEqual("audio asset", suspicious_path(PurePosixPath("take.amr")))
+        self.assertEqual("signing or private-key material", suspicious_path(PurePosixPath("id.ppk")))
+
+    def test_m4a_probe_accepts_bounded_extended_size_ftyp(self) -> None:
+        brands = b"isom" + (0).to_bytes(4, "big") + b"mp42" + b"M4A "
+        box_size = 16 + len(brands)
+        ftyp = b"\x00\x00\x00\x01ftyp" + box_size.to_bytes(8, "big") + brands
+
+        self.assertTrue(has_m4a_compatible_brand(ftyp))
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("payload.dat", ftyp)
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="extended-ftyp.zip")
+        self.assertTrue(any("audio signature 'M4A'" in item for item in findings), findings)
+
+    def test_zip_scan_rejects_parent_absolute_and_drive_rooted_paths(self) -> None:
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("../escape.txt", "safe")
+            archive.writestr("/absolute.txt", "safe")
+            archive.writestr("C:/drive-rooted.txt", "safe")
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="unsafe-paths.zip")
+
+        self.assertTrue(any("parent traversal" in item for item in findings), findings)
+        self.assertTrue(any("absolute" in item for item in findings), findings)
+        self.assertTrue(any("drive-rooted" in item for item in findings), findings)
+
+    def test_pe_certificate_exemption_requires_authenticode_table(self) -> None:
+        certificate = bytes.fromhex("3010020100300b06092a864886f70d010101")
+        spoofed = bytearray(0x84)
+        spoofed[:2] = b"MZ"
+        spoofed[0x3C:0x40] = (0x80).to_bytes(4, "little")
+        spoofed[0x80:0x84] = b"PE\0\0"
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("spoofed.exe", bytes(spoofed) + certificate)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="spoofed-pe.zip")
+
+        self.assertTrue(
+            any("spoofed.exe" in item and "DER signing material" in item for item in findings),
+            findings,
+        )
+
+    def test_historical_object_inventory_preserves_newline_paths(self) -> None:
+        audio_id = "a" * 40
+        safe_id = "b" * 40
+        raw = (
+            f"{audio_id} d/neutral\nclip.wav\n"
+            f"{safe_id} docs/safe.txt\n"
+        ).encode("utf-8")
+
+        nul_safe = (
+            f":000000 100644 {'0' * 40} {audio_id} A\0"
+            "d/neutral\nclip.wav\0"
+            f":000000 100644 {'0' * 40} {safe_id} A\0"
+            "docs/safe.txt\0"
+        ).encode("utf-8")
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return raw
+            if arguments == [
+                "log",
+                "--all",
+                "-m",
+                "--format=",
+                "--raw",
+                "--no-abbrev",
+                "--no-renames",
+                "--root",
+                "-z",
+            ]:
+                return nul_safe
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            objects = historical_objects()
+
+        self.assertIn((audio_id, PurePosixPath("d/neutral\nclip.wav")), objects)
+        self.assertIn((safe_id, PurePosixPath("docs/safe.txt")), objects)
+
+    def test_history_scan_real_git_rejects_deleted_audio_with_newline_path(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+            newline_name = b"neutral\nclip.wav"
+
+            def git(*arguments: str, input_bytes: bytes | None = None) -> bytes:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=repository,
+                    check=True,
+                    input=input_bytes,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                ).stdout
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            git("symbolic-ref", "HEAD", "refs/heads/main")
+            audio = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 28
+            object_id = git("hash-object", "-w", "--stdin", input_bytes=audio).strip()
+            nested_tree = git(
+                "mktree",
+                "-z",
+                input_bytes=b"100644 blob " + object_id + b"\t" + newline_name + b"\0",
+            ).strip()
+            first_tree = git(
+                "mktree",
+                "-z",
+                input_bytes=b"040000 tree " + nested_tree + b"\td\0",
+            ).strip()
+            first_commit = git("commit-tree", first_tree.decode("ascii"), input_bytes=b"add audio\n").strip()
+            git("update-ref", "refs/heads/main", first_commit.decode("ascii"))
+            empty_tree = git("mktree", input_bytes=b"").strip()
+            second_commit = git(
+                "commit-tree",
+                empty_tree.decode("ascii"),
+                "-p",
+                first_commit.decode("ascii"),
+                input_bytes=b"remove audio\n",
+            ).strip()
+            git("update-ref", "refs/heads/main", second_commit.decode("ascii"))
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"],
+                cwd=repository,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("audio asset", result.stderr)
 
 
 if __name__ == "__main__":
