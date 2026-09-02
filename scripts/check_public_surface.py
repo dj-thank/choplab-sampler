@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import bz2
+import codecs
 import lzma
 import re
 import stat
@@ -472,25 +473,6 @@ def read_git_blob_prefixes(object_ids: list[str], byte_limit: int = 4) -> dict[s
     return prefixes
 
 
-def should_scan_historical_binary(content: bytes) -> bool:
-    if not content:
-        return False
-    if (
-        content.startswith(TEXT_BOM_PREFIXES)
-        or content.startswith(JKS_MAGIC)
-        or content[:1] == b"\x30"
-        or b"\0" in content
-        or audio_payload_signature(content) is not None
-        or unsupported_nested_archive_signature(content) is not None
-    ):
-        return True
-    try:
-        content.decode("utf-8")
-    except UnicodeDecodeError:
-        return True
-    return any(byte < 0x20 and byte not in b"\t\n\r\f" for byte in content)
-
-
 def read_git_blob_structural_candidates(
     object_ids: list[str],
     *,
@@ -531,12 +513,28 @@ def read_git_blob_structural_candidates(
                 mode="w+b",
             ) as body:
                 remaining = size
+                binary_body = False
+                utf8_decoder = codecs.getincrementaldecoder("utf-8")("strict")
                 while remaining:
                     chunk = process.stdout.read(min(64 * 1024, remaining))
                     if not chunk:
                         raise RuntimeError("truncated git blob batch body")
                     body.write(chunk)
+                    if not binary_body and any(
+                        byte < 0x20 and byte not in b"\t\n\r\f" for byte in chunk
+                    ):
+                        binary_body = True
+                    if not binary_body:
+                        try:
+                            utf8_decoder.decode(chunk, final=False)
+                        except UnicodeDecodeError:
+                            binary_body = True
                     remaining -= len(chunk)
+                if not binary_body:
+                    try:
+                        utf8_decoder.decode(b"", final=True)
+                    except UnicodeDecodeError:
+                        binary_body = True
                 if process.stdout.read(1) != b"\n":
                     raise RuntimeError("missing git blob batch delimiter")
                 body.seek(0)
@@ -547,21 +545,20 @@ def read_git_blob_structural_candidates(
                         is_zip = True
                 except (OSError, ValueError):
                     pass
-                if not is_zip and binary_findings is not None:
+                if not is_zip and binary_findings is not None and binary_body:
                     body.seek(0)
                     content = body.read()
-                    if should_scan_historical_binary(content):
-                        label_path = (
-                            candidate_paths.get(object_id)
-                            if candidate_paths is not None
-                            else PurePosixPath("neutral-binary")
+                    label_path = (
+                        candidate_paths.get(object_id)
+                        if candidate_paths is not None
+                        else PurePosixPath("neutral-binary")
+                    )
+                    binary_findings.extend(
+                        scan_blob_content(
+                            f"git history binary {label_path} ({object_id[:12]})",
+                            content,
                         )
-                        binary_findings.extend(
-                            scan_blob_content(
-                                f"git history binary {label_path} ({object_id[:12]})",
-                                content,
-                            )
-                        )
+                    )
         process.stdin.close()
         return_code = process.wait()
         if return_code:
@@ -1115,6 +1112,26 @@ def decode_text_for_secret_scan(content: bytes) -> str:
     return content.decode("utf-8-sig", errors="replace")
 
 
+def matching_alignment_offsets(
+    content: bytes,
+    encoded_prefixes: tuple[bytes, ...],
+    alignment: int,
+) -> set[int]:
+    """Collect every represented alignment without scanning past the finite set."""
+    offsets: set[int] = set()
+    for prefix in encoded_prefixes:
+        start = 0
+        while len(offsets) < alignment:
+            index = content.find(prefix, start)
+            if index < 0:
+                break
+            offsets.add(index % alignment)
+            start = index + 1
+        if len(offsets) == alignment:
+            break
+    return offsets
+
+
 def iter_text_scan_candidates(content: bytes):
     """Yield bounded text decodings that can expose an ASCII credential pattern."""
     yield decode_text_for_secret_scan(content)
@@ -1126,15 +1143,12 @@ def iter_text_scan_candidates(content: bytes):
         ("utf-32-le", 4),
         ("utf-32-be", 4),
     ):
-        encoded_prefixes = (
+        encoded_prefixes = tuple(
             prefix.encode(encoding) for prefix in SECRET_TEXT_PREFIXES
         )
-        offsets = {
-            index % alignment
-            for prefix in encoded_prefixes
-            if (index := content.find(prefix)) >= 0
-        }
-        for offset in sorted(offsets):
+        for offset in sorted(
+            matching_alignment_offsets(content, encoded_prefixes, alignment)
+        ):
             yield content[offset:].decode(encoding, errors="replace")
 
 
@@ -1337,26 +1351,94 @@ def der_signing_material_signature(content: bytes) -> str | None:
 
 
 def pkcs12_container_signature(content: bytes) -> str | None:
-    """Recognize a complete PFX container, including legacy encrypted variants."""
-    outer = der_tlv_value_bounds(content, 0)
-    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
-        return None
-    version = der_tlv_value_bounds(content, outer[1])
-    if version is None or version[0] != 0x02 or content[version[1] : version[2]] != b"\x03":
-        return None
-    auth_safe = der_tlv_value_bounds(content, version[2])
-    if auth_safe is None or auth_safe[0] != 0x30 or auth_safe[2] > outer[2]:
-        return None
-    auth_safe_body = content[auth_safe[1] : auth_safe[2]]
-    if not any(oid in auth_safe_body for oid in PKCS7_CONTENT_OIDS):
-        return None
-    if PKCS12_LEGACY_PBE_OID_PREFIX in content or any(
-        oid in content for oid in DER_SIGNING_OIDS
-    ):
+    """Recognize a bounded PFX container, including one embedded in other bytes."""
+    for offset in iter_der_sequence_offsets(content):
+        if offset < 0:
+            return "DER PKCS#12 sequence candidate scan limit exceeded"
+        outer = der_tlv_value_bounds(content, offset)
+        if outer is None or outer[0] != 0x30:
+            continue
+        version = der_tlv_value_bounds(content, outer[1])
+        if (
+            version is None
+            or version[0] != 0x02
+            or content[version[1] : version[2]] != b"\x03"
+        ):
+            continue
+        auth_safe = der_tlv_value_bounds(content, version[2])
+        if auth_safe is None or auth_safe[0] != 0x30 or auth_safe[2] > outer[2]:
+            continue
+        auth_safe_type = der_tlv_value_bounds(content, auth_safe[1])
+        if (
+            auth_safe_type is None
+            or auth_safe_type[0] != 0x06
+            or not any(
+                content[auth_safe[1] : auth_safe_type[2]] == oid
+                for oid in PKCS7_CONTENT_OIDS
+            )
+        ):
+            continue
+        candidate = content[offset : outer[2]]
+        if PKCS12_LEGACY_PBE_OID_PREFIX in candidate or any(
+            oid in candidate for oid in DER_SIGNING_OIDS
+        ):
+            return "DER signing material (PKCS#12 container)"
+        # The outer PFX structure itself is signing material even if its safe
+        # contents use an algorithm OID not otherwise known to this scanner.
         return "DER signing material (PKCS#12 container)"
-    # A structurally complete PFX is signing material even when its safe contents
-    # use an algorithm OID not otherwise known to this scanner.
-    return "DER signing material (PKCS#12 container)"
+    return None
+
+
+def der_algorithm_identifier_end(content: bytes, offset: int, limit: int) -> int | None:
+    algorithm = der_tlv_value_bounds(content, offset)
+    if algorithm is None or algorithm[0] != 0x30 or algorithm[2] > limit:
+        return None
+    oid = der_tlv_value_bounds(content, algorithm[1])
+    if oid is None or oid[0] != 0x06 or oid[2] > algorithm[2]:
+        return None
+    cursor = oid[2]
+    if cursor < algorithm[2]:
+        parameters = der_tlv_value_bounds(content, cursor)
+        if parameters is None or parameters[2] != algorithm[2]:
+            return None
+    return algorithm[2]
+
+
+def is_structural_pkcs7_signer_info(content: bytes, offset: int, limit: int) -> int | None:
+    signer = der_tlv_value_bounds(content, offset)
+    if signer is None or signer[0] != 0x30 or signer[2] > limit:
+        return None
+    cursor = signer[1]
+    version = der_tlv_value_bounds(content, cursor)
+    if version is None or version[0] != 0x02 or version[1] == version[2]:
+        return None
+    sid = der_tlv_value_bounds(content, version[2])
+    if sid is None or sid[0] not in {0x30, 0x80} or sid[2] > signer[2]:
+        return None
+    cursor = der_algorithm_identifier_end(content, sid[2], signer[2]) or -1
+    if cursor < 0:
+        return None
+    optional_signed_attributes = der_tlv_value_bounds(content, cursor)
+    if optional_signed_attributes is not None and optional_signed_attributes[0] == 0xA0:
+        cursor = optional_signed_attributes[2]
+    cursor = der_algorithm_identifier_end(content, cursor, signer[2]) or -1
+    if cursor < 0:
+        return None
+    signature = der_tlv_value_bounds(content, cursor)
+    if (
+        signature is None
+        or signature[0] != 0x04
+        or signature[1] == signature[2]
+        or signature[2] > signer[2]
+    ):
+        return None
+    cursor = signature[2]
+    if cursor < signer[2]:
+        unsigned_attributes = der_tlv_value_bounds(content, cursor)
+        if unsigned_attributes is None or unsigned_attributes[0] != 0xA1:
+            return None
+        cursor = unsigned_attributes[2]
+    return signer[2] if cursor == signer[2] else None
 
 
 def is_pkcs7_signed_data(content: bytes) -> bool:
@@ -1385,9 +1467,19 @@ def is_pkcs7_signed_data(content: bytes) -> bool:
     if (
         digest_algorithms is None
         or digest_algorithms[0] != 0x31
+        or digest_algorithms[1] == digest_algorithms[2]
         or digest_algorithms[2] > signed_data[2]
     ):
         return False
+    digest_cursor = digest_algorithms[1]
+    while digest_cursor < digest_algorithms[2]:
+        digest_cursor = der_algorithm_identifier_end(
+            content,
+            digest_cursor,
+            digest_algorithms[2],
+        ) or -1
+        if digest_cursor < 0:
+            return False
     encapsulated = der_tlv_value_bounds(content, digest_algorithms[2])
     if encapsulated is None or encapsulated[0] != 0x30 or encapsulated[2] > signed_data[2]:
         return False
@@ -1408,11 +1500,23 @@ def is_pkcs7_signed_data(content: bytes) -> bool:
             return False
         cursor = optional[2]
     signer_infos = der_tlv_value_bounds(content, cursor)
-    return (
-        signer_infos is not None
-        and signer_infos[0] == 0x31
-        and signer_infos[2] == signed_data[2]
-    )
+    if (
+        signer_infos is None
+        or signer_infos[0] != 0x31
+        or signer_infos[1] == signer_infos[2]
+        or signer_infos[2] != signed_data[2]
+    ):
+        return False
+    signer_cursor = signer_infos[1]
+    while signer_cursor < signer_infos[2]:
+        signer_cursor = is_structural_pkcs7_signer_info(
+            content,
+            signer_cursor,
+            signer_infos[2],
+        ) or -1
+        if signer_cursor < 0:
+            return False
+    return signer_cursor == signer_infos[2]
 
 
 def pe_authenticode_certificate_ranges(
@@ -1646,14 +1750,29 @@ def has_valid_tar_header(content: bytes) -> bool:
     checksum_field = content[148:156]
     try:
         declared = int(checksum_field.rstrip(b"\0 ") or b"0", 8)
-        size = int(content[124:136].rstrip(b"\0 ") or b"0", 8)
     except ValueError:
+        return False
+    size = parse_tar_number(content[124:136])
+    if size is None:
         return False
     calculated = sum(content[:148]) + 8 * 0x20 + sum(content[156:512])
     if declared != calculated:
         return False
     padded_end = 512 + ((size + 511) // 512) * 512
     return size >= 0 and padded_end <= len(content)
+
+
+def parse_tar_number(field: bytes) -> int | None:
+    """Parse POSIX octal or GNU/base-256 non-negative TAR numeric fields."""
+    if not field:
+        return None
+    if field[0] & 0x80:
+        value = int.from_bytes(field, "big") & ((1 << (8 * len(field) - 1)) - 1)
+        return value
+    try:
+        return int(field.rstrip(b"\0 ") or b"0", 8)
+    except ValueError:
+        return None
 
 
 def read_verified_zip_member(
@@ -3363,6 +3482,67 @@ def scan_historical_zip_blobs(
     return findings
 
 
+def scan_reachable_commit_objects(commit_ids: list[str]) -> list[str]:
+    """Scan bounded raw commit objects through one cat-file batch process."""
+    process = subprocess.Popen(
+        ["git", "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if process.stdin is None or process.stdout is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("git commit batch pipes are unavailable")
+    findings: list[str] = []
+    scanned_bytes = 0
+    try:
+        for commit_id in commit_ids:
+            process.stdin.write(commit_id.encode("ascii") + b"\n")
+            process.stdin.flush()
+            header = process.stdout.readline().decode("ascii").split()
+            if len(header) != 3 or header[0] != commit_id or header[1] != "commit":
+                raise RuntimeError("unexpected git commit batch header")
+            size = int(header[2])
+            scanned_bytes += size
+            if scanned_bytes > GIT_OUTPUT_LIMIT:
+                raise GitScanLimitError(
+                    "reachable commit objects exceed the "
+                    f"{GIT_OUTPUT_LIMIT}-byte aggregate scan limit"
+                )
+            raw_commit = process.stdout.read(size)
+            if len(raw_commit) != size:
+                raise RuntimeError("truncated git commit batch body")
+            if process.stdout.read(1) != b"\n":
+                raise RuntimeError("missing git commit batch delimiter")
+            commit_header, separator, commit_message = raw_commit.partition(b"\n\n")
+            if not separator:
+                raise GitScanLimitError(
+                    f"reachable commit {commit_id[:12]} has no message separator"
+                )
+            label = f"git history commit {commit_id[:12]}"
+            findings.extend(scan_secret_bytes(f"{label} header", commit_header))
+            findings.extend(
+                scan_blob_content(
+                    f"git history commit message {commit_id[:12]}",
+                    commit_message,
+                )
+            )
+        process.stdin.close()
+        return_code = process.wait()
+        if return_code:
+            raise subprocess.CalledProcessError(return_code, process.args)
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        if not process.stdin.closed:
+            process.stdin.close()
+        process.stdout.close()
+    return findings
+
+
 def scan_history(*, include_commit_messages: bool = False) -> list[str]:
     findings: list[str] = []
     try:
@@ -3404,30 +3584,10 @@ def scan_history(*, include_commit_messages: bool = False) -> list[str]:
                     "reachable commit count exceeds the "
                     f"{HISTORICAL_COMMIT_OBJECT_LIMIT}-commit scan limit"
                 )
-            commit_bytes = 0
             for commit_id in commit_ids:
                 if not re.fullmatch(r"[0-9a-f]{40}", commit_id):
                     raise GitScanLimitError("reachable commit inventory is invalid")
-                raw_commit = run_git(["cat-file", "-p", commit_id])
-                commit_bytes += len(raw_commit)
-                if commit_bytes > GIT_OUTPUT_LIMIT:
-                    raise GitScanLimitError(
-                        "reachable commit objects exceed the "
-                        f"{GIT_OUTPUT_LIMIT}-byte aggregate scan limit"
-                    )
-                commit_header, separator, commit_message = raw_commit.partition(b"\n\n")
-                if not separator:
-                    raise GitScanLimitError(
-                        f"reachable commit {commit_id[:12]} has no message separator"
-                    )
-                label = f"git history commit {commit_id[:12]}"
-                findings.extend(scan_secret_bytes(f"{label} header", commit_header))
-                findings.extend(
-                    scan_blob_content(
-                        f"git history commit message {commit_id[:12]}",
-                        commit_message,
-                    )
-                )
+            findings.extend(scan_reachable_commit_objects(commit_ids))
         except GitScanLimitError as error:
             findings.append(f"git history commits: {error}")
 
