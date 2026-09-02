@@ -2307,6 +2307,7 @@ private fun PlayModeEditor(
             label = "このPADを空に\nCLEAR PAD",
             confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPad,
+            confirmationKey = pad.globalIndex,
             enabled = pad.isAssigned,
             modifier = Modifier
                 .fillMaxWidth()
@@ -3519,6 +3520,7 @@ private fun SampleLayerStudio(
                 label = "配置を消す\nCLEAR",
                 confirmLabel = "もう一度で削除",
                 onConfirm = viewModel::clearSelectedPadPattern,
+                confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
@@ -3562,6 +3564,7 @@ private fun DrumKitStudio(
                     label = "Bの音色を入替\nKEEP SAFE",
                     confirmLabel = "もう一度で入替",
                     onConfirm = { onApply(true) },
+                    confirmationKey = selectedKitId,
                     modifier = Modifier.weight(1.6f).fillMaxHeight(),
                 )
             } else {
@@ -4021,6 +4024,7 @@ private fun SequenceTransportRow(
             label = "この音を消す\nCLEAR STEPS",
             confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPadPattern,
+            confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
@@ -4574,10 +4578,11 @@ private fun ConfirmActionButton(
     confirmLabel: String,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    confirmationKey: Any? = Unit,
     enabled: Boolean = true,
     compact: Boolean = true,
 ) {
-    var armed by remember { mutableStateOf(false) }
+    var armed by remember(confirmationKey, label, confirmLabel) { mutableStateOf(false) }
     LaunchedEffect(armed, enabled) {
         if (!enabled) {
             armed = false

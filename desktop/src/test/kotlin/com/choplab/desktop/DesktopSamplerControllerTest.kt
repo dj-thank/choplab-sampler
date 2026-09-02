@@ -1578,6 +1578,99 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun rapidMasterPitchChangesResumePlaybackAtTheLatestKey() {
+        val directory = Files.createTempDirectory("choplab-rapid-master-pitch").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "rapid-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            engine.sourcePosition = 23
+            controller.playSourceFrom(23)
+            assertTrue(controller.state.value.sourcePlaying)
+            engine.blockNextLoad = true
+
+            controller.setMasterPitch(2f)
+            engine.awaitBlockedLoad()
+            controller.setMasterPitch(4f)
+            engine.releaseBlockedLoad()
+
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 4f }
+            awaitCondition { controller.state.value.statusMessage == controller.masterPitchAppliedMessage(4f) }
+            assertEquals(4f, controller.state.value.masterPitchSemitones)
+            assertTrue(controller.state.value.sourcePlaying)
+            assertTrue(engine.isSourcePlaying)
+            assertEquals(2, engine.playFromCalls)
+            assertEquals(23, engine.sourcePosition)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun stopAllDuringMasterPitchRenderPreventsLatePlaybackResume() {
+        val directory = Files.createTempDirectory("choplab-stop-pending-master-pitch").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "stop-pending-pitch.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.blockNextLoad = true
+
+            controller.setMasterPitch(3f)
+            engine.awaitBlockedLoad()
+            controller.stopAllSounds()
+            engine.releaseBlockedLoad()
+
+            awaitCondition { engine.loadPcmCompletedCalls == 2 }
+            assertFalse(controller.state.value.sourcePlaying)
+            assertFalse(engine.isSourcePlaying)
+            assertEquals(1, engine.playFromCalls)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun closeDoesNotPersistAStartupRecoveryErrorPlaceholder() {
         val directory = Files.createTempDirectory("choplab-close-recovery-error").toFile()
         val store = AtomicProjectStore(directory)
@@ -2752,6 +2845,7 @@ class DesktopSamplerControllerTest {
         @Volatile var stopAllCount: Int = 0
         @Volatile var closeCalls: Int = 0
         @Volatile var loadPcmCalls: Int = 0
+        @Volatile var loadPcmCompletedCalls: Int = 0
         @Volatile var playFromCalls: Int = 0
         val loadedAudioNames = Collections.synchronizedList(mutableListOf<String>())
         val loadedPitchSemitones = Collections.synchronizedList(mutableListOf<Float>())
@@ -2763,10 +2857,12 @@ class DesktopSamplerControllerTest {
                 failNextLoad = false
                 error("test output unavailable")
             }
-            if (!blockNextLoad) return
-            blockNextLoad = false
-            loadEntered.countDown()
-            check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+            if (blockNextLoad) {
+                blockNextLoad = false
+                loadEntered.countDown()
+                check(loadRelease.await(2L, TimeUnit.SECONDS)) { "Timed out holding the asynchronous project load" }
+            }
+            loadPcmCompletedCalls++
         }
         fun awaitBlockedLoad() {
             check(loadEntered.await(2L, TimeUnit.SECONDS)) { "Timed out waiting for the asynchronous project load" }

@@ -159,6 +159,8 @@ class DesktopSamplerController(
     private var sourcePlayerClosed = false
     private val sourcePlaybackStateLock = Any()
     private var sourcePlaybackAvailability: SourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
+    private val sourcePitchResumeLock = Any()
+    private var pendingSourcePitchResumeFrame: Int? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
     private val projectLaunchRevision = AtomicLong(0L)
@@ -460,7 +462,7 @@ class DesktopSamplerController(
         statusOperations.invalidate()
         projectOperations.invalidate()
         recoveryOperations.invalidate()
-        sourceLoadOperations.invalidate()
+        invalidateSourceLoadOperations()
         stopCompetingPlayback()
         synchronized(sourcePlaybackStateLock) {
             sourcePlaybackAvailability = SourcePlaybackAvailability.Unavailable
@@ -470,6 +472,7 @@ class DesktopSamplerController(
     }
 
     override fun stopAllSounds() {
+        clearPendingSourcePitchResume()
         scratchReturnTarget = ScratchReturnTarget.None
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
@@ -863,7 +866,12 @@ class DesktopSamplerController(
         val resumeFrame = if (wasPlaying) {
             player.sourceFramePosition().coerceIn(0, before.rangeEndFrame)
         } else {
-            before.sourcePlayheadFrame
+            synchronized(sourcePitchResumeLock) {
+                pendingSourcePitchResumeFrame ?: before.sourcePlayheadFrame
+            }
+        }
+        if (wasPlaying) synchronized(sourcePitchResumeLock) {
+            pendingSourcePitchResumeFrame = resumeFrame
         }
         if (wasPlaying) {
             runCatching { player.stop() }
@@ -878,13 +886,33 @@ class DesktopSamplerController(
                 if (!result.applied) return@execute
                 val failure = result.failure
                 if (failure != null) {
+                    clearPendingSourcePitchResume()
                     runCatching { player.stop() }
                     publishSourcePlaybackFailure(failure)
                     return@execute
                 }
-                val resumed = wasPlaying && runCatching { player.playFrom(resumeFrame) }
-                    .onFailure(::publishSourcePlaybackFailure)
-                    .isSuccess
+                val pendingResumeFrame = synchronized(sourcePitchResumeLock) {
+                    pendingSourcePitchResumeFrame
+                }
+                val resumeResult = pendingResumeFrame?.let { frame ->
+                    runCatching { player.playFrom(frame) }
+                }
+                val resumeStillRequested = synchronized(sourcePitchResumeLock) {
+                    pendingSourcePitchResumeFrame == pendingResumeFrame
+                }
+                if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed() || !resumeStillRequested) {
+                    if (resumeResult?.isSuccess == true) runCatching { player.stop() }
+                    return@execute
+                }
+                synchronized(sourcePitchResumeLock) {
+                    pendingSourcePitchResumeFrame = null
+                }
+                val resumeFailure = resumeResult?.exceptionOrNull()
+                if (resumeFailure != null) {
+                    publishSourcePlaybackFailure(resumeFailure)
+                    return@execute
+                }
+                val resumed = resumeResult?.isSuccess == true
                 mutableState.update { current ->
                     current.copy(
                         sourcePlaying = current.sourcePlaying || resumed,
@@ -897,7 +925,7 @@ class DesktopSamplerController(
                 }
             }
         }
-        if (submitted.isFailure) sourceLoadOperations.invalidate()
+        if (submitted.isFailure) invalidateSourceLoadOperations()
     }
     override fun setSelectedPadPitch(value: Float) = updateSelected("pad-pitch") { it.copy(pitchSemitones = value.coerceIn(-24f, 24f)) }
     override fun setSelectedPadTone(value: Float) = updateSelected("pad-tone") { it.copy(tone = value.coerceIn(0f, 1f)) }
@@ -1492,7 +1520,10 @@ class DesktopSamplerController(
                             recoveredRevision = recovered.revision,
                         )
                         sourceLoadOperation = transition.state.currentAudio
-                            ?.let { sourceLoadOperations.begin() }
+                            ?.let {
+                                clearPendingSourcePitchResume()
+                                sourceLoadOperations.begin()
+                            }
                         applyHistoryState(
                             restored = transition.state,
                             message = "前回の自動保存を復元しました",
@@ -1566,6 +1597,7 @@ class DesktopSamplerController(
     }
 
     private fun loadSourcePcm(audio: PcmAudio?, pitchSemitones: Float = 0f): Throwable? {
+        clearPendingSourcePitchResume()
         val operation = sourceLoadOperations.begin()
         return loadSourcePcmIfCurrent(audio, pitchSemitones, operation).failure
     }
@@ -1629,6 +1661,15 @@ class DesktopSamplerController(
     }
 
     private fun controllerIsClosed(): Boolean = synchronized(autosaveLifecycleLock) { closed }
+
+    private fun clearPendingSourcePitchResume() = synchronized(sourcePitchResumeLock) {
+        pendingSourcePitchResumeFrame = null
+    }
+
+    private fun invalidateSourceLoadOperations() {
+        clearPendingSourcePitchResume()
+        sourceLoadOperations.invalidate()
+    }
 
     private fun sourcePlaybackIsReady(): Boolean = synchronized(sourcePlaybackStateLock) {
         when (val availability = sourcePlaybackAvailability) {
@@ -1697,6 +1738,7 @@ class DesktopSamplerController(
         preserveScratchReturn: Boolean = false,
         stopAudioEngine: Boolean = true,
     ) {
+        clearPendingSourcePitchResume()
         if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
@@ -1839,7 +1881,7 @@ class DesktopSamplerController(
             closed = true
             startupRecoveryFuture
         }
-        sourceLoadOperations.invalidate()
+        invalidateSourceLoadOperations()
         closePlayerAfterSourceLoad = true
         // Recovery owns the persistence executor before any close-time save. Wait for
         // its state publication so an initial loading snapshot cannot supersede it.
