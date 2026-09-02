@@ -382,6 +382,14 @@ internal fun removeTinyDcOffsetWithoutClipping(samples: ShortArray, channelCount
     val frameCount = samples.size / channelCount
     if (frameCount <= 0) return
     repeat(channelCount) { channel ->
+        val probeFrames = minOf(frameCount, 240_000)
+        var probeSum = 0L
+        for (frame in 0 until probeFrames) {
+            probeSum += samples[frame * channelCount + channel].toLong()
+        }
+        val probeOffset = (probeSum.toDouble() / probeFrames).roundToInt()
+        if (kotlin.math.abs(probeOffset) !in 16..2_621) return@repeat
+
         var sum = 0L
         var minimum = Short.MAX_VALUE.toInt()
         var maximum = Short.MIN_VALUE.toInt()

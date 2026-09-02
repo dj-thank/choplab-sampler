@@ -127,6 +127,11 @@ class Pcm16ArrayBuilderTest {
         val positiveOriginal = positivePeak.copyOf()
         removeTinyDcOffsetWithoutClipping(positivePeak, channelCount = 1)
         assertArrayEquals(positiveOriginal, positivePeak)
+
+        val biasedProbe = ShortArray(480_000) { frame -> if (frame < 240_000) 1_000 else -1_000 }
+        val biasedOriginal = biasedProbe.copyOf()
+        removeTinyDcOffsetWithoutClipping(biasedProbe, channelCount = 1)
+        assertArrayEquals(biasedOriginal, biasedProbe)
     }
 
     @Test
