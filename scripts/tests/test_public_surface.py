@@ -1662,6 +1662,61 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings,
         )
 
+    def test_apk_content_scan_rejects_pkcs12_inside_signing_pair(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            return bytes((tag, len(value))) + value
+
+        data_oid = bytes.fromhex("06092a864886f70d010701")
+        legacy_pbe_oid = bytes.fromhex("060a2a864886f70d010c0103")
+        pfx = der(
+            0x30,
+            der(0x02, b"\x03") + der(0x30, data_oid) + der(0x30, legacy_pbe_oid),
+        )
+        base = BytesIO()
+        with zipfile.ZipFile(base, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("notes.txt", b"safe text")
+        archive_bytes = bytearray(base.getvalue())
+        with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+            central_directory_start = archive.start_dir
+        eocd_offset = archive_bytes.rfind(b"PK\x05\x06")
+        pair = (
+            struct.pack("<Q", 4 + len(pfx))
+            + struct.pack("<I", 0x7109871A)
+            + pfx
+        )
+        signing_size = len(pair) + 24
+        signing_block = (
+            struct.pack("<Q", signing_size)
+            + pair
+            + struct.pack("<Q", signing_size)
+            + b"APK Sig Block 42"
+        )
+        signed_apk = bytearray(
+            archive_bytes[:central_directory_start]
+            + signing_block
+            + archive_bytes[central_directory_start:]
+        )
+        shifted_eocd = eocd_offset + len(signing_block)
+        struct.pack_into(
+            "<L",
+            signed_apk,
+            shifted_eocd + 16,
+            central_directory_start + len(signing_block),
+        )
+
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "pfx-signing-pair.apk"
+            apk_path.write_bytes(signed_apk)
+            findings = scan_zip(apk_path, label="pfx-signing-pair.apk")
+
+        self.assertTrue(
+            any(
+                "APK signing-block pair" in item and "PKCS#12 container" in item
+                for item in findings
+            ),
+            findings,
+        )
+
     def test_zip_content_scan_rejects_unclaimed_interior_bytes(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         candidate = BytesIO()
