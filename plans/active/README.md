@@ -6,15 +6,17 @@
 
 ## Current selection
 
-**進行中（単一product convergence / PR #86 Android音質）:** `h13-github-release-20260902.md`。PR #84は`main@f6cbfdc`、v0.17.2 signer recovery PR #85は`main@e71e0fd`へ通常統合済みでmerged-main 4/4 PASS。immutable `v0.17.1`は公開前失敗のtagとして保持。audio `2b0da00` / tree `7cc6a11`はdefault gain 0.9までmasterを透明化し、0.98未満の過負荷制限、decoder encoding/raw non-finite/DC clippingをfail closed化した。PR #86 `231da39`は同一PEM重複もmultiple evidenceとして拒否。shared 87×2、Android 289、JVM core 88、lint/APK/AndroidTest compileの99 tasks、verifier 39、policy 80がLOCAL PASS。次はPR #86再検証/merge、PR #69、release hardening、UI brush-up、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
+**進行中（単一product convergence / PR #69 provider再検証）:** `h13-github-release-20260902.md`。PR #86 Android音質はexact head `0e32770`の8/8 checks・threads 0・fresh review後、`main@012b131`へ通常統合済み。PR #69 `a5cfeac`はcurrent mainへ統合済み、fresh repair `baf7008`でcommit message/neutral binary/JKS/metadataまで閉じた。full policy 195、scanner 119、current/history 483、Gradle 111/111、Windows packageがLOCAL PASS。次はPR #69 fresh review/checks/normal merge、UI brush-up、release hardening、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
 
-**直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
+**Historical H13 pre-tag snapshot:** PR #83は`2864117`、setup-java v6 PR #82と当時のCompose PR #80を含むmainは`d3291a5`だった。後続PR #84でCompose 1.11.1へ戻り、`v0.17.1` tagは`f6cbfdc`に作成後、公開前verifier失敗でReleaseなしのまま保持されている。
 
 ## Retained prior selection
 
 **Wave 19 PR review repair completed local; GitHub integration remains active:** `../completed/waves17-18-pr-review-repair-20260827.md`。PR #79の3件の有効指摘を、Windowsのrender/open/startをhandoff lock外へ分離、candidate stagingとcleanup所有権保持、Android rejected vocal takeのstop＋discard専用経路で閉じた。追加raceも反証してproduct `11d0127` / tree `83c2055`、709 tests / 117 suites、197-task gate、package/policy/read-backまで`LOCAL_PASS`。
 
-**次に保持する一つ:** 新しいfeatureは開始せず、既存PR #79を同じbranch/headへ更新する。exact-head 8 workflows、review threads 0、clean mergeabilityとbase/head不変を確認してからだけnormal mergeし、merged-main 4 workflowsをread-backする。tag、Release、署名、device/provider account、Humanは別taskのまま。
+**Wave 19 GitHub integration complete:** `../completed/waves17-18-pr-review-repair-20260827.md`。review-hardened exact head `4ae09d8`はPR #79の8/8 checks・threads 0後、`main@0f5b672` / tree `939f954`へnormal merge。merged-main Android/Windows/iOS/Supply 4/4もSUCCESS。`v0.17.0` tag/Releaseは不変。
+
+**次に保持する一つ:** 新しいfeatureやWave 21は開始せず、renewed explicit authorizationがある場合だけexisting PR #69のexact provider-ready headをnormal mergeする。その後にmerged-main 4 workflowsとhead/treeをread-backする。force、branch deletion、`v0.17.0` rewrite、署名、device/provider account、Humanは別taskのまま。
 
 **wave 18 completed local; goal remains active:** `../completed/android-loop-session-admission-20260827.md`。Wave 17 closeout `8065c89` / tree `1c79440`から、Androidのowner＋eligible VOICE loop sessionを一つのbounded realtime commandとしてadmitし、初回project commit、VOICE録音restart、scratch returnをadmission成功後だけ公開する。queue full／engine stoppedはhistory/revision/runtime/autosaveを保持。product `5812c8a` / tree `1255aca`、703 tests / 116 suites、184-task gate、package/policy/read-backまで`LOCAL_PASS`。physical AudioTrack output、device/provider/public/signing/Humanは別gate。
 

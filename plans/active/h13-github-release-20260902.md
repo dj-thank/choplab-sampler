@@ -8,8 +8,8 @@ Keep the accepted Windows CHOP long-press correction on GitHub `main`, preserve 
 
 - Sole writer: the root integrator for this bounded task.
 - Remote: `https://github.com/dj-thank/choplab-sampler.git`.
-- Current base: `origin/main@e71e0fde2e8a7ef82020cfc905d07473b95c073b`, tree `3117c7f36307217e6d5ce7d27091eaa7ec133695`. It contains merged PR #83, PR #84, and the v0.17.2 signer-verifier recovery PR #85.
-- Current integration branch/worktree: `codex/choplab-android-clipping-20260902` in the dedicated clean Android audio worktree.
+- Current base: `origin/main@012b131784394b2fd641d580aaf4cd2d56b907f4`, tree `b9946fedc8a875d78fe85acde52ebffb95aaff3b`. It contains merged PR #83–#86, including v0.17.2 signer recovery and Android audio fidelity.
+- Current integration branch/worktree: `codex/choplab-pr69-review-fixes-20260902` in the dedicated PR #69 scanner worktree.
 - Preserved boundary: the canonical `agent/gpt-pro-ui-integration@6033d85b` checkout remains dirty and must not be staged, reset, cleaned, or used for the merge.
 
 ## Change set
@@ -109,8 +109,10 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 - [x] 2026-09-02 — Whole-signal DC confirmation and explicit/dense invariants completed at `7e7c7ae`.
 - [x] 2026-09-02 — Raw PCM_FLOAT Infinity review RED fixed before clamping at `2b0da00`.
 - [x] 2026-09-02 — Exact final-code full gate: shared 87+87, Android 289, JVM core 88, lint/APK/AndroidTest compile; 99 selected tasks executed, failure/error/skip 0.
-- [ ] Audio PR exact-head review/CI/normal merge and merged-main read-back.
-- [ ] PR #69, release hardening, UI brush-up, final exact-main gates and publication.
+- [x] 2026-09-02 — Audio PR #86 exact head passed 8/8 checks, threads 0 and fresh review, then merged normally as `012b131`.
+- [x] 2026-09-02 — PR #69 merged current main locally at `a5cfeac`; policy 192, scanner 116, current/history 483, Gradle 111/111 and Windows package pass.
+- [x] 2026-09-02 — PR #69 fresh review repair `baf7008`; commit messages, neutral binary history, JKS bodies and archive-valued metadata covered; policy 195/scanner 119 pass.
+- [ ] PR #86 merged-main read-back; PR #69 exact-head checks/review/merge; release hardening, UI brush-up, final exact-main gates and publication.
 
 ### Discoveries
 
