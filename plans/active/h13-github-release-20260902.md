@@ -38,3 +38,5 @@ Local tests can establish only `LOCAL_PASS`. Successful PR/merge/read-back estab
 ## Local checkpoint
 
 Product/release candidate `a7f4b08a1c891a67dd8879bd2007e71f5224774d` / tree `54cb789c445f384bbd1c20d3e596411340b36ccf` passed the exact post-commit offline Windows workflow rerun: 27/27 executed tasks, 358 test executions (353 unique), failure/error/skip 0, app-image ProductVersion `0.17.1`, Python policy 66, history scan, and final Standards/Spec unresolved 0/0. The next frontier is branch push and hosted PR verification; no provider/public gate is inferred from this local checkpoint.
+
+PR #83's first head passed all eight hosted checks but review opened four P2 threads, so merge was stopped. Exact repair `260ad5e82e2bd79dbe3e168d455ef5d4280637eb` / tree `c3d2633f775cf86f14cda44bcf99dfcbc55fef3d` closed the local REDs for managed LOOP, GATE ownership, output-failure TRIM continuity, fatal propagation, and XcodeGen metadata. Its post-commit offline rerun passed 27/27 tasks, 369 executions (359 unique), H13 20/20, policy 67/67, package `0.17.1`, and local review 0/0. The next frontier is hosted exact-head revalidation and resolving all four review threads.
