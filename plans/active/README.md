@@ -1,12 +1,12 @@
 # ExecPlan registry
 
-更新: 2026-08-27
+更新: 2026-09-02
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中（LOCAL_PASS / PR #83第4修正のhosted再検証待ち）:** `h13-github-release-20260902.md`。第3修正headも8/8 checksをPASSしたがfresh review 3件でmerge停止。`6070204`はpublic debug staging変数、API 36 proxy ownership、未知non-exported tooling拒否を修復。policy 75、AndroidTest compile 42 tasks、actual debug APK、history scan、local review 0/0がPASS。次は新headの8 checks、3 threads解決、fresh review、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+**進行中（PR #84 documentary successorのhosted再検証待ち）:** `h13-github-release-20260902.md`。PR #83 head `13e41af`は8/8 checksとreview closure後、merge commit `2864117`としてmainへ統合済み。現baselineはsetup-java #82とCompose 1.12.0 #80も含む`main@d3291a5`。PR #84 pre-documentary head `a1fdc80`はAndroid framework tree readiness、offscreen pointer target再取得、Compose 1.12 scene-close exact classifierを接続し、local H13 25/25・policy 75/75・public scan 479、hosted 8/8をPASSした。fresh reviewのsnapshot/registryとmatrix count 2件をこのsuccessorで修復し、次は新headの全checks、threads 0、fresh review、merge、merged-main checks、immutable `v0.17.1` tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
