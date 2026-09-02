@@ -16,8 +16,8 @@ This candidate is based on `main@bed7a550a71b1ae91556b2b2af25d7c482083c98` and c
 ## Local verification
 
 - `python -m unittest discover -s scripts/tests -p 'test_*.py'`: 242 tests pass; one Windows filesystem-symlink privilege skip.
-- `python scripts/check_public_surface.py`: 491 candidates, PASS.
-- `python scripts/check_public_surface.py --history`: 491 candidates, PASS.
+- `python scripts/check_public_surface.py`: 493 candidates, PASS.
+- `python scripts/check_public_surface.py --history`: 493 candidates, PASS.
 - `python scripts/release_metadata.py`: version `0.17.2`, build `29`, tag `v0.17.2`.
 - `git diff --check`: PASS.
 
