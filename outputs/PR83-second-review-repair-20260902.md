@@ -1,5 +1,7 @@
 # PR #83 second review repair receipt — 2026-09-02
 
+> Successor note: the first hosted run of this repair exposed one 15-second offscreen-test timeout while the parallel Windows run passed. The bounded harness-only correction is recorded in [PR83-hosted-timeout-repair-20260902.md](PR83-hosted-timeout-repair-20260902.md).
+
 ## Review input and stop
 
 PR [#83](https://github.com/dj-thank/choplab-sampler/pull/83) reached head `f438a512035bb1791e3d466d7bbe6a467f0c4b6b`. All eight push/pull-request hosted checks passed and the first four review threads were resolved with exact RED/GREEN replies. The fresh exact-head review then opened three additional P2 threads, so merge was stopped again:

@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（LOCAL_PASS / PR #83第2修正の再検証待ち）:** `h13-github-release-20260902.md`。初回4件を閉じたheadも8/8 hosted checksをPASSしたがfresh review 3件で再びmerge停止。second repair `f16218d` / tree `1ac8db9`はbounded LOOP PREVIEW、pointer/semanticsのper-gesture GATE ownership、post-start retirement failure cleanupをRED→GREENにし、Windows 27/27 tasks・377 executions、Android app 284、shared Android 86、H13 24/24、policy 67、local review 0/0をPASS。次は新headの8 checks、3 threads解決、fresh review、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+**進行中（LOCAL_PASS / PR #83 hosted再検証待ち）:** `h13-github-release-20260902.md`。second repair `f16218d`はbounded LOOP PREVIEW、pointer/semanticsのper-gesture GATE ownership、post-start retirement failure cleanupをRED→GREENにし、Windows 377 executions、Android app 284、shared Android 86、H13 24/24、policy 67、local review 0/0をPASS。3件を含むreview threadsは7/7 resolved。第三headのWindows PR-eventだけが15秒UI harness timeout、同head push-eventはPASSしたため、test-only `e1669ee`で全12 UI testのrunner budgetを30秒へ統一し、exact H13 24/24を再確認。次は新headの8 checks、fresh review、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
