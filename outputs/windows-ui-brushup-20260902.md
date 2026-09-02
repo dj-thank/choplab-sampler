@@ -38,6 +38,7 @@ This section records local evidence. Tag, Release, device, provider-account and 
 - `:desktop:packageWindows` PASS: 405 files, 176,816,561 bytes. `ChopLab.exe` SHA-256 `4e2a8ad0ea2a114309f28bf80b15478b66e5b7acd0a375fc6319d812d702d7bf`; `desktop-0.17.1.jar` `cf08eda79b68e21b7c528c7499d7aca0bf17bfab9ba2738331a850843d840909`; `shared-desktop-0.17.1.jar` `6d5570f0e720dc82a4dd6f266f94caecb5532826bf9def281de0919f6f93eb6e`. `ChopLab.cfg` carries the three new java-options.
 - Exact integration checkpoint `68296f2`: shared Desktop 91, shared Android host 91, Android unit 289, JVM core 88, Desktop 185, long-press UI 24; failures/errors/skips 0. Android lint, debug APK, AndroidTest compilation and Windows package all pass. Full Python policy 207 passes with one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
 - Final main-ancestry integration `ee1ea29`: full Python policy 213 passes with the same one local Windows symlink-privilege skip; current/history public scans pass across 488 candidates.
+- PR #88 source-snapshot correction `69e4873`: the exact committed `git archive` passes a dedicated fail-closed 16 MiB total / 4 MiB member source boundary; full policy 214 and current/history scans 488 each pass.
 
 ## Predecessor startup smoke (`a5f5a17`, packaged app image, 3840×2160 @150 %)
 

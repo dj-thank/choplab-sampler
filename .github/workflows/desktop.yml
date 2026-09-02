@@ -36,7 +36,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           git archive --format=zip --output=dist/choplab-source-snapshot.zip HEAD
-          python scripts/check_public_surface.py --archive dist/choplab-source-snapshot.zip
+          python scripts/check_public_surface.py --source-archive dist/choplab-source-snapshot.zip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload committed source snapshot

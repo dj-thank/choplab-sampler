@@ -77,6 +77,8 @@ UNSUPPORTED_NESTED_ARCHIVE_SUFFIXES = {
 }
 ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
 ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
+SOURCE_ARCHIVE_MEMBER_SCAN_LIMIT = 4 * 1024 * 1024
+SOURCE_ARCHIVE_TOTAL_SCAN_LIMIT = 16 * 1024 * 1024
 ZIP_COMPRESSION_RATIO_LIMIT = 100
 ZIP_ENTRY_COUNT_LIMIT = 4_096
 ZIP_CT_SYM_ENTRY_COUNT_LIMIT = 20_000
@@ -3730,6 +3732,13 @@ def parse_args() -> argparse.Namespace:
         help="also scan this exact ZIP-compatible archive after it has been created",
     )
     parser.add_argument(
+        "--source-archive",
+        action="append",
+        default=[],
+        type=Path,
+        help="scan an exact committed-source ZIP with dedicated bounded source limits",
+    )
+    parser.add_argument(
         "--text-file",
         action="append",
         default=[],
@@ -3759,6 +3768,22 @@ def main() -> int:
                 _candidate_budget=zip_budget,
             )
         )
+    for archive_path in args.source_archive:
+        if archive_path.is_symlink():
+            findings.append(
+                f"{archive_path}: explicit source archive must be a regular file, not a symlink"
+            )
+            continue
+        findings.extend(
+            scan_zip(
+                archive_path,
+                label=str(archive_path),
+                member_scan_limit=SOURCE_ARCHIVE_MEMBER_SCAN_LIMIT,
+                total_scan_limit=SOURCE_ARCHIVE_TOTAL_SCAN_LIMIT,
+                compressed_input_limit=SOURCE_ARCHIVE_TOTAL_SCAN_LIMIT,
+                _candidate_budget=zip_budget,
+            )
+        )
     for text_path in args.text_file:
         findings.extend(scan_explicit_text_file(text_path))
 
@@ -3774,6 +3799,8 @@ def main() -> int:
     scope = "current tree and reachable history" if args.history else "current tree"
     if args.archive:
         scope += f" plus {len(args.archive)} explicit archive(s)"
+    if args.source_archive:
+        scope += f" plus {len(args.source_archive)} explicit source archive(s)"
     if args.text_file:
         scope += f" plus {len(args.text_file)} explicit text file(s)"
     print(
