@@ -127,6 +127,7 @@ class DesktopSamplerController(
     internal var transportWorkerStarter: (Thread) -> Unit = Thread::start
     internal var recoveredHydrationAdmission: () -> Unit = {}
     internal var sourcePitchWorkerAdmission: () -> Unit = {}
+    internal var sourcePitchResumeAfterPlayAdmission: () -> Unit = {}
     private val playbackTransitionLock = ReentrantLock()
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
@@ -899,37 +900,44 @@ class DesktopSamplerController(
                     publishSourcePlaybackFailure(failure)
                     return@execute
                 }
-                val pendingResumeFrame = synchronized(sourcePitchResumeLock) {
-                    pendingSourcePitchResumeFrame
-                }
-                val resumeResult = pendingResumeFrame?.let { frame ->
-                    runCatching { player.playFrom(frame) }
-                }
-                val resumeStillRequested = synchronized(sourcePitchResumeLock) {
-                    pendingSourcePitchResumeFrame == pendingResumeFrame
-                }
-                if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed() || !resumeStillRequested) {
-                    if (resumeResult?.isSuccess == true) runCatching { player.stop() }
-                    return@execute
-                }
                 synchronized(sourcePitchResumeLock) {
+                    val pendingResumeFrame = pendingSourcePitchResumeFrame
+                    val resumeResult = pendingResumeFrame?.let { frame ->
+                        runCatching { player.playFrom(frame) }
+                    }
+                    if (resumeResult?.isSuccess == true) {
+                        sourcePitchResumeAfterPlayAdmission()
+                    }
+                    if (
+                        !sourceLoadOperations.isCurrent(operation) ||
+                        controllerIsClosed() ||
+                        pendingSourcePitchResumeFrame != pendingResumeFrame
+                    ) {
+                        if (resumeResult?.isSuccess == true) runCatching { player.stop() }
+                        return@synchronized
+                    }
                     pendingSourcePitchResumeFrame = null
-                }
-                val resumeFailure = resumeResult?.exceptionOrNull()
-                if (resumeFailure != null) {
-                    publishSourcePlaybackFailure(resumeFailure)
-                    return@execute
-                }
-                val resumed = resumeResult?.isSuccess == true
-                mutableState.update { current ->
-                    current.copy(
-                        sourcePlaying = current.sourcePlaying || resumed,
-                        statusMessage = if (current.statusMessage == masterPitchApplyingMessage(pitch)) {
-                            masterPitchAppliedMessage(pitch)
-                        } else {
-                            current.statusMessage
-                        },
-                    )
+                    val resumeFailure = resumeResult?.exceptionOrNull()
+                    if (resumeFailure != null) {
+                        runCatching { player.stop() }
+                        publishSourcePlaybackFailure(resumeFailure)
+                        return@synchronized
+                    }
+                    val resumed = resumeResult?.isSuccess == true
+                    mutableState.update { current ->
+                        current.copy(
+                            sourcePlaying = if (pendingResumeFrame != null) {
+                                resumed
+                            } else {
+                                current.sourcePlaying
+                            },
+                            statusMessage = if (current.statusMessage == applyingMessage) {
+                                masterPitchAppliedMessage(pitch)
+                            } else {
+                                current.statusMessage
+                            },
+                        )
+                    }
                 }
             }
         }

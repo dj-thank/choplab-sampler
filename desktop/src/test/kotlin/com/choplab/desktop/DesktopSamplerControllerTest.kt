@@ -1729,6 +1729,64 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun stopAllAfterPitchResumeStartsWinsBeforeResumeStatePublication() {
+        val directory = Files.createTempDirectory("choplab-stop-after-pitch-resume").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "stop-after-resume.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val resumeStarted = CountDownLatch(1)
+        val releaseResume = CountDownLatch(1)
+        var stopThread: Thread? = null
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            controller.sourcePitchResumeAfterPlayAdmission = {
+                resumeStarted.countDown()
+                check(releaseResume.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding pitch resume publication"
+                }
+            }
+
+            controller.setMasterPitch(3f)
+            assertTrue(resumeStarted.await(2L, TimeUnit.SECONDS))
+            stopThread = thread(name = "ChopLab-Test-Stop-After-Pitch-Resume") {
+                controller.stopAllSounds()
+            }
+            awaitCondition { requireNotNull(stopThread).state == Thread.State.BLOCKED }
+            releaseResume.countDown()
+            requireNotNull(stopThread).join(10_000L)
+
+            assertFalse(requireNotNull(stopThread).isAlive)
+            assertEquals(2, engine.playFromCalls)
+            assertFalse(engine.isSourcePlaying)
+            assertFalse(controller.state.value.sourcePlaying)
+        } finally {
+            releaseResume.countDown()
+            stopThread?.join(10_000L)
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun closeDoesNotPersistAStartupRecoveryErrorPlaceholder() {
         val directory = Files.createTempDirectory("choplab-close-recovery-error").toFile()
         val store = AtomicProjectStore(directory)
