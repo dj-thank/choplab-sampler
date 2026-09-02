@@ -68,7 +68,7 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 ### Current state
 
 - PR #84 head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` was normally merged as `f6cbfdcc65584264ca7fd1cf7c450e9cab284b14`; its four merged-main workflows passed.
-- Audio product checkpoint `b63ed650e47c5555f4a328171c222ca4888a88ae`; decoder/master hardening checkpoint `9dc71a4652c943ded89c62bb50d9512270182d20`.
+- Audio product checkpoint `b63ed650e47c5555f4a328171c222ca4888a88ae`; decoder/master hardening `9dc71a4652c943ded89c62bb50d9512270182d20`; final review hardening `7e7c7ae5a5b30f7f3e526ba887825fe60b400fd1` / tree `b45b0d7f8afca04684e2149505cf4b3e869ef2ed`.
 - Exact working branch is `codex/choplab-android-clipping-20260902`; the dirty canonical checkout and all existing tags/releases remain untouched.
 
 ### Constraints and invariants
@@ -97,7 +97,8 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 - [x] 2026-09-02 — PR #84 merged normally; exact merged-main workflows 4/4 succeeded.
 - [x] 2026-09-02 — Old master distortion reproduced and repaired at `b63ed65`; shared Android/Desktop hosts and Android/offline parity passed.
 - [x] 2026-09-02 — Decoder/master negative paths repaired at `9dc71a4`; focused RED then bounded-memory GREEN.
-- [x] 2026-09-02 — Related full gate: shared 87+87, Android 288, JVM core 88, lint/APK/AndroidTest compile; failure/error/skip 0.
+- [x] 2026-09-02 — Whole-signal DC confirmation and explicit/dense invariants completed at `7e7c7ae`.
+- [x] 2026-09-02 — Exact final-code full gate: shared 87+87, Android 288, JVM core 88, lint/APK/AndroidTest compile; 99 selected tasks executed, failure/error/skip 0.
 - [ ] Audio PR exact-head review/CI/normal merge and merged-main read-back.
 - [ ] PR #69, release hardening, UI brush-up, final exact-main gates and publication.
 
@@ -116,7 +117,7 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 
 ### Validation log
 
-- `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:assembleDebug :jvm-core:test` — 2026-09-02, JDK 17, one worker, bounded heap/in-process compiler — PASS, 99 actionable tasks.
+- `:shared:desktopTest :shared:testAndroidHostTest :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin :app:lintDebug :app:assembleDebug :jvm-core:test --rerun-tasks` — 2026-09-02, exact `7e7c7ae`, JDK 17, one worker, bounded heap/in-process compiler, serial 256 MiB test forks — PASS, 99/99 tasks executed.
 - Test XML totals — shared Desktop 87, shared Android host 87, Android unit 288, JVM core 88; failure/error/skip 0.
 - Android API source assumption — `AudioFormat.ENCODING_PCM_FLOAT` nominal range and finite warning: https://developer.android.com/reference/android/media/AudioFormat
 

@@ -8,6 +8,7 @@ Android playback sounded audibly broken even before intentional polyphonic overl
 
 - Product checkpoint: `b63ed650e47c5555f4a328171c222ca4888a88ae` / tree `7ce7caaea092c9331afe2ea2d51b8efdb19895e1`.
 - Decoder/master hardening: `9dc71a4652c943ded89c62bb50d9512270182d20` / tree `4d8eb5f49d7608ee1ad2e1a3315d982065587fb2`.
+- Review hardening: `c5c5bcc692b947e684713f7a4e9b8c3762728f34` and final product `7e7c7ae5a5b30f7f3e526ba887825fe60b400fd1` / tree `b45b0d7f8afca04684e2149505cf4b3e869ef2ed`.
 - Samples through magnitude 0.9, including a full-scale imported PAD at the product's default 0.9 gain, remain bit-for-bit unchanged by the master.
 - Above 0.9, a positive/negative symmetric C1-continuous rational knee approaches but never reaches 0.98. The realtime callback performs only finite arithmetic and adds no allocation, lock, I/O, or logging.
 - Android's actual `AudioTrack` call seam and offline `PatternRenderer` both invoke the shared limiter. Tests cover normal source level, 2- and 32-voice-equivalent overload, monotonicity, symmetry, non-finite input, and WAV output amplitude.
@@ -23,9 +24,9 @@ JDK 17, Windows host, one Gradle worker, 1.5 GiB Gradle heap, in-process Kotlin 
 - Android unit: 288 tests; JVM core/offline WAV: 88 tests.
 - failures, errors, skips: 0.
 - Android lint, debug APK assembly, and AndroidTest Kotlin compilation: PASS.
-- `git diff --check`: PASS.
+- `git diff --check`: PASS. The final full command executed 99/99 selected tasks.
 
-An earlier uncommitted predecessor run did not produce a test result: the Gradle JVM reported insufficient host virtual memory while using `-Xmx4g`. Final checkpoint `9dc71a4` passed under the bounded configuration above; the crash evidence is kept outside the repository task artifacts and is not counted as a product result.
+Earlier uncommitted predecessor runs did not produce test results: the Gradle JVM/test forks reported insufficient host virtual memory under the default 4 GiB configuration. Final checkpoint `7e7c7ae` passed under the bounded configuration above; crash evidence is kept outside the repository artifacts and is not counted as a product result.
 
 ## Evidence ceiling
 
