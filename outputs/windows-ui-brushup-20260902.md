@@ -2,8 +2,9 @@
 
 ## Fixed source
 
-- Base: PR #83 head `f16218ddc0eb1e7b8dbdcafbb01ad8b69f6fe6bc` (branch `codex/choplab-h13-v0171-20260902`).
-- Lane: `work/choplab-ui-brushup-20260902`, branch `codex/choplab-ui-brushup-20260902`.
+- Current base: PR #83 head `13e41af589ee32018ae6857623b857b9c0356f21` (branch `codex/choplab-h13-v0171-20260902`).
+- Current product: `822305c` on lane `work/choplab-ui-brushup-20260902`, branch `codex/choplab-ui-brushup-pr83-latest-20260902`.
+- Preserved predecessor: `a5f5a17` on `codex/choplab-ui-brushup-20260902`, based on PR #83's earlier `f16218d` head. Its local startup timings remain historical evidence for those bytes.
 - Plan: [windows-ui-brushup-20260902](../plans/active/windows-ui-brushup-20260902.md).
 
 This is local evidence only. No push, PR, tag, Release, device, provider, or Human action was performed.
@@ -20,14 +21,21 @@ This is local evidence only. No push, PR, tag, Release, device, provider, or Hum
 | `PadGrid` | Hover ring/tint on pads. |
 | `desktop/build.gradle.kts` | jpackage `--java-options -XX:-UsePerfData -Xms160m -Dfile.encoding=UTF-8` (valid on the JDK 17 CI runtime). |
 
+## Parent review repair
+
+- RED: two KEY changes issued while the first asynchronous render was blocked left source playback stopped after the latest render. The focused test failed before the repair and passes at `822305c`.
+- Repair: pending playback resume frame is carried across superseding KEY requests; only the latest request may resume it. ALL STOP, competing playback, project replacement, failure, and close clear the intent, and a late stale resume is stopped.
+- RED: ALL STOP during the blocked render previously allowed the worker to restart the source afterward. The focused test failed before the repair and passes at `822305c`.
+- Destructive confirmation state is keyed to its PAD, pattern slot, or drum-kit target so a first click cannot arm a different target after selection changes.
+
 ## Verification (JDK 17.0.20, Gradle 9.7.1, Windows 11)
 
-- `:shared:desktopTest` 90 / `:jvm-core:test` 88 / `:desktop:test` 182 / `:desktop:desktopLongPressUiTest` 24 — failures/errors/skips 0.
-- `python -m unittest discover -s scripts/tests` 67 OK; `scripts/check_public_surface.py` PASS (476 candidates).
-- New tests: `WaveformWheelGestureTest` (4), `BoundedPcmBuilderTest` (3); `DesktopSamplerControllerTest` pitch-failure case now awaits the asynchronous failure report.
-- `:desktop:packageWindows` PASS: 405 files, 176,814,833 bytes. `ChopLab.exe` SHA-256 `4e2a8ad0ea2a114309f28bf80b15478b66e5b7acd0a375fc6319d812d702d7bf`; `desktop-0.17.1.jar` `b69275eb51738e5d0efc50f86c270a5bda13f0e3d833ba48be75f869d5af607d`; `shared-desktop-0.17.1.jar` `8646fa61cc417dd464847baf41a6894f8f1c45bea0894f441f75964723c4fdaa`. `ChopLab.cfg` carries the three new java-options.
+- `:shared:desktopTest` 90 / `:jvm-core:test` 88 / `:desktop:test` 185 / `:desktop:desktopLongPressUiTest` 24 / `:app:testDebugUnitTest` 284 — failures/errors/skips 0; `:app:compileDebugAndroidTestKotlin` PASS.
+- `python -m unittest discover -s scripts/tests` 75 OK; `scripts/check_public_surface.py` PASS (482 candidates); `scripts/validate_project.sh` PASS through Git Bash.
+- New tests: `WaveformWheelGestureTest` (4), `BoundedPcmBuilderTest` (3), rapid superseding KEY resume and ALL STOP late-resume denial; the pitch-failure case awaits the asynchronous failure report.
+- `:desktop:packageWindows` PASS: 405 files, 176,816,561 bytes. `ChopLab.exe` SHA-256 `4e2a8ad0ea2a114309f28bf80b15478b66e5b7acd0a375fc6319d812d702d7bf`; `desktop-0.17.1.jar` `cf08eda79b68e21b7c528c7499d7aca0bf17bfab9ba2738331a850843d840909`; `shared-desktop-0.17.1.jar` `6d5570f0e720dc82a4dd6f266f94caecb5532826bf9def281de0919f6f93eb6e`. `ChopLab.cfg` carries the three new java-options.
 
-## Startup smoke (packaged app image, 3840×2160 @150 %)
+## Predecessor startup smoke (`a5f5a17`, packaged app image, 3840×2160 @150 %)
 
 | Launch | Time to titled window |
 | --- | --- |
@@ -37,6 +45,8 @@ This is local evidence only. No push, PR, tag, Release, device, provider, or Hum
 | New image, warm launch 3 | 1,590 ms |
 
 Window title `ChopLab — おとひろい PC`, responding, graceful `CloseMainWindow` each time. Maximized (3862×2110 px) shows the console centered at 1600 dp with black margins; restored 1200×900 px shows CHOP with compact BANK labels and no wrapped rows. Captures are kept in the PAD workspace (`work/CHOPLAB_UI_BRUSHUP_EVIDENCE_20260902/`), not in Git.
+
+The startup timing and pointer captures were not repeated after product `822305c`; the review repair changes controller request ownership and confirmation state, not packaging flags or layout dimensions.
 
 ## Not verified
 

@@ -2,13 +2,14 @@
 
 ## Current snapshot — 2026-09-02 Windows UI / startup brush-up (LOCAL_PASS candidate)
 
-Bounded local lane `work/choplab-ui-brushup-20260902` (`codex/choplab-ui-brushup-pr83-latest-20260902`) on top of PR #83 head `13e41af`. It repairs measured Windows friction without touching audio DSP, schema, Spotify, or Android-only code. The predecessor commit `a5f5a17` remains preserved on `codex/choplab-ui-brushup-20260902`.
+Bounded local lane `work/choplab-ui-brushup-20260902` (`codex/choplab-ui-brushup-pr83-latest-20260902`) on top of PR #83 head `13e41af`. Product `822305c` repairs measured Windows friction without touching audio DSP, schema, Spotify, or Android-only code. The predecessor commit `a5f5a17` remains preserved on `codex/choplab-ui-brushup-20260902`.
 
 - Master key change (`KEY ±`) no longer re-renders the whole source on the UI thread: the render runs on the project I/O worker, old-key playback stops at its exact frame, and the newest key resumes from that frame; stale requests are discarded by the source-load epoch.
 - WAV import copies mono/stereo chunks in bulk (`BoundedPcmBuilder.appendAll`) under the unchanged decoded-frame bound.
 - One reusable WAV-only `JFileChooser`, shared last folder for open/save/export, window minimum 760×600 px, jpackage `-XX:-UsePerfData -Xms160m -Dfile.encoding=UTF-8`.
 - Shared deck: confirm buttons auto-disarm (4 s / disabled), hover feedback on buttons, tabs and pads, wheel zoom/pan on waveforms, console capped at an enforced 1600 dp, landscape CHOP grid shares width by weight, compact BANK labels in landscape rows, 9 sp status strip.
-- Local gate: shared 90 / jvm-core 88 / desktop 182 / H13 UI 24 tests, policy 67, public-surface PASS, `packageWindows` PASS (EXE `4e2a8ad0…d7bf`). Warm packaged launch 1.59–1.60 s versus 2.07 s for the previous local image on the same host. Receipt: [windows-ui-brushup-20260902](../outputs/windows-ui-brushup-20260902.md).
+- Review repair: rapid consecutive KEY changes preserve only the latest render while retaining the original resume frame; ALL STOP or competing playback cancels that pending resume. Two-step destructive confirmations disarm when their PAD, pattern, or drum-kit target changes.
+- Local gate at exact product `822305c`: shared 90 / jvm-core 88 / desktop 185 / H13 UI 24 / Android unit 284 tests, failure/error/skip 0; AndroidTest compile, policy 75, public-surface 482 candidates, project validator and `packageWindows` PASS. App image 405 files / 176,816,561 bytes; EXE `4e2a8ad0…d7bf`, desktop JAR `cf08eda7…0909`, shared JAR `6d5570f0…eb6e`. The predecessor image's warm launch was 1.59–1.60 s versus 2.07 s for the older local image on the same host; startup timing was not repeated after the review repair. Receipt: [windows-ui-brushup-20260902](../outputs/windows-ui-brushup-20260902.md).
 - Not verified: physical audio, real long-file import timing, real pointer hover/wheel, Android rendering, accessibility speech, PR/CI/public/Human gates. Push and PR require the owner's explicit go.
 
 ## Current integration candidate — 2026-09-02 H13 / v0.17.1

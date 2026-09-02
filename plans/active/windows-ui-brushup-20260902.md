@@ -19,7 +19,7 @@ Windows デスクトップ版を主対象として、実測・コード読解で
 | `ConfirmActionButton` の armed 状態が永続 | 誤タップ後「もう一度で削除」が残り続け、後で誤確定 | 4 秒で自動解除、disabled 時も解除 |
 | デスクトップでホバー反応なし | どこが押せるか分からない | `MachineButton` / 工程タブ / PAD に hover 色・影 |
 | 波形がホイールに無反応 | マウスでズーム不可（2 本指前提） | 縦ホイール = カーソル位置ズーム、横ホイール = パン（`resolveWaveformWheelGesture`） |
-| console 最大幅 980dp | 最大化 1080p で左右が大きく空く | 1280dp へ拡張（横長では PAD grid は正方形維持、波形側へ配分） |
+| console 最大幅 980dp | 最大化 1080p で左右が大きく空く | 1600dp へ拡張（横長では PAD grid は正方形維持、波形側へ配分） |
 | ウィンドウ最小サイズなし | 縮めると行が潰れる | 760×600 px を下限に |
 | status strip 8sp | 100% DPI で読めない | 9sp |
 | jpackage に JVM オプションなし | 初回フレームまで hsperfdata mmap / heap 拡張 | `-XX:-UsePerfData -Xms160m -Dfile.encoding=UTF-8`（CI の JDK 17 でも有効な範囲のみ。AppCDS 自動生成は JDK 19+ のため見送り） |
@@ -32,6 +32,7 @@ Windows デスクトップ版を主対象として、実測・コード読解で
 
 ## 検証
 
-- `JAVA_HOME=JDK17 ./gradlew :shared:desktopTest :jvm-core:test :desktop:test` → shared 90 / jvm-core 88 / desktop 182、failure/error/skip 0
-- `python -m unittest discover -s scripts/tests` → 67 OK（picker contract を含む）
-- `:desktop:desktopLongPressUiTest :desktop:packageWindows` → receipt `outputs/windows-ui-brushup-20260902.md` を参照
+- Exact product `822305c`: `JAVA_HOME=JDK17 ./gradlew :shared:desktopTest :jvm-core:test :desktop:test` → shared 90 / jvm-core 88 / desktop 185、failure/error/skip 0
+- `:app:testDebugUnitTest :app:compileDebugAndroidTestKotlin` → Android unit 284、AndroidTest compile PASS
+- `python -m unittest discover -s scripts/tests` → 75 OK（picker/release contract を含む）、public surface 482 candidates PASS
+- `:desktop:desktopLongPressUiTest :desktop:packageWindows` → H13 24 tests、Windows package PASS。receipt `outputs/windows-ui-brushup-20260902.md` を参照

@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（LOCAL_PASS 再検証中）:** `windows-ui-brushup-20260902.md`。PR #83 最新 head `13e41af` からの clean worktree へ predecessor `a5f5a17` を移植し、Windows 版の体感速度と UI 摩擦を修復する。曲キー変更の UI スレッド再レンダリングを I/O worker へ移動、WAV decode の一括コピー、file chooser の再利用と前回フォルダ記憶、確認ボタンの自動解除、hover 表示、波形ホイールズーム、console 幅 1280dp、最小ウィンドウ、jpackage JVM オプション。shared/jvm-core/desktop tests、policy tests、H13 long-press UI test、`packageWindows` を新しい exact commit で再確認する。公開・tag・canonical checkout は変更しない。
+**進行中（LOCAL_PASS / push・PR承認待ち）:** `windows-ui-brushup-20260902.md`。PR #83 最新 head `13e41af` へ predecessor を移植し、review repair product `822305c` で連続KEY変更のresume race、ALL STOP後のlate resume、確認対象変更後の誤確定を追加修復。shared 90 / jvm-core 88 / desktop 185 / H13 24 / Android unit 284、AndroidTest compile、policy 75、public surface、project validator、`packageWindows` がPASS。旧 `a5f5a17` は元branchに保全し、公開・tag・canonical checkout は変更しない。
 
 **直前の selection（PR #83 待ち）:** `h13-github-release-20260902.md`。第4修正 head `13e41af` は同一 bytes の push run で Android を含む4 workflowがPASSした一方、同時の pull_request run は `SourceWaveformDeviceTest` の accessibility tree 待機が1件失敗し、PR は `UNSTABLE`。公開、merge、tag、Release は未実施で、旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
 
