@@ -104,6 +104,7 @@ HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
 HISTORICAL_TAG_BODY_TOTAL_LIMIT = 16 * 1024 * 1024
 HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT = 16_384
 HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT = 256 * 1024 * 1024
+HISTORICAL_BINARY_PREFIX_LIMIT = 4 * 1024
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
@@ -515,11 +516,16 @@ def read_git_blob_structural_candidates(
                 remaining = size
                 binary_body = False
                 utf8_decoder = codecs.getincrementaldecoder("utf-8")("strict")
+                binary_prefix = bytearray()
                 while remaining:
                     chunk = process.stdout.read(min(64 * 1024, remaining))
                     if not chunk:
                         raise RuntimeError("truncated git blob batch body")
                     body.write(chunk)
+                    if len(binary_prefix) < HISTORICAL_BINARY_PREFIX_LIMIT:
+                        binary_prefix.extend(
+                            chunk[: HISTORICAL_BINARY_PREFIX_LIMIT - len(binary_prefix)]
+                        )
                     if not binary_body and any(
                         byte < 0x20 and byte not in b"\t\n\r\f" for byte in chunk
                     ):
@@ -535,6 +541,15 @@ def read_git_blob_structural_candidates(
                         utf8_decoder.decode(b"", final=True)
                     except UnicodeDecodeError:
                         binary_body = True
+                if not binary_body:
+                    prefix = bytes(binary_prefix)
+                    binary_body = (
+                        prefix.startswith(TEXT_BOM_PREFIXES)
+                        or prefix.startswith(JKS_MAGIC)
+                        or prefix[:1] == b"\x30"
+                        or audio_payload_signature(prefix) is not None
+                        or unsupported_nested_archive_signature(prefix) is not None
+                    )
                 if process.stdout.read(1) != b"\n":
                     raise RuntimeError("missing git blob batch delimiter")
                 body.seek(0)
@@ -1065,8 +1080,8 @@ def unsafe_archive_entry_path(name: str) -> str | None:
     normalized = name.replace("\\", "/")
     if normalized.startswith("/"):
         return "absolute archive path"
-    if re.match(r"^[A-Za-z]:/", normalized):
-        return "drive-rooted archive path"
+    if re.match(r"^[A-Za-z]:", normalized):
+        return "drive-qualified archive path"
     if ".." in PurePosixPath(normalized).parts:
         return "parent traversal archive path"
     return None
@@ -3184,7 +3199,10 @@ def scan_zip(
                         pe_certificate_ranges,
                     )
                 elif public_certificate_container:
-                    der_signature = der_private_key_material_signature(content)
+                    der_signature = (
+                        pkcs12_container_signature(content)
+                        or der_private_key_material_signature(content)
+                    )
                 else:
                     der_signature = der_signing_material_signature(content)
                 if der_signature:
