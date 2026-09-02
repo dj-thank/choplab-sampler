@@ -97,6 +97,15 @@ class ReleaseManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Forbidden public windows binary"):
             self.write()
 
+    def test_rejects_unlisted_public_asset(self) -> None:
+        (self.directory / "unexpected-notes.txt").write_text(
+            "not part of the public release allowlist\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "exact public asset allowlist"):
+            self.write()
+
     def test_rejects_sidecar_that_declares_another_asset(self) -> None:
         sidecar = self.directory / "ChopLab-v0.16.2-android-debug.apk.sha256"
         digest = hashlib.sha256(b"android").hexdigest()

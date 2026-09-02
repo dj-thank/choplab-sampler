@@ -2,6 +2,8 @@ name: Supply-chain policy
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   schedule:
     - cron: '17 18 * * 1'
@@ -16,7 +18,7 @@ concurrency:
 
 jobs:
   policy:
-    name: History scan and dependency SBOM
+    name: Supply-chain policy
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

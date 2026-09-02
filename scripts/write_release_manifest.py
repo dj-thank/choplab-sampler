@@ -116,6 +116,20 @@ def validate_checksum_sidecars(
             raise ValueError(f"Checksum mismatch for {target_name}")
 
 
+def validate_exact_public_assets(assets: list[ReleaseAsset], version: str) -> None:
+    expected_names = {
+        f"ChopLab-v{version}-android-debug.apk",
+        f"ChopLab-v{version}-ios-simulator.app.zip",
+        f"ChopLab-v{version}-sbom.cdx.json",
+    }
+    unexpected = sorted(asset.name for asset in assets if asset.name not in expected_names)
+    if unexpected:
+        raise ValueError(
+            "Public release contains assets outside the exact public asset allowlist: "
+            + ", ".join(unexpected)
+        )
+
+
 def write_manifest(
     *,
     directory: Path,
@@ -140,6 +154,7 @@ def write_manifest(
     assets = collect_assets(directory, output)
     validate_expected_binaries(assets, version)
     validate_checksum_sidecars(directory, assets, version)
+    validate_exact_public_assets(assets, version)
     payload: dict[str, object] = {
         "schema_version": 1,
         "product": "ChopLab",
