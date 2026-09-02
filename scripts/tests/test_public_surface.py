@@ -12,8 +12,10 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from scripts.check_public_surface import (
+    ZIP_LOCAL_FILE_SIGNATURE,
     ZipCandidateScanBudget,
     historical_non_commit_tree_zip_objects,
+    historical_structural_zip_objects,
     main,
     scan_history,
     scan_historical_zip_blobs,
@@ -704,6 +706,23 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_zip_content_scan_rejects_audio_signature_in_metadata(self) -> None:
+        wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 28
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.comment = wave
+            info = zipfile.ZipInfo("notes.txt")
+            info.comment = wave
+            archive.writestr(info, b"safe")
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="metadata-audio.zip")
+
+        self.assertGreaterEqual(
+            sum("audio signature 'RIFF/WAVE'" in item for item in findings),
+            2,
+            findings,
+        )
+
     def test_zip_content_scan_preserves_ascii_tokens_beside_malformed_bytes(self) -> None:
         token = ("github_pat_" + "a" * 24).encode("ascii")
         malformed_text = token + b"\xff"
@@ -1327,6 +1346,51 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("docs/removed.zip" in item for item in findings))
         self.assertTrue(any("secret-shaped content" in item for item in findings))
 
+    def test_history_scan_reads_zip_compatible_blob_under_neutral_suffix(self) -> None:
+        object_id = "9" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", "github_pat_" + "z" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return f"{object_id} deleted/payload.dat\n".encode("ascii")
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return b""
+            if "--raw" in arguments:
+                return b""
+            if arguments == ["cat-file", "-s", object_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", object_id]:
+                return archive_bytes
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with (
+            patch("scripts.check_public_surface.run_git", side_effect=fake_run_git),
+            patch(
+                "scripts.check_public_surface.git_object_metadata",
+                return_value={object_id: ("blob", len(archive_bytes))},
+            ),
+            patch(
+                "scripts.check_public_surface.read_git_blob_prefixes",
+                return_value={object_id: ZIP_LOCAL_FILE_SIGNATURE},
+            ),
+        ):
+            findings = scan_history()
+
+        self.assertTrue(any("deleted/payload.dat" in item for item in findings), findings)
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+
     def test_history_scan_keeps_zip_alias_when_rev_list_uses_another_path(self) -> None:
         object_id = "b" * 40
         payload = BytesIO()
@@ -1842,6 +1906,8 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             "256 MiB compressed-container",
             "256 MiB expanded-work",
             "512-operation peel budget",
+            "128 MiB per JIMAGE",
+            "384 MiB binary-secret body budget",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, document)

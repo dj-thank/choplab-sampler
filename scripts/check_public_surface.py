@@ -94,6 +94,8 @@ HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
 HISTORICAL_TAG_PEEL_LIMIT = 8
 HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
+HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT = 16_384
+HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT = 256 * 1024 * 1024
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
@@ -257,6 +259,124 @@ def historical_objects() -> list[tuple[str, PurePosixPath]]:
 
 def historical_paths() -> list[PurePosixPath]:
     return [path for _, path in historical_objects()]
+
+
+def git_object_metadata(object_ids: list[str]) -> dict[str, tuple[str, int]]:
+    payload = b"".join(object_id.encode("ascii") + b"\n" for object_id in object_ids)
+    completed = subprocess.run(
+        ["git", "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+        input=payload,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=True,
+    )
+    if len(completed.stdout) > GIT_OUTPUT_LIMIT:
+        raise GitScanLimitError(
+            f"git object metadata exceeds the {GIT_OUTPUT_LIMIT}-byte scan limit"
+        )
+    metadata: dict[str, tuple[str, int]] = {}
+    for line in completed.stdout.splitlines():
+        object_id, object_type, raw_size = line.decode("ascii").split()
+        metadata[object_id] = (object_type, int(raw_size))
+    return metadata
+
+
+def read_git_blob_prefixes(object_ids: list[str], byte_limit: int = 4) -> dict[str, bytes]:
+    """Stream bounded blob bodies through one Git process while retaining only prefixes."""
+    process = subprocess.Popen(
+        ["git", "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if process.stdin is None or process.stdout is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("git blob batch pipes are unavailable")
+    prefixes: dict[str, bytes] = {}
+    try:
+        for object_id in object_ids:
+            process.stdin.write(object_id.encode("ascii") + b"\n")
+            process.stdin.flush()
+            header = process.stdout.readline().decode("ascii").split()
+            if len(header) != 3 or header[0] != object_id or header[1] != "blob":
+                raise RuntimeError("unexpected git blob batch header")
+            size = int(header[2])
+            prefix = process.stdout.read(min(byte_limit, size))
+            remaining = size - len(prefix)
+            while remaining:
+                chunk = process.stdout.read(min(64 * 1024, remaining))
+                if not chunk:
+                    raise RuntimeError("truncated git blob batch body")
+                remaining -= len(chunk)
+            if process.stdout.read(1) != b"\n":
+                raise RuntimeError("missing git blob batch delimiter")
+            prefixes[object_id] = prefix
+        process.stdin.close()
+        return_code = process.wait()
+        if return_code:
+            raise subprocess.CalledProcessError(return_code, process.args)
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        if not process.stdin.closed:
+            process.stdin.close()
+        process.stdout.close()
+    return prefixes
+
+
+def historical_structural_zip_objects(
+    objects: list[tuple[str, PurePosixPath]],
+    excluded_object_ids: set[str],
+) -> tuple[list[tuple[str, PurePosixPath]], list[str]]:
+    candidates = {
+        object_id: path
+        for object_id, path in objects
+        if object_id not in excluded_object_ids and path.suffix.lower() != ".zip"
+    }
+    if len(candidates) > HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT:
+        return [], [
+            "git history ZIP structure probe: "
+            f"{len(candidates)} objects exceed the "
+            f"{HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT}-object scan limit"
+        ]
+
+    try:
+        metadata = git_object_metadata(list(candidates))
+    except (GitScanLimitError, OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+        return [], [
+            "git history ZIP structure probe metadata failed "
+            f"({type(error).__name__})"
+        ]
+    blob_ids = [
+        object_id
+        for object_id in candidates
+        if metadata.get(object_id, (None, 0))[0] == "blob"
+    ]
+    total_blob_bytes = sum(metadata[object_id][1] for object_id in blob_ids)
+    if total_blob_bytes > HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT:
+        return [], [
+            "git history ZIP structure probe: blob contents total "
+            f"{total_blob_bytes} bytes exceeds the "
+            f"{HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT}-byte scan limit"
+        ]
+    try:
+        prefixes = read_git_blob_prefixes(blob_ids)
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+        return [], [
+            "git history ZIP structure probe content failed "
+            f"({type(error).__name__})"
+        ]
+
+    structural: list[tuple[str, PurePosixPath]] = []
+    for object_id in blob_ids:
+        path = candidates[object_id]
+        prefix = prefixes[object_id]
+        if prefix.startswith((ZIP_LOCAL_FILE_SIGNATURE, ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE)):
+            structural.append((object_id, path))
+    return structural, []
 
 
 def historical_zip_objects() -> tuple[list[tuple[str, PurePosixPath]], list[str]]:
@@ -1248,6 +1368,11 @@ def scan_zip(
             )
             return False
         scanned_bytes += len(content)
+        audio_signature = audio_payload_signature(content)
+        if audio_signature:
+            findings.append(
+                f"{metadata_label}: audio signature {audio_signature!r} detected"
+            )
         findings.extend(scan_text(metadata_label, decode_text_for_secret_scan(content)))
         return True
 
@@ -2272,6 +2397,13 @@ def scan_history() -> list[str]:
     findings.extend(historical_zip_findings)
     zip_objects = dict(historical_zip_candidates)
     for object_id, path in non_commit_objects:
+        zip_objects.setdefault(object_id, path)
+    structural_zip_candidates, structural_zip_findings = historical_structural_zip_objects(
+        objects,
+        set(zip_objects),
+    )
+    findings.extend(structural_zip_findings)
+    for object_id, path in structural_zip_candidates:
         zip_objects.setdefault(object_id, path)
     findings.extend(scan_historical_zip_blobs(list(zip_objects.items())))
 
