@@ -3332,7 +3332,10 @@ def scan_zip(
                                             )
                                         )
                                         continue
-                                    der_signature = der_private_key_material_signature(value)
+                                    der_signature = (
+                                        pkcs12_container_signature(value)
+                                        or der_private_key_material_signature(value)
+                                    )
                                     if der_signature:
                                         findings.append(
                                             f"{pair_label}: {der_signature} detected"
