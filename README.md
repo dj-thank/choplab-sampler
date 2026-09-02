@@ -45,11 +45,11 @@ Windows版の素材取込は、実装済みdecoderに合わせてWAVだけを表
 - `app/`: 現在のビルド基準線。AudioTrackベースのMVP実装です。
 - `ios/`: SwiftUI + AVFoundationのiOS 16向けプレビューMVP。音源取込、16 PAD、範囲編集、録音、停止を実装し、署名不要のSimulator previewとして検証します。
 - `desktop/`: 元Androidデックの色・工程・PAD vocabularyを踏襲したWindows EXE previewです。ローカルWAV、Spotify PKCE metadata/control、A/B 16-stepと4小節Songまでを対象にし、署名済みinstallerやSpotify音声取込は対象外です。
-- `reference/pro-v0.2/`: Oboe、独立タイムストレッチ、ADSR、LFO、FX、MIDI、pan/mixer、任意数・可変repeatの高度なSong、ステム書き出しの未統合参照コードと設計資料です。
+- `reference/pro-v0.2/`: Oboe、独立タイムストレッチ、ADSR、LFO、FX、MIDI、pan/mixer、任意数・可変repeatの高度なSong、ステム書き出しに関する不完全な歴史的設計資料です。現行product lineやrelease TODOではありません。
 
-`reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。Codexには、参照コードを盲目的にコピーさせず、MVPへ段階的に統合し、各段階でビルドとテストを通すよう指示しています。
+`reference/pro-v0.2/` は完全なAndroid Studioプロジェクトではなく、そのままではコンパイルできません。将来この方向を採用する場合は、別仕様・別受入条件として再設計します。
 
-実装済みのMVP範囲と未実装のPro範囲は[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)に記録しています。MVPの制作保存・自動復旧・Undo/Redo、bounded A/B 4小節Song、Android/Windowsの1/2ch channel identityはローカル実装済みです。物理端末の左右出力と音質は別gateであり、MIDI、pan/mixer、独立タイムストレッチ、ネイティブOboeエンジン、stems、任意数・可変repeatのSong editorは完成扱いにしていません。
+現行の実装範囲と将来非スコープは[`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md)と[`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md)に記録しています。制作保存・自動復旧・Undo/Redo、bounded A/B 4小節Song、Android/Windowsの1/2ch channel identityが現行product contractです。物理端末の左右出力と音質は別gateであり、MIDI、pan/mixer、独立タイムストレッチ、ネイティブOboeエンジン、stems、任意数・可変repeatのSong editorは別仕様が承認されるまで現行releaseのTODOではありません。
 
 ## 最短開始手順
 
