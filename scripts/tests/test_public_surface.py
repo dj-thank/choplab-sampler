@@ -681,6 +681,17 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             + len(certificate).to_bytes(4, "big")
             + certificate
         )
+        invalid_certificate_entry = (
+            (2).to_bytes(4, "big")
+            + utf(b"not-a-certificate")
+            + (0).to_bytes(8, "big")
+            + utf(b"X.509")
+            + (40).to_bytes(4, "big")
+            + b"RIFF"
+            + (32).to_bytes(4, "little")
+            + b"WAVEfmt "
+            + b"\x00" * 24
+        )
         key_entry = (
             (1).to_bytes(4, "big")
             + utf(b"private")
@@ -703,6 +714,10 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
             archive.writestr("safe/runtime/lib/security/cacerts", jks(trusted_entry))
             archive.writestr("unsafe/runtime/lib/security/cacerts", jks(key_entry))
+            archive.writestr(
+                "invalid/runtime/lib/security/cacerts",
+                jks(invalid_certificate_entry),
+            )
 
         findings = scan_zip(BytesIO(candidate.getvalue()), label="jdk-truststores.zip")
 
@@ -714,6 +729,24 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             any("unsafe/runtime" in item and "private-key" in item for item in findings),
             findings,
         )
+        self.assertTrue(
+            any("invalid/runtime" in item and "invalid JKS" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_rejects_archive_valued_entry_comments(self) -> None:
+        nested = BytesIO()
+        with zipfile.ZipFile(nested, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("secret.txt", "ghp_" + "n" * 36)
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            info = zipfile.ZipInfo("safe.txt")
+            info.comment = nested.getvalue()
+            archive.writestr(info, "safe")
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="metadata-archive.zip")
+
+        self.assertTrue(any("archive-compatible metadata" in item for item in findings), findings)
 
     def test_zip_content_scan_detects_sec1_ec_private_key(self) -> None:
         def der(tag: int, value: bytes) -> bytes:
@@ -3245,6 +3278,78 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("audio asset", result.stderr)
+
+    def test_history_scan_rejects_reachable_commit_message_credentials(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments],
+                    cwd=repository,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            token = "ghp_" + "c" * 36
+            git("commit", "--quiet", "--allow-empty", "-m", "safe subject", "-m", token)
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"],
+                cwd=repository,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("commit message", result.stderr)
+        self.assertNotIn(token, result.stderr)
+
+    def test_history_scan_rejects_deleted_neutral_binary_audio(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+            target = repository / "payload.dat"
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments],
+                    cwd=repository,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            target.write_bytes(b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 28)
+            git("add", "payload.dat")
+            git("commit", "--quiet", "-m", "add payload")
+            target.unlink()
+            git("add", "-u")
+            git("commit", "--quiet", "-m", "remove payload")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"],
+                cwd=repository,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("audio signature", result.stderr)
 
 
 if __name__ == "__main__":

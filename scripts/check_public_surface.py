@@ -462,8 +462,32 @@ def read_git_blob_prefixes(object_ids: list[str], byte_limit: int = 4) -> dict[s
     return prefixes
 
 
-def read_git_blob_structural_candidates(object_ids: list[str]) -> set[str]:
-    """Stream bounded blob bodies and identify ZIP-compatible structures without retaining them."""
+def should_scan_historical_binary(prefix: bytes) -> bool:
+    if not prefix:
+        return False
+    if (
+        prefix.startswith(TEXT_BOM_PREFIXES)
+        or prefix.startswith(JKS_MAGIC)
+        or prefix[:1] == b"\x30"
+        or b"\0" in prefix
+        or audio_payload_signature(prefix) is not None
+        or unsupported_nested_archive_signature(prefix) is not None
+    ):
+        return True
+    try:
+        prefix.decode("utf-8")
+    except UnicodeDecodeError:
+        return True
+    return any(byte < 0x20 and byte not in b"\t\n\r\f" for byte in prefix)
+
+
+def read_git_blob_structural_candidates(
+    object_ids: list[str],
+    *,
+    candidate_paths: dict[str, PurePosixPath] | None = None,
+    binary_findings: list[str] | None = None,
+) -> set[str]:
+    """Stream bounded blob bodies and inspect ZIP-compatible or ordinary binary content."""
     if not object_ids:
         return set()
     process = subprocess.Popen(
@@ -506,11 +530,29 @@ def read_git_blob_structural_candidates(object_ids: list[str]) -> set[str]:
                 if process.stdout.read(1) != b"\n":
                     raise RuntimeError("missing git blob batch delimiter")
                 body.seek(0)
+                is_zip = False
                 try:
                     if zipfile.is_zipfile(body):
                         structural.add(object_id)
+                        is_zip = True
                 except (OSError, ValueError):
                     pass
+                if not is_zip and binary_findings is not None:
+                    body.seek(0)
+                    prefix = body.read(min(size, 4_096))
+                    if should_scan_historical_binary(prefix):
+                        body.seek(0)
+                        label_path = (
+                            candidate_paths.get(object_id)
+                            if candidate_paths is not None
+                            else PurePosixPath("neutral-binary")
+                        )
+                        binary_findings.extend(
+                            scan_blob_content(
+                                f"git history binary {label_path} ({object_id[:12]})",
+                                body.read(),
+                            )
+                        )
         process.stdin.close()
         return_code = process.wait()
         if return_code:
@@ -585,7 +627,11 @@ def historical_structural_zip_objects(
     # records.  Stream each remaining body through one Git process and let the
     # normal bounded parser inspect any ZIP-compatible candidate later.
     try:
-        body_structures = read_git_blob_structural_candidates(body_candidates)
+        body_structures = read_git_blob_structural_candidates(
+            body_candidates,
+            candidate_paths=candidates,
+            binary_findings=findings,
+        )
     except (
         GitScanLimitError,
         OSError,
@@ -1372,7 +1418,7 @@ def is_trusted_jdk_cacerts(path: PurePosixPath, content: bytes) -> bool:
     cursor = 12
     payload_end = len(content) - 20  # JKS integrity digest
 
-    def read_u16_length() -> int | None:
+    def read_u16_value() -> bytes | None:
         nonlocal cursor
         if cursor + 2 > payload_end:
             return None
@@ -1380,28 +1426,46 @@ def is_trusted_jdk_cacerts(path: PurePosixPath, content: bytes) -> bool:
         cursor += 2
         if cursor + length > payload_end:
             return None
+        value = content[cursor : cursor + length]
         cursor += length
-        return length
+        return value
 
     for _ in range(entry_count):
         if cursor + 4 > payload_end:
             return False
         tag = int.from_bytes(content[cursor : cursor + 4], "big")
         cursor += 4
-        if tag != JKS_TRUSTED_CERTIFICATE_ENTRY or read_u16_length() is None:
+        if tag != JKS_TRUSTED_CERTIFICATE_ENTRY or read_u16_value() is None:
             return False
         if cursor + 8 > payload_end:
             return False
         cursor += 8  # creation timestamp
-        if version == 2 and read_u16_length() is None:
-            return False
+        if version == 2:
+            certificate_type = read_u16_value()
+            if certificate_type != b"X.509":
+                return False
         if cursor + 4 > payload_end:
             return False
         certificate_size = int.from_bytes(content[cursor : cursor + 4], "big")
         cursor += 4
-        if cursor + certificate_size > payload_end:
+        certificate_end = cursor + certificate_size
+        if certificate_end > payload_end:
             return False
-        cursor += certificate_size
+        certificate = content[cursor:certificate_end]
+        outer = der_tlv_value_bounds(certificate, 0)
+        if (
+            outer is None
+            or outer[0] != 0x30
+            or outer[2] != len(certificate)
+            or der_private_key_material_signature(certificate) is not None
+            or der_signing_material_signature(certificate) is None
+            or audio_payload_signature(certificate) is not None
+            or is_zip_compatible_payload(certificate)
+            or unsupported_nested_archive_signature(certificate) is not None
+            or scan_text_bytes("JKS trusted certificate", certificate)
+        ):
+            return False
+        cursor = certificate_end
     return cursor == payload_end
 
 
@@ -2032,6 +2096,15 @@ def scan_zip(
             )
             return False
         scanned_bytes += len(content)
+        if is_zip_compatible_payload(content):
+            findings.append(f"{metadata_label}: archive-compatible metadata is not allowed")
+            return True
+        unsupported_archive = unsupported_nested_archive_signature(content)
+        if unsupported_archive is not None:
+            findings.append(
+                f"{metadata_label}: unsupported archive metadata {unsupported_archive!r}"
+            )
+            return True
         audio_signature = audio_payload_signature(content)
         if audio_signature:
             findings.append(
@@ -2823,9 +2896,20 @@ def scan_zip(
                     if entry_suffix in {".dll", ".exe"}
                     else None
                 )
+                jdk_cacerts_path = tuple(part.lower() for part in entry.parts)[-4:] == (
+                    "runtime",
+                    "lib",
+                    "security",
+                    "cacerts",
+                )
+                trusted_jdk_cacerts = is_trusted_jdk_cacerts(entry, content)
+                if jdk_cacerts_path and content.startswith(JKS_MAGIC) and not trusted_jdk_cacerts:
+                    findings.append(
+                        f"{member_label}: invalid JKS trusted-certificate store detected"
+                    )
                 public_certificate_container = (
                     is_apk_signature_path(entry, apk_content_context)
-                    or is_trusted_jdk_cacerts(entry, content)
+                    or trusted_jdk_cacerts
                 )
                 if pe_certificate_ranges:
                     der_signature = der_signing_material_outside_ranges(
@@ -3149,7 +3233,7 @@ def scan_historical_zip_blobs(
     return findings
 
 
-def scan_history() -> list[str]:
+def scan_history(*, include_commit_messages: bool = False) -> list[str]:
     findings: list[str] = []
     try:
         objects = historical_objects()
@@ -3177,6 +3261,14 @@ def scan_history() -> list[str]:
     for object_id, path in structural_zip_candidates:
         zip_objects.setdefault(object_id, path)
     findings.extend(scan_historical_zip_blobs(list(zip_objects.items())))
+
+    if include_commit_messages:
+        try:
+            commit_messages = run_git(["log", "--all", "--format=%B%x00"])
+        except GitScanLimitError as error:
+            findings.append(f"git history commit messages: {error}")
+        else:
+            findings.extend(scan_blob_content("git history commit message", commit_messages))
 
     # A textual patch includes every textual addition/deletion reachable from all
     # refs without checking out or materializing historical files. Binary payloads
@@ -3329,7 +3421,7 @@ def main() -> int:
         findings.extend(scan_explicit_text_file(text_path))
 
     if args.history:
-        findings.extend(scan_history())
+        findings.extend(scan_history(include_commit_messages=True))
 
     if findings:
         print("PUBLIC SURFACE CHECK: FAIL", file=sys.stderr)
