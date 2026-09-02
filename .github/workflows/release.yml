@@ -206,7 +206,7 @@ jobs:
           mkdir -p dist
           apk_target="dist/ChopLab-${RELEASE_TAG}-android-debug.apk"
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
-          cp "${apks[0]}" "$apk_target"
+          cp "${debug_apks[0]}" "$apk_target"
           cp "$sbom" "$sbom_target"
           for file in "$apk_target" "$sbom_target"; do
             printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"

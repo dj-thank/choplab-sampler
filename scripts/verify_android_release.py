@@ -29,6 +29,10 @@ EXPORTED_COMPONENT_PERMISSIONS: dict[str, str | None] = {
     # check would turn a dependency manifest regression into a public attack surface.
     "androidx.profileinstaller.ProfileInstallReceiver": "android.permission.DUMP",
 }
+DEBUG_PREVIEW_TOOLING_COMPONENTS = {
+    "androidx.compose.ui.tooling.PreviewActivity",
+    "androidx.activity.ComponentActivity",
+}
 COMPONENT_TAGS = ("activity", "activity-alias", "service", "receiver", "provider")
 
 
@@ -350,25 +354,22 @@ def verify_manifest(
             if read_manifest_boolean(element, "exported", default=False):
                 exported[normalized] = element.attrib.get(f"{ANDROID}permission")
 
-    forbidden_tooling = sorted(
+    tooling_components = {
         component
         for component in all_components
         if component.startswith("androidx.compose.ui.tooling")
         or component == "androidx.activity.ComponentActivity"
-    )
-    if forbidden_tooling and not allow_debug_preview:
+    }
+    allowed_tooling = DEBUG_PREVIEW_TOOLING_COMPONENTS if allow_debug_preview else set()
+    forbidden_tooling = sorted(tooling_components - allowed_tooling)
+    if forbidden_tooling:
         raise VerificationError(
             "Published APK contains debug/test tooling components: " + ", ".join(forbidden_tooling)
         )
 
     allowed_exported = dict(EXPORTED_COMPONENT_PERMISSIONS)
     if allow_debug_preview:
-        allowed_exported.update(
-            {
-                "androidx.compose.ui.tooling.PreviewActivity": None,
-                "androidx.activity.ComponentActivity": None,
-            }
-        )
+        allowed_exported.update({component: None for component in DEBUG_PREVIEW_TOOLING_COMPONENTS})
     unexpected_exported = set(exported) - set(allowed_exported)
     if unexpected_exported:
         raise VerificationError(
