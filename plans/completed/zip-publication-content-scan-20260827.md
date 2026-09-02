@@ -26,7 +26,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Charge every decoded text candidate's declared compressed span to one archive-wide input budget before decoder work.
 - Preserve complete layout, descriptor, local/central metadata, output-size, CRC, history, symlink and binary/audio exclusion controls from PR #69.
 - Explicit ZIP/APK paths fail closed when missing or malformed and share the same parser as current/history candidates.
-- Source snapshot and Android/Windows/iOS archives are scanned after creation/staging and before upload; all final release platform archives are scanned after artifact download and before manifest, attestation or publication.
+- Source snapshot and Android/Windows/iOS archives are scanned after creation/staging and before upload; the downloaded Android/iOS publication assets are rescanned before manifest, attestation or publication. Windows remains a verification-only artifact and is not downloaded by the publication job.
 - Large unknown safe-named content remains rejected regardless of a spoofed magic prefix or basename. `.app`, Skiko ICU, non-APK binary, JIMAGE and APK binary bodies are fully verified and byte-secret/audio scanned under explicit member/aggregate limits; no binary body is accepted from a header probe alone.
 - Current/explicit ZIP/APK roots, nested recursion, binary/JIMAGE bodies and APK binary bodies have separate shared count/input/output limits. Reachable-history ZIP change records, direct blob refs and non-commit tree listings are streamed or enumerated under explicit caps.
 - APK Signing Block pair values and the exact CycloneDX SBOM text are scanned before first upload and again after final artifact download.
@@ -59,13 +59,14 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] Late review closure: SEC1 EC keys, full annotated-tag message policy, non-commit-tree symlink targets, neutral-name PEM certificates and bounded DER candidate work now have direct regressions.
 - [x] Final review closure: AMR-NB/WB, classic GitHub token families, PuTTY PPK, extended-size ISO-BMFF `ftyp`, validated Authenticode certificate tables, NUL-safe historical filenames, and traversal/absolute/drive-root ZIP paths have direct regressions.
 - [x] Current-main integration preserves the v0.17.2 signer verifier and avoids scanner self-detection by constructing PEM fixture markers at runtime.
+- [x] Fresh integrated review closure: reachable commit messages and neutral historical binary blobs share bounded content policy; JKS exemptions validate X.509 DER bodies; archive-valued ZIP metadata is rejected; Windows post-download wording matches the actual Android/iOS-only publication job.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
 
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
-- Exact current-tree policy suite: 192 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Focused scanner is 116. Earlier counts remain historical evidence for predecessor trees; capable CI hosts still run the skipped symlink test.
+- Exact current-tree policy suite: 195 tests at `baf70085eb572511df200d3b30b764c464e6e887` via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Focused scanner is 119. Earlier counts remain historical evidence for predecessor trees; capable CI hosts still run the skipped symlink test.
 - Current and reachable-history public scans: 483 candidates, PASS. `py_compile`/import execution and `git diff --check`: PASS.
 - Windows compatibility regression: preserved v0.17.0 app-image ZIP `AC0552B51EA0C614AFC4B41C7B5FEC2C40247B641177385CB8AC777F26A17435` passes as one explicit archive after the PE/JKS refinement.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.
