@@ -38,6 +38,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.choplab.sampler.ui.PadTriggerOwnership
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -2565,11 +2566,12 @@ class DesktopSamplerControllerTest {
     fun h13GateCaptureReleaseCannotCloseANewerKeyboardVoice() = withH13CaptureFixture(
         targetPlayMode = PadPlayMode.GATE,
     ) { controller, engine, _ ->
-        controller.capturePad(1)
+        val mouseOwnership = controller.capturePadWithOwnership(1)
         val keyboardOwnership = controller.triggerPadWithOwnership(1)
 
-        controller.releasePad(1)
+        controller.releasePadIfOwned(1, mouseOwnership)
 
+        assertEquals(1L, mouseOwnership)
         assertEquals(2L, keyboardOwnership)
         assertTrue(engine.releasedPads.isEmpty(), "A capture release must not perform a broad GATE release")
         assertEquals(listOf(1 to 1L), engine.releasedOwnedPads)
@@ -2594,11 +2596,12 @@ class DesktopSamplerControllerTest {
         targetPlayMode = PadPlayMode.GATE,
     ) { controller, engine, _ ->
         engine.failNextTrigger = true
-        controller.capturePad(1)
+        val failedOwnership = controller.capturePadWithOwnership(1)
         val keyboardOwnership = controller.triggerPadWithOwnership(1)
 
-        controller.releasePad(1)
+        controller.releasePadIfOwned(1, failedOwnership)
 
+        assertEquals(PadTriggerOwnership.NONE, failedOwnership)
         assertEquals(1L, keyboardOwnership)
         assertTrue(engine.releasedPads.isEmpty())
         assertTrue(engine.releasedOwnedPads.isEmpty())
@@ -2613,6 +2616,34 @@ class DesktopSamplerControllerTest {
         }
 
         assertEquals("test fatal capture error", failure.message)
+    }
+
+    @Test
+    fun h13TrimPreviewOfLoopPadUsesOneBoundedOneShotVoice() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.LOOP,
+    ) { controller, engine, _ ->
+        controller.previewPad(1)
+
+        assertEquals(null, controller.state.value.loopingPadIndex)
+        assertEquals(0, engine.exclusiveStartCount)
+        assertEquals(listOf(1 to false), engine.triggered.map { it.first.globalIndex to it.second })
+        assertEquals(PadPlayMode.ONE_SHOT, engine.triggered.single().first.playMode)
+    }
+
+    @Test
+    fun h13PostStartGateFailureStopsTheUnreturnedCandidate() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.GATE,
+    ) { controller, engine, _ ->
+        engine.failAfterNextTrigger = true
+
+        val failedOwnership = controller.capturePadWithOwnership(1)
+        controller.releasePadIfOwned(1, failedOwnership)
+
+        assertEquals(PadTriggerOwnership.NONE, failedOwnership)
+        assertEquals(listOf(1), engine.stoppedPads)
+        assertTrue(engine.releasedPads.isEmpty())
+        assertTrue(engine.releasedOwnedPads.isEmpty())
+        assertEquals("PAD 2を再生できませんでした: test post-start retirement failure", controller.state.value.statusMessage)
     }
 
     private fun withH13CaptureFixture(
@@ -2677,6 +2708,7 @@ class DesktopSamplerControllerTest {
         val stoppedPads = mutableListOf<Int>()
         private var nextVoiceOwnership: Long = 0L
         var failNextTrigger: Boolean = false
+        var failAfterNextTrigger: Boolean = false
         var failNextExclusiveStart: Boolean = false
         var failTriggerPad: Int? = null
         var failNextStopPad: Boolean = false
@@ -2733,6 +2765,13 @@ class DesktopSamplerControllerTest {
             }
             triggered += pad to forceLoop
             nextVoiceOwnership += 1L
+            if (failAfterNextTrigger) {
+                failAfterNextTrigger = false
+                // Match JavaSoundWavPlayer's fail-closed post-start contract: the engine
+                // abandons its candidate before surfacing the retirement failure.
+                stoppedPads += pad.globalIndex
+                error("test post-start retirement failure")
+            }
             return nextVoiceOwnership
         }
         override fun prepareExclusiveLoopSession(

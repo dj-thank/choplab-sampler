@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -224,6 +225,7 @@ fun PadGrid(
     selectedPad: Int,
     onTrigger: (Int) -> Unit,
     onRelease: (Int) -> Unit,
+    onCaptureWithOwnership: ((Int) -> Long)? = null,
     onTriggerWithOwnership: ((Int) -> Long)? = null,
     onReleaseIfOwned: ((Int, Long) -> Unit)? = null,
     onSelect: (Int) -> Unit,
@@ -273,6 +275,9 @@ fun PadGrid(
                             deferPadActionUntilTap = deferPadActionUntilTap,
                             onTrigger = { onTrigger(pad.globalIndex) },
                             onRelease = { onRelease(pad.globalIndex) },
+                            onCaptureWithOwnership = onCaptureWithOwnership?.let { trigger ->
+                                { trigger(pad.globalIndex) }
+                            },
                             onTriggerWithOwnership = onTriggerWithOwnership?.let { trigger ->
                                 { trigger(pad.globalIndex) }
                             },
@@ -300,6 +305,7 @@ private fun PerformancePad(
     deferPadActionUntilTap: Boolean,
     onTrigger: () -> Unit,
     onRelease: () -> Unit,
+    onCaptureWithOwnership: (() -> Long)?,
     onTriggerWithOwnership: (() -> Long)?,
     onReleaseIfOwned: ((Long) -> Unit)?,
     onSelect: () -> Unit,
@@ -308,6 +314,7 @@ private fun PerformancePad(
 ) {
     var pressed by remember(pad.globalIndex) { mutableStateOf(false) }
     var localGateOwnership by remember(pad.globalIndex) { mutableStateOf(0L) }
+    val semanticsScope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val shape = RoundedCornerShape(9.dp)
@@ -332,12 +339,13 @@ private fun PerformancePad(
     val deferGatePerformance = deferPadActionUntilTap &&
         pad.isAssigned &&
         pad.playMode == PadPlayMode.GATE &&
-        !captureMode
+        !deferDestructiveCapture
     val useOwnedGatePress = pad.isAssigned &&
         pad.playMode == PadPlayMode.GATE &&
-        !captureMode
+        !deferDestructiveCapture
     val triggerOwnedGate = {
-        onTriggerWithOwnership?.invoke() ?: run {
+        val ownedTrigger = if (captureMode) onCaptureWithOwnership else onTriggerWithOwnership
+        ownedTrigger?.invoke() ?: run {
             localGateOwnership += 1L
             onTrigger()
             localGateOwnership
@@ -349,6 +357,16 @@ private fun PerformancePad(
         } else if (localGateOwnership == ownership) {
             localGateOwnership += 1L
             onRelease()
+        }
+    }
+    val triggerBoundedSemanticsGate = {
+        val ownership = triggerOwnedGate()
+        semanticsScope.launch {
+            try {
+                delay(SCROLL_GATE_MINIMUM_PREVIEW_MILLIS)
+            } finally {
+                releaseOwnedGate(ownership)
+            }
         }
     }
 
@@ -441,7 +459,13 @@ private fun PerformancePad(
                 this.selected = selected
                 onClick(label = "PADを実行") {
                     onSelect()
-                    if (captureMode || pad.isAssigned) onTrigger()
+                    if (captureMode || pad.isAssigned) {
+                        if (pad.isAssigned && pad.playMode == PadPlayMode.GATE) {
+                            triggerBoundedSemanticsGate()
+                        } else {
+                            onTrigger()
+                        }
+                    }
                     true
                 }
                 if (pad.isAssigned) {

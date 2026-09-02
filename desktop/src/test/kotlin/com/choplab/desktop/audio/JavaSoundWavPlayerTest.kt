@@ -94,6 +94,58 @@ class JavaSoundWavPlayerTest {
     }
 
     @Test
+    fun retirementFailureAfterOrdinaryCandidateStartClosesTheCandidateBeforeThrowing() {
+        val prior = ClipProbe(failOn = "close-once", label = "prior")
+        val candidate = ClipProbe(label = "candidate")
+        val clips = ArrayDeque(listOf(prior, candidate))
+        val player = JavaSoundWavPlayer(DesktopClipFactory { clips.removeFirst().clip })
+        try {
+            player.triggerPad(testPad(playMode = PadPlayMode.GATE, globalIndex = 4), forceLoop = false)
+
+            val failure = assertFailsWith<IllegalStateException> {
+                player.triggerPad(testPad(playMode = PadPlayMode.GATE, globalIndex = 4), forceLoop = false)
+            }
+
+            assertEquals("close failed", failure.message)
+            assertEquals(1, candidate.startCount)
+            assertEquals(1, candidate.stopCount)
+            assertEquals(1, candidate.closeCount)
+
+            player.stopAll()
+            assertEquals(2, prior.closeCount)
+        } finally {
+            runCatching { player.close() }
+        }
+    }
+
+    @Test
+    fun candidateCleanupFailureAfterRetirementFailureRemainsOwnedForStopAllRetry() {
+        val prior = ClipProbe(failOn = "close-once", label = "prior")
+        val candidate = ClipProbe(failOn = "close-once", label = "candidate")
+        val clips = ArrayDeque(listOf(prior, candidate))
+        val player = JavaSoundWavPlayer(DesktopClipFactory { clips.removeFirst().clip })
+        try {
+            player.triggerPad(testPad(playMode = PadPlayMode.GATE, globalIndex = 4), forceLoop = false)
+
+            val failure = assertFailsWith<IllegalStateException> {
+                player.triggerPad(testPad(playMode = PadPlayMode.GATE, globalIndex = 4), forceLoop = false)
+            }
+
+            assertEquals("close failed", failure.message)
+            assertEquals(listOf("close failed"), failure.suppressed.map { it.message })
+            assertEquals(1, prior.closeCount)
+            assertEquals(1, candidate.closeCount)
+
+            player.stopAll()
+
+            assertEquals(2, prior.closeCount)
+            assertEquals(2, candidate.closeCount)
+        } finally {
+            runCatching { player.close() }
+        }
+    }
+
+    @Test
     fun exclusiveLoopSessionStartsEveryCandidateBeforeRetiringSourceAndPadPlayback() {
         val events = mutableListOf<String>()
         val source = ClipProbe(label = "source", events = events)

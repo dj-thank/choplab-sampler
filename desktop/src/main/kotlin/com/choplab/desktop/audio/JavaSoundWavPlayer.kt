@@ -82,7 +82,18 @@ internal fun <T> startReplacementBeforeRetiringConflicts(
         }
         throw failure
     }
-    conflicts.forEach(retireConflict)
+    try {
+        conflicts.forEach(retireConflict)
+    } catch (failure: Throwable) {
+        // The candidate is already audible. If retirement cannot complete, fail closed by
+        // abandoning the new owner before reporting the old-owner failure.
+        try {
+            abandonCandidate(candidate)
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
 }
 
 /**

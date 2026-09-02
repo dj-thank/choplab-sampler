@@ -10,6 +10,7 @@ import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
@@ -19,6 +20,7 @@ import com.choplab.desktop.audio.DesktopPreparedLoopSession
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.SamplerUiState
@@ -291,6 +293,43 @@ class DesktopLongPressUiTest {
             }
         }
     }
+
+    @Test
+    fun gateSemanticsClickReleasesItsExactAuditionVoice() = runBlocking {
+        withTimeout(15_000) {
+            val fixture = DeckFixture.create(coroutineContext, targetPlayMode = PadPlayMode.GATE)
+            try {
+                fixture.semanticsClick(fixture.nodeWithDescription("PAD 02 割り当て済み"))
+                fixture.settle(150)
+
+                assertEquals(listOf(1), fixture.audio.padRequests)
+                assertEquals(listOf(1 to 1L), fixture.audio.releasedOwnedPads)
+                fixture.assertOffscreen()
+            } finally {
+                fixture.close()
+            }
+        }
+    }
+
+    @Test
+    fun rapidGateSemanticsClicksReleaseTheirOwnVoices() = runBlocking {
+        withTimeout(15_000) {
+            val fixture = DeckFixture.create(coroutineContext, targetPlayMode = PadPlayMode.GATE)
+            try {
+                val pad = fixture.nodeWithDescription("PAD 02 割り当て済み")
+                fixture.semanticsClick(pad)
+                fixture.settle(20)
+                fixture.semanticsClick(fixture.nodeWithDescription("PAD 02 割り当て済み"))
+                fixture.settle(150)
+
+                assertEquals(listOf(1, 1), fixture.audio.padRequests)
+                assertEquals(listOf(1 to 1L, 1 to 2L), fixture.audio.releasedOwnedPads)
+                fixture.assertOffscreen()
+            } finally {
+                fixture.close()
+            }
+        }
+    }
 }
 
 private class DeckFixture private constructor(
@@ -316,6 +355,11 @@ private class DeckFixture private constructor(
     }
 
     fun hasDescription(prefix: String): Boolean = nodes().any { it.description().startsWith(prefix) }
+
+    fun semanticsClick(node: SemanticsNode) {
+        val action = requireNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action)
+        assertTrue(action())
+    }
 
     suspend fun mousePress(node: SemanticsNode, holdMillis: Long, fractionX: Float = 0.5f) {
         val bounds = node.boundsInRoot
@@ -417,7 +461,12 @@ private class DeckFixture private constructor(
     }
 
     companion object {
-        suspend fun create(context: CoroutineContext, targetStart: Int = 16_000, targetEnd: Int = 32_000): DeckFixture {
+        suspend fun create(
+            context: CoroutineContext,
+            targetStart: Int = 16_000,
+            targetEnd: Int = 32_000,
+            targetPlayMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+        ): DeckFixture {
             check(GraphicsEnvironment.isHeadless()) { "Use :desktop:desktopLongPressUiTest, not an interactive launcher" }
             val temporaryRoot = File(System.getProperty("java.io.tmpdir"))
             val directory = Files.createTempDirectory(temporaryRoot.toPath(), "h13-input-").toFile()
@@ -436,7 +485,7 @@ private class DeckFixture private constructor(
                 pads = List(SamplerConfig.PAD_COUNT) { index ->
                     when (index) {
                         0 -> PadModel(0, audio, 8_000, 12_000)
-                        1 -> PadModel(1, audio, targetStart, targetEnd)
+                        1 -> PadModel(1, audio, targetStart, targetEnd, playMode = targetPlayMode)
                         else -> PadModel(index)
                     }
                 },
@@ -496,6 +545,7 @@ private fun SemanticsNode.stateDescription(): String =
 private class SilentAudioPort : DesktopSamplerAudioEngine {
     private var ownership = 0L
     val padRequests = mutableListOf<Int>()
+    val releasedOwnedPads = mutableListOf<Pair<Int, Long>>()
     var failNextTrigger = false
     private var sourceFrames = 0
     @Volatile private var sourcePosition = 0
@@ -530,7 +580,9 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
     override fun prepareExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>): DesktopPreparedLoopSession =
         error("Loop playback is outside H13")
     override fun releasePad(index: Int) = Unit
-    override fun releasePadIfOwned(index: Int, ownership: Long) = Unit
+    override fun releasePadIfOwned(index: Int, ownership: Long) {
+        releasedOwnedPads += index to ownership
+    }
     override fun stopPad(index: Int) = Unit
     override fun stopAll() { sourcePlaying = false }
     override fun close() { sourcePlaying = false }
