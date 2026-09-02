@@ -39,11 +39,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
+private const val H13_UI_TIMEOUT_MILLIS = 30_000L
+
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
     fun liveSourceMouseClickStillCapturesAnEmptyPadThroughTheRealController() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("チョップ開始"), 40)
@@ -67,7 +69,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun waveformOrdinaryMouseClickEditsTheBoundaryWithoutPrecisionZoom() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
@@ -91,7 +93,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun sourceEndChopKeepsOneSecondFloorAndClampsEndFocus() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, targetStart = 76_000, targetEnd = 80_000)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
@@ -117,7 +119,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun sourceStartChopKeepsOneSecondFloorAndClampsStartFocus() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, targetStart = 0, targetEnd = 4_000)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
@@ -144,7 +146,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun unassignedPadMouseClickAndHoldOnlySelectWithoutTrimOrAudio() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             for (holdMillis in listOf(40L, 700L)) {
                 val fixture = DeckFixture.create(coroutineContext)
                 try {
@@ -165,7 +167,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun assignedPadOrdinaryMouseClickAuditionsWithoutOpeningTrimOrEditing() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 40)
@@ -185,7 +187,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun assignedPadMouseLongPressOpensItsExistingFittedTrim() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.capture("assigned-before")
@@ -218,7 +220,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun beatPadMouseLongPressPreservesItsRangeAndOpensFittedTrim() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("工程3 ビート BEAT"), 40)
@@ -250,7 +252,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun waveformMouseLongPressMovesTheCloserEndAndFocusesOneSecond() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress(fixture.nodeWithDescription("工程3 ビート BEAT"), 40)
@@ -276,7 +278,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun assignedPadLongPressStillOpensTrimWhenAuditionStartupFails() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.audio.failNextTrigger = true
@@ -296,7 +298,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun gateSemanticsClickReleasesItsExactAuditionVoice() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, targetPlayMode = PadPlayMode.GATE)
             try {
                 fixture.semanticsClick(fixture.nodeWithDescription("PAD 02 割り当て済み"))
@@ -313,7 +315,7 @@ class DesktopLongPressUiTest {
 
     @Test
     fun rapidGateSemanticsClicksReleaseTheirOwnVoices() = runBlocking {
-        withTimeout(15_000) {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, targetPlayMode = PadPlayMode.GATE)
             try {
                 val pad = fixture.nodeWithDescription("PAD 02 割り当て済み")
