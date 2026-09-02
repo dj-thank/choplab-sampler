@@ -63,6 +63,8 @@ PR #84 exact head `51238b1f29dc0c9bfb904d569fdf2081b23e56e3` passed checks 8/8, 
 
 Signer recovery `cb7ba1fe6b8f40f0fc849d25d0953fd32e422bde` / tree `66b5cfd1acad5b05fa7ab956754db183d5b3d8a0` requests PEM signer evidence, hashes DER bytes, cross-checks any text digest, and rejects missing/malformed/multiple/conflicting evidence. Embedded identity is `0.17.2 (29)`. PR #85 head `a7bf79f` merged as `e71e0fde2e8a7ef82020cfc905d07473b95c073b`; merged-main checks remain a current read-back gate. Publication stays held until the product-convergence milestones below finish.
 
+PR #86 follow-up `231da39e4c42b26d135bb3f5d7ce366fc6a540af` / tree `6ee130640e6c02228208b944627fcca5d8ff1605` adds a RED→GREEN duplicate-PEM case and rejects more than one PEM block even when identical certificates would collapse to one digest. Verifier 39/39, policy 80/80, actual debug APK verification, public scan and `git diff --check` pass locally.
+
 ## Product convergence extension — Android fidelity and final main
 
 ### Purpose and user-visible outcome
@@ -101,6 +103,7 @@ Ship one current `main` where Android no longer applies audible nonlinear shapin
 
 - [x] 2026-09-02 — PR #84 merged normally; exact merged-main workflows 4/4 succeeded.
 - [x] 2026-09-02 — PR #85 signer recovery merged normally as `e71e0fd`; merged-main read-back remains separate.
+- [x] 2026-09-02 — Duplicate-identical signer PEM evidence rejected at `231da39`; verifier 39 and policy 80 pass.
 - [x] 2026-09-02 — Old master distortion reproduced and repaired at `b63ed65`; shared Android/Desktop hosts and Android/offline parity passed.
 - [x] 2026-09-02 — Decoder/master negative paths repaired at `9dc71a4`; focused RED then bounded-memory GREEN.
 - [x] 2026-09-02 — Whole-signal DC confirmation and explicit/dense invariants completed at `7e7c7ae`.

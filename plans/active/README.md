@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（単一product convergence / PR #86 Android音質）:** `h13-github-release-20260902.md`。PR #84は`main@f6cbfdc`、v0.17.2 signer recovery PR #85は`main@e71e0fd`へ通常統合済み。immutable `v0.17.1`は公開前失敗のtagとして保持。audio `7e7c7ae` / tree `b45b0d7`はdefault gain 0.9までmasterを透明化し、0.98未満の過負荷制限、decoder encoding/non-finite/DC clippingをfail closed化した。shared 87×2、Android 288、JVM core 88、lint/APK/AndroidTest compileの99 tasksが全実行PASS。次はPR #85 merged-main read-back、duplicate-PEM hardeningの取込み、PR #86再検証/merge、PR #69、release hardening、UI brush-up、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
+**進行中（単一product convergence / PR #86 Android音質）:** `h13-github-release-20260902.md`。PR #84は`main@f6cbfdc`、v0.17.2 signer recovery PR #85は`main@e71e0fd`へ通常統合済み。immutable `v0.17.1`は公開前失敗のtagとして保持。audio `7e7c7ae` / tree `b45b0d7`はdefault gain 0.9までmasterを透明化し、0.98未満の過負荷制限、decoder encoding/non-finite/DC clippingをfail closed化した。PR #86 `231da39`は同一PEM重複もmultiple evidenceとして拒否。shared 87×2、Android 288、JVM core 88、lint/APK/AndroidTest compileの99 tasks、verifier 39、policy 80がLOCAL PASS。次はPR #85 merged-main read-back、PR #86再検証/merge、PR #69、release hardening、UI brush-up、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
