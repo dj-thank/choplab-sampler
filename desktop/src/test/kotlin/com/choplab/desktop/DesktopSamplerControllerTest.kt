@@ -1850,6 +1850,67 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun newerPitchAfterOlderRenderFailureKeepsTheCarriedResume() {
+        val directory = Files.createTempDirectory("choplab-newer-pitch-after-failure").toFile()
+        val store = AtomicProjectStore(directory)
+        store.save(
+            SamplerUiState(
+                currentAudio = PcmAudio(
+                    name = "newer-pitch-after-failure.wav",
+                    samples = ShortArray(64) { it.toShort() },
+                    sampleRate = 8_000,
+                ),
+                rangeEndFrame = 64,
+            ),
+            revision = 1L,
+        )
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(
+            engine,
+            microphone = FakeRecorder(),
+            systemAudio = FakeRecorder(),
+            autosaveStore = store,
+            autosaveDelayMillis = 60_000L,
+            recoverAutosaveOnStart = true,
+        )
+        val failureReachedCleanup = CountDownLatch(1)
+        val releaseFailureCleanup = CountDownLatch(1)
+        try {
+            awaitCondition { engine.loadPcmCalls == 1 }
+            controller.playSourceFrom(19)
+            engine.failNextLoad = true
+            controller.sourcePitchFailureAdmission = {
+                failureReachedCleanup.countDown()
+                check(releaseFailureCleanup.await(2L, TimeUnit.SECONDS)) {
+                    "Timed out holding stale pitch failure cleanup"
+                }
+            }
+
+            controller.setMasterPitch(3f)
+            assertTrue(failureReachedCleanup.await(2L, TimeUnit.SECONDS))
+            val newerPitchThread = thread(name = "ChopLab-Test-Newer-Pitch-After-Failure") {
+                controller.setMasterPitch(4f)
+            }
+            newerPitchThread.join(10_000L)
+            assertFalse(newerPitchThread.isAlive)
+            releaseFailureCleanup.countDown()
+            awaitCondition { engine.loadedPitchSemitones.lastOrNull() == 4f }
+            awaitCondition {
+                controller.state.value.statusMessage == controller.masterPitchAppliedMessage(4f)
+            }
+
+            assertEquals(2, engine.playFromCalls)
+            assertEquals(19, engine.sourcePosition)
+            assertTrue(engine.isSourcePlaying)
+            assertTrue(controller.state.value.sourcePlaying)
+        } finally {
+            releaseFailureCleanup.countDown()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sourcePlayWaitingOnFailedPitchResumeRechecksAvailability() {
         val directory = Files.createTempDirectory("choplab-play-after-pitch-resume-failure").toFile()
         val store = AtomicProjectStore(directory)

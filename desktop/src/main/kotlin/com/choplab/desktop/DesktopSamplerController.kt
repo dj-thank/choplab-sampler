@@ -128,6 +128,7 @@ class DesktopSamplerController(
     internal var recoveredHydrationAdmission: () -> Unit = {}
     internal var sourcePitchWorkerAdmission: () -> Unit = {}
     internal var sourcePitchResumeAfterPlayAdmission: () -> Unit = {}
+    internal var sourcePitchFailureAdmission: () -> Unit = {}
     private val playbackTransitionLock = ReentrantLock()
     private val transport = DesktopTransport(
         startWorker = { worker -> transportWorkerStarter(worker) },
@@ -901,9 +902,17 @@ class DesktopSamplerController(
                 if (!result.applied) return@execute
                 val failure = result.failure
                 if (failure != null) {
-                    clearPendingSourcePitchResume()
-                    runCatching { player.stop() }
-                    publishSourcePlaybackFailure(failure)
+                    sourcePitchFailureAdmission()
+                    synchronized(sourcePitchResumeLock) {
+                        if (
+                            sourceLoadOperations.isCurrent(request.operation) &&
+                            !controllerIsClosed()
+                        ) {
+                            pendingSourcePitchResumeFrame = null
+                            runCatching { player.stop() }
+                            publishSourcePlaybackFailure(failure)
+                        }
+                    }
                     return@execute
                 }
                 synchronized(sourcePitchResumeLock) {
