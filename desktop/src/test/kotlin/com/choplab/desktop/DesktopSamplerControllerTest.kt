@@ -1565,9 +1565,12 @@ class DesktopSamplerControllerTest {
 
             controller.setMasterPitch(5f)
 
+            // The key change stops old-key playback immediately and reports the render failure
+            // from the I/O worker instead of freezing the UI thread while a long source renders.
             assertFalse(controller.state.value.sourcePlaying)
             assertFalse(engine.isSourcePlaying)
-            assertTrue(controller.state.value.statusMessage.contains("test output unavailable"))
+            awaitCondition { controller.state.value.statusMessage.contains("test output unavailable") }
+            assertFalse(controller.state.value.sourcePlaying)
         } finally {
             controller.close()
             directory.deleteRecursively()

@@ -1,6 +1,17 @@
 # Project state
 
-## Current snapshot — 2026-09-02 H13 / v0.17.1 integration
+## Current snapshot — 2026-09-02 Windows UI / startup brush-up (LOCAL_PASS candidate)
+
+Bounded local lane `work/choplab-ui-brushup-20260902` (`codex/choplab-ui-brushup-pr83-latest-20260902`) on top of PR #83 head `13e41af`. It repairs measured Windows friction without touching audio DSP, schema, Spotify, or Android-only code. The predecessor commit `a5f5a17` remains preserved on `codex/choplab-ui-brushup-20260902`.
+
+- Master key change (`KEY ±`) no longer re-renders the whole source on the UI thread: the render runs on the project I/O worker, old-key playback stops at its exact frame, and the newest key resumes from that frame; stale requests are discarded by the source-load epoch.
+- WAV import copies mono/stereo chunks in bulk (`BoundedPcmBuilder.appendAll`) under the unchanged decoded-frame bound.
+- One reusable WAV-only `JFileChooser`, shared last folder for open/save/export, window minimum 760×600 px, jpackage `-XX:-UsePerfData -Xms160m -Dfile.encoding=UTF-8`.
+- Shared deck: confirm buttons auto-disarm (4 s / disabled), hover feedback on buttons, tabs and pads, wheel zoom/pan on waveforms, console capped at an enforced 1600 dp, landscape CHOP grid shares width by weight, compact BANK labels in landscape rows, 9 sp status strip.
+- Local gate: shared 90 / jvm-core 88 / desktop 182 / H13 UI 24 tests, policy 67, public-surface PASS, `packageWindows` PASS (EXE `4e2a8ad0…d7bf`). Warm packaged launch 1.59–1.60 s versus 2.07 s for the previous local image on the same host. Receipt: [windows-ui-brushup-20260902](../outputs/windows-ui-brushup-20260902.md).
+- Not verified: physical audio, real long-file import timing, real pointer hover/wheel, Android rendering, accessibility speech, PR/CI/public/Human gates. Push and PR require the owner's explicit go.
+
+## Current integration candidate — 2026-09-02 H13 / v0.17.1
 
 This candidate rebases the accepted H13 Desktop input correction onto the current GitHub baseline and prepares a new immutable patch release. It does not rewrite the historical H13 evidence or the existing `v0.17.0` Release.
 

@@ -852,19 +852,52 @@ class DesktopSamplerController(
 
     override fun setMasterPitch(value: Float) {
         val pitch = value.coerceIn(-24f, 24f)
-        val wasPlaying = mutableState.value.sourcePlaying
-        val frame = mutableState.value.sourcePlayheadFrame
+        val before = mutableState.value
         commitEdit("master-pitch") { it.copy(masterPitchSemitones = pitch) }
-        mutableState.value.currentAudio?.let { audio ->
-            val loadFailure = loadSourcePcm(audio, pitch)
-            if (loadFailure != null) {
-                runCatching { player.stop() }
-                publishSourcePlaybackFailure(loadFailure)
-            } else if (wasPlaying) {
-                val playbackFailure = runCatching { player.playFrom(frame) }.exceptionOrNull()
-                if (playbackFailure != null) publishSourcePlaybackFailure(playbackFailure)
+        val audio = mutableState.value.currentAudio ?: return
+        if (mutableState.value.masterPitchSemitones != pitch) return
+        // Re-rendering a whole source at a new key can take seconds for a long song. Stop the
+        // old-key playback at its exact frame, hand the render to the I/O worker, and resume
+        // from that frame only when this request is still the newest key.
+        val wasPlaying = before.sourcePlaying
+        val resumeFrame = if (wasPlaying) {
+            player.sourceFramePosition().coerceIn(0, before.rangeEndFrame)
+        } else {
+            before.sourcePlayheadFrame
+        }
+        if (wasPlaying) {
+            runCatching { player.stop() }
+            mutableState.update { it.copy(sourcePlaying = false, sourcePlayheadFrame = resumeFrame) }
+        }
+        val operation = sourceLoadOperations.begin()
+        mutableState.update { it.copy(statusMessage = masterPitchApplyingMessage(pitch)) }
+        val submitted = runCatching {
+            ioExecutor.execute {
+                if (!sourceLoadOperations.isCurrent(operation) || controllerIsClosed()) return@execute
+                val result = loadSourcePcmIfCurrent(audio, pitch, operation)
+                if (!result.applied) return@execute
+                val failure = result.failure
+                if (failure != null) {
+                    runCatching { player.stop() }
+                    publishSourcePlaybackFailure(failure)
+                    return@execute
+                }
+                val resumed = wasPlaying && runCatching { player.playFrom(resumeFrame) }
+                    .onFailure(::publishSourcePlaybackFailure)
+                    .isSuccess
+                mutableState.update { current ->
+                    current.copy(
+                        sourcePlaying = current.sourcePlaying || resumed,
+                        statusMessage = if (current.statusMessage == masterPitchApplyingMessage(pitch)) {
+                            masterPitchAppliedMessage(pitch)
+                        } else {
+                            current.statusMessage
+                        },
+                    )
+                }
             }
         }
+        if (submitted.isFailure) sourceLoadOperations.invalidate()
     }
     override fun setSelectedPadPitch(value: Float) = updateSelected("pad-pitch") { it.copy(pitchSemitones = value.coerceIn(-24f, 24f)) }
     override fun setSelectedPadTone(value: Float) = updateSelected("pad-tone") { it.copy(tone = value.coerceIn(0f, 1f)) }
@@ -1632,6 +1665,17 @@ class DesktopSamplerController(
                 it.copy(sourcePlaying = false, statusMessage = message)
             }
         }
+    }
+
+    internal fun masterPitchApplyingMessage(pitch: Float): String =
+        "曲キー ${signedSemitones(pitch)} を適用しています"
+
+    internal fun masterPitchAppliedMessage(pitch: Float): String =
+        "曲キー ${signedSemitones(pitch)} を適用しました"
+
+    private fun signedSemitones(pitch: Float): String {
+        val rounded = pitch.toInt()
+        return if (rounded > 0) "+$rounded" else rounded.toString()
     }
 
     private fun sourcePlaybackFailureMessage(error: Throwable): String =

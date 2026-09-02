@@ -1,12 +1,14 @@
 # ExecPlan registry
 
-更新: 2026-08-27
+更新: 2026-09-02
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**進行中（LOCAL_PASS / PR #83第4修正のhosted再検証待ち）:** `h13-github-release-20260902.md`。第3修正headも8/8 checksをPASSしたがfresh review 3件でmerge停止。`6070204`はpublic debug staging変数、API 36 proxy ownership、未知non-exported tooling拒否を修復。policy 75、AndroidTest compile 42 tasks、actual debug APK、history scan、local review 0/0がPASS。次は新headの8 checks、3 threads解決、fresh review、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+**進行中（LOCAL_PASS 再検証中）:** `windows-ui-brushup-20260902.md`。PR #83 最新 head `13e41af` からの clean worktree へ predecessor `a5f5a17` を移植し、Windows 版の体感速度と UI 摩擦を修復する。曲キー変更の UI スレッド再レンダリングを I/O worker へ移動、WAV decode の一括コピー、file chooser の再利用と前回フォルダ記憶、確認ボタンの自動解除、hover 表示、波形ホイールズーム、console 幅 1280dp、最小ウィンドウ、jpackage JVM オプション。shared/jvm-core/desktop tests、policy tests、H13 long-press UI test、`packageWindows` を新しい exact commit で再確認する。公開・tag・canonical checkout は変更しない。
+
+**直前の selection（PR #83 待ち）:** `h13-github-release-20260902.md`。第4修正 head `13e41af` は同一 bytes の push run で Android を含む4 workflowがPASSした一方、同時の pull_request run は `SourceWaveformDeviceTest` の accessibility tree 待機が1件失敗し、PR は `UNSTABLE`。公開、merge、tag、Release は未実施で、旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 
