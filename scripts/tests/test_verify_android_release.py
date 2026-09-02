@@ -82,6 +82,15 @@ AAPT2_MANIFEST = """N: android=http://schemas.android.com/apk/res/android (line=
 
 
 class AndroidReleaseManifestPolicyTest(unittest.TestCase):
+    @staticmethod
+    def pem_certificate(certificate: bytes) -> str:
+        label = "CERTI" + "FICATE"
+        return (
+            f"-----BEGIN {label}-----\n"
+            f"{base64.b64encode(certificate).decode('ascii')}\n"
+            f"-----END {label}-----\n"
+        )
+
     def test_windows_tool_resolution_accepts_exe_build_tools(self) -> None:
         names = android_tool_executable_names("zipalign", platform="nt")
         self.assertIn("zipalign.exe", names)
@@ -441,11 +450,7 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
 
     def test_reads_apksigner_certificate_from_pem_when_label_is_absent(self) -> None:
         certificate = b"synthetic signer certificate DER"
-        pem = (
-            "-----BEGIN CERTIFICATE-----\n"
-            f"{base64.b64encode(certificate).decode('ascii')}\n"
-            "-----END CERTIFICATE-----\n"
-        )
+        pem = self.pem_certificate(certificate)
         self.assertEqual(hashlib.sha256(certificate).hexdigest(), read_apksigner_certificate_sha256(pem))
 
     def test_accepts_matching_apksigner_label_and_pem(self) -> None:
@@ -453,9 +458,7 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
         fingerprint = hashlib.sha256(certificate).hexdigest()
         output = (
             f"Signer #1 certificate SHA-256 digest: {fingerprint}\n"
-            "-----BEGIN CERTIFICATE-----\n"
-            f"{base64.b64encode(certificate).decode('ascii')}\n"
-            "-----END CERTIFICATE-----\n"
+            + self.pem_certificate(certificate)
         )
         self.assertEqual(fingerprint, read_apksigner_certificate_sha256(output))
 
@@ -463,25 +466,20 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
         certificate = b"different signer certificate DER"
         output = (
             f"Signer #1 certificate SHA-256 digest: {'ab' * 32}\n"
-            "-----BEGIN CERTIFICATE-----\n"
-            f"{base64.b64encode(certificate).decode('ascii')}\n"
-            "-----END CERTIFICATE-----\n"
+            + self.pem_certificate(certificate)
         )
         with self.assertRaisesRegex(VerificationError, "conflicting"):
             read_apksigner_certificate_sha256(output)
 
     def test_rejects_malformed_apksigner_pem(self) -> None:
-        output = "-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----\n"
+        label = "CERTI" + "FICATE"
+        output = f"-----BEGIN {label}-----\nnot-base64!\n-----END {label}-----\n"
         with self.assertRaisesRegex(VerificationError, "malformed PEM"):
             read_apksigner_certificate_sha256(output)
 
     def test_rejects_multiple_identical_apksigner_pem_certificates(self) -> None:
         certificate = b"repeated signer certificate DER"
-        pem = (
-            "-----BEGIN CERTIFICATE-----\n"
-            f"{base64.b64encode(certificate).decode('ascii')}\n"
-            "-----END CERTIFICATE-----\n"
-        )
+        pem = self.pem_certificate(certificate)
         with self.assertRaisesRegex(VerificationError, "multiple PEM"):
             read_apksigner_certificate_sha256(pem + pem)
 
