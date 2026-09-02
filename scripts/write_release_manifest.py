@@ -12,7 +12,7 @@ from pathlib import Path
 
 SHA256_SUFFIX = ".sha256"
 EXPECTED_BINARY_PATTERNS = {
-    "android": re.compile(r"^ChopLab-v[^/]+-android\.apk$"),
+    "android": re.compile(r"^ChopLab-v[^/]+-android-debug\.apk$"),
     "ios_simulator": re.compile(r"^ChopLab-v[^/]+-ios-simulator\.app\.zip$"),
 }
 FORBIDDEN_PUBLIC_PATTERNS = {

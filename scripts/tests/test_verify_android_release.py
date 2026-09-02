@@ -321,6 +321,24 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(VerificationError, "debuggable"):
             verify_manifest(parse_manifest(manifest), expected_version="0.16.2", expected_version_code=26)
 
+    def test_explicit_debug_preview_accepts_only_known_debug_surface(self) -> None:
+        manifest = BASE_MANIFEST.replace(
+            'android:debuggable="false"',
+            'android:debuggable="true"',
+        ).replace(
+            "</application>",
+            '<activity android:name="androidx.compose.ui.tooling.PreviewActivity" android:exported="true" />\n'
+            '<activity android:name="androidx.activity.ComponentActivity" android:exported="true" />\n'
+            "    </application>",
+        )
+
+        verify_manifest(
+            parse_manifest(manifest),
+            expected_version="0.16.2",
+            expected_version_code=26,
+            allow_debug_preview=True,
+        )
+
     def test_rejects_ambiguous_manifest_boolean(self) -> None:
         manifest = BASE_MANIFEST.replace(
             'android:debuggable="false"',

@@ -12,15 +12,15 @@ A `v*` run of `.github/workflows/release.yml`:
 
 1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets;
 2. rejects an existing GitHub Release with the same tag;
-3. requires a stable externally supplied Android keystore and expected certificate SHA-256;
-4. runs the shared common-source contract on an Android JVM host, builds a non-debuggable release APK, and rejects unexpected permissions, permission declarations, exported components, debug/test tooling, version metadata, or signer identity;
+3. requires a stable externally supplied Android keystore and expected certificate SHA-256 for a non-public continuity candidate;
+4. runs the shared common-source contract on an Android JVM host, verifies the stable-signed non-debuggable candidate without uploading it, and separately builds the declared public debug preview. The preview verifier requires debuggable=true, the default debug signature, exact version/build metadata, and only the known Compose debug components while retaining permission/export/alignment checks;
 5. compiles the declared Kotlin/Native iOS Simulator framework, runs the Swift tests, and verifies embedded iOS version/build metadata;
 6. runs the shared common-source contract on a Desktop JVM host, tests and packages the Windows app-image, verifies its embedded product version, and retains it only as a short-lived Actions verification artifact;
 7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files for the declared Android/iOS public surface;
-8. creates GitHub artifact provenance and SBOM attestations for the Android/iOS public files;
+8. creates GitHub artifact provenance and SBOM attestations for the Android debug/iOS public files;
 9. creates a new Android/iOS prerelease once, without `--clobber` or another asset-replacement path. Windows bytes are never downloaded into the publication job.
 
-`workflow_dispatch` is deliberately build-only. It may produce an unsigned Android release candidate for inspection, but it cannot publish a GitHub Release.
+`workflow_dispatch` is deliberately build-only. It may produce an unsigned Android release candidate and a debug preview for inspection, but it cannot publish a GitHub Release.
 
 ## Required GitHub Actions secrets
 
@@ -80,7 +80,7 @@ After downloading a runnable file and `SHA256SUMS`, verify the digest and GitHub
 
 ```bash
 sha256sum --check SHA256SUMS
-gh attestation verify ChopLab-v0.16.2-android.apk --repo dj-thank/choplab-sampler
+gh attestation verify ChopLab-v0.17.1-android-debug.apk --repo dj-thank/choplab-sampler
 ```
 
 The attestation binds an artifact to a repository workflow and source revision. It does not prove the program has no vulnerabilities, and it does not replace platform code signing or user review of requested permissions.

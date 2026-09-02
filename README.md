@@ -6,7 +6,7 @@
 
 Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー **おとひろい（ChopLab）** のオープンソース開発リポジトリです。
 
-現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、1/2ch音声の取り込みと左右を保つ再生、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、mono/stereo WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid APKとiOS Simulator app zipを添付します。Windows app-imageは同じtag workflowで検証しますが、公開Release assetには含めません。
+現在は、Android側に曲を流しながら16 PADを叩いてその瞬間を刻むライブチョップ、1/2ch音声の取り込みと左右を保つ再生、PAD別トーン、4 BANK、チョップ済み音声全体の連続ループ、実波形上のループ再生位置、別PAD用の4つ打ち・8分・16分配置プリセット、A/B二つの16-step variationを並べる4小節Song、mono/stereo WAV書き出し、WAV音声を内包する`.choplab`制作保存、revision安全な三世代自動保存、40操作のUndo/Redoを備えたMVPがあります。iOS側にはSwiftUI + AVFoundationで音源取込、16 PAD、範囲編集、録音、停止を備えたpreviewがあります。GitHub Releasesには、タグからAndroid debug APKとiOS Simulator app zipを添付します。Windows app-imageは同じtag workflowで検証しますが、公開Release assetには含めません。
 
 画面は、クリーム色のデッキ、オレンジのサンプリング表示、緑の波形、4 × 4 PADを中心とするオリジナルの「おとひろい」UIです。縦横どちらでも画面スクロールを使わず、`入れる / チョップ / ビート / 保存` の固定4工程から取込、波形チョップ、PAD演奏、16-step制作、WAV書き出しへ直接移動できます。
 
@@ -16,7 +16,7 @@ Android 10以降と iOS 16以降を対象にしたモバイル・サンプラー
 
 ### Android
 
-1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から、AndroidのAPKまたはiOSの`ios-simulator.app.zip`と対応するSHA-256をダウンロードします。
+1. [Releases](https://github.com/dj-thank/choplab-sampler/releases)から、Androidの`android-debug.apk`またはiOSの`ios-simulator.app.zip`と対応するSHA-256をダウンロードします。
 2. SHA-256を確認してから、Androidの設定で使用するブラウザまたはファイルアプリに「不明なアプリのインストール」を一時的に許可します。
 3. APKを開いてインストールし、音声録音などの権限を必要な範囲で許可します。
 
@@ -174,7 +174,7 @@ xcodegen generate --spec project.yml
 bash scripts/build-ios-simulator.sh
 ```
 
-GitHub Actionsは、Android、iOS Simulator、Windows app-imageのテスト、public-surface scan、SHA-256作成を行います。`v*`タグの公開Releaseへ添付するのはAndroid APKとiOS Simulator previewだけで、Windows app-imageはverification artifactに留めます。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
+GitHub Actionsは、Android、iOS Simulator、Windows app-imageのテスト、public-surface scan、SHA-256作成を行います。`v*`タグの公開Releaseへ添付するのはAndroid debug APKとiOS Simulator previewだけで、stable-signed Android release candidateとWindows app-imageは非公開verification artifact/stepに留めます。署名済みiOS実機IPA、App Store公開、実機音声、人間評価はこの公開previewの完了条件に含めません。
 
 ## Codex運用の基本
 

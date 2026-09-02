@@ -276,7 +276,13 @@ def read_manifest(apk: Path) -> tuple[ET.Element, str]:
     return parse_aapt2_manifest(manifest_tree), "aapt2"
 
 
-def verify_manifest(root: ET.Element, *, expected_version: str, expected_version_code: int) -> None:
+def verify_manifest(
+    root: ET.Element,
+    *,
+    expected_version: str,
+    expected_version_code: int,
+    allow_debug_preview: bool = False,
+) -> None:
     package_name = root.attrib.get("package", "")
     if package_name != "com.choplab.sampler":
         raise VerificationError(f"Unexpected application ID: {package_name!r}")
@@ -326,8 +332,11 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
     application = root.find("application")
     if application is None:
         raise VerificationError("Android manifest has no application element")
-    if read_manifest_boolean(application, "debuggable", default=False):
+    debuggable = read_manifest_boolean(application, "debuggable", default=False)
+    if debuggable and not allow_debug_preview:
         raise VerificationError("Published APK is debuggable")
+    if allow_debug_preview and not debuggable:
+        raise VerificationError("Debug preview APK must be debuggable")
 
     exported: dict[str, str | None] = {}
     all_components: set[str] = set()
@@ -347,19 +356,27 @@ def verify_manifest(root: ET.Element, *, expected_version: str, expected_version
         if component.startswith("androidx.compose.ui.tooling")
         or component == "androidx.activity.ComponentActivity"
     )
-    if forbidden_tooling:
+    if forbidden_tooling and not allow_debug_preview:
         raise VerificationError(
             "Published APK contains debug/test tooling components: " + ", ".join(forbidden_tooling)
         )
 
-    unexpected_exported = set(exported) - set(EXPORTED_COMPONENT_PERMISSIONS)
+    allowed_exported = dict(EXPORTED_COMPONENT_PERMISSIONS)
+    if allow_debug_preview:
+        allowed_exported.update(
+            {
+                "androidx.compose.ui.tooling.PreviewActivity": None,
+                "androidx.activity.ComponentActivity": None,
+            }
+        )
+    unexpected_exported = set(exported) - set(allowed_exported)
     if unexpected_exported:
         raise VerificationError(
             "Published APK exposes components outside the allowlist: "
             + ", ".join(sorted(unexpected_exported))
         )
 
-    for component, required_permission in EXPORTED_COMPONENT_PERMISSIONS.items():
+    for component, required_permission in allowed_exported.items():
         if component not in exported:
             continue
         actual_permission = exported[component]
@@ -439,6 +456,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version-code", type=int, required=True)
     parser.add_argument("--require-signed", action="store_true")
     parser.add_argument("--expected-cert-sha256")
+    parser.add_argument("--allow-debug-preview", action="store_true")
     return parser.parse_args()
 
 
@@ -452,6 +470,7 @@ def main() -> int:
         manifest,
         expected_version=args.version,
         expected_version_code=args.version_code,
+        allow_debug_preview=args.allow_debug_preview,
     )
     verify_alignment(args.apk)
     fingerprint = verify_signature(

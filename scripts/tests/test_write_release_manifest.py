@@ -13,7 +13,7 @@ class ReleaseManifestTest(unittest.TestCase):
         self.directory = Path(tempfile.mkdtemp(prefix="choplab-release-manifest-"))
         self.addCleanup(lambda: __import__("shutil").rmtree(self.directory, ignore_errors=True))
         for name, content in {
-            "ChopLab-v0.16.2-android.apk": b"android",
+            "ChopLab-v0.16.2-android-debug.apk": b"android",
             "ChopLab-v0.16.2-ios-simulator.app.zip": b"ios",
             "ChopLab-v0.16.2-sbom.cdx.json": b"{}",
         }.items():
@@ -49,7 +49,7 @@ class ReleaseManifestTest(unittest.TestCase):
         self.assertEqual("a" * 40, payload["source"]["commit"])  # type: ignore[index]
 
     def test_rejects_missing_platform_artifact(self) -> None:
-        (self.directory / "ChopLab-v0.16.2-android.apk").unlink()
+        (self.directory / "ChopLab-v0.16.2-android-debug.apk").unlink()
 
         with self.assertRaisesRegex(ValueError, "exactly one android"):
             self.write()
@@ -76,9 +76,9 @@ class ReleaseManifestTest(unittest.TestCase):
             self.write()
 
     def test_rejects_checksum_mismatch(self) -> None:
-        sidecar = self.directory / "ChopLab-v0.16.2-android.apk.sha256"
+        sidecar = self.directory / "ChopLab-v0.16.2-android-debug.apk.sha256"
         sidecar.write_text(
-            f"{'0' * 64}  ChopLab-v0.16.2-android.apk\n",
+            f"{'0' * 64}  ChopLab-v0.16.2-android-debug.apk\n",
             encoding="utf-8",
         )
 
@@ -98,7 +98,7 @@ class ReleaseManifestTest(unittest.TestCase):
             self.write()
 
     def test_rejects_sidecar_that_declares_another_asset(self) -> None:
-        sidecar = self.directory / "ChopLab-v0.16.2-android.apk.sha256"
+        sidecar = self.directory / "ChopLab-v0.16.2-android-debug.apk.sha256"
         digest = hashlib.sha256(b"android").hexdigest()
         sidecar.write_text(
             f"{digest}  ChopLab-v0.16.2-ios-simulator.app.zip\n",

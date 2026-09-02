@@ -46,7 +46,9 @@ class RepositoryReleaseContractTest(unittest.TestCase):
 
         self.assertIn("name: choplab-windows-verification-assets", windows)
         self.assertNotIn("windows-app-image.zip", publish)
+        self.assertIn("android-debug.apk", publish)
         self.assertEqual({"android", "ios_simulator"}, set(EXPECTED_BINARY_PATTERNS))
+        self.assertIn("android-debug", EXPECTED_BINARY_PATTERNS["android"].pattern)
         self.assertIn("FORBIDDEN_PUBLIC_PATTERNS", manifest_script)
 
 
