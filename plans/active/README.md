@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（LOCAL_PASS / PR #83再検証待ち）:** `h13-github-release-20260902.md`。初回PR headは8/8 hosted checksをPASSしたがP2 review 4件でmerge停止。repair `260ad5e` / tree `c3d2633`はmanaged LOOP、GATE exact ownership、出力失敗時TRIM継続、fatal伝播、XcodeGen `0.17.1 (28)`同期をRED→GREENにし、post-commit offline 27/27 tasks、369 executions（359 unique）、H13 20/20、policy 67、package/version、local review 0/0をPASS。次は新headの4系統CI、review threads 0、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
+**進行中（LOCAL_PASS / PR #83第2修正の再検証待ち）:** `h13-github-release-20260902.md`。初回4件を閉じたheadも8/8 hosted checksをPASSしたがfresh review 3件で再びmerge停止。second repair `f16218d` / tree `1ac8db9`はbounded LOOP PREVIEW、pointer/semanticsのper-gesture GATE ownership、post-start retirement failure cleanupをRED→GREENにし、Windows 27/27 tasks・377 executions、Android app 284、shared Android 86、H13 24/24、policy 67、local review 0/0をPASS。次は新headの8 checks、3 threads解決、fresh review、merge、immutable tag workflow、Release read-back。旧`v0.17.0`、dirty canonical checkout、ローカルbinary/profileは変更・公開しない。
 
 **直前完了:** `h13-desktop-longpress-20260901.md`。exact main `0f5b672`から新F laneで実shared deck＋実Desktop controllerをoffscreen JVM mouse入力へ接続し、CHOP長押し前の既存範囲上書きREDをroot承認のcapturePad-only shared routingで修復した。product `1f96ef8` / tree `738c270`、exact-commit H13 14 tests / 16 tasks PASS、新依存0。root V21はdocumentary successor `0dcf618`でStandards 2件を閉じ、Spec findings 0。provider/device/実audioは未到達。下記Wave/PR記録は保持履歴であり、H13から再開しない。
 

@@ -1,5 +1,7 @@
 # PR #83 review repair receipt — 2026-09-02
 
+> Successor note: a fresh review of the first repair found three additional ownership/preview issues. Their exact RED/GREEN repair is recorded in [PR83-second-review-repair-20260902.md](PR83-second-review-repair-20260902.md).
+
 ## Review input and stop
 
 PR [#83](https://github.com/dj-thank/choplab-sampler/pull/83) first reached head `b1ce88d51cc842e7de3f663276c756feb9b663cd`. All eight push/pull-request hosted checks passed, but the exact-head automated review opened four unresolved P2 threads, so merge was stopped:
