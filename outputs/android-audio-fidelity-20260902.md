@@ -2,7 +2,7 @@
 
 ## User-visible defect
 
-Android playback sounded audibly broken even before intentional polyphonic overload. The shared master applied `x / (1 + abs(x))` to every non-zero sample, so a clean sample at 0.5 became 0.333 and full scale became 0.5. The same curve affected live `AudioTrack` output and offline WAV export.
+The user reported that Android playback sounded degraded and frequently distorted. Source/math inspection then proved an independent defect: the shared master applied `x / (1 + abs(x))` to every non-zero sample, so a clean sample at 0.5 became 0.333 and full scale became 0.5. The same curve was wired into live `AudioTrack` output and offline WAV export; host evidence does not claim how that defect sounded on physical hardware.
 
 ## Product repair
 

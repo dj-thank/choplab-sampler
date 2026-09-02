@@ -12,7 +12,7 @@ The H13 correction, accessibility readiness, stable Compose 1.11.1 pin, and sign
 - Exact JDK 17 local audio result at `2b0da00`: shared Desktop 87, shared Android host 87, Android unit 289, JVM core 88; failures/errors/skips 0. Android lint, debug APK assembly, and AndroidTest Kotlin compilation pass; 99/99 selected tasks executed under the documented bounded-memory configuration.
 - Public Release contract remains Android debug preview + unsigned iOS Simulator archive only; stable-signed Android and Windows app-image remain verification-only. The new `v0.17.2` tag is explicitly held until every accepted branch converges on final main.
 - Retained evidence: [PR #83 / #84 stabilization](../outputs/PR83-postmerge-accessibility-stability-20260902.md), [v0.17.1 failure / v0.17.2 recovery](../outputs/v0.17.1-tag-failure-v0.17.2-recovery-20260902.md), and [Android audio fidelity](../outputs/android-audio-fidelity-20260902.md).
-- Current selected execution plan: [H13 GitHub integration and product convergence](../plans/active/h13-github-release-20260902.md). The audio and duplicate-PEM bytes are `LOCAL_PASS`; PR #85 main/provider, PR #86 exact-head, physical audio, Spotify provider, public binary, screen-reader speech, and Human gates remain separate until read back.
+- Current selected execution plan: [H13 GitHub integration and product convergence](../plans/active/h13-github-release-20260902.md). The audio and duplicate-PEM bytes are `LOCAL_PASS`, while PR #85 merged-main is `PROVIDER_PASS` for its four workflows. PR #86 exact-head, physical audio, Spotify provider, public binary, screen-reader speech, and Human gates remain separate until read back.
 
 ## Historical snapshot — 2026-09-01 H13 Desktop offscreen long-press candidate
 
