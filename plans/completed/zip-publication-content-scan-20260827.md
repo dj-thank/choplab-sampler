@@ -11,7 +11,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Product checkpoint: `3ed67101f362e61760c5ceb1839e71e91311aeb5`, tree `70e8f94f4e64cff4e13ea0e474e164632e500770`.
 - Final review checkpoints: `e1306935312ce4e6bebe5600c972c6f0efd1c569` and bounded-inventory successor `181701beeaa9d02f737f284e3fc92ce33e438ff2`.
 - Current-main integration: `a5cfeac20b7f1062beeecbf8579b15f1e6e0a5a1`, tree `2f55b89aafa7f78284337c3edda107f107c8a3d0`, second parent `main@012b131784394b2fd641d580aaf4cd2d56b907f4`.
-- Product subtrees and build configuration match `main@d3291a5` exactly; the PR-specific delta is release policy/tests/workflow wiring and documentation.
+- Product subtrees and build configuration at the final integration checkpoint match `main@012b131784394b2fd641d580aaf4cd2d56b907f4`; `main@d3291a5` was only the earlier first-parent integration anchor. The PR-specific delta remains release policy/tests/workflow wiring and documentation.
 
 ## Initial findings
 
@@ -60,6 +60,10 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - [x] Final review closure: AMR-NB/WB, classic GitHub token families, PuTTY PPK, extended-size ISO-BMFF `ftyp`, validated Authenticode certificate tables, NUL-safe historical filenames, and traversal/absolute/drive-root ZIP paths have direct regressions.
 - [x] Current-main integration preserves the v0.17.2 signer verifier and avoids scanner self-detection by constructing PEM fixture markers at runtime.
 - [x] Fresh integrated review closure: reachable commit messages and neutral historical binary blobs share bounded content policy; JKS exemptions validate X.509 DER bodies; archive-valued ZIP metadata is rejected; Windows post-download wording matches the actual Android/iOS-only publication job.
+- [x] Post-merge correction: complete historical binary classification, BOM-less UTF-32, per-commit messages and commit/tag headers, ZIP symlink targets, PKCS#7-bound APK exemptions, V7 TAR and legacy PKCS#12 now have direct regressions. The stale product anchor was corrected to `main@012b131`.
+- [x] Corrective PR hosted review: all UTF-32 alignments are collected, embedded PFX and GNU base-256 TAR are recognized, raw commits use one bounded `cat-file --batch` stream, and ordinary historical UTF-8 text stays streaming instead of being materialized.
+- [x] Independent Spec review: printable historical AMR/archive signatures retain a bounded prefix probe, drive-qualified ZIP symlink targets are rejected, and otherwise valid APK SignedData cannot hide embedded PFX in attributes.
+- [x] Independent verification follow-up: every non-archive APK Signing Block pair value receives the same bounded embedded-PFX/private-key detection before acceptance.
 - [x] Configured validation and repo SSOT closeout completed at `LOCAL_PASS`.
 
 ## Validation
@@ -67,6 +71,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
 - Exact current-tree policy suite: 195 tests at `baf70085eb572511df200d3b30b764c464e6e887` via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Focused scanner is 119. Earlier counts remain historical evidence for predecessor trees; capable CI hosts still run the skipped symlink test.
+- Post-merge corrective policy suite: 211 tests, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. Focused scanner is 135. Current and reachable-history scans both pass across 483 candidates with the expanded boundaries; the exact generated debug APK also passes after the stricter PKCS#7 schema check. Local current/history wall time is 0.81/13.30 seconds after batching and streaming refinement under normal host load.
 - Current and reachable-history public scans: 483 candidates, PASS. `py_compile`/import execution and `git diff --check`: PASS.
 - Windows compatibility regression: preserved v0.17.0 app-image ZIP `AC0552B51EA0C614AFC4B41C7B5FEC2C40247B641177385CB8AC777F26A17435` passes as one explicit archive after the PE/JKS refinement.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.

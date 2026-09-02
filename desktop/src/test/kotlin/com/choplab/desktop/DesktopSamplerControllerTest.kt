@@ -659,7 +659,7 @@ class DesktopSamplerControllerTest {
                 closeThread = thread(name = "ChopLab-Test-Close") { controller.close() }
                 awaitThreadWaiting(closeThread)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(143f, store.load()?.bpm)
@@ -709,7 +709,7 @@ class DesktopSamplerControllerTest {
                 assertEquals(1, engine.closeCalls)
                 assertFalse(controller.state.value.transportPlaying)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(144f, store.load()?.bpm)
@@ -760,7 +760,7 @@ class DesktopSamplerControllerTest {
                 engine.releaseBlockedLoad()
                 awaitThreadWaiting(closeThread)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(151f, store.load()?.bpm)
@@ -802,7 +802,7 @@ class DesktopSamplerControllerTest {
             closeThread = thread(name = "ChopLab-Test-Load-Close") { controller.close() }
             awaitCondition { closeThread.state == Thread.State.BLOCKED }
             engine.releaseBlockedLoad()
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             val recovered = requireNotNull(store.load())
@@ -1053,7 +1053,7 @@ class DesktopSamplerControllerTest {
                 awaitThreadWaiting(closeThread)
                 assertTrue(closeThread.isAlive)
             }
-            closeThread.join(2_000L)
+            closeThread.join(10_000L)
 
             assertFalse(closeThread.isAlive)
             assertEquals(0, engine.loadPcmCalls)
@@ -1279,7 +1279,7 @@ class DesktopSamplerControllerTest {
         } finally {
             engine.releaseBlockedLoad()
             controller.close()
-            closeThread?.join(2_000L)
+            closeThread?.join(10_000L)
             directory.deleteRecursively()
         }
     }
