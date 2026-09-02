@@ -59,8 +59,8 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 
 - Focused RED: 1 failure / 5 errors at the intended six boundaries.
 - Focused GREEN: dictionary, aggregate input, binary/text compatibility, explicit CLI and workflow order controls pass.
-- Exact current-tree policy suite: 151 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. The earlier 124-test receipt is retained as historical evidence for its pre-review tree; capable CI hosts still run the skipped symlink test.
-- Current and reachable-history public scans: 465 candidates, PASS. `py_compile` and `git diff --check`: PASS.
+- Exact current-tree policy suite: 173 tests via `python -m unittest discover -s scripts/tests -p 'test_*.py'`, failure/error 0; one local skip only because this Windows host lacks symlink creation privilege. The earlier 124/151-test receipts remain historical evidence for their predecessor trees; capable CI hosts still run the skipped symlink test.
+- Current and reachable-history public scans: 479 candidates, PASS. `py_compile` and `git diff --check`: PASS.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.
 - Exact artifact scan: candidate source snapshot 1,542,548 / `F9B63B84A85A5D6336BE5C52FED5878DC6350AD20D09C3B3049015DA35C9B6A0`; signed Android APK 24,035,572 / `F8DCDBF5E7B13AF567F0388A5EFD885E61CFEA306F74AF590650DE677766772C`; Windows ZIP 89,156,340 / `7619DDE24822CC5CF6B38893382AC46DF8752AE777F046844E6322713F42AAA2`; iOS ZIP 318,236 / `5D17C8BD5E3DC6C359FED40F1B79B38CD901D53343735566201AA454BB72475C`; CycloneDX SBOM 1,581,101 / `413688DEDDBED53F235D311B7BE7B9472D6202B72ABD9F531D2EFA9D86A63DF2`; combined PASS.
 - Product byte preservation: `app/`, `desktop/`, `shared/`, `jvm-core/`, `ios/` and build configuration are identical to `main@0f5b672`, whose four exact merged-main workflows passed in Wave 19.

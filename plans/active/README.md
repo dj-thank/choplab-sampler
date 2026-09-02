@@ -1,12 +1,18 @@
 # ExecPlan registry
 
-更新: 2026-08-27
+更新: 2026-09-02
 
 このディレクトリには ChopLab の過去の ExecPlan と、将来選択できる計画が保存されています。ファイルが `plans/active/` に存在すること自体は、現在その計画を実行中であることを意味しません。
 
 ## Current selection
 
-**Wave 20 provider integration in final review repair; merge intentionally pending:** `../completed/zip-publication-content-scan-20260827.md`。existing PR #69 parserを`main@0f5b672`へ統合し、current/historyとexact source/Android APK/Windows/iOS/SBOMのpre-upload/pre-publication scanを一つのbounded ZIP/APK/text boundaryへ閉じる。直近の全成功inputは`8f6dcca` / tree `a7c585b`。本追補はbinary/JIMAGE全body、APK signing pair、SBOM textまで閉じ、Python124、current/history465、exact四archive＋SBOM、configured18 tasksをlocal PASS。本追補を同じPRへ通常更新後、final exact head/check/reviewを再固定する。PRはOPEN、mainは`0f5b672`のまま。
+**PR #69 final review repair（LOCAL_PASS / provider再検証待ち）:** `../completed/zip-publication-content-scan-20260827.md`。security head `8a5218e`をcurrent `main@d3291a5`へ統合し、prefixed/neutral/nested ZIP、BOM-less Unicode、DER private key、annotated tag/direct blob/tree ref、bounded findings、全release globを一つのfail-closed boundaryへ閉じる。current-main conflict resolution後の完全policy 173、focused scanner 102、current/history各479がPASS。次はmerge resultのGradle gate、PR #69 fast-forward、review threads 0、exact-head checks、normal merge、merged-main 4 workflows。tag/Releaseは全candidate統合後だけ実行する。
+
+**H13 / v0.17.1 integration merged:** PR #83は`2864117`、setup-java v6 PR #82とCompose 1.12 repair PR #80を含むcurrent mainは`d3291a5`。Android/Windows/iOS/Supply-chainのmerged-main 4 workflowsは全てSUCCESS。`v0.17.1` tag/Releaseは最終統合後まで未作成。
+
+## Retained prior selection
+
+**Wave 19 PR review repair completed local; GitHub integration remains active:** `../completed/waves17-18-pr-review-repair-20260827.md`。PR #79の3件の有効指摘を、Windowsのrender/open/startをhandoff lock外へ分離、candidate stagingとcleanup所有権保持、Android rejected vocal takeのstop＋discard専用経路で閉じた。追加raceも反証してproduct `11d0127` / tree `83c2055`、709 tests / 117 suites、197-task gate、package/policy/read-backまで`LOCAL_PASS`。
 
 **Wave 19 GitHub integration complete:** `../completed/waves17-18-pr-review-repair-20260827.md`。review-hardened exact head `4ae09d8`はPR #79の8/8 checks・threads 0後、`main@0f5b672` / tree `939f954`へnormal merge。merged-main Android/Windows/iOS/Supply 4/4もSUCCESS。`v0.17.0` tag/Releaseは不変。
 
@@ -148,6 +154,8 @@
 - `../completed/android-production-continuity-20260820.md`（完了済み）
 - `precision-trim-long-press-number-wheel-20260820.md`（完了済み本文を保全）
 - `full-release-audio-hardening-20260821.md`（統合入力）
+- `h13-desktop-longpress-20260901.md`（完了済みH13本文）
+- `h13-github-release-20260902.md`（current selection）
 - `spotify-connect-ux-lifecycle-20260823.md`（統合入力）
 - `cross-platform-production-continuity-20260823.md`（統合入力）
 - `../completed/session-integration-20260823.md`（完了済み統合plan）

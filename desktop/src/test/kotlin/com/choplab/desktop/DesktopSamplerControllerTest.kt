@@ -38,6 +38,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.choplab.sampler.ui.PadTriggerOwnership
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -2243,6 +2244,28 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun failedInitialLoopRetirementAbandonsStartedCandidatesAndPreservesState() {
+        val engine = FakeAudioEngine().apply { failNextExclusiveRetire = true }
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            val before = controller.state.value
+
+            val failure = assertFailsWith<IllegalStateException> {
+                controller.toggleBeatLoopControl()
+            }
+
+            assertEquals("test loop retirement failure", failure.message)
+            assertEquals(before, controller.state.value)
+            assertEquals(1, engine.exclusiveAbandonCount)
+            assertTrue(engine.triggered.isEmpty())
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
     fun slowFailedInitialBeatLoopPreparationDoesNotPauseExistingTransport() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
@@ -2459,6 +2482,227 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test
+    fun h13CapturePadWhileStoppedAuditionsWithoutOverwritingTheAssignedChop() = withH13CaptureFixture { controller, engine, _ ->
+        val before = controller.state.value
+        assertFalse(before.sourcePlaying)
+        assertEquals(16_000, before.pads[1].startFrame)
+        assertEquals(32_000, before.pads[1].endFrame)
+
+        controller.capturePad(1)
+
+        assertEquals(16_000, controller.state.value.pads[1].startFrame)
+        assertEquals(32_000, controller.state.value.pads[1].endFrame)
+        assertTrue(before.pads == controller.state.value.pads, "Stopped PAD audition must preserve every assignment")
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertEquals(1, controller.state.value.selectedPad)
+        assertEquals(1, engine.triggered.single().first.globalIndex)
+    }
+
+    @Test
+    fun h13CapturePadWhileSourcePlaysStillCapturesTheObservedPosition() = withH13CaptureFixture { controller, engine, _ ->
+        controller.playSourceFrom(24_000)
+        assertTrue(controller.state.value.sourcePlaying)
+        assertFalse(controller.state.value.pads[2].isAssigned)
+
+        controller.capturePad(2)
+
+        assertTrue(controller.state.value.pads[2].isAssigned)
+        assertEquals(24_000, controller.state.value.pads[2].startFrame)
+        // Existing live-chop contract: the last chop extends to the Source selection end.
+        assertEquals(80_000, controller.state.value.pads[2].endFrame)
+        assertTrue(controller.state.value.sourcePlaying)
+        assertTrue(engine.triggered.isEmpty(), "Live capture must not start a PAD audition")
+    }
+
+    @Test
+    fun h13CapturePadDuringRecordingNeitherEditsNorAuditions() = withH13CaptureFixture { controller, engine, recorder ->
+        controller.toggleMicrophoneRecording()
+        awaitCondition { recorder.isRecording && controller.state.value.recordingSession is RecordingSession.Active }
+        val before = controller.state.value
+
+        controller.capturePad(1)
+
+        assertTrue(before.pads == controller.state.value.pads, "Recording must keep the assigned Chop unchanged")
+        assertEquals(before.recordingSession, controller.state.value.recordingSession)
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertTrue(engine.triggered.isEmpty())
+        assertEquals("録音をSTOPしてから編集してください", controller.state.value.statusMessage)
+    }
+
+    @Test
+    fun h13CapturePadDuringPendingSourceImportNeitherEditsNorAuditions() = withH13CaptureFixture { controller, engine, _ ->
+        val input = File.createTempFile("h13-pending-source-", ".wav", File(System.getProperty("java.io.tmpdir")))
+        WavFileWriter(input, sampleRate = 8_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(8_000), 8_000)
+        }
+        engine.blockNextLoad = true
+        try {
+            controller.loadWav(input)
+            engine.awaitBlockedLoad()
+            val before = controller.state.value
+            assertTrue(before.isLoading)
+
+            controller.capturePad(1)
+
+            assertTrue(before.pads == controller.state.value.pads, "Pending import must preserve the current Chop")
+            assertEquals(before.canUndo, controller.state.value.canUndo)
+            assertTrue(engine.triggered.isEmpty())
+            assertEquals("現在の処理が終わってから編集してください", controller.state.value.statusMessage)
+        } finally {
+            engine.releaseBlockedLoad()
+            awaitCondition { !controller.state.value.isLoading }
+            input.delete()
+        }
+    }
+
+    @Test
+    fun h13CapturePadWhileStoppedOnlySelectsAnUnassignedPad() = withH13CaptureFixture { controller, engine, _ ->
+        val before = controller.state.value
+
+        controller.capturePad(2)
+
+        assertEquals(2, controller.state.value.selectedPad)
+        assertFalse(controller.state.value.pads[2].isAssigned)
+        assertTrue(before.pads == controller.state.value.pads)
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertTrue(engine.triggered.isEmpty())
+    }
+
+    @Test
+    fun h13StoppedLoopCaptureUsesTheManagedLoopSession() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.LOOP,
+    ) { controller, engine, _ ->
+        controller.capturePad(1)
+
+        assertEquals(1, controller.state.value.loopingPadIndex)
+        assertEquals(listOf(1 to true), engine.triggered.map { it.first.globalIndex to it.second })
+        assertEquals(1, engine.exclusiveStartCount)
+
+        controller.releasePad(1)
+
+        assertEquals(1, controller.state.value.loopingPadIndex)
+    }
+
+    @Test
+    fun h13GateCaptureReleaseCannotCloseANewerKeyboardVoice() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.GATE,
+    ) { controller, engine, _ ->
+        val mouseOwnership = controller.capturePadWithOwnership(1)
+        val keyboardOwnership = controller.triggerPadWithOwnership(1)
+
+        controller.releasePadIfOwned(1, mouseOwnership)
+
+        assertEquals(1L, mouseOwnership)
+        assertEquals(2L, keyboardOwnership)
+        assertTrue(engine.releasedPads.isEmpty(), "A capture release must not perform a broad GATE release")
+        assertEquals(listOf(1 to 1L), engine.releasedOwnedPads)
+    }
+
+    @Test
+    fun h13CaptureAuditionFailureIsReportedWithoutEscapingTheGesture() = withH13CaptureFixture { controller, engine, _ ->
+        controller.selectPad(1)
+        engine.failNextTrigger = true
+        val before = controller.state.value
+
+        controller.capturePad(1)
+
+        assertEquals(1, controller.state.value.selectedPad)
+        assertTrue(before.pads == controller.state.value.pads)
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertEquals("PAD 2を再生できませんでした: test output unavailable", controller.state.value.statusMessage)
+    }
+
+    @Test
+    fun h13FailedGateCaptureReleaseDoesNotCloseALaterKeyboardVoice() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.GATE,
+    ) { controller, engine, _ ->
+        engine.failNextTrigger = true
+        val failedOwnership = controller.capturePadWithOwnership(1)
+        val keyboardOwnership = controller.triggerPadWithOwnership(1)
+
+        controller.releasePadIfOwned(1, failedOwnership)
+
+        assertEquals(PadTriggerOwnership.NONE, failedOwnership)
+        assertEquals(1L, keyboardOwnership)
+        assertTrue(engine.releasedPads.isEmpty())
+        assertTrue(engine.releasedOwnedPads.isEmpty())
+    }
+
+    @Test
+    fun h13CaptureAuditionFatalErrorStillEscapes() = withH13CaptureFixture { controller, engine, _ ->
+        engine.nextTriggerFailure = AssertionError("test fatal capture error")
+
+        val failure = assertFailsWith<AssertionError> {
+            controller.capturePad(1)
+        }
+
+        assertEquals("test fatal capture error", failure.message)
+    }
+
+    @Test
+    fun h13TrimPreviewOfLoopPadUsesOneBoundedOneShotVoice() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.LOOP,
+    ) { controller, engine, _ ->
+        controller.previewPad(1)
+
+        assertEquals(null, controller.state.value.loopingPadIndex)
+        assertEquals(0, engine.exclusiveStartCount)
+        assertEquals(listOf(1 to false), engine.triggered.map { it.first.globalIndex to it.second })
+        assertEquals(PadPlayMode.ONE_SHOT, engine.triggered.single().first.playMode)
+    }
+
+    @Test
+    fun h13PostStartGateFailureStopsTheUnreturnedCandidate() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.GATE,
+    ) { controller, engine, _ ->
+        engine.failAfterNextTrigger = true
+
+        val failedOwnership = controller.capturePadWithOwnership(1)
+        controller.releasePadIfOwned(1, failedOwnership)
+
+        assertEquals(PadTriggerOwnership.NONE, failedOwnership)
+        assertEquals(listOf(1), engine.stoppedPads)
+        assertTrue(engine.releasedPads.isEmpty())
+        assertTrue(engine.releasedOwnedPads.isEmpty())
+        assertEquals("PAD 2を再生できませんでした: test post-start retirement failure", controller.state.value.statusMessage)
+    }
+
+    private fun withH13CaptureFixture(
+        targetPlayMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+        block: (DesktopSamplerController, FakeAudioEngine, FakeRecorder) -> Unit,
+    ) {
+        val directory = Files.createTempDirectory(File(System.getProperty("java.io.tmpdir")).toPath(), "h13-capture-").toFile()
+        val audio = PcmAudio(name = "H13 synthetic source", samples = ShortArray(80_000) { 1_000 }, sampleRate = 8_000)
+        val initial = SamplerUiState(
+            currentAudio = audio,
+            rangeEndFrame = audio.frameCount,
+            selectedPad = 0,
+            activeSteps = emptySet(),
+            pads = List(SamplerConfig.PAD_COUNT) { index ->
+                when (index) {
+                    0 -> PadModel(0, audio, 8_000, 12_000)
+                    1 -> PadModel(1, audio, 16_000, 32_000, playMode = targetPlayMode)
+                    else -> PadModel(index)
+                }
+            },
+        )
+        val engine = FakeAudioEngine()
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(engine, microphone = recorder, systemAudio = FakeRecorder(), autosaveStore = null)
+        try {
+            val project = DesktopProjectFiles.save(File(directory, "input.choplab"), initial)
+            controller.openProject(project)
+            awaitCondition { !controller.state.value.isLoading }
+            assertEquals(16_000, controller.state.value.pads[1].startFrame)
+            assertEquals(32_000, controller.state.value.pads[1].endFrame)
+            block(controller, engine, recorder)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
     private fun awaitCondition(condition: () -> Boolean) {
         val deadline = System.nanoTime() + 2_000_000_000L
         while (!condition()) {
@@ -2486,7 +2730,9 @@ class DesktopSamplerControllerTest {
         val stoppedPads = mutableListOf<Int>()
         private var nextVoiceOwnership: Long = 0L
         var failNextTrigger: Boolean = false
+        var failAfterNextTrigger: Boolean = false
         var failNextExclusiveStart: Boolean = false
+        var failNextExclusiveRetire: Boolean = false
         var failTriggerPad: Int? = null
         var failNextStopPad: Boolean = false
         var failNextStopAll: Boolean = false
@@ -2496,6 +2742,7 @@ class DesktopSamplerControllerTest {
         var exclusiveRetireHook: (() -> Unit)? = null
         @Volatile var exclusiveStartCount: Int = 0
         @Volatile var exclusiveRetireCount: Int = 0
+        @Volatile var exclusiveAbandonCount: Int = 0
         @Volatile var failNextLoad: Boolean = false
         @Volatile var blockNextLoad: Boolean = false
         @Volatile var stopAllCalls: Int = 0
@@ -2542,6 +2789,13 @@ class DesktopSamplerControllerTest {
             }
             triggered += pad to forceLoop
             nextVoiceOwnership += 1L
+            if (failAfterNextTrigger) {
+                failAfterNextTrigger = false
+                // Match JavaSoundWavPlayer's fail-closed post-start contract: the engine
+                // abandons its candidate before surfacing the retirement failure.
+                stoppedPads += pad.globalIndex
+                error("test post-start retirement failure")
+            }
             return nextVoiceOwnership
         }
         override fun prepareExclusiveLoopSession(
@@ -2574,12 +2828,23 @@ class DesktopSamplerControllerTest {
                     triggered += pad to forceLoop
                     nextVoiceOwnership += 1L
                 }
-                DesktopStartedLoopSession {
-                    exclusiveRetireHook?.invoke()
-                    triggered.clear()
-                    triggered.addAll(candidates)
-                    exclusiveRetireCount++
-                    isSourcePlaying = false
+                object : DesktopStartedLoopSession {
+                    override fun retirePriorPlayback() {
+                        exclusiveRetireHook?.invoke()
+                        if (failNextExclusiveRetire) {
+                            failNextExclusiveRetire = false
+                            error("test loop retirement failure")
+                        }
+                        triggered.clear()
+                        triggered.addAll(candidates)
+                        exclusiveRetireCount++
+                        isSourcePlaying = false
+                    }
+
+                    override fun abandonCandidates() {
+                        triggered.clear()
+                        exclusiveAbandonCount++
+                    }
                 }
             }
         }

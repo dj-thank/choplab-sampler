@@ -1139,6 +1139,13 @@ class FirstScreenFlowDeviceTest {
                     onPadAction("triggerPad")
                     ownership
                 }
+                SamplerDeckController::capturePadWithOwnership.name -> {
+                    val ownership = acquireOwnership(
+                        (requireNotNull(arguments)[0] as Number).toInt(),
+                    )
+                    onPadAction("capturePad")
+                    ownership
+                }
                 SamplerDeckController::releasePad.name -> {
                     activeOwnerships.remove((requireNotNull(arguments)[0] as Number).toInt())
                     onPadAction("releasePad")

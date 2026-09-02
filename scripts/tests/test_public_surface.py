@@ -2730,7 +2730,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         android_stage = workflow.index(
-            'apk_target="dist/ChopLab-${RELEASE_TAG}-android.apk"'
+            'apk_target="dist/ChopLab-${RELEASE_TAG}-android-debug.apk"'
         )
         android_stage_scan = workflow.index(
             "python3 scripts/check_public_surface.py \\",
@@ -2760,7 +2760,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             windows_archive,
         )
         windows_upload = workflow.index(
-            "name: Upload Windows assets",
+            "name: Upload Windows verification artifacts",
             windows_stage_scan,
         )
         self.assertLess(android_stage, android_stage_scan)
@@ -2775,20 +2775,16 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         download = workflow.index("name: Download platform assets", windows_upload)
         scan = workflow.index("name: Scan final public archives", download)
         android_archive = workflow.index(
-            'dist/ChopLab-${RELEASE_TAG}-android.apk',
+            'dist/ChopLab-${RELEASE_TAG}-android-debug.apk',
             scan,
         )
         ios_archive = workflow.index(
             'dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip',
             scan,
         )
-        final_windows_archive = workflow.index(
-            'dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip',
-            scan,
-        )
         final_sbom = workflow.index(
             'dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json',
-            final_windows_archive,
+            ios_archive,
         )
         manifest = workflow.index("name: Write source-bound manifest and checksums")
         attest = workflow.index("name: Attest build provenance")
@@ -2797,12 +2793,10 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertLess(download, scan)
         self.assertLess(scan, android_archive)
         self.assertLess(scan, ios_archive)
-        self.assertLess(scan, final_windows_archive)
-        self.assertLess(final_windows_archive, final_sbom)
         self.assertLess(android_archive, manifest)
         self.assertLess(ios_archive, manifest)
-        self.assertLess(final_windows_archive, manifest)
         self.assertLess(final_sbom, manifest)
+        self.assertNotIn("windows-app-image.zip", workflow[scan:manifest])
         self.assertLess(manifest, attest)
         self.assertLess(attest, publish)
 

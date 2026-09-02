@@ -9,9 +9,10 @@ class DesktopLoopSessionStartupException(cause: Exception) : Exception(
     cause,
 )
 
-/** Started candidate voices that can retire superseded playback at the controller handoff boundary. */
-fun interface DesktopStartedLoopSession {
+/** Started candidate voices resolved exactly once by handoff success or fail-closed abandonment. */
+interface DesktopStartedLoopSession {
     fun retirePriorPlayback()
+    fun abandonCandidates()
 }
 
 /** Prepared clips whose potentially slow startup remains outside the controller handoff boundary. */
@@ -40,7 +41,8 @@ interface DesktopSamplerAudioEngine : AutoCloseable {
      * [DesktopPreparedLoopSession.startCandidates] may also be slow and must run before the
      * controller enters its handoff boundary. Preparation or startup failure must abandon every
      * candidate, preserve prior playback, and throw [DesktopLoopSessionStartupException]. Once
-     * startup succeeds, retirement failures are non-recoverable and must propagate unchanged.
+     * startup succeeds, retirement failures are non-recoverable: callers must abandon the started
+     * candidates before propagating the original failure unchanged.
      */
     fun prepareExclusiveLoopSession(
         loopPad: PadModel,
