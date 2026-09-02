@@ -96,6 +96,7 @@ CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 512 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT = 262_144
+HISTORICAL_COMMIT_OBJECT_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
 HISTORICAL_TAG_PEEL_LIMIT = 8
 HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
@@ -1374,10 +1375,43 @@ def is_pkcs7_signed_data(content: bytes) -> bool:
     if wrapped is None or wrapped[0] != 0xA0 or wrapped[2] != outer[2]:
         return False
     signed_data = der_tlv_value_bounds(content, wrapped[1])
+    if signed_data is None or signed_data[0] != 0x30 or signed_data[2] != wrapped[2]:
+        return False
+    cursor = signed_data[1]
+    version = der_tlv_value_bounds(content, cursor)
+    if version is None or version[0] != 0x02 or version[2] > signed_data[2]:
+        return False
+    digest_algorithms = der_tlv_value_bounds(content, version[2])
+    if (
+        digest_algorithms is None
+        or digest_algorithms[0] != 0x31
+        or digest_algorithms[2] > signed_data[2]
+    ):
+        return False
+    encapsulated = der_tlv_value_bounds(content, digest_algorithms[2])
+    if encapsulated is None or encapsulated[0] != 0x30 or encapsulated[2] > signed_data[2]:
+        return False
+    encapsulated_type = der_tlv_value_bounds(content, encapsulated[1])
+    if (
+        encapsulated_type is None
+        or encapsulated_type[0] != 0x06
+        or not any(
+            content[encapsulated[1] : encapsulated_type[2]] == oid
+            for oid in PKCS7_CONTENT_OIDS
+        )
+    ):
+        return False
+    cursor = encapsulated[2]
+    while cursor < signed_data[2] and content[cursor] in {0xA0, 0xA1}:
+        optional = der_tlv_value_bounds(content, cursor)
+        if optional is None or optional[2] > signed_data[2]:
+            return False
+        cursor = optional[2]
+    signer_infos = der_tlv_value_bounds(content, cursor)
     return (
-        signed_data is not None
-        and signed_data[0] == 0x30
-        and signed_data[2] == wrapped[2]
+        signer_infos is not None
+        and signer_infos[0] == 0x31
+        and signer_infos[2] == signed_data[2]
     )
 
 
@@ -3365,10 +3399,10 @@ def scan_history(*, include_commit_messages: bool = False) -> list[str]:
                 for line in run_git(["rev-list", "--all"]).splitlines()
                 if line
             ]
-            if len(commit_ids) > HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT:
+            if len(commit_ids) > HISTORICAL_COMMIT_OBJECT_LIMIT:
                 raise GitScanLimitError(
                     "reachable commit count exceeds the "
-                    f"{HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT}-commit scan limit"
+                    f"{HISTORICAL_COMMIT_OBJECT_LIMIT}-commit scan limit"
                 )
             commit_bytes = 0
             for commit_id in commit_ids:

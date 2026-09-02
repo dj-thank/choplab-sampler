@@ -805,7 +805,10 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("candidate scan limit exceeded" in item for item in findings), findings)
 
     def test_zip_content_scan_allows_conventional_apk_signature_certificate(self) -> None:
-        certificate = bytes.fromhex("300f06092a864886f70d010702a0023000")
+        certificate = bytes.fromhex(
+            "302306092a864886f70d010702a01630140201013100300b"
+            "06092a864886f70d0107013100"
+        )
         private_key = bytes.fromhex(
             "3015020100300d06092a864886f70d0101010500040178"
         )
@@ -834,6 +837,17 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("not a valid PKCS#7" in item for item in findings), findings)
         self.assertTrue(any("DER signing material" in item for item in findings), findings)
+
+    def test_apk_signature_suffix_rejects_empty_signeddata_wrapper(self) -> None:
+        incomplete_signed_data = bytes.fromhex("300f06092a864886f70d010702a0023000")
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "incomplete-signature.apk"
+            with zipfile.ZipFile(apk_path, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("META-INF/EMPTY.RSA", incomplete_signed_data)
+
+            findings = scan_zip(apk_path)
+
+        self.assertTrue(any("not a valid PKCS#7" in item for item in findings), findings)
 
     def test_zip_content_scan_rejects_legacy_pkcs12_under_neutral_name(self) -> None:
         def der(tag: int, value: bytes) -> bytes:
