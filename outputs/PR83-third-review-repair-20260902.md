@@ -1,5 +1,7 @@
 # PR #83 third review repair receipt — 2026-09-02
 
+> Successor note: fresh review found three staging/proxy/tooling checks after this repair. They are closed in [PR83-fourth-review-repair-20260902.md](PR83-fourth-review-repair-20260902.md).
+
 ## Review input and stop
 
 PR [#83](https://github.com/dj-thank/choplab-sampler/pull/83) reached head `f9f1cb0f85c258e11b6f84cca6666ffea7aefba7`. Push and pull-request Android, Windows, iOS, and supply-chain checks all passed. The fresh exact-head review then opened one P1 and five P2 threads, so merge was stopped again:
