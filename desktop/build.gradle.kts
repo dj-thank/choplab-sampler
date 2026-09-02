@@ -40,7 +40,7 @@ tasks.register<Test>("desktopLongPressUiTest") {
     useJUnitPlatform()
     filter {
         includeTestsMatching("com.choplab.desktop.ui.DesktopLongPressUiTest")
-        includeTestsMatching("com.choplab.desktop.DesktopSamplerControllerTest.h13CapturePad*")
+        includeTestsMatching("com.choplab.desktop.DesktopSamplerControllerTest.h13*")
     }
     maxParallelForks = 1
     // An explicit input-evidence invocation must execute, not reuse a prior XML receipt.

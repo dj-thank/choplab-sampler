@@ -2546,7 +2546,79 @@ class DesktopSamplerControllerTest {
         assertTrue(engine.triggered.isEmpty())
     }
 
-    private fun withH13CaptureFixture(block: (DesktopSamplerController, FakeAudioEngine, FakeRecorder) -> Unit) {
+    @Test
+    fun h13StoppedLoopCaptureUsesTheManagedLoopSession() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.LOOP,
+    ) { controller, engine, _ ->
+        controller.capturePad(1)
+
+        assertEquals(1, controller.state.value.loopingPadIndex)
+        assertEquals(listOf(1 to true), engine.triggered.map { it.first.globalIndex to it.second })
+        assertEquals(1, engine.exclusiveStartCount)
+
+        controller.releasePad(1)
+
+        assertEquals(1, controller.state.value.loopingPadIndex)
+    }
+
+    @Test
+    fun h13GateCaptureReleaseCannotCloseANewerKeyboardVoice() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.GATE,
+    ) { controller, engine, _ ->
+        controller.capturePad(1)
+        val keyboardOwnership = controller.triggerPadWithOwnership(1)
+
+        controller.releasePad(1)
+
+        assertEquals(2L, keyboardOwnership)
+        assertTrue(engine.releasedPads.isEmpty(), "A capture release must not perform a broad GATE release")
+        assertEquals(listOf(1 to 1L), engine.releasedOwnedPads)
+    }
+
+    @Test
+    fun h13CaptureAuditionFailureIsReportedWithoutEscapingTheGesture() = withH13CaptureFixture { controller, engine, _ ->
+        controller.selectPad(1)
+        engine.failNextTrigger = true
+        val before = controller.state.value
+
+        controller.capturePad(1)
+
+        assertEquals(1, controller.state.value.selectedPad)
+        assertTrue(before.pads == controller.state.value.pads)
+        assertEquals(before.canUndo, controller.state.value.canUndo)
+        assertEquals("PAD 2を再生できませんでした: test output unavailable", controller.state.value.statusMessage)
+    }
+
+    @Test
+    fun h13FailedGateCaptureReleaseDoesNotCloseALaterKeyboardVoice() = withH13CaptureFixture(
+        targetPlayMode = PadPlayMode.GATE,
+    ) { controller, engine, _ ->
+        engine.failNextTrigger = true
+        controller.capturePad(1)
+        val keyboardOwnership = controller.triggerPadWithOwnership(1)
+
+        controller.releasePad(1)
+
+        assertEquals(1L, keyboardOwnership)
+        assertTrue(engine.releasedPads.isEmpty())
+        assertTrue(engine.releasedOwnedPads.isEmpty())
+    }
+
+    @Test
+    fun h13CaptureAuditionFatalErrorStillEscapes() = withH13CaptureFixture { controller, engine, _ ->
+        engine.nextTriggerFailure = AssertionError("test fatal capture error")
+
+        val failure = assertFailsWith<AssertionError> {
+            controller.capturePad(1)
+        }
+
+        assertEquals("test fatal capture error", failure.message)
+    }
+
+    private fun withH13CaptureFixture(
+        targetPlayMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+        block: (DesktopSamplerController, FakeAudioEngine, FakeRecorder) -> Unit,
+    ) {
         val directory = Files.createTempDirectory(File(System.getProperty("java.io.tmpdir")).toPath(), "h13-capture-").toFile()
         val audio = PcmAudio(name = "H13 synthetic source", samples = ShortArray(80_000) { 1_000 }, sampleRate = 8_000)
         val initial = SamplerUiState(
@@ -2557,7 +2629,7 @@ class DesktopSamplerControllerTest {
             pads = List(SamplerConfig.PAD_COUNT) { index ->
                 when (index) {
                     0 -> PadModel(0, audio, 8_000, 12_000)
-                    1 -> PadModel(1, audio, 16_000, 32_000)
+                    1 -> PadModel(1, audio, 16_000, 32_000, playMode = targetPlayMode)
                     else -> PadModel(index)
                 }
             },

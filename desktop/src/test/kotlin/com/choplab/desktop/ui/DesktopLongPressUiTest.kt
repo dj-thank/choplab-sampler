@@ -271,6 +271,26 @@ class DesktopLongPressUiTest {
             }
         }
     }
+
+    @Test
+    fun assignedPadLongPressStillOpensTrimWhenAuditionStartupFails() = runBlocking {
+        withTimeout(15_000) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.audio.failNextTrigger = true
+
+                fixture.mousePress(fixture.nodeWithDescription("PAD 02 割り当て済み"), 700)
+
+                assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
+                assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
+                assertTrue(fixture.hasDescription("全体波形。PAD範囲"))
+                assertTrue(fixture.hasDescription("音声波形。タップで近い境界"))
+                fixture.assertOffscreen()
+            } finally {
+                fixture.close()
+            }
+        }
+    }
 }
 
 private class DeckFixture private constructor(
@@ -476,6 +496,7 @@ private fun SemanticsNode.stateDescription(): String =
 private class SilentAudioPort : DesktopSamplerAudioEngine {
     private var ownership = 0L
     val padRequests = mutableListOf<Int>()
+    var failNextTrigger = false
     private var sourceFrames = 0
     @Volatile private var sourcePosition = 0
     @Volatile private var sourcePlaying = false
@@ -499,6 +520,10 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
     override fun padFramePosition(index: Int): Int? = null
     override fun stop() { sourcePlaying = false }
     override fun triggerPad(pad: PadModel, forceLoop: Boolean): Long {
+        if (failNextTrigger) {
+            failNextTrigger = false
+            error("test output unavailable")
+        }
         padRequests += pad.globalIndex
         return ++ownership
     }
