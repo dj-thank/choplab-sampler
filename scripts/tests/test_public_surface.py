@@ -2772,8 +2772,9 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertLess(windows_archive, windows_stage_scan)
         self.assertLess(windows_stage_scan, windows_upload)
 
-        download = workflow.index("name: Download platform assets", windows_upload)
-        scan = workflow.index("name: Scan final public archives", download)
+        android_download = workflow.index("name: Download Android release assets", windows_upload)
+        ios_download = workflow.index("name: Download iOS release assets", android_download)
+        scan = workflow.index("name: Scan final public archives", ios_download)
         android_archive = workflow.index(
             'dist/ChopLab-${RELEASE_TAG}-android-debug.apk',
             scan,
@@ -2790,7 +2791,11 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         attest = workflow.index("name: Attest build provenance")
         publish = workflow.index("name: Publish once without asset replacement")
 
-        self.assertLess(download, scan)
+        self.assertLess(android_download, ios_download)
+        self.assertLess(ios_download, scan)
+        self.assertNotIn("pattern:", workflow[android_download:scan])
+        self.assertIn("name: choplab-android-release-assets", workflow[android_download:ios_download])
+        self.assertIn("name: choplab-ios-release-assets", workflow[ios_download:scan])
         self.assertLess(scan, android_archive)
         self.assertLess(scan, ios_archive)
         self.assertLess(android_archive, manifest)

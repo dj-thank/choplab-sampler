@@ -7,9 +7,9 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 ## Exact objects
 
 - Existing PR lineage: PR #69 head `1abbd8ff004edceafd81fe5ffa6059e2d3692d85`.
-- Latest-main integration: `fa4e6d2646e44039ce41662ba4c6ae6970ae9dd6`, tree `fafdc23a12c9e5f1e414d8aa2d57da676c382aff`, parents PR #69 head and `main@0f5b672`.
+- Current-main integration anchor: `42aa1a30eae9626ac90cac7f6f1a9f20219987a3`, tree `b0c4f9456ecf4e798c0c30f28f0ff29263e25c54`, parents review repair `8a5218e` and `main@d3291a5`.
 - Product checkpoint: `3ed67101f362e61760c5ceb1839e71e91311aeb5`, tree `70e8f94f4e64cff4e13ea0e474e164632e500770`.
-- Product subtrees and build configuration match `main@0f5b672` exactly; the delta is release policy/tests/workflow wiring and documentation.
+- Product subtrees and build configuration match `main@d3291a5` exactly; the PR-specific delta is release policy/tests/workflow wiring and documentation.
 
 ## Initial findings
 
@@ -63,7 +63,7 @@ Prevent credentials, signing material and user audio from becoming reachable ins
 - Current and reachable-history public scans: 479 candidates, PASS. `py_compile` and `git diff --check`: PASS.
 - Configured validator: 18 tasks PASS; JVM 88 / 9 suites and Desktop 165 / 24 suites, zero failure/error/skip; XML, executable modes, wrapper SHA-256 and UTF-8 policy PASS.
 - Exact artifact scan: candidate source snapshot 1,542,548 / `F9B63B84A85A5D6336BE5C52FED5878DC6350AD20D09C3B3049015DA35C9B6A0`; signed Android APK 24,035,572 / `F8DCDBF5E7B13AF567F0388A5EFD885E61CFEA306F74AF590650DE677766772C`; Windows ZIP 89,156,340 / `7619DDE24822CC5CF6B38893382AC46DF8752AE777F046844E6322713F42AAA2`; iOS ZIP 318,236 / `5D17C8BD5E3DC6C359FED40F1B79B38CD901D53343735566201AA454BB72475C`; CycloneDX SBOM 1,581,101 / `413688DEDDBED53F235D311B7BE7B9472D6202B72ABD9F531D2EFA9D86A63DF2`; combined PASS.
-- Product byte preservation: `app/`, `desktop/`, `shared/`, `jvm-core/`, `ios/` and build configuration are identical to `main@0f5b672`, whose four exact merged-main workflows passed in Wave 19.
+- Product byte preservation: `app/`, `desktop/`, `shared/`, `jvm-core/`, `ios/` and build configuration are identical to `main@d3291a5`; exact-head hosted workflows remain a separate provider gate.
 - YAML parser unavailable locally; workflow source-order contracts pass, and syntax/execution remains an explicit hosted-CI gate.
 
 ## Review
