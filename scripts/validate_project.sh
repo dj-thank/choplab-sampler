@@ -28,6 +28,8 @@ else
   "$ROOT/gradlew" :jvm-core:test :desktop:test --no-daemon --max-workers=1 --no-watch-fs
 fi
 
+"$ROOT/gradlew" :desktop:desktopLongPressUiTest --no-daemon --max-workers=1 --no-watch-fs
+
 python - "$ROOT" <<'PY'
 from pathlib import Path
 import sys

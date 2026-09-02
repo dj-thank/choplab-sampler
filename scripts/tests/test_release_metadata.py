@@ -47,6 +47,14 @@ class ReleaseMetadataTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "tag mismatch"):
             validate_tag(metadata, "v0.16.1")
 
+    def test_xcodegen_defaults_match_release_metadata(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        metadata = load_release_metadata(root / "gradle.properties")
+        xcodegen = (root / "ios" / "project.yml").read_text(encoding="utf-8")
+
+        self.assertIn(f'MARKETING_VERSION: "{metadata.version}"', xcodegen)
+        self.assertIn(f'CURRENT_PROJECT_VERSION: "{metadata.build_number}"', xcodegen)
+
 
 if __name__ == "__main__":
     unittest.main()

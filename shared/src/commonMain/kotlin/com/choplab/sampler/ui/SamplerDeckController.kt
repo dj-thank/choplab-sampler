@@ -62,6 +62,10 @@ interface SamplerDeckController {
     fun selectPlayablePadPage(index: Int)
     fun selectPlayablePad(index: Int)
     fun capturePad(index: Int)
+    fun capturePadWithOwnership(index: Int): Long {
+        capturePad(index)
+        return PadTriggerOwnership.NONE
+    }
     fun triggerPad(index: Int)
     fun releasePad(index: Int)
     fun triggerPadWithOwnership(index: Int): Long

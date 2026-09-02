@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+DESKTOP_WORKFLOW = (ROOT / ".github" / "workflows" / "desktop.yml").read_text(encoding="utf-8")
 
 
 def job_body(name: str, next_name: str) -> str:
@@ -29,6 +30,22 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertLess(
             windows.index(":shared:desktopTest"),
             windows.index(":desktop:packageWindows"),
+        )
+
+    def test_windows_release_runs_h13_input_contract(self) -> None:
+        windows = job_body("build-windows", "publish-release")
+
+        self.assertIn(":desktop:desktopLongPressUiTest", windows)
+        self.assertLess(
+            windows.index(":desktop:desktopLongPressUiTest"),
+            windows.index(":desktop:packageWindows"),
+        )
+
+    def test_desktop_pr_workflow_runs_h13_input_contract(self) -> None:
+        self.assertIn(":desktop:desktopLongPressUiTest", DESKTOP_WORKFLOW)
+        self.assertLess(
+            DESKTOP_WORKFLOW.index(":desktop:desktopLongPressUiTest"),
+            DESKTOP_WORKFLOW.index(":desktop:packageWindows"),
         )
 
 

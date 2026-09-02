@@ -1,6 +1,37 @@
 # Project state
 
-## Current snapshot — 2026-08-27 Waves 17–18 review-hardened integration bytes
+## Current snapshot — 2026-09-02 H13 / v0.17.1 integration
+
+This candidate rebases the accepted H13 Desktop input correction onto the current GitHub baseline and prepares a new immutable patch release. It does not rewrite the historical H13 evidence or the existing `v0.17.0` Release.
+
+- Exact GitHub base: `41be4ffda904e3317e0ef3802bff90b3887f99b2` / tree `12852e6b918834b91cf79f25bf4152fcaf7f0319`. The only upstream delta from the original H13 base is the merged Android build dependency update in root `build.gradle.kts`.
+- Replayed H13 commits: `ed1acff` (product/tests), `a3534e1` (receipt/state), and `c5ec02d` (documentary review closure). Their production/test intent is unchanged; the original exact execution remains bound to `1f96ef8` and the accepted documentary successor `0dcf618`.
+- Version candidate: `0.17.1 (28)`. The tag must be created only after the exact PR merge is reachable from `main`; the workflow must rebuild all distributed bytes from that merged commit.
+- GitHub guard: both `.github/workflows/desktop.yml` and the release Windows job explicitly run `:desktop:desktopLongPressUiTest` before `:desktop:packageWindows`; policy tests fail if either connection is removed.
+- Retained provenance: [H16 package](../outputs/H16-windows-package-20260901.md) and [H19 startup](../outputs/H19-windows-startup-smoke-20260901.md) record the exact older `0dcf618` local package/startup result. Their hashes do not claim equality with the forthcoming `v0.17.1` assets.
+- Root acceptance of H13 at `0dcf618` closed the V21 Standards/Spec findings: Standards documentary findings 2 were repaired, Spec findings 0, and the nonblocking fixture-refactor notes were deferred without broadening the correction.
+- Current selected execution plan: [H13 GitHub integration and v0.17.1 release](../plans/active/h13-github-release-20260902.md). Local, PR/provider, public binary, device/provider-account, and Human gates remain separate until their exact revision/bytes are read back.
+- Superseded pre-review candidate: `a7f4b08a1c891a67dd8879bd2007e71f5224774d` / tree `54cb789c445f384bbd1c20d3e596411340b36ccf`; its local receipt remains valid only for those earlier bytes.
+- PR #83 review repair: product `260ad5e82e2bd79dbe3e168d455ef5d4280637eb` / tree `c3d2633f775cf86f14cda44bcf99dfcbc55fef3d` routes LOOP through the managed session, binds capture GATE release to exact ownership, keeps TRIM available on recoverable output failure while preserving fatal propagation, and synchronizes XcodeGen to `0.17.1 (28)`. Post-commit offline rerun: 27/27 tasks, 369 executions (359 unique), H13 20/20, policy 67/67, failure/error/skip 0, local Standards/Spec 0/0. See the [review-repair receipt](../outputs/PR83-review-repair-20260902.md). Hosted revalidation and review-thread resolution remain pending.
+- PR #83 second review repair: product `f16218ddc0eb1e7b8dbdcafbb01ad8b69f6fe6bc` / tree `1ac8db94bcfdaf46adf3cbc8156afec316e13e10` keeps LOOP-mode TRIM PREVIEW bounded, gives physical and semantics GATE actions per-gesture ownership across Android/Desktop, and fail-closes post-start Java Sound retirement failures while retaining failed cleanup for retry. Exact offline results: Windows 27/27 tasks and 377 executions, Android app 41/41 tasks and 284 tests, shared Android host 8/8 tasks and 86 tests, H13 24/24, all failure/error/skip 0, policy 67/67, local Standards/Spec 0/0. See the [second review-repair receipt](../outputs/PR83-second-review-repair-20260902.md). Hosted exact-head revalidation and the three new review threads remain pending.
+- Hosted timeout successor: one `4d6792e` Windows PR-event run reached a 15-second H13 UI harness timeout while the same-head push-event Windows run passed and all controller tests were green. No product assertion failed. Test-only `e1669eecbbba1d38ec28826ddda4c908898ddae9` / tree `126bc2e42a243ed3febc3832bc18c9ba5c20cfe5` gives all 12 offscreen UI tests a shared 30-second runner budget without changing input timing or assertions. Exact post-commit H13 rerun passed 16/16 tasks and 24/24 tests. See the [hosted-timeout receipt](../outputs/PR83-hosted-timeout-repair-20260902.md). Fresh hosted checks remain required.
+- PR #83 third review repair: product/repository `7b22b19fcc10da7cc9371bf72a9a933f79701680` / tree `37b718efe193b5ea8b9d0de4f56618cda69ade93` adds exclusive-loop candidate abort, one true top snapshot, current README/local gate, and clean-clone H13 evidence. Public-preview successor `acc13aa57dd8549f3f45180cef1136ddd8f6333e` / tree `de3922470ca40969c000c5d6a88b8e978fc11e7d` limits Release publication to Android debug + iOS while retaining signed Android/Windows verification. Policy 74/74, updated validator, focused loop tests, actual 0.17.1 debug APK build/verification, history scan, and local Standards/Spec 0/0 pass. Full local rerun is explicitly not claimed because the host paging-file boundary killed forked JVMs before a complete result. See the [third review-repair receipt](../outputs/PR83-third-review-repair-20260902.md). New-head hosted CI and six review threads remain pending.
+- PR #83 fourth review repair: `6070204f9175ae9f09613eedaebc8c7e7a2b17f5` / tree `732f516e3b5d820f7ee0ef9c56f50063f7f2b759` corrects the public debug staging variable, gives the API 36 proxy a capture ownership token, and rejects unknown non-exported debug tooling. Policy 75/75, AndroidTest Kotlin compile 42 tasks, actual debug APK verification, history scan, and local review 0/0 pass. See the [fourth review-repair receipt](../outputs/PR83-fourth-review-repair-20260902.md). Hosted CI and three new review threads remain pending.
+
+## Historical snapshot — 2026-09-01 H13 Desktop offscreen long-press candidate
+
+This is a bounded Desktop Compose/JVM input receipt, not a Windows OS-pointer, physical-audio or Human acceptance claim. Root owns the independent V21 Standards/Spec review after this candidate.
+
+- Exact base: `0f5b672afb0e6b67e95290c31900ff5c8abc0ef4` / tree `939f954e978b86b509ed162ed68cc4dd5f091372`. Sole-writer lane: `F:/CodexWork/choplab-desktop-longpress-20260901`, branch `codex/desktop-longpress-ui-20260901`.
+- Tested implementation: `1f96ef8db2e6f55efb7b8764900293338e70fd2d` / tree `738c27018ad635631847f36b5382802e2d80f1aa`. Only production delta is `DesktopSamplerController.capturePad` plus its existing-shared-routing imports; shared UI/trim math, audio, decoder, Spotify and other platforms are unchanged.
+- Actual RED: a Mouse Press/700 ms hold/Release in CHOP with Source STOPPED opened TRIM after first overwriting A02 from 16000..32000 to 0..8000. Correct before-state and an unchanged-production BEAT→TRIM control excluded fixture loading and TRIM-fit math. Root read the XML/render/source and explicitly authorized the one-entry correction.
+- Repair: use existing shared CAPTURE routing. A stopped assigned PAD auditions without editing, an empty PAD only selects, a playing Source still captures its observed position, and loading/recording/pending-source guards stay connected. No replacement UI or duplicate state model was added.
+- Fixture: real `OtohiroiDeck`/theme + real Desktop controller in public `ImageComposeScene`; actual Mouse events and rendered semantics/layout. Audio/recorders are synthetic ports, autosave is disabled, and initial synthetic project data enters through public `openProject`. Native app launcher and provider UI are not constructed.
+- Exact-commit readback: `:desktop:desktopLongPressUiTest` PASS, 16 tasks, 14 tests (9 UI / 5 controller), failures/errors/skips 0. Windows 11 10.0, existing JDK17.0.20, Gradle9.7.1, Compose1.11.1; headless/software 1100×1000. Short-click negative deliberately fails missing-TRIM expectations and is not counted as a product RED. Normal/empty click, live capture, nearest-boundary focus and both source edges pass.
+- Evidence: [H13 receipt](../outputs/H13-desktop-longpress-20260901.md) binds commands, test XML, source hashes, raw input traces and before/after PNGs. New dependency/download/version changes 0; only a local F-cache snapshot was used. No packageWindows, APK build, old full suite, ADB, real recording/audio, visible window, OS setting or provider/public action ran.
+- Gate ceiling: `LOCAL_PASS / Desktop component input`. Independent root V21 is pending. Real window/DPI/OS pointer delivery, audio/latency, accessibility speech, device/provider/public and Human gates remain separate. Old primary6033 status digest and creative4978/carrierf305 refs were read back unchanged.
+
+## Historical snapshot — 2026-08-27 Waves 17–18 review-hardened integration bytes
 
 Observed/read back at `2026-08-27T07:20:00+09:00`. Exact input is Wave 18 closeout `fa39c476df239a2c84ec7c9149c69ce70ba9d608`, tree `54a57715ba08b3f528cd1c10f48067bcba1663d1`. Review-repair product anchor is `11d01272758eda774852ea2af1e55fe9d3e5c3b4`, tree `83c205536006518aab5da4d3c33e02500f84c2dd`, on the existing PR #79 branch.
 
@@ -14,7 +45,7 @@ Observed/read back at `2026-08-27T07:20:00+09:00`. Exact input is Wave 18 closeo
 - Windows/SBOM: `ChopLab.exe` 449,024 / `05BA300784A2B98197200A7B5AFCEDD70B62913DB71C1971B23A5E9785281630`, ProductVersion `0.17.0`; app-image 405 files / 176,783,390 bytes / manifest `2D32051661ADF24F1DDA5FFD440A8A2914CD0DFD58F385A6C6389A2BE82934F7`. SBOM JSON 1,580,941 / `578DF19D4737D11FD57ABCE06076D0B579EC00E498664D1AACEB4D718D09FED9`, XML 1,431,139 / `31A3FEC6D5F7BDB15A74FA80741F3740960FF83ED942034003EBD08B85AD667A`.
 - Gate: local parent Standards/Spec review unresolved `0/0`; strongest fresh result is `LOCAL_PASS`. Existing PR #79 exact-head checks, review-thread read-back, mergeability and merged-main checks remain provider gates to observe live. No tag/Release, signing secret, device/ADB, OAuth/provider account, real recording or Human gate is claimed.
 
-## Current snapshot — 2026-08-27 Android complete Beat-loop command admission
+## Historical snapshot — 2026-08-27 Android complete Beat-loop command admission
 
 Observed/read back at `2026-08-27T06:14:46+09:00`. Exact base is Wave 17 clean closeout `8065c898da4461717b4266c9803b555449caf9d7`, tree `1c794400ac7e9fca391f505da5eb907788d293b0`. Product checkpoint `5812c8a993eb57308dd4bf060ca7bd8ccea98ea5`, tree `1255aca145c6d92efa7eaea3f18e13b32e1287de`, is isolated on `codex/choplab-wave18-android-loop-admission-20260827`.
 
@@ -364,7 +395,7 @@ This is the current local product truth for wave 10. It preserves one- and two-c
 - Review/portfolio: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE10_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE10_REVIEW_20260827.md`.
 - Scope/gate: no signer identity, key, secret, workflow, tag, GitHub/Release, OAuth/provider, ADB/device, recording or Human action occurred. Strongest fresh result is `LOCAL_PASS`; physical L/R output, route/focus/Bluetooth/USB, latency/xRun, sound quality, TalkBack/Narrator, `DEVICE_PASS`, `PROVIDER_PASS`, `PUBLIC_PASS` and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 build-tools-only Android release verification
+## Historical snapshot — 2026-08-26 build-tools-only Android release verification
 
 This is the current local release-preparation truth for wave 9. It removes a tool-availability false negative without changing application, package, signing or workflow bytes.
 
@@ -379,7 +410,7 @@ This is the current local release-preparation truth for wave 9. It removes a too
 - Scope/gate: no key, signing identity, secret, workflow, tag, Release, GitHub, device, OAuth/provider, audio recording or Human state was read or changed. Strongest fresh result is `LOCAL_PASS`; `DEVICE_PASS`, `PROVIDER_PASS`, `PUBLIC_PASS` and `HUMAN_GO` remain separate.
 - Reviews: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE9_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE9_REVIEW_20260826.md`. Next local product candidate is one bounded mono→stereo import/live/save/export tracer; another verifier-only wave is not selected.
 
-## Current snapshot — 2026-08-26 A/B four-bar Song tracer
+## Historical snapshot — 2026-08-26 A/B four-bar Song tracer
 
 This is the current local product truth for wave 8. It turns one 16-step beat into two bounded variations and one saved, playable and exportable four-bar arrangement without claiming the advanced Pro Song editor.
 
@@ -396,7 +427,7 @@ This is the current local product truth for wave 8. It turns one 16-step beat in
 - Reviews: local parent Standards/Spec findings 0/0. Portfolio and review live in parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE8_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE8_REVIEW_20260826.md`.
 - Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, xRun/latency/route loss, compact touch, TalkBack/Narrator, iOS runtime integration, device/provider/public/signing and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 Android live terminal-sample parity
+## Historical snapshot — 2026-08-26 Android live terminal-sample parity
 
 This is the current local product truth for wave 7. It fixes the actual Android PAD mix call site rather than extending the earlier primitive/offline oracle.
 
@@ -411,7 +442,7 @@ This is the current local product truth for wave 7. It fixes the actual Android 
 - Reviews: local parent Standards/Spec findings 0/0. Portfolio and review: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE7_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE7_REVIEW_20260826.md`.
 - Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, click/pop, DAC/output capture, latency, sustained polyphony, route loss, device/provider/public/signing and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 CHOKE live/export loop-session parity
+## Historical snapshot — 2026-08-26 CHOKE live/export loop-session parity
 
 This is the current local product truth for wave 6. It makes offline WAV select the same unambiguous Beat-loop owner and eligible vocal companions as live loop start.
 
@@ -427,7 +458,7 @@ This is the current local product truth for wave 6. It makes offline WAV select 
 - Reviews: local parent Standards/Spec findings 0/0. Portfolio and review: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE6_20260826.md` and `work/PAD_CHOPLAB_GOAL_WAVE6_REVIEW_20260826.md`.
 - Gate ceiling: `LOCAL_PASS`. Physical Android/Windows audio, click/pop and latency, route/device behavior, provider/public and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 CHOKE loop-session ownership
+## Historical snapshot — 2026-08-26 CHOKE loop-session ownership
 
 This is the current local product truth for wave 5. It repairs controller-owned playback state and companion ownership without changing project or audio bytes.
 
@@ -442,7 +473,7 @@ This is the current local product truth for wave 5. It repairs controller-owned 
 - Reviews: local parent Standards/Spec findings 0/0. Portfolio: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE5_20260826.md`.
 - Gate ceiling: `LOCAL_PASS`. Physical click/pop quality, realtime fade perception, device/audio, provider/public and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 wide first-entry integrated goal line
+## Historical snapshot — 2026-08-26 wide first-entry integrated goal line
 
 This is the current integrated local line after the first non-copy `/goal` experiment. Earlier wave sections remain immutable evidence for their source revisions.
 
@@ -456,7 +487,7 @@ This is the current integrated local line after the first non-copy `/goal` exper
 - Reviews: fixed-point local parent Standards and Spec passes have no unresolved finding. Portfolio receipt: parent PAD `work/PAD_CHOPLAB_GOAL_PORTFOLIO_WAVE4_20260826.md`.
 - Gate ceiling: `LOCAL_PASS` plus scoped Windows visual. No additional desktop-only visual or copy lane should start before compact/device/Human evidence; physical audio/touch/speech, provider/public and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 continuous goal UX integration
+## Historical snapshot — 2026-08-26 continuous goal UX integration
 
 This is the current integrated local product line for the first three `/goal` UX waves. Individual sections below remain revision-bound evidence for each source branch.
 
@@ -469,7 +500,7 @@ This is the current integrated local product line for the first three `/goal` UX
 - Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence for the Finish state. No ADB/device, recording, physical audio/touch, TalkBack/VoiceOver speech, OAuth/provider, GitHub/public/release or Human action was performed.
 - Portfolio boundary: three local presentation/copy waves are now complete. Do not add a fourth copy-only experiment without Human/device evidence; the next local wave must recompute and select a non-copy product lane.
 
-## Current snapshot — 2026-08-26 Finish action truth UX
+## Historical snapshot — 2026-08-26 Finish action truth UX
 
 This snapshot makes the SAVE stage describe the exact artifacts it preserves or removes. It is a shared presentation/copy change, not a persistence or audio-engine change.
 
@@ -482,7 +513,7 @@ This snapshot makes the SAVE stage describe the exact artifacts it preserves or 
 - Reviews: local parent Standards and Spec passes found no unresolved issue. No child-model claim was made.
 - Gate ceiling: `LOCAL_PASS` plus scoped Windows visual evidence. Physical touch, TalkBack/VoiceOver speech, audio usefulness, device/provider/public and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-26 wide first-entry UX
+## Historical snapshot — 2026-08-26 wide first-entry UX
 
 This snapshot fixes an evidence-backed maximized-Windows layout problem without changing the compact, portrait or large-text contracts.
 
@@ -494,7 +525,7 @@ This snapshot fixes an evidence-backed maximized-Windows layout problem without 
 - Validation: focused RED/GREEN; full 190 tasks. Android 248, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; APKs, Windows package, CycloneDX, configured validation, Python 40, public-surface baseline 411 and documentation-inclusive final 412 PASS.
 - Gate ceiling: `LOCAL_PASS` plus scoped exact-package Windows visual evidence. No compact/device screenshot, Narrator/TalkBack/VoiceOver speech, physical audio, provider/public or Human acceptance was run.
 
-## Current snapshot — 2026-08-26 document operation outcome confidence
+## Historical snapshot — 2026-08-26 document operation outcome confidence
 
 This snapshot makes document dialog outcomes explicit across Android and Windows. It changes feedback copy, not the document bytes or persistence/rendering pipelines.
 
@@ -506,7 +537,7 @@ This snapshot makes document dialog outcomes explicit across Android and Windows
 - Validation: focused RED/GREEN; full 190-task gate. Android 247, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; APKs, Windows package and CycloneDX build PASS; configured validation, Python 40, public-surface baseline 410 and documentation-inclusive final 411 PASS.
 - Gate ceiling: `LOCAL_PASS`. Real document-provider UI/destination, Windows dialog visual result, screen-reader speech, Human confidence, provider/public and device gates remain unverified.
 
-## Current snapshot — 2026-08-26 workflow NEXT and locked-stage reasons
+## Historical snapshot — 2026-08-26 workflow NEXT and locked-stage reasons
 
 This snapshot improves comprehension of the existing four-stage product without adding a tutorial modal, screen, scroll path, schema or audio-engine behavior.
 
@@ -518,7 +549,7 @@ This snapshot improves comprehension of the existing four-stage product without 
 - Validation: focused RED/Green tests; full 190-task local gate. Android unit 244, shared Android/Desktop 34/34, JVM-core 54, Desktop 80; failures/errors/skips 0. Lint errors 0/warnings 7; Android debug/androidTest/unsigned-release APK, Windows app-image and CycloneDX build PASS; configured validation baseline 409 and documentation-inclusive final public-surface 410 PASS; Python policy 40 PASS.
 - Gate ceiling: `LOCAL_PASS`. No device/emulator screenshot, touch, TalkBack/VoiceOver speech, OAuth/provider, GitHub/public, physical audio or Human acceptance was run.
 
-## Current snapshot — 2026-08-26 Android signer verifier recovery
+## Historical snapshot — 2026-08-26 Android signer verifier recovery
 
 This snapshot closes one local release-preparation failure exposed by the existing `v0.17.0` publication path. It does not re-observe GitHub, Spotify, Pixel or any other external gate.
 
@@ -531,7 +562,7 @@ This snapshot closes one local release-preparation failure exposed by the existi
 - History boundary: Windows v0.17 packaging/install receipts remain local or historical scope; Spotify is implemented as metadata/control-only but real authorization remains provider-blocked; Pixel evidence remains revision-bound scoped history. No OAuth, GitHub, ADB/device, signer/secret mutation, publication or Human action occurred.
 - Gate ceiling: `LOCAL_PASS` for this verifier slice. Hosted Actions, a newer-version release, current physical audio/route loss, TalkBack/VoiceOver speech, Spotify provider behavior and `HUMAN_GO` remain separate.
 
-## Current snapshot — 2026-08-25 monophonic PAD retrigger and loop-session ownership
+## Historical snapshot — 2026-08-25 monophonic PAD retrigger and loop-session ownership
 
 This snapshot removes accidental duplicate audio without removing performance layering between different PADs. It is source/host evidence, not a physical listening claim.
 
@@ -546,7 +577,7 @@ This snapshot removes accidental duplicate audio without removing performance la
 - iOS boundary: the preview already calls `stopPlayers()` before Source or PAD play and therefore owns one global audition voice; no Swift code changed and macOS/Simulator was not run.
 - Gate ceiling: `LOCAL_PASS`. Physical listening, click/pop quality, latency, device/route loss, recording, Spotify/provider, public release, accessibility speech and `HUMAN_GO` remain unverified.
 
-## Current snapshot — 2026-08-25 image-guided screen-fitting precision trim
+## Historical snapshot — 2026-08-25 image-guided screen-fitting precision trim
 
 This snapshot binds a screenshot/ImageGen-guided UI improvement to live shared Compose and pure viewport contracts. The generated image is not packaged and is not runtime proof.
 
@@ -560,7 +591,7 @@ This snapshot binds a screenshot/ImageGen-guided UI improvement to live shared C
 - Evidence: parent PAD `work/PAD_CHOPLAB_PRECISION_TRIM_IMAGEGEN_LOCAL_RECEIPT_20260825.md`; outputs `ChopLab-precision-trim-imagegen-target-20260825.png`, `ChopLab-precision-trim-implemented-20260825.png`, and `ChopLab-precision-trim-comparison-20260825.png`.
 - Gate ceiling: `LOCAL_PASS` plus scoped emulator interaction. Physical touch, TalkBack speech, physical audio quality/latency, provider/public and `HUMAN_GO` remain unverified.
 
-## Current snapshot — 2026-08-25 supported-audio picker local candidate
+## Historical snapshot — 2026-08-25 supported-audio picker local candidate
 
 This snapshot fixes platform picker truth. It does not claim that every document provider or physical device renders an identical picker.
 
@@ -573,7 +604,7 @@ This snapshot fixes platform picker truth. It does not claim that every document
 - Evidence: parent PAD `work/PAD_CHOPLAB_AUDIO_PICKER_LOCAL_RECEIPT_20260825.md` and `work/CHOPLAB_AUDIO_PICKER_EVIDENCE_20260825/windows-wav-picker.png`.
 - Gate ceiling: `LOCAL_PASS`. The connected Pixel was not touched; physical Android picker/provider behavior, MP3 decode on that exact device, device audio, provider/public and `HUMAN_GO` remain unverified.
 
-## Current snapshot — 2026-08-25 reversible Quick Sketch local candidate
+## Historical snapshot — 2026-08-25 reversible Quick Sketch local candidate
 
 This snapshot records one bounded cross-platform creative workflow. It does not promote a synthetic Windows prototype into physical-device or human musical-quality evidence.
 
