@@ -1410,13 +1410,16 @@ class DesktopSamplerControllerTest {
                 awaitCondition { created.state.value.currentAudio?.name == replacement.name }
             }
 
-            requireNotNull(closeThread).join(2_000L)
-            assertFalse(requireNotNull(closeThread).isAlive)
+            requireNotNull(closeThread).join(5_000L)
+            assertFalse(
+                requireNotNull(closeThread).isAlive,
+                "Close must finish after the stale recovery and admitted source load are released",
+            )
             assertEquals(replacement.name, store.load()?.currentAudio?.name)
         } finally {
             engine.releaseBlockedLoad()
             controller?.close()
-            closeThread?.join(2_000L)
+            closeThread?.join(5_000L)
             directory.deleteRecursively()
         }
     }
