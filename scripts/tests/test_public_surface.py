@@ -15,6 +15,7 @@ from scripts.check_public_surface import (
     ZipCandidateScanBudget,
     main,
     scan_history,
+    scan_historical_zip_blobs,
     scan_public_path,
     scan_text,
     scan_zip,
@@ -317,6 +318,142 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("audio asset" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+
+    def test_zip_content_scan_detects_bom_secrets_in_binary_and_apk_signing_pairs(self) -> None:
+        token = "github_pat_" + "b" * 24
+        encoded_values = (
+            b"\xff\xfe" + token.encode("utf-16-le"),
+            b"\xfe\xff" + token.encode("utf-16-be"),
+            b"\xff\xfe\x00\x00" + token.encode("utf-32-le"),
+            b"\x00\x00\xfe\xff" + token.encode("utf-32-be"),
+        )
+
+        for index, value in enumerate(encoded_values):
+            with self.subTest(index=index):
+                candidate = BytesIO()
+                with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+                    archive.writestr("payload.bin", value)
+                binary_findings = scan_zip(
+                    BytesIO(candidate.getvalue()),
+                    label=f"bom-binary-{index}.zip",
+                )
+                self.assertTrue(
+                    any("secret-shaped content" in item for item in binary_findings),
+                    binary_findings,
+                )
+
+                base = BytesIO()
+                with zipfile.ZipFile(base, "w", zipfile.ZIP_STORED) as archive:
+                    archive.writestr("notes.txt", b"safe text")
+                archive_bytes = bytearray(base.getvalue())
+                with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
+                    central_directory_start = archive.start_dir
+                eocd_offset = archive_bytes.rfind(b"PK\x05\x06")
+                pair = (
+                    struct.pack("<Q", 4 + len(value))
+                    + struct.pack("<I", 0x42726577)
+                    + value
+                )
+                signing_size = len(pair) + 24
+                signing_block = (
+                    struct.pack("<Q", signing_size)
+                    + pair
+                    + struct.pack("<Q", signing_size)
+                    + b"APK Sig Block 42"
+                )
+                signed_apk = bytearray(
+                    archive_bytes[:central_directory_start]
+                    + signing_block
+                    + archive_bytes[central_directory_start:]
+                )
+                shifted_eocd = eocd_offset + len(signing_block)
+                struct.pack_into(
+                    "<L",
+                    signed_apk,
+                    shifted_eocd + 16,
+                    central_directory_start + len(signing_block),
+                )
+                with TemporaryDirectory() as directory:
+                    apk_path = Path(directory) / f"bom-signing-{index}.apk"
+                    apk_path.write_bytes(signed_apk)
+                    apk_findings = scan_zip(
+                        apk_path,
+                        label=f"bom-signing-{index}.apk",
+                    )
+                self.assertTrue(
+                    any("APK signing-block pair" in item for item in apk_findings),
+                    apk_findings,
+                )
+                self.assertTrue(
+                    any("secret-shaped content" in item for item in apk_findings),
+                    apk_findings,
+                )
+
+    def test_zip_content_scan_does_not_classify_bom_text_as_mpeg(self) -> None:
+        token = "github_pat_" + "c" * 24
+        encoded_values = (
+            b"\xff\xfe" + token.encode("utf-16-le"),
+            b"\xfe\xff" + token.encode("utf-16-be"),
+            b"\xff\xfe\x00\x00" + token.encode("utf-32-le"),
+            b"\x00\x00\xfe\xff" + token.encode("utf-32-be"),
+        )
+
+        for index, value in enumerate(encoded_values):
+            with self.subTest(index=index):
+                candidate = BytesIO()
+                with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+                    archive.writestr("notes.txt", value)
+
+                findings = scan_zip(
+                    BytesIO(candidate.getvalue()),
+                    label=f"bom-text-{index}.zip",
+                )
+
+                self.assertTrue(
+                    any("secret-shaped content" in item for item in findings),
+                    findings,
+                )
+                self.assertFalse(
+                    any("MPEG audio/MP3" in item for item in findings),
+                    findings,
+                )
+
+    def test_zip_content_scan_detects_valid_adts_aac_under_neutral_name(self) -> None:
+        payload = b"\x21" * 16
+        frame_length = 7 + len(payload)
+        header = bytearray(7)
+        header[0] = 0xFF
+        header[1] = 0xF1  # MPEG-4, layer 0, no CRC.
+        header[2] = (1 << 6) | (4 << 2)  # AAC-LC, 44.1 kHz.
+        header[3] = (2 << 6) | ((frame_length >> 11) & 0x03)
+        header[4] = (frame_length >> 3) & 0xFF
+        header[5] = ((frame_length & 0x07) << 5) | 0x1F
+        header[6] = 0xFC  # 0x7FF buffer fullness, one raw data block.
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("payload.bin", bytes(header) + payload)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="adts.zip")
+
+        self.assertTrue(
+            any("audio signature 'ADTS/AAC'" in item for item in findings),
+            findings,
+        )
+
+    def test_zip_content_scan_rejects_zst_suffix_and_zstandard_magic(self) -> None:
+        zstandard_magic = b"\x28\xb5\x2f\xfd" + b"\x00" * 12
+        candidate = BytesIO()
+        with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("payload.zst", b"safe-looking content")
+            archive.writestr("payload.bin", zstandard_magic)
+
+        findings = scan_zip(BytesIO(candidate.getvalue()), label="zstandard.zip")
+
+        self.assertGreaterEqual(
+            sum("nested archive format '.zst'" in item for item in findings),
+            2,
+            findings,
+        )
 
     def test_zip_content_scan_detects_audio_under_binary_suffix(self) -> None:
         wave = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\x00" * 28
@@ -1424,6 +1561,137 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             findings,
         )
         self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_history_scan_recursively_peels_annotated_tags_to_a_blob(self) -> None:
+        first_tag_id = "c" * 40
+        second_tag_id = "d" * 40
+        blob_id = "e" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", "github_pat_" + "e" * 24)
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return f"{first_tag_id}\0tag\0{second_tag_id}\0tag\0".encode(
+                    "ascii"
+                )
+            if arguments == ["cat-file", "-p", second_tag_id]:
+                return f"object {first_tag_id}\ntype tag\n\n".encode("ascii")
+            if arguments == ["cat-file", "-p", first_tag_id]:
+                return f"object {blob_id}\ntype blob\n\n".encode("ascii")
+            if arguments == ["cat-file", "-s", blob_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", blob_id]:
+                return archive_bytes
+            if "--raw" in arguments:
+                return b""
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with patch("scripts.check_public_surface.run_git", side_effect=fake_run_git):
+            findings = scan_history()
+
+        self.assertTrue(any("direct-ref-eeeeeeeeeeee.zip" in item for item in findings))
+        self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
+
+    def test_history_scan_bounds_recursive_annotated_tag_peeling(self) -> None:
+        first_tag_id = "f" * 40
+        second_tag_id = "a" * 40
+        blob_id = "b" * 40
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", "safe")
+        archive_bytes = payload.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            if arguments == ["rev-list", "--objects", "--all"]:
+                return b""
+            if arguments == NON_COMMIT_REF_ARGUMENTS:
+                return f"{first_tag_id}\0tag\0{second_tag_id}\0tag\0".encode(
+                    "ascii"
+                )
+            if arguments == ["cat-file", "-p", second_tag_id]:
+                return f"object {first_tag_id}\ntype tag\n\n".encode("ascii")
+            if arguments == ["cat-file", "-p", first_tag_id]:
+                return f"object {blob_id}\ntype blob\n\n".encode("ascii")
+            if arguments == ["cat-file", "-s", blob_id]:
+                return f"{len(archive_bytes)}\n".encode("ascii")
+            if arguments == ["cat-file", "blob", blob_id]:
+                return archive_bytes
+            if "--raw" in arguments:
+                return b""
+            if arguments == [
+                "log",
+                "--all",
+                "--format=",
+                "--no-ext-diff",
+                "--no-textconv",
+                "-p",
+            ]:
+                return b""
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        with (
+            patch("scripts.check_public_surface.run_git", side_effect=fake_run_git),
+            patch("scripts.check_public_surface.HISTORICAL_TAG_PEEL_LIMIT", 1),
+        ):
+            findings = scan_history()
+
+        self.assertTrue(any("annotated tag peel" in item for item in findings), findings)
+
+    def test_history_zip_roots_and_children_share_decoder_work_budgets(self) -> None:
+        object_ids = ("c" * 40, "d" * 40)
+        archive_bytes = BytesIO()
+        with zipfile.ZipFile(archive_bytes, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", b"safe")
+        content = archive_bytes.getvalue()
+
+        def fake_run_git(arguments: list[str]) -> bytes:
+            for object_id in object_ids:
+                if arguments == ["cat-file", "-s", object_id]:
+                    return f"{len(content)}\n".encode("ascii")
+                if arguments == ["cat-file", "blob", object_id]:
+                    return content
+            self.fail(f"unexpected git arguments: {arguments}")
+
+        observed: list[dict[str, object]] = []
+
+        def fake_scan_zip(source: object, **kwargs: object) -> list[str]:
+            observed.append(kwargs)
+            return []
+
+        with (
+            patch("scripts.check_public_surface.run_git", side_effect=fake_run_git),
+            patch("scripts.check_public_surface.scan_zip", side_effect=fake_scan_zip),
+        ):
+            findings = scan_historical_zip_blobs(
+                [
+                    (object_ids[0], PurePosixPath("first.zip")),
+                    (object_ids[1], PurePosixPath("second.zip")),
+                ]
+            )
+
+        self.assertEqual([], findings)
+        self.assertEqual(2, len(observed))
+        for key in (
+            "_candidate_budget",
+            "_nested_budget",
+            "_apk_binary_budget",
+            "_binary_secret_budget",
+        ):
+            self.assertIn(key, observed[0])
+            self.assertIs(observed[0][key], observed[1][key])
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (

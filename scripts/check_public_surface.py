@@ -61,7 +61,15 @@ ARCHIVE_BINARY_SUFFIXES = AUDIO_SUFFIXES | SENSITIVE_SUFFIXES | {
     ".webp",
 }
 ZIP_NESTED_ARCHIVE_SUFFIXES = {".aab", ".aar", ".apk", ".ipa", ".jar", ".war", ".zip"}
-UNSUPPORTED_NESTED_ARCHIVE_SUFFIXES = {".7z", ".bz2", ".gz", ".tar", ".tgz", ".xz"}
+UNSUPPORTED_NESTED_ARCHIVE_SUFFIXES = {
+    ".7z",
+    ".bz2",
+    ".gz",
+    ".tar",
+    ".tgz",
+    ".xz",
+    ".zst",
+}
 ZIP_MEMBER_SCAN_LIMIT = 512 * 1024
 ZIP_TOTAL_SCAN_LIMIT = 4 * 1024 * 1024
 ZIP_COMPRESSION_RATIO_LIMIT = 100
@@ -83,6 +91,7 @@ CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 512 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_ZIP_RAW_OUTPUT_LIMIT = 4 * 1024 * 1024
+HISTORICAL_TAG_PEEL_LIMIT = 8
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
@@ -118,6 +127,13 @@ APK_SIGNING_BLOCK_PAIR_LIMIT = 128
 APK_BINARY_MEMBER_SCAN_LIMIT = 32 * 1024 * 1024
 APK_BINARY_TOTAL_SCAN_LIMIT = 64 * 1024 * 1024
 EXPLICIT_TEXT_FILE_LIMIT = 16 * 1024 * 1024
+TEXT_BOM_PREFIXES = (
+    b"\xff\xfe\x00\x00",
+    b"\x00\x00\xfe\xff",
+    b"\xff\xfe",
+    b"\xfe\xff",
+)
+ZSTANDARD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
 @dataclass
@@ -135,6 +151,7 @@ class ZipCandidateScanBudget:
     archive_count: int = 0
     compressed_bytes: int = 0
     expanded_bytes: int = 0
+    scope: str = "current/explicit"
 
 
 @dataclass
@@ -286,6 +303,43 @@ def historical_zip_objects() -> tuple[list[tuple[str, PurePosixPath]], list[str]
     return list(candidates.items()), []
 
 
+def peel_annotated_tag(
+    object_id: str,
+    object_type: str,
+    peeled_id: str,
+    peeled_type: str,
+) -> tuple[str, str]:
+    """Peel tag objects to their final object with an explicit depth bound."""
+    current_id = peeled_id or object_id
+    current_type = peeled_type or object_type
+    if current_type != "tag":
+        return current_id, current_type
+
+    seen_ids: set[str] = set()
+    for _ in range(HISTORICAL_TAG_PEEL_LIMIT):
+        if current_id in seen_ids:
+            raise ValueError("annotated tag peel cycle detected")
+        seen_ids.add(current_id)
+        raw_tag = run_git(["cat-file", "-p", current_id])
+        header = raw_tag.splitlines()
+        if len(header) < 2:
+            raise ValueError("annotated tag object header is truncated")
+        object_line = header[0].decode("ascii", errors="replace")
+        type_line = header[1].decode("ascii", errors="replace")
+        if not object_line.startswith("object ") or not type_line.startswith("type "):
+            raise ValueError("annotated tag object header is invalid")
+        current_id = object_line[7:].strip()
+        current_type = type_line[5:].strip()
+        if not current_id or not current_type:
+            raise ValueError("annotated tag object target is missing")
+        if current_type != "tag":
+            return current_id, current_type
+    raise GitScanLimitError(
+        "annotated tag peel exceeds the "
+        f"{HISTORICAL_TAG_PEEL_LIMIT}-tag scan limit"
+    )
+
+
 def historical_non_commit_tree_zip_objects() -> tuple[
     list[tuple[str, PurePosixPath]],
     list[str],
@@ -304,11 +358,37 @@ def historical_non_commit_tree_zip_objects() -> tuple[
 
     tree_ids: set[str] = set()
     direct_blob_ids: set[str] = set()
+    findings: list[str] = []
     for index in range(0, len(fields), 4):
         object_id, object_type, peeled_id, peeled_type = (
             field.decode("ascii", errors="replace").strip()
             for field in fields[index : index + 4]
         )
+        if object_type == "tag" or peeled_type == "tag":
+            try:
+                final_id, final_type = peel_annotated_tag(
+                    object_id,
+                    object_type,
+                    peeled_id,
+                    peeled_type,
+                )
+            except (
+                GitScanLimitError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                subprocess.CalledProcessError,
+            ) as error:
+                findings.append(
+                    "git history ZIP content: annotated tag peel failed "
+                    f"({type(error).__name__})"
+                )
+                continue
+            if final_type == "tree":
+                tree_ids.add(final_id)
+            elif final_type == "blob":
+                direct_blob_ids.add(final_id)
+            continue
         if object_type == "tree":
             tree_ids.add(object_id)
         if peeled_type == "tree":
@@ -326,7 +406,6 @@ def historical_non_commit_tree_zip_objects() -> tuple[
             f"{HISTORICAL_NON_COMMIT_TREE_LIMIT}-tree scan limit"
         ]
 
-    findings: list[str] = []
     if len(direct_blob_ids) > HISTORICAL_NON_COMMIT_BLOB_LIMIT:
         findings.append(
             "git history ZIP content: "
@@ -475,7 +554,29 @@ def decode_text_for_secret_scan(content: bytes) -> str:
     return content.decode("utf-8-sig", errors="replace")
 
 
+def has_valid_adts_frame(content: bytes) -> bool:
+    """Return whether content starts with one complete, structurally valid ADTS frame."""
+    if len(content) < 7 or content[0] != 0xFF or content[1] & 0xF0 != 0xF0:
+        return False
+    if (content[1] >> 1) & 0x03:
+        return False
+    sampling_frequency_index = (content[2] >> 2) & 0x0F
+    if sampling_frequency_index >= 13:
+        return False
+    frame_length = (
+        ((content[3] & 0x03) << 11)
+        | (content[4] << 3)
+        | ((content[5] >> 5) & 0x07)
+    )
+    header_length = 7 if content[1] & 0x01 else 9
+    return frame_length >= header_length and frame_length <= len(content)
+
+
 def audio_payload_signature(content: bytes) -> str | None:
+    # UTF-16/32 text commonly starts with FF FE (or FE FF). Those bytes can
+    # satisfy the loose MPEG frame prefix check below, but are not audio.
+    if content.startswith(TEXT_BOM_PREFIXES):
+        return None
     if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WAVE":
         return "RIFF/WAVE"
     if len(content) >= 12 and content[:4] == b"FORM" and content[8:12] in {
@@ -491,6 +592,8 @@ def audio_payload_signature(content: bytes) -> str | None:
         return "CAF"
     if content.startswith(b"ID3"):
         return "ID3/MP3"
+    if has_valid_adts_frame(content):
+        return "ADTS/AAC"
     if len(content) >= 4:
         version_bits = (content[1] >> 3) & 0x03
         layer_bits = (content[1] >> 1) & 0x03
@@ -536,6 +639,14 @@ def unsupported_nested_archive_signature(content: bytes) -> str | None:
         return ".xz"
     if content.startswith(b"7z\xbc\xaf'\x1c"):
         return ".7z"
+    if content.startswith(ZSTANDARD_MAGIC):
+        return ".zst"
+    if (
+        len(content) >= 4
+        and content[:3] == b"\x50\x2a\x4d"
+        and content[3] == 0x18
+    ):
+        return ".zst"
     if len(content) >= 262 and content[257:262] == b"ustar":
         return ".tar"
     return None
@@ -1038,7 +1149,7 @@ def scan_zip(
     if candidate_budget is not None and _nested_depth == 0:
         if candidate_budget.archive_count + 1 > candidate_budget.archive_limit:
             return [
-                f"{archive_label}: current/explicit ZIP candidate count exceeds "
+                f"{archive_label}: {candidate_budget.scope} ZIP candidate count exceeds "
                 f"the {candidate_budget.archive_limit}-archive scan limit"
             ]
         candidate_budget.archive_count += 1
@@ -1051,7 +1162,7 @@ def scan_zip(
             > candidate_budget.compressed_input_limit
         ):
             findings.append(
-                f"{archive_label}: current/explicit ZIP compressed input exceeds "
+                f"{archive_label}: {candidate_budget.scope} ZIP compressed input exceeds "
                 f"the {candidate_budget.compressed_input_limit}-byte aggregate "
                 "scan limit"
             )
@@ -1061,7 +1172,7 @@ def scan_zip(
             > candidate_budget.expanded_output_limit
         ):
             findings.append(
-                f"{archive_label}: current/explicit ZIP decoded output exceeds "
+                f"{archive_label}: {candidate_budget.scope} ZIP decoded output exceeds "
                 f"the {candidate_budget.expanded_output_limit}-byte aggregate "
                 "scan limit"
             )
@@ -1941,10 +2052,20 @@ def scan_text(label: str, content: str) -> list[str]:
 
 def scan_secret_bytes(label: str, content: bytes) -> list[str]:
     safe_label = redact_secret_text(label)
-    return [
-        f"{safe_label}: secret-shaped content matched {text_pattern.pattern!r}"
+    matched_patterns = {
+        text_pattern.pattern
         for text_pattern, byte_pattern in zip(SECRET_PATTERNS, SECRET_BYTE_PATTERNS)
         if byte_pattern.search(content)
+    }
+    if content.startswith(TEXT_BOM_PREFIXES):
+        decoded = decode_text_for_secret_scan(content)
+        matched_patterns.update(
+            pattern.pattern for pattern in SECRET_PATTERNS if pattern.search(decoded)
+        )
+    return [
+        f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
+        for pattern in SECRET_PATTERNS
+        if pattern.pattern in matched_patterns
     ]
 
 
@@ -1962,6 +2083,15 @@ def scan_historical_zip_blobs(
         )
 
     scanned_container_bytes = 0
+    candidate_budget = ZipCandidateScanBudget(
+        archive_limit=HISTORICAL_ZIP_BLOB_COUNT_LIMIT,
+        compressed_input_limit=HISTORICAL_ZIP_TOTAL_LIMIT,
+        expanded_output_limit=HISTORICAL_ZIP_TOTAL_LIMIT,
+        scope="historical",
+    )
+    nested_budget = ZipNestedScanBudget()
+    apk_binary_budget = ApkContentScanBudget()
+    binary_secret_budget = ZipBinaryScanBudget()
     for object_id, path in list(candidates.items())[:HISTORICAL_ZIP_BLOB_COUNT_LIMIT]:
         size = int(run_git(["cat-file", "-s", object_id]).strip())
         archive_label = f"git history ZIP {path} ({object_id[:12]})"
@@ -1983,7 +2113,16 @@ def scan_historical_zip_blobs(
             findings.append(f"{archive_label}: blob size changed while reading")
             continue
         scanned_container_bytes += len(content)
-        findings.extend(scan_zip(BytesIO(content), label=archive_label))
+        findings.extend(
+            scan_zip(
+                BytesIO(content),
+                label=archive_label,
+                _nested_budget=nested_budget,
+                _candidate_budget=candidate_budget,
+                _apk_binary_budget=apk_binary_budget,
+                _binary_secret_budget=binary_secret_budget,
+            )
+        )
     return findings
 
 
