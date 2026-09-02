@@ -390,6 +390,27 @@ jobs:
             --archive "dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip" \
             --text-file "dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
 
+      - name: Scan every release asset
+        shell: bash
+        run: |
+          mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
+          [[ "${#release_assets[@]}" -gt 0 ]] || {
+            echo 'No downloaded release assets found.' >&2
+            exit 1
+          }
+          scan_args=()
+          for asset in "${release_assets[@]}"; do
+            case "$asset" in
+              *.apk|*.aab|*.aar|*.ipa|*.jar|*.war|*.zip)
+                scan_args+=(--archive "$asset")
+                ;;
+              *)
+                scan_args+=(--text-file "$asset")
+                ;;
+            esac
+          done
+          python3 scripts/check_public_surface.py "${scan_args[@]}"
+
       - name: Write source-bound manifest and checksums
         shell: bash
         env:
@@ -416,6 +437,27 @@ jobs:
               | sort -z \
               | xargs -0 sha256sum
           ) > dist/SHA256SUMS
+
+      - name: Scan final publication glob
+        shell: bash
+        run: |
+          mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
+          [[ "${#release_assets[@]}" -gt 0 ]] || {
+            echo 'No final release assets found.' >&2
+            exit 1
+          }
+          scan_args=()
+          for asset in "${release_assets[@]}"; do
+            case "$asset" in
+              *.apk|*.aab|*.aar|*.ipa|*.jar|*.war|*.zip)
+                scan_args+=(--archive "$asset")
+                ;;
+              *)
+                scan_args+=(--text-file "$asset")
+                ;;
+            esac
+          done
+          python3 scripts/check_public_surface.py "${scan_args[@]}"
 
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2

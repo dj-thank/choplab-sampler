@@ -10,6 +10,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 import zipfile
 import zlib
 from dataclasses import dataclass
@@ -128,9 +129,13 @@ ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
 APK_SIGNING_BLOCK_MAX_SIZE = 16 * 1024 * 1024
 APK_SIGNING_BLOCK_PAIR_LIMIT = 128
+APK_SIGNATURE_SUFFIXES = {".dsa", ".ec", ".rsa"}
 APK_BINARY_MEMBER_SCAN_LIMIT = 32 * 1024 * 1024
 APK_BINARY_TOTAL_SCAN_LIMIT = 64 * 1024 * 1024
 EXPLICIT_TEXT_FILE_LIMIT = 16 * 1024 * 1024
+FINDING_LABEL_LIMIT = 512
+FINDING_COUNT_LIMIT = 256
+FINDING_BYTES_LIMIT = 64 * 1024
 TEXT_BOM_PREFIXES = (
     b"\xff\xfe\x00\x00",
     b"\x00\x00\xfe\xff",
@@ -144,6 +149,13 @@ SECRET_TEXT_PREFIXES = (
     "github_pat_",
     "AKIA",
     "AIza",
+)
+DER_SIGNING_OIDS = (
+    bytes.fromhex("06092a864886f70d010101"),  # rsaEncryption
+    bytes.fromhex("06072a8648ce3d0201"),  # id-ecPublicKey
+    bytes.fromhex("06072a8648ce380401"),  # id-dsa
+    bytes.fromhex("06032b6570"),  # Ed25519
+    bytes.fromhex("06032b6571"),  # Ed448
 )
 
 
@@ -184,6 +196,60 @@ class GitTagPeelBudget:
 
 class GitScanLimitError(RuntimeError):
     """A Git evidence stream exceeded its explicit in-memory/work bound."""
+
+
+@dataclass
+class FindingBudget:
+    count_limit: int = FINDING_COUNT_LIMIT
+    byte_limit: int = FINDING_BYTES_LIMIT
+    count: int = 0
+    byte_count: int = 0
+    truncated: bool = False
+
+    def accept(self, finding: str) -> str | None:
+        bounded = redact_secret_text(finding)
+        encoded_size = len(bounded.encode("utf-8"))
+        marker = redact_secret_text(
+            "public-surface finding limit reached; additional findings omitted"
+        )
+        marker_size = len(marker.encode("utf-8"))
+        if (
+            self.count < self.count_limit
+            and self.byte_count + encoded_size + marker_size <= self.byte_limit
+        ):
+            self.count += 1
+            self.byte_count += encoded_size
+            return bounded
+        if not self.truncated:
+            self.truncated = True
+            if (
+                self.count < self.count_limit
+                and self.byte_count + marker_size <= self.byte_limit
+            ):
+                self.count += 1
+                self.byte_count += marker_size
+                return marker
+        return None
+
+
+class BoundedFindings(list[str]):
+    """A list facade that keeps recursive scanner diagnostics bounded."""
+
+    def __init__(self, budget: FindingBudget | None = None) -> None:
+        super().__init__()
+        self.budget = budget or FindingBudget()
+
+    def append(self, finding: str) -> None:
+        accepted = self.budget.accept(finding)
+        if accepted is not None:
+            super().append(accepted)
+
+    def extend(self, findings: object) -> None:
+        if isinstance(findings, BoundedFindings) and findings.budget is self.budget:
+            super().extend(findings)
+            return
+        for finding in findings:  # type: ignore[union-attr]
+            self.append(finding)
 
 
 def run_git(arguments: list[str]) -> bytes:
@@ -327,6 +393,70 @@ def read_git_blob_prefixes(object_ids: list[str], byte_limit: int = 4) -> dict[s
     return prefixes
 
 
+def read_git_blob_structural_candidates(object_ids: list[str]) -> set[str]:
+    """Stream bounded blob bodies and identify ZIP-compatible structures without retaining them."""
+    if not object_ids:
+        return set()
+    process = subprocess.Popen(
+        ["git", "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if process.stdin is None or process.stdout is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("git blob batch pipes are unavailable")
+    structural: set[str] = set()
+    scanned_bytes = 0
+    try:
+        for object_id in object_ids:
+            process.stdin.write(object_id.encode("ascii") + b"\n")
+            process.stdin.flush()
+            header = process.stdout.readline().decode("ascii").split()
+            if len(header) != 3 or header[0] != object_id or header[1] != "blob":
+                raise RuntimeError("unexpected git blob batch header")
+            size = int(header[2])
+            if scanned_bytes + size > HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT:
+                raise GitScanLimitError(
+                    "git history ZIP structure probe: blob contents total exceeds the "
+                    f"{HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT}-byte scan limit"
+                )
+            scanned_bytes += size
+            with tempfile.SpooledTemporaryFile(
+                max_size=HISTORICAL_ZIP_CONTAINER_LIMIT,
+                mode="w+b",
+            ) as body:
+                remaining = size
+                while remaining:
+                    chunk = process.stdout.read(min(64 * 1024, remaining))
+                    if not chunk:
+                        raise RuntimeError("truncated git blob batch body")
+                    body.write(chunk)
+                    remaining -= len(chunk)
+                if process.stdout.read(1) != b"\n":
+                    raise RuntimeError("missing git blob batch delimiter")
+                body.seek(0)
+                try:
+                    if zipfile.is_zipfile(body):
+                        structural.add(object_id)
+                except (OSError, ValueError):
+                    pass
+        process.stdin.close()
+        return_code = process.wait()
+        if return_code:
+            raise subprocess.CalledProcessError(return_code, process.args)
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        if not process.stdin.closed:
+            process.stdin.close()
+        process.stdout.close()
+    return structural
+
+
 def historical_structural_zip_objects(
     objects: list[tuple[str, PurePosixPath]],
     excluded_object_ids: set[str],
@@ -342,6 +472,8 @@ def historical_structural_zip_objects(
             f"{len(candidates)} objects exceed the "
             f"{HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT}-object scan limit"
         ]
+    if not candidates:
+        return [], []
 
     try:
         metadata = git_object_metadata(list(candidates))
@@ -371,12 +503,36 @@ def historical_structural_zip_objects(
         ]
 
     structural: list[tuple[str, PurePosixPath]] = []
+    findings: list[str] = []
+    body_candidates: list[str] = []
     for object_id in blob_ids:
         path = candidates[object_id]
         prefix = prefixes[object_id]
         if prefix.startswith((ZIP_LOCAL_FILE_SIGNATURE, ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE)):
             structural.append((object_id, path))
-    return structural, []
+        else:
+            body_candidates.append(object_id)
+    # A self-extracting ZIP can carry arbitrary bounded bytes before its local
+    # records.  Stream each remaining body through one Git process and let the
+    # normal bounded parser inspect any ZIP-compatible candidate later.
+    try:
+        body_structures = read_git_blob_structural_candidates(body_candidates)
+    except (
+        GitScanLimitError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        subprocess.CalledProcessError,
+    ) as error:
+        findings.append(
+            "git history ZIP structure probe content failed "
+            f"({type(error).__name__})"
+        )
+        body_structures = set()
+    for object_id in body_candidates:
+        if object_id in body_structures:
+            structural.append((object_id, candidates[object_id]))
+    return structural, findings
 
 
 def historical_zip_objects() -> tuple[list[tuple[str, PurePosixPath]], list[str]]:
@@ -444,6 +600,7 @@ def peel_annotated_tag(
     peeled_type: str,
     *,
     budget: GitTagPeelBudget | None = None,
+    findings: list[str] | None = None,
 ) -> tuple[str, str]:
     """Peel tag objects to their final object with an explicit depth bound."""
     current_id = peeled_id or object_id
@@ -464,6 +621,13 @@ def peel_annotated_tag(
                 )
             budget.operations += 1
         raw_tag = run_git(["cat-file", "-p", current_id])
+        if findings is not None:
+            findings.extend(
+                scan_secret_bytes(
+                    f"git history annotated tag {current_id[:12]}",
+                    raw_tag,
+                )
+            )
         header = raw_tag.splitlines()
         if len(header) < 2:
             raise ValueError("annotated tag object header is truncated")
@@ -523,6 +687,7 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                     peeled_id,
                     peeled_type,
                     budget=peel_budget,
+                    findings=findings,
                 )
             except (
                 GitScanLimitError,
@@ -611,6 +776,23 @@ def historical_non_commit_tree_zip_objects() -> tuple[
                 object_id,
                 PurePosixPath(f"direct-ref-{object_id[:12]}.zip"),
             )
+        else:
+            direct_label = f"git history direct-ref-{object_id[:12]}"
+            unsupported_format = unsupported_nested_archive_signature(content)
+            if unsupported_format is not None:
+                findings.append(
+                    f"{direct_label}: nested archive format "
+                    f"{unsupported_format!r} is not supported"
+                )
+            audio_signature = audio_payload_signature(content)
+            if audio_signature:
+                findings.append(
+                    f"{direct_label}: audio signature {audio_signature!r} detected"
+                )
+            der_signature = der_signing_material_signature(content)
+            if der_signature:
+                findings.append(f"{direct_label}: {der_signature} detected")
+            findings.extend(scan_secret_bytes(direct_label, content))
 
     tree_listing_bytes = 0
     for tree_id in sorted(tree_ids):
@@ -706,6 +888,24 @@ def decode_text_for_secret_scan(content: bytes) -> str:
     return content.decode("utf-8-sig", errors="replace")
 
 
+def iter_text_scan_candidates(content: bytes):
+    """Yield bounded text decodings that can expose an ASCII credential pattern."""
+    yield decode_text_for_secret_scan(content)
+    if content.startswith(TEXT_BOM_PREFIXES):
+        return
+    for encoding in ("utf-16-le", "utf-16-be"):
+        encoded_prefixes = (
+            prefix.encode(encoding) for prefix in SECRET_TEXT_PREFIXES
+        )
+        offsets = {
+            index % 2
+            for prefix in encoded_prefixes
+            if (index := content.find(prefix)) >= 0
+        }
+        for offset in sorted(offsets):
+            yield content[offset:].decode(encoding, errors="replace")
+
+
 def has_valid_adts_frame(content: bytes) -> bool:
     """Return whether content starts with one complete, structurally valid ADTS frame."""
     if len(content) < 7 or content[0] != 0xFF or content[1] & 0xF0 != 0xF0:
@@ -765,6 +965,66 @@ def audio_payload_signature(content: bytes) -> str | None:
     return None
 
 
+def der_signing_material_signature(content: bytes) -> str | None:
+    """Recognize a complete DER sequence carrying a standard key algorithm OID."""
+    outer = der_tlv_value_bounds(content)
+    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
+        return None
+    if any(oid in content for oid in DER_SIGNING_OIDS):
+        return "DER signing material"
+    return None
+
+
+def der_tlv_value_bounds(
+    content: bytes,
+    offset: int = 0,
+) -> tuple[int, int, int] | None:
+    """Return (tag, value-start, value-end) for one bounded DER TLV."""
+    if offset < 0 or offset + 2 > len(content):
+        return None
+    length_octet = content[offset + 1]
+    if length_octet & 0x80:
+        length_size = length_octet & 0x7F
+        if length_size == 0 or length_size > 4:
+            return None
+        length_start = offset + 2
+        length_end = length_start + length_size
+        if length_end > len(content) or content[length_start] == 0:
+            return None
+        value_length = int.from_bytes(content[length_start:length_end], "big")
+        value_start = length_end
+    else:
+        value_length = length_octet
+        value_start = offset + 2
+    value_end = value_start + value_length
+    if value_end > len(content):
+        return None
+    return content[offset], value_start, value_end
+
+
+def der_private_key_material_signature(content: bytes) -> str | None:
+    """Recognize the bounded INTEGER/algorithm/OCTET shape of an unencrypted PKCS#8 key."""
+    outer = der_tlv_value_bounds(content)
+    if outer is None or outer[0] != 0x30 or outer[2] != len(content):
+        return None
+    first = der_tlv_value_bounds(content, outer[1])
+    if first is None:
+        return None
+    second = der_tlv_value_bounds(content, first[2])
+    if second is None:
+        return None
+    third = der_tlv_value_bounds(content, second[2])
+    if (
+        third is None
+        or first[0] != 0x02
+        or second[0] != 0x30
+        or third[0] != 0x04
+        or not any(oid in content[second[1] : second[2]] for oid in DER_SIGNING_OIDS)
+    ):
+        return None
+    return "DER private-key material"
+
+
 def has_m4a_compatible_brand(content: bytes) -> bool:
     """Recognize one bounded ISO-BMFF ftyp box carrying an M4A/M4B brand."""
     if len(content) < 16 or content[4:8] != b"ftyp":
@@ -778,11 +1038,13 @@ def has_m4a_compatible_brand(content: bytes) -> bool:
         box_size = declared_size
     if box_size < 16 or box_size > len(content) or (box_size - 16) % 4:
         return False
-    brands = [content[8:12]] + [
-        content[offset : offset + 4]
+    compatible_brands = {b"M4A ", b"M4B "}
+    if content[8:12] in compatible_brands:
+        return True
+    return any(
+        content[offset : offset + 4] in compatible_brands
         for offset in range(16, box_size, 4)
-    ]
-    return any(brand in {b"M4A ", b"M4B "} for brand in brands)
+    )
 
 
 def is_zip_compatible_payload(content: bytes) -> bool:
@@ -1085,6 +1347,16 @@ def is_apk_archive(
     return not isinstance(source, BytesIO) and Path(source).suffix.lower() == ".apk"
 
 
+def is_apk_signature_path(path: PurePosixPath, apk_content_context: bool) -> bool:
+    parts = tuple(part.lower() for part in path.parts)
+    return (
+        apk_content_context
+        and len(parts) >= 2
+        and parts[-2] == "meta-inf"
+        and path.suffix.lower() in APK_SIGNATURE_SUFFIXES
+    )
+
+
 def preflight_zip_directory(
     source: Path | PurePosixPath | BytesIO,
     *,
@@ -1299,13 +1571,15 @@ def scan_zip(
     _apk_content_context: bool = False,
     _apk_binary_budget: ApkContentScanBudget | None = None,
     _binary_secret_budget: ZipBinaryScanBudget | None = None,
+    _finding_budget: FindingBudget | None = None,
 ) -> list[str]:
-    findings: list[str] = []
+    finding_budget = _finding_budget or FindingBudget()
+    findings: BoundedFindings = BoundedFindings(finding_budget)
     scanned_bytes = 0
     scanned_compressed_bytes = 0
     scanned_large_binary_bytes = 0
     scanned_large_binary_compressed_bytes = 0
-    archive_label = label or str(source)
+    archive_label = redact_secret_text(label or str(source))
     nested_budget = _nested_budget or ZipNestedScanBudget()
     candidate_budget = _candidate_budget
     apk_archive = is_apk_archive(source, _container_path)
@@ -1373,7 +1647,10 @@ def scan_zip(
             findings.append(
                 f"{metadata_label}: audio signature {audio_signature!r} detected"
             )
-        findings.extend(scan_text(metadata_label, decode_text_for_secret_scan(content)))
+        der_signature = der_signing_material_signature(content)
+        if der_signature:
+            findings.append(f"{metadata_label}: {der_signature} detected")
+        findings.extend(scan_text_bytes(metadata_label, content))
         return True
 
     try:
@@ -1832,6 +2109,7 @@ def scan_zip(
                             _apk_content_context=apk_content_context,
                             _apk_binary_budget=apk_binary_budget,
                             _binary_secret_budget=binary_secret_budget,
+                            _finding_budget=finding_budget,
                         )
                     )
                     continue
@@ -2135,6 +2413,7 @@ def scan_zip(
                             _apk_content_context=apk_content_context,
                             _apk_binary_budget=apk_binary_budget,
                             _binary_secret_budget=binary_secret_budget,
+                            _finding_budget=finding_budget,
                         )
                     )
                     continue
@@ -2144,6 +2423,13 @@ def scan_zip(
                     findings.append(
                         f"{member_label}: audio signature {audio_signature!r} detected"
                     )
+                der_signature = (
+                    der_private_key_material_signature(content)
+                    if is_apk_signature_path(entry, apk_content_context)
+                    else der_signing_material_signature(content)
+                )
+                if der_signature:
+                    findings.append(f"{member_label}: {der_signature} detected")
                 if (
                     bounded_apk_binary
                     or bounded_binary_secret
@@ -2254,6 +2540,7 @@ def scan_zip(
                                                 _apk_content_context=apk_content_context,
                                                 _apk_binary_budget=apk_binary_budget,
                                                 _binary_secret_budget=binary_secret_budget,
+                                                _finding_budget=finding_budget,
                                             )
                                         )
                                         continue
@@ -2277,6 +2564,12 @@ def redact_secret_text(content: str) -> str:
     redacted = content
     for pattern in SECRET_PATTERNS:
         redacted = pattern.sub("<redacted-secret>", redacted)
+    if len(redacted) > FINDING_LABEL_LIMIT:
+        marker = "...<truncated>..."
+        retained = FINDING_LABEL_LIMIT - len(marker)
+        head = retained // 2
+        tail = retained - head
+        redacted = redacted[:head] + marker + redacted[-tail:]
     return redacted
 
 
@@ -2286,6 +2579,22 @@ def scan_text(label: str, content: str) -> list[str]:
         f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
         for pattern in SECRET_PATTERNS
         if pattern.search(content)
+    ]
+
+
+def scan_text_bytes(label: str, content: bytes) -> list[str]:
+    """Scan ordinary bounded bytes through UTF-8 and targeted BOM-less UTF-16 views."""
+    matched_patterns = {
+        pattern.pattern
+        for decoded in iter_text_scan_candidates(content)
+        for pattern in SECRET_PATTERNS
+        if pattern.search(decoded)
+    }
+    safe_label = redact_secret_text(label)
+    return [
+        f"{safe_label}: secret-shaped content matched {pattern.pattern!r}"
+        for pattern in SECRET_PATTERNS
+        if pattern.pattern in matched_patterns
     ]
 
 
@@ -2344,6 +2653,7 @@ def scan_historical_zip_blobs(
     nested_budget = ZipNestedScanBudget()
     apk_binary_budget = ApkContentScanBudget()
     binary_secret_budget = ZipBinaryScanBudget()
+    finding_budget = FindingBudget()
     for object_id, path in list(candidates.items())[:HISTORICAL_ZIP_BLOB_COUNT_LIMIT]:
         size = int(run_git(["cat-file", "-s", object_id]).strip())
         archive_label = f"git history ZIP {path} ({object_id[:12]})"
@@ -2373,6 +2683,7 @@ def scan_historical_zip_blobs(
                 _candidate_budget=candidate_budget,
                 _apk_binary_budget=apk_binary_budget,
                 _binary_secret_budget=binary_secret_budget,
+                _finding_budget=finding_budget,
             )
         )
     return findings
@@ -2464,11 +2775,7 @@ def scan_public_path(
             )
         )
         return findings
-    try:
-        content = raw_content.decode("utf-8")
-    except UnicodeDecodeError:
-        return findings
-    findings.extend(scan_text(str(path), content))
+    findings.extend(scan_text_bytes(str(path), raw_content))
     return findings
 
 
@@ -2499,7 +2806,7 @@ def scan_explicit_text_file(
     audio_signature = audio_payload_signature(content)
     if audio_signature:
         findings.append(f"{path}: audio signature {audio_signature!r} detected")
-    findings.extend(scan_text(str(path), decode_text_for_secret_scan(content)))
+    findings.extend(scan_text_bytes(str(path), content))
     return findings
 
 
