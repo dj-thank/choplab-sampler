@@ -883,6 +883,51 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("not a valid PKCS#7" in item for item in findings), findings)
 
+    def test_apk_signature_container_rejects_pkcs12_inside_signed_attributes(self) -> None:
+        def der(tag: int, value: bytes) -> bytes:
+            length = len(value)
+            if length < 0x80:
+                encoded_length = bytes((length,))
+            else:
+                raw = length.to_bytes((length.bit_length() + 7) // 8, "big")
+                encoded_length = bytes((0x80 | len(raw),)) + raw
+            return bytes((tag,)) + encoded_length + value
+
+        signed_data_oid = bytes.fromhex("06092a864886f70d010702")
+        data_oid = bytes.fromhex("06092a864886f70d010701")
+        sha256_oid = bytes.fromhex("0609608648016503040201")
+        legacy_pbe_oid = bytes.fromhex("060a2a864886f70d010c0103")
+        algorithm = der(0x30, sha256_oid)
+        pfx = der(
+            0x30,
+            der(0x02, b"\x03") + der(0x30, data_oid) + der(0x30, legacy_pbe_oid),
+        )
+        signer = der(
+            0x30,
+            der(0x02, b"\x01")
+            + der(0x30, der(0x30, b"") + der(0x02, b"\x01"))
+            + algorithm
+            + der(0xA0, pfx)
+            + algorithm
+            + der(0x04, b"x"),
+        )
+        signed_data = der(
+            0x30,
+            der(0x02, b"\x01")
+            + der(0x31, algorithm)
+            + der(0x30, data_oid)
+            + der(0x31, signer),
+        )
+        signature_container = der(0x30, signed_data_oid + der(0xA0, signed_data))
+        with TemporaryDirectory() as directory:
+            apk_path = Path(directory) / "attribute-pfx.apk"
+            with zipfile.ZipFile(apk_path, "w", zipfile.ZIP_STORED) as archive:
+                archive.writestr("META-INF/EVIL.RSA", signature_container)
+
+            findings = scan_zip(apk_path)
+
+        self.assertTrue(any("PKCS#12 container" in item for item in findings), findings)
+
     def test_zip_content_scan_rejects_legacy_pkcs12_under_neutral_name(self) -> None:
         def der(tag: int, value: bytes) -> bytes:
             return bytes((tag, len(value))) + value
@@ -1853,11 +1898,16 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             info.create_system = 3
             info.external_attr = (stat.S_IFLNK | 0o777) << 16
             archive.writestr(info, "../../escape")
+            drive_relative = zipfile.ZipInfo("drive-link")
+            drive_relative.create_system = 3
+            drive_relative.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(drive_relative, "C:..\\escape")
 
         findings = scan_zip(BytesIO(candidate.getvalue()), label="symlink.zip")
 
         self.assertTrue(any("symbolic-link target" in item for item in findings), findings)
         self.assertTrue(any("parent traversal" in item for item in findings), findings)
+        self.assertTrue(any("drive-qualified" in item for item in findings), findings)
 
     def test_zip_content_scan_recognizes_checksum_valid_v7_tar(self) -> None:
         payload = b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt " + b"\0" * 28
@@ -3554,6 +3604,37 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("history binary", result.stderr)
         self.assertIn("secret-shaped content", result.stderr)
         self.assertNotIn(token.decode("ascii"), result.stderr)
+
+    def test_history_scan_rejects_printable_audio_signature(self) -> None:
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+            target = repository / "payload.dat"
+
+            def git(*arguments: str) -> None:
+                subprocess.run(
+                    ["git", *arguments], cwd=repository, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+
+            git("init", "--quiet")
+            git("config", "user.email", "fixture@example.invalid")
+            git("config", "user.name", "Public Surface Fixture")
+            target.write_bytes(b"#!AMR\n" + b"A" * 5_000)
+            git("add", "payload.dat")
+            git("commit", "--quiet", "-m", "add payload")
+            target.unlink()
+            git("add", "-u")
+            git("commit", "--quiet", "-m", "remove payload")
+
+            script = Path(__file__).resolve().parents[2] / "scripts" / "check_public_surface.py"
+            result = subprocess.run(
+                [sys.executable, str(script), "--history"], cwd=repository,
+                check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8",
+            )
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("AMR-NB", result.stderr)
 
     def test_history_scan_dispatches_each_commit_message_independently(self) -> None:
         with TemporaryDirectory() as directory:
