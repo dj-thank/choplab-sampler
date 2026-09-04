@@ -1112,6 +1112,10 @@ class DesktopSamplerController(
     override fun redoEdit() = applyHistoryOperation(HistoryOperation.REDO)
 
     override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
+        com.choplab.sampler.model.projectEditBlockedReason(mutableState.value)?.let {
+            setStatus(it)
+            return
+        }
         val bankIndex = SamplerConfig.DRUM_BANK_INDEX
         if (
             drumKitApplyDecision(mutableState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&

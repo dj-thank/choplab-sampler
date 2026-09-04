@@ -22,7 +22,7 @@ fun arrangementStudioPresentation(state: SamplerUiState): ArrangementStudioPrese
     val arrangement = state.materializedPatternArrangement()
     val selected = patternVariationLabel(arrangement.selectedSlot)
     val destination = patternVariationLabel(1 - arrangement.selectedSlot)
-    val enabled = !state.transportPlaying
+    val enabled = !state.transportPlaying && externalDocumentActionsEnabled(state)
     return ArrangementStudioPresentation(
         selectedSlot = arrangement.selectedSlot,
         selectedPatternLabel = "パターン${selected}を編集中",
@@ -37,7 +37,11 @@ fun arrangementStudioPresentation(state: SamplerUiState): ArrangementStudioPrese
         songModeEnabled = arrangement.songModeEnabled,
         playbackModeLabel = if (arrangement.songModeEnabled) "Song 4小節" else "Pattern 1小節",
         editEnabled = enabled,
-        guidance = if (enabled) {
+        guidance = if (state.isLoading) {
+            "処理が終わるまでお待ちください"
+        } else if (!externalDocumentActionsEnabled(state)) {
+            "録音をSTOPしてからA/Bを編集してください"
+        } else if (enabled) {
             "A/Bを選び、閉じて16ステップを編集。4小節の並びは再生・WAV書出しへ反映されます"
         } else {
             "ビートを停止してからA/Bや4小節の並びを変更してください"

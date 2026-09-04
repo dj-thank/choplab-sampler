@@ -1,5 +1,13 @@
 # Project state
 
+## Current snapshot — 2026-09-05 UI and edit admission audit
+
+Base `e5aa359`, same isolated refinement branch. Save now has six actions in four 56dp rows, compact counters and scroll-safe layout. Destructive editing moved to the arrangement context. Shared timed/content-bound confirmation replaces the separate copy path and binds PAD selection. Busy/no-op UI states and Android/Windows kit edit admission are aligned; Android ordinary edits reject loading while owned vocal completion can commit. Dormant autoChopTransient now guards every terminal path with the existing operation epoch (no current UI caller).
+
+Final validation: 777 standard tests + 29 UI/controller checks (12 controller checks overlap), failures/errors/skips 0; Android lint/APK/androidTest compile, Windows package, project policy PASS. Source review and selected rendered/input scenarios only; physical audio/recording, Android ViewModel E2E, iOS and public/Human gates not claimed. [Report and evidence](../outputs/ui-audit-refinement-20260905.md); [completed plan](../plans/completed/ui-audit-refinement-20260905.md).
+
+## Previous snapshots
+
 ## Current snapshot — 2026-09-05 pattern editing refinement
 
 Isolated branch `codex/choplab-production-refinement-20260905` starts at fetched main `bed7a55`. This new user-authorized milestone supersedes the prior selected release plan for local product work; existing release artifacts and canonical dirty checkout remain preserved.

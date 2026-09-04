@@ -398,17 +398,6 @@ fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentati
         )
     }
 
-data class FinishClearActionPresentation(
-    val label: String,
-    val confirmLabel: String,
-)
-
-fun finishClearActionPresentation(): FinishClearActionPresentation =
-    FinishClearActionPresentation(
-        label = "ビート配置を消す\nCLEAR STEPS",
-        confirmLabel = "もう一度で配置を削除",
-    )
-
 data class CaptureInputPolicy(
     val fileEnabled: Boolean,
     val microphoneEnabled: Boolean,
@@ -429,7 +418,7 @@ fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy {
 }
 
 fun externalDocumentActionsEnabled(state: SamplerUiState): Boolean =
-    !state.isLoading && state.recordingSession == RecordingSession.Idle
+    com.choplab.sampler.model.projectEditBlockedReason(state) == null
 
 data class RecordingControlPresentation(
     val label: String,

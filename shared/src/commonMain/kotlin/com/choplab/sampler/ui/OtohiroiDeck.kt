@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -326,7 +327,7 @@ fun OtohiroiDeck(
                                 },
                                 onContinue = {
                                     val policy = startChopPolicy(state.sourceUiPhase())
-                                    if (policy.enabled) {
+                                    if (policy.enabled && externalDocumentActionsEnabled(state)) {
                                         if (policy.prepareMelodyDestination) {
                                             viewModel.prepareDefaultChopDestination()
                                         }
@@ -407,11 +408,6 @@ fun OtohiroiDeck(
                                 onExportBeat = onExportBeat,
                                 onOpenProject = onOpenProject,
                                 onSaveProject = onSaveProject,
-                                onBackToArrange = {
-                                    viewModel.stopSourceForWorkspaceChange()
-                                    viewModel.ensurePlayablePadSelected()
-                                    stageName = WorkflowStage.BEAT.name
-                                },
                                 viewModel = viewModel,
                             )
                         }
@@ -705,9 +701,9 @@ private fun ChopSourceControlRow(
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
         MachineButton(
-            label = presentation.primaryActionLabel,
+            label = if (state.isLoading) "音声を読込中\nお待ちください" else presentation.primaryActionLabel,
             onClick = viewModel::toggleChopPlayback,
-            enabled = state.currentAudio != null && presentation.primaryEnabled,
+            enabled = externalDocumentActionsEnabled(state) && state.currentAudio != null && presentation.primaryEnabled,
             active = presentation.captureMode,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
@@ -715,7 +711,7 @@ private fun ChopSourceControlRow(
         MachineButton(
             label = "高さ -\nKEY",
             onClick = { viewModel.setMasterPitch(state.masterPitchSemitones - 1f) },
-            enabled = state.currentAudio != null,
+            enabled = state.currentAudio != null && externalDocumentActionsEnabled(state),
             modifier = Modifier.width(48.dp).fillMaxHeight(),
             compact = true,
         )
@@ -727,7 +723,7 @@ private fun ChopSourceControlRow(
         MachineButton(
             label = "高さ +\nKEY",
             onClick = { viewModel.setMasterPitch(state.masterPitchSemitones + 1f) },
-            enabled = state.currentAudio != null,
+            enabled = state.currentAudio != null && externalDocumentActionsEnabled(state),
             modifier = Modifier.width(48.dp).fillMaxHeight(),
             compact = true,
         )
@@ -1737,7 +1733,7 @@ private fun SelectedPadQuickEditor(
             MachineButton(
                 label = "KEY -",
                 onClick = { viewModel.setSelectedPadPitch(pad.pitchSemitones - 1f) },
-                enabled = pad.isAssigned,
+                enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                 modifier = Modifier.width(48.dp).fillMaxHeight(),
                 compact = true,
             )
@@ -1749,7 +1745,7 @@ private fun SelectedPadQuickEditor(
             MachineButton(
                 label = "KEY +",
                 onClick = { viewModel.setSelectedPadPitch(pad.pitchSemitones + 1f) },
-                enabled = pad.isAssigned,
+                enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                 modifier = Modifier.width(48.dp).fillMaxHeight(),
                 compact = true,
             )
@@ -1757,7 +1753,7 @@ private fun SelectedPadQuickEditor(
                 QuickCycleButton(
                     label = "音色",
                     value = "${toneCharacterLabel(pad.tone)} ${(pad.tone * 100).toInt()}%",
-                    enabled = pad.isAssigned,
+                    enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                     onClick = {
                         viewModel.setSelectedPadTone(nextTonePreset(pad.tone))
                     },
@@ -1766,7 +1762,7 @@ private fun SelectedPadQuickEditor(
                 QuickCycleButton(
                     label = "音量",
                     value = "${(pad.gain * 100).toInt()}%",
-                    enabled = pad.isAssigned,
+                    enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                     onClick = { viewModel.setSelectedPadGain(nextLevelPreset(pad.gain)) },
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -1776,6 +1772,7 @@ private fun SelectedPadQuickEditor(
                     label = if (largeText) "調整\nEDIT" else "音を整える\nPAD EDIT",
                     contentLabel = "音を整える\nPAD EDIT",
                     onClick = onOpenDetails,
+                    enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     compact = true,
                 )
@@ -1791,7 +1788,7 @@ private fun SelectedPadQuickEditor(
                     value = pad.tone,
                     valueRange = 0f..1f,
                     valueLabel = "${(pad.tone * 100).toInt()}%",
-                    enabled = pad.isAssigned,
+                    enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                     onValueChange = viewModel::setSelectedPadTone,
                     modifier = Modifier.weight(1f),
                 )
@@ -1800,7 +1797,7 @@ private fun SelectedPadQuickEditor(
                     value = pad.gain,
                     valueRange = 0f..1.5f,
                     valueLabel = "${(pad.gain * 100).toInt()}%",
-                    enabled = pad.isAssigned,
+                    enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
                     onValueChange = viewModel::setSelectedPadGain,
                     modifier = Modifier.weight(1f),
                 )
@@ -1938,6 +1935,17 @@ private fun PadEditor(
     gap: Dp,
     modifier: Modifier,
 ) {
+    if (!externalDocumentActionsEnabled(state)) {
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
+            BeginnerCoachBar(
+                text = com.choplab.sampler.model.projectEditBlockedReason(state).orEmpty(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            )
+            MachineButton(label = "PADへ戻る", onClick = onReturn,
+                modifier = Modifier.fillMaxWidth().height(48.dp))
+        }
+        return
+    }
     val pad = state.selectedPadModel()
     Column(
         modifier = modifier
@@ -1984,7 +1992,7 @@ private fun PadEditor(
                 modifier = Modifier.weight(1f),
             )
             PadEditorPage.PLAY -> PlayModeEditor(
-                pad = pad,
+                state = state,
                 viewModel = viewModel,
                 controlHeight = controlHeight,
                 gap = gap,
@@ -2250,12 +2258,14 @@ private fun ParameterEditor(
 
 @Composable
 private fun PlayModeEditor(
-    pad: PadModel,
+    state: SamplerUiState,
     viewModel: SamplerDeckController,
     controlHeight: Dp,
     gap: Dp,
     modifier: Modifier,
 ) {
+    val pad = state.selectedPadModel()
+    val editable = pad.isAssigned && externalDocumentActionsEnabled(state)
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(gap),
@@ -2269,7 +2279,7 @@ private fun PlayModeEditor(
             MachineButton(
                 label = "逆再生\nREVERSE",
                 onClick = viewModel::toggleSelectedPadReverse,
-                enabled = pad.isAssigned,
+                enabled = editable,
                 active = pad.reverse,
                 modifier = Modifier
                     .weight(1f)
@@ -2282,7 +2292,7 @@ private fun PlayModeEditor(
                     PadPlayMode.LOOP -> "繰り返す\nLOOP"
                 },
                 onClick = viewModel::toggleSelectedPadPlayMode,
-                enabled = pad.isAssigned,
+                enabled = editable,
                 active = pad.playMode != PadPlayMode.ONE_SHOT,
                 modifier = Modifier
                     .weight(1f)
@@ -2299,7 +2309,7 @@ private fun PlayModeEditor(
                 MachineButton(
                     label = if (group == 0) "同時停止なし\nOFF" else "同時停止 $group\nCHOKE",
                     onClick = { viewModel.setSelectedPadChokeGroup(group) },
-                    enabled = pad.isAssigned,
+                    enabled = editable,
                     active = pad.chokeGroup == group,
                     modifier = Modifier
                         .weight(1f)
@@ -2312,8 +2322,8 @@ private fun PlayModeEditor(
             label = "このPADを空に\nCLEAR PAD",
             confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPad,
-            confirmationKey = pad.globalIndex,
-            enabled = pad.isAssigned,
+            confirmationKey = state.selectedPad to destructiveProjectConfirmationKey(state),
+            enabled = editable,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(controlHeight),
@@ -2464,7 +2474,7 @@ private fun SequenceWorkspace(
                 activeSteps = state.activeSteps,
                 currentStep = state.currentStep,
                 onToggleStep = viewModel::toggleStep,
-                enabled = state.selectedPadModel().canUsePatternSteps(),
+                enabled = patternEditingPresentation(state).fillEnabled,
                 columns = 8,
                 gap = 4.dp,
                 modifier = Modifier
@@ -2479,6 +2489,7 @@ private fun SequenceWorkspace(
                 viewModel = viewModel,
             )
             BeatProductionDock(
+                state = state,
                 stepsVisible = true,
                 height = metrics.productionDockHeightDp.dp,
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
@@ -2557,7 +2568,7 @@ private fun FocusedStepEditor(
                 activeSteps = state.activeSteps,
                 currentStep = state.currentStep,
                 onToggleStep = viewModel::toggleStep,
-                enabled = state.selectedPadModel().canUsePatternSteps(),
+                enabled = patternEditingPresentation(state).fillEnabled,
                 columns = layout.columns,
                 gap = layout.cellGapDp.dp,
                 modifier = Modifier
@@ -2610,6 +2621,7 @@ private fun BeatChopSurface(
     }
     val dock: @Composable () -> Unit = {
         BeatProductionDock(
+                state = state,
             stepsVisible = false,
             height = metrics.productionDockHeightDp.dp,
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
@@ -2811,6 +2823,7 @@ private fun SequenceControlDeck(
                 viewModel = viewModel,
             )
             BeatProductionDock(
+                state = state,
                 stepsVisible = false,
                 height = metrics.productionDockHeightDp.dp,
                 onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
@@ -2846,7 +2859,7 @@ private fun SequenceControlDeck(
                     activeSteps = state.activeSteps,
                     currentStep = state.currentStep,
                     onToggleStep = viewModel::toggleStep,
-                    enabled = state.selectedPadModel().canUsePatternSteps(),
+                    enabled = patternEditingPresentation(state).fillEnabled,
                     columns = 8,
                     gap = 3.dp,
                     modifier = Modifier.weight(1f),
@@ -2887,6 +2900,7 @@ private fun SequenceControlDeck(
             }
         }
         BeatProductionDock(
+                state = state,
             stepsVisible = true,
             height = metrics.productionDockHeightDp.dp,
             onOpenAdd = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
@@ -2970,14 +2984,14 @@ private fun LandscapeToneLevelRow(
         QuickCycleButton(
             label = "音色",
             value = "${toneCharacterLabel(pad.tone)} ${(pad.tone * 100).toInt()}%",
-            enabled = pad.isAssigned,
+            enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
             onClick = { viewModel.setSelectedPadTone(nextTonePreset(pad.tone)) },
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         QuickCycleButton(
             label = "音量",
             value = "${(pad.gain * 100).toInt()}%",
-            enabled = pad.isAssigned,
+            enabled = pad.isAssigned && externalDocumentActionsEnabled(state),
             onClick = { viewModel.setSelectedPadGain(nextLevelPreset(pad.gain)) },
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
@@ -3048,6 +3062,7 @@ private fun LandscapeBeatPlaybackRow(
         MachineButton(
             label = if (state.transportPlaying) "ビート停止\nSTOP" else "ビート再生\nPLAY",
             onClick = viewModel::toggleTransport,
+            enabled = state.transportPlaying || (state.hasAudiblePlaybackPatternContent() && externalDocumentActionsEnabled(state)),
             active = state.transportPlaying,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
@@ -3063,6 +3078,7 @@ private fun LandscapeBeatPlaybackRow(
         MachineButton(
             label = if (state.recordArmed) "演奏を記録中\nREC ON" else "演奏を記録\nREC",
             onClick = viewModel::toggleRecordArm,
+            enabled = externalDocumentActionsEnabled(state),
             active = state.recordArmed,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
@@ -3093,7 +3109,7 @@ private fun PlacementPresetPicker(
             MachineButton(
                 label = label,
                 onClick = { viewModel.fillSelectedPadPattern(grid) },
-                enabled = pad.canUsePatternSteps(),
+                enabled = patternEditingPresentation(state).fillEnabled,
                 active = activeGrid == grid,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 compact = true,
@@ -3104,6 +3120,7 @@ private fun PlacementPresetPicker(
 
 @Composable
 private fun BeatProductionDock(
+    state: SamplerUiState,
     stepsVisible: Boolean,
     height: Dp,
     onOpenAdd: () -> Unit,
@@ -3112,7 +3129,7 @@ private fun BeatProductionDock(
     onStepsVisibleChange: (Boolean) -> Unit,
 ) {
     ProductionDock(
-        items = beatProductionDockItems(stepsVisible),
+        items = beatProductionDockItems(stepsVisible, externalDocumentActionsEnabled(state)),
         height = height,
         gap = 4.dp,
         handlers = mapOf(
@@ -3132,10 +3149,6 @@ private fun ArrangementStudio(
     viewModel: SamplerDeckController,
 ) {
     val presentation = arrangementStudioPresentation(state)
-    var copyConfirmationPending by remember { mutableStateOf(false) }
-    LaunchedEffect(presentation.selectedSlot, presentation.copyNeedsConfirmation) {
-        copyConfirmationPending = false
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -3245,30 +3258,30 @@ private fun ArrangementStudio(
                             )
                         }
                     }
-                    MachineButton(
-                        label = if (copyConfirmationPending) {
-                            "${presentation.copyDestinationLabel}を上書きします\nもう一度で確定"
-                        } else {
-                            "${presentation.copyLabel}\nCOPY THEN EDIT"
-                        },
-                        onClick = {
-                            if (presentation.copyNeedsConfirmation && !copyConfirmationPending) {
-                                copyConfirmationPending = true
-                            } else {
-                                copyConfirmationPending = false
-                                viewModel.duplicateSelectedPatternToOther()
-                            }
-                        },
-                        enabled = presentation.editEnabled,
-                        active = copyConfirmationPending,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                    )
+                    if (presentation.copyNeedsConfirmation) {
+                        ConfirmActionButton(
+                            label = presentation.copyLabel,
+                            confirmLabel = "${presentation.copyDestinationLabel}を上書き\nもう一度で確定",
+                            onConfirm = viewModel::duplicateSelectedPatternToOther,
+                            confirmationKey = destructiveProjectConfirmationKey(state),
+                            enabled = presentation.editEnabled,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            compact = false,
+                        )
+                    } else {
+                        MachineButton(
+                            label = presentation.copyLabel,
+                            onClick = viewModel::duplicateSelectedPatternToOther,
+                            enabled = presentation.editEnabled,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        )
+                    }
                     ConfirmActionButton(
                         label = "このパターンを消す\n${patternVariationLabel(state.patternArrangement.selectedSlot)}のみ",
                         confirmLabel = "この配置だけ削除\nもう一度で確定",
                         onConfirm = viewModel::clearSelectedPattern,
                         enabled = presentation.editEnabled && state.activeSteps.isNotEmpty(),
-                        confirmationKey = state.patternArrangement.selectedSlot to state.activeSteps,
+                        confirmationKey = destructiveProjectConfirmationKey(state),
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                     )
                     Text(
@@ -3317,9 +3330,12 @@ private fun ArrangementStudio(
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
-                    MachineButton(
-                        label = "閉じて16ステップを編集\nEDIT SELECTED PATTERN",
-                        onClick = onDismiss,
+                    ConfirmActionButton(
+                        label = "A/B両方の配置を消す\n音源は保持",
+                        confirmLabel = "A/B両方を削除\nもう一度で確定",
+                        onConfirm = viewModel::clearAllPattern,
+                        confirmationKey = destructiveProjectConfirmationKey(state),
+                        enabled = presentation.editEnabled && state.hasAnyPatternSteps(),
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                     )
                 }
@@ -3453,6 +3469,7 @@ private fun LayerStudio(
                             modifier = Modifier.weight(1f),
                         )
                         LayerStudioPage.DRUMS -> DrumKitStudio(
+                            state = state,
                             selectedKitId = kitId,
                             bankHasContent = state.pads
                                 .subList(
@@ -3490,6 +3507,7 @@ private fun SampleLayerStudio(
     viewModel: SamplerDeckController,
     modifier: Modifier = Modifier,
 ) {
+    val editing = patternEditingPresentation(state)
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val soundRailHeight = (maxHeight - 367.dp).coerceAtLeast(96.dp)
         Column(
@@ -3497,7 +3515,7 @@ private fun SampleLayerStudio(
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             BeginnerCoachBar(
-                text = "メロディー・ドラム・SE・声を選び、好きな間隔で同じビートへ重ねます",
+                text = editing.guidance,
                 modifier = Modifier.fillMaxWidth().height(30.dp),
             )
             BankStrip(state.selectedBank, 48.dp, viewModel::selectPlayableBank)
@@ -3524,7 +3542,7 @@ private fun SampleLayerStudio(
                     MachineButton(
                         label = label,
                         onClick = { viewModel.fillSelectedPadPattern(grid) },
-                        enabled = state.selectedPadModel().canUsePatternSteps(),
+                        enabled = editing.fillEnabled,
                         active = state.selectedPadModel().canUsePatternSteps() &&
                             state.activeSteps.repeatGridForPad(state.selectedPad) == grid,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -3535,7 +3553,8 @@ private fun SampleLayerStudio(
                     label = "配置を消す\nCLEAR",
                     confirmLabel = "もう一度で削除",
                     onConfirm = viewModel::clearSelectedPadPattern,
-                    confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
+                    confirmationKey = state.selectedPad to destructiveProjectConfirmationKey(state),
+                    enabled = editing.clearEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
@@ -3547,10 +3566,7 @@ private fun SampleLayerStudio(
                     MachineButton(
                         label = label,
                         onClick = { viewModel.shiftSelectedPadPattern(offset) },
-                        enabled = !state.isLoading && !state.recordingSession.isActive &&
-                            state.selectedPadModel().canUsePatternSteps() && state.activeSteps.any {
-                                it / SamplerConfig.STEP_COUNT == state.selectedPad
-                            },
+                        enabled = editing.shiftEnabled,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         compact = true,
                     )
@@ -3558,11 +3574,12 @@ private fun SampleLayerStudio(
             }
             BeatLoopControl(state, 62.dp, viewModel)
         }
-}
+    }
 }
 
 @Composable
 private fun DrumKitStudio(
+    state: SamplerUiState,
     selectedKitId: String,
     bankHasContent: Boolean,
     onSelectKit: (String) -> Unit,
@@ -3571,7 +3588,8 @@ private fun DrumKitStudio(
 ) {
     Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         BeginnerCoachBar(
-            text = "5つのオリジナル音色。選ぶだけで初心者向けパターンも入ります",
+            text = com.choplab.sampler.model.projectEditBlockedReason(state)
+                ?: "キットを選ぶとBANK Bへ音色とスタータービートをセットします",
             modifier = Modifier.fillMaxWidth().height(30.dp),
         )
         BuiltInDrumKits.catalog.forEachIndexed { index, kit ->
@@ -3597,13 +3615,15 @@ private fun DrumKitStudio(
                     label = "Bの音色を入替\nKEEP SAFE",
                     confirmLabel = "もう一度で入替",
                     onConfirm = { onApply(true) },
-                    confirmationKey = selectedKitId,
+                    confirmationKey = selectedKitId to destructiveProjectConfirmationKey(state),
+                    enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1.6f).fillMaxHeight(),
                 )
             } else {
                 MachineButton(
                     label = "Bに音色をセット\nKIT + STARTER BEAT",
                     onClick = { onApply(false) },
+                    enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1.6f).fillMaxHeight(),
                     active = true,
                     compact = true,
@@ -4038,6 +4058,7 @@ private fun SequenceTransportRow(
         MachineButton(
             label = if (state.transportPlaying) "ビート停止\nSTOP" else "ビート再生\nPLAY",
             onClick = viewModel::toggleTransport,
+            enabled = state.transportPlaying || (state.hasAudiblePlaybackPatternContent() && externalDocumentActionsEnabled(state)),
             active = state.transportPlaying,
             modifier = Modifier
                 .weight(1f)
@@ -4047,6 +4068,7 @@ private fun SequenceTransportRow(
         MachineButton(
             label = if (state.recordArmed) "演奏を記録中\nREC ON" else "演奏を記録\nREC",
             onClick = viewModel::toggleRecordArm,
+            enabled = externalDocumentActionsEnabled(state),
             active = state.recordArmed,
             modifier = Modifier
                 .weight(1f)
@@ -4057,7 +4079,8 @@ private fun SequenceTransportRow(
             label = "この音を消す\nCLEAR STEPS",
             confirmLabel = "もう一度で削除",
             onConfirm = viewModel::clearSelectedPadPattern,
-            confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
+            confirmationKey = state.selectedPad to destructiveProjectConfirmationKey(state),
+            enabled = patternEditingPresentation(state).clearEnabled,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
@@ -4083,6 +4106,7 @@ private fun TempoRow(
             onDecrease = { viewModel.setBpm(state.bpm - 1f) },
             onIncrease = { viewModel.setBpm(state.bpm + 1f) },
             modifier = Modifier.weight(1f),
+            enabled = externalDocumentActionsEnabled(state),
         )
         StepperControl(
             label = "SWING",
@@ -4090,6 +4114,7 @@ private fun TempoRow(
             onDecrease = { viewModel.setSwing(state.swing - 1f) },
             onIncrease = { viewModel.setSwing(state.swing + 1f) },
             modifier = Modifier.weight(1f),
+            enabled = externalDocumentActionsEnabled(state),
         )
     }
 }
@@ -4101,7 +4126,6 @@ private fun FinishWorkspace(
     onExportBeat: () -> Unit,
     onOpenProject: () -> Unit,
     onSaveProject: () -> Unit,
-    onBackToArrange: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
@@ -4109,11 +4133,10 @@ private fun FinishWorkspace(
     val audibleSteps = state.audiblePlaybackStepCount()
     val ready = state.hasAudiblePlaybackPatternContent()
     val readiness = finishReadinessPresentation(ready)
-    val clearAction = finishClearActionPresentation()
     val summary: @Composable (Modifier) -> Unit = { modifier ->
         MachinePanel(modifier = modifier) {
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
                 Text(
@@ -4132,7 +4155,7 @@ private fun FinishWorkspace(
                     lineHeight = 12.sp,
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
                     horizontalArrangement = Arrangement.spacedBy(gap),
                 ) {
                     ValueDisplay(
@@ -4168,7 +4191,7 @@ private fun FinishWorkspace(
             MachineButton(
                 label = if (state.transportPlaying) "確認を止める\nSTOP" else "ビートを確認\nPLAY BEAT",
                 onClick = viewModel::toggleTransport,
-                enabled = ready,
+                enabled = state.transportPlaying || (ready && externalDocumentActionsEnabled(state)),
                 active = state.transportPlaying,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
@@ -4217,46 +4240,20 @@ private fun FinishWorkspace(
                     compact = true,
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                MachineButton(
-                    label = "ビートへ戻る\nBACK",
-                    onClick = onBackToArrange,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                ConfirmActionButton(
-                    label = clearAction.label,
-                    confirmLabel = clearAction.confirmLabel,
-                    onConfirm = viewModel::clearAllPattern,
-                    enabled = state.hasAnyPatternSteps(),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-            }
         }
     }
 
-    if (metrics.orientation == DeckOrientation.LANDSCAPE) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            summary(Modifier.weight(1.2f).fillMaxHeight())
-            actions(Modifier.weight(0.8f).fillMaxHeight())
-        }
-    } else {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            summary(Modifier.fillMaxWidth().weight(1f))
-            actions(
-                Modifier
-                    .fillMaxWidth()
-                    .height(if (metrics.density == DeckDensity.COMPACT) 202.dp else 238.dp),
-            )
+            summary(Modifier.fillMaxWidth())
+            actions(Modifier.fillMaxWidth().height(224.dp + gap * 3))
         }
     }
 }

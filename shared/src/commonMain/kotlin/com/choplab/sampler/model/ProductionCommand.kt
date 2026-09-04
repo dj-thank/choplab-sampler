@@ -53,11 +53,8 @@ fun reduceProductionCommand(
     if (command is ProductionCommand.SelectSliceAt) {
         return selectSliceAt(state, command.frame)
     }
-    if (state.isLoading) {
-        return sessionFeedback(state, "現在の処理が終わってから編集してください")
-    }
-    if (!editingRequestAllowedDuringRecording(state.recordingSession)) {
-        return sessionFeedback(state, "録音をSTOPしてから編集してください")
+    projectEditBlockedReason(state)?.let { reason ->
+        return sessionFeedback(state, reason)
     }
 
     return when (command) {

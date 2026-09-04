@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| UI監査・編集受付の整合 | LOCAL_PASS | 保存56dp、確認の期限・内容・PAD所有、busy状態の操作制限、録音/読込中kit交換の副作用防止。777通常tests＋29操作checks。詳細はoutputs/ui-audit-refinement-20260905.md。実音声・Android VM E2Eは未確認 |
 | 選択音の配置シフト | LOCAL_PASS | レイヤー画面で前後1step、小節端で折返し。他PADと別A/Bを保持。Undo/Redo・既存保存経路 |
 | 選択A/Bだけの配置消去 | LOCAL_PASS | A/B editorで二度押し確認。音源・別variation・Song順序を保持。transport中拒否 |
 | Reverse ONE_SHOT/GATE resampling tail | 🧪 merged source / current PR CI待ち | PR #74 / `main@029500a`は逆one-shot/gateのcount/renderだけをrealtime cursor順序へ統一。48→60 kHzの旧末尾無音（80→79）、8→48 kHzの1/12-step丸め（12）、2-frame / pitch −5のLOOP/Windows forceLoop 3-element有限境界を固定する。PR #58 product `3b5dd59` / tree `4985a8c`はexact `main@4f56a69`を第二親に持ち、renderer/test `ffd0be2` / `315ec9b`とDesktop adapter test `e4ccb83`を保持する。adapter runtimeはそのrender seamを維持してper-voice ownershipだけを追加する。audible品質・physical Windowsは未確認 |

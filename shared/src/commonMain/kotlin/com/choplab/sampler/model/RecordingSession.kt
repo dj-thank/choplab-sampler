@@ -133,3 +133,10 @@ fun failRecordingSession(state: SamplerUiState, kind: RecordingKind): SamplerUiS
             state
         }
     }
+
+/** Check before producing samples or sending any playback command for a project edit. */
+fun projectEditBlockedReason(state: SamplerUiState): String? = when {
+    state.isLoading -> "現在の処理が終わってから編集してください"
+    !editingRequestAllowedDuringRecording(state.recordingSession) -> "録音をSTOPしてから編集してください"
+    else -> null
+}

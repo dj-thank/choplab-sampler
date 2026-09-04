@@ -38,13 +38,14 @@ fun captureProductionDockItems(state: SamplerUiState): List<ProductionDockItem> 
         SourceUiPhase.PLAYING -> "チョップへ\nOPEN CHOP"
         SourceUiPhase.STOPPING -> "停止中\nPLEASE WAIT"
     }
-    val canContinue = audioReady && sourcePhase != SourceUiPhase.STOPPING
+    val canContinue = externalDocumentActionsEnabled(state) && audioReady && sourcePhase != SourceUiPhase.STOPPING
 
     return buildList {
         if (audioReady) {
             add(
                 ProductionDockItem(
                     intent = ProductionDockIntent.RESET_ALL,
+                    enabled = externalDocumentActionsEnabled(state),
                     label = "新しい制作を始める\nNEW PROJECT",
                     weight = 0.9f,
                     confirmLabel = "もう一度で制作状態を空にする",
@@ -97,10 +98,12 @@ fun chopProductionDockItems(state: SamplerUiState): List<ProductionDockItem> {
             label = "スクラッチ\nSCRATCH",
             enabled = state.currentAudio != null || selectedPadAssigned,
         ),
-    )
+    ).map { item ->
+        if (externalDocumentActionsEnabled(state)) item else item.copy(enabled = false, active = false)
+    }
 }
 
-fun beatProductionDockItems(stepsVisible: Boolean): List<ProductionDockItem> =
+fun beatProductionDockItems(stepsVisible: Boolean, editingEnabled: Boolean = true): List<ProductionDockItem> =
     listOf(
         ProductionDockItem(
             intent = ProductionDockIntent.SHOW_QUICK,
@@ -114,14 +117,17 @@ fun beatProductionDockItems(stepsVisible: Boolean): List<ProductionDockItem> =
         ),
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_ARRANGE,
+            enabled = editingEnabled,
             label = "曲にする\nA/B SONG",
         ),
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_ADD,
+            enabled = editingEnabled,
             label = "音を足す\nADD",
         ),
         ProductionDockItem(
             intent = ProductionDockIntent.OPEN_SCRATCH,
+            enabled = editingEnabled,
             label = "スクラッチ\nSCRATCH",
         ),
     )

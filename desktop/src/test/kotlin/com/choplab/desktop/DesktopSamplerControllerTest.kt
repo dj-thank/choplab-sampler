@@ -50,6 +50,62 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
+    @Test
+    fun drumKitReplacementDuringRecordingHasNoPlaybackOrProjectEffects() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, microphone = FakeRecorder(), autosaveStore = null)
+        try {
+            val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loopPad)
+            controller.toggleBeatLoopControl()
+            controller.toggleVocalRecording()
+            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            assertEquals(loopPad, controller.state.value.loopingPadIndex)
+            val before = controller.state.value
+            val stopped = engine.stoppedPads.toList()
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = true)
+            val after = controller.state.value
+            assertEquals(before.loopingPadIndex, after.loopingPadIndex)
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.activeSteps, after.activeSteps)
+            assertEquals(before.patternArrangement, after.patternArrangement)
+            assertEquals(before.selectedDrumKitId, after.selectedDrumKitId)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(before.recordingSession, after.recordingSession)
+            assertEquals(stopped, engine.stoppedPads.toList())
+            assertEquals("録音をSTOPしてから編集してください", after.statusMessage)
+        } finally { controller.close() }
+    }
+
+    @Test
+    fun drumKitReplacementDuringSourceLoadDoesNotAffectTheOldProject() {
+        val directory = Files.createTempDirectory("choplab-kit-loading").toFile()
+        val source = directory.resolve("loading.wav")
+        WavFileWriter(source, sampleRate = 48000, channelCount = 1).use { it.writePcm16(ShortArray(64)) }
+        val engine = FakeAudioEngine().apply { blockNextLoad = true }
+        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        try {
+            controller.loadWav(source)
+            engine.awaitBlockedLoad()
+            val before = controller.state.value
+            assertTrue(before.isLoading)
+            val stopped = engine.stoppedPads.toList()
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = true)
+            val after = controller.state.value
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.activeSteps, after.activeSteps)
+            assertEquals(before.patternArrangement, after.patternArrangement)
+            assertEquals(before.selectedDrumKitId, after.selectedDrumKitId)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(stopped, engine.stoppedPads.toList())
+            assertEquals("現在の処理が終わってから編集してください", after.statusMessage)
+        } finally {
+            engine.releaseBlockedLoad()
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
     private fun controller(): DesktopSamplerController =
         DesktopSamplerController(JavaSoundWavPlayer(), autosaveStore = null)
 

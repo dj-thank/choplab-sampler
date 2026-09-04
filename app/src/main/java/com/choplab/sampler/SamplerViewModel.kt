@@ -641,10 +641,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
-                            assignVocalTake(audio)
+                            // The validated stop operation owns this completion. Release its
+                            // recording state before entering the ordinary project edit gate.
                             mutableUiState.update {
                                 endRecordingSession(it, RecordingKind.VOCAL_OVERDUB)
                             }
+                            assignVocalTake(audio)
                         }
                     }
                     .onFailure { throwable ->
@@ -694,6 +696,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
+        com.choplab.sampler.model.projectEditBlockedReason(mutableUiState.value)?.let {
+            setStatus(it)
+            return
+        }
         val bankIndex = SamplerConfig.DRUM_BANK_INDEX
         if (
             drumKitApplyDecision(mutableUiState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&
@@ -1065,32 +1071,47 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun autoChopTransient() {
         val snapshot = mutableUiState.value
-        val revisionAtStart = productionSession.revision
+        com.choplab.sampler.model.projectEditBlockedReason(snapshot)?.let {
+            setStatus(it)
+            return
+        }
         val audio = snapshot.currentAudio ?: return
-        viewModelScope.launch(Dispatchers.Default) {
-            withContext(Dispatchers.Main) {
-                mutableUiState.update { it.copy(isLoading = true, statusMessage = "トランジェントを検出しています…") }
-            }
-            val detectedMarkers = TransientDetector.detect(
-                samples = audio.samples,
-                startFrame = snapshot.rangeStartFrame,
-                endFrame = snapshot.rangeEndFrame,
-                sampleRate = audio.sampleRate,
-                maxSlices = SamplerConfig.PADS_PER_BANK,
-                channelCount = audio.channelCount,
-            )
-            val markers = detectedMarkers
-                .map { marker ->
-                    snapToZeroCrossing(
-                        audio = audio,
-                        targetFrame = marker,
-                        lowerBound = snapshot.rangeStartFrame + minimumSliceFrames(audio.sampleRate),
-                        upperBound = snapshot.rangeEndFrame - minimumSliceFrames(audio.sampleRate),
-                    )
+        val revisionAtStart = productionSession.revision
+        val operation = projectOperations.begin()
+        mutableUiState.update { it.copy(isLoading = true, statusMessage = "トランジェントを検出しています…") }
+        viewModelScope.launch {
+            val markers = try {
+                withContext(Dispatchers.Default) {
+                    TransientDetector.detect(
+                        samples = audio.samples,
+                        startFrame = snapshot.rangeStartFrame,
+                        endFrame = snapshot.rangeEndFrame,
+                        sampleRate = audio.sampleRate,
+                        maxSlices = SamplerConfig.PADS_PER_BANK,
+                        channelCount = audio.channelCount,
+                    ).map { marker ->
+                        snapToZeroCrossing(
+                            audio = audio,
+                            targetFrame = marker,
+                            lowerBound = snapshot.rangeStartFrame + minimumSliceFrames(audio.sampleRate),
+                            upperBound = snapshot.rangeEndFrame - minimumSliceFrames(audio.sampleRate),
+                        )
+                    }.distinct().sorted()
                 }
-                .distinct()
-                .sorted()
-            withContext(Dispatchers.Main) {
+            } catch (cancelled: CancellationException) {
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update { it.copy(isLoading = false, statusMessage = "自動チョップを中止しました") }
+                }
+                throw cancelled
+            } catch (failure: Exception) {
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update {
+                        it.copy(isLoading = false, statusMessage = "自動チョップに失敗しました: ${failure.message ?: "不明なエラー"}")
+                    }
+                }
+                return@launch
+            }
+            projectOperations.completeIfCurrent(operation) {
                 val current = mutableUiState.value
                 if (!transientAnalysisStillCurrent(
                         snapshot = snapshot,
@@ -1099,16 +1120,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         currentRevision = productionSession.revision,
                     )
                 ) {
-                    mutableUiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            statusMessage = "範囲が変更されたため、自動チョップ結果を破棄しました",
-                        )
+                    mutableUiState.update {
+                        it.copy(isLoading = false, statusMessage = "範囲が変更されたため、自動チョップ結果を破棄しました")
                     }
                 } else {
+                    // Only this current operation may release the edit barrier and publish.
+                    mutableUiState.update { it.copy(isLoading = false) }
                     commitEdit { state ->
                         state.copy(
-                            isLoading = false,
                             sliceMarkers = markers,
                             activeSliceIndex = if (markers.isEmpty()) null else 0,
                             manualChopEnabled = false,
@@ -2013,8 +2032,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         mergeKey: String? = null,
         transform: (SamplerUiState) -> SamplerUiState,
     ) {
-        if (rejectEditWhileRecording()) return
         val before = mutableUiState.value
+        com.choplab.sampler.model.projectEditBlockedReason(before)?.let {
+            setStatus(it)
+            return
+        }
         val after = transform(before)
         val transition = productionSession.applyEdit(before, after, mergeKey)
         if (transition.mutation == ProductionMutation.NONE) return

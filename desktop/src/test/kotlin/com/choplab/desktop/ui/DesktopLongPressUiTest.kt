@@ -44,6 +44,112 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
+    fun chopAndDrumKitControlsExplainAndRejectBusyDisplayState() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.displayOverride.value = { it.copy(isLoading = true) }
+                fixture.settle()
+                for (label in listOf("音声を読込中", "微調整", "音を足す", "スクラッチ")) {
+                    assertTrue(fixture.nodeWithDescription(label).config.contains(SemanticsProperties.Disabled), label)
+                }
+                fixture.capture("audit-chop-loading")
+                fixture.mousePress("工程3", 40)
+                for (label in listOf("音を足す", "曲にする", "スクラッチ", "ビート再生", "演奏を記録", "音を整える")) {
+                    assertTrue(fixture.nodeWithDescription(label).config.contains(SemanticsProperties.Disabled), label)
+                }
+                fixture.capture("audit-beat-loading")
+                fixture.displayOverride.value = null
+                fixture.settle()
+                fixture.mousePress("音を足す", 40)
+                fixture.displayOverride.value = { it.copy(recordingSession = com.choplab.sampler.model.RecordingSession.Active(
+                    com.choplab.sampler.model.RecordingKind.SOURCE_MICROPHONE,
+                    com.choplab.sampler.model.RecordingPhase.RECORDING)) }
+                fixture.settle()
+                val apply = fixture.nodeWithDescription("Bに音色をセット")
+                assertTrue(apply.config.contains(SemanticsProperties.Disabled))
+                val before = fixture.controller.state.value.pads
+                fixture.mousePress(apply, 40)
+                assertEquals(before, fixture.controller.state.value.pads)
+                fixture.capture("audit-drums-recording")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun selectedPadClearDisarmsWhenSelectionChanges() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.toggleStep(0)
+                fixture.controller.selectPlayablePad(1)
+                fixture.controller.toggleStep(4)
+                fixture.controller.selectPlayablePad(0)
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("音を足す", 40)
+                fixture.mousePress("SOUNDS", 40)
+                fixture.mousePress("配置を消す", 40)
+                fixture.controller.selectPlayablePad(1)
+                fixture.settle()
+                assertTrue(fixture.hasDescription("配置を消す"))
+                fixture.mousePress("配置を消す", 40)
+                assertEquals(setOf(0, 20), fixture.controller.state.value.activeSteps)
+                fixture.mousePress("もう一度で削除", 40)
+                assertEquals(setOf(0), fixture.controller.state.value.activeSteps)
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun arrangementCopyDisarmsAfterContentChangesAndTimeout() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.toggleStep(0)
+                fixture.controller.duplicateSelectedPatternToOther()
+                fixture.controller.toggleStep(4)
+                fixture.controller.selectPatternVariation(0)
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("曲にする", 40)
+                val originalB = fixture.controller.state.value.patternArrangement.storedStepsBySlot[1]
+                fixture.mousePress("AをBへコピー", 40)
+                fixture.controller.toggleStep(8)
+                fixture.settle()
+                assertTrue(fixture.hasDescription("AをBへコピー"))
+                fixture.mousePress("AをBへコピー", 40)
+                assertEquals(originalB, fixture.controller.state.value.patternArrangement.storedStepsBySlot[1])
+                fixture.settle(4200)
+                assertTrue(fixture.hasDescription("AをBへコピー"))
+                fixture.mousePress("AをBへコピー", 40)
+                assertEquals(originalB, fixture.controller.state.value.patternArrangement.storedStepsBySlot[1])
+                fixture.mousePress("Bを上書き", 40)
+                assertEquals(1, fixture.controller.state.value.patternArrangement.selectedSlot)
+                assertEquals(setOf(0, 8), fixture.controller.state.value.activeSteps)
+                fixture.capture("audit-arrangement-confirmation")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun portraitSaveActionsRemainTouchSized() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 800, fontScale = 1.3f)
+            try {
+                fixture.controller.toggleStep(0)
+                fixture.mousePress("工程4", 40)
+                fixture.capture("audit-save-portrait")
+                assertFalse(fixture.hasDescription("ビート配置を消す"))
+                assertFalse(fixture.hasDescription("ビートへ戻る"))
+                for (label in listOf("ビートを確認", "WAVを書き出す", "制作を保存", "制作を開く", "1つ戻す", "やり直す")) {
+                    val bounds = fixture.nodeWithDescription(label).boundsInRoot
+                    assertTrue(bounds.height >= 48f, "$label must remain touch-sized: $bounds")
+                    assertTrue(bounds.left >= 0 && bounds.right <= 360 && bounds.bottom <= 800, "$label outside viewport: $bounds")
+                }
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
     fun compactLayerEditorKeepsShiftControlsReachable() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext, viewportHeight = 520)
@@ -365,6 +471,7 @@ private class DeckFixture private constructor(
     private val scene: ImageComposeScene,
     private val directory: File,
     private val project: File,
+    val displayOverride: androidx.compose.runtime.MutableState<((SamplerUiState) -> SamplerUiState)?>,
 ) : AutoCloseable {
     private val inputTrace = mutableListOf<String>()
     private fun nodes(): List<SemanticsNode> = buildList {
@@ -532,6 +639,8 @@ private class DeckFixture private constructor(
             targetEnd: Int = 32_000,
             targetPlayMode: PadPlayMode = PadPlayMode.ONE_SHOT,
             viewportHeight: Int = 1_000,
+            viewportWidth: Int = 1_100,
+            fontScale: Float = 1f,
         ): DeckFixture {
             check(GraphicsEnvironment.isHeadless()) { "Use :desktop:desktopLongPressUiTest, not an interactive launcher" }
             val temporaryRoot = File(System.getProperty("java.io.tmpdir"))
@@ -564,6 +673,7 @@ private class DeckFixture private constructor(
                 systemAudio = ForbiddenRecorder(),
                 autosaveStore = null,
             )
+            val displayOverride = androidx.compose.runtime.mutableStateOf<((SamplerUiState) -> SamplerUiState)?>(null)
             var scene: ImageComposeScene? = null
             try {
                 controller.openProject(project)
@@ -573,10 +683,10 @@ private class DeckFixture private constructor(
                 check(controller.state.value.pads[1].startFrame == targetStart && controller.state.value.pads[1].endFrame == targetEnd) {
                     "Synthetic project did not load through the public controller"
                 }
-                val readyScene = ImageComposeScene(width = 1_100, height = viewportHeight, density = Density(1f), coroutineContext = context) {
+                val readyScene = ImageComposeScene(width = viewportWidth, height = viewportHeight, density = Density(1f, fontScale), coroutineContext = context) {
                     ChopLabTheme {
                         OtohiroiDeck(
-                            state = controller.state.collectAsState().value,
+                            state = controller.state.collectAsState().value.let { displayOverride.value?.invoke(it) ?: it },
                             onImportAudio = { error("Native file picker is outside H13") },
                             onToggleMicrophoneRecording = { error("Recording is outside H13") },
                             onToggleVocalRecording = { error("Recording is outside H13") },
@@ -589,7 +699,7 @@ private class DeckFixture private constructor(
                     }
                 }
                 scene = readyScene
-                return DeckFixture(controller, audioPort, readyScene, directory, project).also { it.settle() }
+                return DeckFixture(controller, audioPort, readyScene, directory, project, displayOverride).also { it.settle() }
             } catch (failure: Throwable) {
                 runCatching { scene?.close() }.onFailure(failure::addSuppressed)
                 runCatching { controller.close() }.onFailure(failure::addSuppressed)

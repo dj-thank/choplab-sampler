@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**完了（LOCAL_PASS）:** `../completed/ui-audit-refinement-20260905.md`。ユーザーのUIを含む監査・改善依頼。
+
+## Prior selection
+
 **完了（LOCAL_PASS）:** `pattern-editing-refinement-20260905.md`。ユーザーの2026-09-05改善依頼により、パターン編集共通化・選択パターン消去・配置シフトを選択。
 
 ## Prior selection (retained)
