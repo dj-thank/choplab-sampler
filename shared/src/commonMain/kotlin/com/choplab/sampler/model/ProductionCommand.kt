@@ -14,6 +14,11 @@ sealed interface ProductionCommand {
     data class SelectSliceAt(val frame: Int) : ProductionCommand
     data object ToggleSelectedPadPerformanceMode : ProductionCommand
     data object CreateQuickSketch : ProductionCommand
+    data class FillSelectedPadPattern(val grid: RepeatGrid) : ProductionCommand
+    data object ClearSelectedPadPattern : ProductionCommand
+    data class ShiftSelectedPadPattern(val offset: Int) : ProductionCommand
+    data object ClearSelectedPattern : ProductionCommand
+    data object ClearAllPatterns : ProductionCommand
     data class SelectPatternVariation(val slot: Int) : ProductionCommand
     data object DuplicateSelectedPatternToOther : ProductionCommand
     data class ToggleSongSectionPattern(val sectionIndex: Int) : ProductionCommand
@@ -63,6 +68,13 @@ fun reduceProductionCommand(
         is ProductionCommand.SelectSliceAt -> error("Selection is handled before edit admission")
         ProductionCommand.ToggleSelectedPadPerformanceMode -> toggleSelectedPadPerformanceMode(state)
         ProductionCommand.CreateQuickSketch -> createQuickSketch(state)
+        is ProductionCommand.FillSelectedPadPattern -> editSelectedPadPattern(state, command)
+        ProductionCommand.ClearSelectedPadPattern -> editSelectedPadPattern(state, command)
+        is ProductionCommand.ShiftSelectedPadPattern -> editSelectedPadPattern(state, command)
+        ProductionCommand.ClearSelectedPattern -> arrangementCommandResult(state, state.clearSelectedPattern())
+        ProductionCommand.ClearAllPatterns -> arrangementCommandResult(
+            state, state.clearEveryPattern().copy(statusMessage = "A/B両方のパターンを全消去しました"),
+        )
         is ProductionCommand.SelectPatternVariation -> arrangementCommandResult(
             state,
             state.selectPatternVariation(command.slot),
@@ -405,6 +417,29 @@ private fun quickSketchPreconditionMessage(state: SamplerUiState): String? {
         return "選択範囲が短く、8つの下書きを作れません。制作は変更していません"
     }
     return null
+}
+
+private fun editSelectedPadPattern(
+    state: SamplerUiState,
+    command: ProductionCommand,
+): ProductionCommandResult {
+    val pad = state.pads.getOrNull(state.selectedPad) ?: return unchanged(state)
+    if (command != ProductionCommand.ClearSelectedPadPattern && !pad.canUsePatternSteps()) {
+        return sessionFeedback(state, "音の入った通常PADを選んでください。LOOPとVOICEは配置対象外です")
+    }
+    val steps = when (command) {
+        is ProductionCommand.FillSelectedPadPattern -> state.activeSteps.replacePadSteps(state.selectedPad, command.grid)
+        ProductionCommand.ClearSelectedPadPattern -> state.activeSteps.clearPadSteps(state.selectedPad)
+        is ProductionCommand.ShiftSelectedPadPattern -> state.activeSteps.shiftPadSteps(state.selectedPad, command.offset)
+        else -> return unchanged(state)
+    }
+    if (steps == state.activeSteps) return unchanged(state)
+    val message = when (command) {
+        is ProductionCommand.FillSelectedPadPattern -> "${command.grid.statusLabel}を選択PADに配置しました"
+        ProductionCommand.ClearSelectedPadPattern -> "選択PADの配置を消去しました"
+        else -> "選択PADの配置をずらしました"
+    }
+    return arrangementCommandResult(state, state.copy(activeSteps = steps, statusMessage = message))
 }
 
 private fun classifiedResult(

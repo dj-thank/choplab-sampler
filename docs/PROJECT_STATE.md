@@ -1,5 +1,17 @@
 # Project state
 
+## Current snapshot — 2026-09-05 pattern editing refinement
+
+Isolated branch `codex/choplab-production-refinement-20260905` starts at fetched main `bed7a55`. This new user-authorized milestone supersedes the prior selected release plan for local product work; existing release artifacts and canonical dirty checkout remain preserved.
+
+- Shared ProductionCommand now owns selected-PAD preset, selected-PAD clear and all-pattern clear for Android/Windows, including recording/loading rejection and no-op history behavior.
+- Layer editing adds one-step forward/backward rotation with bar wrap; other PADs and the other variation remain unchanged. The sound rail keeps at least 96 dp and the layer body scrolls when controls do not fit.
+- A/B editor offers confirmed selected-variation-only clear, retaining samples, the other variation and Song references; transport must be stopped.
+- Both new edits use ProductionSession Undo/Redo and existing schema/autosave/export contracts.
+- Validation: LOCAL_PASS; 769 standard tests plus 25 UI/controller checks, failures/errors/skips 0. Android lint/APK, Windows package, project validation and public-surface check PASS. Compact 520px component click and screenshot verified. See [receipt](../outputs/pattern-editing-refinement-20260905.md). Device audio, actual OS input, iOS runtime, publication and Human acceptance are not claimed.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-03 Windows UI integration after PR #87
 
 GitHub `main@61147bf06d8947b3c64d74aa9f046a1a2cbb1c17` contains the H13 correction, stable Compose 1.11.1, v0.17.2 signer recovery, Android audio-fidelity repair, PR #69's artifact/history scanner, and PR #87's complete corrective follow-up. This sole-writer branch integrates the reviewed Windows/UI brush-up on top of that product line before release hardening and final-main verification. Existing tags and the `v0.17.0` Release remain unchanged.

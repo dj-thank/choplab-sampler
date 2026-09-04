@@ -1798,30 +1798,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun clearSelectedPadPattern() {
-        commitEdit { state ->
-            val filtered = state.activeSteps.clearPadSteps(state.selectedPad)
-            state.copy(activeSteps = filtered, statusMessage = "選択PADのシーケンスを消去しました")
-        }
-        syncPattern()
-    }
-
-    override fun fillSelectedPadPattern(repeatGrid: RepeatGrid) {
-        val selectedPad = mutableUiState.value.selectedPadModel()
-        patternStepBlockedMessage(selectedPad)?.let { message ->
-            setStatus(message)
-            return
-        }
-        commitEdit { state ->
-            state.copy(
-                activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, repeatGrid),
-                statusMessage = "${repeatGrid.statusLabel}を BANK ${('A'.code + state.selectedBank).toChar()}-%02d に配置しました"
-                    .format(state.selectedPadModel().indexInBank + 1),
-            )
-        }
-        syncPattern()
-    }
-
     private fun patternStepBlockedMessage(pad: PadModel): String? = when {
         pad.canUsePatternSteps() -> null
         !pad.isAssigned -> "先に音が入ったPADを選んでください"
@@ -1829,11 +1805,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             "ビートループは音声全体を繰り返します。配置は別PADへ追加してください"
         pad.contentKind == PadContentKind.VOCAL -> "VOICE TAKE はビート開始時に1回だけ再生します"
         else -> "このPADはステップへ配置できません"
-    }
-
-    override fun clearAllPattern() {
-        commitEdit { it.clearEveryPattern().copy(statusMessage = "A/B両方のパターンを全消去しました") }
-        syncPattern()
     }
 
     override fun stopAllSounds() {

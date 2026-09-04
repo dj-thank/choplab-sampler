@@ -44,6 +44,30 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
+    fun compactLayerEditorKeepsShiftControlsReachable() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportHeight = 520)
+            try {
+                fixture.controller.selectPlayablePad(0)
+                fixture.controller.toggleStep(0)
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("音を足す", 40)
+                fixture.mousePress("SOUNDS", 40)
+                fixture.capture("pattern-layer-compact-top")
+                fixture.scrollDown()
+                val button = fixture.nodeWithDescription("1ステップ後へ")
+                assertTrue(button.boundsInRoot.height >= 48f)
+                assertTrue(button.boundsInRoot.top >= 0f && button.boundsInRoot.bottom <= 520f)
+                fixture.mousePress(button, 40)
+                assertEquals(setOf(com.choplab.sampler.model.stepKey(0, 1)), fixture.controller.state.value.activeSteps)
+                fixture.capture("pattern-layer-compact-shift")
+            } finally {
+                fixture.close()
+            }
+        }
+    }
+
+    @Test
     fun liveSourceMouseClickStillCapturesAnEmptyPadThroughTheRealController() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
@@ -420,6 +444,13 @@ private class DeckFixture private constructor(
         mousePress(readyNodeWithDescription(description), holdMillis, fractionX)
     }
 
+    suspend fun scrollDown() {
+        nodes().forEach { node ->
+            node.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, 1000f)
+        }
+        settle(200)
+    }
+
     suspend fun settle(durationMillis: Long = 100) {
         val deadline = System.nanoTime() + durationMillis * 1_000_000
         do {
@@ -500,6 +531,7 @@ private class DeckFixture private constructor(
             targetStart: Int = 16_000,
             targetEnd: Int = 32_000,
             targetPlayMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+            viewportHeight: Int = 1_000,
         ): DeckFixture {
             check(GraphicsEnvironment.isHeadless()) { "Use :desktop:desktopLongPressUiTest, not an interactive launcher" }
             val temporaryRoot = File(System.getProperty("java.io.tmpdir"))
@@ -541,7 +573,7 @@ private class DeckFixture private constructor(
                 check(controller.state.value.pads[1].startFrame == targetStart && controller.state.value.pads[1].endFrame == targetEnd) {
                     "Synthetic project did not load through the public controller"
                 }
-                val readyScene = ImageComposeScene(width = 1_100, height = 1_000, density = Density(1f), coroutineContext = context) {
+                val readyScene = ImageComposeScene(width = 1_100, height = viewportHeight, density = Density(1f), coroutineContext = context) {
                     ChopLabTheme {
                         OtohiroiDeck(
                             state = controller.state.collectAsState().value,

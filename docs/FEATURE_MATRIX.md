@@ -4,6 +4,8 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 選択音の配置シフト | LOCAL_PASS | レイヤー画面で前後1step、小節端で折返し。他PADと別A/Bを保持。Undo/Redo・既存保存経路 |
+| 選択A/Bだけの配置消去 | LOCAL_PASS | A/B editorで二度押し確認。音源・別variation・Song順序を保持。transport中拒否 |
 | Reverse ONE_SHOT/GATE resampling tail | 🧪 merged source / current PR CI待ち | PR #74 / `main@029500a`は逆one-shot/gateのcount/renderだけをrealtime cursor順序へ統一。48→60 kHzの旧末尾無音（80→79）、8→48 kHzの1/12-step丸め（12）、2-frame / pitch −5のLOOP/Windows forceLoop 3-element有限境界を固定する。PR #58 product `3b5dd59` / tree `4985a8c`はexact `main@4f56a69`を第二親に持ち、renderer/test `ffd0be2` / `315ec9b`とDesktop adapter test `e4ccb83`を保持する。adapter runtimeはそのrender seamを維持してper-voice ownershipだけを追加する。audible品質・physical Windowsは未確認 |
 | Windows録音開始中のSTOP | ✅ main / prior hosted head | PR #73を`main@a0b356c`へ統合。blocking `TargetDataLine.start()`中のSTOPがpending lineをclaim/closeしてnative startを解除し、復帰後のworker公開とcapture readを阻止する。exact headはclean review・threads 0・4 workflows PASS。PR #58 product `3b5dd59`もexact source/testを保持し、実microphone/device timingと音質は未確認 |
 | Android / Windows取込名・autosave境界 | 🧪 merged source / current PR CI待ち | PR #71はarchive-compatible名規則をsharedへ集約して`main@dfcd9d8`へ統合済み。PR #58 product `3b5dd59` / tree `4985a8c`はその六つのshared/Android/Desktop product-test blobをexact保持し、exact `main@4f56a69`を統合する。Androidのprovider/URI/final fallback契約を維持し、Desktop `File.name`もPCM公開前に非空・最大240 UTF-16単位へ正規化。切断後blank再評価、surrogate pair分断防止、shared common contract、両platformのarchive round trip回帰を含む。実provider/filesystem autosaveは未確認 |

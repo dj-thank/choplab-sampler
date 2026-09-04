@@ -111,6 +111,7 @@ import com.choplab.sampler.model.nearestPadTrimBoundary
 import com.choplab.sampler.model.precisionTrimWindow
 import com.choplab.sampler.model.padTrimInitialWindow
 import com.choplab.sampler.model.redoRequestEnabled
+import com.choplab.sampler.model.patternVariationLabel
 import com.choplab.sampler.model.repeatGridForPad
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.selectedPadPage
@@ -3262,6 +3263,14 @@ private fun ArrangementStudio(
                         active = copyConfirmationPending,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                     )
+                    ConfirmActionButton(
+                        label = "このパターンを消す\n${patternVariationLabel(state.patternArrangement.selectedSlot)}のみ",
+                        confirmLabel = "この配置だけ削除\nもう一度で確定",
+                        onConfirm = viewModel::clearSelectedPattern,
+                        enabled = presentation.editEnabled && state.activeSteps.isNotEmpty(),
+                        confirmationKey = state.patternArrangement.selectedSlot to state.activeSteps,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    )
                     Text(
                         "2. 4小節をタップして A/B を切り替え",
                         color = DeckInk,
@@ -3481,55 +3490,75 @@ private fun SampleLayerStudio(
     viewModel: SamplerDeckController,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        BeginnerCoachBar(
-            text = "メロディー・ドラム・SE・声を選び、好きな間隔で同じビートへ重ねます",
-            modifier = Modifier.fillMaxWidth().height(30.dp),
-        )
-        BankStrip(state.selectedBank, 48.dp, viewModel::selectPlayableBank)
-        PadPageStrip(state, 48.dp, viewModel::selectPlayablePadPage)
-        BeatSoundRail(
-            pads = state.visiblePads(),
-            selectedPad = state.selectedPad,
-            onSelectPad = viewModel::selectPlayablePad,
-            onPreviewPad = viewModel::triggerPad,
-            modifier = Modifier.weight(1f),
-        )
-        SelectedPadQuickEditor(
-            state = state,
-            height = 48.dp,
-            expanded = false,
-            onOpenDetails = null,
-            viewModel = viewModel,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val soundRailHeight = (maxHeight - 367.dp).coerceAtLeast(96.dp)
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            PlacementPresetChoices.forEach { (grid, label) ->
-                MachineButton(
-                    label = label,
-                    onClick = { viewModel.fillSelectedPadPattern(grid) },
-                    enabled = state.selectedPadModel().canUsePatternSteps(),
-                    active = state.selectedPadModel().canUsePatternSteps() &&
-                        state.activeSteps.repeatGridForPad(state.selectedPad) == grid,
+            BeginnerCoachBar(
+                text = "メロディー・ドラム・SE・声を選び、好きな間隔で同じビートへ重ねます",
+                modifier = Modifier.fillMaxWidth().height(30.dp),
+            )
+            BankStrip(state.selectedBank, 48.dp, viewModel::selectPlayableBank)
+            PadPageStrip(state, 48.dp, viewModel::selectPlayablePadPage)
+            BeatSoundRail(
+                pads = state.visiblePads(),
+                selectedPad = state.selectedPad,
+                onSelectPad = viewModel::selectPlayablePad,
+                onPreviewPad = viewModel::triggerPad,
+                modifier = Modifier.height(soundRailHeight),
+            )
+            SelectedPadQuickEditor(
+                state = state,
+                height = 48.dp,
+                expanded = false,
+                onOpenDetails = null,
+                viewModel = viewModel,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                PlacementPresetChoices.forEach { (grid, label) ->
+                    MachineButton(
+                        label = label,
+                        onClick = { viewModel.fillSelectedPadPattern(grid) },
+                        enabled = state.selectedPadModel().canUsePatternSteps(),
+                        active = state.selectedPadModel().canUsePatternSteps() &&
+                            state.activeSteps.repeatGridForPad(state.selectedPad) == grid,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        compact = true,
+                    )
+                }
+                ConfirmActionButton(
+                    label = "配置を消す\nCLEAR",
+                    confirmLabel = "もう一度で削除",
+                    onConfirm = viewModel::clearSelectedPadPattern,
+                    confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
                 )
             }
-            ConfirmActionButton(
-                label = "配置を消す\nCLEAR",
-                confirmLabel = "もう一度で削除",
-                onConfirm = viewModel::clearSelectedPadPattern,
-                confirmationKey = state.selectedPad to state.patternArrangement.selectedSlot,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                listOf(-1 to "1ステップ前へ", 1 to "1ステップ後へ").forEach { (offset, label) ->
+                    MachineButton(
+                        label = label,
+                        onClick = { viewModel.shiftSelectedPadPattern(offset) },
+                        enabled = !state.isLoading && !state.recordingSession.isActive &&
+                            state.selectedPadModel().canUsePatternSteps() && state.activeSteps.any {
+                                it / SamplerConfig.STEP_COUNT == state.selectedPad
+                            },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        compact = true,
+                    )
+                }
+            }
+            BeatLoopControl(state, 62.dp, viewModel)
         }
-        BeatLoopControl(state, 62.dp, viewModel)
-    }
+}
 }
 
 @Composable

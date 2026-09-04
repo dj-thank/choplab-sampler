@@ -1000,15 +1000,10 @@ class DesktopSamplerController(
         }
     }
 
-    override fun fillSelectedPadPattern(grid: RepeatGrid) = commitEdit { state ->
-        state.copy(activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, grid))
-    }
-    override fun clearSelectedPadPattern() = commitEdit { it.copy(activeSteps = it.activeSteps.clearPadSteps(it.selectedPad)) }
     override fun toggleStep(step: Int) = commitEdit { state ->
         val pad = state.pads[state.selectedPad]
         state.copy(activeSteps = state.activeSteps.togglePadStep(pad, step))
     }
-    override fun clearAllPattern() = commitEdit { it.clearEveryPattern() }
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)

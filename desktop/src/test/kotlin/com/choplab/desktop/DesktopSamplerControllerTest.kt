@@ -54,6 +54,48 @@ class DesktopSamplerControllerTest {
         DesktopSamplerController(JavaSoundWavPlayer(), autosaveStore = null)
 
     @Test
+    fun patternRefinementPreservesOtherVariationThroughUndoAndSaveReopen() {
+        val directory = Files.createTempDirectory("choplab-pattern-refinement").toFile()
+        val project = directory.resolve("refinement.choplab")
+        val controller = DesktopSamplerController(FakeAudioEngine(), autosaveStore = null)
+        try {
+            controller.ensurePlayablePadSelected()
+            val patternA = controller.state.value.activeSteps
+            assertTrue(patternA.isNotEmpty())
+            controller.duplicateSelectedPatternToOther()
+            val before = controller.state.value.activeSteps
+            val selected = controller.state.value.selectedPad
+            controller.shiftSelectedPadPattern(1)
+            val shifted = controller.state.value.activeSteps
+            assertNotEquals(before, shifted)
+            assertEquals(before.filter { it / SamplerConfig.STEP_COUNT != selected }.toSet(),
+                shifted.filter { it / SamplerConfig.STEP_COUNT != selected }.toSet())
+            controller.clearSelectedPattern()
+            assertTrue(controller.state.value.activeSteps.isEmpty())
+            controller.undoEdit()
+            assertEquals(shifted, controller.state.value.activeSteps)
+            controller.undoEdit()
+            assertEquals(before, controller.state.value.activeSteps)
+            controller.redoEdit()
+            assertEquals(shifted, controller.state.value.activeSteps)
+            controller.redoEdit()
+            assertTrue(controller.state.value.activeSteps.isEmpty())
+            controller.saveProject(project)
+            awaitCondition { project.isFile && !controller.state.value.isLoading }
+            controller.selectPatternVariation(0)
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "refinement.choplabを開きました" }
+            assertEquals(listOf(patternA, emptySet()),
+                controller.state.value.materializedPatternArrangement().storedStepsBySlot)
+            assertEquals(1, controller.state.value.patternArrangement.selectedSlot)
+            assertTrue(controller.state.value.activeSteps.isEmpty())
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sharedWorkflowUsesTheCurrentFourAndroidStages() {
         assertEquals(listOf("入れる", "チョップ", "ビート", "保存"), WorkflowStage.entries.map { it.label })
         assertEquals(listOf("CAPTURE", "CHOP", "BEAT", "SAVE"), WorkflowStage.entries.map { it.caption })
