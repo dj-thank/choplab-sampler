@@ -1676,17 +1676,23 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun startPadLoop(index: Int, withPattern: Boolean) {
+    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean {
         val before = mutableUiState.value
-        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return }
-        if (before.pads.getOrNull(index)?.isAssigned != true) return
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val pad = before.pads.getOrNull(index)
+        if (pad?.isAssigned != true || pad.contentKind == PadContentKind.VOCAL) return false
         if (before.loopingPadIndex != index) toggleBeatLoop(index)
-        if (mutableUiState.value.loopingPadIndex != index) return
+        if (mutableUiState.value.loopingPadIndex != index) return false
         if ((withPattern || before.transportPlaying) && !mutableUiState.value.transportPlaying) {
             syncPattern()
-            if (!engine.startTransport()) { stopAllSounds(); setStatus("ビートを開始できませんでした"); return }
+            if (!engine.startTransport()) {
+                stopAllSounds()
+                setStatus("ビートを開始できませんでした")
+                return false
+            }
             mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
         }
+        return true
     }
 
     override fun toggleBeatLoopControl() {

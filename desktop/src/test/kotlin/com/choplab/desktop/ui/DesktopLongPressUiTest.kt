@@ -44,6 +44,67 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
+    fun editedChopReplacesPreviousLoopWhenContinuingToBeat() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.startPadLoop(0)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                fixture.mousePress("この音を回してビートへ", 40)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertTrue(fixture.controller.state.value.transportPlaying)
+                assertTrue(fixture.nodeWithDescription("選択範囲の波形").stateDescription().contains("16000から32000"))
+                fixture.capture("chosen-loop-handoff")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun rejectedLoopHandoffKeepsTheEditorAndPreviousLoop() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.startPadLoop(0)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                val before = fixture.controller.state.value
+                fixture.audio.failNextLoopStart = true
+                fixture.mousePress("この音を回してビートへ", 40)
+                assertEquals(0, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(before.pads, fixture.controller.state.value.pads)
+                assertEquals(before.canUndo, fixture.controller.state.value.canUndo)
+                assertTrue(fixture.hasDescription("切り出した音へ戻る"))
+                assertFalse(fixture.hasDescription("ドラムを足す"))
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun compactBeatKeepsWaveformAndControlsReachable() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 520, fontScale = 1.3f)
+            try {
+                fixture.mousePress("工程3", 40)
+                assertTrue(fixture.nodeWithDescription("選択範囲の波形").boundsInRoot.height > 0f)
+                fixture.scrollDown(120f)
+                val waveform = fixture.nodeWithDescription("選択範囲の波形")
+                assertTrue(waveform.boundsInRoot.height >= 80f, "Waveform must have a drawable area: ${waveform.boundsInRoot}")
+                fixture.capture("compact-loop-waveform")
+                fixture.scrollDown()
+                for (label in listOf("S 始まり", "E 終わり", "ドラムを足す", "スクラッチ")) {
+                    val bounds = fixture.nodeWithDescription(label).boundsInRoot
+                    assertTrue(bounds.width >= 48f && bounds.height >= 48f && bounds.bottom <= 520f, "$label: $bounds")
+                }
+                val start = fixture.nodeWithDescription("このループを回す")
+                assertTrue(start.boundsInRoot.height >= 48f)
+                assertTrue(start.boundsInRoot.bottom <= 520f)
+                fixture.mousePress(start, 40)
+                assertTrue(fixture.controller.state.value.transportPlaying)
+                fixture.capture("compact-loop-beat")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
     fun failedRechopStartKeepsSelectionHistoryAndTheCurrentEditor() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
@@ -517,12 +578,12 @@ private class DeckFixture private constructor(
         mousePress(readyNodeWithDescription(description), holdMillis, fractionX)
     }
 
-    suspend fun scrollDown() {
+    suspend fun scrollDown(distance: Float = 1000f) {
         nodes().filter { node ->
             node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null &&
                 node.config.getOrNull(SemanticsProperties.Role) != androidx.compose.ui.semantics.Role.Button
         }.forEach { node ->
-            node.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, 1000f)
+            node.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, distance)
         }
         settle(200)
     }
@@ -693,6 +754,7 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
     val releasedOwnedPads = mutableListOf<Pair<Int, Long>>()
     var failNextTrigger = false
     var failNextSourcePlay = false
+    var failNextLoopStart = false
     private var sourceFrames = 0
     @Volatile private var sourcePosition = 0
     @Volatile private var sourcePlaying = false
@@ -728,6 +790,10 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
     val loopRequests = mutableListOf<PadModel>()
     override fun prepareExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>): DesktopPreparedLoopSession =
         DesktopPreparedLoopSession {
+            if (failNextLoopStart) {
+                failNextLoopStart = false
+                throw com.choplab.desktop.audio.DesktopLoopSessionStartupException(IllegalStateException("test loop unavailable"))
+            }
             object : com.choplab.desktop.audio.DesktopStartedLoopSession {
                 override fun retirePriorPlayback() {
                     sourcePlaying = false

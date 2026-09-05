@@ -1146,7 +1146,8 @@ class FirstScreenFlowDeviceTest {
                     }
                     null
                 }
-                SamplerDeckController::rechopSourceFrom.name -> false
+                SamplerDeckController::rechopSourceFrom.name,
+                SamplerDeckController::startPadLoop.name -> false
                 else -> null
             }
         }

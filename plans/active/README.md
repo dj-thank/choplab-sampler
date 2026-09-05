@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**進行中:** `loop-handoff-compact-20260905.md`。調整した音からのビート移行と小画面の波形表示。
+
+## Previous local selection
+
 **完了（LOCAL_PASS）:** `../completed/automatic-range-loop-workflow-20260905.md`。ユーザー訂正により選択範囲の自動表示・S/Eダイヤル・ループ中心へ変更。
 
 **訂正により旧UI案を停止:** `../completed/loop-creation-workflow-20260905.md`。チョップ→ループ調整→ドラム→スクラッチの制作導線。

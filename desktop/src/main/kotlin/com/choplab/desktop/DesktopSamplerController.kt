@@ -1031,15 +1031,17 @@ class DesktopSamplerController(
         }
     }
 
-    override fun startPadLoop(index: Int, withPattern: Boolean) {
-        com.choplab.sampler.model.playbackStartBlockedReason(mutableState.value)?.let { setStatus(it); return }
+    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean {
         val before = mutableState.value
-        if (before.pads.getOrNull(index)?.isAssigned != true) return
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val pad = before.pads.getOrNull(index)
+        if (pad?.isAssigned != true || pad.contentKind == PadContentKind.VOCAL) return false
         if (before.loopingPadIndex != index) toggleBeatLoop(index)
-        if (mutableState.value.loopingPadIndex != index) return
+        if (mutableState.value.loopingPadIndex != index) return false
         if ((withPattern || before.transportPlaying) && !mutableState.value.transportPlaying) {
-            startTransport("ループを軸にビートを再生中です", "ビート再生開始失敗")
+            return startTransport("ループを軸にビートを再生中です", "ビート再生開始失敗")
         }
+        return true
     }
 
     override fun toggleBeatLoopControl() {

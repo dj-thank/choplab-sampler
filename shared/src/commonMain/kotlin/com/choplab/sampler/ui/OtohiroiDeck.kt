@@ -354,8 +354,7 @@ fun OtohiroiDeck(
                                     onPageChange = { padPageName = it.name },
                                     onReturn = { showPadDetails = false },
                                     onRechop = rechopFrom,
-                                    onAddDrums = {
-                                        if (state.sourceUiPhase() != SourceUiPhase.STOPPED) viewModel.stopSourceForWorkspaceChange()
+                                    onLoopReady = {
                                         showPadDetails = false
                                         stageName = WorkflowStage.BEAT.name
                                         layerStudioPageName = null
@@ -393,8 +392,7 @@ fun OtohiroiDeck(
                                     onPageChange = { padPageName = it.name },
                                     onReturn = { showPadDetails = false },
                                     onRechop = rechopFrom,
-                                    onAddDrums = {
-                                        if (state.sourceUiPhase() != SourceUiPhase.STOPPED) viewModel.stopSourceForWorkspaceChange()
+                                    onLoopReady = {
                                         showPadDetails = false
                                         layerStudioPageName = null
                                     },
@@ -1857,7 +1855,7 @@ private fun PadWorkspace(
     page: PadEditorPage,
     onPageChange: (PadEditorPage) -> Unit,
     onReturn: () -> Unit,
-    onAddDrums: () -> Unit,
+    onLoopReady: () -> Unit,
     onRechop: (Int) -> Unit,
     viewModel: SamplerDeckController,
 ) {
@@ -1868,7 +1866,7 @@ private fun PadWorkspace(
             page = page,
             onPageChange = onPageChange,
             onReturn = onReturn,
-                onAddDrums = onAddDrums,
+                onLoopReady = onLoopReady,
                 onRechop = onRechop,
             viewModel = viewModel,
             controlHeight = metrics.controlHeightDp.dp,
@@ -1912,7 +1910,7 @@ private fun PadWorkspace(
                 page = page,
                 onPageChange = onPageChange,
                 onReturn = onReturn,
-                onAddDrums = onAddDrums,
+                onLoopReady = onLoopReady,
                 onRechop = onRechop,
                 viewModel = viewModel,
                 controlHeight = metrics.controlHeightDp.dp,
@@ -1950,7 +1948,7 @@ private fun PadWorkspace(
                 page = page,
                 onPageChange = onPageChange,
                 onReturn = onReturn,
-                onAddDrums = onAddDrums,
+                onLoopReady = onLoopReady,
                 onRechop = onRechop,
                 viewModel = viewModel,
                 controlHeight = metrics.controlHeightDp.dp,
@@ -1967,7 +1965,7 @@ private fun PadEditor(
     page: PadEditorPage,
     onPageChange: (PadEditorPage) -> Unit,
     onReturn: () -> Unit,
-    onAddDrums: () -> Unit,
+    onLoopReady: () -> Unit,
     onRechop: (Int) -> Unit,
     viewModel: SamplerDeckController,
     controlHeight: Dp,
@@ -1989,7 +1987,7 @@ private fun PadEditor(
         Column(modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
             MachineButton(label = "切り出した音へ戻る", onClick = onReturn,
                 modifier = Modifier.fillMaxWidth().height(48.dp))
-            PadTrimEditor(state, onAddDrums, onRechop, viewModel, Modifier.weight(1f))
+            PadTrimEditor(state, onLoopReady, onRechop, viewModel, Modifier.weight(1f))
         }
         return
     }
@@ -2030,7 +2028,7 @@ private fun PadEditor(
         when (page) {
             PadEditorPage.TRIM -> PadTrimEditor(
                 state = state,
-                onAddDrums = onAddDrums,
+                onLoopReady = onLoopReady,
                 onRechop = onRechop,
                 viewModel = viewModel,
                 modifier = Modifier.weight(1f),
@@ -2054,7 +2052,7 @@ private fun PadEditor(
 @Composable
 private fun PadTrimEditor(
     state: SamplerUiState,
-    onAddDrums: () -> Unit,
+    onLoopReady: () -> Unit,
     onRechop: (Int) -> Unit,
     viewModel: SamplerDeckController,
     modifier: Modifier,
@@ -2083,8 +2081,10 @@ private fun PadTrimEditor(
                     active = looping,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
-                MachineButton(label = "この音でビートへ", onClick = onAddDrums,
-                    enabled = externalDocumentActionsEnabled(state),
+                MachineButton(label = "この音を回してビートへ", onClick = {
+                    if (viewModel.startPadLoop(pad.globalIndex, withPattern = true)) onLoopReady()
+                }, enabled = com.choplab.sampler.model.playbackStartBlockedReason(state) == null &&
+                    pad.contentKind != PadContentKind.VOCAL,
                     modifier = Modifier.weight(1f).fillMaxHeight())
             }
         }
@@ -2267,7 +2267,7 @@ private fun LoopFirstBeatWorkspace(
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val dialHeight = (maxHeight - 120.dp).coerceIn(96.dp, 220.dp)
-        if (maxWidth >= 600.dp && maxWidth > maxHeight && pad != null) {
+        if (maxWidth >= 600.dp && maxWidth > maxHeight && maxHeight >= 308.dp && pad != null) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 wave(Modifier.weight(1.7f).fillMaxHeight())
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
@@ -2278,8 +2278,11 @@ private fun LoopFirstBeatWorkspace(
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                wave(Modifier.fillMaxWidth().weight(1f))
+            // Reserve a useful waveform even when the viewport cannot fit the whole desk.
+            // Scrolling belongs to the desk; S/E wheels keep their own relative edit gesture.
+            val waveHeight = (maxHeight - if (pad != null) 252.dp else 120.dp).coerceAtLeast(308.dp)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                wave(Modifier.fillMaxWidth().height(waveHeight))
                 if (pad != null) LoopBoundaryDials(pad, editable,
                     { boundary, frames -> viewModel.rollPadBoundary(pad.globalIndex, boundary, frames) },
                     Modifier.fillMaxWidth().height(124.dp))
