@@ -12,10 +12,13 @@ Preserve existing audio outside the 16 kit slots, loop owner outside those slots
 ## Plan
 - [x] Reproduce replacing custom A/B kit rhythm via actual desktop controller.
 - [x] Share a pure initial-pattern policy, preserve replacement rhythms, update UI copy.
-- [ ] Verify initial blank/stored groove cases, live loop, Undo/Redo and save/open round trip.
-- [ ] Run required full local gate, review fixed-base diff, record artifacts and commit.
+- [x] Verify initial blank/stored groove cases, live loop, Undo/Redo and save/open round trip.
+- [x] Run required full local gate, review fixed-base diff, record artifacts and commit.
 
 ## Evidence and remaining limits
 Pending local verification. Physical audio/touch, Android runtime and iOS are separate.
 
 RED: kit replacement wiped A and reset B before save. GREEN: shared first-install/stored-groove/intentional-empty guards and controller Undo/Redo/save/reopen test passed. User then corrected BEAT over-simplification; this data-preservation fix remains compatible and continues as a subtask of the next Beat composition plan.
+
+## Local closeout
+Product360ccb0, full gate and final UI/policy verification PASS (812 standard+33 UI/controller checks, 12 overlaps). Standards mandatory cleanup and Spec limit-documentation findings closed; optional UI action extraction deferred. See outputs/beat-loop-layers-20260905.json for byte hashes and limits. No device or public action.

@@ -3,11 +3,11 @@
 
 ## Current snapshot — 2026-09-05 explicit Loop and additive layers
 
-Candidate from `c83cad8` with the compatible drum-rhythm fix checkpoint `a616bd5`. Latest user correction replaces the sparse loop dashboard and withdraws a step-order-first proposal: select a Chop, explicitly press Loop, then add favorite loops one by one. The shared workbench restores sound choices, core/layer context and independent layer removal while keeping automatic S/E editing and the source map.
+Product `360ccb0b14d7ed2fb4018d280335242904a2fc54` from `c83cad8`, including the compatible drum-rhythm fix checkpoint `a616bd5`. Latest user correction replaces the sparse loop dashboard and withdraws a step-order-first proposal: select a Chop, explicitly press Loop, then add favorite loops one by one. The shared workbench restores sound choices, core/layer context and independent layer removal while keeping automatic S/E editing and the source map.
 
 Android admitted layer commands and Desktop incremental voice startup preserve an active core. Restart/scratch/recording companion paths include configured LOOP layers; export protects loop choke groups from vocal companions. Drums can start without retargeting an active core. Kit replacement preserves A/B rhythms and Song, including Undo and project reopen.
 
-Targeted controller, PCM, ClipProbe and UI checks passed; full gate and independent reviews are in progress. Physical audio/touch, Android instrumentation runtime, iOS and Human acceptance remain unverified. Loop content is persisted; live addition timing and runtime core-monitor identity are not a recorded performance.
+LOCAL_PASS: 812 standard tests plus 33 UI/controller checks (12 controller overlaps), all final XML failures/errors/skips zero. Android lint/APK/androidTest compile, Windows package and project validation pass. Independent Standards/Spec findings resolved; [report and immutable screenshots](../outputs/beat-loop-layers-20260905.md). Physical audio/touch, Android instrumentation runtime, iOS and Human acceptance remain unverified. Loop content is persisted; live addition timing and runtime core-monitor identity are not a recorded performance.
 
 ## Previous snapshot
 

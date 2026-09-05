@@ -288,10 +288,19 @@ class DesktopLongPressUiTest {
                 fixture.mousePress("閉じる", 40)
                 val drum = fixture.controller.state.value.pads[32]
                 fixture.mousePress("重ねている音 A-02を選ぶ", 40)
+                // Input targets the rendered selection, after the flow collector has
+                // replaced the former drum's dial semantics and scroll callback.
+                withTimeout(5_000) {
+                    while (!fixture.nodeWithDescription("S 始まり").stateDescription().contains("16000フレーム")) {
+                        fixture.settle(20)
+                    }
+                }
+                assertEquals(1, fixture.controller.state.value.selectedPad)
                 val dial = fixture.nodeWithDescription("S 始まり")
                 requireNotNull(dial.config.getOrNull(SemanticsActions.ScrollBy)?.action).invoke(0f, -30f)
                 fixture.settle(600)
-                assertTrue(fixture.controller.state.value.pads[1].startFrame > 16000)
+                assertTrue(fixture.controller.state.value.pads[1].startFrame > 16000,
+                    "Selected PAD ${fixture.controller.state.value.selectedPad}, dial ${dial.stateDescription()}")
                 assertEquals(drum, fixture.controller.state.value.pads[32])
                 assertEquals(1, fixture.controller.state.value.loopingPadIndex)
                 assertTrue(fixture.controller.state.value.transportPlaying)

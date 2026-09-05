@@ -14,7 +14,7 @@ Single root writer. Preserve source/audio, A/B/Song, Undo/Redo and persistence. 
 - [x] Restore selection + explicit loop UI and visible stacked sound context.
 - [x] Implement incremental layer start/remove and restart/trim/export contracts.
 - [x] Test admission failures, unchanged core ownership, saved layers and actual PCM loops.
-- [ ] Full local gate, review, screenshots, docs, receipt and commit.
+- [x] Full local gate, review, screenshots, docs, receipt and commit.
 
 ## Stop and rollback
 Revert only this milestone's owned diffs if tests fail; do not modify the canonical dirty checkout. Device sound/touch, live audio quality, iOS and Human acceptance remain unverified.
@@ -30,3 +30,6 @@ Layers repeat at their own native selected lengths; no automatic tempo match/tim
 - Spec: the initial release intentionally permits 8 configured sample loops (including core), reserving headroom in the Android 32-voice pool for drums and recorded vocals. The ninth additional loop is disabled with the explicit 8-sound explanation; existing loops remain editable/removable. This is a product limit, not a claim that hardware supports only 8 voices. No schema migration or automatic time stretching is added.
 
 If the core itself is in the replaced kit slots, its whole playback session stops (matching the core Stop action), so no outside layer is left playing without an owner. Configuration of outside loops remains saved for replay.
+
+## Local closeout
+Product360ccb0, full gate and final UI/policy verification PASS (812 standard+33 UI/controller checks, 12 overlaps). Standards mandatory cleanup and Spec limit-documentation findings closed; optional UI action extraction deferred. See outputs/beat-loop-layers-20260905.json for byte hashes and limits. No device or public action.
