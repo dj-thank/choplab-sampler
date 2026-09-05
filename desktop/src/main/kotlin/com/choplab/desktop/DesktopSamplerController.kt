@@ -57,7 +57,7 @@ import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.patternSequenceForExport
 import com.choplab.sampler.model.patternSequenceForPlayback
 import com.choplab.sampler.model.removePadFromEveryPattern
-import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
+import com.choplab.sampler.model.withInitialDrumKitPattern
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
@@ -1177,10 +1177,8 @@ class DesktopSamplerController(
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.replaceBankStepsAcrossPatterns(
-                bankStart = bankStart,
-                bankEndExclusive = bankEnd,
-                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            state.withInitialDrumKitPattern(
+                BuiltInDrumKits.starterPattern(kitId, bankIndex),
             ).copy(
                 pads = pads,
                 selectedBank = bankIndex,

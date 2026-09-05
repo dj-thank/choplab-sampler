@@ -203,6 +203,40 @@ class DesktopLongPressUiTest {
     }
 
     @Test
+    fun drumSoundChangeKeepsThePlayingLoopAndEditedRhythm() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("ドラムを足す", 40)
+                fixture.mousePress("Bに音色をセット", 40)
+                fixture.controller.toggleStep(0)
+                fixture.controller.toggleStep(3)
+                fixture.controller.duplicateSelectedPatternToOther()
+                fixture.controller.toggleStep(15)
+                fixture.controller.startPadLoop(1, withPattern = true)
+                val before = fixture.controller.state.value
+                val rhythm = before.activeSteps
+                val other = before.patternArrangement.storedStepsBySlot[0]
+                val starts = fixture.audio.loopRequests.size
+                val sound = before.pads[32].audio?.id
+                fixture.mousePress("BOOM BAP ドラムキット", 40)
+                fixture.mousePress("リズムを保って音色変更", 40)
+                assertEquals(sound, fixture.controller.state.value.pads[32].audio?.id)
+                fixture.mousePress("もう一度で音色変更", 40)
+                val after = fixture.controller.state.value
+                assertTrue(sound != after.pads[32].audio?.id)
+                assertEquals(rhythm, after.activeSteps)
+                assertEquals(other, after.patternArrangement.storedStepsBySlot[0])
+                assertEquals(1, after.loopingPadIndex)
+                assertTrue(after.transportPlaying)
+                assertEquals(starts, fixture.audio.loopRequests.size)
+                fixture.capture("drum-sound-change-preserves-rhythm")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
     fun beatKeepsItsLoopRunningAcrossSelectionDrumsAndBoundaryRolls() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)

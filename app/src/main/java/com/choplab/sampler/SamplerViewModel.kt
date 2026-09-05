@@ -100,6 +100,7 @@ import com.choplab.sampler.model.recordPadStep
 import com.choplab.sampler.model.reconcilePendingSourceCommand
 import com.choplab.sampler.model.recordingStartPolicy
 import com.choplab.sampler.model.removePadFromEveryPattern
+import com.choplab.sampler.model.withInitialDrumKitPattern
 import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.replaceSourceAudio
@@ -723,10 +724,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.replaceBankStepsAcrossPatterns(
-                bankStart = bankStart,
-                bankEndExclusive = bankEnd,
-                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            state.withInitialDrumKitPattern(
+                BuiltInDrumKits.starterPattern(kitId, bankIndex),
             ).copy(
                 pads = pads,
                 selectedBank = bankIndex,

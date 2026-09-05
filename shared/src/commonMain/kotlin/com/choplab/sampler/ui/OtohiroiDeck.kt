@@ -109,6 +109,7 @@ import com.choplab.sampler.model.beatLoopControlEnabled
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.focusPadTrimAtFrame
 import com.choplab.sampler.model.hasAnyPatternSteps
+import com.choplab.sampler.model.drumKitNeedsStarterPattern
 import com.choplab.sampler.model.hasAudiblePlaybackPatternContent
 import com.choplab.sampler.model.isActive
 import com.choplab.sampler.model.nearestPadTrimBoundary
@@ -3562,7 +3563,8 @@ private fun DrumKitStudio(
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         BeginnerCoachBar(
             text = com.choplab.sampler.model.projectEditBlockedReason(state)
-                ?: "キットを選ぶとBANK Bへ音色とスタータービートをセットします",
+                ?: if (state.drumKitNeedsStarterPattern()) "キットを選び、下のボタンでドラムと初期リズムを追加します"
+                else "作ったリズムとA/Bの配置を保って、ドラムの音色を変更します",
             modifier = Modifier.fillMaxWidth().height(30.dp),
         )
         BuiltInDrumKits.catalog.forEachIndexed { index, kit ->
@@ -3585,8 +3587,8 @@ private fun DrumKitStudio(
             )
             if (bankHasContent) {
                 ConfirmActionButton(
-                    label = "Bの音色を入替\nKEEP SAFE",
-                    confirmLabel = "もう一度で入替",
+                    label = "リズムを保って音色変更",
+                    confirmLabel = "もう一度で音色変更",
                     onConfirm = { onApply(true) },
                     confirmationKey = selectedKitId to destructiveProjectConfirmationKey(state),
                     enabled = externalDocumentActionsEnabled(state),
@@ -3594,7 +3596,7 @@ private fun DrumKitStudio(
                 )
             } else {
                 MachineButton(
-                    label = "Bに音色をセット\nKIT + STARTER BEAT",
+                    label = if (state.drumKitNeedsStarterPattern()) "Bに音色をセット\nKIT + STARTER BEAT" else "配置を保ってドラムを追加",
                     onClick = { onApply(false) },
                     enabled = externalDocumentActionsEnabled(state),
                     modifier = Modifier.weight(1.6f).fillMaxHeight(),

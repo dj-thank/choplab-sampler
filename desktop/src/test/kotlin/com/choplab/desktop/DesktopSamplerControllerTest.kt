@@ -263,6 +263,51 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun changingDrumKitPreservesEditedABSongThroughUndoAndProjectReopen() {
+        val directory = Files.createTempDirectory("choplab-kit-patterns").toFile()
+        val project = directory.resolve("kit-groove.choplab")
+        val controller = controller()
+        try {
+            controller.ensurePlayablePadSelected()
+            controller.toggleStep(0)
+            controller.toggleStep(3)
+            controller.duplicateSelectedPatternToOther()
+            controller.toggleStep(15)
+            controller.toggleSongSectionPattern(1)
+            controller.toggleSongSectionPattern(3)
+            controller.toggleSongMode()
+            controller.setBpm(117f)
+            controller.setSwing(61f)
+            val before = controller.state.value
+            val expected = before.materializedPatternArrangement()
+            val drumIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            val oldSound = before.pads[drumIndex].audio?.id
+
+            controller.applyBuiltInDrumKit("boom-bap", replaceExisting = true)
+            assertEquals(expected, controller.state.value.materializedPatternArrangement())
+            val newSound = controller.state.value.pads[drumIndex].audio?.id
+            assertNotEquals(oldSound, newSound)
+            assertEquals(117f, controller.state.value.bpm)
+            assertEquals(61f, controller.state.value.swing)
+            controller.undoEdit()
+            assertEquals(oldSound, controller.state.value.pads[drumIndex].audio?.id)
+            assertEquals(expected, controller.state.value.materializedPatternArrangement())
+            controller.redoEdit()
+            assertEquals(newSound, controller.state.value.pads[drumIndex].audio?.id)
+            assertEquals(expected, controller.state.value.materializedPatternArrangement())
+            controller.saveProject(project)
+            awaitCondition { project.isFile && !controller.state.value.isLoading }
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "kit-groove.choplabを開きました" }
+            assertEquals(expected, controller.state.value.materializedPatternArrangement())
+            assertEquals(newSound, controller.state.value.pads[drumIndex].audio?.id)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun builtInDrumKitUsesTheSharedAndroidCatalog() {
         val controller = controller()
         try {

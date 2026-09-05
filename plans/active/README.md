@@ -6,6 +6,12 @@
 
 ## Current selection
 
+**進行中:** `beat-loop-layers-20260905.md`。ユーザー訂正に合わせ、音の選択→ループ→一つずつ重ねる構成。
+
+**併合する互換修正:** `drum-kit-preserve-patterns-20260905.md`。ドラム音色変更でA/B配置を保持。
+
+## Previous local selection
+
 **完了（LOCAL_PASS）:** `../completed/loop-handoff-compact-20260905.md`。調整した音からのビート移行と小画面の波形表示。
 
 ## Previous local selection
