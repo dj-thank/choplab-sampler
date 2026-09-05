@@ -693,7 +693,9 @@ private class DeckFixture private constructor(
 
     private suspend fun readyNodeWithDescription(prefix: String): SemanticsNode {
         var lastMatches: List<SemanticsNode> = emptyList()
-        repeat(100) {
+        var stableBounds: androidx.compose.ui.geometry.Rect? = null
+        var stableFrames = 0
+        repeat(150) {
             scene.render(System.nanoTime()).close()
             lastMatches = nodes().filter { it.description().startsWith(prefix) }
             val ready = lastMatches.singleOrNull()?.takeIf { node ->
@@ -709,7 +711,11 @@ private class DeckFixture private constructor(
                     bounds.right <= 1_100f &&
                     bounds.bottom <= 1_000f
             }
-            if (ready != null) return ready
+            // Dialog dismissal and bank changes can move an already-present node.
+            // A pointer press needs settled geometry, not just nonzero bounds.
+            if (ready != null && ready.boundsInRoot == stableBounds) stableFrames++
+            else { stableBounds=ready?.boundsInRoot;stableFrames=0 }
+            if (ready != null && stableFrames >= 12) return ready
             delay(10)
         }
         error(

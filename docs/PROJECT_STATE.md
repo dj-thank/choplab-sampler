@@ -1,5 +1,15 @@
 # Project state
 
+## Current snapshot — 2026-09-05 Desktop connect/import navigation
+
+Product `58e543199cb7e945940bfc4dfb366327fe7e236e`. The native 連携 menu routes directly to Library, Spotify or YouTube import; PC-file actions open the existing chooser directly. The Connect panel now leads with source import choices and library access. Spotify playback controls are secondary and expandable; setup diagnostics are absent from the configured panel's main view. The existing internal storage/import pipeline and Android code are unchanged.
+
+Desktop 202 + JVM core 100 + UI/controller 35 (12 overlap), final failures/errors/skips zero. Responsive panel pointer navigation at 760/1100, Windows packaging and project validation passed. A pre-existing loop UI wait timeout prompted a settled-geometry input wait in the test helper; final full validation passed. Native OS file-picker interaction and fresh provider/device checks were not run. New Windows artifact: `desktop/build/windows-app-image-connect-20260905/ChopLab`.
+
+See [report](../outputs/desktop-connect-import-20260905.md) and companion JSON. LOCAL_PASS only for this change.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-05 audio source library
 
 Product `6f7bc7c36a3ee667d4890eeed9c2c762f5e784e4`, packaging guard `cda7e5fa633ea2ecd6bea04f27dc636ff7fdf6f0`. Shared file/library/YouTube/Spotify source hub on Android and Windows. Decoded imports stay in an app-private hash-addressed library; selecting sources retains production pads/patterns. Spotify saved metadata selects a unique compatible YouTube candidate, with ambiguity requiring user choice. Existing four sources were copied to the Windows private library and a personal .choplib transfer artifact. Music is not in APK or repository assets.

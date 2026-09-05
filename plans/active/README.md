@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `desktop-connect-import-20260905.md`。デスクトップ連携メニュー・パネルから音源追加への導線改善。
+**完了（LOCAL_PASS）:** `../completed/desktop-connect-import-20260905.md`。デスクトップ連携メニュー・パネルから音源追加への導線改善。
 
 ## Previous selection
 
