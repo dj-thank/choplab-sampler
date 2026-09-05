@@ -114,3 +114,11 @@ BEAT separates selecting a sound from playback: a sound card only selects; Loop 
 ## Drum sound replacement
 
 A kit change preserves all A/B rhythms and Song order. A starter rhythm is added only when kit slots are empty and no saved variation already contains a groove for those slots. Initial addition also preserves other lanes and the second page of BANK B.
+
+## Personal audio library
+
+An app-private, content-addressed store of the user's source files, separate from project audio/PAD assignments. Selecting a library item attaches a new Chop source while preserving current PADs, patterns and arrangement. Desktop stores it under LOCALAPPDATA/ChopLab/audio-library; Android uses filesDir/audio-library. A .choplib is a bounded portable ZIP of source files, not an app or project bundle.
+
+## Spotify source selection
+
+Saved-track metadata identifies a requested song. The source hub searches YouTube and automatically imports only a single title/artist/duration-compatible candidate; ambiguous results require selection. The resulting local sound is YouTube audio, never Spotify stream/cache content. Spotify credentials stay in memory; a public Client ID may be provided at build time via CHOPLAB_SPOTIFY_CLIENT_ID.

@@ -4,6 +4,8 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 個人用音源ライブラリ・YouTube取り込み | LOCAL_PASS + Windows実取得観測 | ファイル/YouTubeをdecode検証後に保存。制作保持、中止/ZIP/同名候補を検証。Android実機は未確認 |
+| Spotifyお気に入りから音源追加 | LOCAL_PASS + Desktop OAuth/20曲取得観測 | 対応YouTube音源を取得。一意でない候補は選択。公開Client ID設定済みの両版を作成。Android callback登録済み、実機OAuthは未確認 |
 | 明示ループ・追加レイヤー | LOCAL_PASS | 音選択と再生を分離、核を再始動せず追加/除去。既存LOOP属性で保存。自動BPM合わせ・ライブ追加時刻の記録は含まない |
 | ドラム音色変更で配置保持 | LOCAL_PASS | A/B・Songを保持しUndo/保存/再読込確認。空のキット領域かつ保存済みドラム配置がない場合のみ初期リズム追加 |
 | 調整音からビートへの引き継ぎ・小画面 | LOCAL input tests | この音を回してビートへ、成功後のみ遷移。旧ループが選択音を奪わない。360×520/font1.3で波形表示とスクロール後48dp操作を確認。最終gateはoutputs/loop-handoff-compact-20260905.md |

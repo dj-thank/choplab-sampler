@@ -1,5 +1,16 @@
 # Project state
 
+## Current snapshot — 2026-09-05 audio source library
+
+Product `6f7bc7c36a3ee667d4890eeed9c2c762f5e784e4`, packaging guard `cda7e5fa633ea2ecd6bea04f27dc636ff7fdf6f0`. Shared file/library/YouTube/Spotify source hub on Android and Windows. Decoded imports stay in an app-private hash-addressed library; selecting sources retains production pads/patterns. Spotify saved metadata selects a unique compatible YouTube candidate, with ambiguity requiring user choice. Existing four sources were copied to the Windows private library and a personal .choplib transfer artifact. Music is not in APK or repository assets.
+
+826 standard tests + 34 UI/controller checks (overlap retained), final failures/errors/skips zero. Android lint/APK/test-APK compile, fresh Windows app image, project validation passed. One unchanged prior loop UI test timed out and passed the unchanged full recheck; no flake-fix claim. Runtime source 6f7bc7c; build-only guard prevents touching an active app image. Previous default image was partially cleaned before the guard; use the new `desktop/build/windows-app-image-audio-source-20260905/ChopLab` image.
+
+Scoped external observations: Desktop Spotify OAuth/favorites 20, normal YouTube Part 4 download/decode, Android redirect save/readback after user approval. Physical Android import/audio, iOS and public release remain unverified. See [report](../outputs/audio-source-library-20260905.md) and JSON for exact artifact bytes and limitations.
+
+## Previous snapshot
+
+
 
 ## Current snapshot — 2026-09-05 explicit Loop and additive layers
 
