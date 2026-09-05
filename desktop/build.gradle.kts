@@ -80,14 +80,22 @@ val prepareMediaTools by tasks.registering(Exec::class) {
     commandLine("python", "scripts/prepare_media_tools.py", "--out", "work/media-tools")
 }
 
+val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
+require(windowsPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
+
 tasks.register<Exec>("packageWindows") {
     dependsOn(tasks.installDist, prepareMediaTools)
     onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
 
     val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
-    val destinationDir = layout.buildDirectory.dir("windows-app-image").get().asFile
+    val destinationDir = layout.buildDirectory.dir(windowsPackageDirectory).get().asFile
     doFirst {
-        destinationDir.deleteRecursively()
+        val executable=destinationDir.resolve("ChopLab/ChopLab.exe").canonicalFile.path
+        val running=ProcessHandle.allProcesses().use { handles ->
+            handles.anyMatch { it.info().command().orElse("").equals(executable,ignoreCase=true) }
+        }
+        check(!running) { "Windows app image is running. Choose a fresh -PwindowsPackageDirectory name." }
+        check(destinationDir.deleteRecursively()) { "Windows app image is in use. Choose a fresh -PwindowsPackageDirectory name." }
         destinationDir.mkdirs()
     }
     commandLine(
@@ -119,7 +127,7 @@ tasks.named("packageWindows") {
     doLast {
         copy {
             from(rootProject.file("work/media-tools"))
-            into(layout.buildDirectory.dir("windows-app-image/ChopLab/tools"))
+            into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/tools"))
         }
     }
 }
