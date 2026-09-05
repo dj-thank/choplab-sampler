@@ -64,8 +64,8 @@ class FirstScreenFlowDeviceTest {
         }
 
         demo.performClick()
-        composeRule.onNode(hasContentDescription("ドラムを鳴らす", substring = true)).assertIsDisplayed()
-        composeRule.onNode(hasContentDescription("並べ方・曲構成", substring = true)).assertIsDisplayed()
+        composeRule.onNode(hasContentDescription("全体を再生", substring = true)).performScrollTo().assertIsDisplayed()
+        composeRule.onNode(hasContentDescription("配置・曲構成", substring = true)).performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -77,14 +77,14 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
             .performClick()
 
-        listOf("ドラムを鳴らす", "並べ方・曲構成").forEach { label ->
+        listOf("全体を再生", "配置・曲構成").forEach { label ->
             val action = composeRule.onNode(hasContentDescription(label, substring = true))
-            action.assertIsDisplayed()
+            action.performScrollTo().assertIsDisplayed()
             val bounds = action.fetchSemanticsNode().boundsInRoot
             val minimum = 48f * composeRule.density.density
             assertTrue(bounds.width >= minimum - 1f && bounds.height >= minimum - 1f)
         }
-        composeRule.onNode(hasContentDescription("並べ方・曲構成", substring = true)).performClick()
+        composeRule.onNode(hasContentDescription("配置・曲構成", substring = true)).performClick()
         composeRule.onNode(hasText("BPM")).performScrollTo().assertIsDisplayed()
     }
 
@@ -1147,7 +1147,8 @@ class FirstScreenFlowDeviceTest {
                     null
                 }
                 SamplerDeckController::rechopSourceFrom.name,
-                SamplerDeckController::startPadLoop.name -> false
+                SamplerDeckController::startPadLoop.name,
+                SamplerDeckController::setPadLoopLayer.name -> false
                 else -> null
             }
         }

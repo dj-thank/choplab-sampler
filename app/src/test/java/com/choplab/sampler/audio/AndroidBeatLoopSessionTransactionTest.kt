@@ -85,7 +85,7 @@ class AndroidBeatLoopSessionTransactionTest {
     }
 
     @Test
-    fun runtimeRestartUsesOneCompleteRequestAndCanExcludeExistingCompanions() {
+    fun runtimeRestartKeepsLoopLayersWhenExcludingVocals() {
         val withCompanions = FakePlaybackEngine(admitLoopSession = false)
         val withoutCompanions = FakePlaybackEngine(admitLoopSession = false)
         val pads = state().pads.map { pad ->
@@ -102,8 +102,30 @@ class AndroidBeatLoopSessionTransactionTest {
             ),
         )
 
-        assertEquals(listOf(96), withCompanions.loopRequests.single().second.map(PadModel::globalIndex))
-        assertTrue(withoutCompanions.loopRequests.single().second.isEmpty())
+        assertEquals(listOf(1, 96), withCompanions.loopRequests.single().second.map(PadModel::globalIndex))
+        assertEquals(listOf(1), withoutCompanions.loopRequests.single().second.map(PadModel::globalIndex))
+    }
+
+    @Test fun layerAdmissionDoesNotRestartCoreAndRejectionDoesNotCommitHistory() {
+        val before = state().copy(loopingPadIndex = 1, loopPlayheadFrame = 311, currentStep = 7)
+        val rejectedSession = ProductionSession()
+        val rejected = FakePlaybackEngine(admitLoopSession = false)
+        assertTrue(AndroidBeatLoopSessionTransaction(rejectedSession, rejected).changeLayer(before, 0, true) is AndroidBeatLoopSessionResult.Rejected)
+        assertFalse(rejectedSession.canUndo)
+        assertEquals(0L, rejectedSession.revision)
+        assertTrue(rejected.loopRequests.isEmpty())
+        assertEquals(1, rejected.layerRequests.size)
+
+        val session = ProductionSession()
+        val engine = FakePlaybackEngine(admitLoopSession = true)
+        val changed = AndroidBeatLoopSessionTransaction(session, engine).changeLayer(before, 0, true) as AndroidBeatLoopSessionResult.Started
+        assertEquals(1, changed.transition.state.loopingPadIndex)
+        assertEquals(311, changed.transition.state.loopPlayheadFrame)
+        assertEquals(7, changed.transition.state.currentStep)
+        assertTrue(changed.transition.state.transportPlaying)
+        assertEquals(PadPlayMode.LOOP, changed.transition.state.pads[0].playMode)
+        assertTrue(engine.loopRequests.isEmpty())
+        assertEquals(1, engine.layerRequests.size)
     }
 
     private fun state(): SamplerUiState {
@@ -149,6 +171,11 @@ class AndroidBeatLoopSessionTransactionTest {
         override fun updatePad(pad: PadModel) = Unit
         override fun updateAllPads(pads: List<PadModel>) = Unit
         override fun triggerPad(globalIndex: Int): Long? = 1L
+        val layerRequests = mutableListOf<Pair<PadModel, Boolean>>()
+        override fun setPadLoopLayer(pad: PadModel, enabled: Boolean): Boolean {
+            layerRequests += pad to enabled
+            return admitLoopSession
+        }
         override fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean {
             loopFailure?.let { throw it }
             loopRequests += loopPad to companionPads

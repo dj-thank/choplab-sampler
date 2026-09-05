@@ -44,14 +44,15 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
-    fun editedChopReplacesPreviousLoopWhenContinuingToBeat() = runBlocking {
+    fun editedChopJoinsPreviousLoopWhenContinuingToBeat() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.controller.startPadLoop(0)
                 fixture.mousePress("PAD 02 割り当て済み", 700)
                 fixture.mousePress("この音を回してビートへ", 40)
-                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(0, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(PadPlayMode.LOOP, fixture.controller.state.value.pads[1].playMode)
                 assertTrue(fixture.controller.state.value.transportPlaying)
                 assertTrue(fixture.nodeWithDescription("選択範囲の波形").stateDescription().contains("16000から32000"))
                 fixture.capture("chosen-loop-handoff")
@@ -67,7 +68,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.startPadLoop(0)
                 fixture.mousePress("PAD 02 割り当て済み", 700)
                 val before = fixture.controller.state.value
-                fixture.audio.failNextLoopStart = true
+                fixture.audio.failNextTrigger = true
                 fixture.mousePress("この音を回してビートへ", 40)
                 assertEquals(0, fixture.controller.state.value.loopingPadIndex)
                 assertEquals(before.pads, fixture.controller.state.value.pads)
@@ -84,22 +85,48 @@ class DesktopLongPressUiTest {
             val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 520, fontScale = 1.3f)
             try {
                 fixture.mousePress("工程3", 40)
-                assertTrue(fixture.nodeWithDescription("選択範囲の波形").boundsInRoot.height > 0f)
-                fixture.scrollDown(120f)
-                val waveform = fixture.nodeWithDescription("選択範囲の波形")
-                assertTrue(waveform.boundsInRoot.height >= 80f, "Waveform must have a drawable area: ${waveform.boundsInRoot}")
+                fixture.reveal("選択音をループ", 48f)
+                fixture.mousePress("選択音をループ", 40)
+                assertEquals(0, fixture.controller.state.value.loopingPadIndex)
+                fixture.capture("compact-loop-beat")
+                fixture.reveal("選択範囲の波形", 80f)
+                assertTrue(fixture.nodeWithDescription("選択範囲の波形").boundsInRoot.height >= 80f)
                 fixture.capture("compact-loop-waveform")
-                fixture.scrollDown()
                 for (label in listOf("S 始まり", "E 終わり", "ドラムを足す", "スクラッチ")) {
+                    fixture.reveal(label, 48f)
                     val bounds = fixture.nodeWithDescription(label).boundsInRoot
                     assertTrue(bounds.width >= 48f && bounds.height >= 48f && bounds.bottom <= 520f, "$label: $bounds")
                 }
-                val start = fixture.nodeWithDescription("このループを回す")
-                assertTrue(start.boundsInRoot.height >= 48f)
-                assertTrue(start.boundsInRoot.bottom <= 520f)
-                fixture.mousePress(start, 40)
-                assertTrue(fixture.controller.state.value.transportPlaying)
-                fixture.capture("compact-loop-beat")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun selectThenLoopAndAddAnotherSoundWithoutRestartingTheCore() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("音を選ぶ A-02", 40)
+                assertEquals(null, fixture.controller.state.value.loopingPadIndex)
+                assertTrue(fixture.audio.loopRequests.isEmpty())
+                fixture.mousePress("選択音をループ", 40)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                val coreStarts = fixture.audio.loopRequests.count { it.globalIndex == 1 }
+                fixture.mousePress("音を選ぶ A-01", 40)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(PadPlayMode.ONE_SHOT, fixture.controller.state.value.pads[0].playMode)
+                fixture.mousePress("選択音をループ", 40)
+                assertEquals(PadPlayMode.LOOP, fixture.controller.state.value.pads[0].playMode)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(coreStarts, fixture.audio.loopRequests.count { it.globalIndex == 1 })
+                assertTrue(fixture.hasDescription("重ねている音 A-01を選ぶ"))
+                assertTrue(fixture.hasDescription("重ねている音 A-02を選ぶ"))
+                fixture.capture("select-loop-add-layers")
+                fixture.mousePress("A-01のループを外す", 40)
+                assertEquals(PadPlayMode.ONE_SHOT, fixture.controller.state.value.pads[0].playMode)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(coreStarts, fixture.audio.loopRequests.count { it.globalIndex == 1 })
             } finally { fixture.close() }
         }
     }
@@ -242,11 +269,13 @@ class DesktopLongPressUiTest {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress("工程3", 40)
-                fixture.mousePress("ループに使う A-02", 40)
+                fixture.mousePress("音を選ぶ A-02", 40)
+                fixture.mousePress("選択音をループ", 40)
+                fixture.controller.toggleTransport()
                 assertEquals(1, fixture.controller.state.value.loopingPadIndex)
                 assertTrue(fixture.controller.state.value.transportPlaying)
                 val starts = fixture.audio.loopRequests.size
-                fixture.mousePress("ループに使う A-02", 40)
+                fixture.mousePress("音を選ぶ A-02", 40)
                 assertEquals(starts, fixture.audio.loopRequests.size)
                 fixture.mousePress("ドラムを足す", 40)
                 fixture.mousePress("Bに音色をセット", 40)
@@ -254,6 +283,7 @@ class DesktopLongPressUiTest {
                 assertTrue(fixture.controller.state.value.transportPlaying)
                 fixture.mousePress("閉じる", 40)
                 val drum = fixture.controller.state.value.pads[32]
+                fixture.mousePress("重ねている音 A-02を選ぶ", 40)
                 val dial = fixture.nodeWithDescription("S 始まり")
                 requireNotNull(dial.config.getOrNull(SemanticsActions.ScrollBy)?.action).invoke(0f, -30f)
                 fixture.settle(600)
@@ -263,7 +293,6 @@ class DesktopLongPressUiTest {
                 assertTrue(fixture.controller.state.value.transportPlaying)
                 fixture.capture("loop-first-beat")
                 fixture.mousePress("スクラッチ", 40)
-                fixture.mousePress("ループ設定のPAD A-02を選ぶ", 40)
                 assertEquals(1, fixture.controller.state.value.selectedPad)
                 fixture.capture("loop-first-scratch")
                 fixture.controller.stopAllSounds()
@@ -283,7 +312,7 @@ class DesktopLongPressUiTest {
                 }
                 fixture.capture("audit-chop-loading")
                 fixture.mousePress("工程3", 40)
-                for (label in listOf("ドラムを足す", "スクラッチ", "このループを回す", "S 始まり", "E 終わり")) {
+                for (label in listOf("ドラムを足す", "スクラッチ", "選択音をループ", "S 始まり", "E 終わり")) {
                     assertTrue(fixture.nodeWithDescription(label).config.contains(SemanticsProperties.Disabled), label)
                 }
                 fixture.capture("audit-beat-loading")
@@ -338,7 +367,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.toggleStep(4)
                 fixture.controller.selectPatternVariation(0)
                 fixture.mousePress("工程3", 40)
-                fixture.mousePress("並べ方・曲構成", 40)
+                fixture.mousePress("配置・曲構成", 40)
                 fixture.mousePress("曲にする", 40)
                 val originalB = fixture.controller.state.value.patternArrangement.storedStepsBySlot[1]
                 fixture.mousePress("AをBへコピー", 40)
@@ -386,7 +415,9 @@ class DesktopLongPressUiTest {
                 fixture.controller.selectPlayablePad(0)
                 fixture.controller.toggleStep(0)
                 fixture.mousePress("工程3", 40)
+                fixture.reveal("ドラムを足す")
                 fixture.mousePress("ドラムを足す", 40)
+                fixture.capture("pattern-layer-compact-open")
                 fixture.mousePress("SOUNDS", 40)
                 fixture.capture("pattern-layer-compact-top")
                 fixture.scrollDown()
@@ -612,14 +643,37 @@ private class DeckFixture private constructor(
         mousePress(readyNodeWithDescription(description), holdMillis, fractionX)
     }
 
+    suspend fun reveal(description: String, minimumHeight: Float = 48f) {
+        val initial = nodes().singleOrNull { it.description().startsWith(description) }
+        if (initial != null && initial.boundsInRoot.height >= minimumHeight) return
+        scrollDown(-10000f)
+        repeat(24) {
+            val node = nodes().singleOrNull { it.description().startsWith(description) }
+            if (node != null && node.boundsInRoot.height >= minimumHeight) return
+            scrollDown(80f)
+        }
+        error("Could not scroll $description into view")
+    }
+
     suspend fun scrollDown(distance: Float = 1000f) {
-        nodes().filter { node ->
+        val scrollNodes = nodes().filter { node ->
             node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null &&
                 node.config.getOrNull(SemanticsProperties.Role) != androidx.compose.ui.semantics.Role.Button
-        }.forEach { node ->
-            node.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, distance)
         }
-        settle(200)
+        val ranges = scrollNodes.mapNotNull { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) }
+        scrollNodes.forEach { it.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, distance) }
+        // Semantics ScrollBy animates. Wait for geometry to settle so the next pointer
+        // click reaches its button instead of merely cancelling the pending scroll.
+        var positions = ranges.map { it.value() }
+        var stableFrames = 0
+        repeat(100) {
+            settle(20)
+            val next = ranges.map { it.value() }
+            stableFrames = if (next == positions) stableFrames + 1 else 0
+            if (stableFrames >= 8) return
+            positions = next
+        }
+        error("Scroll animation did not settle")
     }
 
     suspend fun settle(durationMillis: Long = 100) {

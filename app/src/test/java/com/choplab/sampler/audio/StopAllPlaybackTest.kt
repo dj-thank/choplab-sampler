@@ -23,6 +23,17 @@ class StopAllPlaybackTest {
         assertEquals(listOf("loop"), rejectedLoop.calls)
     }
 
+    @Test fun addingDrumsToAnActiveCoreStartsOnlyTheTransport() {
+        val audio = PcmAudio(name = "loop", samples = ShortArray(1024), sampleRate = 48000)
+        val state = com.choplab.sampler.model.SamplerUiState(loopingPadIndex = 1,
+            pads = List(com.choplab.sampler.model.SamplerConfig.PAD_COUNT) {
+                if (it < 2) PadModel(it, audio, 0, 1024, playMode = com.choplab.sampler.model.PadPlayMode.LOOP) else PadModel(it)
+            })
+        val engine = RecordingPlaybackEngine()
+        org.junit.Assert.assertTrue(startAndroidLayeredTransport(engine, state))
+        assertEquals(listOf("transport"), engine.calls)
+    }
+
     @Test
     fun stopBoundaryIsPublishedBeforeTransportStop() {
         val engine = RecordingPlaybackEngine()
@@ -51,6 +62,7 @@ private class RecordingPlaybackEngine : SamplerPlaybackEngine {
     override fun updatePad(pad: PadModel) = Unit
     override fun updateAllPads(pads: List<PadModel>) = Unit
     override fun triggerPad(globalIndex: Int): Long? = 1L
+    override fun setPadLoopLayer(pad: PadModel, enabled: Boolean): Boolean = true
     override fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean { calls += "loop"; return loopAccepted }
     override fun stopPad(globalIndex: Int) = Unit
     override fun beginScratch(globalIndex: Int, startFrame: Int) = Unit

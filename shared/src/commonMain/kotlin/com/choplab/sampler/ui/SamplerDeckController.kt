@@ -83,6 +83,7 @@ interface SamplerDeckController {
     fun setSelectedPadStartFrame(frame: Int)
     fun setSelectedPadEndFrame(frame: Int)
     fun rollPadBoundary(index: Int, boundary: PadTrimBoundary, deltaFrames: Int)
+    fun setPadLoopLayer(index: Int, enabled: Boolean, withPattern: Boolean = false): Boolean
     fun startPadLoop(index: Int, withPattern: Boolean = false): Boolean
     fun previewPad(index: Int)
     fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot)

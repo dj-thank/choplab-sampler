@@ -109,6 +109,7 @@ import com.choplab.sampler.model.beatLoopControlEnabled
 import com.choplab.sampler.model.canUsePatternSteps
 import com.choplab.sampler.model.focusPadTrimAtFrame
 import com.choplab.sampler.model.hasAnyPatternSteps
+import com.choplab.sampler.model.loopLayerChangeBlockedReason
 import com.choplab.sampler.model.drumKitNeedsStarterPattern
 import com.choplab.sampler.model.hasAudiblePlaybackPatternContent
 import com.choplab.sampler.model.isActive
@@ -2061,6 +2062,7 @@ private fun PadTrimEditor(
     val pad = state.selectedPadModel()
     if (!pad.isAssigned) return
     val looping = state.loopingPadIndex == pad.globalIndex
+    val layered = state.loopingPadIndex != null && !looping && pad.playMode == PadPlayMode.LOOP
     BoxWithConstraints(modifier.fillMaxSize()) {
         val mapHeight = if (state.currentAudio != null) 84.dp else 0.dp
         val waveformHeight = (maxHeight - mapHeight - 204.dp).coerceAtLeast(160.dp)
@@ -2076,16 +2078,15 @@ private fun PadTrimEditor(
                 modifier = Modifier.fillMaxWidth().height(124.dp))
             Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MachineButton(
-                    label = if (looping) "ループを止める" else "ループを回す",
-                    onClick = { if (looping) viewModel.stopAllSounds() else viewModel.startPadLoop(pad.globalIndex) },
-                    enabled = looping || (com.choplab.sampler.model.playbackStartBlockedReason(state) == null && pad.contentKind != PadContentKind.VOCAL),
-                    active = looping,
+                    label = when { looping -> "ループを止める"; layered -> "重ねたループを外す"; state.loopingPadIndex != null -> "重ねてループ"; else -> "ループを回す" },
+                    onClick = { if (looping) viewModel.stopAllSounds() else viewModel.setPadLoopLayer(pad.globalIndex, enabled = !layered) },
+                    enabled = looping || state.loopLayerChangeBlockedReason(pad.globalIndex, enabled = !layered) == null,
+                    active = looping || layered,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 MachineButton(label = "この音を回してビートへ", onClick = {
-                    if (viewModel.startPadLoop(pad.globalIndex, withPattern = true)) onLoopReady()
-                }, enabled = com.choplab.sampler.model.playbackStartBlockedReason(state) == null &&
-                    pad.contentKind != PadContentKind.VOCAL,
+                    if (viewModel.setPadLoopLayer(pad.globalIndex, enabled = true, withPattern = true)) onLoopReady()
+                }, enabled = state.loopLayerChangeBlockedReason(pad.globalIndex, enabled = true) == null,
                     modifier = Modifier.weight(1f).fillMaxHeight())
             }
         }
@@ -2215,79 +2216,111 @@ private fun LoopFirstBeatWorkspace(
 ) {
     val editable = externalDocumentActionsEnabled(state)
     val canStart = com.choplab.sampler.model.playbackStartBlockedReason(state) == null
-    val candidates = state.pads.filter { it.isAssigned && it.contentKind == PadContentKind.SAMPLE }
-    val ownerIndex = state.loopingPadIndex ?: state.configuredLoopPadIndex()
-        ?: state.selectedPad.takeIf { index -> candidates.any { it.globalIndex == index } }
-        ?: candidates.firstOrNull()?.globalIndex
-    val pad = ownerIndex?.let { state.pads.getOrNull(it) }
+    val selected = state.pads.getOrNull(state.selectedPad)?.takeIf { it.isAssigned }
+        ?: state.loopingPadIndex?.let(state.pads::get)
+        ?: state.pads.firstOrNull { it.isAssigned && it.contentKind == PadContentKind.SAMPLE }
+        ?: state.pads.firstOrNull { it.isAssigned }
+    val loops = state.pads.filter { it.isAssigned && it.playMode == PadPlayMode.LOOP }
     val playing = state.loopingPadIndex != null || state.transportPlaying
-    val actions: @Composable (Modifier) -> Unit = { modifier ->
+    val isCore = selected?.globalIndex == state.loopingPadIndex
+    val isLayer = selected?.playMode == PadPlayMode.LOOP && state.loopingPadIndex != null && !isCore
+    fun padName(pad: PadModel) = "${bankName(pad.bankIndex)}-${"%02d".format(pad.indexInBank + 1)}"
+
+    val selector: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MachineButton(
-                label = if (playing) "ビートを止める" else if (pad != null) "このループを回す" else "ドラムを鳴らす",
-                onClick = {
-                    if (playing) viewModel.stopAllSounds()
-                    else if (pad != null) viewModel.startPadLoop(pad.globalIndex, withPattern = true)
-                    else viewModel.toggleTransport()
-                },
-                enabled = playing || (canStart && (pad != null || state.hasAudiblePlaybackPatternContent())),
-                active = playing, modifier = Modifier.fillMaxWidth().height(56.dp),
+            Text("1  音を選ぶ", color = DeckInk, fontFamily = DeckFont, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            BankStrip(state.selectedBank, 48.dp, viewModel::selectPlayableBank, compactLabels = true)
+            BeatLoopSoundChoices(
+                pads = state.pads.filter { it.bankIndex == state.selectedBank && it.isAssigned },
+                selectedPad = selected?.globalIndex ?: -1,
+                onSelect = viewModel::selectPlayablePad,
+                modifier = Modifier.fillMaxWidth().height(
+                    ((state.pads.count { it.bankIndex == state.selectedBank && it.isAssigned } + 1) / 2 * 92).coerceIn(86, 184).dp),
             )
-            Row(Modifier.fillMaxWidth().height(48.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MachineButton("ドラムを足す", onDrums, Modifier.weight(1f).fillMaxHeight(), enabled = editable)
-                MachineButton("スクラッチ", onScratch, Modifier.weight(1f).fillMaxHeight(), enabled = editable && pad != null)
-                MachineButton("並べ方・曲構成", onDetails, Modifier.weight(1f).fillMaxHeight())
+            if (selected != null) {
+                Text("2  選んだ音をループ", color = DeckInk, fontFamily = DeckFont, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                val reason = state.loopLayerChangeBlockedReason(selected.globalIndex, enabled = !isLayer)
+                MachineButton(
+                    label = when { isCore -> "ループを止める"; isLayer -> "この重ね音を外す"; state.loopingPadIndex != null -> "重ねてループ"; else -> "ループ" },
+                    contentLabel = "選択音をループ",
+                    onClick = {
+                        if (isCore) viewModel.stopAllSounds()
+                        else viewModel.setPadLoopLayer(selected.globalIndex, enabled = !isLayer)
+                    },
+                    enabled = isCore || reason == null, active = isCore || isLayer,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                )
+                Text(reason ?: when {
+                    isCore -> "この音がビートの核です。停止すると重ねた音も止まります。"
+                    isLayer -> "核に重ねている音です。外しても核のループは続きます。"
+                    state.loopingPadIndex != null -> "核を回したまま、この音を切り出した長さで重ねます。"
+                    else -> "ループを押すと、選択した範囲を繰り返します。"
+                },
+                    color = DeckInk, fontFamily = DeckFont, fontSize = 10.sp, lineHeight = 14.sp)
+            }
+            Text("3  重ねているループ  ${loops.size}", color = DeckInk, fontFamily = DeckFont, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Column(Modifier.fillMaxWidth().height((loops.size * 57).coerceIn(56, 176).dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (loops.isEmpty()) {
+                    BeginnerCoachBar("音を選び、ループを押すとビートの核になります", Modifier.fillMaxWidth().height(56.dp), multiLine = true)
+                }
+                loops.sortedBy { if (it.globalIndex == state.loopingPadIndex) -1 else it.globalIndex }.forEach { layer ->
+                    Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        MachineButton(
+                            label = "${if (layer.globalIndex == state.loopingPadIndex) "核 • " else ""}${padName(layer)}  ${layer.audio?.name.orEmpty()}",
+                            contentLabel = "重ねている音 ${padName(layer)}を選ぶ",
+                            onClick = { viewModel.selectPlayablePad(layer.globalIndex) }, active = selected?.globalIndex == layer.globalIndex,
+                            modifier = Modifier.weight(1f).fillMaxHeight(), compact = true,
+                        )
+                        MachineButton("外す", { viewModel.setPadLoopLayer(layer.globalIndex, enabled = false) },
+                            contentLabel = "${padName(layer)}のループを外す",
+                            enabled = editable && layer.globalIndex != state.loopingPadIndex,
+                            modifier = Modifier.width(56.dp).fillMaxHeight(), compact = true)
+                    }
+                }
             }
         }
     }
-    val wave: @Composable (Modifier) -> Unit = { modifier ->
+    val detail: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("${selected?.let(::padName) ?: "選択した音"} • 切り位置を調整", color = DeckInk,
+                fontFamily = DeckFont, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             state.currentAudio?.let { source ->
-                WholeSourceChopMap(source, state.pads, ownerIndex ?: -1, canStart, onRechop,
-                    Modifier.fillMaxWidth().height(84.dp))
+                WholeSourceChopMap(source, state.pads, selected?.globalIndex ?: -1, canStart, onRechop,
+                    Modifier.fillMaxWidth().height(64.dp))
             }
-            if (pad != null) {
-                Row(Modifier.fillMaxWidth().height(48.dp).horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    candidates.forEach { candidate ->
-                        val name = "${bankName(candidate.bankIndex)}-${"%02d".format(candidate.indexInBank + 1)}"
-                        MachineButton(label = name, contentLabel = "ループに使う $name",
-                            onClick = { viewModel.startPadLoop(candidate.globalIndex, withPattern = true) },
-                            active = ownerIndex == candidate.globalIndex, enabled = canStart,
-                            modifier = Modifier.width(86.dp).fillMaxHeight())
-                    }
-                }
-                AutomaticLoopWaveform(pad, state.loopPlayheadFrame.takeIf { state.loopingPadIndex == pad.globalIndex },
-                    Modifier.fillMaxWidth().weight(1f))
-            } else {
-                BeginnerCoachBar("まず元曲から、回したい音を切り出します", Modifier.fillMaxWidth().height(56.dp))
-                MachineButton(label = "元曲をチョップする", onClick = { onRechop(0) },
-                    enabled = state.currentAudio != null && editable, modifier = Modifier.fillMaxWidth().height(56.dp))
+            if (selected != null) {
+                AutomaticLoopWaveform(selected, state.loopPlayheadFrame.takeIf { isCore }, Modifier.fillMaxWidth().height(168.dp))
+                LoopBoundaryDials(selected, editable,
+                    { boundary, frames -> viewModel.rollPadBoundary(selected.globalIndex, boundary, frames) },
+                    Modifier.fillMaxWidth().height(116.dp))
+
             }
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val dialHeight = (maxHeight - 120.dp).coerceIn(96.dp, 220.dp)
-        if (maxWidth >= 600.dp && maxWidth > maxHeight && maxHeight >= 308.dp && pad != null) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                wave(Modifier.weight(1.7f).fillMaxHeight())
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
-                    LoopBoundaryDials(pad, editable,
-                        { boundary, frames -> viewModel.rollPadBoundary(pad.globalIndex, boundary, frames) },
-                        Modifier.fillMaxWidth().height(dialHeight))
-                    actions(Modifier.fillMaxWidth().height(112.dp))
+        val wide = maxWidth >= 760.dp
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("音を選ぶ → ループ → 気に入った音を重ねる", color = DeckInk, fontFamily = DeckFont,
+                fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            if (wide) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    selector(Modifier.weight(1f))
+                    detail(Modifier.weight(1.2f))
                 }
+            } else {
+                selector(Modifier.fillMaxWidth())
+                detail(Modifier.fillMaxWidth())
             }
-        } else {
-            // Reserve a useful waveform even when the viewport cannot fit the whole desk.
-            // Scrolling belongs to the desk; S/E wheels keep their own relative edit gesture.
-            val waveHeight = (maxHeight - if (pad != null) 252.dp else 120.dp).coerceAtLeast(308.dp)
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                wave(Modifier.fillMaxWidth().height(waveHeight))
-                if (pad != null) LoopBoundaryDials(pad, editable,
-                    { boundary, frames -> viewModel.rollPadBoundary(pad.globalIndex, boundary, frames) },
-                    Modifier.fillMaxWidth().height(124.dp))
-                actions(Modifier.fillMaxWidth().height(112.dp))
+            Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MachineButton(if (playing) "ビートを止める" else "全体を再生", {
+                    if (playing) viewModel.stopAllSounds() else viewModel.toggleTransport()
+                }, enabled = playing || (canStart && state.hasAudiblePlaybackPatternContent()), active = playing,
+                    modifier = Modifier.weight(1f).fillMaxHeight())
+                MachineButton("ドラムを足す", onDrums, enabled = editable, modifier = Modifier.weight(1f).fillMaxHeight())
+            }
+            Row(Modifier.fillMaxWidth().height(48.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MachineButton("スクラッチ", onScratch, enabled = editable, modifier = Modifier.weight(1f).fillMaxHeight())
+                MachineButton("配置・曲構成", onDetails, modifier = Modifier.weight(1f).fillMaxHeight())
             }
         }
     }
@@ -3890,7 +3923,7 @@ private fun ScratchStudio(
                 modifier = Modifier.fillMaxWidth().height(108.dp),
             )
         } else {
-            val loopPad = state.pads.firstOrNull { it.isAssigned && it.playMode == PadPlayMode.LOOP }
+            val loopPad = (state.loopingPadIndex ?: state.configuredLoopPadIndex())?.let(state.pads::get)
             if (loopPad != null && loopPad.globalIndex != state.selectedPad) {
                 MachineButton(
                     label = "ループ設定のPAD ${bankName(loopPad.bankIndex)}-${"%02d".format(loopPad.indexInBank + 1)}を選ぶ",

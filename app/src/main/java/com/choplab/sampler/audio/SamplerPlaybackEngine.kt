@@ -20,6 +20,7 @@ interface SamplerPlaybackEngine {
     /** Returns an ownership token only when the realtime trigger command was admitted. */
     fun triggerPad(globalIndex: Int): Long?
     /** Returns true only when one complete owner/companion loop session command was admitted. */
+    fun setPadLoopLayer(pad: PadModel, enabled: Boolean): Boolean
     fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean
     fun stopPad(globalIndex: Int)
     fun beginScratch(globalIndex: Int, startFrame: Int)

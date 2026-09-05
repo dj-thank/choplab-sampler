@@ -33,6 +33,9 @@ import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.HistoryRequestDenial
 import com.choplab.sampler.model.PadContentKind
+import com.choplab.sampler.model.loopLayerChangeBlockedReason
+import com.choplab.sampler.model.withLoopLayer
+import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PerformancePadPressAction
@@ -277,6 +280,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         loopToStop?.let { loopPad ->
             engine.stopPad(loopPad)
+            mutableUiState.value.pads.loopCompanionPadIndicesForLoopStart(loopPad).forEach(engine::stopPad)
             playbackInterruptionCoordinator.endPlaybackSession()
         }
     }
@@ -1675,12 +1679,51 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean {
+    override fun setPadLoopLayer(index: Int, enabled: Boolean, withPattern: Boolean): Boolean {
+        val before = mutableUiState.value
+        before.loopLayerChangeBlockedReason(index, enabled)?.let { setStatus(it); return false }
+        if (enabled && before.loopingPadIndex == null) return startPadLoopInternal(index, withPattern, preserveLayers = true)
+        val after = before.withLoopLayer(index, enabled)
+        if (after == before) {
+            if (withPattern && !before.transportPlaying) {
+                syncPattern()
+                if (!startLayeredTransport()) return false
+                mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
+            }
+            return true
+        }
+        val candidate = after.pads[index]
+        val result = try {
+            beatLoopSessionTransaction.changeLayer(before, index, enabled)
+        } catch (failure: Exception) {
+            setStatus("ループの重ね方を変更できませんでした: ${failure.message ?: failure.javaClass.simpleName}")
+            return false
+        }
+        if (result !is AndroidBeatLoopSessionResult.Started) {
+            setStatus("ループの操作を受け付けられませんでした。現在の音を維持します")
+            return false
+        }
+        val transition = result.transition
+        mutableUiState.value = transition.state
+        engine.updatePad(candidate)
+        syncPattern()
+        if (transition.persistenceRequired) scheduleAutosave()
+        if (withPattern && !mutableUiState.value.transportPlaying) {
+            if (!engine.startTransport()) { stopAllSounds(); return false }
+            mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
+        }
+        return true
+    }
+
+    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean =
+        startPadLoopInternal(index, withPattern, preserveLayers = false)
+
+    private fun startPadLoopInternal(index: Int, withPattern: Boolean, preserveLayers: Boolean): Boolean {
         val before = mutableUiState.value
         com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
         val pad = before.pads.getOrNull(index)
         if (pad?.isAssigned != true || pad.contentKind == PadContentKind.VOCAL) return false
-        if (before.loopingPadIndex != index) toggleBeatLoop(index)
+        if (before.loopingPadIndex != index) toggleBeatLoop(index, preserveLayers)
         if (mutableUiState.value.loopingPadIndex != index) return false
         if ((withPattern || before.transportPlaying) && !mutableUiState.value.transportPlaying) {
             syncPattern()
@@ -1699,7 +1742,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
     }
 
-    private fun toggleBeatLoop(globalIndex: Int) {
+    private fun toggleBeatLoop(globalIndex: Int, preserveLayers: Boolean = false) {
         val state = mutableUiState.value
         val pad = state.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) {
@@ -1709,7 +1752,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (state.loopingPadIndex == globalIndex) {
             engine.stopPad(globalIndex)
             state.pads
-                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = globalIndex)
+                .loopCompanionPadIndicesForLoopStart(globalIndex)
                 .forEach(engine::stopPad)
             if (!state.transportPlaying) playbackInterruptionCoordinator.endPlaybackSession()
             mutableUiState.update {
@@ -1725,7 +1768,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (!preparePlaybackStart()) return
 
         val result = try {
-            beatLoopSessionTransaction.start(state, globalIndex)
+            beatLoopSessionTransaction.start(state, globalIndex, preserveLayers)
         } catch (failure: Throwable) {
             if (!focusWasActive) playbackInterruptionCoordinator.endPlaybackSession()
             throw failure
@@ -1821,7 +1864,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         } else {
             if (!preparePlaybackStart()) return
             val recordArmed = mutableUiState.value.recordArmed
-            stopCompetingPlayback()
+            if (mutableUiState.value.loopingPadIndex == null) stopCompetingPlayback()
             syncPattern()
             if (!startLayeredTransport()) return
             mutableUiState.update {
@@ -2260,6 +2303,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus("操作が集中しているため、ビート再生を開始できませんでした")
             return false
         }
+        if (state.loopingPadIndex != null) return true
         val loop = state.configuredLoopPadIndex()
         mutableUiState.update {
             it.copy(loopingPadIndex = loop, loopPlayheadFrame = loop?.let { index ->

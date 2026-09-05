@@ -51,6 +51,67 @@ import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
     @Test
+    fun loopLayersKeepCoreDuringAddDrumsTrimRemovalAndRestoreAfterSave() {
+        val directory = Files.createTempDirectory("choplab-loop-layers").toFile()
+        val project = directory.resolve("layers.choplab")
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val core = 36
+        val layer = 32
+        try {
+            assertTrue(controller.setPadLoopLayer(core, true))
+            val coreStarts = engine.triggered.count { it.first.globalIndex == core }
+            assertTrue(controller.setPadLoopLayer(layer, true))
+            assertEquals(core, controller.state.value.loopingPadIndex)
+            assertEquals(coreStarts, engine.triggered.count { it.first.globalIndex == core })
+            controller.toggleTransport()
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(core, controller.state.value.loopingPadIndex)
+            assertEquals(coreStarts, engine.triggered.count { it.first.globalIndex == core })
+            controller.selectPad(layer)
+            val end = controller.state.value.pads[layer].endFrame
+            controller.setSelectedPadEndFrame(end - 100)
+            assertEquals(end - 100, engine.triggered.last().first.endFrame)
+            assertEquals(coreStarts, engine.triggered.count { it.first.globalIndex == core })
+            controller.stopAllSounds()
+            controller.saveProject(project)
+            awaitCondition { project.isFile && !controller.state.value.isLoading }
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "layers.choplabを開きました" }
+            assertEquals(setOf(core, layer), controller.state.value.pads.filter { it.playMode == PadPlayMode.LOOP }.map { it.globalIndex }.toSet())
+            assertTrue(controller.state.value.pads[core].isAssigned, "core audio missing after reopen")
+            assertTrue(controller.state.value.pads[layer].isAssigned, "layer audio missing after reopen")
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            val sessionStarts = engine.exclusiveStartCount
+            controller.toggleTransport()
+            assertTrue(controller.state.value.transportPlaying, controller.state.value.statusMessage)
+            assertEquals(sessionStarts + 1, engine.exclusiveStartCount)
+            assertEquals(setOf(core, layer), engine.triggered.filter { it.first.playMode == PadPlayMode.LOOP }.map { it.first.globalIndex }.toSet())
+            val owner = requireNotNull(controller.state.value.loopingPadIndex)
+            val removable = if (owner == core) layer else core
+            assertTrue(controller.setPadLoopLayer(removable, false))
+            assertEquals(owner, controller.state.value.loopingPadIndex)
+            assertTrue(removable in engine.stoppedPads)
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[removable].playMode)
+        } finally { controller.close(); directory.deleteRecursively() }
+    }
+
+    @Test fun failedLayerStartKeepsTheCoreAndProjectHistory() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            assertTrue(controller.setPadLoopLayer(36, true))
+            val before = controller.state.value
+            engine.failNextTrigger = true
+            assertFalse(controller.setPadLoopLayer(32, true))
+            assertEquals(before.pads, controller.state.value.pads)
+            assertEquals(before.canUndo, controller.state.value.canUndo)
+            assertEquals(36, controller.state.value.loopingPadIndex)
+            assertTrue(engine.stoppedPads.isEmpty())
+        } finally { controller.close() }
+    }
+
+    @Test
     fun transportIncludesConfiguredLoopAndRestoresWholeBeatAfterScratch() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)

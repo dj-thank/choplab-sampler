@@ -214,6 +214,16 @@ class SamplerEngine(
             EngineCommand.Trigger(globalIndex, ownership)
         }
 
+    override fun setPadLoopLayer(pad: PadModel, enabled: Boolean): Boolean {
+        if (!pad.isAssigned) return false
+        return if (enabled) {
+            val snapshot = PadSnapshot.from(pad.copy(playMode = PadPlayMode.LOOP))
+            enqueuePrepared { EngineCommand.AddPadLoopLayer(snapshot) }
+        } else {
+            enqueue(EngineCommand.StopPad(pad.globalIndex))
+        }
+    }
+
     override fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean {
         if (!loopPad.isAssigned) return false
         val session = preparePadLoopSessionSnapshots(loopPad, companionPads)
@@ -505,6 +515,7 @@ class SamplerEngine(
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad != null) startVoice(pad, command.ownership)
                 }
+                is EngineCommand.AddPadLoopLayer -> startVoice(command.pad)
                 is EngineCommand.StartPadLoopSession -> {
                     applyPendingPadUpdates()
                     applyExclusivePadLoopSession(
@@ -757,6 +768,7 @@ class SamplerEngine(
 
     private sealed interface EngineCommand {
         data class Trigger(val padIndex: Int, val ownership: Long) : EngineCommand
+        data class AddPadLoopLayer(val pad: PadSnapshot) : EngineCommand
         data class StartPadLoopSession(
             val session: PadLoopSessionSnapshots,
             val sourceStopGeneration: Long,

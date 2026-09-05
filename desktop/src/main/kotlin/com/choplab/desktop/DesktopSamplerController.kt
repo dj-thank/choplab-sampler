@@ -16,6 +16,9 @@ import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.configuredLoopPadIndex
+import com.choplab.sampler.model.loopLayerChangeBlockedReason
+import com.choplab.sampler.model.withLoopLayer
+import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PerformancePadPressAction
@@ -339,7 +342,11 @@ class DesktopSamplerController(
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
             val loopPlaybackFailure = if (loopPad != null) {
                 stopAllSounds()
-                runCatching { triggerPlayerPad(loopPad, forceLoop = true) }.exceptionOrNull()
+                runCatching {
+                    triggerPlayerPad(loopPad, forceLoop = true)
+                    before.pads.loopCompanionPadIndicesForLoopStart(loopPad.globalIndex, includeVocals = false)
+                        .forEach { triggerPlayerPad(before.pads[it], forceLoop = true) }
+                }.exceptionOrNull()
             } else {
                 null
             }
@@ -364,6 +371,10 @@ class DesktopSamplerController(
     }
 
     private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, output: File, error: Throwable) {
+        // A later layer may fail after the core started. Recorder cleanup must still run
+        // if an output device also rejects the stop request.
+        val cleanupFailure = runCatching { player.stopAll() }.exceptionOrNull()
+        cleanupFailure?.let(error::addSuppressed)
         val message = "ビートを開始できないため声の録音を停止しました。Windowsの出力デバイスを確認してください: " +
             (error.message ?: error.javaClass.simpleName)
         mutableState.update { state ->
@@ -1031,12 +1042,48 @@ class DesktopSamplerController(
         }
     }
 
-    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean {
+    override fun setPadLoopLayer(index: Int, enabled: Boolean, withPattern: Boolean): Boolean {
+        val before = mutableState.value
+        before.loopLayerChangeBlockedReason(index, enabled)?.let { setStatus(it); return false }
+        if (enabled && before.loopingPadIndex == null) return startPadLoopInternal(index, withPattern, preserveLayers = true)
+        val after = before.withLoopLayer(index, enabled)
+        if (after == before) return !withPattern || before.transportPlaying ||
+            startTransport("重ねた音でビートを再生中です", "ビート再生開始失敗")
+        val candidate = after.pads[index]
+        val plan = productionSession.planEdit(before, after)
+        val admitted = try {
+            if (before.loopingPadIndex != null) {
+                if (enabled) {
+                    check(player.triggerPad(candidate, forceLoop = true) > 0L) { "ループを開始できませんでした" }
+                } else player.stopPad(index)
+            }
+            true
+        } catch (failure: Exception) {
+            productionSession.cancel(plan)
+            setStatus("ループの重ね方を変更できませんでした: ${failure.message ?: failure.javaClass.simpleName}")
+            return false
+        }
+        if (!admitted) {
+            productionSession.cancel(plan)
+            setStatus("ループの操作を受け付けられませんでした。現在の音を維持します")
+            return false
+        }
+        val transition = productionSession.commit(plan)
+        mutableState.value = transition.state
+        if (transition.persistenceRequired) scheduleAutosave()
+        return !withPattern || mutableState.value.transportPlaying ||
+            startTransport("重ねた音でビートを再生中です", "ビート再生開始失敗")
+    }
+
+    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean =
+        startPadLoopInternal(index, withPattern, preserveLayers = false)
+
+    private fun startPadLoopInternal(index: Int, withPattern: Boolean, preserveLayers: Boolean): Boolean {
         val before = mutableState.value
         com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
         val pad = before.pads.getOrNull(index)
         if (pad?.isAssigned != true || pad.contentKind == PadContentKind.VOCAL) return false
-        if (before.loopingPadIndex != index) toggleBeatLoop(index)
+        if (before.loopingPadIndex != index) toggleBeatLoop(index, preserveLayers)
         if (mutableState.value.loopingPadIndex != index) return false
         if ((withPattern || before.transportPlaying) && !mutableState.value.transportPlaying) {
             return startTransport("ループを軸にビートを再生中です", "ビート再生開始失敗")
@@ -1049,14 +1096,14 @@ class DesktopSamplerController(
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
     }
 
-    private fun toggleBeatLoop(index: Int) {
+    private fun toggleBeatLoop(index: Int, preserveLayers: Boolean = false) {
         val state = mutableState.value
         val pad = state.pads.getOrNull(index)
         if (pad?.isAssigned != true) return setStatus("先に音の入ったPADを選んでください")
         if (state.loopingPadIndex == index) {
             player.stopPad(index)
             state.pads
-                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+                .loopCompanionPadIndicesForLoopStart(index)
                 .forEach(player::stopPad)
             mutableState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1, statusMessage = "ビートループを停止しました") }
             return
@@ -1066,13 +1113,13 @@ class DesktopSamplerController(
         val pads = state.pads.map { candidate ->
             when {
                 candidate.globalIndex == index -> candidate.copy(playMode = PadPlayMode.LOOP)
-                candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
+                candidate.playMode == PadPlayMode.LOOP && pad.playMode != PadPlayMode.LOOP && !preserveLayers -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
                 else -> candidate
             }
         }
         val loopPad = pads[index]
         val companionPads = pads
-            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+            .loopCompanionPadIndicesForLoopStart(index)
             .map(pads::get)
         val target = state.copy(
             pads = pads,
@@ -1140,7 +1187,7 @@ class DesktopSamplerController(
             stopAllSounds()
         } else {
             if (rejectEditRequest()) return
-            stopCompetingPlayback()
+            if (state.loopingPadIndex == null) stopCompetingPlayback()
             startTransport(
                 statusMessage = "ビートを再生中です",
                 failurePrefix = "ビート再生開始失敗",
@@ -1209,7 +1256,7 @@ class DesktopSamplerController(
         val candidate = transform(currentPad)
         if (candidate == currentPad) return
 
-        if (before.loopingPadIndex == selected && candidate.isAssigned) {
+        if (before.loopingPadIndex != null && currentPad.playMode == PadPlayMode.LOOP && candidate.isAssigned) {
             val failure = try {
                 player.triggerPad(candidate, forceLoop = true)
                 null
@@ -1285,7 +1332,8 @@ class DesktopSamplerController(
         restored: SamplerUiState,
     ): Boolean {
         val ownerIndex = current.loopingPadIndex ?: return false
-        return restored.loopingPadIndex == ownerIndex &&
+        return current.pads.indices.all { index -> index == ownerIndex || current.pads[index] == restored.pads[index] } &&
+            restored.loopingPadIndex == ownerIndex &&
             restored.pads.getOrNull(ownerIndex)?.isAssigned == true &&
             current.currentAudio == restored.currentAudio &&
             current.masterPitchSemitones == restored.masterPitchSemitones &&
@@ -1872,7 +1920,7 @@ class DesktopSamplerController(
                 runCatching {
                     triggerPlayerPad(pad, forceLoop = true)
                     current.pads
-                        .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
+                        .loopCompanionPadIndicesForLoopStart(target.padIndex)
                         .map(current.pads::get)
                         .forEach { triggerPlayerPad(it, forceLoop = false) }
                 }.onSuccess {
@@ -1899,7 +1947,7 @@ class DesktopSamplerController(
         val current = mutableState.value
         val recordArmedBeforeStart = current.recordArmed
         return runCatching {
-            current.configuredLoopPadIndex()?.let { loop ->
+            (current.loopingPadIndex ?: current.configuredLoopPadIndex())?.let { loop ->
                 if (mutableState.value.loopingPadIndex != loop) toggleBeatLoop(loop)
                 check(mutableState.value.loopingPadIndex == loop) { "ループを開始できませんでした" }
             }

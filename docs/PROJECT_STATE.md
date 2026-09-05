@@ -1,6 +1,16 @@
 # Project state
 
 
+## Current snapshot — 2026-09-05 explicit Loop and additive layers
+
+Candidate from `c83cad8` with the compatible drum-rhythm fix checkpoint `a616bd5`. Latest user correction replaces the sparse loop dashboard and withdraws a step-order-first proposal: select a Chop, explicitly press Loop, then add favorite loops one by one. The shared workbench restores sound choices, core/layer context and independent layer removal while keeping automatic S/E editing and the source map.
+
+Android admitted layer commands and Desktop incremental voice startup preserve an active core. Restart/scratch/recording companion paths include configured LOOP layers; export protects loop choke groups from vocal companions. Drums can start without retargeting an active core. Kit replacement preserves A/B rhythms and Song, including Undo and project reopen.
+
+Targeted controller, PCM, ClipProbe and UI checks passed; full gate and independent reviews are in progress. Physical audio/touch, Android instrumentation runtime, iOS and Human acceptance remain unverified. Loop content is persisted; live addition timing and runtime core-monitor identity are not a recorded performance.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-05 chosen-loop handoff and compact Beat
 
 Product checkpoint `3a51ca8` on the existing isolated refinement branch, based on `8e27658`. TRIM now explicitly starts the edited Chop with the pattern before navigating to Beat. Prior loop configuration cannot override the chosen sound; rejected loop admission keeps the editor and prior loop. Start admission is returned by both platform controllers and VOCAL cannot become a new loop owner through this action.

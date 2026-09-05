@@ -106,3 +106,11 @@ A deterministic comparison that renders the same Production input through two au
 
 ## Combined beat playback
 A pattern transport can start the configured Beat loop and its eligible vocal companions before advancing drum/sample steps. Stop ends that combined playback. Returning from scratch restores the transport when the loop and pattern were active together.
+
+## Loop layering workbench
+
+BEAT separates selecting a sound from playback: a sound card only selects; Loop starts the chosen slice. An active core can receive additional configured LOOP pads without restarting it, and non-core layers can be removed independently. The loop set uses existing PAD play modes for persistence/export. TRIM Loop and Continue-to-Beat use this same additive workflow. Native slice durations are preserved; replay starts slices together rather than reproducing live entry timestamps.
+
+## Drum sound replacement
+
+A kit change preserves all A/B rhythms and Song order. A starter rhythm is added only when kit slots are empty and no saved variation already contains a groove for those slots. Initial addition also preserves other lanes and the second page of BANK B.
