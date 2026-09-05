@@ -1218,9 +1218,21 @@ class DesktopSamplerController(
             }
         val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
         val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
-        mutableState.value.loopingPadIndex
-            ?.takeIf { it in bankStart until bankEnd }
-            ?.let(player::stopPad)
+        val current = mutableState.value
+        if (current.loopingPadIndex != null) {
+            val stopFailure = runCatching {
+                if (current.loopingPadIndex in bankStart until bankEnd) {
+                    stopAllSounds()
+                } else {
+                    current.pads.filter { it.globalIndex in bankStart until bankEnd && it.isAssigned && it.playMode == PadPlayMode.LOOP }
+                        .forEach { player.stopPad(it.globalIndex) }
+                }
+            }.exceptionOrNull()
+            if (stopFailure != null) {
+                setStatus("音色変更を中止しました。全体を再生し直してから試してください")
+                return
+            }
+        }
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }

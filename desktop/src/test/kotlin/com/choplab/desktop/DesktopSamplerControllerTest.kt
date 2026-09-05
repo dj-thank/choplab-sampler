@@ -368,6 +368,42 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test fun kitLoopCleanupRejectsFailedStopsAndEndsTheSessionWhenCoreIsReplaced() {
+        val directory = Files.createTempDirectory("choplab-kit-stop").toFile()
+        val project = directory.resolve("input.choplab")
+        val audio = PcmAudio(name = "core", samples = ShortArray(800) { 4000 }, sampleRate = 8000)
+        val initial = com.choplab.sampler.audio.BuiltInDrumKits.installStarterKit(SamplerUiState())
+        DesktopProjectFiles.save(project, initial.copy(pads = initial.pads.map {
+            if (it.globalIndex == 0) PadModel(0, audio, 0, 800) else it
+        }))
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            controller.openProject(project)
+            awaitCondition { controller.state.value.statusMessage == "input.choplabを開きました" }
+            assertTrue(controller.setPadLoopLayer(0, true))
+            assertTrue(controller.setPadLoopLayer(32, true))
+            val before = controller.state.value
+            engine.failNextStopPad = true
+            controller.applyBuiltInDrumKit("boom-bap", true)
+            assertEquals(before.pads, controller.state.value.pads)
+            assertEquals(before.selectedDrumKitId, controller.state.value.selectedDrumKitId)
+            assertEquals(before.canUndo, controller.state.value.canUndo)
+            assertEquals(0, controller.state.value.loopingPadIndex)
+            assertTrue(0 !in engine.stoppedPads)
+            assertTrue(controller.state.value.statusMessage.startsWith("音色変更を中止しました"))
+            assertTrue(controller.startPadLoop(32))
+            val stopCount = engine.stopAllCount
+            controller.applyBuiltInDrumKit("boom-bap", true)
+            assertEquals(stopCount + 1, engine.stopAllCount)
+            assertEquals(null, controller.state.value.loopingPadIndex)
+            assertFalse(controller.state.value.transportPlaying)
+            assertEquals("boom-bap", controller.state.value.selectedDrumKitId)
+            assertEquals(PadPlayMode.LOOP, controller.state.value.pads[0].playMode)
+            assertEquals(PadPlayMode.ONE_SHOT, controller.state.value.pads[32].playMode)
+        } finally { controller.close(); directory.deleteRecursively() }
+    }
+
     @Test
     fun builtInDrumKitUsesTheSharedAndroidCatalog() {
         val controller = controller()

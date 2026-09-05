@@ -128,6 +128,20 @@ class AndroidBeatLoopSessionTransactionTest {
         assertEquals(1, engine.layerRequests.size)
     }
 
+    @Test fun replacingKitStopsAllTargetLayersAndRefusesRejectedStop() {
+        val before = state().copy(loopingPadIndex = 0, pads = state().pads.map { pad ->
+            if (pad.globalIndex in listOf(32, 36)) PadModel(pad.globalIndex, audio, 0, audio.frameCount, playMode = PadPlayMode.LOOP) else pad
+        })
+        val engine = FakePlaybackEngine(admitLoopSession = true)
+        assertTrue(stopAndroidReplacedLoopLayers(engine, before, 32 until 48))
+        assertEquals(listOf(32, 36), engine.layerRequests.map { it.first.globalIndex })
+        assertTrue(engine.layerRequests.none { it.second })
+        assertTrue(engine.loopRequests.isEmpty())
+        val rejected = FakePlaybackEngine(admitLoopSession = false)
+        assertFalse(stopAndroidReplacedLoopLayers(rejected, before, 32 until 48))
+        assertEquals(listOf(32), rejected.layerRequests.map { it.first.globalIndex })
+    }
+
     private fun state(): SamplerUiState {
         val pads = List(SamplerConfig.PAD_COUNT) { index ->
             when (index) {

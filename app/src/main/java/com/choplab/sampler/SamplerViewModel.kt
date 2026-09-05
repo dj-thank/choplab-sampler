@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.choplab.sampler.audio.AudioDecoder
 import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
 import com.choplab.sampler.audio.AndroidBeatLoopSessionResult
+import com.choplab.sampler.audio.stopAndroidReplacedLoopLayers
 import com.choplab.sampler.audio.AndroidBeatLoopSessionTransaction
 import com.choplab.sampler.audio.startAndroidLayeredTransport
 import com.choplab.sampler.model.configuredLoopPadIndex
@@ -722,9 +723,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
         val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
         val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
-        mutableUiState.value.loopingPadIndex
-            ?.takeIf { it in bankStart until bankEnd }
-            ?.let(engine::stopPad)
+        if (mutableUiState.value.loopingPadIndex in bankStart until bankEnd) {
+            // Replacing the core ends its whole playback session, including outside layers.
+            stopAllSounds()
+        } else if (!stopAndroidReplacedLoopLayers(engine, mutableUiState.value, bankStart until bankEnd)) {
+            setStatus("音色変更を中止しました。全体を再生し直してから試してください")
+            return
+        }
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }

@@ -242,6 +242,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.duplicateSelectedPatternToOther()
                 fixture.controller.toggleStep(15)
                 fixture.controller.startPadLoop(1, withPattern = true)
+                assertTrue(fixture.controller.setPadLoopLayer(32, true))
                 val before = fixture.controller.state.value
                 val rhythm = before.activeSteps
                 val other = before.patternArrangement.storedStepsBySlot[0]
@@ -257,6 +258,9 @@ class DesktopLongPressUiTest {
                 assertEquals(other, after.patternArrangement.storedStepsBySlot[0])
                 assertEquals(1, after.loopingPadIndex)
                 assertTrue(after.transportPlaying)
+                assertTrue(32 in fixture.audio.stoppedPads)
+                assertTrue(1 !in fixture.audio.stoppedPads)
+                assertEquals(PadPlayMode.ONE_SHOT, after.pads[32].playMode)
                 assertEquals(starts, fixture.audio.loopRequests.size)
                 fixture.capture("drum-sound-change-preserves-rhythm")
             } finally { fixture.close() }
@@ -896,7 +900,8 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
     override fun releasePadIfOwned(index: Int, ownership: Long) {
         releasedOwnedPads += index to ownership
     }
-    override fun stopPad(index: Int) = Unit
+    val stoppedPads = mutableListOf<Int>()
+    override fun stopPad(index: Int) { stoppedPads += index }
     override fun stopAll() { sourcePlaying = false }
     override fun close() { sourcePlaying = false }
 }

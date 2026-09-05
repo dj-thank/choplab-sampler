@@ -91,3 +91,10 @@ internal class AndroidBeatLoopSessionTransaction(
         )
     }
 }
+
+/** Retire every active loop whose sound is about to be replaced, never the outside core. */
+internal fun stopAndroidReplacedLoopLayers(engine: SamplerPlaybackEngine, state: SamplerUiState, indices: IntRange): Boolean {
+    if (state.loopingPadIndex == null) return true
+    return state.pads.filter { it.globalIndex in indices && it.isAssigned && it.playMode == PadPlayMode.LOOP }
+        .all { engine.setPadLoopLayer(it, enabled = false) }
+}

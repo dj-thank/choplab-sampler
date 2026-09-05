@@ -24,3 +24,9 @@ Shared/model, Android unit, JVM renderer and Desktop controller checks exercised
 
 ## Playback limits
 Layers repeat at their own native selected lengths; no automatic tempo match/time stretch. Restart begins the configured loop set at each slice start; live entry timing is not captured as a performance. Core monitor is runtime state; persisted content is the LOOP pad set.
+
+## Review resolutions
+- Standards: replacing a kit must retire every LOOP in the affected 16 slots, not only the monitored core. Both adapters now stop target loop layers before replacing pads, and abort the sound edit if stop admission/failure occurs. An outside core is untouched. Android stop-admission and Desktop rejection/UI continuity cases added.
+- Spec: the initial release intentionally permits 8 configured sample loops (including core), reserving headroom in the Android 32-voice pool for drums and recorded vocals. The ninth additional loop is disabled with the explicit 8-sound explanation; existing loops remain editable/removable. This is a product limit, not a claim that hardware supports only 8 voices. No schema migration or automatic time stretching is added.
+
+If the core itself is in the replaced kit slots, its whole playback session stops (matching the core Stop action), so no outside layer is left playing without an owner. Configuration of outside loops remains saved for replay.
