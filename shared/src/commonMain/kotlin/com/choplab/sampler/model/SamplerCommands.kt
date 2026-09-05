@@ -27,6 +27,17 @@ fun replaceSourceAudio(
     statusMessage = "${audio.name} を新しいプロジェクトとして読み込みました — A メロディーへチョップします",
 )
 
+/** A library source is an addition to the current Production, not a project reset. */
+fun attachLibrarySource(state: SamplerUiState, audio: PcmAudio): SamplerUiState =
+    prepareDefaultMelodyChopDestination(stopAllPlaybackState(state).copy(
+        currentAudio = audio,
+        rangeStartFrame = 0,
+        rangeEndFrame = audio.frameCount,
+        isLoading = false,
+        sourcePlayheadFrame = 0,
+        statusMessage = "${audio.name} を追加しました。今のPADとビートは保持しています",
+    ))
+
 fun pendingSourceCommandAfterStopRequest(appliedPlaying: Boolean): PendingSourceCommand =
     if (appliedPlaying) PendingSourceCommand.STOP else PendingSourceCommand.NONE
 

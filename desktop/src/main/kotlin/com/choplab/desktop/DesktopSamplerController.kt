@@ -1,6 +1,8 @@
 package com.choplab.desktop
 
 import com.choplab.desktop.audio.DesktopWavDecoder
+import com.choplab.desktop.source.DesktopAudioDecoder
+import com.choplab.sampler.model.attachLibrarySource
 import com.choplab.desktop.audio.DesktopMicrophoneRecorder
 import com.choplab.desktop.audio.DesktopSystemAudioRecorder
 import com.choplab.desktop.audio.DesktopAudioRecorder
@@ -181,29 +183,33 @@ class DesktopSamplerController(
         }
     }
 
-    fun loadWav(file: File) {
+    fun loadWav(file: File) = loadAudioFile(file, preserveProduction = false, title = null)
+
+    fun addLibrarySource(file: File, title: String) {
+        if (rejectEditRequest()) return
+        loadAudioFile(file, preserveProduction = true, title = title)
+    }
+
+    private fun loadAudioFile(file: File, preserveProduction: Boolean, title: String?) {
         statusOperations.invalidate()
         val operation = projectOperations.begin()
         stopCompetingPlayback()
         mutableState.update { it.copy(isLoading = true, statusMessage = "${file.name}を解析しています") }
         ioExecutor.execute {
-            runCatching { DesktopWavDecoder.decode(file) }
+            runCatching { DesktopAudioDecoder.decode(file).let { audio -> if (title == null) audio else audio.copy(name=title.take(240)) } }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
                         recoveryOperations.invalidate()
                         val playbackFailure = loadSourcePcm(audio)
-                        val next = BuiltInDrumKits.installStarterKit(
-                            SamplerUiState(
-                                statusMessage = playbackFailure?.let(::sourcePlaybackFailureMessage)
-                                    ?: "${file.name}を読み込みました。チョップで音を切ってください",
-                                currentAudio = audio,
-                                rangeEndFrame = audio.frameCount,
-                            ),
-                        ).copy(
-                            projectLaunchTarget = ProjectLaunchTarget.CHOP,
-                            projectLaunchRevision = nextProjectLaunchRevision(),
+                        val previous = mutableState.value
+                        val next = (if (preserveProduction) attachLibrarySource(previous,audio) else BuiltInDrumKits.installStarterKit(
+                            SamplerUiState(currentAudio=audio,rangeEndFrame=audio.frameCount)
+                        )).copy(
+                            statusMessage=playbackFailure?.let(::sourcePlaybackFailureMessage) ?: "${audio.name}を読み込みました。チョップで音を切ってください",
+                            projectLaunchTarget=ProjectLaunchTarget.CHOP,
+                            projectLaunchRevision=nextProjectLaunchRevision(),
                         )
-                        mutableState.value = productionSession.replaceProject(next).state
+                        mutableState.value = if(preserveProduction) productionSession.applyEdit(previous,next).state else productionSession.replaceProject(next).state
                         scheduleAutosave()
                     }
                 }

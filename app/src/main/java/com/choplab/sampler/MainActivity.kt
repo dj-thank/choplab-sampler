@@ -12,6 +12,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.compose.BackHandler
+import com.choplab.sampler.source.SourceImportViewModel
+import com.choplab.sampler.ui.AudioSourceHub
+import com.choplab.sampler.ui.SpotifySourcePicker
+import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,30 +34,31 @@ import com.choplab.sampler.ui.theme.ChopLabTheme
 
 class MainActivity : ComponentActivity() {
     private val samplerViewModel: SamplerViewModel by viewModels()
+    private val sourceViewModel: SourceImportViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if(savedInstanceState==null) sourceViewModel.handleIntent(intent)
         setContent {
             ChopLabTheme {
                 val context = LocalContext.current
                 val state by samplerViewModel.uiState.collectAsStateWithLifecycle()
                 var pendingAction by rememberSaveable { mutableStateOf(PendingPermissionAction.NONE) }
 
-                val importLauncher = rememberLauncherForActivityResult(
-                    contract = AudioOpenDocumentContract(),
-                ) { uri ->
-                    if (uri == null) {
-                        samplerViewModel.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
-                        return@rememberLauncherForActivityResult
-                    }
-                    runCatching {
-                        context.contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                        )
-                    }
-                    samplerViewModel.loadAudio(uri)
+                val importState by sourceViewModel.hub.state.collectAsStateWithLifecycle()
+                val spotifyState by sourceViewModel.spotify.state.collectAsStateWithLifecycle()
+                val sourceVisible by sourceViewModel.visible.collectAsStateWithLifecycle()
+                val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                    if(uris.isNotEmpty()) sourceViewModel.importUris(uris)
                 }
+                fun useLibrary(id:String) {
+                    if(!externalDocumentActionsEnabled(samplerViewModel.uiState.value)) return
+                    val item=sourceViewModel.hub.state.value.library.firstOrNull { it.id==id }?:return
+                    samplerViewModel.addLibrarySource(android.net.Uri.fromFile(sourceViewModel.hub.file(id)),item.title)
+                    sourceViewModel.hub.consumed(id);sourceViewModel.used()
+                }
+                LaunchedEffect(importState.pendingUseId) { importState.pendingUseId?.let(::useLibrary) }
+                BackHandler(enabled=sourceVisible) { sourceViewModel.hide() }
 
                 val exportLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument("audio/wav"),
@@ -152,7 +159,7 @@ class MainActivity : ComponentActivity() {
 
                 SamplerScreen(
                     state = state,
-                    onImportAudio = { importLauncher.launch(Unit) },
+                    onImportAudio = { sourceViewModel.show() },
                     onToggleMicrophoneRecording = {
                         if (state.microphoneRecording) {
                             samplerViewModel.stopMicrophoneRecording()
@@ -200,8 +207,24 @@ class MainActivity : ComponentActivity() {
                     },
                     viewModel = samplerViewModel,
                 )
+                if(sourceVisible) AudioSourceHub(
+                    state=importState,canUseAudio=externalDocumentActionsEnabled(state),
+                    onSection=sourceViewModel.hub::section,onQuery=sourceViewModel.hub::query,onSearch=sourceViewModel.hub::search,
+                    onDownload=sourceViewModel.hub::download,
+                    onPickFiles={importLauncher.launch(arrayOf("audio/*","video/mp4","video/webm","application/zip","application/octet-stream"))},
+                    onUse=::useLibrary,onCancel=sourceViewModel.hub::cancel,onClose=sourceViewModel::hide,
+                    spotifyContent={SpotifySourcePicker(spotifyState,importState.busy,SourceImportViewModel.REDIRECT_URI,
+                        sourceViewModel.spotify::login,sourceViewModel.spotify::disconnect,sourceViewModel.spotify::loadMore,
+                        sourceViewModel.hub::importFavorite,{link->startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(link)))})},
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        sourceViewModel.handleIntent(intent)
+        setIntent(Intent(this,MainActivity::class.java))
     }
 
     override fun onStop() {

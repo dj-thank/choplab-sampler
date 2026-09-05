@@ -37,6 +37,7 @@ import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.loopLayerChangeBlockedReason
 import com.choplab.sampler.model.withLoopLayer
 import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
+import com.choplab.sampler.model.attachLibrarySource
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PerformancePadPressAction
@@ -406,11 +407,21 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         loadAudio(uri, projectOperations.begin())
     }
 
+    fun addLibrarySource(uri: Uri, title: String) {
+        if (mutableUiState.value.isLoading || mutableUiState.value.recordingSession.isActive) {
+            setStatus("現在の処理や録音を終えてから音源を追加してください")
+            return
+        }
+        loadAudio(uri, projectOperations.begin(), preserveProduction=true, title=title)
+    }
+
     private fun loadAudio(
         uri: Uri,
         operation: Long,
         completedRecordingKind: RecordingKind? = null,
         ownedCaptureFile: File? = null,
+        preserveProduction: Boolean = false,
+        title: String? = null,
     ) {
         viewModelScope.launch {
             try {
@@ -419,13 +430,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 engine.stopAllPlayback()
                 playbackInterruptionCoordinator.endPlaybackSession()
                 mutableUiState.update(::beginSourceReplacement)
-                runCatching { decoder.decode(uri) }
+                runCatching { decoder.decode(uri).let { audio -> if(title==null) audio else audio.copy(name=title.take(240)) } }
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
                             val previous = mutableUiState.value
-                            val newProduction = BuiltInDrumKits.installStarterKit(
+                            val newProduction = (if(preserveProduction) attachLibrarySource(previous,audio) else BuiltInDrumKits.installStarterKit(
                                 replaceSourceAudio(previous, audio),
-                            ).copy(
+                            )).copy(
                                 projectLaunchTarget = ProjectLaunchTarget.CHOP,
                                 projectLaunchRevision = nextProjectLaunchRevision(),
                             )
@@ -433,7 +444,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                                 previousState = previous,
                                 replacementState = newProduction,
                             )
-                            val transition = productionSession.replaceProject(replaced)
+                            val transition = if(preserveProduction) productionSession.applyEdit(previous,replaced) else productionSession.replaceProject(replaced)
                             mutableUiState.value = transition.state
                             engine.updateAllPads(transition.state.pads)
                             syncPattern()

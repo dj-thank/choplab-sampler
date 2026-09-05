@@ -20,6 +20,10 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import com.choplab.desktop.source.DesktopYoutubeBackend
+import com.choplab.sampler.source.*
+import com.choplab.sampler.ui.AudioSourceHub
+import com.choplab.sampler.ui.SpotifySourcePicker
 import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.WindowsAudioDiagnostics
@@ -59,7 +63,7 @@ fun main(args: Array<String>) = application {
     val startupFile = remember {
         args.asSequence()
             .map(::File)
-            .firstOrNull { file -> file.isFile && file.extension.lowercase() in setOf("wav", "choplab") }
+            .firstOrNull { file -> file.isFile && file.extension.lowercase() in (LocalAudioLibrary.extensions + "choplab") }
     }
     val player = remember { JavaSoundWavPlayer() }
     val controller = remember {
@@ -72,6 +76,12 @@ fun main(args: Array<String>) = application {
     val spotify = remember { SpotifyDesktopSession(controller::setStatus) }
     val spotifyState by spotify.state.collectAsState()
     var spotifyPanelVisible by remember { mutableStateOf(false) }
+    val sourceHub = remember {
+        val appData=System.getenv("LOCALAPPDATA")?.let(::File) ?: File(System.getProperty("user.home"),"AppData/Local")
+        AudioSourceController(LocalAudioLibrary(File(appData,"ChopLab/audio-library")) { com.choplab.desktop.source.DesktopAudioDecoder.decode(it);Unit },DesktopYoutubeBackend())
+    }
+    val sourceState by sourceHub.state.collectAsState()
+    var sourceHubVisible by remember { mutableStateOf(false) }
     val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
     val padKeyOwner = remember { DesktopPadKeyOwner() }
@@ -79,6 +89,7 @@ fun main(args: Array<String>) = application {
         padKeyOwner.releaseAll().forEach {
             controller.releasePadIfOwned(it.padIndex, it.ownership)
         }
+        sourceHub.close()
         spotify.close()
         audioDiagnostics.close()
         controller.close()
@@ -87,7 +98,7 @@ fun main(args: Array<String>) = application {
 
     LaunchedEffect(startupFile?.absolutePath) {
         startupFile?.let { file ->
-            if (file.extension.equals("wav", ignoreCase = true)) controller.loadWav(file) else controller.openProject(file)
+            if (file.extension.equals("choplab", ignoreCase = true)) controller.openProject(file) else controller.loadWav(file)
         }
     }
 
@@ -109,7 +120,7 @@ fun main(args: Array<String>) = application {
                         key = event.key,
                         visiblePadIndices = visiblePads.map { it.globalIndex },
                         playablePadIndices = visiblePads.filter { it.isAssigned }.mapTo(mutableSetOf()) { it.globalIndex },
-                        inputEnabled = !state.isLoading &&
+                        inputEnabled = !sourceHubVisible && !state.isLoading &&
                             !state.sourcePlaying &&
                             state.pendingSourceCommand == PendingSourceCommand.NONE &&
                             state.recordingSession == RecordingSession.Idle,
@@ -160,10 +171,10 @@ fun main(args: Array<String>) = application {
         MenuBar {
             Menu("ファイル") {
                 Item(
-                    "音声を読み込む（WAV）",
+                    "音源ライブラリを開く",
                     shortcut = KeyShortcut(Key.O, ctrl = true),
                     enabled = externalDocumentActionsEnabled(state),
-                    onClick = { chooseWav(controller) },
+                    onClick = { sourceHub.refresh();sourceHubVisible=true },
                 )
                 Item(
                     "制作を開く",
@@ -230,10 +241,20 @@ fun main(args: Array<String>) = application {
                 Item("Windows 音声エンドポイント", onClick = audioDiagnostics::run)
             }
         }
+        fun useLibrary(id:String) {
+            if(!externalDocumentActionsEnabled(controller.state.value)) return
+            val item=sourceHub.state.value.library.firstOrNull{it.id==id}?:return
+            controller.addLibrarySource(sourceHub.file(id),item.title)
+            sourceHub.consumed(id);sourceHubVisible=false
+        }
+        LaunchedEffect(sourceState.pendingUseId) { sourceState.pendingUseId?.let(::useLibrary) }
+        LaunchedEffect(spotifyState.phase,sourceHubVisible) {
+            if(sourceHubVisible && spotify.connected && spotifyState.librarySummary=="ライブラリは未取得です") spotify.showLibrary()
+        }
         ChopLabTheme {
             OtohiroiDeck(
                 state = state,
-                onImportAudio = { chooseWav(controller) },
+                onImportAudio = { sourceHub.refresh();sourceHubVisible=true },
                 onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
                 onToggleVocalRecording = controller::toggleVocalRecording,
                 onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
@@ -243,6 +264,34 @@ fun main(args: Array<String>) = application {
                 viewModel = controller,
             )
         }
+        if(sourceHubVisible) ChopLabTheme {
+            AudioSourceHub(sourceState,externalDocumentActionsEnabled(state),
+                sourceHub::section,sourceHub::query,sourceHub::search,sourceHub::download,
+                onPickFiles={
+                    val chooser=importChooser
+                    lastDocumentDirectory?.let{chooser.currentDirectory=File(it)}
+                    if(chooser.showOpenDialog(null)==JFileChooser.APPROVE_OPTION) {
+                        val files=chooser.selectedFiles.toList()
+                        files.firstOrNull()?.parentFile?.let{lastDocumentDirectory=it.absolutePath}
+                        sourceHub.importFiles(files)
+                    }
+                },
+                onUse={id ->
+                    if(externalDocumentActionsEnabled(controller.state.value)) {
+                        val item=sourceHub.state.value.library.firstOrNull{it.id==id}
+                        if(item!=null) {controller.addLibrarySource(sourceHub.file(id),item.title);sourceHub.consumed(id);sourceHubVisible=false}
+                    }
+                },onCancel=sourceHub::cancel,onClose={sourceHub.cancel();if(spotifyState.canCancelLogin)spotify.cancelLogin();sourceHubVisible=false},
+                spotifyContent={SpotifySourcePicker(
+                    SpotifyImportState(connected=spotify.connected,busy=spotifyState.busy,configured=spotifyState.clientIdConfigured,message=spotifyState.message,tracks=spotifyState.sourceTracks,hasMore=spotifyState.sourceHasMore),
+                    sourceState.busy,"http://127.0.0.1/callback",
+                    onLogin={client ->if(client.isBlank() || spotify.configureClientId(client))spotify.login()},
+                    onDisconnect=spotify::disconnect,onMore=spotify::showMoreLibrary,onPick=sourceHub::importFavorite,
+                    onOpen={link->java.awt.Desktop.getDesktop().browse(java.net.URI(link))},
+                )},
+            )
+        }
+
     }
     if (spotifyPanelVisible) {
         Window(
@@ -270,29 +319,12 @@ private var lastDocumentDirectory: String? = null
  */
 private val importChooser: JFileChooser by lazy {
     JFileChooser().apply {
-        dialogTitle = "ChopLabで音声を開く（Windows版はWAV）"
+        dialogTitle = "ChopLabに音源を追加"
         fileSelectionMode = JFileChooser.FILES_ONLY
-        isMultiSelectionEnabled = false
+        isMultiSelectionEnabled = true
         isAcceptAllFileFilterUsed = false
         fileFilter = DesktopAudioImportPolicy.fileFilter
     }
-}
-
-private fun chooseWav(controller: DesktopSamplerController) {
-    val chooser = importChooser
-    lastDocumentDirectory?.let { directory -> chooser.currentDirectory = File(directory) }
-    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) {
-        controller.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
-        return
-    }
-    val file = chooser.selectedFile ?: return
-    file.parentFile?.let { lastDocumentDirectory = it.absolutePath }
-    if (!DesktopAudioImportPolicy.accepts(file)) {
-        controller.setStatus("Windows版ではWAV音声を選んでください")
-        return
-    }
-    runCatching { controller.loadWav(file) }
-        .onFailure { controller.setStatus("WAV読込失敗: ${it.message ?: it.javaClass.simpleName}") }
 }
 
 private fun chooseExportWav(controller: DesktopSamplerController) {

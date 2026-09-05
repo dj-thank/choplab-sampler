@@ -74,8 +74,14 @@ tasks.register<JavaExec>("runWasapiProbe") {
     mainClass.set("com.choplab.desktop.audio.wasapi.WasapiProbeMainKt")
 }
 
+val prepareMediaTools by tasks.registering(Exec::class) {
+    onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
+    workingDir(rootProject.projectDir)
+    commandLine("python", "scripts/prepare_media_tools.py", "--out", "work/media-tools")
+}
+
 tasks.register<Exec>("packageWindows") {
-    dependsOn(tasks.installDist)
+    dependsOn(tasks.installDist, prepareMediaTools)
     onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
 
     val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
@@ -102,4 +108,30 @@ tasks.register<Exec>("packageWindows") {
         "--java-options", "-Xms160m",
         "--java-options", "-Dfile.encoding=UTF-8",
     )
+    val spotifyClient=providers.environmentVariable("CHOPLAB_SPOTIFY_CLIENT_ID").orElse("").get()
+    require(spotifyClient.isEmpty() || spotifyClient.matches(Regex("[A-Za-z0-9]{16,128}")))
+    if(spotifyClient.isNotEmpty()) args(
+        "--java-options", "-Dchoplab.spotifyClientId=$spotifyClient",
+    )
+}
+
+tasks.named("packageWindows") {
+    doLast {
+        copy {
+            from(rootProject.file("work/media-tools"))
+            into(layout.buildDirectory.dir("windows-app-image/ChopLab/tools"))
+        }
+    }
+}
+
+tasks.register<JavaExec>("sourceImport") {
+    dependsOn(tasks.classes)
+    classpath=sourceSets["main"].runtimeClasspath
+    mainClass.set("com.choplab.desktop.source.SourceImportCliKt")
+    workingDir(rootProject.projectDir)
+    providers.gradleProperty("sourceSpotifyCheck").orNull?.let { args("--spotify-check",it) }
+    providers.gradleProperty("sourceListFile").orNull?.let { args("--list",it) }
+    providers.gradleProperty("sourceLibrary").orNull?.let { args("--library",it) }
+    providers.gradleProperty("sourceYoutube").orNull?.let { args("--youtube",it) }
+    providers.gradleProperty("sourceExport").orNull?.let { args("--export",it) }
 }

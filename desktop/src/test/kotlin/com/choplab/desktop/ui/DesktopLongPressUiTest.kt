@@ -44,6 +44,45 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
+    fun audioSourceHubShowsLibraryAndOneTapFavoritesAtCompactAndWideWidths() = runBlocking {
+        for(width in listOf(390,960)) {
+            var chosen=""
+            val track=com.choplab.sampler.source.SourceTrack("テスト曲","テスト奏者","https://open.spotify.com/track/0123456789012345678901",120.0)
+            val scene=ImageComposeScene(width=width,height=720,density=Density(1f),coroutineContext=coroutineContext) {
+                ChopLabTheme {
+                    com.choplab.sampler.ui.AudioSourceHubContent(
+                        state=com.choplab.sampler.source.AudioSourceState(section=com.choplab.sampler.source.SourceSection.SPOTIFY),
+                        canUseAudio=true,onSection={},onQuery={},onSearch={},onDownload={},onPickFiles={},onUse={},onCancel={},onClose={},
+                        spotifyContent={com.choplab.sampler.ui.SpotifySourcePicker(
+                            com.choplab.sampler.source.SpotifyImportState(connected=true,configured=true,tracks=listOf(track),message="お気に入りを取得しました"),false,"choplab://spotify/callback",
+                            {},{},{},{chosen=it.title},{})},
+                    )
+                }
+            }
+            try {
+                fun nodes():List<SemanticsNode> = buildList {
+                    fun visit(node:SemanticsNode){add(node);node.children.forEach(::visit)}
+                    scene.semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
+                }
+                var card:SemanticsNode?=null
+                withTimeout(10000) {
+                    while(card==null) {
+                        scene.render(System.nanoTime()).close()
+                        card=nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { text ->text.startsWith("Spotifyのお気に入り ") }==true && it.boundsInRoot.height>0 }
+                        if(card==null)delay(20)
+                    }
+                }
+                val node=requireNotNull(card)
+                assertTrue(node.boundsInRoot.bottom<=720f)
+                assertTrue(requireNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                assertEquals("テスト曲",chosen)
+                val directory=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}
+                scene.render(System.nanoTime()).use { image ->requireNotNull(image.encodeToData()).use { data ->File(directory,"source-favorites-$width.png").writeBytes(data.bytes) } }
+            } finally {scene.close()}
+        }
+    }
+
+    @Test
     fun editedChopJoinsPreviousLoopWhenContinuingToBeat() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)

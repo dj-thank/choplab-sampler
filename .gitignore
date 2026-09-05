@@ -67,3 +67,10 @@ compile_commands.json
 /recordings/
 /projects-local/
 /app/src/test/resources/generated/
+
+# Private import runtime and read-only dependency references
+/work/media-tools/
+/work/vendor-reference/
+/work/audio-source-intent.json
+
+/work/source-seed-files.tsv

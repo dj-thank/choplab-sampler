@@ -1,5 +1,7 @@
 package com.choplab.desktop.provider
 
+import com.choplab.sampler.source.SourceTrack
+import com.choplab.sampler.source.SourceRecipes
 import com.choplab.desktop.spotify.JdkSpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyApi
 import com.choplab.desktop.spotify.SpotifyApiClient
@@ -39,6 +41,8 @@ data class SpotifyDesktopState(
     val clientIdSource: String? = null,
     val currentTrack: String = "現在再生情報は未取得です",
     val savedTracks: List<String> = emptyList(),
+    val sourceTracks: List<SourceTrack> = emptyList(),
+    val sourceHasMore: Boolean = false,
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
@@ -81,7 +85,7 @@ internal object DesktopSpotifyBrowser : SpotifyBrowser {
  */
 class SpotifyDesktopSession(
     private val onStatus: (String) -> Unit,
-    clientId: String = System.getenv("CHOPLAB_SPOTIFY_CLIENT_ID").orEmpty(),
+    clientId: String = System.getProperty("choplab.spotifyClientId") ?: System.getenv("CHOPLAB_SPOTIFY_CLIENT_ID").orEmpty(),
     private val tokenClient: SpotifyTokenClient = JdkSpotifyTokenClient(),
     private val api: SpotifyApiClient = SpotifyApi(),
     private val callbackFactory: SpotifyAuthorizationCallbackFactory = SpotifyAuthorizationCallbackFactory { SpotifyLoopbackCallbackServer() },
@@ -98,6 +102,7 @@ class SpotifyDesktopSession(
     private val providedClientIdWasInvalid = clientId.isNotBlank() && configuredClientId.isBlank()
     private var credentials: Credentials? = null
     private var nextLoginId = 0L
+    private var libraryOffset = 0
     private var activeLogin: ActiveLogin? = null
     private val mutableState = MutableStateFlow(initialState())
     val state: StateFlow<SpotifyDesktopState> = mutableState.asStateFlow()
@@ -203,12 +208,16 @@ class SpotifyDesktopSession(
         generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
         val parsed = SpotifyPlaybackJson.savedTracks(response.body)
+        val sourceTracks = runCatching { SourceRecipes.parseSpotifyTracks(response.body) }.getOrDefault(emptyList())
+        libraryOffset = 20
         when {
             !parsed.recognized -> OperationResult(
                 "Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください",
                 transform = {
                     it.copy(
                         savedTracks = emptyList(),
+                        sourceTracks = emptyList(),
+                        sourceHasMore = false,
                         librarySummary = "ライブラリの応答を読み取れませんでした",
                     )
                 },
@@ -218,6 +227,8 @@ class SpotifyDesktopSession(
                 transform = {
                     it.copy(
                         savedTracks = emptyList(),
+                        sourceTracks = emptyList(),
+                        sourceHasMore = false,
                         librarySummary = "保存済みトラックはありません",
                     )
                 },
@@ -227,10 +238,27 @@ class SpotifyDesktopSession(
                 transform = {
                     it.copy(
                         savedTracks = parsed.tracks,
+                        sourceTracks = sourceTracks,
+                        sourceHasMore = runCatching{SourceRecipes.spotifyHasNext(response.body)}.getOrDefault(false),
                         librarySummary = "保存済みトラックを${parsed.tracks.size}件表示中",
                     )
                 },
             )
+        }
+    }
+
+    fun showMoreLibrary() {
+        if(mutableState.value.sourceTracks.isEmpty()) { showLibrary();return }
+        withAccessToken("Spotifyライブラリ") { token,lease ->
+            val response=api.savedTracksPage(token,libraryOffset)
+            generation.requireCurrent(lease)
+            if(response.statusCode !in 200..299) throw SpotifyApiException(response,"ライブラリ")
+            val parsed=SpotifyPlaybackJson.savedTracks(response.body)
+            val sources=SourceRecipes.parseSpotifyTracks(response.body)
+            libraryOffset+=20
+            OperationResult(if(sources.isEmpty()) "すべてのお気に入りを表示しました" else "お気に入りを追加表示しました",transform={ current ->
+                current.copy(savedTracks=(current.savedTracks+parsed.tracks).distinct(),sourceTracks=(current.sourceTracks+sources).distinctBy(SourceTrack::spotifyUrl),sourceHasMore=SourceRecipes.spotifyHasNext(response.body))
+            })
         }
     }
 

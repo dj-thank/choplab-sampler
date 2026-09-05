@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**進行中:** `audio-source-library-20260905.md`。Windows/Android共通の音源ライブラリ・YouTube取り込み・Spotify曲選択。
+
+## Previous selection
+
 **完了（LOCAL_PASS）:** `../completed/beat-loop-layers-20260905.md`。ユーザー訂正に合わせ、音の選択→ループ→一つずつ重ねる構成。
 
 **併合済み:** `../completed/drum-kit-preserve-patterns-20260905.md`。ドラム音色変更でA/B配置を保持。
