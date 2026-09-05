@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `loop-handoff-compact-20260905.md`。調整した音からのビート移行と小画面の波形表示。
+**完了（LOCAL_PASS）:** `../completed/loop-handoff-compact-20260905.md`。調整した音からのビート移行と小画面の波形表示。
 
 ## Previous local selection
 

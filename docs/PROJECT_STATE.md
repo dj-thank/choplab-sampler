@@ -1,6 +1,14 @@
 # Project state
 
 
+## Current snapshot — 2026-09-05 chosen-loop handoff and compact Beat
+
+Product checkpoint `3a51ca8` on the existing isolated refinement branch, based on `8e27658`. TRIM now explicitly starts the edited Chop with the pattern before navigating to Beat. Prior loop configuration cannot override the chosen sound; rejected loop admission keeps the editor and prior loop. Start admission is returned by both platform controllers and VOCAL cannot become a new loop owner through this action.
+
+Compact Beat reserves useful waveform space and allows desk scrolling without adding zoom/precision controls. At 360×520/font1.3, the waveform and >=48dp controls are exercised through actual shared scene input. See [the report](../outputs/loop-handoff-compact-20260905.md) for final gate/results. Device audio/touch, Android instrumentation execution and iOS remain unverified.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-05 automatic range and loop-first Beat
 
 Base `1e55128`, sole-writer refinement branch. The user's correction replaces the selected-range zoom/precision/beat-fit proposal with an exact-range waveform and always-visible S/E rolling dials. The whole-source map preserves cut locations and admits source playback before navigating into a new capture session. Earlier/manual cuts are pinned against later live-chop reflow.

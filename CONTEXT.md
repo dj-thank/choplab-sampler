@@ -86,7 +86,7 @@ The selected Chop waveform always displays exactly its start-inclusive/end-exclu
 
 ## Cut boundary wheel
 
-Always-visible S and E rolling controls apply relative frame deltas to the rendered PAD. Editing pins that PAD's boundaries against later live-capture reflow. Changing the range updates the live loop while preserving its playback owner.
+Always-visible S and E rolling controls apply relative frame deltas to the rendered PAD. Editing pins that PAD's boundaries against later live-capture reflow. Changing the range updates the live loop while preserving its playback owner. Continuing from TRIM explicitly starts this PAD as the loop with the pattern; navigation follows successful admission, so an earlier loop selection cannot replace the chosen Chop.
 
 ## Production edit
 
