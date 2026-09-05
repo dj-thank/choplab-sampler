@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**進行中:** `desktop-connect-import-20260905.md`。デスクトップ連携メニュー・パネルから音源追加への導線改善。
+
+## Previous selection
+
 **完了（LOCAL_PASS、scoped provider observationあり）:** `../completed/audio-source-library-20260905.md`。Windows/Android共通ライブラリ、YouTube取り込み、Spotify曲選択。実機Android/iOS/公開は別gate。
 
 ## Previous selection

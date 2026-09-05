@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.WindowPlacement
@@ -82,6 +83,22 @@ fun main(args: Array<String>) = application {
     }
     val sourceState by sourceHub.state.collectAsState()
     var sourceHubVisible by remember { mutableStateOf(false) }
+    fun openAudioSource(section:SourceSection) {
+        sourceHub.section(section)
+        sourceHub.refresh()
+        spotifyPanelVisible=false
+        sourceHubVisible=true
+    }
+    fun pickSourceFiles() {
+        openAudioSource(SourceSection.LIBRARY)
+        val chooser=importChooser
+        lastDocumentDirectory?.let { chooser.currentDirectory=File(it) }
+        if(chooser.showOpenDialog(null)==JFileChooser.APPROVE_OPTION) {
+            val files=chooser.selectedFiles.toList()
+            files.firstOrNull()?.parentFile?.let { lastDocumentDirectory=it.absolutePath }
+            sourceHub.importFiles(files)
+        }
+    }
     val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
     val padKeyOwner = remember { DesktopPadKeyOwner() }
@@ -174,7 +191,7 @@ fun main(args: Array<String>) = application {
                     "音源ライブラリを開く",
                     shortcut = KeyShortcut(Key.O, ctrl = true),
                     enabled = externalDocumentActionsEnabled(state),
-                    onClick = { sourceHub.refresh();sourceHubVisible=true },
+                    onClick = { openAudioSource(SourceSection.LIBRARY) },
                 )
                 Item(
                     "制作を開く",
@@ -227,15 +244,12 @@ fun main(args: Array<String>) = application {
                 Item("PADキー  1234 / QWER / ASDF / ZXCV", enabled = false, onClick = {})
             }
             Menu("連携") {
-                Item("Spotify Connect パネル", onClick = { spotifyPanelVisible = true })
-                Item("Spotify ログイン", onClick = spotify::login, enabled = spotifyState.canLogin)
-                Item("Spotify 認証をキャンセル", onClick = spotify::cancelLogin, enabled = spotifyState.canCancelLogin)
-                Item("Spotify 現在再生を表示", onClick = spotify::showCurrentPlayback, enabled = spotifyState.canUsePlaybackControls)
-                Item("Spotify ライブラリを表示", onClick = spotify::showLibrary, enabled = spotifyState.canUsePlaybackControls)
-                Item("Spotify 一時停止", onClick = spotify::pause, enabled = spotifyState.canUsePlaybackControls)
-                Item("Spotify 再開", onClick = spotify::resume, enabled = spotifyState.canUsePlaybackControls)
+                Item("音源を追加…", onClick = { openAudioSource(SourceSection.LIBRARY) })
+                Item("Spotifyのお気に入りから追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
+                Item("YouTubeから追加…", onClick = { openAudioSource(SourceSection.YOUTUBE) })
+                Item("PCのファイルから追加…", onClick = ::pickSourceFiles)
                 Separator()
-                Item("Spotify 連携解除", onClick = spotify::disconnect, enabled = spotifyState.canDisconnect)
+                Item("コネクトパネル…", onClick = { spotifyPanelVisible = true })
             }
             Menu("診断") {
                 Item("Windows 音声エンドポイント", onClick = audioDiagnostics::run)
@@ -254,7 +268,7 @@ fun main(args: Array<String>) = application {
         ChopLabTheme {
             OtohiroiDeck(
                 state = state,
-                onImportAudio = { sourceHub.refresh();sourceHubVisible=true },
+                onImportAudio = { openAudioSource(SourceSection.LIBRARY) },
                 onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
                 onToggleVocalRecording = controller::toggleVocalRecording,
                 onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
@@ -267,15 +281,7 @@ fun main(args: Array<String>) = application {
         if(sourceHubVisible) ChopLabTheme {
             AudioSourceHub(sourceState,externalDocumentActionsEnabled(state),
                 sourceHub::section,sourceHub::query,sourceHub::search,sourceHub::download,
-                onPickFiles={
-                    val chooser=importChooser
-                    lastDocumentDirectory?.let{chooser.currentDirectory=File(it)}
-                    if(chooser.showOpenDialog(null)==JFileChooser.APPROVE_OPTION) {
-                        val files=chooser.selectedFiles.toList()
-                        files.firstOrNull()?.parentFile?.let{lastDocumentDirectory=it.absolutePath}
-                        sourceHub.importFiles(files)
-                    }
-                },
+                onPickFiles=::pickSourceFiles,
                 onUse={id ->
                     if(externalDocumentActionsEnabled(controller.state.value)) {
                         val item=sourceHub.state.value.library.firstOrNull{it.id==id}
@@ -299,9 +305,13 @@ fun main(args: Array<String>) = application {
                 if (spotifyState.canCancelLogin) spotify.cancelLogin()
                 spotifyPanelVisible = false
             },
-            title = "ChopLab — Spotify Connect",
+            title = "ChopLab — 連携・音源追加",
+            state = remember { WindowState(width=760.dp,height=660.dp) },
         ) {
-            ChopLabTheme { SpotifyPanel(spotify, spotifyState) }
+            ChopLabTheme {
+                SpotifyPanel(spotifyState,sourceState.library.size,::openAudioSource,
+                    spotify::showCurrentPlayback,spotify::pause,spotify::resume,spotify::disconnect,::pickSourceFiles)
+            }
         }
     }
 }

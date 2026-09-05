@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(compose.desktop.currentOs)
+    implementation("org.jetbrains.compose.material3:material3:1.9.0")
     implementation("net.java.dev.jna:jna:5.19.1")
     implementation("net.java.dev.jna:jna-platform:5.19.1")
     testImplementation(kotlin("test"))

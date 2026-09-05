@@ -44,6 +44,63 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
     @Test
+    fun connectPanelOpensTheImportDestinationAndKeepsSetupOutOfTheMainView() = runBlocking {
+        for(width in listOf(760,1100)) {
+            val destination=androidx.compose.runtime.mutableStateOf<com.choplab.sampler.source.SourceSection?>(null)
+            var logins=0
+            val scene=ImageComposeScene(width=width,height=660,density=Density(1f),coroutineContext=coroutineContext) {
+                ChopLabTheme {
+                    val selected=destination.value
+                    if(selected==null) com.choplab.desktop.SpotifyPanel(
+                        com.choplab.desktop.provider.SpotifyDesktopState(phase=com.choplab.desktop.provider.SpotifyConnectionPhase.READY,clientIdConfigured=true),
+                        4,{destination.value=it},{},{},{},{},
+                    ) else com.choplab.sampler.ui.AudioSourceHubContent(
+                        state=com.choplab.sampler.source.AudioSourceState(section=selected),canUseAudio=true,
+                        onSection={destination.value=it},onQuery={},onSearch={},onDownload={},onPickFiles={},onUse={},onCancel={},onClose={destination.value=null},
+                        spotifyContent={com.choplab.sampler.ui.SpotifySourcePicker(
+                            com.choplab.sampler.source.SpotifyImportState(configured=true),false,"http://127.0.0.1/callback",
+                            {logins++},{},{},{},{})},
+                    )
+                }
+            }
+            try {
+                fun nodes():List<SemanticsNode> = buildList {
+                    fun visit(n:SemanticsNode){add(n);n.children.forEach(::visit)}
+                    scene.semanticsOwners.forEach{visit(it.unmergedRootSemanticsNode)}
+                }
+                suspend fun settle() {repeat(12){scene.render(System.nanoTime()).close();delay(15)}}
+                suspend fun clickDescription(text:String) {
+                    settle()
+                    val n=nodes().single { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(text)==true }
+                    val position=n.boundsInRoot.center
+                    assertTrue(position.x>0 && position.x<width && position.y>0 && position.y<660)
+                    scene.sendPointerEvent(PointerEventType.Move,position,type=PointerType.Mouse)
+                    scene.sendPointerEvent(PointerEventType.Press,position,type=PointerType.Mouse,buttons=PointerButtons(isPrimaryPressed=true),button=PointerButton.Primary)
+                    settle()
+                    scene.sendPointerEvent(PointerEventType.Release,position,type=PointerType.Mouse,buttons=PointerButtons(),button=PointerButton.Primary)
+                    settle()
+                }
+                settle()
+                assertFalse(nodes().any { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text.contains("Client ID")||text.text.contains("Developer Dashboard") }==true })
+                val output=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}
+                scene.render(System.nanoTime()).use { image->requireNotNull(image.encodeToData()).use { data->File(output,"desktop-connect-$width.png").writeBytes(data.bytes) } }
+                clickDescription("Spotifyのお気に入りから音源を追加")
+                assertEquals(com.choplab.sampler.source.SourceSection.SPOTIFY,destination.value)
+                val login=nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text=="Spotifyにログイン" }==true }
+                val clickable=generateSequence(login){it.parent}.first { it.config.getOrNull(SemanticsActions.OnClick)?.action!=null }
+                assertTrue(requireNotNull(clickable.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                assertEquals(1,logins)
+                destination.value=null;clickDescription("YouTubeから音源を追加")
+                assertEquals(com.choplab.sampler.source.SourceSection.YOUTUBE,destination.value)
+                destination.value=null;clickDescription("PCのファイルから音源を追加")
+                assertEquals(com.choplab.sampler.source.SourceSection.LIBRARY,destination.value)
+                destination.value=null;clickDescription("内部ライブラリを開く")
+                assertEquals(com.choplab.sampler.source.SourceSection.LIBRARY,destination.value)
+            } finally {scene.close()}
+        }
+    }
+
+    @Test
     fun audioSourceHubShowsLibraryAndOneTapFavoritesAtCompactAndWideWidths() = runBlocking {
         for(width in listOf(390,960)) {
             var chosen=""
