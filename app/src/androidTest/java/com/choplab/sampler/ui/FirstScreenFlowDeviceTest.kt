@@ -64,11 +64,8 @@ class FirstScreenFlowDeviceTest {
         }
 
         demo.performClick()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasText("B DRUMS", substring = true)).fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNode(hasText("B DRUMS", substring = true)).assertIsDisplayed()
-        composeRule.onNode(hasText("B01", substring = true)).assertIsDisplayed()
+        composeRule.onNode(hasContentDescription("ドラムを鳴らす", substring = true)).assertIsDisplayed()
+        composeRule.onNode(hasContentDescription("並べ方・曲構成", substring = true)).assertIsDisplayed()
     }
 
     @Test
@@ -80,38 +77,22 @@ class FirstScreenFlowDeviceTest {
             .assertIsDisplayed()
             .performClick()
 
-        composeRule.onNode(hasText("B01", substring = true)).performScrollTo().assertIsDisplayed()
-        val selectedPad = composeRule.onNode(
-            hasContentDescription("PAD 01 割り当て済み", substring = true),
-        ).performScrollTo()
-        selectedPad.assertIsDisplayed()
-        val minimumTargetPx = 48f * composeRule.density.density
-        val bounds = selectedPad.fetchSemanticsNode().boundsInRoot
-        assertTrue("Large-text PAD width must remain at least 48 dp", bounds.width >= minimumTargetPx - 1f)
-        assertTrue("Large-text PAD height must remain at least 48 dp", bounds.height >= minimumTargetPx - 1f)
-        composeRule.onNode(
-            hasContentDescription(
-                "PAD 01 割り当て済み。再生モード ONE SHOT。素材タイプ DRM",
-                substring = true,
-            ),
-        ).assertIsDisplayed()
-
-        composeRule.onNode(hasContentDescription("並べる詳細", substring = true))
-            .performScrollTo()
-            .assertIsDisplayed()
-            .performClick()
-        composeRule.onNode(hasContentDescription("クイック", substring = true))
-            .assertIsDisplayed()
+        listOf("ドラムを鳴らす", "並べ方・曲構成").forEach { label ->
+            val action = composeRule.onNode(hasContentDescription(label, substring = true))
+            action.assertIsDisplayed()
+            val bounds = action.fetchSemanticsNode().boundsInRoot
+            val minimum = 48f * composeRule.density.density
+            assertTrue(bounds.width >= minimum - 1f && bounds.height >= minimum - 1f)
+        }
+        composeRule.onNode(hasContentDescription("並べ方・曲構成", substring = true)).performClick()
+        composeRule.onNode(hasText("BPM")).performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun largeTextOneShotBeatSwipeCancelsPadAndTapStillPlaysIt() {
+    fun largeTextOneShotChopSwipeCancelsPadAndTapStillPlaysIt() {
         val padActions = mutableListOf<String>()
-        setPristineDeck(fontScale = 2f, onPadAction = { padActions += it })
+        setPerformanceDeck(fontScale = 2f, onPadAction = { padActions += it })
 
-        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
-            .performScrollTo()
-            .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(
                 hasContentDescription("PAD 01 割り当て済み", substring = true),
@@ -131,11 +112,11 @@ class FirstScreenFlowDeviceTest {
             hasContentDescription("PAD 01 割り当て済み", substring = true),
         ).fetchSemanticsNode().boundsInRoot.top
         assertTrue(
-            "The swipe should move the large-text BEAT workspace",
+            "The swipe should move the large-text CHOP workspace",
             topAfterSwipe < topBeforeSwipe - 1f,
         )
         composeRule.runOnIdle {
-            assertTrue("A BEAT scroll gesture must not dispatch PAD actions", padActions.isEmpty())
+            assertTrue("A CHOP scroll gesture must not dispatch PAD actions", padActions.isEmpty())
         }
 
         composeRule.onNode(
@@ -148,7 +129,7 @@ class FirstScreenFlowDeviceTest {
 
         composeRule.runOnIdle {
             assertEquals(
-                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                listOf("selectPad", "capturePad", "releasePad"),
                 padActions,
             )
         }
@@ -186,7 +167,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions.map { it.first },
                 )
             }
@@ -196,7 +177,7 @@ class FirstScreenFlowDeviceTest {
 
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    listOf("selectPad", "triggerPad", "releasePad"),
                     padActions.map { it.first },
                 )
                 val triggerTime = padActions.first { it.first == "triggerPad" }.second
@@ -228,7 +209,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions.map { it.first },
                 )
             }
@@ -237,7 +218,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    listOf("selectPad", "triggerPad", "releasePad"),
                     padActions.map { it.first },
                 )
                 val triggerTime = padActions.first { it.first == "triggerPad" }.second
@@ -267,7 +248,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions.map { it.first },
                 )
             }
@@ -365,7 +346,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions.map { it.first },
                 )
             }
@@ -385,7 +366,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.runOnIdle {
                 assertEquals(
                     "An activated GATE must remain owned until physical up",
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions.map { it.first },
                 )
             }
@@ -394,7 +375,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    listOf("selectPad", "triggerPad", "releasePad"),
                     padActions.map { it.first },
                 )
             }
@@ -426,13 +407,13 @@ class FirstScreenFlowDeviceTest {
             assertTrue(
                 "Movement beyond touch slop must suppress GATE trim navigation",
                 composeRule.onAllNodes(
-                    hasText("切り位置", substring = true),
+                    hasText("切り出した音へ戻る", substring = true),
                 ).fetchSemanticsNodes().isEmpty(),
             )
             composeRule.runOnIdle {
                 assertEquals(
                     "A moved GATE must remain owned and audible beyond long-press timeout",
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions.map { it.first },
                 )
             }
@@ -441,7 +422,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    listOf("selectPad", "triggerPad", "releasePad"),
                     padActions.map { it.first },
                 )
             }
@@ -569,7 +550,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad"),
+                    listOf("selectPad", "triggerPad"),
                     padActions,
                 )
             }
@@ -594,7 +575,7 @@ class FirstScreenFlowDeviceTest {
 
             composeRule.runOnIdle {
                 assertEquals(
-                    listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                    listOf("selectPad", "triggerPad", "releasePad"),
                     padActions,
                 )
             }
@@ -602,7 +583,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.waitForIdle()
             assertTrue(
                 "A remaining secondary pointer must not inherit trim ownership",
-                composeRule.onAllNodes(hasText("切り位置", substring = true))
+                composeRule.onAllNodes(hasText("切り出した音へ戻る", substring = true))
                     .fetchSemanticsNodes().isEmpty(),
             )
             composeRule.onRoot().performTouchInput { cancel() }
@@ -625,7 +606,7 @@ class FirstScreenFlowDeviceTest {
             composeRule.mainClock.advanceTimeBy(600)
             composeRule.waitForIdle()
 
-            composeRule.onNode(hasText("切り位置", substring = true)).assertIsDisplayed()
+            composeRule.onNode(hasText("切り出した音へ戻る", substring = true)).assertIsDisplayed()
             composeRule.runOnIdle {
                 val actionNames = padActions.map { it.first }
                 assertEquals(1, actionNames.count { it == "triggerPad" })
@@ -920,11 +901,10 @@ class FirstScreenFlowDeviceTest {
     }
 
     @Test
-    fun normalTextBeatPadStillTriggersOnPressDown() {
+    fun normalTextChopPadStillTriggersOnPressDown() {
         val padActions = mutableListOf<String>()
-        setPristineDeck(onPadAction = { padActions += it })
+        setPerformanceDeck(onPadAction = { padActions += it })
 
-        composeRule.onNode(hasContentDescription("デモを試す", substring = true)).performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(
                 hasContentDescription("PAD 01 割り当て済み", substring = true),
@@ -941,14 +921,14 @@ class FirstScreenFlowDeviceTest {
         }
         composeRule.waitForIdle()
         composeRule.runOnIdle {
-            assertEquals(listOf("selectPlayablePad", "triggerPad"), padActions)
+            assertEquals(listOf("selectPad", "capturePad"), padActions)
         }
 
         pad.performTouchInput { up() }
         composeRule.waitForIdle()
         composeRule.runOnIdle {
             assertEquals(
-                listOf("selectPlayablePad", "triggerPad", "releasePad"),
+                listOf("selectPad", "capturePad", "releasePad"),
                 padActions,
             )
         }
@@ -957,17 +937,14 @@ class FirstScreenFlowDeviceTest {
     @Test
     fun largeTextGateScrollCancellationAndLongPressRecompositionReleaseExactlyOnce() {
         val padActions = mutableListOf<Pair<String, Long>>()
-        val state = setPristineDeck(
+        val state = setPerformanceDeck(
             fontScale = 2f,
             onPadAction = { padActions += it to composeRule.mainClock.currentTime },
         )
 
-        composeRule.onNode(hasContentDescription("デモを試す", substring = true))
-            .performScrollTo()
-            .performClick()
         composeRule.onNode(
             hasContentDescription("PAD 01 割り当て済み。再生モード ONE SHOT", substring = true),
-        ).assertIsDisplayed()
+        ).performScrollTo().assertIsDisplayed()
         composeRule.runOnIdle {
             val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             // This in-place mode change must restart the existing pointer-input handler.
@@ -998,7 +975,7 @@ class FirstScreenFlowDeviceTest {
 
         composeRule.onNode(gateDescription).performScrollTo().performTouchInput { longClick() }
         composeRule.waitForIdle()
-        composeRule.onNode(hasText("切り位置", substring = true)).assertIsDisplayed()
+        composeRule.onNode(hasText("切り出した音へ戻る", substring = true)).assertIsDisplayed()
 
         composeRule.runOnIdle {
             val actionNames = padActions.map { it.first }
@@ -1012,6 +989,18 @@ class FirstScreenFlowDeviceTest {
             )
             assertTrue("A deferred GATE hold must not trigger and release in one frame", releaseTime > triggerTime)
         }
+    }
+
+    // Exercise retained PAD touch arbitration on CHOP; BEAT now starts with the loop dashboard.
+    private fun setPerformanceDeck(
+        fontScale: Float = 1f,
+        onPadAction: (String) -> Unit = {},
+        onControllerReady: (SamplerDeckController) -> Unit = {},
+    ): MutableState<SamplerUiState> {
+        val starter = ensurePlayablePadSelectedState(BuiltInDrumKits.installStarterKit(SamplerUiState()))
+        val source = requireNotNull(starter.pads[starter.selectedPad].audio)
+        return setDeck(starter.copy(currentAudio = source, rangeEndFrame = source.frameCount,
+            projectLaunchTarget = ProjectLaunchTarget.CHOP), fontScale, onPadAction, onControllerReady)
     }
 
     private fun setPristineDeck(
@@ -1078,14 +1067,11 @@ class FirstScreenFlowDeviceTest {
         onPadAction: (String) -> Unit,
         onControllerReady: (SamplerDeckController) -> Unit = {},
     ) {
-        val state = setPristineDeck(
+        val state = setPerformanceDeck(
             fontScale = fontScale,
             onPadAction = onPadAction,
             onControllerReady = onControllerReady,
         )
-        val demo = composeRule.onNode(hasContentDescription("デモを試す", substring = true))
-        if (fontScale >= 1.2f) demo.performScrollTo()
-        demo.performClick()
         composeRule.runOnIdle {
             val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             state.value = state.value.copy(
@@ -1160,6 +1146,7 @@ class FirstScreenFlowDeviceTest {
                     }
                     null
                 }
+                SamplerDeckController::rechopSourceFrom.name -> false
                 else -> null
             }
         }

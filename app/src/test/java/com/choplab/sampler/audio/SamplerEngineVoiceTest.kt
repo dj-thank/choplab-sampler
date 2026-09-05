@@ -11,6 +11,31 @@ import org.junit.Test
 
 class SamplerEngineVoiceTest {
     @Test
+    fun liveLoopTrimRebindsAudibleRangeWithoutChangingOwnership() {
+        val audio = PcmAudio(name = "range.wav", samples = ShortArray(1024) { if (it < 512) 12000 else -12000 }, sampleRate = 48000)
+        val pad = PadModel(0, audio, 0, 256, playMode = PadPlayMode.LOOP, gain = 1f, tone = 1f)
+        val voice = SamplerEngine.Voice()
+        voice.start(SamplerEngine.PadSnapshot.from(pad), 48000, startOrder = 7, ownership = 123L)
+        repeat(64) { voice.render(48000) }
+        assertTrue(voice.render(48000) > 0f)
+        voice.updateLiveParameters(SamplerEngine.PadSnapshot.from(pad.copy(startFrame = 512, endFrame = 768)), 48000)
+        assertEquals(512, voice.currentFrame)
+        assertEquals(123L, voice.ownership)
+        assertEquals(7L, voice.startOrder)
+        repeat(64) { voice.render(48000) }
+        assertTrue(voice.render(48000) < 0f)
+        repeat(1024) {
+            voice.render(48000)
+            assertTrue(voice.currentFrame in 512 until 768)
+        }
+        voice.updateLiveParameters(SamplerEngine.PadSnapshot.from(pad.copy(startFrame = 512, endFrame = 768, reverse = true)), 48000)
+        assertEquals(767, voice.currentFrame)
+        assertFalse(voice.finished)
+        voice.deactivate()
+        assertEquals(0f, voice.render(48000), 0f)
+    }
+
+    @Test
     fun realtimeVoicePreservesStereoAndDuplicatesMonoWithoutAdvancingTwice() {
         val stereo = PcmAudio(
             name = "stereo-live.wav",

@@ -6,7 +6,8 @@ package com.choplab.sampler.model
  */
 val SamplerUiState.beatLoopControlEnabled: Boolean
     get() = loopingPadIndex != null || (
-        !isLoading &&
+        pendingSourceCommand != PendingSourceCommand.STOP &&
+            !isLoading &&
             !recordingSession.isActive &&
             pads.getOrNull(selectedPad)?.isAssigned == true
         )

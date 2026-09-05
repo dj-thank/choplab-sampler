@@ -162,10 +162,10 @@ class AndroidBeatLoopSessionTransactionTest {
         override fun releasePad(globalIndex: Int) = Unit
         override fun releasePadIfOwned(globalIndex: Int, ownership: Long) = Unit
         override fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int) = Unit
-        override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) = Unit
+        override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) = true
         override fun stopSource() = Unit
         override fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float) = Unit
-        override fun startTransport() = Unit
+        override fun startTransport() = true
         override fun stopTransport() = Unit
         override fun stopAllVoices() = Unit
         override fun shutdown() = Unit

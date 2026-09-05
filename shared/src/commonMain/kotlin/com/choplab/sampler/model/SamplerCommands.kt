@@ -47,6 +47,7 @@ fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
     return state.copy(
         pendingSourceCommand = pendingSourceCommandAfterStopRequest(state.sourcePlaying),
         transportPlaying = false,
+        liveChopPadIndices = emptySet(),
         recordArmed = false,
         currentStep = -1,
         loopingPadIndex = null,
@@ -425,8 +426,9 @@ fun assignRangesToPads(
 /**
  * Assigns the source playhead to a pad and keeps live chops contiguous in time.
  *
- * Only pads in the currently visible bank that reference the current audio are
- * reflowed. Per-pad performance settings are intentionally preserved.
+ * Only participants in this source-playback capture session are reflowed. Prior
+ * trimmed chops remain intact when the user starts a new pass from the source map.
+ * Unscoped legacy calls retain their original same-bank behavior.
  */
 fun assignLiveChopToPad(
     state: SamplerUiState,
@@ -455,7 +457,9 @@ fun assignLiveChopToPad(
         endFrame = selectionEnd,
     )
 
-    val livePadIndices = (bankStart until bankEndExclusive)
+    val candidates = (state.liveChopPadIndices ?: (bankStart until bankEndExclusive).toSet()) + padIndex
+    val livePadIndices = candidates
+        .filter { it in bankStart until bankEndExclusive }
         .filter { index ->
             val pad = mutablePads[index]
             pad.audio?.id == audio.id && pad.startFrame in selectionStart until selectionEnd
@@ -482,6 +486,7 @@ fun assignLiveChopToPad(
             pads = mutablePads,
             selectedBank = bank,
             selectedPad = padIndex,
+            liveChopPadIndices = livePadIndices.toSet(),
             sliceMarkers = markers,
             loopingPadIndex = state.loopingPadIndex?.takeUnless { it == padIndex },
             loopPlayheadFrame = if (state.loopingPadIndex == padIndex) -1 else state.loopPlayheadFrame,

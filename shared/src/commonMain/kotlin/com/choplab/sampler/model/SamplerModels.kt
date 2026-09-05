@@ -165,6 +165,8 @@ data class SamplerUiState(
     val sourcePlaying: Boolean = false,
     val pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
     val sourcePlayheadFrame: Int = 0,
+    /** Runtime capture-session membership. Source startup uses emptySet; null supports legacy direct calls. */
+    val liveChopPadIndices: Set<Int>? = null,
     val loopingPadIndex: Int? = null,
     val loopPlayheadFrame: Int = -1,
     val scratchingPadIndex: Int? = null,

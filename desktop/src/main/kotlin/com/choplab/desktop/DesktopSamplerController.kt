@@ -15,6 +15,7 @@ import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
+import com.choplab.sampler.model.configuredLoopPadIndex
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PerformancePadPressAction
@@ -688,18 +689,36 @@ class DesktopSamplerController(
             )
         }
     }
-    override fun playSourceFrom(frame: Int) = synchronized(sourcePitchResumeLock) {
+    override fun rechopSourceFrom(frame: Int): Boolean {
+        val before = mutableState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val audio = before.currentAudio ?: return false
+        if (audio.frameCount < 2) return false
+        if (!tryPlaySourceFrom(frame.coerceIn(0, audio.frameCount - 1))) return false
+        commitEdit { state ->
+            com.choplab.sampler.model.prepareDefaultMelodyChopDestination(state.copy(
+                rangeStartFrame = 0, rangeEndFrame = audio.frameCount, activeSliceIndex = null,
+            ))
+        }
+        return true
+    }
+
+    override fun playSourceFrom(frame: Int) { tryPlaySourceFrom(frame) }
+
+    private fun tryPlaySourceFrom(frame: Int): Boolean = synchronized(sourcePitchResumeLock) {
         val state = mutableState.value
-        if (state.currentAudio == null) return@synchronized
-        if (!sourcePlaybackIsReady()) return@synchronized
-        val safe = frame.coerceIn(0, state.rangeEndFrame)
+        val audio = state.currentAudio ?: return@synchronized false
+        if (!sourcePlaybackIsReady()) return@synchronized false
+        com.choplab.sampler.model.playbackStartBlockedReason(state)?.let { setStatus(it); return@synchronized false }
+        val safe = frame.coerceIn(0, audio.frameCount - 1)
         stopCompetingPlayback()
         val playbackFailure = runCatching { player.playFrom(safe) }.exceptionOrNull()
         if (playbackFailure != null) {
             publishSourcePlaybackFailure(playbackFailure)
-            return@synchronized
+            return@synchronized false
         }
         mutableState.update { it.copy(sourcePlayheadFrame = safe, sourcePlaying = true, statusMessage = "元曲を再生中です") }
+        true
     }
     override fun seekSourcePlayback(frame: Int) = synchronized(sourcePitchResumeLock) {
         if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return@synchronized
@@ -1004,6 +1023,25 @@ class DesktopSamplerController(
         val pad = state.pads[state.selectedPad]
         state.copy(activeSteps = state.activeSteps.togglePadStep(pad, step))
     }
+    override fun rollPadBoundary(index: Int, boundary: com.choplab.sampler.model.PadTrimBoundary, deltaFrames: Int) {
+        val before = mutableState.value.pads.getOrNull(index) ?: return
+        if (!before.isAssigned) return
+        updateSelected(mergeKey = "pad-$index-trim-${boundary.name}", padIndex = index) {
+            com.choplab.sampler.model.trimPadBoundary(it, boundary, deltaFrames)
+        }
+    }
+
+    override fun startPadLoop(index: Int, withPattern: Boolean) {
+        com.choplab.sampler.model.playbackStartBlockedReason(mutableState.value)?.let { setStatus(it); return }
+        val before = mutableState.value
+        if (before.pads.getOrNull(index)?.isAssigned != true) return
+        if (before.loopingPadIndex != index) toggleBeatLoop(index)
+        if (mutableState.value.loopingPadIndex != index) return
+        if ((withPattern || before.transportPlaying) && !mutableState.value.transportPlaying) {
+            startTransport("ループを軸にビートを再生中です", "ビート再生開始失敗")
+        }
+    }
+
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
@@ -1097,9 +1135,9 @@ class DesktopSamplerController(
     override fun toggleTransport() {
         val state = mutableState.value
         if (state.transportPlaying) {
-            transport.stop()
-            mutableState.update { it.copy(transportPlaying = false, currentStep = -1, statusMessage = "ビートを停止しました") }
+            stopAllSounds()
         } else {
+            if (rejectEditRequest()) return
             stopCompetingPlayback()
             startTransport(
                 statusMessage = "ビートを再生中です",
@@ -1162,11 +1200,11 @@ class DesktopSamplerController(
         transport.updateTempo(mutableState.value.bpm, mutableState.value.swing)
     }
 
-    private fun updateSelected(mergeKey: String? = null, transform: (PadModel) -> PadModel) {
+    private fun updateSelected(mergeKey: String? = null, padIndex: Int = mutableState.value.selectedPad, transform: (PadModel) -> PadModel) {
         val before = mutableState.value
         if (before.isLoading) return setStatus("現在の処理が終わってから編集してください")
         if (rejectEditWhileRecording()) return
-        val selected = before.selectedPad
+        val selected = padIndex
         val currentPad = before.pads.getOrNull(selected) ?: return
         val candidate = transform(currentPad)
         if (candidate == currentPad) return
@@ -1187,7 +1225,7 @@ class DesktopSamplerController(
         }
 
         commitEdit(mergeKey) { state ->
-            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate })
+            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate }, liveChopPadIndices = if (currentPad.startFrame != candidate.startFrame || currentPad.endFrame != candidate.endFrame) state.liveChopPadIndices?.minus(selected) else state.liveChopPadIndices)
         }
     }
 
@@ -1795,6 +1833,7 @@ class DesktopSamplerController(
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlaying = false,
+                liveChopPadIndices = emptySet(),
                 pendingSourceCommand = PendingSourceCommand.NONE,
                 loopingPadIndex = null,
                 loopPlayheadFrame = -1,
@@ -1860,6 +1899,10 @@ class DesktopSamplerController(
         val current = mutableState.value
         val recordArmedBeforeStart = current.recordArmed
         return runCatching {
+            current.configuredLoopPadIndex()?.let { loop ->
+                if (mutableState.value.loopingPadIndex != loop) toggleBeatLoop(loop)
+                check(mutableState.value.loopingPadIndex == loop) { "ループを開始できませんでした" }
+            }
             transport.start(current.bpm, current.swing) {
                 mutableState.update {
                     it.copy(
@@ -1872,9 +1915,12 @@ class DesktopSamplerController(
             }
         }.onFailure { error ->
             transport.stop()
+            player.stopAll()
             mutableState.update {
                 it.copy(
                     transportPlaying = false,
+                    loopingPadIndex = null,
+                    loopPlayheadFrame = -1,
                     recordArmed = if (disarmRecording) recordArmedBeforeStart else it.recordArmed,
                     currentStep = -1,
                     statusMessage = "$failurePrefix: ${error.message ?: error.javaClass.simpleName}",

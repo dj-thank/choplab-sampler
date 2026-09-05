@@ -303,14 +303,14 @@ class SamplerEngine(
         )
     }
 
-    override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) {
+    override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float): Boolean {
         if (!running.get() || audio.frameCount < 1) {
             sourcePlaybackState.forceStopped()
-            return
+            return false
         }
         val generation = sourcePlaybackState.issuePlay()
         val safeStart = startFrame.coerceIn(0, audio.frameCount - 1)
-        enqueue(
+        return enqueue(
             EngineCommand.PlaySource(
                 source = PadSnapshot(
                     padIndex = SOURCE_PAD_INDEX,
@@ -348,9 +348,7 @@ class SamplerEngine(
         )
     }
 
-    override fun startTransport() {
-        enqueue(EngineCommand.StartTransport)
-    }
+    override fun startTransport(): Boolean = enqueue(EngineCommand.StartTransport)
 
     override fun stopTransport() {
         enqueue(EngineCommand.StopTransport)
@@ -919,6 +917,16 @@ class SamplerEngine(
 
         fun updateLiveParameters(pad: PadSnapshot, outputSampleRate: Int) {
             if (!active || pad.padIndex != padIndex || pad.audio.id != audioId) return
+            if (playMode == PadPlayMode.LOOP && pad.playMode == PadPlayMode.LOOP &&
+                (startFrame != pad.startFrame || endFrame != pad.endFrame || reverse != pad.reverse)
+            ) {
+                startFrame = pad.startFrame
+                endFrame = pad.endFrame
+                reverse = pad.reverse
+                cursor.reset(startFrame, endFrame, reverse, playMode)
+                filterStateLeft = 0f
+                filterStateRight = 0f
+            }
             sourceStep = sourceStepFor(pad, outputSampleRate)
             tone = pad.tone
             filterAlpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)

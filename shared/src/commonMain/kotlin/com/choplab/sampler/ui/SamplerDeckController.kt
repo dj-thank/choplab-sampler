@@ -1,5 +1,6 @@
 package com.choplab.sampler.ui
 
+import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.RepeatGrid
@@ -71,6 +72,7 @@ interface SamplerDeckController {
     fun triggerPadWithOwnership(index: Int): Long
     fun releasePadIfOwned(index: Int, ownership: Long)
     fun playSourceFrom(frame: Int)
+    fun rechopSourceFrom(frame: Int): Boolean
     fun seekSourcePlayback(frame: Int)
     fun toggleSourcePlayback()
     fun toggleChopPlayback()
@@ -80,6 +82,8 @@ interface SamplerDeckController {
     fun setSelectedPadGain(value: Float)
     fun setSelectedPadStartFrame(frame: Int)
     fun setSelectedPadEndFrame(frame: Int)
+    fun rollPadBoundary(index: Int, boundary: PadTrimBoundary, deltaFrames: Int)
+    fun startPadLoop(index: Int, withPattern: Boolean = false)
     fun previewPad(index: Int)
     fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot)
     fun setSelectedPadChokeGroup(group: Int)

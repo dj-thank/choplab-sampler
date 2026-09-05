@@ -29,13 +29,13 @@ interface SamplerPlaybackEngine {
     fun releasePad(globalIndex: Int)
     fun releasePadIfOwned(globalIndex: Int, ownership: Long)
     fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int)
-    fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float)
+    fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float): Boolean
     fun stopSource()
     fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float)
     fun setPatternSequence(patterns: List<Set<Int>>, bpm: Float, swing: Float) {
         setPattern(patterns.firstOrNull() ?: emptySet(), bpm, swing)
     }
-    fun startTransport()
+    fun startTransport(): Boolean
     fun stopTransport()
     fun stopAllVoices()
     fun stopAllPlayback() {

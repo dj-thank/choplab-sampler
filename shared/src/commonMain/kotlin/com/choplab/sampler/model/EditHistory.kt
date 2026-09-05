@@ -60,6 +60,7 @@ private fun SamplerUiState.historySnapshot(): SamplerUiState = copy(
     currentStep = -1,
     recordingSession = RecordingSession.Idle,
     sourcePlaying = false,
+    liveChopPadIndices = null,
     pendingSourceCommand = PendingSourceCommand.NONE,
     canUndo = false,
     canRedo = false,

@@ -1,5 +1,16 @@
 # Project state
 
+
+## Current snapshot — 2026-09-05 automatic range and loop-first Beat
+
+Base `1e55128`, sole-writer refinement branch. The user's correction replaces the selected-range zoom/precision/beat-fit proposal with an exact-range waveform and always-visible S/E rolling dials. The whole-source map preserves cut locations and admits source playback before navigating into a new capture session. Earlier/manual cuts are pinned against later live-chop reflow.
+
+Beat now centers the loop and exposes drums, live scratch, and secondary arrangement. Android live bound edits update the audible voice; layered loop/step startup fails closed. Repeated loop selection does not retrigger; starting during pending STOP is rejected. Failed rechop keeps editor, selection and history.
+
+Local verification and artifact binding are recorded in [the workflow report](../outputs/automatic-range-loop-workflow-20260905.md). Physical audio/touch/recording, Android instrumentation execution/ViewModel E2E, iOS and public/Human acceptance remain unverified. Android gesture fixtures target the retained CHOP PAD surface; compiled instrumentation is not a device pass.
+
+## Previous snapshots
+
 ## Current snapshot — 2026-09-05 UI and edit admission audit
 
 Base `e5aa359`, same isolated refinement branch. Save now has six actions in four 56dp rows, compact counters and scroll-safe layout. Destructive editing moved to the arrangement context. Shared timed/content-bound confirmation replaces the separate copy path and binds PAD selection. Busy/no-op UI states and Android/Windows kit edit admission are aligned; Android ordinary edits reject loading while owned vocal completion can commit. Dormant autoChopTransient now guards every terminal path with the existing operation epoch (no current UI caller).

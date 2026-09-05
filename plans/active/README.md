@@ -6,6 +6,12 @@
 
 ## Current selection
 
+**完了（LOCAL_PASS）:** `../completed/automatic-range-loop-workflow-20260905.md`。ユーザー訂正により選択範囲の自動表示・S/Eダイヤル・ループ中心へ変更。
+
+**訂正により旧UI案を停止:** `../completed/loop-creation-workflow-20260905.md`。チョップ→ループ調整→ドラム→スクラッチの制作導線。
+
+## Previous selection
+
 **完了（LOCAL_PASS）:** `../completed/ui-audit-refinement-20260905.md`。ユーザーのUIを含む監査・改善依頼。
 
 ## Prior selection

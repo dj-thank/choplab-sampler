@@ -140,3 +140,8 @@ fun projectEditBlockedReason(state: SamplerUiState): String? = when {
     !editingRequestAllowedDuringRecording(state.recordingSession) -> "録音をSTOPしてから編集してください"
     else -> null
 }
+
+fun playbackStartBlockedReason(state: SamplerUiState): String? =
+    projectEditBlockedReason(state) ?: if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
+        "停止処理中です。音が止まってから再生してください"
+    } else null

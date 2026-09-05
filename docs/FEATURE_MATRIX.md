@@ -4,6 +4,9 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| 選択音の自動表示・S/Eダイヤル | LOCAL検証済み | 手動ズーム・精密モード・拍合わせボタンを撤去。選択S..E全体を表示。相対調整は表示中PADとライブ音声へ反映 |
+| 元曲全体からチョップし直す | LOCAL検証済み | 全体と切れ目を保持。タップ位置で再生受付成功後だけCHOPへ移動。既存/手動調整した切れ目を後続captureが動かさない |
+| ループ中心のビート制作 | LOCAL検証済み | ループ＋ドラムtransportの同時開始/停止、同じループ選択の維持、スクラッチ後の復帰。scratchはライブ中断/復帰で録音重ね合わせではない。詳細はoutputs/automatic-range-loop-workflow-20260905.md |
 | UI監査・編集受付の整合 | LOCAL_PASS | 保存56dp、確認の期限・内容・PAD所有、busy状態の操作制限、録音/読込中kit交換の副作用防止。777通常tests＋29操作checks。詳細はoutputs/ui-audit-refinement-20260905.md。実音声・Android VM E2Eは未確認 |
 | 選択音の配置シフト | LOCAL_PASS | レイヤー画面で前後1step、小節端で折返し。他PADと別A/Bを保持。Undo/Redo・既存保存経路 |
 | 選択A/Bだけの配置消去 | LOCAL_PASS | A/B editorで二度押し確認。音源・別variation・Song順序を保持。transport中拒否 |

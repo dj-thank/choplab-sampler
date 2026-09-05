@@ -10,6 +10,8 @@ import com.choplab.sampler.audio.AudioDecoder
 import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
 import com.choplab.sampler.audio.AndroidBeatLoopSessionResult
 import com.choplab.sampler.audio.AndroidBeatLoopSessionTransaction
+import com.choplab.sampler.audio.startAndroidLayeredTransport
+import com.choplab.sampler.model.configuredLoopPadIndex
 import com.choplab.sampler.audio.startAndroidPadLoopSession
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.CaptureEventBus
@@ -1487,20 +1489,40 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun playSourceFrom(frame: Int) {
+    override fun rechopSourceFrom(frame: Int): Boolean {
+        val before = mutableUiState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val audio = before.currentAudio ?: return false
+        if (audio.frameCount < 2) return false
+        if (!tryPlaySourceFrom(frame.coerceIn(0, audio.frameCount - 1))) return false
+        commitEdit { state ->
+            com.choplab.sampler.model.prepareDefaultMelodyChopDestination(state.copy(
+                rangeStartFrame = 0, rangeEndFrame = audio.frameCount, activeSliceIndex = null,
+            ))
+        }
+        return true
+    }
+
+    override fun playSourceFrom(frame: Int) { tryPlaySourceFrom(frame) }
+
+    private fun tryPlaySourceFrom(frame: Int): Boolean {
         val state = mutableUiState.value
         if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
             setStatus("停止処理中です。音が止まってから位置を選んでください")
-            return
+            return false
         }
         val audio = state.currentAudio ?: run {
             setStatus("先に曲を読み込んでください")
-            return
+            return false
         }
         val safe = frame.coerceIn(0, audio.frameCount - 1)
-        if (!preparePlaybackStart()) return
+        if (!preparePlaybackStart()) return false
         stopCompetingPlayback()
-        engine.playSource(audio, safe, state.masterPitchSemitones)
+        if (!engine.playSource(audio, safe, state.masterPitchSemitones)) {
+            stopAllSounds()
+            setStatus("元曲の再生を開始できませんでした")
+            return false
+        }
         mutableUiState.update { current ->
             val feedback = sourcePlaybackRequestFeedback(
                 appliedPlaying = current.sourcePlaying,
@@ -1515,6 +1537,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 statusMessage = feedback.statusMessage,
             )
         }
+        return true
     }
 
     override fun seekSourcePlayback(frame: Int) {
@@ -1645,6 +1668,27 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         toggleBeatLoop(mutableUiState.value.selectedPad)
     }
 
+    override fun rollPadBoundary(index: Int, boundary: PadTrimBoundary, deltaFrames: Int) {
+        val before = mutableUiState.value.pads.getOrNull(index) ?: return
+        if (!before.isAssigned) return
+        updateSelectedPad(parameter = "trim-${boundary.name}", padIndex = index) {
+            com.choplab.sampler.model.trimPadBoundary(it, boundary, deltaFrames)
+        }
+    }
+
+    override fun startPadLoop(index: Int, withPattern: Boolean) {
+        val before = mutableUiState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return }
+        if (before.pads.getOrNull(index)?.isAssigned != true) return
+        if (before.loopingPadIndex != index) toggleBeatLoop(index)
+        if (mutableUiState.value.loopingPadIndex != index) return
+        if ((withPattern || before.transportPlaying) && !mutableUiState.value.transportPlaying) {
+            syncPattern()
+            if (!engine.startTransport()) { stopAllSounds(); setStatus("ビートを開始できませんでした"); return }
+            mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
+        }
+    }
+
     override fun toggleBeatLoopControl() {
         val state = mutableUiState.value
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
@@ -1662,7 +1706,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             state.pads
                 .vocalCompanionPadIndicesForLoopStart(loopPadIndex = globalIndex)
                 .forEach(engine::stopPad)
-            playbackInterruptionCoordinator.endPlaybackSession()
+            if (!state.transportPlaying) playbackInterruptionCoordinator.endPlaybackSession()
             mutableUiState.update {
                 it.copy(
                     loopingPadIndex = null,
@@ -1724,18 +1768,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun updateSelectedPad(
         parameter: String? = null,
+        padIndex: Int = mutableUiState.value.selectedPad,
         transform: (PadModel) -> PadModel,
     ) {
         var changed: PadModel? = null
-        val selectedPad = mutableUiState.value.selectedPad
+        val selectedPad = padIndex
         val mergeKey = parameter?.let { "pad-$selectedPad-$it" }
         commitEdit(mergeKey = mergeKey) { state ->
             val mutablePads = state.pads.toMutableList()
-            val current = state.selectedPadModel()
+            val current = state.pads.getOrNull(padIndex) ?: return@commitEdit state
             val updated = transform(current)
-            mutablePads[state.selectedPad] = updated
+            mutablePads[padIndex] = updated
             changed = updated
-            state.copy(pads = mutablePads)
+            state.copy(pads = mutablePads, liveChopPadIndices = if (current.startFrame != updated.startFrame || current.endFrame != updated.endFrame) state.liveChopPadIndices?.minus(padIndex) else state.liveChopPadIndices)
         }
         changed?.let(engine::updatePad)
     }
@@ -1767,15 +1812,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     override fun toggleTransport() {
         val playing = mutableUiState.value.transportPlaying
         if (playing) {
-            engine.stopTransport()
-            playbackInterruptionCoordinator.endPlaybackSession()
-            mutableUiState.update { it.copy(transportPlaying = false, currentStep = -1) }
+            stopAllSounds()
         } else {
             if (!preparePlaybackStart()) return
             val recordArmed = mutableUiState.value.recordArmed
             stopCompetingPlayback()
             syncPattern()
-            engine.startTransport()
+            if (!startLayeredTransport()) return
             mutableUiState.update {
                 it.copy(
                     transportPlaying = true,
@@ -1798,7 +1841,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (!state.transportPlaying) {
             stopCompetingPlayback()
             syncPattern()
-            engine.startTransport()
+            if (!startLayeredTransport()) return
             mutableUiState.update {
                 it.copy(
                     transportPlaying = true,
@@ -2174,7 +2217,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             ScratchReturnTarget.Transport -> {
                 if (!preparePlaybackStart()) return false
                 syncPattern()
-                engine.startTransport()
+                if (!startLayeredTransport()) return false
                 mutableUiState.update {
                     it.copy(
                         transportPlaying = true,
@@ -2203,6 +2246,23 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 true
             }
         }
+    }
+
+    private fun startLayeredTransport(): Boolean {
+        val state = mutableUiState.value
+        if (!startAndroidLayeredTransport(engine, state)) {
+            stopAllSounds()
+            setStatus("操作が集中しているため、ビート再生を開始できませんでした")
+            return false
+        }
+        val loop = state.configuredLoopPadIndex()
+        mutableUiState.update {
+            it.copy(loopingPadIndex = loop, loopPlayheadFrame = loop?.let { index ->
+                val pad = state.pads[index]
+                if (pad.reverse) pad.endFrame - 1 else pad.startFrame
+            } ?: -1)
+        }
+        return true
     }
 
     private fun syncPattern() {

@@ -51,6 +51,47 @@ import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
     @Test
+    fun transportIncludesConfiguredLoopAndRestoresWholeBeatAfterScratch() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loop)
+            controller.toggleBeatLoopControl()
+            controller.toggleTransport()
+            awaitCondition { engine.triggered.any { it.first.globalIndex != loop } }
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+            assertTrue(engine.triggered.any { it.first.globalIndex == loop && it.second })
+            val target = com.choplab.sampler.model.selectScratchReturnTarget(controller.state.value)
+            assertEquals(ScratchReturnTarget.Transport, target)
+            controller.stopAllSounds()
+            assertTrue(controller.resumeAfterScratch(target))
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+            controller.toggleTransport()
+            assertFalse(controller.state.value.transportPlaying)
+            assertNull(controller.state.value.loopingPadIndex)
+        } finally { controller.close() }
+    }
+
+    @Test
+    fun rejectedConfiguredLoopDoesNotStartDrumsOrPublishTransport() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        try {
+            val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loop)
+            controller.toggleBeatLoopControl()
+            controller.stopAllSounds()
+            engine.failNextExclusiveStart = true
+            controller.toggleTransport()
+            assertFalse(controller.state.value.transportPlaying)
+            assertNull(controller.state.value.loopingPadIndex)
+        } finally { controller.close() }
+    }
+
+    @Test
     fun drumKitReplacementDuringRecordingHasNoPlaybackOrProjectEffects() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, microphone = FakeRecorder(), autosaveStore = null)
