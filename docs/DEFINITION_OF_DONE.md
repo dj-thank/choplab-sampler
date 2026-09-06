@@ -33,7 +33,8 @@ Platform-specific UI may differ, but Android and Windows must retain the shared 
 - Default Android master output remains linear below the documented overload knee; overload, silence, clipping, non-finite input, voice retirement, queue rejection and stream restart fail safely.
 - Realtime and offline shared seams have explicit parity tests, including terminal samples and full-bar output.
 - Expensive Windows source rendering occurs outside the audio-engine monitor; source replacement, cancellation and playback state have one serialized ownership boundary.
-- Callback paths covered by the allocation-free contract do not add file I/O, logging or unbounded allocation.
+- Every audio callback and high-frequency DSP inner path must remain real-time safe: no heap allocation or deallocation, blocking locks, file I/O, logging, or other blocking/unbounded work, regardless of existing test coverage.
+- Callback data must be prepared in advance; cross-thread handoff uses atomics or cheap bounded queues. Do not call Android UI APIs or perform heavy JNI work from a real-time callback. Allocation-focused tests are evidence of this repository-wide contract, not a limit on its scope.
 
 ## Persistence and input safety
 

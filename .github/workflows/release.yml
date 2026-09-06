@@ -406,18 +406,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Revalidate annotated tag and release history before publication
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
-        run: |
-          python3 scripts/release_metadata.py \
-            --tag "$RELEASE_TAG" \
-            --commit "$GITHUB_SHA" \
-            --verify-annotated-tag \
-            --check-monotonic \
-            --reachable-ref "$GITHUB_SHA"
-
       - name: Download Android release assets
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -608,6 +596,27 @@ jobs:
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-ios-simulator.app.zip
           subject-version: ${{ needs.metadata.outputs.version }}
           sbom-path: dist/ChopLab-${{ needs.metadata.outputs.tag }}-sbom.cdx.json
+
+      - name: Revalidate annotated tag and release history before publication
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          # Refresh history, not the checkout: assets and metadata belong to GITHUB_SHA.
+          # Explicit tag fetching also covers tags created while platform builds ran.
+          git fetch --atomic --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            'refs/tags/*:refs/tags/*'
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+            echo 'Release commit is no longer reachable from main.' >&2
+            exit 1
+          }
+          python3 scripts/release_metadata.py \
+            --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" \
+            --verify-annotated-tag \
+            --check-monotonic \
+            --reachable-ref refs/remotes/origin/main
 
       - name: Publish once without asset replacement
         shell: bash
