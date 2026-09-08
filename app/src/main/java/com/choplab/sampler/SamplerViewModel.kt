@@ -181,7 +181,16 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val beatLoopSessionTransaction = AndroidBeatLoopSessionTransaction(productionSession, engine)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
-    private var autosaveJob: Job? = null
+    private val autosaveWriter = com.choplab.sampler.persistence.ProjectAutosaveWriter(
+        save = { state, revision -> autosaveStore.save(state, revision); Unit },
+        onFailure = { revision, failure ->
+            viewModelScope.launch {
+                if (productionSession.revision == revision) {
+                    setStatus(failure.message ?: "自動保存できませんでした")
+                }
+            }
+        },
+    )
     private var scratchIdleJob: Job? = null
     private var projectLaunchRevision = 0L
     private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
@@ -400,6 +409,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadAudio(uri: Uri) {
+        if (mutableUiState.value.isLoading) {
+            setStatus("現在の処理が終わってから素材を読み込んでください")
+            return
+        }
         if (mutableUiState.value.recordingSession.isActive) {
             setStatus("録音をSTOPしてから別の素材を読み込んでください")
             return
@@ -434,12 +447,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
                             val previous = mutableUiState.value
-                            val newProduction = (if(preserveProduction) attachLibrarySource(previous,audio) else BuiltInDrumKits.installStarterKit(
+                            val newProduction = runCatching { (if(preserveProduction) attachLibrarySource(
+                                previous, audio, com.choplab.sampler.audio.AudioResourceLimits.MAX_MOBILE_PROJECT_PCM_BYTES,
+                            ) else BuiltInDrumKits.installStarterKit(
                                 replaceSourceAudio(previous, audio),
                             )).copy(
                                 projectLaunchTarget = ProjectLaunchTarget.CHOP,
                                 projectLaunchRevision = nextProjectLaunchRevision(),
                             )
+                            }.getOrElse { failure ->
+                                mutableUiState.value = previous.copy(isLoading = false,
+                                    statusMessage = failure.message ?: "音源を追加できませんでした")
+                                return@completeIfCurrent
+                            }
                             val replaced = preserveAppliedSourceTruthWhileStopping(
                                 previousState = previous,
                                 replacementState = newProduction,
@@ -1004,7 +1024,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 blank
             }
         }
-        autosaveJob?.cancel()
         engine.stopAllPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
         runCatching {
@@ -1023,16 +1042,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         mutableUiState.value = transition.state
         engine.updateAllPads(transition.state.pads)
         syncPattern()
-        autosaveJob = viewModelScope.launch {
-            val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(reset, revision) }.exceptionOrNull()
-            }
-            if (failure != null && productionSession.revision == revision) {
-                mutableUiState.update {
-                    it.copy(statusMessage = failure.message ?: "リセット状態を保存できませんでした")
-                }
-            }
-        }
+        autosaveWriter.submit(reset, revision)
+        autosaveWriter.flush()
     }
 
     fun toggleManualChop() {
@@ -2010,6 +2021,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveProject(destination: Uri) {
         val snapshot = mutableUiState.value
+        com.choplab.sampler.model.projectEditBlockedReason(snapshot)?.let {
+            setStatus(it)
+            return
+        }
         val revision = productionSession.revision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
@@ -2061,6 +2076,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadProject(source: Uri) {
+        if (mutableUiState.value.isLoading) {
+            setStatus("現在の処理が終わってからプロジェクトを開いてください")
+            return
+        }
         if (mutableUiState.value.recordingSession.isActive) {
             setStatus("録音をSTOPして保存が終わってからプロジェクトを開いてください")
             return
@@ -2209,27 +2228,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun scheduleAutosave() {
-        val snapshot = mutableUiState.value
-        val revision = productionSession.revision
-        autosaveJob?.cancel()
-        autosaveJob = viewModelScope.launch {
-            delay(AUTOSAVE_DELAY_MS)
-            val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(snapshot, revision) }.exceptionOrNull()
-            }
-            if (failure != null && productionSession.revision == revision) {
-                mutableUiState.update {
-                    it.copy(statusMessage = failure.message ?: "自動保存できませんでした")
-                }
-            }
-        }
+        autosaveWriter.submit(mutableUiState.value, productionSession.revision)
     }
 
+    fun flushAutosave() {
+        autosaveWriter.flush()
+    }
     private fun recoverAutosave() {
         val operation = projectOperations.begin()
         val revisionAtStart = productionSession.revision
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.loadWithRevision() } }
+            val recovery = autosaveWriter.readAfterPending { autosaveStore.loadWithRevision() }
+            val result = withContext(Dispatchers.IO) { runCatching { recovery.get() } }
             if (productionSession.revision != revisionAtStart) return@launch
             projectOperations.completeIfCurrent(operation) {
                 result.onSuccess { recovered ->
@@ -2485,6 +2495,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
+        autosaveWriter.close()
         runCatching {
             microphoneRecorder.stopAsync { result ->
                 result.onSuccess(captureTempFiles::deleteOwned)

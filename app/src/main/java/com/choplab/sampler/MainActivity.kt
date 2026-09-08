@@ -230,6 +230,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         if (shouldInterruptPlaybackOnActivityStop(isChangingConfigurations)) {
             samplerViewModel.handlePlaybackInterruption(PlaybackInterruption.APP_BACKGROUND)
+            samplerViewModel.flushAutosave()
         }
         super.onStop()
     }
