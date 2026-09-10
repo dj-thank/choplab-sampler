@@ -8,6 +8,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -35,6 +36,8 @@ class MainActivity : ComponentActivity() {
             ChopLabTheme {
                 val context = LocalContext.current
                 val state by samplerViewModel.uiState.collectAsStateWithLifecycle()
+                // First frame is not readiness: include autosave recovery in fully-drawn timing.
+                ReportDrawnWhen { !state.isLoading }
                 var pendingAction by rememberSaveable { mutableStateOf(PendingPermissionAction.NONE) }
 
                 val importLauncher = rememberLauncherForActivityResult(
@@ -89,9 +92,12 @@ class MainActivity : ComponentActivity() {
                     samplerViewModel.saveProject(uri)
                 }
 
-                val projectionManager = remember {
-                    requireNotNull(context.getSystemService(MediaProjectionManager::class.java)) {
-                        "MediaProjectionManager is unavailable on this device"
+                // Recording-only Binder lookup must not run during the first composition.
+                val projectionManager = remember(context) {
+                    lazy(LazyThreadSafetyMode.NONE) {
+                        requireNotNull(context.getSystemService(MediaProjectionManager::class.java)) {
+                            "MediaProjectionManager is unavailable on this device"
+                        }
                     }
                 }
                 val projectionLauncher = rememberLauncherForActivityResult(
@@ -110,7 +116,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     // A foreground media-projection service may still run when notifications
                     // are denied, but the stop action remains available inside the app.
-                    projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                    projectionLauncher.launch(projectionManager.value.createScreenCaptureIntent())
                 }
 
                 fun requestSystemAudioProjection() {
@@ -124,7 +130,7 @@ class MainActivity : ComponentActivity() {
                     if (needsNotificationPermission) {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     } else {
-                        projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                        projectionLauncher.launch(projectionManager.value.createScreenCaptureIntent())
                     }
                 }
 

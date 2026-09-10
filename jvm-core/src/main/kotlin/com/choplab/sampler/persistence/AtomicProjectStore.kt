@@ -88,24 +88,45 @@ class AtomicProjectStore(
     @Synchronized
     fun load(): SamplerUiState? = loadWithRevision()?.state
 
+    fun loadWithRevision(): RecoveredProjectState? = loadWithRevision { archive ->
+        archive.inputStream().buffered().use { input ->
+            ProjectArchiveCodec.read(input, maxResidentPcmBytes)
+        }
+    }
+
+    /**
+     * Rank the small revision sidecars before hashing/decoding audio. A revision is
+     * only a hint until its archive digest AND the bounded codec both validate.
+     * Stop at the first valid candidate: retaining every decoded generation can
+     * multiply startup PCM memory and work by four.
+     *
+     * The reader seam lets JVM tests count actual codec calls without timing gates.
+     * It runs under the same store lock as save, including the ranking phase.
+     */
     @Synchronized
-    fun loadWithRevision(): RecoveredProjectState? {
+    internal fun loadWithRevision(readArchive: (File) -> SamplerUiState): RecoveredProjectState? {
         val candidates = generations().filter { it.archive.isFile }
         if (candidates.isEmpty()) return null
         var firstFailure: Throwable? = null
-        val decoded = candidates.mapNotNull { generation ->
+        val ranked = candidates.mapNotNull { generation ->
             runCatching {
-                val revision = readVerifiedRevision(generation)
-                val state = generation.archive.inputStream().buffered().use { input ->
-                    ProjectArchiveCodec.read(input, maxResidentPcmBytes)
-                }
-                DecodedGeneration(state, revision, generation.priority)
+                RankedGeneration(generation, readRevisionMetadata(generation))
             }.onFailure { if (firstFailure == null) firstFailure = it }.getOrNull()
+        }.sortedWith(
+            compareByDescending<RankedGeneration> { it.metadata?.revision ?: Long.MIN_VALUE }
+                .thenByDescending { it.generation.priority },
+        )
+        for (candidate in ranked) {
+            val result = runCatching {
+                candidate.metadata?.let { verifyRevisionDigest(candidate.generation, it) }
+                RecoveredProjectState(
+                    readArchive(candidate.generation.archive),
+                    candidate.metadata?.revision,
+                )
+            }
+            if (result.isSuccess) return result.getOrThrow()
+            if (firstFailure == null) firstFailure = result.exceptionOrNull()
         }
-        decoded.maxWithOrNull(
-            compareBy<DecodedGeneration> { it.revision ?: Long.MIN_VALUE }
-                .thenBy { it.priority },
-        )?.let { return RecoveredProjectState(it.state, it.revision) }
         throw IllegalStateException("自動保存プロジェクトを復元できません", firstFailure)
     }
 
@@ -135,14 +156,23 @@ class AtomicProjectStore(
     }.maxOrNull() ?: Long.MIN_VALUE
 
     private fun readVerifiedRevision(generation: Generation): Long? {
+        val metadata = readRevisionMetadata(generation) ?: return null
+        verifyRevisionDigest(generation, metadata)
+        return metadata.revision
+    }
+
+    private fun readRevisionMetadata(generation: Generation): RevisionMetadata? {
         if (!generation.metadata.isFile) return null
         val fields = generation.metadata.readText(Charsets.UTF_8).trim().split('\t')
         require(fields.size == 2) { "自動保存revision情報が不正です" }
         val revision = fields[0].toLongOrNull() ?: error("自動保存revision情報が不正です")
-        require(fields[1].equals(sha256(generation.archive), ignoreCase = true)) {
+        return RevisionMetadata(revision, fields[1])
+    }
+
+    private fun verifyRevisionDigest(generation: Generation, metadata: RevisionMetadata) {
+        require(metadata.digest.equals(sha256(generation.archive), ignoreCase = true)) {
             "自動保存revision情報とプロジェクトが一致しません"
         }
-        return revision
     }
 
     private fun writeMetadata(file: File, revision: Long, digest: String) {
@@ -208,9 +238,9 @@ class AtomicProjectStore(
     }
 
     private data class Generation(val archive: File, val metadata: File, val priority: Int)
-    private data class DecodedGeneration(
-        val state: SamplerUiState,
-        val revision: Long?,
-        val priority: Int,
+    private data class RevisionMetadata(val revision: Long, val digest: String)
+    private data class RankedGeneration(
+        val generation: Generation,
+        val metadata: RevisionMetadata?,
     )
 }
