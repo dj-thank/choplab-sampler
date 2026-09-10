@@ -15,3 +15,5 @@ See [current state](../../docs/PROJECT_STATE.md), [UI receipt](../../docs/ui/UI_
 [Runtime-quality integration](runtime-quality-20260910.md) is the immediately preceding checkpoint, not a simultaneously selected plan. Its Windows/iOS/policy CI succeeded; its Android run failed three tests. Those results do not certify the UI follow-up.
 
 The older complete registry remains byte-for-byte in [README_20260903.md](README_20260903.md). PR89 release hardening and dependency PR90/91 remain separate unaccepted work. Historical PR69 and release intentions are not new merge instructions.
+
+Historical constraint: the old registry's "existing PR #69" checkpoint is retained in the archive. It is not a new merge instruction or a second selected plan.
