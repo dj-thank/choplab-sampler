@@ -74,7 +74,7 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:packageWindows
+        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:desktopUiQualityTest :desktop:packageWindows
 
       - name: Verify EXE version, record digest, and archive app-image
         shell: pwsh
@@ -110,3 +110,25 @@ jobs:
           name: choplab-windows-app-image
           if-no-files-found: error
           path: dist/*
+
+      - name: Archive synthetic UI review evidence
+        id: ui_review_archive
+        if: always()
+        shell: pwsh
+        run: |
+          $evidence = 'desktop/build/reports/tests/desktopUiQualityTest/evidence'
+          if (Test-Path $evidence) {
+            New-Item -ItemType Directory -Force -Path dist | Out-Null
+            Compress-Archive -Path "$evidence/*" -DestinationPath dist/choplab-ui-review.zip -Force
+            python scripts/check_public_surface.py --archive dist/choplab-ui-review.zip
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload synthetic UI review evidence
+        if: ${{ always() && steps.ui_review_archive.outcome == 'success' && hashFiles('dist/choplab-ui-review.zip') != '' && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-ui-review
+          if-no-files-found: error
+          path: dist/choplab-ui-review.zip
+          retention-days: 7
