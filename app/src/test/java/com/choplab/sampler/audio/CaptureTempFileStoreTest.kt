@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeNoException
 import org.junit.Test
 
 class CaptureTempFileStoreTest {
@@ -57,4 +58,59 @@ class CaptureTempFileStoreTest {
             directory.deleteRecursively()
         }
     }
+    @Test
+    fun cleanupPreservesDirectoriesAndNonOwnedNames() {
+        val directory = Files.createTempDirectory("choplab-cleanup-names").toFile()
+        try {
+            val nested = directory.resolve("microphone_1.wav").apply { mkdir() }
+            val names = listOf("microphone_x.wav", "user.wav", "system_1.WAV", "vocal_1.wav.tmp")
+            names.forEach { directory.resolve(it).writeText("synthetic") }
+            assertEquals(0, CaptureTempFileStore(directory).cleanupStale(Long.MAX_VALUE, 0L))
+            assertTrue(nested.isDirectory)
+            names.forEach { assertTrue(directory.resolve(it).isFile) }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
+    fun missingDirectoryRemainsMissing() {
+        val parent = Files.createTempDirectory("choplab-cleanup-missing").toFile()
+        try {
+            val missing = parent.resolve("missing")
+            assertEquals(0, CaptureTempFileStore(missing).cleanupStale(10_000, 1_000))
+            assertFalse(missing.exists())
+        } finally { parent.deleteRecursively() }
+    }
+
+    @Test
+    fun freshCaptureDoesNotGetDeletedAtTheCutoffBoundary() {
+        val directory = Files.createTempDirectory("choplab-cleanup-cutoff").toFile()
+        try {
+            val store = CaptureTempFileStore(directory)
+            val exact = store.create("microphone", 1).apply { writeText("a"); setLastModified(9_000) }
+            val newer = store.create("microphone", 2).apply { writeText("b"); setLastModified(9_001) }
+            assertEquals(1, store.cleanupStale(10_000, 1_000))
+            assertFalse(exact.exists())
+            assertTrue(newer.exists())
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
+    fun staleOwnedNameSymlinkCannotDeleteAnOutsideFile() {
+        val parent = Files.createTempDirectory("choplab-cleanup-symlink").toFile()
+        try {
+            val directory = parent.resolve("cache").apply { mkdir() }
+            val outside = parent.resolve("outside.bin").apply { writeText("synthetic"); setLastModified(1L) }
+            val link = directory.resolve("microphone_1.wav")
+            try {
+                Files.createSymbolicLink(link.toPath(), outside.toPath())
+            } catch (unsupported: Exception) {
+                assumeNoException("Symbolic links require platform support/permission", unsupported)
+                return
+            }
+            assertEquals(0, CaptureTempFileStore(directory).cleanupStale(10_000, 1_000))
+            assertTrue(Files.isSymbolicLink(link.toPath()))
+            assertEquals("synthetic", outside.readText())
+        } finally { parent.deleteRecursively() }
+    }
+
 }
