@@ -190,6 +190,7 @@ fun WaveformEditor(
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val haptics = LocalHapticFeedback.current
+    val displayGain = rememberWaveformDisplayGain(audio)
     val initialViewport = remember(
         audio.id,
         viewportResetKey,
@@ -228,7 +229,7 @@ fun WaveformEditor(
     val visibleStart = viewport.visibleStart
     val visibleEnd = (visibleStart + visibleFrames).coerceAtMost(totalFrames)
     val widthPx = canvasSize.width.toFloat().coerceAtLeast(1f)
-    val waveformEnvelope = remember(audio.id, audio.channelCount, visibleStart, visibleEnd, canvasSize.width) {
+    val waveformEnvelope = remember(audio.id, audio.samples, audio.channelCount, visibleStart, visibleEnd, canvasSize.width) {
         buildWaveformEnvelope(
             samples = audio.samples,
             visibleStart = visibleStart,
@@ -444,6 +445,7 @@ fun WaveformEditor(
                 drawWaveformEnvelope(
                     envelope = waveformEnvelope,
                     color = waveformColor,
+                    displayGain = displayGain,
                 )
 
                 drawViewportOverview(
@@ -515,6 +517,25 @@ fun WaveformEditor(
                     onFrameChange = { changedFrame -> onSliceMarkerChange(index, changedFrame) },
                 )
             }
+
+            Text(
+                text = waveformDisplayGainLabel(displayGain),
+                modifier = Modifier
+                    .semantics {
+                        contentDescription = "${waveformDisplayGainLabel(displayGain)}。録音音量は変更しません"
+                    }
+                    .align(Alignment.TopEnd)
+                    .padding(top = 28.dp, end = 8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                        RoundedCornerShape(6.dp),
+                    )
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+                color = resolvedReadoutColor,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             if (showInteractionHint) {
                 Text(
@@ -945,74 +966,22 @@ private fun DrawScope.drawFrameRegion(
     if (right > left) drawRect(color, topLeft = Offset(left, 0f), size = androidx.compose.ui.geometry.Size(right - left, size.height))
 }
 
-data class WaveformEnvelope(
-    val minimums: FloatArray,
-    val maximums: FloatArray,
-    val pixelStep: Int,
-)
-
-fun buildWaveformEnvelope(
-    samples: ShortArray,
-    visibleStart: Int,
-    visibleEnd: Int,
-    pixelWidth: Int,
-    pixelStep: Int = 2,
-    channelCount: Int = 1,
-): WaveformEnvelope {
-    require(channelCount in 1..2 && samples.size % channelCount == 0) {
-        "Waveform PCM must contain complete mono or stereo frames"
-    }
-    val frameCount = samples.size / channelCount
-    if (frameCount == 0 || visibleEnd <= visibleStart || pixelWidth <= 0) {
-        return WaveformEnvelope(FloatArray(0), FloatArray(0), pixelStep.coerceAtLeast(1))
-    }
-    val safePixelStep = pixelStep.coerceAtLeast(1)
-    val bucketCount = (pixelWidth + safePixelStep - 1) / safePixelStep
-    val minimums = FloatArray(bucketCount)
-    val maximums = FloatArray(bucketCount)
-    val frameSpan = visibleEnd - visibleStart
-    var bucket = 0
-    while (bucket < bucketCount) {
-        val x = bucket * safePixelStep
-        val frameFrom = visibleStart + (frameSpan.toLong() * x / pixelWidth).toInt()
-        val nextX = (x + safePixelStep).coerceAtMost(pixelWidth)
-        val frameTo = visibleStart + (frameSpan.toLong() * nextX / pixelWidth).toInt()
-        val safeFrom = frameFrom.coerceIn(0, frameCount - 1)
-        val safeTo = frameTo.coerceIn(safeFrom + 1, frameCount)
-        val sampleStep = max(1, (safeTo - safeFrom) / 48)
-
-        var minimum = 0f
-        var maximum = 0f
-        var frame = safeFrom
-        while (frame < safeTo) {
-            var sum = 0
-            repeat(channelCount) { channel -> sum += samples[frame * channelCount + channel].toInt() }
-            val value = (sum / channelCount) / 32_768f
-            if (value < minimum) minimum = value
-            if (value > maximum) maximum = value
-            frame += sampleStep
-        }
-        minimums[bucket] = minimum
-        maximums[bucket] = maximum
-        bucket++
-    }
-    return WaveformEnvelope(minimums, maximums, safePixelStep)
-}
-
 internal fun DrawScope.drawWaveformEnvelope(
     envelope: WaveformEnvelope,
     color: Color,
+    displayGain: Float = 1f,
 ) {
     if (envelope.minimums.isEmpty()) return
     val centerY = size.height / 2f
     val amplitude = size.height * 0.46f
+    val gain = sanitizeWaveformDisplayGain(displayGain)
     var bucket = 0
     while (bucket < envelope.minimums.size) {
         val x = bucket * envelope.pixelStep
         drawLine(
             color = color,
-            start = Offset(x.toFloat(), centerY - envelope.maximums[bucket] * amplitude),
-            end = Offset(x.toFloat(), centerY - envelope.minimums[bucket] * amplitude),
+            start = Offset(x.toFloat(), centerY - (envelope.maximums[bucket] * gain).coerceIn(-1f, 1f) * amplitude),
+            end = Offset(x.toFloat(), centerY - (envelope.minimums[bucket] * gain).coerceIn(-1f, 1f) * amplitude),
             strokeWidth = 1.5f,
         )
         bucket++

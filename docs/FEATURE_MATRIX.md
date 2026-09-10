@@ -1,3 +1,20 @@
+# Runtime-quality candidate — 2026-09-10
+
+This section describes the unmerged runtime integration, not a released product or physical-device parity. The full inherited matrix below retains its dated evidence boundaries. Current scope and validation: [receipt](verification/runtime-quality-20260910.md), [selected plan](../plans/active/runtime-quality-20260910.md).
+
+| Area | Implemented candidate change | Verified now / remaining boundary |
+|---|---|---|
+| Recording WAV | Validate before file creation/truncation; bounded reusable 8KiB PCM conversion; close/finalization preserved | 10 writer test bodies; byte/channel order and invalid-destination safety; no device capture test |
+| Stereo attacks and chop boundaries | Per-channel power for attacks; every-channel crossing or minimum joint magnitude for snapping | 12 detector/snap test bodies; 4 exact baseline failures; PCM unchanged |
+| Editor, PAD and timeline visuals | Shared sampled channel extrema, complete bucket partition, bounded allocation, PCM cache identity; display-only gain from PR93 | 13 new visual/bounds test bodies + 11 gain policy bodies; no screenshot/FPS/accessibility-speech claim |
+| Startup integration | PR93 output-open/recovery overlap + CPU starter preparation + latest UI-state publication + post-ready maintenance | 35 startup/drum/cleanup/lifecycle bodies; real ViewModel/AudioTrack lifecycle needs candidate CI/device tests |
+| Existing persistence/audio safeguards | PR92/94/95 changes inherited unchanged | 90 persistence + 19 voice/idle test bodies rerun; parent CI is not candidate CI |
+| H13 viewport semantics | Keep exact existing range-only state description; display-only gain explanation has a separate text node | Windows PR93 six assertion failures identified; candidate full H13 run still required |
+
+Recording/playback levels, PCM/schema, dependencies, workflow permissions, signing and public release contracts are unchanged. The sampled waveform is not an exhaustive peak meter. No automatic merge or device update.
+
+---
+
 # 機能マトリクス
 
 この表は実装状態と確認層の要約であり、ゲートの昇格表ではありません。`device`、`emulator`、`historical` の記載は各行の備考にある範囲・revisionへ束縛されます。現在の checkout と gate は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` と [`docs/VALIDATION.md`](VALIDATION.md) を正本とし、過去の Pixel / provider / public receiptだけでは現在の `DEVICE_PASS` 以上を宣言しません。

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.ContextCompat
+import androidx.core.os.trace
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.choplab.sampler.audio.AudioDecoder
@@ -24,6 +25,7 @@ import com.choplab.sampler.audio.PlaybackSilencer
 import com.choplab.sampler.audio.PlaybackStartDecision
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
+import com.choplab.sampler.audio.prepareSamplerStartup
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.discardVocalTakeAfterLoopAdmissionFailure
@@ -185,12 +187,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            captureTempFiles.cleanupStale(
-                nowMillis = System.currentTimeMillis(),
-                maxAgeMillis = STALE_CAPTURE_MAX_AGE_MS,
-            )
+            runStartupMaintenance(uiState) {
+                trace("ChopLab.capture.cleanup") {
+                    captureTempFiles.cleanupStale(
+                        nowMillis = System.currentTimeMillis(),
+                        maxAgeMillis = STALE_CAPTURE_MAX_AGE_MS,
+                    )
+                }
+            }
         }
-        engine.start()
         observePlaybackCapture()
         pollTransportStep()
         recoverAutosave()
@@ -2129,11 +2134,24 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val operation = projectOperations.begin()
         val revisionAtStart = productionSession.revision
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.loadWithRevision() } }
+            val result = prepareSamplerStartup(
+                startAudio = { trace("ChopLab.audioEngine.start") { engine.start() } },
+                stopAudio = engine::shutdown,
+                loadProject = {
+                    prepareStartupProject(
+                        load = { trace("ChopLab.autosave.read") { autosaveStore.loadWithRevision() } },
+                        createStarter = {
+                            trace("ChopLab.starter.synthesize") { BuiltInDrumKits.prepareStarterKit() }
+                        },
+                    )
+                },
+            )
+            // Preparation can suspend: preserve BOTH stale-project guards before publishing.
             if (productionSession.revision != revisionAtStart) return@launch
             projectOperations.completeIfCurrent(operation) {
-                result.onSuccess { recovered ->
-                    if (recovered != null) {
+                result.onSuccess { prepared ->
+                    if (prepared is PreparedStartupProject.Restored) {
+                        val recovered = prepared.project
                         val restored = recovered.state
                         val transition = productionSession.replaceProject(
                             restored,
@@ -2150,7 +2168,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         )
                     } else {
                         val blank = completeAutosaveRecoveryWithoutProject(mutableUiState.value)
-                        val starter = BuiltInDrumKits.installStarterKit(blank).copy(
+                        val starter = BuiltInDrumKits.installStarterKit(
+                            blank,
+                            (prepared as PreparedStartupProject.Fresh).kit,
+                        ).copy(
                             projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
                             projectLaunchRevision = nextProjectLaunchRevision(),
                             statusMessage = "新しい制作を準備しました — BANK BにDUSTY JAZZをセット済み",

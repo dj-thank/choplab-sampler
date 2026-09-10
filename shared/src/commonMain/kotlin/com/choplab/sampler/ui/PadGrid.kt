@@ -512,7 +512,7 @@ private fun PerformancePad(
                 modifier = Modifier.align(Alignment.Center).padding(bottom = 6.dp),
             )
             if (pad.isAssigned) {
-                val peaks = remember(pad.audio?.id, pad.startFrame, pad.endFrame) {
+                val peaks = remember(pad.audio?.id, pad.audio?.samples, pad.startFrame, pad.endFrame) {
                     buildPadMiniPeaks(pad)
                 }
                 Canvas(
@@ -598,29 +598,6 @@ fun shouldDeferDestructiveCaptureUntilTap(
     captureMode: Boolean,
     sourcePhase: SourceUiPhase,
 ): Boolean = assigned && captureMode && sourcePhase == SourceUiPhase.PLAYING
-
-private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
-    val audio = pad.audio ?: return FloatArray(0)
-    if (!pad.isAssigned || audio.samples.isEmpty()) return FloatArray(0)
-    val start = pad.startFrame.coerceIn(0, audio.frameCount - 1)
-    val end = pad.endFrame.coerceIn(start + 1, audio.frameCount)
-    val bucketCount = 9
-    val bucketSize = max(1, (end - start) / bucketCount)
-    val peaks = FloatArray(bucketCount) { bucket ->
-        val from = (start + bucket * bucketSize).coerceAtMost(end - 1)
-        val to = (from + bucketSize).coerceAtMost(end)
-        var peak = 0f
-        var frame = from
-        val stride = max(1, (to - from) / 24)
-        while (frame < to) {
-            peak = max(peak, abs(audio.monoSampleAt(frame) / 32_768f))
-            frame += stride
-        }
-        peak
-    }
-    val strongest = peaks.maxOrNull()?.coerceAtLeast(0.08f) ?: 1f
-    return FloatArray(bucketCount) { index -> (peaks[index] / strongest).coerceIn(0.12f, 1f) }
-}
 
 private fun padCenterLabel(pad: PadModel): String {
     val audio = pad.audio ?: return ""
