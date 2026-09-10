@@ -1,6 +1,6 @@
 # Project state
 
-> **Runtime integration candidate — 2026-09-10, not released.** The selected plan is [runtime-quality](../plans/active/runtime-quality-20260910.md). The candidate combines PR95 and the reviewed portions of PR93, the previously local startup preparation, recording safety and stereo editing fixes. Main was observed at `bed7a550a71b1ae91556b2b2af25d7c482083c98`; no merge, tag, release or device installation is performed by this work. Current-turn host test bodies: 190 pass. Complete candidate CI and physical-device acceptance are separate gates. See [the current receipt](verification/runtime-quality-20260910.md).
+> **UI follow-up — 2026-09-11, unmerged.** Current selected plan: [UI quality](../plans/active/ui-quality-20260911.md). Exact baseline PR96 `3fe5906bbc29e54bb46689606ffb0cac3599e1ca` passed Windows/iOS/policy; Android failed three debug-sensitive startup assertions. This follow-up improves readable shared controls, PAD contrast/identity, SAVE sizing and state details, and adds actual shared-UI rendering tests. Supplemental host:74 distinct bodies, both debug modes PASS. Supported new-head CI and physical UI/audio remain separate. See [current UI receipt](ui/UI_QUALITY_20260911.md). No merge, release or installation. The first historical release snapshot below is retained unchanged.
 
 ## Current snapshot — 2026-09-03 Windows UI integration after PR #87
 

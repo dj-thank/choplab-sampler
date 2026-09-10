@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -37,12 +38,18 @@ class StartupProjectPreparationTest {
     fun ioAndSynthesisUseWorkersThenResumeOnCallerThread() = runBlocking {
         val caller = Thread.currentThread()
         val starter = BuiltInDrumKits.prepareStarterKit()
-        Executors.newSingleThreadExecutor { Thread(it, "startup-io-test") }.asCoroutineDispatcher().use { io ->
-            Executors.newSingleThreadExecutor { Thread(it, "startup-cpu-test") }.asCoroutineDispatcher().use { cpu ->
+        val ioThread = AtomicReference<Thread>()
+        val cpuThread = AtomicReference<Thread>()
+        Executors.newSingleThreadExecutor {
+            Thread(it, "startup-io-test").also(ioThread::set)
+        }.asCoroutineDispatcher().use { io ->
+            Executors.newSingleThreadExecutor {
+                Thread(it, "startup-cpu-test").also(cpuThread::set)
+            }.asCoroutineDispatcher().use { cpu ->
                 val result = prepareStartupProject(
-                    load = { assertEquals("startup-io-test", Thread.currentThread().name); null },
+                    load = { assertSame(ioThread.get(), Thread.currentThread()); null },
                     createStarter = {
-                        assertEquals("startup-cpu-test", Thread.currentThread().name)
+                        assertSame(cpuThread.get(), Thread.currentThread())
                         starter
                     },
                     ioDispatcher = io,
@@ -80,7 +87,7 @@ class StartupProjectPreparationTest {
             load = { throw failure },
             createStarter = { error("Corruption must not create a fresh project") },
         )
-        assertSame(failure, result.exceptionOrNull())
+        assertPropagatedFailure(failure, result.exceptionOrNull())
     }
 
     @Test
@@ -90,7 +97,7 @@ class StartupProjectPreparationTest {
             load = { null },
             createStarter = { throw failure },
         )
-        assertSame(failure, result.exceptionOrNull())
+        assertPropagatedFailure(failure, result.exceptionOrNull())
     }
 
     @Test
@@ -206,7 +213,7 @@ class StartupProjectPreparationTest {
         val fatal = LinkageError("synthetic fatal startup error")
         var caught: Throwable? = null
         try { prepareStartupProject(load = { throw fatal }) } catch (failure: Throwable) { caught = failure }
-        assertSame(fatal, caught)
+        assertPropagatedFailure(fatal, caught)
     }
 
     @Test
@@ -216,7 +223,18 @@ class StartupProjectPreparationTest {
         try {
             prepareStartupProject(load = { null }, createStarter = { throw fatal })
         } catch (failure: Throwable) { caught = failure }
-        assertSame(fatal, caught)
+        assertPropagatedFailure(fatal, caught)
+    }
+
+    /** Debug stacktrace recovery may copy an exception, binding the original as its cause. */
+    private fun assertPropagatedFailure(expected: Throwable, actual: Throwable?) {
+        requireNotNull(actual) { "Failure was swallowed or reported as a successful preparation" }
+        assertEquals(expected.javaClass, actual.javaClass)
+        assertEquals(expected.message, actual.message)
+        assertTrue(
+            "Only the exact failure or its stacktrace-recovered copy may propagate",
+            actual === expected || actual.cause === expected,
+        )
     }
 
 }
