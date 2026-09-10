@@ -813,6 +813,7 @@ private fun MachineHeader(
     val recordingActive = state.hasRecordingActivity()
     val recording = recordingHeaderPresentation(state.recordingSession)
     BoxWithConstraints(Modifier.fillMaxWidth().height(height)) {
+        val showBankStatus = machineHeaderShowsBankStatus(fontScale) && maxWidth >= 420.dp
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -834,7 +835,7 @@ private fun MachineHeader(
                 showInlineStatus = showInlineStatus,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-            if (machineHeaderShowsBankStatus(fontScale) && maxWidth >= 420.dp) {
+            if (showBankStatus) {
                 val bankRole = bankRoleFor(state.selectedBank)
                 Text(
                     recording?.statusLabel ?: "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
@@ -2580,11 +2581,9 @@ private fun BeatChopSurface(
         }
     } else {
         Column(
-            modifier = if (metrics.beatWorkspaceNeedsScroll) {
-                Modifier.fillMaxSize().verticalScroll(scrollState)
-            } else {
-                Modifier.fillMaxSize()
-            },
+            modifier = Modifier.fillMaxSize().then(
+                if (metrics.beatWorkspaceNeedsScroll) Modifier.verticalScroll(scrollState) else Modifier,
+            ),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             BeginnerCoachBar(
@@ -4343,7 +4342,7 @@ private fun SourceWaveform(
                     )
                 }
                 .pointerInput(visibleAudio?.id, visibleStart, visibleFrames) {
-                    detectTransformGestures { centroid, pan, zoomChange, _ ->
+                    detectTransformGestures { centroid, pan, zoomChange ->
                         if (size.width <= 0) return@detectTransformGestures
                         val total = visibleAudio?.frameCount ?: 1
                         val next = zoomViewportAtAnchor(
