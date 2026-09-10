@@ -190,6 +190,7 @@ fun WaveformEditor(
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val haptics = LocalHapticFeedback.current
+    val displayGain = rememberWaveformDisplayGain(audio)
     val initialViewport = remember(
         audio.id,
         viewportResetKey,
@@ -385,7 +386,8 @@ fun WaveformEditor(
                         } else {
                             "音声波形。タッチ操作はタップした位置へ移動。アクセシビリティ操作は$accessibilityTapActionLabel"
                         }
-                        stateDescription = waveformViewportStateDescription(viewport)
+                        stateDescription = waveformViewportStateDescription(viewport) +
+                            "。${waveformDisplayGainLabel(displayGain)}。録音音量は変更しません"
                         role = Role.Button
                         onClick(
                             label = accessibilityTapActionLabel,
@@ -444,6 +446,7 @@ fun WaveformEditor(
                 drawWaveformEnvelope(
                     envelope = waveformEnvelope,
                     color = waveformColor,
+                    displayGain = displayGain,
                 )
 
                 drawViewportOverview(
@@ -515,6 +518,22 @@ fun WaveformEditor(
                     onFrameChange = { changedFrame -> onSliceMarkerChange(index, changedFrame) },
                 )
             }
+
+            Text(
+                text = waveformDisplayGainLabel(displayGain),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 28.dp, end = 8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                        RoundedCornerShape(6.dp),
+                    )
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+                color = resolvedReadoutColor,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             if (showInteractionHint) {
                 Text(
@@ -985,11 +1004,12 @@ fun buildWaveformEnvelope(
         var maximum = 0f
         var frame = safeFrom
         while (frame < safeTo) {
-            var sum = 0
-            repeat(channelCount) { channel -> sum += samples[frame * channelCount + channel].toInt() }
-            val value = (sum / channelCount) / 32_768f
-            if (value < minimum) minimum = value
-            if (value > maximum) maximum = value
+            // Keep channel extrema: averaging can erase opposite-phase stereo audio.
+            repeat(channelCount) { channel ->
+                val value = samples[frame * channelCount + channel] / 32_768f
+                if (value < minimum) minimum = value
+                if (value > maximum) maximum = value
+            }
             frame += sampleStep
         }
         minimums[bucket] = minimum
@@ -1002,17 +1022,19 @@ fun buildWaveformEnvelope(
 internal fun DrawScope.drawWaveformEnvelope(
     envelope: WaveformEnvelope,
     color: Color,
+    displayGain: Float = 1f,
 ) {
     if (envelope.minimums.isEmpty()) return
     val centerY = size.height / 2f
     val amplitude = size.height * 0.46f
+    val gain = sanitizeWaveformDisplayGain(displayGain)
     var bucket = 0
     while (bucket < envelope.minimums.size) {
         val x = bucket * envelope.pixelStep
         drawLine(
             color = color,
-            start = Offset(x.toFloat(), centerY - envelope.maximums[bucket] * amplitude),
-            end = Offset(x.toFloat(), centerY - envelope.minimums[bucket] * amplitude),
+            start = Offset(x.toFloat(), centerY - (envelope.maximums[bucket] * gain).coerceIn(-1f, 1f) * amplitude),
+            end = Offset(x.toFloat(), centerY - (envelope.minimums[bucket] * gain).coerceIn(-1f, 1f) * amplitude),
             strokeWidth = 1.5f,
         )
         bucket++

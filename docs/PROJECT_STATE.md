@@ -1,5 +1,17 @@
 # Project state
 
+## Current snapshot — 2026-09-10 scoped startup / waveform repair
+
+Branch: `fix/startup-waveform-20260910`, based on `main@bed7a550a71b1ae91556b2b2af25d7c482083c98`. This is a requested bug/performance repair, not a release or merge receipt. Prior receipts below keep their original revision scope.
+
+- Android output warmup and autosave reading use concurrent IO work; the existing recovery/loading gate opens only after both complete. Cancellation joins an in-flight open before cleanup so late output initialization cannot outlive teardown.
+- Quiet waveforms get bounded display-only gain (up to 16x), derived once from the whole immutable source on a worker. The canvas labels it `表示のみ`; silent/near-silent and full-scale inputs stay at unity. PCM, PAD gain, recorder input policy, exports and project schema are unchanged.
+- Stereo drawing preserves extrema from either channel instead of cancelling opposing channels by averaging. Viewport decimation remains bounded; this is not a new full-resolution waveform pyramid.
+- Validation: 16 Kotlin host assertions passed in the editing environment (11 waveform, 5 startup/cancellation). The host runner strips test annotations only and compiles the production startup/gain helpers plus the exact extracted envelope seam. This is NOT an Android/Compose build, device test or measured startup improvement. Full Gradle/CI and physical timing gates remain separate.
+
+Plan: `plans/active/startup-waveform-20260910.md`.
+
+
 ## Current snapshot — 2026-09-03 Windows UI integration after PR #87
 
 GitHub `main@61147bf06d8947b3c64d74aa9f046a1a2cbb1c17` contains the H13 correction, stable Compose 1.11.1, v0.17.2 signer recovery, Android audio-fidelity repair, PR #69's artifact/history scanner, and PR #87's complete corrective follow-up. This sole-writer branch integrates the reviewed Windows/UI brush-up on top of that product line before release hardening and final-main verification. Existing tags and the `v0.17.0` Release remain unchanged.

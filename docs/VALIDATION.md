@@ -1,5 +1,18 @@
 # 検証記録
 
+## 2026-09-10 — startup / quiet waveform scoped host validation
+
+Scope: new `SamplerStartup.kt`, `WaveformDisplayPolicy.kt`, and the reviewed channel-extrema envelope change on `fix/startup-waveform-20260910` (baseline `bed7a550a71b1ae91556b2b2af25d7c482083c98`).
+
+Environment: OpenJDK 21 and installed Kotlin compiler/coroutines/test jars. No Android SDK or Gradle checkout/cache was available in the editing container. GitHub reads/writes used the connected repository tools.
+
+Commands: `kotlinc` compiled the two production helpers, the exact extracted envelope seam and annotation-stripped copies of `WaveformDisplayPolicyTest`/`SamplerStartupTest`; `java ... HostMainKt` invoked their 16 test bodies. Result: **16/16 PASS**. Test annotations/JUnit discovery and Compose UI compilation were NOT exercised by this host runner.
+
+Covered: quiet/silent/loud gain, Short.MIN_VALUE, whole-source off-grid peaks, cancellation checks, unchanged source PCM, opposing/one-sided stereo, mono envelope amplitude, invalid input; overlapping off-caller-thread startup IO, readiness gating, cancellation during open/recovery, failure cleanup, and unchanged recovery failure Result policy.
+
+Required remaining gates: `./scripts/validate_project.sh`, `:shared:desktopTest`, `:shared:testAndroidHostTest`, `:app:testDebugUnitTest`, Android lint/assemble, full existing CI, and physical cold-start/first-play/recording checks. No APK, measured TTID/TTFD reduction, microphone dB improvement or release is claimed here.
+
+
 このファイルは revision-bound な検証履歴です。現在の branch、HEAD、tree、dirty boundary、receipt の採用範囲は [`docs/PROJECT_STATE.md`](PROJECT_STATE.md) の先頭 `Current snapshot` を参照してください。下記の過去セクションは削除せず、記録された revision と gate の範囲を越えて current proof として再利用しません。
 
 ## PR #69 final main integration — 2026-09-02

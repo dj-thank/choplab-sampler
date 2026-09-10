@@ -24,6 +24,7 @@ import com.choplab.sampler.audio.PlaybackSilencer
 import com.choplab.sampler.audio.PlaybackStartDecision
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
+import com.choplab.sampler.audio.prepareSamplerStartup
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.discardVocalTakeAfterLoopAdmissionFailure
@@ -190,7 +191,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 maxAgeMillis = STALE_CAPTURE_MAX_AGE_MS,
             )
         }
-        engine.start()
         observePlaybackCapture()
         pollTransportStep()
         recoverAutosave()
@@ -2129,7 +2129,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         val operation = projectOperations.begin()
         val revisionAtStart = productionSession.revision
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.loadWithRevision() } }
+            val result = prepareSamplerStartup(
+                startAudio = { engine.start() },
+                stopAudio = engine::shutdown,
+                loadProject = { runCatching { autosaveStore.loadWithRevision() } },
+            )
             if (productionSession.revision != revisionAtStart) return@launch
             projectOperations.completeIfCurrent(operation) {
                 result.onSuccess { recovered ->
