@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -231,9 +232,25 @@ class InstrumentationSummaryTest(unittest.TestCase):
     def test_android_workflow_verifies_machine_readable_instrumentation_xml(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "android.yml").read_text(encoding="utf-8")
 
-        self.assertIn("instrumentation_summary.py", workflow)
-        self.assertIn("--xml", workflow)
+        # The emulator action executes each script line in a separate sh.
+        # Check the real one-process delegation, not obsolete inline CLI text.
+        self.assertIn("script: python3 scripts/run_android_instrumentation_gate.py", workflow)
+        gate = ast.parse((ROOT / "scripts" / "run_android_instrumentation_gate.py").read_text(encoding="utf-8"))
+        self.assertTrue(any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "instrumentation_summary"
+            and any(alias.name == "summarize_instrumentation_xml_files" for alias in node.names)
+            for node in ast.walk(gate)
+        ))
+        self.assertTrue(any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "summarize_instrumentation_xml_files"
+            for node in ast.walk(gate)
+        ))
         self.assertIn("androidTest-results", workflow)
+        # Empty, corrupt, failed and skipped XML and Gradle failures are
+        # independently executed by test_android_instrumentation_gate.py.
 
 
 if __name__ == "__main__":
