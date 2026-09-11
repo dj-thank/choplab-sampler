@@ -113,34 +113,7 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           disable-animations: true
-          script: |
-            set +e
-            ./gradlew --stacktrace :app:connectedDebugAndroidTest
-            gradle_status=$?
-            set -e
-            mapfile -d '' -t instrumentation_xml < <(
-              find app/build -type f -name '*.xml' \( \
-                -path '*/outputs/androidTest-results/*' -o \
-                -path '*/test-results/connected/*' \
-              \) -print0 | sort -z -u
-            )
-            if [[ "${#instrumentation_xml[@]}" -eq 0 ]]; then
-              echo 'No Android instrumentation XML result was produced.' >&2
-              if [[ "$gradle_status" -ne 0 ]]; then
-                exit "$gradle_status"
-              fi
-              exit 1
-            fi
-            xml_args=()
-            for result in "${instrumentation_xml[@]}"; do
-              xml_args+=(--xml "$result")
-            done
-            python3 scripts/instrumentation_summary.py "${xml_args[@]}"
-            summary_status=$?
-            if [[ "$gradle_status" -ne 0 ]]; then
-              exit "$gradle_status"
-            fi
-            exit "$summary_status"
+          script: python3 scripts/run_android_instrumentation_gate.py
 
       - name: Upload reports and APKs
         if: always()
