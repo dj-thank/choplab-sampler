@@ -1,5 +1,7 @@
 # ChopLab product requirements
 
+Current normative scope is defined by [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md). Requirements in this document that are not included there—such as MIDI, stems, independent time-stretch and the historical Pro effects surface—are future design candidates, not current release requirements or open TODOs.
+
 ## Product principle
 
 ChopLab is an original mobile sampler optimized for a rapid source → chop → pad → pattern → song → export loop. It may learn from hardware-sampler workflows, but it must not copy proprietary visual identity, firmware behavior, assets or project formats.

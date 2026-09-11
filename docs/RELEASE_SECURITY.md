@@ -1,19 +1,19 @@
 # Release security and repository controls
 
-Updated: 2026-08-21
+Updated: 2026-09-03
 
 This document separates controls enforced by committed source from controls that require a GitHub repository administrator. Do not report an administrator control as complete until its setting has been read back from GitHub.
 
 ## Source-enforced release contract
 
-`gradle.properties` is the only source for `choplabVersion` and `choplabBuildNumber`. A public tag must be exactly `v${choplabVersion}` and point to a commit already reachable from `main`.
+`gradle.properties` is the only source for `choplabVersion` and `choplabBuildNumber`. A public tag must be exactly `v${choplabVersion}`, be an annotated tag object peeling to a commit, and its peeled target must equal the exact `GITHUB_SHA` at both the metadata and publication boundaries. Release metadata also compares every reachable historical `v*` tag (including legacy tags whose build number is read from the old Android source) and fails closed unless both version ordering and Android build number are monotonic. The source-bound public manifest allows exactly one Android debug APK, one iOS Simulator app archive, and one CycloneDX SBOM for that version; checksum sidecars and `SHA256SUMS` are the only accompanying publication records.
 
 A `v*` run of `.github/workflows/release.yml`:
 
 1. scans the current tree and reachable history for secret-shaped content, signing material, and audio assets; ZIP policy first bounds and parses central/local records, requires one contiguous ownership chain through every compressed span and validated signed/signatureless descriptor, verifies both metadata copies, and independently decodes the exact stored/deflate/BZIP2/LZMA span under hard input/output limits so trailing input, undeclared output or CRC disagreement cannot hide content; it scans current symlink targets without following them, enumerates regular historical ZIP blobs through NUL-delimited per-parent merge history, scans Windows/iOS archives after creation, and rescans only the downloaded Android/iOS publication assets before publication;
 2. rejects an existing GitHub Release with the same tag;
 3. requires a stable externally supplied Android keystore and expected certificate SHA-256 for a non-public continuity candidate;
-4. runs the shared common-source contract on an Android JVM host, verifies the stable-signed non-debuggable candidate without uploading it, and separately builds the declared public debug preview. The preview verifier requires debuggable=true, the default debug signature, exact version/build metadata, and only the known Compose debug components while retaining permission/export/alignment checks;
+4. runs the shared common-source contract on an Android JVM host, verifies the stable-signed non-debuggable candidate without uploading it, and separately builds the declared public debug preview. Before any Android build, CI captures the debug keystore's certificate SHA-256 through `keytool` without exporting or logging private-key material. The preview verifier compares the final APK signer to that pre-build identity (an artifact self-digest is not sufficient), requires debuggable=true, exact version/build metadata, and only the known Compose debug components while retaining permission/export/alignment checks;
 5. compiles the declared Kotlin/Native iOS Simulator framework, runs the Swift tests, and verifies embedded iOS version/build metadata;
 6. runs the shared common-source contract on a Desktop JVM host, tests and packages the Windows app-image, verifies its embedded product version, and retains it only as a short-lived Actions verification artifact;
 7. creates a CycloneDX dependency SBOM, source-bound release manifest, and SHA-256 files for the declared Android/iOS public surface;
@@ -26,7 +26,7 @@ Safe-named ZIP member text, filenames, comments and local/central extra fields a
 
 Resource limits are fail-closed: 4,096 entries, 512 KiB ordinary text output per member, 4 MiB metadata/output per archive, 4 MiB aggregate compressed input for decoded text, 100:1 expansion and a 16 MiB LZMA dictionary checked before decoder construction. A bounded `.app` main executable is fully decoded and scanned. Arbitrary oversized safe-named entries are rejected regardless of magic prefix; only exact JDK `runtime/lib/modules` may be fully decoded up to 128 MiB per JIMAGE under the shared 384 MiB binary-secret body budget, and it must validate as a structurally consistent JIMAGE before its full body is scanned. Findings redact secret-shaped labels before writing CI logs.
 
-The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
+The same parser handles current candidates, bounded reachable historical ZIP blobs and explicit post-build `--archive` paths. The exact committed-source review snapshot uses a separate `--source-archive` boundary of 4 MiB/member and 16 MiB total, without weakening the generic 4 MiB archive total. Final publication scans are placed after artifact download and before release manifest creation, checksums, attestations or `gh release create`.
 
 ZIP-compatible nested members are detected by structure as well as suffix and recursively scanned to depth 3 under a 64-archive count, 16 MiB/member bound, and shared 256 MiB compressed-container and 256 MiB expanded-work limits. Current/explicit root candidates also share separate 128-archive and 512 MiB compressed/expanded aggregate budgets; historical roots use their stricter 128-archive and 64 MiB container/decoded aggregate budgets. Unsupported nested formats are rejected. Reachable non-commit refs are enumerated with NUL-safe commands, bounded before peeling, and annotated tags share a 512-operation peel budget so a tag chain cannot hide a historical ZIP or cause unbounded `cat-file` work.
 
@@ -54,7 +54,7 @@ Keep an offline encrypted backup of the keystore and its recovery information. L
 - Require at least one approval and require review from CODEOWNERS.
 - Dismiss stale approvals when the head changes.
 - Require conversation resolution.
-- Require the Android, Windows, iOS, and `Supply-chain policy / History scan and dependency SBOM` checks.
+- Require the unique `Android verification`, `iOS verification`, `Windows desktop verification`, and `Supply-chain policy` check runs. The Windows workflow intentionally has no pull-request path filter, so its required check is created even when a change does not touch desktop files; its push trigger remains limited to `main` to avoid duplicate PR push runs.
 - Require the branch to be current before merge.
 - Block force-push and deletion.
 - Limit bypass to an explicit emergency maintainer role and record each bypass.
@@ -90,7 +90,7 @@ After downloading a runnable file and `SHA256SUMS`, verify the digest and GitHub
 
 ```bash
 sha256sum --check SHA256SUMS
-gh attestation verify ChopLab-v0.17.1-android-debug.apk --repo dj-thank/choplab-sampler
+gh attestation verify ChopLab-v0.17.2-android-debug.apk --repo dj-thank/choplab-sampler
 ```
 
 The attestation binds an artifact to a repository workflow and source revision. It does not prove the program has no vulnerabilities, and it does not replace platform code signing or user review of requested permissions.

@@ -2,8 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${CHOPLAB_VERSION:-0.16.2}"
-BUILD_NUMBER="${CHOPLAB_BUILD_NUMBER:-26}"
+metadata_json="$(python3 "${ROOT_DIR}/scripts/release_metadata.py" --properties "${ROOT_DIR}/gradle.properties")"
+metadata_value() {
+  local key="$1"
+  printf '%s' "${metadata_json}" | python3 -c \
+    'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "${key}"
+}
+VERSION="${CHOPLAB_VERSION:-$(metadata_value version)}"
+BUILD_NUMBER="${CHOPLAB_BUILD_NUMBER:-$(metadata_value build_number)}"
 DERIVED_DATA="${ROOT_DIR}/ios/build"
 DIST_DIR="${ROOT_DIR}/dist"
 PROJECT="${ROOT_DIR}/ios/ChopLab.xcodeproj"

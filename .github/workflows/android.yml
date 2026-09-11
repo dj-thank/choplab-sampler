@@ -2,6 +2,8 @@ name: Android verification
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -14,6 +16,7 @@ concurrency:
 
 jobs:
   verify:
+    name: Android verification
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -101,7 +104,7 @@ jobs:
             --version "${RELEASE_VERSION}" \
             --version-code "${RELEASE_BUILD_NUMBER}"
 
-      - name: Instrumentation and accessibility tests on API 36 emulator
+      - name: Instrumentation, accessibility, and XML result verification on API 36 emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
@@ -110,7 +113,7 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           disable-animations: true
-          script: ./gradlew --stacktrace :app:connectedDebugAndroidTest
+          script: python3 scripts/run_android_instrumentation_gate.py
 
       - name: Upload reports and APKs
         if: always()
@@ -123,4 +126,5 @@ jobs:
             app/build/outputs/apk/release/*.apk
             app/build/reports/**
             app/build/test-results/**
+            app/build/outputs/androidTest-results/**
             shared/build/test-results/testAndroidHostTest/**

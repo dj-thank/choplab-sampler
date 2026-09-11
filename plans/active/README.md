@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中（単一product convergence / Windows UI brush-up統合）:** `h13-github-release-20260902.md`。PR #86 Android音質、PR #69 scanner、PR #87 corrective follow-upは`main@61147bf`まで通常統合済み。UI product `822305c`はasync KEY resume、WAV bulk import、chooser/startup、hover/wheel/layout/confirmation修正を保持し、final main ancestry `ee1ea29`でlocal exact gate済み。次はUI PR、release hardening、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
+**進行中（単一product convergence / release hardening統合）:** `h13-github-release-20260902.md`。Android音質、scanner、Windows UI/startupは`main@bed7a55`まで通常統合済み。current sole-writer candidateはunique required checks、main-only push、Android signer/XML、iOS version SSOT、annotated/monotonic/main-reachable tag、exact public manifestとcurrent-product DoDを統合する。次はfull policy、release-hardening PR/normal merge、ruleset read-back、final-main全gate、immutable `v0.17.2` publication/read-back。既存tag/Release、dirty canonical checkoutは変更しない。
 
 **Historical H13 pre-tag snapshot:** PR #83は`2864117`、setup-java v6 PR #82と当時のCompose PR #80を含むmainは`d3291a5`だった。後続PR #84でCompose 1.11.1へ戻り、`v0.17.1` tagは`f6cbfdc`に作成後、公開前verifier失敗でReleaseなしのまま保持されている。
 

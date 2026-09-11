@@ -26,6 +26,36 @@ class RepositoryReleaseContractTest(unittest.TestCase):
         self.assertIn(f"--version {metadata.version}", readme)
         self.assertIn(f"--version-code {metadata.build_number}", readme)
 
+    def test_root_readme_generates_ios_project_from_the_root_spec_path(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("xcodegen generate --spec ios/project.yml", readme)
+        self.assertNotIn("xcodegen generate --spec project.yml", readme)
+
+    def test_ios_build_script_uses_gradle_properties_when_environment_is_unset(self) -> None:
+        script = (ROOT / "scripts" / "build-ios-simulator.sh").read_text(encoding="utf-8")
+
+        self.assertIn("scripts/release_metadata.py", script)
+        self.assertNotIn('VERSION="${CHOPLAB_VERSION:-0.16.2}"', script)
+        self.assertNotIn('BUILD_NUMBER="${CHOPLAB_BUILD_NUMBER:-26}"', script)
+
+    def test_release_security_documents_machine_checks_and_required_job_names(self) -> None:
+        policy = (ROOT / "docs" / "RELEASE_SECURITY.md").read_text(encoding="utf-8")
+
+        self.assertIn("annotated", policy)
+        self.assertIn("peeled", policy)
+        self.assertIn("monotonic", policy)
+        self.assertIn("debug keystore", policy)
+        self.assertIn("Windows desktop verification", policy)
+        self.assertIn("Supply-chain policy", policy)
+
+    def test_testing_docs_bind_android_instrumentation_to_junit_xml_counts(self) -> None:
+        testing = (ROOT / "docs" / "TESTING.md").read_text(encoding="utf-8")
+
+        self.assertIn("androidTest-results", testing)
+        self.assertIn("failures", testing)
+        self.assertIn("skips", testing)
+
     def test_local_validator_runs_the_h13_input_suite(self) -> None:
         validator = (ROOT / "scripts" / "validate_project.sh").read_text(encoding="utf-8")
 

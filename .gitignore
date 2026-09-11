@@ -67,3 +67,6 @@ compile_commands.json
 /recordings/
 /projects-local/
 /app/src/test/resources/generated/
+
+# Local Gradle cache used by isolated CI/release validation
+/work/gradle-home-ci/

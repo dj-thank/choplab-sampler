@@ -2,20 +2,9 @@ name: Windows desktop verification
 
 on:
   push:
+    branches:
+      - main
   pull_request:
-    paths:
-      - '.github/workflows/desktop.yml'
-      - 'desktop/**'
-      - 'shared/**'
-      - 'jvm-core/**'
-      - 'scripts/**'
-      - 'docs/ui/**'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'gradlew'
-      - 'gradlew.bat'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +16,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Test and package EXE
+    name: Windows desktop verification
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
