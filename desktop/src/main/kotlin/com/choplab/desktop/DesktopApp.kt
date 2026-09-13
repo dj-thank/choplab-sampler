@@ -250,6 +250,7 @@ fun main(args: Array<String>) = application {
             Menu("連携") {
                 Item("音源を追加…", onClick = { openAudioSource(SourceSection.LIBRARY) })
                 Item("Spotifyのお気に入りから追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
+                Item("曲を検索して追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
                 Item("YouTubeから追加…", onClick = { openAudioSource(SourceSection.YOUTUBE) })
                 Item("PCのファイルから追加…", onClick = ::pickSourceFiles)
                 Separator()
@@ -269,7 +270,7 @@ fun main(args: Array<String>) = application {
         ChopLabTheme {
             OtohiroiDeck(
                 state = state,
-                onImportAudio = { openAudioSource(SourceSection.LIBRARY) },
+                onImportAudio = { openAudioSource(SourceSection.SPOTIFY) },
                 onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
                 onToggleVocalRecording = controller::toggleVocalRecording,
                 onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
@@ -293,7 +294,10 @@ fun main(args: Array<String>) = application {
                     if(spotifyState.canCancelLogin)spotify.cancelLogin()
                     sourceHubVisible=false
                 },
-                spotifyContent={SpotifySourcePicker(
+                spotifyContent={if(spotify.connected) SpotifySearchPanel(
+                    spotifyState,sourceState.busy,spotify::setSearchQuery,spotify::searchForImport,spotifySync::addTrack,
+                    {sourceHub.section(SourceSection.LIBRARY)},spotifySync::syncAgain,::disconnectSpotify,
+                ) else SpotifySourcePicker(
                     SpotifyImportState(connected=spotify.connected,busy=spotifyState.busy,configured=spotifyState.clientIdConfigured,message=spotifyState.message,tracks=spotifyState.sourceTracks,hasMore=spotifyState.sourceHasMore),
                     sourceState.busy,"http://127.0.0.1/callback",
                     onLogin={client ->if(client.isBlank() || spotify.configureClientId(client))spotify.login()},
@@ -301,6 +305,7 @@ fun main(args: Array<String>) = application {
                     onOpen={link->java.awt.Desktop.getDesktop().browse(java.net.URI(link))},
                     automaticSync=true,onLibrary={sourceHub.section(SourceSection.LIBRARY)},
                 )},
+                spotifyLabel="検索",
             )
         }
 

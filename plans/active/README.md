@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**進行中:** `spotify-search-import-20260913.md`。通常の検索UIからSpotify検索→追加→YouTube取得・保存。
+
+## Previous selection
+
 **完了（LOCAL_PASS + isolated EXE launch）:** `../completed/spotify-auto-import-20260913.md`。Spotify連携からWindowsライブラリへの自動取り込み。次のimplementation selectionは未選択。
 
 ## Previous selection

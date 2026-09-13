@@ -54,6 +54,12 @@ object SourceRecipes {
         require(it.durationSeconds.isFinite() && it.durationSeconds in 0.01..600.0) { "取り込みには10分以内の通常動画を使用してください" }
     }
     fun spotifyHasNext(body: String): Boolean = !objectFrom(body)["next"]?.jsonPrimitive?.contentOrNull.isNullOrBlank()
+    fun parseSpotifySearch(body: String): List<SourceTrack> {
+        val items=objectFrom(body).getValue("tracks").jsonObject.getValue("items").jsonArray.take(10)
+        return parseSpotifyTracks(JsonObject(mapOf("items" to JsonArray(items.map {
+            JsonObject(mapOf("track" to it))
+        }))).toString()).distinctBy { it.spotifyUrl }
+    }
     fun parseSpotifyTracks(body: String): List<SourceTrack> = objectFrom(body)["items"]?.jsonArray.orEmpty().mapNotNull { item ->
         runCatching {
             val track = item.jsonObject["track"]?.jsonObject ?: return@runCatching null

@@ -46,6 +46,9 @@ class SpotifyAutoImportTest {
                     state.value=state.value.copy(currentTrack="still paused")
                     Thread.sleep(80)
                     assertEquals(2,requests.get())
+                    assertTrue(sync.addTrack(SourceTrack("other","artist","https://open.spotify.com/track/0000000000000000000002",120.0)))
+                    await { searches.get()==3 && !sources.state.value.busy }
+                    assertEquals(2,requests.get()) // Search additions do not refetch or overwrite favorites.
                 }
             }
         } finally {root.deleteRecursively()}

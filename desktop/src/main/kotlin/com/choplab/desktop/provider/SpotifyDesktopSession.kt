@@ -44,6 +44,9 @@ data class SpotifyDesktopState(
     val sourceTracks: List<SourceTrack> = emptyList(),
     val sourceHasMore: Boolean = false,
     val importLibraryRevision: Long = 0,
+    val searchQuery: String = "",
+    val searchResults: List<SourceTrack> = emptyList(),
+    val searchMessage: String = "",
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
@@ -201,6 +204,32 @@ class SpotifyDesktopSession(
                 OperationResult("現在再生を更新しました", transform = { it.copy(currentTrack = description) })
             }
             else -> throw SpotifyApiException(response, "現在再生")
+        }
+    }
+
+    fun setSearchQuery(value: String) = synchronized(lock) {
+        val query=value.take(240)
+        if(query!=mutableState.value.searchQuery) setStateLocked(mutableState.value.copy(
+            searchQuery=query,searchResults=emptyList(),searchMessage="",
+        ))
+    }
+
+    fun searchForImport() {
+        val query=mutableState.value.searchQuery.trim()
+        if(query.isBlank())return
+        synchronized(lock) {
+            if(mutableState.value.busy)return
+            setStateLocked(mutableState.value.copy(searchResults=emptyList(),searchMessage=""))
+        }
+        withAccessToken("Spotify検索") { token,lease ->
+            val response=api.searchTracks(token,query)
+            generation.requireCurrent(lease)
+            if(response.statusCode !in 200..299)throw SpotifyApiException(response,"検索")
+            val results=SourceRecipes.parseSpotifySearch(response.body)
+            OperationResult("Spotify検索が完了しました",transform={ state ->
+                if(state.searchQuery.trim()!=query)state else state.copy(searchResults=results,
+                    searchMessage=if(results.isEmpty())"曲が見つかりませんでした" else "${results.size}曲見つかりました")
+            })
         }
     }
 

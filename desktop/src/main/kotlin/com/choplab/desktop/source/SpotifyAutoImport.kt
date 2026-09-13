@@ -18,6 +18,7 @@ class SpotifyAutoImport(
     private var expectedRevision = 0L
     private var tracks = emptyList<SourceTrack>()
     private var closed = false
+    private val selectedTracks = linkedMapOf<String,SourceTrack>()
     private val requests = MutableStateFlow(0L)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     init {
@@ -34,8 +35,15 @@ class SpotifyAutoImport(
         if(session.phase != SpotifyConnectionPhase.CONNECTED) {
             if(stage == Stage.IMPORTING)sources.cancelSpotify()
             tracks = emptyList()
+            selectedTracks.clear()
             stage = Stage.WAIT_CONNECTION
             return
+        }
+        if(stage in listOf(Stage.DONE,Stage.PAUSED,Stage.IMPORTING) && !source.busy &&
+            source.pendingUseId==null && selectedTracks.isNotEmpty()) {
+            tracks=selectedTracks.values.toList()
+            selectedTracks.clear()
+            stage=Stage.WAIT_IMPORT
         }
         when(stage) {
             Stage.WAIT_CONNECTION -> if(!session.busy) {
@@ -59,9 +67,17 @@ class SpotifyAutoImport(
         requests.value++
     }
 
+    @Synchronized fun addTrack(track: SourceTrack): Boolean {
+        if(closed || spotify.value.phase!=SpotifyConnectionPhase.CONNECTED || selectedTracks.size>=100)return false
+        selectedTracks[track.spotifyUrl]=track
+        requests.value++
+        return true
+    }
+
     @Synchronized fun cancel() {
         val owned = stage == Stage.IMPORTING
         stage = Stage.PAUSED
+        selectedTracks.clear()
         if(owned)sources.cancelSpotify()
     }
 

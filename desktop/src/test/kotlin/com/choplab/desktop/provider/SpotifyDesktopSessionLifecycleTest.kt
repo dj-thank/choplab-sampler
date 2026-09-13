@@ -21,6 +21,32 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SpotifyDesktopSessionLifecycleTest {
+    @Test fun searchReturnsImportableTracksWithoutOverwritingFavorites() {
+        var searched=""
+        var fail=false
+        val api=object:SpotifyApiClient by FakeApi() {
+            override fun searchTracks(accessToken:String,query:String,limit:Int):SpotifyApiResponse {
+                searched=query
+                if(fail)return SpotifyApiResponse(429,"{}")
+                return SpotifyApiResponse(200,"""{"tracks":{"items":[{"id":"0000000000000000000001","name":"Song","artists":[{"name":"Artist"}],"duration_ms":120000}]}}""")
+            }
+        }
+        session(api=api,callbackFactory=SpotifyAuthorizationCallbackFactory { ImmediateCallback }).use { session ->
+            connect(session)
+            session.setSearchQuery("Artist Song")
+            session.searchForImport()
+            await { !session.state.value.busy && session.state.value.searchResults.size==1 }
+            assertEquals("Artist Song",searched)
+            assertEquals(120.0,session.state.value.searchResults.single().durationSeconds)
+            assertTrue(session.state.value.sourceTracks.isEmpty())
+            fail=true;session.searchForImport()
+            await { !session.state.value.busy }
+            assertTrue(session.state.value.searchResults.isEmpty())
+            session.setSearchQuery("next")
+            assertTrue(session.state.value.searchResults.isEmpty())
+        }
+    }
+
     @Test
     fun oauthConnectionPaginatesAndPopulatesLibraryWithoutPickingAnySong() {
         val root=java.nio.file.Files.createTempDirectory("spotify-oauth-library").toFile()
@@ -34,6 +60,8 @@ class SpotifyDesktopSessionLifecycleTest {
                 val next=if(offset==0) "\"https://api.spotify.com/v1/me/tracks?offset=20\"" else "null"
                 return SpotifyApiResponse(200,"""{"items":[{"track":{"id":"$id","name":"Song $n","artists":[{"name":"Artist"}],"duration_ms":120000}}],"next":$next}""")
             }
+            override fun searchTracks(accessToken:String,query:String,limit:Int)=SpotifyApiResponse(200,
+                """{"tracks":{"items":[{"id":"0000000000000000000003","name":"Song 3","artists":[{"name":"Artist"}],"duration_ms":120000}]}}""")
         }
         val backend=object:com.choplab.sampler.source.YoutubeSourceBackend {
             override fun search(query:String,jobId:String):List<com.choplab.sampler.source.YoutubeSource> {
@@ -59,9 +87,16 @@ class SpotifyDesktopSessionLifecycleTest {
                         assertEquals(2,hub.state.value.library.size)
                         assertEquals(null,hub.state.value.pendingUseId)
                         assertEquals(2,downloads.get())
+                        session.setSearchQuery("Song 3");session.searchForImport()
+                        await { !session.state.value.busy && session.state.value.searchResults.size==1 }
+                        assertTrue(sync.addTrack(session.state.value.searchResults.single()))
+                        await { hub.state.value.library.size==3 && !hub.state.value.busy }
+                        assertEquals(3,downloads.get())
+                        assertTrue(hub.state.value.library.all { it.origin.startsWith("https://www.youtube.com/") })
+                        assertEquals(null,hub.state.value.pendingUseId)
                         sync.syncAgain()
                         await { offsets.size==4 && hub.state.value.spotifySync?.existing==2 && !hub.state.value.busy }
-                        assertEquals(2,downloads.get())
+                        assertEquals(3,downloads.get())
                     }
                 }
             }

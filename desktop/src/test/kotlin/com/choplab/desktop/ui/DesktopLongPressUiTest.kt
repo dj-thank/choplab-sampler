@@ -43,6 +43,28 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
+    @Test fun spotifySearchResultCanBeAddedWhileFavoritesAreImporting() = runBlocking {
+        var added=0
+        val scene=ImageComposeScene(width=390,height=720,density=Density(1f),coroutineContext=coroutineContext) {
+            ChopLabTheme { com.choplab.desktop.SpotifySearchPanel(
+                com.choplab.desktop.provider.SpotifyDesktopState(searchQuery="Song",searchResults=listOf(
+                    com.choplab.sampler.source.SourceTrack("Song","Artist","test"))),true,{},{},{added++;true},{},{},{},
+            ) }
+        }
+        try {
+            repeat(10){scene.render(System.nanoTime()).close();delay(15)}
+            val nodes=buildList<SemanticsNode> {
+                fun visit(n:SemanticsNode){add(n);n.children.forEach(::visit)}
+                scene.semanticsOwners.forEach{visit(it.unmergedRootSemanticsNode)}
+            }
+            val text=nodes.first { it.config.getOrNull(SemanticsProperties.Text)?.any { it.text=="追加" }==true }
+            val button=generateSequence(text){it.parent}.first { it.config.getOrNull(SemanticsActions.OnClick)?.action!=null }
+            assertTrue(button.boundsInRoot.bottom<=720)
+            assertTrue(requireNotNull(button.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+            assertEquals(1,added)
+        } finally {scene.close()}
+    }
+
     @Test
     fun automaticSpotifyFlowHasNoTrackPickerAndCompletedAudioIsUsableDuringSync() = runBlocking {
         for(width in listOf(390,960)) {

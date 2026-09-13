@@ -20,9 +20,10 @@ fun AudioSourceHub(
     onSection:(SourceSection)->Unit,onQuery:(String)->Unit,onSearch:()->Unit,onDownload:(YoutubeSource)->Unit,
     onPickFiles:()->Unit,onUse:(String)->Unit,onCancel:()->Unit,onClose:()->Unit,
     spotifyContent:@Composable ()->Unit,
+    spotifyLabel:String="Spotify",
 ) {
     Dialog(onDismissRequest=onClose,properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        AudioSourceHubContent(state,canUseAudio,onSection,onQuery,onSearch,onDownload,onPickFiles,onUse,onCancel,onClose,spotifyContent)
+        AudioSourceHubContent(state,canUseAudio,onSection,onQuery,onSearch,onDownload,onPickFiles,onUse,onCancel,onClose,spotifyContent,spotifyLabel)
     }
 }
 
@@ -32,6 +33,7 @@ fun AudioSourceHubContent(
     onSection:(SourceSection)->Unit,onQuery:(String)->Unit,onSearch:()->Unit,onDownload:(YoutubeSource)->Unit,
     onPickFiles:()->Unit,onUse:(String)->Unit,onCancel:()->Unit,onClose:()->Unit,
     spotifyContent:@Composable ()->Unit,
+    spotifyLabel:String="Spotify",
 ) {
         Surface(Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.94f),shape=MaterialTheme.shapes.large) {
             Column(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -45,7 +47,7 @@ fun AudioSourceHubContent(
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     SourceSection.entries.forEach { section ->
                         OutlinedButton(onClick={onSection(section)},modifier=Modifier.weight(1f),enabled=!state.busy||state.spotifySync!=null,colors=ButtonDefaults.outlinedButtonColors(containerColor=if(state.section==section)MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)) {
-                            Text(when(section){SourceSection.LIBRARY->"ライブラリ";SourceSection.YOUTUBE->"YouTube";SourceSection.SPOTIFY->"Spotify"})
+                            Text(when(section){SourceSection.LIBRARY->"ライブラリ";SourceSection.YOUTUBE->"YouTube";SourceSection.SPOTIFY->spotifyLabel})
                         }
                     }
                 }
