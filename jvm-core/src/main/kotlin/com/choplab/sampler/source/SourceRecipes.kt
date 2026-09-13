@@ -65,6 +65,16 @@ object SourceRecipes {
         }.getOrNull()
     }
     /** Favor deterministic title/artist/duration agreement; do not silently select an unrelated recording. */
+    fun automaticFavorite(track: SourceTrack, candidates: List<YoutubeSource>): YoutubeSource? {
+        if (track.artist.isBlank() || !track.durationSeconds.isFinite() || track.durationSeconds !in 0.01..600.0) return null
+        return candidates.distinctBy { it.id }
+            .filter { matchingFavorite(track, listOf(it)) != null }
+            .sortedWith(compareBy<YoutubeSource> {
+                if (it.durationSeconds > 0 && it.durationSeconds.isFinite()) kotlin.math.abs(it.durationSeconds - track.durationSeconds) else Double.MAX_VALUE
+            }.thenBy { it.id })
+            .firstOrNull()
+    }
+
     fun matchingFavorite(track: SourceTrack, candidates: List<YoutubeSource>): YoutubeSource? {
         fun words(value: String): Set<String> = Normalizer.normalize(value, Normalizer.Form.NFKC).lowercase()
             .replace(Regex("""\bpt\.?\s*(\d+)"""), "part $1")

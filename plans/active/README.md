@@ -6,6 +6,10 @@
 
 ## Current selection
 
+**進行中:** `spotify-auto-import-20260913.md`。Spotify連携からWindowsライブラリへの自動取り込み。
+
+## Previous selection
+
 **完了（LOCAL_PASS）:** `../completed/desktop-connect-import-20260905.md`。デスクトップ連携メニュー・パネルから音源追加への導線改善。
 
 ## Previous selection

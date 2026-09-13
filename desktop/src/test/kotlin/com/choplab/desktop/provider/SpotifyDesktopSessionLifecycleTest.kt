@@ -22,6 +22,53 @@ import kotlin.test.assertTrue
 
 class SpotifyDesktopSessionLifecycleTest {
     @Test
+    fun oauthConnectionPaginatesAndPopulatesLibraryWithoutPickingAnySong() {
+        val root=java.nio.file.Files.createTempDirectory("spotify-oauth-library").toFile()
+        val offsets=java.util.Collections.synchronizedList(mutableListOf<Int>())
+        val downloads=java.util.concurrent.atomic.AtomicInteger()
+        val api=object:SpotifyApiClient by FakeApi() {
+            override fun savedTracksPage(accessToken:String,offset:Int):SpotifyApiResponse {
+                offsets.add(offset)
+                val n=if(offset==0)1 else 2
+                val id=n.toString().padStart(22,'0')
+                val next=if(offset==0) "\"https://api.spotify.com/v1/me/tracks?offset=20\"" else "null"
+                return SpotifyApiResponse(200,"""{"items":[{"track":{"id":"$id","name":"Song $n","artists":[{"name":"Artist"}],"duration_ms":120000}}],"next":$next}""")
+            }
+        }
+        val backend=object:com.choplab.sampler.source.YoutubeSourceBackend {
+            override fun search(query:String,jobId:String):List<com.choplab.sampler.source.YoutubeSource> {
+                val n=query.substringAfterLast(' ').toInt()
+                return listOf(com.choplab.sampler.source.YoutubeSource(n.toString().padStart(11,'0'),query,"Artist",120.0))
+            }
+            override fun info(url:String,jobId:String)=search("Artist Song ${url.substringAfter("v=").toInt()}",jobId).single()
+            override fun download(source:com.choplab.sampler.source.YoutubeSource,folder:java.io.File,jobId:String,progress:(Float)->Unit):java.io.File {
+                downloads.incrementAndGet()
+                return java.io.File(folder,"source.wav").also { file ->
+                    com.choplab.sampler.audio.WavFileWriter(file,8000,1).use { it.writePcm16(ShortArray(80){source.id.toInt().toShort()}) }
+                }
+            }
+            override fun cancel(jobId:String)=Unit
+        }
+        try {
+            com.choplab.sampler.source.AudioSourceController(com.choplab.sampler.source.LocalAudioLibrary(root){},backend).use { hub ->
+                session(api=api,callbackFactory=SpotifyAuthorizationCallbackFactory { ImmediateCallback }).use { session ->
+                    com.choplab.desktop.source.SpotifyAutoImport(session.state,hub,session::loadImportLibrary).use { sync ->
+                        connect(session)
+                        await { hub.state.value.spotifySync?.completed==2 && !hub.state.value.busy }
+                        assertEquals(listOf(0,20),offsets.toList())
+                        assertEquals(2,hub.state.value.library.size)
+                        assertEquals(null,hub.state.value.pendingUseId)
+                        assertEquals(2,downloads.get())
+                        sync.syncAgain()
+                        await { offsets.size==4 && hub.state.value.spotifySync?.existing==2 && !hub.state.value.busy }
+                        assertEquals(2,downloads.get())
+                    }
+                }
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
     fun unavailableDefaultBrowserHasSpecificRecoveryGuidance() {
         val session = session(
             callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback },

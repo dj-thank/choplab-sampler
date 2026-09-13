@@ -44,7 +44,7 @@ fun AudioSourceHubContent(
                 }
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     SourceSection.entries.forEach { section ->
-                        OutlinedButton(onClick={onSection(section)},modifier=Modifier.weight(1f),enabled=!state.busy,colors=ButtonDefaults.outlinedButtonColors(containerColor=if(state.section==section)MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)) {
+                        OutlinedButton(onClick={onSection(section)},modifier=Modifier.weight(1f),enabled=!state.busy||state.spotifySync!=null,colors=ButtonDefaults.outlinedButtonColors(containerColor=if(state.section==section)MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent)) {
                             Text(when(section){SourceSection.LIBRARY->"ライブラリ";SourceSection.YOUTUBE->"YouTube";SourceSection.SPOTIFY->"Spotify"})
                         }
                     }
@@ -54,12 +54,22 @@ fun AudioSourceHubContent(
                     TextButton(onClick=onCancel){Text("取り込みを中止")}
                 }
                 if(state.message.isNotBlank()) Text(state.message,modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite })
+                state.spotifySync?.let { sync ->
+                    Text("${sync.completed}/${sync.total}曲確認 · ${sync.added}曲追加 · ${sync.existing}曲追加済み")
+                    if(sync.unavailable.isNotEmpty()) {
+                        var expanded by remember { mutableStateOf(false) }
+                        TextButton(onClick={expanded=!expanded}) { Text("取得できなかった${sync.unavailable.size}曲${if(expanded)"を閉じる" else "を見る"}") }
+                        if(expanded) LazyColumn(Modifier.heightIn(max=140.dp)) {
+                            items(sync.unavailable) { Text(it) }
+                        }
+                    }
+                }
                 when(state.section) {
                     SourceSection.LIBRARY -> {
                         if(state.library.isEmpty())Text("取り込んだ音がここに残ります。毎回ファイルを探す必要はありません。")
                         LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             items(state.library,key={it.id}) { item ->
-                                OutlinedCard(Modifier.fillMaxWidth().clickable(enabled=canUseAudio&&!state.busy){onUse(item.id)}
+                                OutlinedCard(Modifier.fillMaxWidth().clickable(enabled=canUseAudio&&(!state.busy||state.spotifySync!=null)){onUse(item.id)}
                                     .semantics { contentDescription="ライブラリ音源 ${item.title}を使う" }) {
                                     Column(Modifier.padding(12.dp)) {
                                         Text(item.title,fontWeight=FontWeight.Bold)
@@ -96,11 +106,12 @@ fun AudioSourceHubContent(
 
 @Composable
 fun SpotifySourcePicker(state:SpotifyImportState, importBusy:Boolean, redirectUri:String,
-    onLogin:(String)->Unit,onDisconnect:()->Unit,onMore:()->Unit,onPick:(SourceTrack)->Unit,onOpen:(String)->Unit) {
+    onLogin:(String)->Unit,onDisconnect:()->Unit,onMore:()->Unit,onPick:(SourceTrack)->Unit,onOpen:(String)->Unit,
+    automaticSync:Boolean=false,onLibrary:()->Unit={}) {
     var clientId by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text("Spotifyのお気に入り",style=MaterialTheme.typography.titleMedium)
-        Text("曲をタップして追加。音声は対応するYouTube動画から取り込みます。")
+        Text(if(automaticSync)"連携すると、お気に入りを自動でライブラリに追加します。音声は対応するYouTube動画から取り込みます。" else "曲をタップして追加。音声は対応するYouTube動画から取り込みます。")
         Text(state.message)
         if(!state.connected) {
             if(!state.configured) {
@@ -111,7 +122,10 @@ fun SpotifySourcePicker(state:SpotifyImportState, importBusy:Boolean, redirectUr
             Button(onClick={onLogin(clientId);clientId=""},enabled=!state.busy&&(state.configured||clientId.isNotBlank())){Text("Spotifyにログイン")}
         } else {
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                Button(onClick=onMore,enabled=!state.busy&&!importBusy&&(state.tracks.isEmpty()||state.hasMore)){Text(if(state.tracks.isEmpty())"お気に入りを表示" else "さらに読み込む")}
+                if(automaticSync) {
+                    Button(onClick=onLibrary){Text("ライブラリを開く")}
+                    TextButton(onClick=onMore,enabled=!state.busy&&!importBusy){Text("同期する")}
+                } else Button(onClick=onMore,enabled=!state.busy&&!importBusy&&(state.tracks.isEmpty()||state.hasMore)){Text(if(state.tracks.isEmpty())"お気に入りを表示" else "さらに読み込む")}
                 TextButton(onClick=onDisconnect,enabled=!state.busy){Text("連携解除")}
             }
         }
@@ -119,7 +133,7 @@ fun SpotifySourcePicker(state:SpotifyImportState, importBusy:Boolean, redirectUr
             LinearProgressIndicator(Modifier.fillMaxWidth())
             TextButton(onClick=onDisconnect){Text("認証・読み込みを中止")}
         }
-        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        if(!automaticSync) LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             items(state.tracks,key={it.spotifyUrl}) { track ->
                 OutlinedCard(Modifier.fillMaxWidth().clickable(enabled=!state.busy&&!importBusy){onPick(track)}
                     .semantics { contentDescription="Spotifyのお気に入り ${track.artist} ${track.title}を取り込む" }) {

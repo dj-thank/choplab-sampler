@@ -22,6 +22,7 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.choplab.desktop.source.DesktopYoutubeBackend
+import com.choplab.desktop.source.SpotifyAutoImport
 import com.choplab.sampler.source.*
 import com.choplab.sampler.ui.AudioSourceHub
 import com.choplab.sampler.ui.SpotifySourcePicker
@@ -82,6 +83,8 @@ fun main(args: Array<String>) = application {
         AudioSourceController(LocalAudioLibrary(File(appData,"ChopLab/audio-library")) { com.choplab.desktop.source.DesktopAudioDecoder.decode(it);Unit },DesktopYoutubeBackend())
     }
     val sourceState by sourceHub.state.collectAsState()
+    val spotifySync = remember { SpotifyAutoImport(spotify.state,sourceHub,spotify::loadImportLibrary) }
+    fun disconnectSpotify() { spotifySync.cancel();spotify.disconnect() }
     var sourceHubVisible by remember { mutableStateOf(false) }
     fun openAudioSource(section:SourceSection) {
         sourceHub.section(section)
@@ -106,6 +109,7 @@ fun main(args: Array<String>) = application {
         padKeyOwner.releaseAll().forEach {
             controller.releasePadIfOwned(it.padIndex, it.ownership)
         }
+        spotifySync.close()
         sourceHub.close()
         spotify.close()
         audioDiagnostics.close()
@@ -262,9 +266,6 @@ fun main(args: Array<String>) = application {
             sourceHub.consumed(id);sourceHubVisible=false
         }
         LaunchedEffect(sourceState.pendingUseId) { sourceState.pendingUseId?.let(::useLibrary) }
-        LaunchedEffect(spotifyState.phase,sourceHubVisible) {
-            if(sourceHubVisible && spotify.connected && spotifyState.librarySummary=="ライブラリは未取得です") spotify.showLibrary()
-        }
         ChopLabTheme {
             OtohiroiDeck(
                 state = state,
@@ -287,13 +288,18 @@ fun main(args: Array<String>) = application {
                         val item=sourceHub.state.value.library.firstOrNull{it.id==id}
                         if(item!=null) {controller.addLibrarySource(sourceHub.file(id),item.title);sourceHub.consumed(id);sourceHubVisible=false}
                     }
-                },onCancel=sourceHub::cancel,onClose={sourceHub.cancel();if(spotifyState.canCancelLogin)spotify.cancelLogin();sourceHubVisible=false},
+                },onCancel={spotifySync.cancel();sourceHub.cancel()},onClose={
+                    sourceHub.dismiss()
+                    if(spotifyState.canCancelLogin)spotify.cancelLogin()
+                    sourceHubVisible=false
+                },
                 spotifyContent={SpotifySourcePicker(
                     SpotifyImportState(connected=spotify.connected,busy=spotifyState.busy,configured=spotifyState.clientIdConfigured,message=spotifyState.message,tracks=spotifyState.sourceTracks,hasMore=spotifyState.sourceHasMore),
                     sourceState.busy,"http://127.0.0.1/callback",
                     onLogin={client ->if(client.isBlank() || spotify.configureClientId(client))spotify.login()},
-                    onDisconnect=spotify::disconnect,onMore=spotify::showMoreLibrary,onPick=sourceHub::importFavorite,
+                    onDisconnect=::disconnectSpotify,onMore=spotifySync::syncAgain,onPick=sourceHub::importFavorite,
                     onOpen={link->java.awt.Desktop.getDesktop().browse(java.net.URI(link))},
+                    automaticSync=true,onLibrary={sourceHub.section(SourceSection.LIBRARY)},
                 )},
             )
         }
@@ -310,7 +316,7 @@ fun main(args: Array<String>) = application {
         ) {
             ChopLabTheme {
                 SpotifyPanel(spotifyState,sourceState.library.size,::openAudioSource,
-                    spotify::showCurrentPlayback,spotify::pause,spotify::resume,spotify::disconnect,::pickSourceFiles)
+                    spotify::showCurrentPlayback,spotify::pause,spotify::resume,::disconnectSpotify,::pickSourceFiles)
             }
         }
     }

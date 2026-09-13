@@ -45,6 +45,34 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
         return file.inputStream().use { importStream(it, file.extension.lowercase(), title, origin) }
     }
 
+    private fun spotifyLink(url: String): File {
+        require(Regex("https://open\\.spotify\\.com/track/[A-Za-z0-9]{22}").matches(url))
+        return File(File(directory, ".spotify"), url.substringAfterLast('/'))
+    }
+
+    /** Recheck the audio bytes' presence; a stale link must never suppress a new import. */
+    @Synchronized fun spotifyItem(url: String): AudioLibraryItem? {
+        val link = spotifyLink(url)
+        if (!link.isFile || link.length() != 64L) return null
+        return runCatching {
+            val id = link.readText(Charsets.UTF_8)
+            val file = resolve(id)
+            val meta = readProperties(File(directory, "$id.properties"))
+            AudioLibraryItem(id, meta.getProperty("title"), meta.getProperty("origin", "ファイル"), file.length())
+        }.getOrNull()
+    }
+
+    @Synchronized fun rememberSpotify(url: String, item: AudioLibraryItem) {
+        resolve(item.id)
+        val link = spotifyLink(url)
+        check(link.parentFile.isDirectory || link.parentFile.mkdirs())
+        val temp = File(link.parentFile, ".${UUID.randomUUID()}")
+        try {
+            temp.writeText(item.id, Charsets.UTF_8)
+            Files.move(temp.toPath(), link.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } finally { temp.delete() }
+    }
+
     @Synchronized fun importStream(input: InputStream, extension: String, title: String, origin: String): AudioLibraryItem {
         require(extension in extensions) { "未対応の音源形式です" }
         val temp = File(directory, ".import-${UUID.randomUUID()}.$extension")

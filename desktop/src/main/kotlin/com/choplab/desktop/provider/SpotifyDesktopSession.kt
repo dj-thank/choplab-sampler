@@ -43,6 +43,7 @@ data class SpotifyDesktopState(
     val savedTracks: List<String> = emptyList(),
     val sourceTracks: List<SourceTrack> = emptyList(),
     val sourceHasMore: Boolean = false,
+    val importLibraryRevision: Long = 0,
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
@@ -262,6 +263,26 @@ class SpotifyDesktopSession(
         }
     }
 
+    /** Read-only metadata pagination, bounded to the private library's 2000-item display limit. */
+    fun loadImportLibrary() = withAccessToken("Spotifyのお気に入りを確認") { token,lease ->
+        val tracks = linkedMapOf<String,SourceTrack>()
+        var offset = 0
+        var more: Boolean
+        do {
+            generation.requireCurrent(lease)
+            val response = api.savedTracksPage(token,offset)
+            generation.requireCurrent(lease)
+            if(response.statusCode !in 200..299) throw SpotifyApiException(response,"お気に入り")
+            require(SpotifyPlaybackJson.savedTracks(response.body).recognized) { "お気に入りを読み取れませんでした" }
+            SourceRecipes.parseSpotifyTracks(response.body).forEach { tracks[it.spotifyUrl] = it }
+            more = SourceRecipes.spotifyHasNext(response.body)
+            offset += 20
+        } while(more && offset < 2000)
+        OperationResult(if(more) "最新2000曲を取り込みます。残りは今回の対象外です" else "${tracks.size}曲のお気に入りを取り込みます",transform={
+            it.copy(sourceTracks=tracks.values.take(2000),sourceHasMore=more,importLibraryRevision=it.importLibraryRevision+1)
+        })
+    }
+
     fun pause() = withAccessToken("Spotify一時停止") { token, lease ->
         val response = api.pausePlayback(token)
         generation.requireCurrent(lease)
@@ -321,12 +342,12 @@ class SpotifyDesktopSession(
                     mutableState.value.copy(
                         phase = SpotifyConnectionPhase.CONNECTED,
                         busy = false,
-                        message = "Spotifyと接続しました。表示とSpotify Connectの再生制御のみを行います",
+                        message = "Spotifyと接続しました",
                     ),
                 )
                 true
             }
-            if (connected) onStatus("Spotifyと接続しました。音声取込はローカル素材または録音を使用します")
+            if (connected) onStatus("Spotifyと接続しました")
         } catch (error: Throwable) {
             val failure = synchronized(lock) {
                 if (!isCurrentLoginLocked(login)) return@synchronized null

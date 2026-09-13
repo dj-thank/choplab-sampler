@@ -17,6 +17,15 @@ data class AudioSourceState(
     val busy: Boolean = false,
     val message: String = "",
     val pendingUseId: String? = null,
+    val spotifySync: SpotifySyncProgress? = null,
+)
+
+data class SpotifySyncProgress(
+    val total: Int,
+    val completed: Int = 0,
+    val added: Int = 0,
+    val existing: Int = 0,
+    val unavailable: List<String> = emptyList(),
 )
 
 data class SpotifyImportState(

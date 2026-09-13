@@ -33,10 +33,11 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
     fun file(id: String): File = library.resolve(id)
     fun consumed(id: String) = mutable.update { if(it.pendingUseId==id) it.copy(pendingUseId=null) else it }
 
-    private fun job(message: String, action: (Long,String)->Unit) {
+    @Synchronized private fun job(message: String, spotifySync: SpotifySyncProgress? = null, action: (Long,String)->Unit) {
         if (mutable.value.busy) return
         val lease=epoch.incrementAndGet(); val id=UUID.randomUUID().toString(); jobId=id
-        mutable.update { it.copy(busy=true,message=message,pendingUseId=null) }
+        mutable.update { it.copy(busy=true,message=message,pendingUseId=null,spotifySync=spotifySync,
+            section=if(spotifySync!=null)SourceSection.LIBRARY else it.section) }
         future=executor.submit {
             try { action(lease,id) } catch (error: Exception) {
                 publish(lease) { it.copy(message=when(error) {
@@ -90,10 +91,55 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
             }
         }
     }
+
+    /** A single cancellable queue. Imports populate the library, never replace the active project. */
+    @Synchronized fun syncSpotifyFavorites(tracks: List<SourceTrack>): Boolean {
+        if(mutable.value.busy || mutable.value.pendingUseId!=null)return false
+        val queue = tracks.distinctBy { it.spotifyUrl }.take(2000)
+        job("Spotifyのお気に入りをライブラリに追加しています",SpotifySyncProgress(queue.size)) { lease,id ->
+        var progress = SpotifySyncProgress(queue.size)
+        publish(lease) { it.copy(section=SourceSection.LIBRARY,candidates=emptyList(),spotifySync=progress) }
+        queue.forEachIndexed { index,track ->
+            current(lease)
+            publish(lease) { it.copy(message="${index+1}/${queue.size}曲目 · ${track.title}") }
+            try {
+                if (library.spotifyItem(track.spotifyUrl) != null) {
+                    progress = progress.copy(existing=progress.existing+1)
+                } else {
+                    val found = backend.search(track.query.take(240),id)
+                    current(lease)
+                    val selected = SourceRecipes.automaticFavorite(track,found)
+                        ?: throw IllegalArgumentException("対応する音源が見つかりません")
+                    val checked = backend.info(selected.url,id)
+                    current(lease)
+                    require(checked.durationSeconds.isFinite() && checked.durationSeconds in 0.01..600.0 &&
+                        SourceRecipes.automaticFavorite(track,listOf(checked)) != null) { "曲の情報が一致しません" }
+                    val prior = library.list().firstOrNull { it.origin == checked.url }
+                    require(prior != null || library.list().size < 2000) { "ライブラリが上限に達しました" }
+                    require(prior != null || library.directory.usableSpace >= LocalAudioLibrary.MAX_FILE_BYTES * 2) { "空き容量が不足しています" }
+                    val item = prior ?: download(lease,id,checked,selectForUse=false)
+                    current(lease)
+                    library.rememberSpotify(track.spotifyUrl,item)
+                    progress = if(prior == null) progress.copy(added=progress.added+1) else progress.copy(existing=progress.existing+1)
+                }
+            } catch (error: Exception) {
+                current(lease)
+                if(error is InterruptedException) throw error
+                progress = progress.copy(unavailable=progress.unavailable + "${track.artist} — ${track.title}")
+            }
+            progress = progress.copy(completed=index+1)
+            publish(lease) { it.copy(spotifySync=progress,library=library.list(),pendingUseId=null) }
+        }
+        current(lease)
+        publish(lease) { it.copy(message="同期完了 · ${progress.added}曲追加・${progress.existing}曲追加済み・${progress.unavailable.size}曲未取得",pendingUseId=null) }
+        }
+        return true
+    }
+
     fun download(source: YoutubeSource) = job("${source.title} を追加しています") { lease,id ->
         download(lease,id,backend.info(source.url,id))
     }
-    private fun download(lease: Long,id: String,source: YoutubeSource) {
+    private fun download(lease: Long,id: String,source: YoutubeSource,selectForUse: Boolean = true): AudioLibraryItem {
         current(lease)
         val stagingRoot=File(library.directory,".staging").apply { mkdirs() }.canonicalFile
         val folder=File(stagingRoot,id).apply { mkdir() }.canonicalFile
@@ -106,13 +152,23 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
             require(output.canonicalFile.parentFile==folder && output.isFile)
             val item=library.importFile(output,source.title,source.url)
             current(lease)
-            publish(lease) { it.copy(library=library.list(),section=SourceSection.LIBRARY,message="${item.title} を追加しました",pendingUseId=item.id) }
+            publish(lease) { it.copy(library=library.list(),section=SourceSection.LIBRARY,message="${item.title} を追加しました",pendingUseId=if(selectForUse)item.id else null) }
+            return item
         } finally {
             check(folder.canonicalFile.parentFile==stagingRoot)
             folder.deleteRecursively()
         }
     }
-    fun cancel() {
+    /** Check ownership and cancel under the same monitor used for job admission. */
+    @Synchronized fun dismiss() {
+        if(mutable.value.spotifySync==null)cancel()
+    }
+
+    @Synchronized fun cancelSpotify() {
+        if(mutable.value.busy && mutable.value.spotifySync!=null)cancel()
+    }
+
+    @Synchronized fun cancel() {
         epoch.incrementAndGet(); jobId?.let(backend::cancel); future?.cancel(true)
         mutable.update { it.copy(busy=false,pendingUseId=null,candidates=emptyList(),message=if(it.busy) "取り込みを中止しました" else it.message) }
     }
