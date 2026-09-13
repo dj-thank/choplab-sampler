@@ -6,7 +6,7 @@
 
 ## Current selection
 
-**進行中:** `spotify-search-import-20260913.md`。通常の検索UIからSpotify検索→追加→YouTube取得・保存。
+**完了（LOCAL_PASS + isolated EXE launch）:** `../completed/spotify-search-import-20260913.md`。通常の検索UIからSpotify検索→追加→YouTube取得・保存。
 
 ## Previous selection
 

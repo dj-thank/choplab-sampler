@@ -1,5 +1,13 @@
 # Project state
 
+## Current snapshot — 2026-09-13 Search and add audio
+
+Product `98073b6b965ac5b8a774fe18c494deb0f4d11529`. The normal import/search screen searches Spotify metadata and shows an Add action. Add runs the existing matching YouTube download and validated private-library publication; metadata is not presented as downloaded audio. During an active import, selections queue (100 max) and run afterward. Search results never overwrite liked tracks. Existing automatic favorites, deduplication and cancellation are retained. Windows UI uses 検索 / 追加; Android's existing UI is unchanged.
+
+Desktop206/JVM107/Android294/UI-controller37 checks (12 overlap) passed with zero failure/error/skip; Android lint/build, project validation and Windows packaging passed. The mock-provider test covers Spotify search through actual library-file creation. The fresh image `desktop/build/windows-app-image-spotify-search-20260913/ChopLab` launched/responded/closed with an isolated profile and preserved existing processes. PAD receipt `work/PAD_CHOPLAB_SPOTIFY_SEARCH_20260913.json` binds 414 files. LOCAL_PASS + isolated Windows launch; live provider/download/audio/public not run. PAD report: `outputs/ChopLab-検索して追加.md`.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-13 Windows Spotify automatic library import
 
 Product `3e67984a5469133c4e12b270c101521de54be4f8`, isolated worktree `work/choplab-spotify-auto-import-20260913`, based on the existing September 5 import build `e1b9d42`. Connecting Spotify now automatically reads liked-track metadata (up to 2000) and imports matching YouTube sources sequentially into the private library. No track or video picker is required. Already imported tracks persistently skip retrieval; unmatched/failed tracks remain visible in the result. A completed import does not select audio or alter the active project. Closing the panel continues the queue; explicit cancellation/disconnect only cancels the owned sync, preserving unrelated manual imports. Android keeps its manual Spotify flow.

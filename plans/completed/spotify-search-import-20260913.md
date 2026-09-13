@@ -13,7 +13,7 @@
 SpotifyDesktopSession検索状態をお気に入り状態と分離。SpotifySearchPanelは通常の検索・追加操作。SpotifyAutoImportが検索曲を予約し、現在の同期後に同じ保存処理へ渡す。
 
 ## Milestones / Progress
-- 実装済み。API状態・検索応答parser・予約・検索→取得→実ファイル保存のhost testとUI操作確認、Windows再packageを実行中。
+- 実装済み。API状態・検索応答parser・予約・検索→取得→実ファイル保存のhost testとUI操作確認、Windows再packageを完了。product 98073b6、644チェック失敗/error/skip0、Windows package・isolated起動PASS。receipt: PAD_CHOPLAB_SPOTIFY_SEARCH_20260913.json。
 
 ## Decision log
 - 2026-09-13 user訂正: Spotifyはbackend。画面は「検索」「追加」。メタデータだけを追加済みとしない。
