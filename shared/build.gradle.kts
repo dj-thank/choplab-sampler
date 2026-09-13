@@ -24,10 +24,10 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("org.jetbrains.compose.runtime:runtime:1.11.1")
-            implementation("org.jetbrains.compose.foundation:foundation:1.11.1")
+            implementation("org.jetbrains.compose.runtime:runtime:1.12.0")
+            implementation("org.jetbrains.compose.foundation:foundation:1.12.0")
             implementation("org.jetbrains.compose.material3:material3:1.9.0")
-            implementation("org.jetbrains.compose.ui:ui:1.11.1")
+            implementation("org.jetbrains.compose.ui:ui:1.12.0")
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
