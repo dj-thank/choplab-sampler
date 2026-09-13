@@ -18,7 +18,7 @@ desktop SpotifyDesktopSessionがbounded metadata paginationを担当、SpotifyAu
 3. project mandatory checks、Windows新規app image、起動shortcutのreadback。
 
 ## Progress
-- 2026-09-13: implementation and focused regression validation in progress.
+- 2026-09-13: completed locally; product 3e67984a5469133c4e12b270c101521de54be4f8.
 
 ## Discoveries
 起動中の既存インストール版にはDesktopYoutubeBackendがなく、9月5日の完成版に含まれている。9月5日app-imageは414ファイルhash一致。
@@ -28,7 +28,7 @@ desktop SpotifyDesktopSessionがbounded metadata paginationを担当、SpotifyAu
 - Spotify paging: https://developer.spotify.com/documentation/web-api/reference/get-users-saved-tracks (2026-09-13 checked); fixed API endpoint with limit/offset, never follow an arbitrary next URL.
 
 ## Validation log
-Pending: focused tests, full required project validation, Android unit/lint/build, Desktop package/UI tests.
+2026-09-13: 836 standard checks plus 36 UI/controller checks (12 overlap), all failure/error/skip zero. Android lint errors0/warnings11, APK, Windows package and project validator PASS. Isolated EXE launch/responding/close PASS; pre-existing processes preserved. PAD receipt work/PAD_CHOPLAB_SPOTIFY_AUTO_IMPORT_20260913.json binds all 414 image files. Root repaired competing 20-track fetch, pending-use consumption, atomic close/cancel ownership. Live provider/audio/public not run.
 
 ## Risks and rollback
 取り違えはmetadata適合で低減するが音響的同一性は未証明。rollbackは旧EXE起動、コードはisolated worktreeに保持。既存ファイルをreset/clean/deleteしない。新EXE起動前は既存制作の保存と旧版終了を要する。

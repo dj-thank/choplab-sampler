@@ -4,9 +4,10 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| WindowsのSpotify連携からライブラリへ自動追加 | LOCAL_PASS + isolated EXE launch | Product 3e67984。最大2000お気に入りを選択なしで順次追加。適合候補の自動選定、永続重複防止、中止/再同期、画面を閉じた後の継続、手動取込との排他を検証。現在のSpotify/YouTube実通信・実音は未確認 |
 | デスクトップ連携から音源追加 | LOCAL_PASS | メニューから各取込先へ直接移動。PCファイル選択、内部ライブラリへ接続。設定説明を整理し再生操作は折り畳み。760/1100幅でポインター導線確認 |
 | 個人用音源ライブラリ・YouTube取り込み | LOCAL_PASS + Windows実取得観測 | ファイル/YouTubeをdecode検証後に保存。制作保持、中止/ZIP/同名候補を検証。Android実機は未確認 |
-| Spotifyお気に入りから音源追加 | LOCAL_PASS + Desktop OAuth/20曲取得観測 | 対応YouTube音源を取得。一意でない候補は選択。公開Client ID設定済みの両版を作成。Android callback登録済み、実機OAuthは未確認 |
+| Spotifyお気に入りから手動追加（Android） | historical LOCAL_PASS | 従来の曲選択・候補確認を維持。9月5日のDesktop OAuth/20曲取得は過去の別観測で、Windows自動同期版のprovider証明には使わない。Android実機OAuthは未確認 |
 | 明示ループ・追加レイヤー | LOCAL_PASS | 音選択と再生を分離、核を再始動せず追加/除去。既存LOOP属性で保存。自動BPM合わせ・ライブ追加時刻の記録は含まない |
 | ドラム音色変更で配置保持 | LOCAL_PASS | A/B・Songを保持しUndo/保存/再読込確認。空のキット領域かつ保存済みドラム配置がない場合のみ初期リズム追加 |
 | 調整音からビートへの引き継ぎ・小画面 | LOCAL input tests | この音を回してビートへ、成功後のみ遷移。旧ループが選択音を奪わない。360×520/font1.3で波形表示とスクロール後48dp操作を確認。最終gateはoutputs/loop-handoff-compact-20260905.md |

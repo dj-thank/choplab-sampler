@@ -1,5 +1,17 @@
 # Project state
 
+## Current snapshot — 2026-09-13 Windows Spotify automatic library import
+
+Product `3e67984a5469133c4e12b270c101521de54be4f8`, isolated worktree `work/choplab-spotify-auto-import-20260913`, based on the existing September 5 import build `e1b9d42`. Connecting Spotify now automatically reads liked-track metadata (up to 2000) and imports matching YouTube sources sequentially into the private library. No track or video picker is required. Already imported tracks persistently skip retrieval; unmatched/failed tracks remain visible in the result. A completed import does not select audio or alter the active project. Closing the panel continues the queue; explicit cancellation/disconnect only cancels the owned sync, preserving unrelated manual imports. Android keeps its manual Spotify flow.
+
+Final local checks: Desktop 205, JVM core 107, Android 294, shared Desktop 115 and shared Android host 115; failures/errors/skips zero. Desktop UI/controller 36 checks (12 overlapping controller tests), zero failures/errors/skips. Android lint errors 0/warnings 11, APK, fresh Windows package and `scripts/validate_project.sh` passed. The mock OAuth-to-library test includes pagination and repeat synchronization; cancellation, candidate drift, deduplication and manual-import ownership have regression coverage. An initial test waited on a transient pre-start condition; it now waits for the second actual backend search and completion.
+
+The packaged `0.17.2` app image launched with an isolated empty LOCALAPPDATA profile and a responding `ChopLab — おとひろい PC` window, then closed; pre-existing ChopLab processes were preserved. All 414 image files are hashed in the PAD receipt. Existing configured Client ID is retained, while tokens remain memory-only. Artifact: `desktop/build/windows-app-image-spotify-auto-20260913/ChopLab/ChopLab.exe`.
+
+Gate: `LOCAL_PASS + isolated Windows launch`. No fresh live Spotify login/YouTube retrieval, physical audio, Android device, iOS or public release claim. Report: PAD `outputs/ChopLab-Spotify自動取り込み.md`; receipt: PAD `work/PAD_CHOPLAB_SPOTIFY_AUTO_IMPORT_20260913.json`.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-05 Desktop connect/import navigation
 
 Product `58e543199cb7e945940bfc4dfb366327fe7e236e`. The native 連携 menu routes directly to Library, Spotify or YouTube import; PC-file actions open the existing chooser directly. The Connect panel now leads with source import choices and library access. Spotify playback controls are secondary and expandable; setup diagnostics are absent from the configured panel's main view. The existing internal storage/import pipeline and Android code are unchanged.
