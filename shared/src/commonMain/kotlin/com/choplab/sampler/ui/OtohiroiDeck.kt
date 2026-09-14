@@ -2778,6 +2778,18 @@ private fun BeatChopSurface(
                     onOpenDetails = { onOpenPadDetails(state.selectedPad) },
                     viewModel = viewModel,
                 )
+                BeatFinishRow(
+                    state = state,
+                    height = metrics.controlHeightDp.dp,
+                    gap = gap,
+                    onOpenDrums = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
+                    viewModel = viewModel,
+                )
+                PlacementPresetPicker(
+                    state = state,
+                    height = metrics.controlHeightDp.dp,
+                    viewModel = viewModel,
+                )
                 LandscapeBeatPlaybackRow(
                     state = state,
                     height = metrics.controlHeightDp.dp,
@@ -2872,6 +2884,18 @@ private fun BeatChopSurface(
                 height = metrics.controlHeightDp.dp,
                 expanded = false,
                 onOpenDetails = { onOpenPadDetails(state.selectedPad) },
+                viewModel = viewModel,
+            )
+            BeatFinishRow(
+                state = state,
+                height = metrics.controlHeightDp.dp,
+                gap = gap,
+                onOpenDrums = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
+                viewModel = viewModel,
+            )
+            PlacementPresetPicker(
+                state = state,
+                height = metrics.controlHeightDp.dp,
                 viewModel = viewModel,
             )
             SequenceTransportRow(
@@ -3219,6 +3243,41 @@ private fun LandscapeBeatPlaybackRow(
             active = state.recordArmed,
             modifier = Modifier.weight(1f).fillMaxHeight(),
             compact = true,
+        )
+    }
+}
+
+@Composable
+private fun BeatFinishRow(
+    state: SamplerUiState,
+    height: Dp,
+    gap: Dp,
+    onOpenDrums: () -> Unit,
+    viewModel: SamplerDeckController,
+) {
+    val drumBankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+    val drumHasContent = state.pads
+        .subList(drumBankStart, drumBankStart + SamplerConfig.DRUM_KIT_PAD_COUNT)
+        .any(PadModel::isAssigned)
+    Row(
+        modifier = Modifier.fillMaxWidth().height(height),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        MachineButton(
+            label = if (drumHasContent) "ドラム音色\nDRUM KIT" else "ドラムを追加\nADD DRUMS",
+            onClick = {
+                if (drumHasContent) onOpenDrums()
+                else viewModel.applyBuiltInDrumKit(state.selectedDrumKitId, false)
+            },
+            enabled = externalDocumentActionsEnabled(state),
+            active = !drumHasContent,
+            modifier = Modifier.weight(1.4f).fillMaxHeight(),
+            compact = true,
+        )
+        ValueDisplay(
+            label = "仕上げ",
+            value = "${state.pads.count(PadModel::isAssigned)}音・${state.activeSteps.size}配置",
+            modifier = Modifier.weight(1f).fillMaxHeight(),
         )
     }
 }

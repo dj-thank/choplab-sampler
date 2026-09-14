@@ -299,6 +299,30 @@ class DesktopLongPressUiTest {
     }
 
     @Test
+    fun beatGridFinishesWithOneTapDrumsAndPresetRhythm() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                assertTrue(fixture.hasDescription("ドラムを追加"))
+                assertTrue(fixture.hasDescription("4つ打ち"))
+                fixture.mousePress("ドラムを追加", 40)
+                val drumStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+                assertTrue(fixture.controller.state.value.pads.subList(
+                    drumStart, drumStart + SamplerConfig.DRUM_KIT_PAD_COUNT).any(PadModel::isAssigned))
+                assertTrue(fixture.hasDescription("ドラム音色"))
+                val selected = fixture.controller.state.value.selectedPad
+                val before = fixture.controller.state.value.activeSteps
+                fixture.mousePress("4つ打ち", 40)
+                val added = fixture.controller.state.value.activeSteps - before
+                assertTrue(added.isNotEmpty())
+                assertTrue(added.all { it / SamplerConfig.STEP_COUNT == selected })
+                fixture.capture("beat-finish-row")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
     fun failedRechopStartKeepsSelectionHistoryAndTheCurrentEditor() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
             val fixture = DeckFixture.create(coroutineContext)
