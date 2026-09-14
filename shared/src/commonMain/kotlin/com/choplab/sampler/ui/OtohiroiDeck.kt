@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,6 +84,7 @@ import com.choplab.sampler.audio.scratchProgress
 import com.choplab.sampler.audio.scratchDirectionLabel
 import com.choplab.sampler.audio.scratchSpeedFromGesture
 import com.choplab.sampler.model.configuredLoopPadIndex
+import com.choplab.sampler.model.DrumSeparationPhase
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PatternArrangement
@@ -224,6 +226,8 @@ fun OtohiroiDeck(
     state: SamplerUiState,
     onImportAudio: () -> Unit,
     onReplaceAudio: () -> Unit = onImportAudio,
+    onSeparateDrums: (() -> Unit)? = null,
+    onCancelDrumSeparation: (() -> Unit)? = null,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleVocalRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -331,6 +335,8 @@ fun OtohiroiDeck(
                                 metrics = metrics,
                                 onImportAudio = onImportAudio,
             onReplaceAudio = onReplaceAudio,
+                                onSeparateDrums = onSeparateDrums,
+                                onCancelDrumSeparation = onCancelDrumSeparation,
                                 onOpenProject = onOpenProject,
                                 onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                                 onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -1108,6 +1114,8 @@ private fun CaptureWorkspace(
     metrics: DeckLayoutMetrics,
     onImportAudio: () -> Unit,
     onReplaceAudio: () -> Unit = onImportAudio,
+    onSeparateDrums: (() -> Unit)? = null,
+    onCancelDrumSeparation: (() -> Unit)? = null,
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -1159,6 +1167,8 @@ private fun CaptureWorkspace(
                     state = state,
                     onImportAudio = onImportAudio,
             onReplaceAudio = onReplaceAudio,
+                    onSeparateDrums = onSeparateDrums,
+                    onCancelDrumSeparation = onCancelDrumSeparation,
                     onOpenProject = onOpenProject,
                     onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                     onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -1187,11 +1197,13 @@ private fun CaptureWorkspace(
                 state = state,
                 onImportAudio = onImportAudio,
             onReplaceAudio = onReplaceAudio,
+                onSeparateDrums = onSeparateDrums,
+                onCancelDrumSeparation = onCancelDrumSeparation,
                 onOpenProject = onOpenProject,
                 onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                 onToggleSystemAudioRecording = onToggleSystemAudioRecording,
                 modifier = Modifier.fillMaxWidth().height(
-                    if (metrics.density == DeckDensity.COMPACT) 92.dp else 110.dp,
+                    if (metrics.density == DeckDensity.COMPACT) 148.dp else 168.dp,
                 ),
             )
             SourceReadout(state = state, height = 24.dp)
@@ -1572,6 +1584,8 @@ private fun CaptureChoicePanel(
     state: SamplerUiState,
     onImportAudio: () -> Unit,
     onReplaceAudio: () -> Unit = onImportAudio,
+    onSeparateDrums: (() -> Unit)? = null,
+    onCancelDrumSeparation: (() -> Unit)? = null,
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -1646,6 +1660,64 @@ private fun CaptureChoicePanel(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
+            if (onSeparateDrums != null) {
+                DrumSeparationRow(
+                    state = state,
+                    onSeparateDrums = onSeparateDrums,
+                    onCancelDrumSeparation = onCancelDrumSeparation,
+                    modifier = Modifier.fillMaxWidth().weight(0.9f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrumSeparationRow(
+    state: SamplerUiState,
+    onSeparateDrums: () -> Unit,
+    onCancelDrumSeparation: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val separation = state.drumSeparation
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (separation?.phase == DrumSeparationPhase.RUNNING) {
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "ドラム分離中 ${(separation.progress * 100).toInt()}%",
+                    color = DeckGreen,
+                    fontFamily = DeckFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                )
+                LinearProgressIndicator(
+                    progress = { separation.progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            MachineButton(
+                label = "中止\nCANCEL",
+                onClick = { onCancelDrumSeparation?.invoke() },
+                enabled = onCancelDrumSeparation != null,
+                modifier = Modifier.width(86.dp).fillMaxHeight(),
+                compact = true,
+            )
+        } else {
+            MachineButton(
+                label = "ドラムを分離\nSEPARATE DRUMS",
+                onClick = onSeparateDrums,
+                enabled = state.currentAudio != null && externalDocumentActionsEnabled(state),
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                compact = true,
+            )
         }
     }
 }

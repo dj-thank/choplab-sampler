@@ -4,6 +4,7 @@
 
 | 要望 | 実装 / 確認層 | 備考 |
 |---|---:|---|
+| ドラム分離の内蔵（Windows・1入れる） | LOCAL_PASS + 実モデル分離観測 | HT-Demucs FTドラム特化ONNX（StemSplitio輸出・fp16・166MB・commit-pin＋SHA検証）を同梱しONNX Runtime Javaで実行。44.1k再サンプル・343980/25%重複・重み付きOLAは純粋テスト済み。10秒実音源で実モデル分離・WAV出力を確認。6分上限・進捗/中止・完了後はライブラリへ自動取込 |
 | 検索→追加→取得済み音源（Windows） | LOCAL_PASS + isolated EXE launch | 98073b6。Spotify検索結果から追加し、対応YouTube音源を自動取得・検証・保存。取込中の追加予約と検索エラーを確認。実provider/実音は未確認 |
 | WindowsのSpotify連携からライブラリへ自動追加 | LOCAL_PASS + isolated EXE launch | Product 3e67984。最大2000お気に入りを選択なしで順次追加。適合候補の自動選定、永続重複防止、中止/再同期、画面を閉じた後の継続、手動取込との排他を検証。現在のSpotify/YouTube実通信・実音は未確認 |
 | デスクトップ連携から音源追加 | LOCAL_PASS | メニューから各取込先へ直接移動。PCファイル選択、内部ライブラリへ接続。設定説明を整理し再生操作は折り畳み。760/1100幅でポインター導線確認 |

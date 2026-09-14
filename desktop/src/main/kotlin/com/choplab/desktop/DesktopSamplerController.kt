@@ -11,14 +11,19 @@ import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
 import com.choplab.desktop.audio.ScratchVoicePlayer
+import com.choplab.desktop.separation.DrumSeparationService
+import com.choplab.desktop.separation.SeparatorSpec
 import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.configuredLoopPadIndex
+import com.choplab.sampler.model.DrumSeparationPhase
+import com.choplab.sampler.model.DrumSeparationState
 import com.choplab.sampler.model.loopLayerChangeBlockedReason
 import com.choplab.sampler.model.withLoopLayer
 import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
@@ -93,6 +98,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.nio.file.Files
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -195,6 +201,120 @@ class DesktopSamplerController(
     fun replaceLibrarySource(file: File, title: String) {
         if (rejectEditRequest()) return
         loadAudioFile(file, preserveProduction = false, title = title)
+    }
+
+    private var drumSeparationService: DrumSeparationService? = null
+    private var drumSeparationWorkDir: File? = null
+
+    private fun separationService(): DrumSeparationService = synchronized(this) {
+        drumSeparationService ?: DrumSeparationService(
+            separatorModelsDirectory(),
+            DesktopAudioDecoder::decode,
+        ).also { drumSeparationService = it }
+    }
+
+    private fun separatorModelsDirectory(): File = listOfNotNull(
+        System.getProperty("choplab.separatorModels")?.let(::File),
+        System.getenv("CHOPLAB_SEPARATOR_MODELS")?.let(::File),
+        File(System.getProperty("java.home")).parentFile?.resolve("models"),
+        File("work/separator-models"),
+        File("../work/separator-models"),
+    ).firstOrNull { it.resolve(SeparatorSpec.MODEL_FILE).isFile }
+        ?: File(System.getProperty("java.home")).parentFile?.resolve("models")
+        ?: File("work/separator-models")
+
+    /** CAPTURE "separate drums": renders the current source and extracts its drum stem. */
+    fun separateDrumsFromCurrentSource() {
+        val audio = mutableState.value.currentAudio ?: return setStatus("先に素材を入れてください")
+        if (mutableState.value.drumSeparation?.phase == DrumSeparationPhase.RUNNING) return
+        if (rejectEditRequest()) return
+        val service = separationService()
+        if (!service.isModelAvailable()) {
+            return setStatus("分離モデルがありません。ChopLabのアプリ一式を使用してください")
+        }
+        drumSeparationWorkDir?.deleteRecursively()
+        val work = Files.createTempDirectory("choplab-separation").toFile()
+        drumSeparationWorkDir = work
+        val input = work.resolve("source.wav")
+        val renderFailure = runCatching {
+            WavFileWriter(input, audio.sampleRate, audio.channelCount).use { it.writePcm16(audio.samples) }
+        }.exceptionOrNull()
+        if (renderFailure != null) {
+            work.deleteRecursively()
+            return setStatus("分離の下準備に失敗しました: ${renderFailure.message ?: renderFailure.javaClass.simpleName}")
+        }
+        val stemName = audio.name.substringBeforeLast('.').take(60)
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "source" } + "-drums.wav"
+        val output = work.resolve(stemName)
+        mutableState.update {
+            it.copy(drumSeparation = DrumSeparationState(DrumSeparationPhase.RUNNING, 0f, "ドラムを分離しています…"))
+        }
+        val accepted = service.separate(
+            DrumSeparationService.Request(
+                sourceFile = input,
+                outputFile = output,
+                onProgress = { progress ->
+                    mutableState.update {
+                        it.copy(drumSeparation = DrumSeparationState(
+                            DrumSeparationPhase.RUNNING, progress, "ドラムを分離しています…",
+                        ))
+                    }
+                },
+                onDone = { file ->
+                    mutableState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(
+                                DrumSeparationPhase.DONE, 1f, "ドラム分離が完了しました", file.absolutePath,
+                            ),
+                            statusMessage = "ドラム分離が完了しました。ライブラリへ追加します",
+                        )
+                    }
+                },
+                onError = { message ->
+                    mutableState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.FAILED, 0f, message),
+                            statusMessage = "ドラム分離に失敗しました: $message",
+                        )
+                    }
+                },
+                onCancelled = {
+                    mutableState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.CANCELLED, 0f, "中止しました"),
+                            statusMessage = "ドラム分離を中止しました",
+                        )
+                    }
+                },
+            ),
+        )
+        if (!accepted) {
+            work.deleteRecursively()
+            setStatus("分離を実行中です")
+        }
+    }
+
+    fun cancelDrumSeparation() {
+        drumSeparationService?.cancel()
+    }
+
+    /**
+     * Hands the finished stem file to the shell for library import. The shell
+     * must call [discardDrumSeparationWork] after importing.
+     */
+    fun consumeDrumSeparationResult(): File? {
+        val result = mutableState.value.drumSeparation
+        if (result?.phase != DrumSeparationPhase.DONE) return null
+        mutableState.update { it.copy(drumSeparation = null) }
+        return result.resultPath?.let(::File)?.takeIf { it.isFile }
+    }
+
+    /**
+     * Clears the separation banner. Temp audio is retained for the pending
+     * library import and removed on the next job or on close.
+     */
+    fun discardDrumSeparationWork() {
+        mutableState.update { it.copy(drumSeparation = null) }
     }
 
     private fun loadAudioFile(file: File, preserveProduction: Boolean, title: String?) {
@@ -2093,6 +2213,8 @@ class DesktopSamplerController(
         }
         runCatching { ioExecutor.shutdownNow() }
         runCatching { playbackMonitor.shutdownNow() }
+        runCatching { drumSeparationService?.close() }
+        runCatching { drumSeparationWorkDir?.deleteRecursively() }
         runCatching { stopCompetingPlayback(stopAudioEngine = false) }
         runCatching { transport.close() }
         runCatching { scratch.close() }

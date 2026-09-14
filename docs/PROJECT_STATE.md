@@ -1,5 +1,11 @@
 # Project state
 
+## Current snapshot — 2026-09-14 Built-in drum separation (Windows)
+
+Desktop CAPTURE carries a built-in drum separator: the current source is rendered and passed through a bundled HT-Demucs FT drums-specialist ONNX export (StemSplitio, fp16 weights, 166 MB, commit-pinned URL plus SHA-256 verification at build time) executed by ONNX Runtime Java on CPU. Host DSP (44.1 kHz windowed-sinc resample, 343980-sample segments with 25% overlap, linear-fade weighted overlap-add) is pure and unit-tested; a real-model CLI smoke run separated a 10 s stereo fixture into a sane drums WAV. Completion auto-imports the stem into the private library for chopping; progress/cancel surface in the Capture panel. Six-minute job cap. LOCAL_PASS; subjective mix quality on real songs and GPU providers remain unverified.
+
+## Previous snapshot
+
 ## Current snapshot — 2026-09-13 Search and add audio
 
 Product `98073b6b965ac5b8a774fe18c494deb0f4d11529`. The normal import/search screen searches Spotify metadata and shows an Add action. Add runs the existing matching YouTube download and validated private-library publication; metadata is not presented as downloaded audio. During an active import, selections queue (100 max) and run afterward. Search results never overwrite liked tracks. Existing automatic favorites, deduplication and cancellation are retained. Windows UI uses 検索 / 追加; Android's existing UI is unchanged.

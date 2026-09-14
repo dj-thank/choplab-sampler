@@ -24,6 +24,7 @@ dependencies {
     implementation("org.jetbrains.compose.material3:material3:1.9.0")
     implementation("net.java.dev.jna:jna:5.19.1")
     implementation("net.java.dev.jna:jna-platform:5.19.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
     testImplementation(kotlin("test"))
 }
 
@@ -81,11 +82,17 @@ val prepareMediaTools by tasks.registering(Exec::class) {
     commandLine("python", "scripts/prepare_media_tools.py", "--out", "work/media-tools")
 }
 
+val prepareSeparatorModel by tasks.registering(Exec::class) {
+    onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
+    workingDir(rootProject.projectDir)
+    commandLine("python", "scripts/prepare_separator_model.py", "--out", "work/separator-models")
+}
+
 val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
 require(windowsPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
 
 tasks.register<Exec>("packageWindows") {
-    dependsOn(tasks.installDist, prepareMediaTools)
+    dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
     onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
 
     val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
@@ -130,6 +137,10 @@ tasks.named("packageWindows") {
             from(rootProject.file("work/media-tools"))
             into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/tools"))
         }
+        copy {
+            from(rootProject.file("work/separator-models"))
+            into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/models"))
+        }
     }
 }
 
@@ -143,4 +154,14 @@ tasks.register<JavaExec>("sourceImport") {
     providers.gradleProperty("sourceLibrary").orNull?.let { args("--library",it) }
     providers.gradleProperty("sourceYoutube").orNull?.let { args("--youtube",it) }
     providers.gradleProperty("sourceExport").orNull?.let { args("--export",it) }
+}
+
+tasks.register<JavaExec>("separateDrums") {
+    dependsOn(tasks.classes)
+    classpath=sourceSets["main"].runtimeClasspath
+    mainClass.set("com.choplab.desktop.separation.SeparateDrumsCliKt")
+    workingDir(rootProject.projectDir)
+    providers.gradleProperty("separateInput").orNull?.let { args("--input",it) }
+    providers.gradleProperty("separateOutput").orNull?.let { args("--output",it) }
+    providers.gradleProperty("separateModels").orNull?.let { args("--models",it) }
 }

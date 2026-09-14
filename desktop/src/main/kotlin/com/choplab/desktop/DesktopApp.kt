@@ -30,6 +30,7 @@ import com.choplab.desktop.audio.JavaSoundWavPlayer
 import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.WindowsAudioDiagnostics
 import com.choplab.sampler.model.PendingSourceCommand
+import com.choplab.sampler.model.DrumSeparationPhase
 import com.choplab.sampler.model.RecordingSession
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.redoRequestEnabled
@@ -272,11 +273,21 @@ fun main(args: Array<String>) = application {
             sourceHub.consumed(id);sourceHubVisible=false
         }
         LaunchedEffect(sourceState.pendingUseId) { sourceState.pendingUseId?.let(::useLibrary) }
+        val separation = state.drumSeparation
+        LaunchedEffect(separation?.phase, separation?.resultPath) {
+            if (separation?.phase == DrumSeparationPhase.DONE && separation.resultPath != null) {
+                val stem = controller.consumeDrumSeparationResult()
+                if (stem != null) sourceHub.importFiles(listOf(stem))
+                controller.discardDrumSeparationWork()
+            }
+        }
         ChopLabTheme {
             OtohiroiDeck(
                 state = state,
                 onImportAudio = { openAudioSource(SourceSection.LIBRARY) },
                 onReplaceAudio = { openAudioSource(SourceSection.LIBRARY, replaceProduction = true) },
+                onSeparateDrums = controller::separateDrumsFromCurrentSource,
+                onCancelDrumSeparation = controller::cancelDrumSeparation,
                 onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
                 onToggleVocalRecording = controller::toggleVocalRecording,
                 onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,

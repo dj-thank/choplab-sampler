@@ -363,6 +363,47 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun drumSeparationRequiresLoadedSourceAndBundledModel() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        try {
+            controller.separateDrumsFromCurrentSource()
+            assertEquals("先に素材を入れてください", controller.state.value.statusMessage)
+            assertNull(controller.state.value.drumSeparation)
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun drumSeparationWithoutModelExplainsTheAppImageRequirement() {
+        val directory = Files.createTempDirectory("choplab-separation-guard").toFile()
+        val emptyModels = Files.createTempDirectory("choplab-no-models").toFile()
+        val source = directory.resolve("song.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(4_800) { 1000 })
+        }
+        System.setProperty("choplab.separatorModels", emptyModels.absolutePath)
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        try {
+            controller.loadWav(source)
+            awaitCondition { controller.state.value.currentAudio?.name == "song.wav" }
+            controller.separateDrumsFromCurrentSource()
+            assertEquals(
+                "分離モデルがありません。ChopLabのアプリ一式を使用してください",
+                controller.state.value.statusMessage,
+            )
+            assertNull(controller.state.value.drumSeparation)
+        } finally {
+            System.clearProperty("choplab.separatorModels")
+            controller.close()
+            directory.deleteRecursively()
+            emptyModels.deleteRecursively()
+        }
+    }
+
+    @Test
     fun padScratchLayersOverTheBeatAndRestartsOnlyTheScratchedOwner() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null)
