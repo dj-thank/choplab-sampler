@@ -19,7 +19,11 @@ data class RecoveredProjectState(
 class AtomicProjectStore(
     private val directory: File,
     private val maxResidentPcmBytes: Long = AudioResourceLimits.MAX_MOBILE_PROJECT_PCM_BYTES,
+    private val readArchive: (File, Long) -> SamplerUiState = { file, limit ->
+        file.inputStream().buffered().use { ProjectArchiveCodec.read(it, limit) }
+    },
 ) {
+    private val directoryLock = directoryLocks.computeIfAbsent(directory.canonicalPath) { Any() }
     init {
         require(maxResidentPcmBytes in 1L..ProjectLimits.MAX_TOTAL_PCM_BYTES) {
             "自動保存プロジェクト読込メモリ上限が不正です"
@@ -36,7 +40,7 @@ class AtomicProjectStore(
     private var newestCommittedRevision = Long.MIN_VALUE
 
     @Synchronized
-    fun save(state: SamplerUiState) {
+    fun save(state: SamplerUiState): Unit = synchronized(directoryLock) {
         newestCommittedRevision = maxOf(newestCommittedRevision, newestRevisionOnDisk())
         val nextRevision = if (newestCommittedRevision == Long.MAX_VALUE) {
             Long.MAX_VALUE
@@ -48,7 +52,7 @@ class AtomicProjectStore(
 
     /** Returns false without touching disk when a newer project revision is already committed. */
     @Synchronized
-    fun save(state: SamplerUiState, revision: Long): Boolean {
+    fun save(state: SamplerUiState, revision: Long): Boolean = synchronized(directoryLock) {
         require(directory.exists() || directory.mkdirs()) { "自動保存フォルダーを作成できません" }
         newestCommittedRevision = maxOf(newestCommittedRevision, newestRevisionOnDisk())
         if (revision <= newestCommittedRevision) return false
@@ -89,23 +93,23 @@ class AtomicProjectStore(
     fun load(): SamplerUiState? = loadWithRevision()?.state
 
     @Synchronized
-    fun loadWithRevision(): RecoveredProjectState? {
+    fun loadWithRevision(): RecoveredProjectState? = synchronized(directoryLock) {
         val candidates = generations().filter { it.archive.isFile }
         if (candidates.isEmpty()) return null
         var firstFailure: Throwable? = null
-        val decoded = candidates.mapNotNull { generation ->
+        val ranked = candidates.mapNotNull { generation ->
             runCatching {
                 val revision = readVerifiedRevision(generation)
-                val state = generation.archive.inputStream().buffered().use { input ->
-                    ProjectArchiveCodec.read(input, maxResidentPcmBytes)
-                }
-                DecodedGeneration(state, revision, generation.priority)
+                generation to revision
             }.onFailure { if (firstFailure == null) firstFailure = it }.getOrNull()
+        }.sortedWith(compareByDescending<Pair<Generation, Long?>> { it.second ?: Long.MIN_VALUE }
+            .thenByDescending { it.first.priority })
+        // Only retain one decoded project's PCM. Older generations are fallbacks, not previews.
+        for ((generation, revision) in ranked) {
+            val state = runCatching { readArchive(generation.archive, maxResidentPcmBytes) }
+                .onFailure { if (firstFailure == null) firstFailure = it }.getOrNull()
+            if (state != null) return RecoveredProjectState(state, revision)
         }
-        decoded.maxWithOrNull(
-            compareBy<DecodedGeneration> { it.revision ?: Long.MIN_VALUE }
-                .thenBy { it.priority },
-        )?.let { return RecoveredProjectState(it.state, it.revision) }
         throw IllegalStateException("自動保存プロジェクトを復元できません", firstFailure)
     }
 
@@ -208,9 +212,8 @@ class AtomicProjectStore(
     }
 
     private data class Generation(val archive: File, val metadata: File, val priority: Int)
-    private data class DecodedGeneration(
-        val state: SamplerUiState,
-        val revision: Long?,
-        val priority: Int,
-    )
+    private companion object {
+        // Recreated Activities can overlap the previous writer's final commit.
+        val directoryLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+    }
 }

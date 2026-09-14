@@ -28,15 +28,27 @@ fun replaceSourceAudio(
 )
 
 /** A library source is an addition to the current Production, not a project reset. */
-fun attachLibrarySource(state: SamplerUiState, audio: PcmAudio): SamplerUiState =
-    prepareDefaultMelodyChopDestination(stopAllPlaybackState(state).copy(
+fun attachLibrarySource(
+    state: SamplerUiState,
+    audio: PcmAudio,
+    maxPcmBytes: Long = Long.MAX_VALUE,
+): SamplerUiState {
+    val audioBytes = (listOf(audio) + state.pads.mapNotNull { it.audio })
+        .distinctBy { it.id }.sumOf { it.samples.size.toLong() * 2L }
+    require(audioBytes <= maxPcmBytes) {
+        "保存できる音声容量を超えます。音源を短くするか、不要なPADを外してから追加してください"
+    }
+    return prepareDefaultMelodyChopDestination(stopAllPlaybackState(state).copy(
         currentAudio = audio,
         rangeStartFrame = 0,
         rangeEndFrame = audio.frameCount,
+        sliceMarkers = emptyList(),
+        activeSliceIndex = null,
         isLoading = false,
         sourcePlayheadFrame = 0,
         statusMessage = "${audio.name} を追加しました。今のPADとビートは保持しています",
     ))
+}
 
 fun pendingSourceCommandAfterStopRequest(appliedPlaying: Boolean): PendingSourceCommand =
     if (appliedPlaying) PendingSourceCommand.STOP else PendingSourceCommand.NONE
