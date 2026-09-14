@@ -249,12 +249,13 @@ fun main(args: Array<String>) = application {
             }
             Menu("連携") {
                 Item("音源を追加…", onClick = { openAudioSource(SourceSection.LIBRARY) })
-                Item("Spotifyのお気に入りから追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
-                Item("曲を検索して追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
-                Item("YouTubeから追加…", onClick = { openAudioSource(SourceSection.YOUTUBE) })
                 Item("PCのファイルから追加…", onClick = ::pickSourceFiles)
                 Separator()
-                Item("コネクトパネル…", onClick = { spotifyPanelVisible = true })
+                Item("Spotifyで曲を検索して追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
+                Item("Spotifyのお気に入りから追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
+                Item("Spotify コネクトパネル…", onClick = { spotifyPanelVisible = true })
+                Separator()
+                Item("YouTubeから追加…", onClick = { openAudioSource(SourceSection.YOUTUBE) })
             }
             Menu("診断") {
                 Item("Windows 音声エンドポイント", onClick = audioDiagnostics::run)
@@ -270,7 +271,7 @@ fun main(args: Array<String>) = application {
         ChopLabTheme {
             OtohiroiDeck(
                 state = state,
-                onImportAudio = { openAudioSource(SourceSection.SPOTIFY) },
+                onImportAudio = { openAudioSource(SourceSection.LIBRARY) },
                 onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
                 onToggleVocalRecording = controller::toggleVocalRecording,
                 onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
@@ -305,7 +306,7 @@ fun main(args: Array<String>) = application {
                     onOpen={link->java.awt.Desktop.getDesktop().browse(java.net.URI(link))},
                     automaticSync=true,onLibrary={sourceHub.section(SourceSection.LIBRARY)},
                 )},
-                spotifyLabel="検索",
+                spotifyLabel="Spotify",
             )
         }
 
