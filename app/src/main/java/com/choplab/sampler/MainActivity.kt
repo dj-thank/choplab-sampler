@@ -48,13 +48,16 @@ class MainActivity : ComponentActivity() {
                 val importState by sourceViewModel.hub.state.collectAsStateWithLifecycle()
                 val spotifyState by sourceViewModel.spotify.state.collectAsStateWithLifecycle()
                 val sourceVisible by sourceViewModel.visible.collectAsStateWithLifecycle()
+                var pendingSourceReplace by rememberSaveable { mutableStateOf(false) }
                 val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
                     if(uris.isNotEmpty()) sourceViewModel.importUris(uris)
                 }
                 fun useLibrary(id:String) {
                     if(!externalDocumentActionsEnabled(samplerViewModel.uiState.value)) return
                     val item=sourceViewModel.hub.state.value.library.firstOrNull { it.id==id }?:return
-                    samplerViewModel.addLibrarySource(android.net.Uri.fromFile(sourceViewModel.hub.file(id)),item.title)
+                    if(pendingSourceReplace) samplerViewModel.replaceLibrarySource(android.net.Uri.fromFile(sourceViewModel.hub.file(id)),item.title)
+                    else samplerViewModel.addLibrarySource(android.net.Uri.fromFile(sourceViewModel.hub.file(id)),item.title)
+                    pendingSourceReplace=false
                     sourceViewModel.hub.consumed(id);sourceViewModel.used()
                 }
                 LaunchedEffect(importState.pendingUseId) { importState.pendingUseId?.let(::useLibrary) }
@@ -160,6 +163,7 @@ class MainActivity : ComponentActivity() {
                 SamplerScreen(
                     state = state,
                     onImportAudio = { sourceViewModel.show() },
+                    onReplaceAudio = { pendingSourceReplace=true; sourceViewModel.show() },
                     onToggleMicrophoneRecording = {
                         if (state.microphoneRecording) {
                             samplerViewModel.stopMicrophoneRecording()
@@ -212,7 +216,7 @@ class MainActivity : ComponentActivity() {
                     onSection=sourceViewModel.hub::section,onQuery=sourceViewModel.hub::query,onSearch=sourceViewModel.hub::search,
                     onDownload=sourceViewModel.hub::download,
                     onPickFiles={importLauncher.launch(arrayOf("audio/*","video/mp4","video/webm","application/zip","application/octet-stream"))},
-                    onUse=::useLibrary,onCancel=sourceViewModel.hub::cancel,onClose=sourceViewModel::hide,
+                    onUse=::useLibrary,onCancel=sourceViewModel.hub::cancel,onClose={pendingSourceReplace=false;sourceViewModel.hide()},
                     spotifyContent={SpotifySourcePicker(spotifyState,importState.busy,SourceImportViewModel.REDIRECT_URI,
                         sourceViewModel.spotify::login,sourceViewModel.spotify::disconnect,sourceViewModel.spotify::loadMore,
                         sourceViewModel.hub::importFavorite,{link->startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(link)))})},

@@ -6,6 +6,7 @@ import com.choplab.desktop.audio.DesktopLoopSessionStartupException
 import com.choplab.desktop.audio.DesktopPreparedLoopSession
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopStartedLoopSession
+import com.choplab.desktop.audio.ScratchVoicePlayer
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
@@ -320,6 +321,117 @@ class DesktopSamplerControllerTest {
             assertTrue(controller.state.value.statusMessage.startsWith("スクラッチ後のビート再開失敗"))
         } finally {
             controller.close()
+        }
+    }
+
+    @Test
+    fun replaceLibrarySourceDropsChopsAndBeatsWhileAddKeepsThem() {
+        val directory = Files.createTempDirectory("choplab-replace-source").toFile()
+        val first = directory.resolve("first.wav")
+        val second = directory.resolve("second.wav")
+        val third = directory.resolve("third.wav")
+        listOf(first, second, third).forEach { file ->
+            WavFileWriter(file, sampleRate = 48_000, channelCount = 1).use { writer ->
+                writer.writePcm16(ShortArray(48_000) { index -> (index % 251).toShort() })
+            }
+        }
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        try {
+            controller.loadWav(first)
+            awaitCondition { controller.state.value.currentAudio?.name == "first.wav" }
+            controller.createQuickSketch()
+            assertTrue(controller.state.value.pads.take(8).all(PadModel::isAssigned))
+            assertTrue(controller.state.value.activeSteps.isNotEmpty())
+            assertTrue(controller.state.value.sliceMarkers.isNotEmpty())
+
+            controller.addLibrarySource(second, "second.wav")
+            awaitCondition { controller.state.value.currentAudio?.name == "second.wav" }
+            assertTrue(controller.state.value.pads.take(8).all(PadModel::isAssigned))
+            assertTrue(controller.state.value.activeSteps.isNotEmpty())
+
+            controller.replaceLibrarySource(third, "third.wav")
+            awaitCondition { controller.state.value.currentAudio?.name == "third.wav" }
+            assertTrue(controller.state.value.pads.take(SamplerConfig.PADS_PER_BANK).none(PadModel::isAssigned))
+            assertTrue(controller.state.value.sliceMarkers.isEmpty())
+            assertTrue(controller.state.value.activeSteps.none { it / SamplerConfig.STEP_COUNT < SamplerConfig.PADS_PER_BANK })
+            assertNull(controller.state.value.loopingPadIndex)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun padScratchLayersOverTheBeatAndRestartsOnlyTheScratchedOwner() {
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        controller.scratch = FakeScratchPlayer()
+        try {
+            val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loop)
+            controller.toggleBeatLoopControl()
+            controller.toggleTransport()
+            awaitCondition { engine.triggered.any { it.first.globalIndex != loop } }
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+            val ownerStarts = engine.triggered.count { it.first.globalIndex == loop }
+
+            controller.beginScratch()
+            assertEquals(loop, controller.state.value.scratchingPadIndex)
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+            assertTrue(loop in engine.stoppedPads)
+
+            controller.endScratch()
+            assertNull(controller.state.value.scratchingPadIndex)
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+            assertEquals(ownerStarts + 1, engine.triggered.count { it.first.globalIndex == loop })
+        } finally {
+            controller.close()
+        }
+    }
+
+    @Test
+    fun sourceScratchKeepsLoopsAndTransportWhilePausingOnlyTheSong() {
+        val directory = Files.createTempDirectory("choplab-source-scratch").toFile()
+        val source = directory.resolve("song.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(48_000) { index -> (index % 251).toShort() })
+        }
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        controller.scratch = FakeScratchPlayer()
+        try {
+            controller.loadWav(source)
+            awaitCondition { controller.state.value.currentAudio?.name == "song.wav" }
+            val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+            controller.selectPad(loop)
+            controller.toggleBeatLoopControl()
+            controller.toggleTransport()
+            awaitCondition { engine.triggered.any { it.first.globalIndex != loop } }
+
+            controller.beginSourceScratch()
+            assertTrue(controller.state.value.sourceScratchActive)
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+            controller.endScratch()
+            assertFalse(controller.state.value.sourceScratchActive)
+            assertTrue(controller.state.value.transportPlaying)
+            assertEquals(loop, controller.state.value.loopingPadIndex)
+
+            controller.stopAllSounds()
+            controller.playSourceFrom(0)
+            assertTrue(controller.state.value.sourcePlaying)
+            controller.beginSourceScratch()
+            assertTrue(controller.state.value.sourceScratchActive)
+            assertFalse(controller.state.value.sourcePlaying)
+            controller.endScratch()
+            assertFalse(controller.state.value.sourceScratchActive)
+        } finally {
+            controller.close()
+            directory.deleteRecursively()
         }
     }
 
@@ -3388,6 +3500,31 @@ class DesktopSamplerControllerTest {
     }
 
     private fun awaitThreadWaiting(thread: Thread) = awaitCondition { thread.state == Thread.State.WAITING }
+
+    private class FakeScratchPlayer : ScratchVoicePlayer {
+        override var currentFrame: Int = -1
+        var starts = 0
+        var stops = 0
+        override fun start(
+            audio: PcmAudio,
+            startFrame: Int,
+            endFrame: Int,
+            initialFrame: Int,
+            pitchSemitones: Float,
+            tone: Float,
+            gain: Float,
+            reverse: Boolean,
+        ) {
+            starts++
+            currentFrame = initialFrame
+        }
+        override fun updateSpeed(speed: Float) = Unit
+        override fun stop() {
+            stops++
+            currentFrame = -1
+        }
+        override fun close() = stop()
+    }
 
     private class FakeAudioEngine : DesktopSamplerAudioEngine {
         private val loadEntered = CountDownLatch(1)

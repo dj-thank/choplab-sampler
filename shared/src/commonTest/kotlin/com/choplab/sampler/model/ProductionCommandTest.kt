@@ -330,4 +330,34 @@ class ProductionCommandTest {
         },
         sampleRate = 8_000,
     )
+
+    @Test
+    fun wholeSourceAssignmentFillsAnEmptyPadAndSelectsItForLooping() {
+        val audio = quickSketchAudio(frameCount = 4_800)
+        val state = SamplerUiState(
+            currentAudio = audio,
+            rangeStartFrame = 0,
+            rangeEndFrame = audio.frameCount,
+            selectedPad = 0,
+        )
+
+        val result = reduceProductionCommand(state, ProductionCommand.AssignWholeSourceToPad)
+
+        assertEquals(ProductionMutation.PROJECT, result.mutation)
+        val assigned = result.state.pads[0]
+        assertTrue(assigned.isAssigned)
+        assertEquals(0, assigned.startFrame)
+        assertEquals(audio.frameCount, assigned.endFrame)
+        assertEquals(0, result.state.selectedPad)
+        assertTrue(result.effects.any { it is ProductionEffect.RefreshPad && it.pad.globalIndex == 0 })
+        assertTrue("ループ" in result.state.statusMessage)
+    }
+
+    @Test
+    fun wholeSourceAssignmentWithoutAudioIsSessionFeedback() {
+        val result = reduceProductionCommand(SamplerUiState(), ProductionCommand.AssignWholeSourceToPad)
+
+        assertEquals(ProductionMutation.SESSION, result.mutation)
+        assertTrue(result.state.pads.none(PadModel::isAssigned))
+    }
 }

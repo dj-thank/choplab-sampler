@@ -96,6 +96,7 @@ interface SamplerDeckController {
     fun shiftSelectedPadPattern(offset: Int) = dispatch(ProductionCommand.ShiftSelectedPadPattern(offset))
     fun clearSelectedPattern() = dispatch(ProductionCommand.ClearSelectedPattern)
     fun createQuickSketch() = dispatch(ProductionCommand.CreateQuickSketch)
+    fun assignWholeSourceToPad() = dispatch(ProductionCommand.AssignWholeSourceToPad)
     fun selectPatternVariation(slot: Int) = dispatch(ProductionCommand.SelectPatternVariation(slot))
     fun duplicateSelectedPatternToOther() = dispatch(ProductionCommand.DuplicateSelectedPatternToOther)
     fun toggleSongSectionPattern(sectionIndex: Int) =

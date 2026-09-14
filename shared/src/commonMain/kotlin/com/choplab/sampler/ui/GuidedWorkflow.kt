@@ -241,16 +241,19 @@ internal data class BeatWorkspaceModeSurface(
     val showPadGrid: Boolean,
     val showFocusedStepEditor: Boolean,
     val showDetailedSequencer: Boolean,
+    val showLoopFirst: Boolean = false,
 )
 
 internal enum class BeatWorkspaceMode {
     QUICK,
+    LOOP_FIRST,
     FOCUSED_STEPS,
     FINE_CONTROLS,
 }
 
 internal enum class BeatWorkspaceAction {
     SHOW_QUICK,
+    SHOW_LOOP_FIRST,
     SHOW_FOCUSED_STEPS,
     SHOW_FINE_CONTROLS,
 }
@@ -264,6 +267,7 @@ internal fun transitionBeatWorkspace(
 ): BeatWorkspaceMode {
     val target = when (action) {
         BeatWorkspaceAction.SHOW_QUICK -> BeatWorkspaceMode.QUICK
+        BeatWorkspaceAction.SHOW_LOOP_FIRST -> BeatWorkspaceMode.LOOP_FIRST
         BeatWorkspaceAction.SHOW_FOCUSED_STEPS -> BeatWorkspaceMode.FOCUSED_STEPS
         BeatWorkspaceAction.SHOW_FINE_CONTROLS -> BeatWorkspaceMode.FINE_CONTROLS
     }
@@ -275,6 +279,12 @@ internal fun beatWorkspaceSurface(mode: BeatWorkspaceMode): BeatWorkspaceModeSur
         showPadGrid = true,
         showFocusedStepEditor = false,
         showDetailedSequencer = false,
+    )
+    BeatWorkspaceMode.LOOP_FIRST -> BeatWorkspaceModeSurface(
+        showPadGrid = false,
+        showFocusedStepEditor = false,
+        showDetailedSequencer = false,
+        showLoopFirst = true,
     )
     BeatWorkspaceMode.FOCUSED_STEPS -> BeatWorkspaceModeSurface(
         showPadGrid = false,

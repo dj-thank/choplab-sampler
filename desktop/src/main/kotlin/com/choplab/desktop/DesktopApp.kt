@@ -86,10 +86,12 @@ fun main(args: Array<String>) = application {
     val spotifySync = remember { SpotifyAutoImport(spotify.state,sourceHub,spotify::loadImportLibrary) }
     fun disconnectSpotify() { spotifySync.cancel();spotify.disconnect() }
     var sourceHubVisible by remember { mutableStateOf(false) }
-    fun openAudioSource(section:SourceSection) {
+    var pendingSourceReplace by remember { mutableStateOf(false) }
+    fun openAudioSource(section:SourceSection, replaceProduction:Boolean = false) {
         sourceHub.section(section)
         sourceHub.refresh()
         spotifyPanelVisible=false
+        pendingSourceReplace=replaceProduction
         sourceHubVisible=true
     }
     fun pickSourceFiles() {
@@ -264,7 +266,9 @@ fun main(args: Array<String>) = application {
         fun useLibrary(id:String) {
             if(!externalDocumentActionsEnabled(controller.state.value)) return
             val item=sourceHub.state.value.library.firstOrNull{it.id==id}?:return
-            controller.addLibrarySource(sourceHub.file(id),item.title)
+            if(pendingSourceReplace) controller.replaceLibrarySource(sourceHub.file(id),item.title)
+            else controller.addLibrarySource(sourceHub.file(id),item.title)
+            pendingSourceReplace=false
             sourceHub.consumed(id);sourceHubVisible=false
         }
         LaunchedEffect(sourceState.pendingUseId) { sourceState.pendingUseId?.let(::useLibrary) }
@@ -272,6 +276,7 @@ fun main(args: Array<String>) = application {
             OtohiroiDeck(
                 state = state,
                 onImportAudio = { openAudioSource(SourceSection.LIBRARY) },
+                onReplaceAudio = { openAudioSource(SourceSection.LIBRARY, replaceProduction = true) },
                 onToggleMicrophoneRecording = controller::toggleMicrophoneRecording,
                 onToggleVocalRecording = controller::toggleVocalRecording,
                 onToggleSystemAudioRecording = controller::toggleSystemAudioRecording,
@@ -288,11 +293,17 @@ fun main(args: Array<String>) = application {
                 onUse={id ->
                     if(externalDocumentActionsEnabled(controller.state.value)) {
                         val item=sourceHub.state.value.library.firstOrNull{it.id==id}
-                        if(item!=null) {controller.addLibrarySource(sourceHub.file(id),item.title);sourceHub.consumed(id);sourceHubVisible=false}
+                        if(item!=null) {
+                            if(pendingSourceReplace) controller.replaceLibrarySource(sourceHub.file(id),item.title)
+                            else controller.addLibrarySource(sourceHub.file(id),item.title)
+                            pendingSourceReplace=false
+                            sourceHub.consumed(id);sourceHubVisible=false
+                        }
                     }
                 },onCancel={spotifySync.cancel();sourceHub.cancel()},onClose={
                     sourceHub.dismiss()
                     if(spotifyState.canCancelLogin)spotify.cancelLogin()
+                    pendingSourceReplace=false
                     sourceHubVisible=false
                 },
                 spotifyContent={if(spotify.connected) SpotifySearchPanel(

@@ -14,6 +14,7 @@ sealed interface ProductionCommand {
     data class SelectSliceAt(val frame: Int) : ProductionCommand
     data object ToggleSelectedPadPerformanceMode : ProductionCommand
     data object CreateQuickSketch : ProductionCommand
+    data object AssignWholeSourceToPad : ProductionCommand
     data class FillSelectedPadPattern(val grid: RepeatGrid) : ProductionCommand
     data object ClearSelectedPadPattern : ProductionCommand
     data class ShiftSelectedPadPattern(val offset: Int) : ProductionCommand
@@ -65,6 +66,7 @@ fun reduceProductionCommand(
         is ProductionCommand.SelectSliceAt -> error("Selection is handled before edit admission")
         ProductionCommand.ToggleSelectedPadPerformanceMode -> toggleSelectedPadPerformanceMode(state)
         ProductionCommand.CreateQuickSketch -> createQuickSketch(state)
+        ProductionCommand.AssignWholeSourceToPad -> assignWholeSourceToPad(state)
         is ProductionCommand.FillSelectedPadPattern -> editSelectedPadPattern(state, command)
         ProductionCommand.ClearSelectedPadPattern -> editSelectedPadPattern(state, command)
         is ProductionCommand.ShiftSelectedPadPattern -> editSelectedPadPattern(state, command)
@@ -341,6 +343,31 @@ private fun createQuickSketch(state: SamplerUiState): ProductionCommandResult =
             )
         }
     }
+
+private fun assignWholeSourceToPad(state: SamplerUiState): ProductionCommandResult {
+    val audio = state.currentAudio ?: return sessionFeedback(state, "先に素材を入れてください")
+    if (audio.frameCount < minimumChopFrames(audio.sampleRate)) {
+        return sessionFeedback(state, "素材が短すぎます")
+    }
+    val assignment = assignRangesToPads(
+        state,
+        listOf(SliceRange(0, audio.frameCount)),
+        "元曲全体をPADへ割り当てました",
+    )
+    if (assignment.changedPads.isEmpty()) {
+        return ProductionCommandResult(state = assignment.state, mutation = ProductionMutation.SESSION)
+    }
+    val assigned = assignment.changedPads.last()
+    return ProductionCommandResult(
+        state = assignment.state.copy(
+            selectedBank = assigned.bankIndex,
+            selectedPad = assigned.globalIndex,
+            statusMessage = "元曲全体を割り当てました。ループで重ねられます",
+        ),
+        mutation = ProductionMutation.PROJECT,
+        effects = assignment.changedPads.map(ProductionEffect::RefreshPad),
+    )
+}
 
 private sealed interface QuickSketchEvaluation {
     data class Ready(val ranges: List<SliceRange>) : QuickSketchEvaluation

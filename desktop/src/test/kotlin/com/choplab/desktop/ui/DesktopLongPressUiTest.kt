@@ -215,6 +215,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.startPadLoop(0)
                 fixture.mousePress("PAD 02 割り当て済み", 700)
                 fixture.mousePress("この音を回してビートへ", 40)
+                fixture.mousePress("かんたんループ", 40)
                 assertEquals(0, fixture.controller.state.value.loopingPadIndex)
                 assertEquals(PadPlayMode.LOOP, fixture.controller.state.value.pads[1].playMode)
                 assertTrue(fixture.controller.state.value.transportPlaying)
@@ -249,6 +250,7 @@ class DesktopLongPressUiTest {
             val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 520, fontScale = 1.3f)
             try {
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.reveal("選択音をループ", 48f)
                 fixture.mousePress("選択音をループ", 40)
                 assertEquals(0, fixture.controller.state.value.loopingPadIndex)
@@ -271,6 +273,7 @@ class DesktopLongPressUiTest {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.mousePress("音を選ぶ A-02", 40)
                 assertEquals(null, fixture.controller.state.value.loopingPadIndex)
                 assertTrue(fixture.audio.loopRequests.isEmpty())
@@ -399,6 +402,7 @@ class DesktopLongPressUiTest {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.mousePress("ドラムを足す", 40)
                 fixture.mousePress("Bに音色をセット", 40)
                 fixture.controller.toggleStep(0)
@@ -437,6 +441,7 @@ class DesktopLongPressUiTest {
             val fixture = DeckFixture.create(coroutineContext)
             try {
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.mousePress("音を選ぶ A-02", 40)
                 fixture.mousePress("選択音をループ", 40)
                 fixture.controller.toggleTransport()
@@ -489,6 +494,7 @@ class DesktopLongPressUiTest {
                 }
                 fixture.capture("audit-chop-loading")
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 for (label in listOf("ドラムを足す", "スクラッチ", "選択音をループ", "S 始まり", "E 終わり")) {
                     assertTrue(fixture.nodeWithDescription(label).config.contains(SemanticsProperties.Disabled), label)
                 }
@@ -520,6 +526,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.toggleStep(4)
                 fixture.controller.selectPlayablePad(0)
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.mousePress("ドラムを足す", 40)
                 fixture.mousePress("SOUNDS", 40)
                 fixture.mousePress("配置を消す", 40)
@@ -544,6 +551,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.toggleStep(4)
                 fixture.controller.selectPatternVariation(0)
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.mousePress("配置・曲構成", 40)
                 fixture.mousePress("曲にする", 40)
                 val originalB = fixture.controller.state.value.patternArrangement.storedStepsBySlot[1]
@@ -592,6 +600,7 @@ class DesktopLongPressUiTest {
                 fixture.controller.selectPlayablePad(0)
                 fixture.controller.toggleStep(0)
                 fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
                 fixture.reveal("ドラムを足す")
                 fixture.mousePress("ドラムを足す", 40)
                 fixture.capture("pattern-layer-compact-open")

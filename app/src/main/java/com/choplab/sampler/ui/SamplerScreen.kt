@@ -8,6 +8,7 @@ import com.choplab.sampler.model.SamplerUiState
 fun SamplerScreen(
     state: SamplerUiState,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleVocalRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -19,6 +20,7 @@ fun SamplerScreen(
     OtohiroiDeck(
         state = state,
         onImportAudio = onImportAudio,
+        onReplaceAudio = onReplaceAudio,
         onToggleMicrophoneRecording = onToggleMicrophoneRecording,
         onToggleVocalRecording = onToggleVocalRecording,
         onToggleSystemAudioRecording = onToggleSystemAudioRecording,

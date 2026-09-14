@@ -181,6 +181,7 @@ fun WaveformEditor(
     compactViewportControls: Boolean = false,
     showTimeReadout: Boolean = true,
     showInteractionHint: Boolean = true,
+    tapAuditionsAudio: Boolean = false,
     maximumZoom: Float = 32f,
     zoomFocusFrame: Int? = null,
     viewportResetKey: Any? = null,
@@ -518,7 +519,9 @@ fun WaveformEditor(
 
             if (showInteractionHint) {
                 Text(
-                    text = if (manualChopEnabled) "波形をタップ: チョップ追加" else "波形をタップ: スライス選択",
+                    text = if (manualChopEnabled) "波形をタップ: チョップ追加"
+                    else if (tapAuditionsAudio) "波形をタップ: その場を試聴"
+                    else "波形をタップ: スライス選択",
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(8.dp)
@@ -574,6 +577,21 @@ fun WaveformEditor(
                 valueRange = 0f..1f,
                 enabled = zoom > 1.01f,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(40.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                ViewportControlButton(
+                    label = "全体表示に戻す",
+                    description = "全体表示に戻す",
+                    enabled = zoom > 1.01f || scroll != 0f,
+                    onClick = {
+                        zoom = 1f
+                        scroll = 0f
+                    },
+                    modifier = Modifier.width(140.dp),
+                )
+            }
         } else if (compactViewportControls) {
             Row(
                 modifier = Modifier
@@ -581,6 +599,16 @@ fun WaveformEditor(
                     .height(48.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                ViewportControlButton(
+                    label = "全体",
+                    description = "全体表示に戻す",
+                    enabled = zoom > 1.01f || scroll != 0f,
+                    onClick = {
+                        zoom = 1f
+                        scroll = 0f
+                    },
+                    modifier = Modifier.weight(0.8f),
+                )
                 ViewportControlButton(
                     label = "ZOOM -",
                     description = "波形を縮小",

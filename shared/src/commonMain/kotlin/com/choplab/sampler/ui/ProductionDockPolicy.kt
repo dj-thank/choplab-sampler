@@ -107,7 +107,7 @@ fun beatProductionDockItems(stepsVisible: Boolean, editingEnabled: Boolean = tru
     listOf(
         ProductionDockItem(
             intent = ProductionDockIntent.SHOW_QUICK,
-            label = "クイック\nQUICK",
+            label = "グリッド\nGRID",
             active = !stepsVisible,
         ),
         ProductionDockItem(

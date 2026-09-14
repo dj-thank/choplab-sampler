@@ -119,7 +119,6 @@ import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
 import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
 import com.choplab.sampler.model.selectPlayablePadPage as selectPlayablePadPageState
 import com.choplab.sampler.model.selectSourceRangeForScratch
-import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourcePlaybackAppliedStatusMessage
@@ -194,6 +193,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private var scratchIdleJob: Job? = null
     private var projectLaunchRevision = 0L
     private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
+    private var scratchPausedLoopOwner: Int? = null
     private val projectOperations = ProjectOperationEpoch()
     private val microphoneSourceCapture = SourceCaptureOperation(projectOperations)
     private val systemSourceCapture = SourceCaptureOperation(projectOperations)
@@ -404,6 +404,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun clearScratchRuntime() {
         scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleJob?.cancel()
         scratchIdleJob = null
     }
@@ -426,6 +427,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         loadAudio(uri, projectOperations.begin(), preserveProduction=true, title=title)
+    }
+
+    /** REPLACE SOURCE entries (CHOP coach, CAPTURE import): new song drops old chops and beats. */
+    fun replaceLibrarySource(uri: Uri, title: String) {
+        if (mutableUiState.value.isLoading || mutableUiState.value.recordingSession.isActive) {
+            setStatus("現在の処理や録音を終えてから素材を入れ替えてください")
+            return
+        }
+        loadAudio(uri, projectOperations.begin(), preserveProduction=false, title=title)
     }
 
     private fun loadAudio(
@@ -792,21 +802,25 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (!preparePlaybackStart()) return
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: the beat keeps flowing underneath. Only a previous scratch
+        // voice is replaced, plus the loop voice of the scratched pad itself so the
+        // same region does not double while the dial moves.
+        clearScratchRuntime()
+        engine.endScratch()
+        val loopsOwner = state.loopingPadIndex == padIndex
+        if (loopsOwner) engine.stopPad(padIndex)
+        scratchPausedLoopOwner = padIndex.takeIf { loopsOwner }
         val startFrame = state.loopPlayheadFrame.takeIf { it in pad.startFrame until pad.endFrame }
             ?: pad.startFrame
         engine.beginScratch(padIndex, startFrame)
         mutableUiState.update {
             it.copy(
-                loopingPadIndex = null,
-                loopPlayheadFrame = -1,
                 scratchingPadIndex = padIndex,
                 scratchPlayheadFrame = startFrame,
                 sourceScratchActive = false,
                 scratchSpeed = 0f,
-                scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                statusMessage = "指を左右へ動かしてスクラッチ",
+                scratchReturnAvailable = false,
+                statusMessage = "ビートに重ねてスクラッチ中",
             )
         }
     }
@@ -820,20 +834,24 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (!preparePlaybackStart()) return
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: loops and the pattern keep flowing. Only the source song
+        // voice itself is paused so the scratched range does not double underneath.
+        clearScratchRuntime()
+        engine.endScratch()
+        val sourceWasPlaying = state.sourcePlaying
+        if (sourceWasPlaying) engine.stopSource()
         engine.beginSourceScratch(audio, range.startFrame, range.endFrame)
         mutableUiState.update { current ->
             current.copy(
+                sourcePlaying = false,
                 pendingSourceCommand = pendingSourceCommandAfterStopRequest(current.sourcePlaying),
-                loopingPadIndex = null,
-                loopPlayheadFrame = -1,
                 scratchingPadIndex = null,
                 scratchPlayheadFrame = range.startFrame,
                 sourceScratchActive = true,
                 scratchSpeed = 0f,
-                scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                statusMessage = "選んだ元曲の範囲をスクラッチ中",
+                scratchReturnAvailable = false,
+                statusMessage = if (sourceWasPlaying) "元曲を止めてスクラッチ中。離したら再生ボタンで再開できます"
+                else "ビートに重ねて元曲をスクラッチ中",
             )
         }
     }
@@ -890,10 +908,23 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         val target = scratchReturnTarget
+        restartScratchPausedLoopOwner()
         clearScratchRuntime()
         if (!resumeAfterScratch(target)) {
             playbackInterruptionCoordinator.endPlaybackSession()
         }
+    }
+
+    /** Restarts only the loop voice paused for a layered pad scratch, if it still owns the loop. */
+    private fun restartScratchPausedLoopOwner() {
+        val owner = scratchPausedLoopOwner
+        scratchPausedLoopOwner = null
+        if (owner == null) return
+        val current = mutableUiState.value
+        if (current.loopingPadIndex != owner) return
+        val pad = current.pads.getOrNull(owner)
+        if (pad?.isAssigned != true) return
+        runCatching { engine.setPadLoopLayer(pad, true) }
     }
 
     fun startSystemAudioCapture(resultCode: Int, resultData: Intent) {

@@ -223,6 +223,7 @@ fun scratchAccessibilityActions(
 fun OtohiroiDeck(
     state: SamplerUiState,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleVocalRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -329,6 +330,7 @@ fun OtohiroiDeck(
                                 state = state,
                                 metrics = metrics,
                                 onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
                                 onOpenProject = onOpenProject,
                                 onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                                 onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -368,6 +370,7 @@ fun OtohiroiDeck(
                                     state = state,
                                     metrics = metrics,
                                     onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
                                     onOpenDetails = {
                                         padPageName = PadEditorPage.PARAM.name
                                         showPadDetails = true
@@ -470,6 +473,7 @@ private fun ChopStageWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenDetails: () -> Unit,
     onOpenTrim: (Int) -> Unit,
     onContinueToBeat: () -> Unit,
@@ -480,6 +484,7 @@ private fun ChopStageWorkspace(
         state = state,
         metrics = metrics,
         onImportAudio = onImportAudio,
+        onReplaceAudio = onReplaceAudio,
         onOpenDetails = onOpenDetails,
         onOpenTrim = onOpenTrim,
         onContinueToBeat = onContinueToBeat,
@@ -493,6 +498,7 @@ private fun PerformanceWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenDetails: () -> Unit,
     onOpenTrim: (Int) -> Unit,
     onContinueToBeat: () -> Unit,
@@ -513,6 +519,7 @@ private fun PerformanceWorkspace(
             presentation = presentation,
             sourcePhase = sourcePhase,
             onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
             onOpenDetails = onOpenDetails,
             onOpenTrim = onOpenTrim,
             onContinueToBeat = onContinueToBeat,
@@ -534,13 +541,14 @@ private fun PerformanceWorkspace(
             presentation = presentation,
             gap = gap,
             onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
         )
         SourceEditorWaveform(
             state = state,
             viewModel = viewModel,
             condensed = true,
             allowVerticalDragPassThrough = metrics.performanceWorkspaceNeedsScroll,
-            waveformTapOverride = viewModel::playSourceFrom,
+            auditionOnTapWhenChopIdle = true,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (metrics.density == DeckDensity.COMPACT) 58.dp else 78.dp),
@@ -603,6 +611,7 @@ private fun LandscapePerformanceWorkspace(
     presentation: ChopSessionPresentation,
     sourcePhase: SourceUiPhase,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenDetails: () -> Unit,
     onOpenTrim: (Int) -> Unit,
     onContinueToBeat: () -> Unit,
@@ -623,12 +632,13 @@ private fun LandscapePerformanceWorkspace(
                 presentation = presentation,
                 gap = gap,
                 onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
             )
             SourceEditorWaveform(
                 state = state,
                 viewModel = viewModel,
                 condensed = true,
-                waveformTapOverride = viewModel::playSourceFrom,
+                auditionOnTapWhenChopIdle = true,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             ChopSourceControlRow(
@@ -692,6 +702,7 @@ private fun ChopCoachRow(
     presentation: ChopSessionPresentation,
     gap: Dp,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -704,7 +715,7 @@ private fun ChopCoachRow(
         NewSourceActionButton(
             state = state,
             label = "素材を入れ替える\nREPLACE SOURCE",
-            onConfirm = onImportAudio,
+            onConfirm = onReplaceAudio,
             enabled = externalDocumentActionsEnabled(state),
             modifier = Modifier.width(104.dp).fillMaxHeight(),
         )
@@ -729,6 +740,14 @@ private fun ChopSourceControlRow(
             enabled = externalDocumentActionsEnabled(state) && state.currentAudio != null && presentation.primaryEnabled,
             active = presentation.captureMode,
             modifier = Modifier.weight(1f).fillMaxHeight(),
+            compact = true,
+        )
+        MachineButton(
+            label = if (state.loopingPadIndex == state.selectedPad) "ループ停止\nSTOP" else "選択音ループ\nLOOP",
+            onClick = viewModel::toggleBeatLoopControl,
+            enabled = externalDocumentActionsEnabled(state) && state.beatLoopControlEnabled,
+            active = state.loopingPadIndex == state.selectedPad,
+            modifier = Modifier.width(76.dp).fillMaxHeight(),
             compact = true,
         )
         MachineButton(
@@ -1088,6 +1107,7 @@ private fun CaptureWorkspace(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -1103,6 +1123,7 @@ private fun CaptureWorkspace(
             state = state,
             metrics = metrics,
             onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
             onOpenProject = onOpenProject,
             onToggleMicrophoneRecording = onToggleMicrophoneRecording,
             onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -1137,6 +1158,7 @@ private fun CaptureWorkspace(
                 CaptureChoicePanel(
                     state = state,
                     onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
                     onOpenProject = onOpenProject,
                     onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                     onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -1164,6 +1186,7 @@ private fun CaptureWorkspace(
             CaptureChoicePanel(
                 state = state,
                 onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
                 onOpenProject = onOpenProject,
                 onToggleMicrophoneRecording = onToggleMicrophoneRecording,
                 onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -1202,6 +1225,7 @@ private fun FocusedCaptureEntry(
     state: SamplerUiState,
     metrics: DeckLayoutMetrics,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -1232,6 +1256,7 @@ private fun FocusedCaptureEntry(
             systemAudioControl = systemAudioControl,
             gap = metrics.gapDp.dp,
             onImportAudio = onImportAudio,
+            onReplaceAudio = onReplaceAudio,
             onOpenProject = onOpenProject,
             onToggleMicrophoneRecording = onToggleMicrophoneRecording,
             onToggleSystemAudioRecording = onToggleSystemAudioRecording,
@@ -1274,7 +1299,7 @@ private fun FocusedCaptureEntry(
                 NewSourceActionButton(
                     state = state,
                     label = actionCopy.loadAudioLabel,
-                    onConfirm = onImportAudio,
+                    onConfirm = onReplaceAudio,
                     enabled = inputPolicy.fileEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -1401,6 +1426,7 @@ private fun WideFocusedCaptureEntry(
     systemAudioControl: RecordingControlPresentation,
     gap: Dp,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -1441,7 +1467,7 @@ private fun WideFocusedCaptureEntry(
                         NewSourceActionButton(
                             state = state,
                             label = actionCopy.loadAudioLabel,
-                            onConfirm = onImportAudio,
+                            onConfirm = onReplaceAudio,
                             enabled = inputPolicy.fileEnabled,
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                             compact = false,
@@ -1545,6 +1571,7 @@ private fun CaptureNextRow(
 private fun CaptureChoicePanel(
     state: SamplerUiState,
     onImportAudio: () -> Unit,
+    onReplaceAudio: () -> Unit = onImportAudio,
     onOpenProject: () -> Unit,
     onToggleMicrophoneRecording: () -> Unit,
     onToggleSystemAudioRecording: () -> Unit,
@@ -1591,7 +1618,7 @@ private fun CaptureChoicePanel(
                 NewSourceActionButton(
                     state = state,
                     label = "曲を読込\nFILE",
-                    onConfirm = onImportAudio,
+                    onConfirm = onReplaceAudio,
                     enabled = inputPolicy.fileEnabled,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -2213,6 +2240,7 @@ private fun LoopFirstBeatWorkspace(
     onDrums: () -> Unit,
     onScratch: () -> Unit,
     onDetails: () -> Unit,
+    onShowGrid: () -> Unit,
 ) {
     val editable = externalDocumentActionsEnabled(state)
     val canStart = com.choplab.sampler.model.playbackStartBlockedReason(state) == null
@@ -2236,6 +2264,14 @@ private fun LoopFirstBeatWorkspace(
                 onSelect = viewModel::selectPlayablePad,
                 modifier = Modifier.fillMaxWidth().height(
                     ((state.pads.count { it.bankIndex == state.selectedBank && it.isAssigned } + 1) / 2 * 92).coerceIn(86, 184).dp),
+            )
+            MachineButton(
+                label = "元曲全体を選び重ねる",
+                contentLabel = "元曲全体をPADへ割り当て",
+                onClick = viewModel::assignWholeSourceToPad,
+                enabled = editable && state.currentAudio != null,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                compact = true,
             )
             if (selected != null) {
                 Text("2  選んだ音をループ", color = DeckInk, fontFamily = DeckFont, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -2320,6 +2356,7 @@ private fun LoopFirstBeatWorkspace(
             }
             Row(Modifier.fillMaxWidth().height(48.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 MachineButton("スクラッチ", onScratch, enabled = editable, modifier = Modifier.weight(1f).fillMaxHeight())
+                MachineButton("グリッド編集", onShowGrid, modifier = Modifier.weight(1f).fillMaxHeight())
                 MachineButton("配置・曲構成", onDetails, modifier = Modifier.weight(1f).fillMaxHeight())
             }
         }
@@ -2346,11 +2383,12 @@ private fun SequenceWorkspace(
     val navigateWorkspace: (BeatWorkspaceAction) -> Unit = { action ->
         workspaceModeName = transitionBeatWorkspace(workspaceMode, action).name
     }
-    if (workspaceMode == BeatWorkspaceMode.QUICK) {
+    if (surface.showLoopFirst) {
         LoopFirstBeatWorkspace(state, viewModel, onRechop,
             onDrums = { onOpenLayerStudio(LayerStudioPage.DRUMS) },
             onScratch = { onOpenLayerStudio(LayerStudioPage.SCRATCH) },
-            onDetails = { navigateWorkspace(BeatWorkspaceAction.SHOW_FINE_CONTROLS) })
+            onDetails = { navigateWorkspace(BeatWorkspaceAction.SHOW_FINE_CONTROLS) },
+            onShowGrid = { navigateWorkspace(BeatWorkspaceAction.SHOW_QUICK) })
         return
     }
     val scrollState = rememberScrollState()
@@ -2363,6 +2401,7 @@ private fun SequenceWorkspace(
             onOpenLayerStudio = onOpenLayerStudio,
             onOpenArrangementStudio = onOpenArrangementStudio,
             onShowFocusedSteps = { navigateWorkspace(BeatWorkspaceAction.SHOW_FOCUSED_STEPS) },
+            onShowLoopFirst = { navigateWorkspace(BeatWorkspaceAction.SHOW_LOOP_FIRST) },
             viewModel = viewModel,
         )
         return
@@ -2404,7 +2443,7 @@ private fun SequenceWorkspace(
                     activeSteps = state.activeSteps,
                     currentStep = state.currentStep,
                     selectedPad = state.selectedPad,
-                    onSelectPad = viewModel::selectPlayablePad,
+                    onSelectPad = viewModel::selectPad,
                     onToggleStep = viewModel::toggleStep,
                     modifier = Modifier.weight(1.38f),
                 )
@@ -2591,6 +2630,7 @@ private fun BeatChopSurface(
     onOpenLayerStudio: (LayerStudioPage) -> Unit,
     onOpenArrangementStudio: () -> Unit,
     onShowFocusedSteps: () -> Unit,
+    onShowLoopFirst: () -> Unit,
     viewModel: SamplerDeckController,
 ) {
     val gap = metrics.gapDp.dp
@@ -2615,7 +2655,7 @@ private fun BeatChopSurface(
             onCaptureWithOwnership = viewModel::capturePadWithOwnership,
             onTriggerWithOwnership = viewModel::triggerPadWithOwnership,
             onReleaseIfOwned = viewModel::releasePadIfOwned,
-            onSelect = viewModel::selectPlayablePad,
+            onSelect = viewModel::selectPad,
             onLongPress = onOpenPadTrim,
             deferPadActionUntilTap = metrics.beatWorkspaceNeedsScroll,
             gap = gap,
@@ -2643,10 +2683,21 @@ private fun BeatChopSurface(
                 modifier = Modifier.weight(1.05f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(gap),
             ) {
-                BeginnerCoachBar(
-                    text = arrangeQuickGuidance(state.selectedPadModel(), compact = true),
+                Row(
                     modifier = Modifier.fillMaxWidth().height(24.dp),
-                )
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    BeginnerCoachBar(
+                        text = arrangeQuickGuidance(state.selectedPadModel(), compact = true),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    MachineButton(
+                        label = "かんたんループ",
+                        onClick = onShowLoopFirst,
+                        modifier = Modifier.width(120.dp).fillMaxHeight(),
+                        compact = true,
+                    )
+                }
                 timeline(Modifier.fillMaxWidth().weight(1f))
                 SelectedPadQuickEditor(
                     state = state,
@@ -2697,8 +2748,7 @@ private fun BeatChopSurface(
             },
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            BeginnerCoachBar(
-                text = arrangeQuickGuidance(state.selectedPadModel(), compact = metrics.largeText),
+            Row(
                 modifier = Modifier.fillMaxWidth().height(
                     when {
                         metrics.largeText -> 48.dp
@@ -2706,8 +2756,20 @@ private fun BeatChopSurface(
                         else -> 28.dp
                     },
                 ),
-                multiLine = metrics.largeText,
-            )
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                BeginnerCoachBar(
+                    text = arrangeQuickGuidance(state.selectedPadModel(), compact = metrics.largeText),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    multiLine = metrics.largeText,
+                )
+                MachineButton(
+                    label = "かんたんループ",
+                    onClick = onShowLoopFirst,
+                    modifier = Modifier.width(120.dp).fillMaxHeight(),
+                    compact = true,
+                )
+            }
             timeline(
                 if (metrics.beatWorkspaceNeedsScroll) {
                     Modifier.fillMaxWidth().height(metrics.waveformHeightDp.dp)
@@ -3527,7 +3589,7 @@ private fun SampleLayerStudio(
             BeatSoundRail(
                 pads = state.visiblePads(),
                 selectedPad = state.selectedPad,
-                onSelectPad = viewModel::selectPlayablePad,
+                onSelectPad = viewModel::selectPad,
                 onPreviewPad = viewModel::triggerPad,
                 modifier = Modifier.height(soundRailHeight),
             )
@@ -3889,11 +3951,11 @@ private fun ScratchStudio(
         BeginnerCoachBar(
             text = when {
                 target == ScratchTarget.PAD && returnsToBeat ->
-                    "擦る間はビートを一時停止。円盤を離すと全体の再生へ戻ります"
+                    "ビートに重ねて擦ります。核の音なら離すとループへ戻ります"
                 target == ScratchTarget.PAD ->
-                    "選択PADを押さえ、円盤を左右へ擦ります"
+                    "選択PADを擦ります。円盤を左右へ動かしてください"
                 returnsToBeat ->
-                    "擦る間はビートを一時停止。元曲の範囲を擦り、離すと再生へ戻ります"
+                    "ビートに重ねて元曲の範囲を擦ります"
                 else ->
                     "元曲の範囲を選び、円盤を左右へ擦ります"
             },
@@ -3940,7 +4002,7 @@ private fun ScratchStudio(
             BeatSoundRail(
                 pads = state.visiblePads(),
                 selectedPad = state.selectedPad,
-                onSelectPad = viewModel::selectPlayablePad,
+                onSelectPad = viewModel::selectPad,
                 onPreviewPad = viewModel::triggerPad,
                 modifier = Modifier.fillMaxWidth().height(64.dp),
             )
@@ -4297,6 +4359,7 @@ private fun SourceEditorWaveform(
     selectSliceOnly: Boolean = false,
     allowVerticalDragPassThrough: Boolean = false,
     waveformTapOverride: ((Int) -> Unit)? = null,
+    auditionOnTapWhenChopIdle: Boolean = false,
 ) {
     val audio = state.currentAudio
     MachinePanel(modifier = modifier) {
@@ -4326,7 +4389,10 @@ private fun SourceEditorWaveform(
                 onWaveformTap = { frame ->
                     if (waveformTapOverride != null) waveformTapOverride(frame)
                     else if (manualChopEnabled) viewModel.addSliceMarker(frame)
-                    else viewModel.selectSliceAt(frame)
+                    else {
+                        viewModel.selectSliceAt(frame)
+                        if (auditionOnTapWhenChopIdle) viewModel.playSourceFrom(frame)
+                    }
                 },
                 playheadFrame = state.sourcePlayheadFrame,
                 fillCanvas = true,
@@ -4334,6 +4400,7 @@ private fun SourceEditorWaveform(
                 compactViewportControls = !condensed,
                 showTimeReadout = !condensed,
                 showInteractionHint = !condensed || selectSliceOnly,
+                tapAuditionsAudio = auditionOnTapWhenChopIdle && !selectSliceOnly,
                 allowVerticalDragPassThrough = allowVerticalDragPassThrough,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -4973,6 +5040,18 @@ private fun SourceWaveform(
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        if ((zoom > 1.01f || scroll != 0f) && visibleAudio != null) {
+            MachineButton(
+                label = "全体",
+                contentLabel = "全体表示に戻す",
+                onClick = {
+                    zoom = 1f
+                    scroll = 0f
+                },
+                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).width(64.dp).height(36.dp),
+                compact = true,
             )
         }
     }

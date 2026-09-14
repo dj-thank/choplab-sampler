@@ -10,6 +10,7 @@ import com.choplab.desktop.audio.DesktopLoopSessionStartupException
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
+import com.choplab.desktop.audio.ScratchVoicePlayer
 import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
@@ -83,7 +84,6 @@ import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.inferProjectLaunchTarget
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.scratchReturnTargetIsValid
-import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
 import com.choplab.sampler.ui.PadTriggerOwnership
 import com.choplab.sampler.ui.DocumentAction
@@ -140,7 +140,7 @@ class DesktopSamplerController(
         startWorker = { worker -> transportWorkerStarter(worker) },
         onStep = ::onTransportStep,
     )
-    private val scratch = DesktopScratchPlayer()
+    internal var scratch: ScratchVoicePlayer = DesktopScratchPlayer()
     private val playbackMonitor = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "ChopLab-Windows-Playback-Monitor").apply { isDaemon = true }
     }.also { executor ->
@@ -172,6 +172,7 @@ class DesktopSamplerController(
     private var pendingSourcePitchResumeFrame: Int? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
+    @Volatile private var scratchPausedLoopOwner: Int? = null
     private val projectLaunchRevision = AtomicLong(0L)
     val state: StateFlow<SamplerUiState> = mutableState.asStateFlow()
 
@@ -188,6 +189,12 @@ class DesktopSamplerController(
     fun addLibrarySource(file: File, title: String) {
         if (rejectEditRequest()) return
         loadAudioFile(file, preserveProduction = true, title = title)
+    }
+
+    /** REPLACE SOURCE entries (CHOP coach, CAPTURE import): new song drops old chops and beats. */
+    fun replaceLibrarySource(file: File, title: String) {
+        if (rejectEditRequest()) return
+        loadAudioFile(file, preserveProduction = false, title = title)
     }
 
     private fun loadAudioFile(file: File, preserveProduction: Boolean, title: String?) {
@@ -495,6 +502,7 @@ class DesktopSamplerController(
     override fun stopAllSounds() {
         clearPendingSourcePitchResume()
         scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         transport.stop()
@@ -757,8 +765,16 @@ class DesktopSamplerController(
             ?: state.pads.firstOrNull(PadModel::isAssigned)?.globalIndex
         val pad = index?.let(state.pads::get)
         if (pad?.isAssigned != true) return setStatus("スクラッチするビートPADを選んでください")
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: the beat keeps flowing underneath. Only a previous scratch
+        // voice is replaced, plus the loop voice of the scratched pad itself so the
+        // same region does not double while the dial moves.
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
+        scratch.stop()
+        val loopsOwner = state.loopingPadIndex == index
+        if (loopsOwner) runCatching { player.stopPad(index) }
+        scratchPausedLoopOwner = index.takeIf { loopsOwner }
+        scratchReturnTarget = ScratchReturnTarget.None
         runCatching {
             scratch.start(
                 audio = requireNotNull(pad.audio),
@@ -773,20 +789,16 @@ class DesktopSamplerController(
         }.onSuccess {
             mutableState.update {
                 it.copy(
-                    transportPlaying = false,
-                    currentStep = -1,
-                    loopingPadIndex = null,
-                    loopPlayheadFrame = -1,
                     scratchingPadIndex = index,
                     scratchPlayheadFrame = pad.startFrame,
                     sourceScratchActive = false,
                     scratchSpeed = 0f,
-                    scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                    statusMessage = "指を左右へ動かしてスクラッチ",
+                    scratchReturnAvailable = false,
+                    statusMessage = "ビートに重ねてスクラッチ中",
                 )
             }
         }.onFailure { error ->
-            scratchReturnTarget = ScratchReturnTarget.None
+            restartScratchPausedLoopOwner()
             setStatus("スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}")
         }
     }
@@ -796,28 +808,30 @@ class DesktopSamplerController(
         val audio = state.currentAudio
         val range = state.sourceScratchRange()
         if (audio == null || range == null) return setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: loops and the pattern keep flowing. Only the source song
+        // voice itself is paused so the scratched range does not double underneath.
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
+        scratch.stop()
+        val sourceWasPlaying = state.sourcePlaying
+        if (sourceWasPlaying) toggleSource(false)
+        scratchPausedLoopOwner = null
+        scratchReturnTarget = ScratchReturnTarget.None
         runCatching {
             scratch.start(audio, range.startFrame, range.endFrame, range.startFrame, state.masterPitchSemitones)
         }.onSuccess {
             mutableState.update {
                 it.copy(
-                    transportPlaying = false,
-                    currentStep = -1,
-                    sourcePlaying = false,
-                    loopingPadIndex = null,
-                    loopPlayheadFrame = -1,
                     scratchingPadIndex = null,
                     scratchPlayheadFrame = range.startFrame,
                     sourceScratchActive = true,
                     scratchSpeed = 0f,
-                    scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                    statusMessage = "選んだ元曲の範囲をスクラッチ中",
+                    scratchReturnAvailable = false,
+                    statusMessage = if (sourceWasPlaying) "元曲を止めてスクラッチ中。離したら再生ボタンで再開できます"
+                    else "ビートに重ねて元曲をスクラッチ中",
                 )
             }
         }.onFailure { error ->
-            scratchReturnTarget = ScratchReturnTarget.None
             setStatus("元曲スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}")
         }
     }
@@ -851,6 +865,7 @@ class DesktopSamplerController(
         val active = mutableState.value.let { it.scratchingPadIndex != null || it.sourceScratchActive }
         if (!active) {
             scratchReturnTarget = ScratchReturnTarget.None
+            scratchPausedLoopOwner = null
             scratchIdleFuture?.cancel(false)
             scratchIdleFuture = null
             return
@@ -870,7 +885,20 @@ class DesktopSamplerController(
         }
         val target = scratchReturnTarget
         scratchReturnTarget = ScratchReturnTarget.None
+        restartScratchPausedLoopOwner()
         resumeAfterScratch(target)
+    }
+
+    /** Restarts only the loop voice paused for a layered pad scratch, if it still owns the loop. */
+    private fun restartScratchPausedLoopOwner() {
+        val owner = scratchPausedLoopOwner
+        scratchPausedLoopOwner = null
+        if (owner == null) return
+        val current = mutableState.value
+        if (current.loopingPadIndex != owner) return
+        val pad = current.pads.getOrNull(owner)
+        if (pad?.isAssigned != true) return
+        runCatching { triggerPlayerPad(pad, forceLoop = true) }
     }
 
     private fun toggleSource(shouldPlay: Boolean) = synchronized(sourcePitchResumeLock) {
@@ -1177,6 +1205,7 @@ class DesktopSamplerController(
             }
 
             scratchReturnTarget = ScratchReturnTarget.None
+            scratchPausedLoopOwner = null
             scratchIdleFuture?.cancel(false)
             scratchIdleFuture = null
             transport.requestStop()
@@ -1417,6 +1446,7 @@ class DesktopSamplerController(
         transport.stop()
         scratch.stop()
         scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         player.stopAll()
@@ -1889,6 +1919,7 @@ class DesktopSamplerController(
     ) {
         clearPendingSourcePitchResume()
         if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         transport.stop()
