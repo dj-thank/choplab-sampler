@@ -18,7 +18,8 @@ fun main(args: Array<String>) {
     }
     val input = File(parsed["input"] ?: error("Missing --input song.wav"))
     val output = File(parsed["output"] ?: "drums.wav")
-    val models = File(parsed["models"] ?: "work/separator-models")
+    val models = parsed["models"]?.let(::File) ?: defaultSeparatorModelsDir()
+    println("models: ${models.absolutePath}")
     val latch = CountDownLatch(1)
     val failure = AtomicReference<String?>(null)
     DrumSeparationService(models, DesktopAudioDecoder::decode).use { service ->

@@ -12,7 +12,7 @@ import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
 import com.choplab.desktop.audio.ScratchVoicePlayer
 import com.choplab.desktop.separation.DrumSeparationService
-import com.choplab.desktop.separation.SeparatorSpec
+import com.choplab.desktop.separation.defaultSeparatorModelsDir
 import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
@@ -208,20 +208,10 @@ class DesktopSamplerController(
 
     private fun separationService(): DrumSeparationService = synchronized(this) {
         drumSeparationService ?: DrumSeparationService(
-            separatorModelsDirectory(),
+            defaultSeparatorModelsDir(),
             DesktopAudioDecoder::decode,
         ).also { drumSeparationService = it }
     }
-
-    private fun separatorModelsDirectory(): File = listOfNotNull(
-        System.getProperty("choplab.separatorModels")?.let(::File),
-        System.getenv("CHOPLAB_SEPARATOR_MODELS")?.let(::File),
-        File(System.getProperty("java.home")).parentFile?.resolve("models"),
-        File("work/separator-models"),
-        File("../work/separator-models"),
-    ).firstOrNull { it.resolve(SeparatorSpec.MODEL_FILE).isFile }
-        ?: File(System.getProperty("java.home")).parentFile?.resolve("models")
-        ?: File("work/separator-models")
 
     /** CAPTURE "separate drums": renders the current source and extracts its drum stem. */
     fun separateDrumsFromCurrentSource() {
