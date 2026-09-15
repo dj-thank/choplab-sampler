@@ -11,6 +11,17 @@
 See [UI receipt](ui/UI_QUALITY_20260911.md) and [selected plan](../plans/active/ui-quality-20260911.md). No audio-source/PCM/schema/release change. Existing features and their revision-bound evidence remain in the linked historical matrix; this table only records the current UI delta.
 
 
+## Android対応・統合 — 2026-09-16（0.18.0 / 30、未merge）
+
+| 要望 | 実装 / 確認層 | 備考 |
+|---|---:|---|
+| Spotifyお気に入りの自動取り込み（Android） | LOCAL_PASS（JVM単体）+ エミュレータ表示確認 | Windowsと同じ同期コーディネーター（SpotifyFavoritesAutoImport）を使用。ログイン後に最大2000曲を読み、未取り込みの曲だけ対応するYouTube音源から追加。取り込み画面を閉じても継続。実Spotifyログインと実取得は未確認 |
+| Spotifyで検索して追加（Android） | LOCAL_PASS（JVM単体） | Android用セッションにメタデータ検索を追加し、Windowsと共通の接続後パネル（SpotifySearchPanel）を表示。一時的な失敗では接続を保ち、認証切れのときだけ切断 |
+| ドラム分離（Android） | エミュレータE2E（4GB）+ Windowsとの出力比較 | CAPTUREの「ドラムを分離」。初回にcommit固定のモデル（約166MB）を取得しSHA-256で検証。20秒の検証音を60秒で分離、ピークPSS 699MB、ステムは自動でライブラリへ。Windowsのステムと相関1.000000（1LSB差が0.05%）。Pixel実機での分離は未実施 |
+| ドラム分離の共通化とストリーミング化 | LOCAL_PASS + 実モデル比較 | DSP・パイプライン・サービスをjvm-coreへ移し、1区間分の蓄積だけでoverlap-add。20秒の検証音でWindowsの出力は0.17.2と完全一致（SHA-256同一） |
+| 省メモリ推論と端末メモリ確認（Android） | LOCAL測定 + 単体テスト | 最適化ありのONNX Runtimeは1区間でピーク4.7GB、グラフ最適化なしで1.0GB（出力差は最大1.6e-7）。3.5GiB未満の端末とシステムの低メモリ状態では、モデル取得前に理由を表示して中止 |
+| 版数 0.18.0 (30) | LOCAL_PASS + 端末更新 | Windows・Android・iOSの版数を更新。Pixel 9aへデータを保ったまま上書き更新 |
+
 ## ローカル制作ライン — 2026-09-05〜09-14（未merge、2026-09-16統合）
 
 | 要望 | 実装 / 確認層 | 備考 |

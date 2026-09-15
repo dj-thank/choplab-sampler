@@ -29,9 +29,25 @@ Target `LOCAL_PASS` for the merged product plus install and launch observation o
 
 ## Progress
 
-- [ ] Conflict resolution committed
-- [ ] Full local gate: shared, jvm-core, desktop and app tests, lint, APK, Windows package, `scripts/validate_project.sh`
-- [ ] Android Spotify automatic import and search
-- [ ] Android drum separation
-- [ ] Windows install and launch check
-- [ ] Android install and launch check
+- [x] Conflict resolution committed
+- [x] Full local gate: shared, jvm-core, desktop and app tests, lint, APK, Windows package, `scripts/validate_project.sh`
+- [x] Android Spotify automatic import and search
+- [x] Android drum separation
+- [x] Windows install and launch check
+- [x] Android install and launch check
+
+## Results
+
+- Commits: merge `358830b` (tree `9629f891`), Android port `2d79322` (tree `e4a02904`), low-memory separation `7e70ebd`, symbolic output shape fix `ef50a62`, Android Spotify wording `e9d3d5e`. Inputs: local line `8a279bc` (tree `d3dc4a49`) and PR #97 head `348d341` (tree `ee887d47`).
+- Local gate after the port: shared Desktop 157, shared Android host 157, JVM core 195, Desktop 223, Desktop H13 UI 38, Desktop UI quality 4, Android unit 337 (1 skipped); failures and errors 0. Android debug APK assembled; Windows app image packaged (ProductVersion 0.18.0, 417 files, 993,270,833 bytes).
+- Android lint: 0 errors, 12 warnings. The only new warning notes that onnxruntime-android 1.30.0 exists; 1.29.0 is pinned to match the desktop runtime API.
+- Python policy tests: 214 run, 1 skipped. Two audio-picker contract tests fail on the pre-merge local line as well, since `6f7bc7c` (2026-09-05) replaced the audio-typed pickers with the library hub; this integration did not change them.
+- Final gate on `ef50a62`: `scripts/validate_project.sh` PASS (public surface 618 candidates, no credential, signing or audio candidates; Android XML, wrapper SHA-256 and UTF-8 policy OK); Android unit 337 (1 skipped), JVM core 195, Desktop 223, Desktop H13 UI 38; failures and errors 0; Android lint 0 errors, 12 warnings.
+- Windows drum separation on a 20 s synthetic fixture with the real model: the 0.18.0 streaming pipeline wrote a stem bit-identical to the installed 0.17.2 (SHA-256 prefix `04e3d179`), 14 s versus 15 s.
+- Windows install: `%LOCALAPPDATA%\Programs\ChopLab\0.18.0-f723c7d1e162` (app-image digest `f723c7d1…9668`) from `2d79322`. Desktop, Start Menu and PAD shortcuts launch it through the signed JDK javaw (Smart App Control blocks the unsigned exe); 0.17.2 and shortcut backups remain. The shortcut launch opened a responding window in 2 s with an isolated profile; the user's autosave was untouched. The later commit changes only Android code paths.
+- Memory probe (Windows x64, ONNX Runtime 1.29, one 7.8 s segment): default graph optimization peaks at 4.7 GB for 1, 2, 4 or 8 threads; basic optimization also 4.7 GB; no graph optimization 1.0 GB (JVM baseline 0.15 GB) with output within 1.6e-7 of the optimized run. Disabling only ConstantFolding crashed ONNX Runtime during session creation and is not used.
+- First Android build on the 4 GB review emulator: picker import worked; the 166 MB model downloaded and verified in about 37 s; session creation with full optimization exhausted guest memory (kernel OOM killer), which led to the low-memory session and the 3.5 GiB guard.
+- Low-memory Android build on the 4 GB review emulator (`ef50a62`, APK SHA-256 `b40f082b…`, 292,313,789 bytes): a 20 s synthetic groove imported through the system file picker; SEPARATE DRUMS finished in 60 s (progress 0 → 27 → 50 → 72 %), peak PSS 699 MB, and the stem was added to the private library as `synthetic-groove-drums`. The pulled Android stem matched the Windows stem from the same input (correlation 1.000000; 916 of 1,764,000 samples differ by 1 LSB). A first low-memory attempt stopped because the unoptimized session declares symbolic output dims; `ef50a62` accepts them while every real output tensor is still checked.
+- Pixel 9a (Android 17 / API 37), data-preserving `adb install -r` after signer checks: 0.17.2 (29) → 0.18.0 (30) at 04:43 with the files fingerprint identical, then the emulator-tested build at 05:09 (installed base.apk SHA-256 `b40f082b…`; all six project files identical; only the `profileInstalled` marker changed). The first launch logged Displayed after 1.4 s; the second ran with an empty crash buffer while the phone was dozing behind the lock screen, so the UI was not visually checked. Drum separation and Spotify login were not run on the phone.
+- Final APK (`e9d3d5e`, SHA-256 `79baa2d0…`) on the 4 GB review emulator: the app's own `choplab://spotify/callback` link opens the Spotify tab with the login button and the automatic-import explanation; the Client ID field is hidden, the stale tap-to-import line is gone, and the crash buffer is empty.
+- Final data-preserving install on the Pixel at 2026-09-16 05:18:08: installed base.apk SHA-256 `79baa2d0…` matches; 6 project files identical; other changed files: ./profileInstalled; launch Status: ok, LaunchState: UNKNOWN (0), TotalTime: 0; pid 12838; crash buffer empty; phone Dozing.
