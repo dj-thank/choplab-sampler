@@ -61,7 +61,8 @@ class SpotifyImportSession(
     private val http: SpotifyImportHttp = UrlConnectionSpotifyImportHttp(),
     defaultClientId: String = "",
 ) : AutoCloseable {
-    private val mutable=MutableStateFlow(SpotifyImportState(configured=defaultClientId.isNotBlank()))
+    private val mutable=MutableStateFlow(SpotifyImportState(configured=defaultClientId.isNotBlank(),
+        message="Spotifyにログインすると、お気に入りを自動でライブラリに追加します"))
     val state=mutable.asStateFlow()
     private val executor=Executors.newSingleThreadExecutor { Thread(it,"ChopLab-Spotify-Import").apply { isDaemon=true } }
     private val generation=AtomicLong()
@@ -213,7 +214,7 @@ class SpotifyImportSession(
         if(generation.get()!=lease)return
         publish(lease) {
             offset=if(append)offset+50 else 50
-            mutable.update { it.copy(connected=true,busy=false,message="お気に入りをタップすると、対応するYouTube音源を取り込みます",
+            mutable.update { it.copy(connected=true,busy=false,message="ログインしました。お気に入りを確認しています",
                 tracks=if(append)(it.tracks+tracks).distinctBy(SourceTrack::spotifyUrl) else tracks,hasMore=SourceRecipes.spotifyHasNext(response)) }
         }
     }
