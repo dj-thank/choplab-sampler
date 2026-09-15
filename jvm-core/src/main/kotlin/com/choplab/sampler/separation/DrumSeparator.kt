@@ -125,6 +125,10 @@ object DrumSeparatorPipeline {
     }
 }
 
+/** A declared stems output must be rank 4 with four stems; unknown (-1) dimensions are allowed. */
+internal fun declaredStemsShapeAcceptable(shape: LongArray?): Boolean =
+    shape != null && shape.size == 4 && (shape[1] == 4L || shape[1] < 0)
+
 /** ONNX Runtime [ChunkInference] for the drums specialist export (desktop JAR or Android AAR). */
 class OnnxDrumChunkInference(
     modelFile: File,
@@ -157,7 +161,9 @@ class OnnxDrumChunkInference(
             inputShape[2] == SeparatorSpec.SEGMENT_SAMPLES.toLong()
         ) { "モデルの入力形状が想定外です: ${inputShape?.toList()}" }
         val outputShape = (session.outputInfo[SeparatorSpec.OUTPUT_NAME]?.info as? TensorInfo)?.shape
-        check(outputShape != null && outputShape.size == 4 && outputShape[1] == 4L) {
+        // Without graph optimization the declared output dims stay symbolic (-1); infer() still
+        // checks every real output tensor against [1, 4, 2, segment].
+        check(declaredStemsShapeAcceptable(outputShape)) {
             "モデルの出力形状が想定外です: ${outputShape?.toList()}"
         }
     }
