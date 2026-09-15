@@ -129,7 +129,7 @@ object DrumSeparatorPipeline {
 class OnnxDrumChunkInference(
     modelFile: File,
     threads: Int = max(1, Runtime.getRuntime().availableProcessors() - 1),
-    /** Mobile: return activation memory between chunks instead of retaining a peak-sized arena. */
+    /** Mobile: skip graph optimization and memory arenas so one segment peaks near 1 GB instead of 4.7 GB. */
     lowMemory: Boolean = false,
 ) : ChunkInference, AutoCloseable {
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
@@ -139,10 +139,16 @@ class OnnxDrumChunkInference(
         require(modelFile.isFile) { "分離モデルが見つかりません: ${modelFile.absolutePath}" }
         session = OrtSession.SessionOptions().use { options ->
             options.setIntraOpNumThreads(threads)
-            options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             if (lowMemory) {
+                // Graph optimization of this export materializes about 3.6 GB of extra tensors: one
+                // segment peaked at 4.7 GB optimized versus 1.0 GB unoptimized (ONNX Runtime 1.29,
+                // any thread count). Unoptimized output differs only by float rounding (max 1.6e-7).
+                options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT)
                 options.setCPUArenaAllocator(false)
                 options.setMemoryPatternOptimization(false)
+                options.addConfigEntry("session.disable_prepacking", "1")
+            } else {
+                options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             }
             env.createSession(modelFile.absolutePath, options)
         }

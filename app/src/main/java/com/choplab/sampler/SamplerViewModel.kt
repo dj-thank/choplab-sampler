@@ -1,5 +1,6 @@
 package com.choplab.sampler
 
+import android.app.ActivityManager
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -163,6 +164,7 @@ import com.choplab.sampler.model.DrumSeparationPhase
 import com.choplab.sampler.model.DrumSeparationState
 import com.choplab.sampler.separation.DrumSeparationService
 import com.choplab.sampler.separation.OnnxDrumChunkInference
+import com.choplab.sampler.separation.SeparationMemoryPolicy
 import com.choplab.sampler.separation.SeparatorModelStore
 import java.io.File
 import java.util.UUID
@@ -2590,6 +2592,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             setStatus(it)
             return
         }
+        val memory = ActivityManager.MemoryInfo().also {
+            getApplication<Application>().getSystemService(ActivityManager::class.java)?.getMemoryInfo(it)
+        }
+        // One model segment needs several GB; refuse before downloading or allocating.
+        SeparationMemoryPolicy.blockedReason(memory.totalMem, memory.lowMemory)?.let {
+            setStatus(it)
+            return
+        }
         val service = separationService()
         drumSeparationWorkDir?.deleteRecursively()
         val work = File(getApplication<Application>().cacheDir, "separation/${UUID.randomUUID()}")
@@ -2611,9 +2621,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                     if (modelShare > 0f) "分離モデルを取得しています…" else "ドラムを分離しています…",
                 ),
                 statusMessage = if (modelShare > 0f) {
-                    "初回のみ分離モデル（約166MB）を取得してからドラムを分離します"
+                    "初回のみ分離モデル（約166MB）を取得してからドラムを分離します。分離中は他のアプリを閉じると安定します"
                 } else {
-                    "ドラムを分離しています…"
+                    "ドラムを分離しています…（分離中は他のアプリを閉じると安定します）"
                 },
             )
         }
