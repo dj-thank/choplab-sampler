@@ -87,6 +87,7 @@ dependencies {
     implementation(project(":jvm-core"))
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)

@@ -1,5 +1,6 @@
 package com.choplab.desktop.separation
 
+import com.choplab.sampler.separation.*
 import java.util.concurrent.CancellationException
 import kotlin.math.abs
 import kotlin.math.sin

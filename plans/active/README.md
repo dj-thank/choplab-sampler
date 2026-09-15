@@ -15,3 +15,5 @@ It merges the local production line (`8a279bc`) with the unmerged draft PR #92â€
 The local production line's complete registry, through the 2026-09-13 Spotify search selection, remains byte-for-byte in [README_20260914.md](README_20260914.md). The older complete registry remains byte-for-byte in [README_20260903.md](README_20260903.md).
 
 PR89 release hardening and dependency PRs #98â€“#100 remain separate unaccepted work. Historical PR69 and release intentions are not new merge instructions.
+
+Historical constraint: the old registry's "existing PR #69" checkpoint is retained in the archive. It is not a new merge instruction or a second selected plan.

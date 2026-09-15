@@ -35,4 +35,9 @@ data class SpotifyImportState(
     val message: String = "Spotifyにログインすると、お気に入りをタップして取り込めます",
     val tracks: List<SourceTrack> = emptyList(),
     val hasMore: Boolean = false,
+    /** Incremented after each complete liked-track read for automatic import. */
+    val libraryRevision: Long = 0,
+    val searchQuery: String = "",
+    val searchResults: List<SourceTrack> = emptyList(),
+    val searchMessage: String = "",
 )

@@ -1,6 +1,7 @@
 package com.choplab.desktop.separation
 
 import com.choplab.desktop.source.DesktopAudioDecoder
+import com.choplab.sampler.separation.DrumSeparationService
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference

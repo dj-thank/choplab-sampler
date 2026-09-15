@@ -18,6 +18,8 @@ import kotlinx.serialization.json.*
 interface SpotifyImportHttp {
     fun token(form: String): String
     fun favorites(accessToken: String, offset: Int): String
+    /** Official track search (metadata only). */
+    fun search(accessToken: String, query: String): String = throw SpotifyImportHttpError(501)
 }
 class SpotifyImportHttpError(val status: Int): Exception("Spotify HTTP $status")
 class UrlConnectionSpotifyImportHttp : SpotifyImportHttp {
@@ -48,6 +50,8 @@ class UrlConnectionSpotifyImportHttp : SpotifyImportHttp {
     }
     override fun token(form:String)=request("https://accounts.spotify.com/api/token",form=form)
     override fun favorites(accessToken:String,offset:Int)=request("https://api.spotify.com/v1/me/tracks?limit=50&offset=$offset",token=accessToken)
+    override fun search(accessToken:String,query:String)=request(
+        "https://api.spotify.com/v1/search?q=${URLEncoder.encode(query,"UTF-8").replace("+","%20")}&type=track&limit=10",token=accessToken)
 }
 
 /** PKCE browser authentication, memory-only credentials, and official saved-track metadata. */
@@ -122,7 +126,7 @@ class SpotifyImportSession(
         return Tokens(access,obj["refresh_token"]?.jsonPrimitive?.contentOrNull?:oldRefresh,System.currentTimeMillis()+expires*1000-30000)
     }
     private fun accessToken(lease:Long):String {
-        val current=tokens?:error("Login required")
+        val current=tokens?:throw SpotifyImportHttpError(401)
         if(System.currentTimeMillis()<current.expires)return current.access
         val refresh=current.refresh?:throw SpotifyImportHttpError(401)
         val form="client_id=${encoded(clientId)}&grant_type=refresh_token&refresh_token=${encoded(refresh)}"
@@ -136,6 +140,70 @@ class SpotifyImportSession(
         val lease=generation.get();mutable.update{it.copy(busy=true)}
         executor.execute { try { fetch(lease,append=true) } catch(error:Exception){fail(lease,error)} }
     }
+
+    /**
+     * Liked-track metadata for automatic library import, bounded to the private library's
+     * 2000-item limit. A completed read increments [SpotifyImportState.libraryRevision];
+     * a failed read keeps the connection (except for expired authorization) and does not.
+     */
+    fun loadAllFavorites() {
+        val lease=synchronized(lock) {
+            val current=mutable.value
+            if(current.busy || !current.connected || tokens==null)return
+            mutable.update { it.copy(busy=true,message="Spotifyのお気に入りを確認しています") }
+            generation.get()
+        }
+        executor.execute {
+            try {
+                val collected=linkedMapOf<String,SourceTrack>()
+                var pageOffset=0
+                var more:Boolean
+                do {
+                    if(generation.get()!=lease)return@execute
+                    val response=http.favorites(accessToken(lease),pageOffset)
+                    SourceRecipes.parseSpotifyTracks(response).forEach { collected[it.spotifyUrl]=it }
+                    more=SourceRecipes.spotifyHasNext(response)
+                    pageOffset+=FAVORITES_PAGE
+                } while(more && pageOffset<MAX_AUTOMATIC_TRACKS)
+                publish(lease) {
+                    offset=pageOffset
+                    mutable.update { it.copy(busy=false,tracks=collected.values.take(MAX_AUTOMATIC_TRACKS),hasMore=more,
+                        libraryRevision=it.libraryRevision+1,
+                        message=if(more)"最新2000曲を取り込みます。残りは今回の対象外です" else "${collected.size}曲のお気に入りを取り込みます") }
+                }
+            } catch(error:Exception) { failOperation(lease,error) }
+        }
+    }
+
+    fun setSearchQuery(value:String) = mutable.update {
+        val query=value.take(240)
+        if(query==it.searchQuery) it else it.copy(searchQuery=query,searchResults=emptyList(),searchMessage="")
+    }
+
+    /** Spotify metadata search; adding a result imports the matching YouTube source. */
+    fun search() {
+        val query=mutable.value.searchQuery.trim()
+        if(query.isBlank())return
+        val lease=synchronized(lock) {
+            val current=mutable.value
+            if(current.busy || !current.connected || tokens==null)return
+            mutable.update { it.copy(busy=true,searchResults=emptyList(),searchMessage="Spotifyで検索しています") }
+            generation.get()
+        }
+        executor.execute {
+            try {
+                val results=SourceRecipes.parseSpotifySearch(http.search(accessToken(lease),query))
+                publish(lease) {
+                    mutable.update { state ->
+                        if(state.searchQuery.trim()!=query) state.copy(busy=false,searchMessage="")
+                        else state.copy(busy=false,searchResults=results,
+                            searchMessage=if(results.isEmpty())"曲が見つかりませんでした" else "${results.size}曲見つかりました")
+                    }
+                }
+            } catch(error:Exception) { failOperation(lease,error) }
+        }
+    }
+
     private fun fetch(lease:Long,append:Boolean) {
         if(generation.get()!=lease)return
         val token=accessToken(lease)
@@ -150,17 +218,32 @@ class SpotifyImportSession(
         }
     }
 
+    private fun failureMessage(error:Exception)=when((error as? SpotifyImportHttpError)?.status) {
+        401 -> "認証期限が切れました。もう一度ログインしてください"
+        403 -> "Spotifyの開発モードの許可ユーザー・Premium・権限を確認してください"
+        429 -> "Spotifyへのアクセスが集中しています。少し待って再試行してください"
+        else -> "Spotifyに接続できませんでした。設定と接続状態を確認してください"
+    }
+
     private fun fail(lease:Long,error:Exception) {
         if(generation.get()!=lease)return
-        val message=when((error as? SpotifyImportHttpError)?.status) {
-            401 -> "認証期限が切れました。もう一度ログインしてください"
-            403 -> "Spotifyの開発モードの許可ユーザー・Premium・権限を確認してください"
-            429 -> "Spotifyへのアクセスが集中しています。少し待って再試行してください"
-            else -> "Spotifyに接続できませんでした。設定と接続状態を確認してください"
-        }
-        publish(lease) { tokens=null;mutable.update { it.copy(busy=false,connected=false,tracks=emptyList(),message=message) } }
+        val message=failureMessage(error)
+        publish(lease) { tokens=null;mutable.update { it.copy(busy=false,connected=false,tracks=emptyList(),searchResults=emptyList(),message=message) } }
+    }
+
+    /** Authorization failures disconnect; transient failures keep the session for an explicit retry. */
+    private fun failOperation(lease:Long,error:Exception) {
+        if(generation.get()!=lease || error is java.util.concurrent.CancellationException)return
+        if((error as? SpotifyImportHttpError)?.status==401) return fail(lease,error)
+        val message=failureMessage(error)
+        publish(lease) { mutable.update { it.copy(busy=false,message=message,searchMessage=if(it.searchMessage.isNotEmpty())message else "") } }
     }
     fun cancelAuthentication() { generation.incrementAndGet();attempt=null;mutable.update{it.copy(busy=false,message="認証を中止しました")} }
     fun disconnect() = synchronized(lock) { generation.incrementAndGet();attempt=null;tokens=null;offset=0;mutable.value=SpotifyImportState(configured=clientId.isNotEmpty(),message="Spotifyの連携を解除しました") }
     override fun close() { disconnect();executor.shutdownNow() }
+
+    private companion object {
+        const val FAVORITES_PAGE=50
+        const val MAX_AUTOMATIC_TRACKS=2000
+    }
 }

@@ -11,7 +11,7 @@ import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
 import com.choplab.desktop.audio.ScratchVoicePlayer
-import com.choplab.desktop.separation.DrumSeparationService
+import com.choplab.sampler.separation.DrumSeparationService
 import com.choplab.desktop.separation.defaultSeparatorModelsDir
 import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles

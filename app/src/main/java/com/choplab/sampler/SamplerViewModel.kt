@@ -159,6 +159,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.choplab.sampler.model.DrumSeparationPhase
+import com.choplab.sampler.model.DrumSeparationState
+import com.choplab.sampler.separation.DrumSeparationService
+import com.choplab.sampler.separation.OnnxDrumChunkInference
+import com.choplab.sampler.separation.SeparatorModelStore
 import java.io.File
 import java.util.UUID
 import kotlin.math.pow
@@ -2557,8 +2562,122 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         const val STALE_CAPTURE_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
     }
 
+    private val drumSeparationModels = SeparatorModelStore(
+        File(getApplication<Application>().noBackupFilesDir, "separator-models"),
+    )
+    private var drumSeparationService: DrumSeparationService? = null
+    private var drumSeparationWorkDir: File? = null
+
+    private fun separationService(): DrumSeparationService = synchronized(this) {
+        drumSeparationService ?: DrumSeparationService(
+            modelsDir = drumSeparationModels.modelFile.parentFile
+                ?: File(getApplication<Application>().noBackupFilesDir, "separator-models"),
+            decode = { throw IllegalStateException("Android separation reads the in-memory source") },
+            backendFactory = { model ->
+                OnnxDrumChunkInference(model, threads = ANDROID_SEPARATION_THREADS, lowMemory = true)
+            },
+            modelProvider = { progress, cancelled -> drumSeparationModels.ensure(progress, cancelled) },
+            releaseBackendAfterJob = true,
+        ).also { drumSeparationService = it }
+    }
+
+    /** CAPTURE "separate drums": renders nothing new; the current source is separated in memory. */
+    fun separateDrumsFromCurrentSource() {
+        val snapshot = mutableUiState.value
+        val audio = snapshot.currentAudio ?: return setStatus("先に素材を入れてください")
+        if (snapshot.drumSeparation?.phase == DrumSeparationPhase.RUNNING) return
+        com.choplab.sampler.model.projectEditBlockedReason(snapshot)?.let {
+            setStatus(it)
+            return
+        }
+        val service = separationService()
+        drumSeparationWorkDir?.deleteRecursively()
+        val work = File(getApplication<Application>().cacheDir, "separation/${UUID.randomUUID()}")
+        if (!work.mkdirs()) return setStatus("分離の作業領域を作成できませんでした")
+        drumSeparationWorkDir = work
+        val stemName = audio.name.substringBeforeLast('.').take(60)
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "source" } + "-drums.wav"
+        val output = File(work, stemName)
+        val modelShare = if (drumSeparationModels.isInstalled()) 0f else MODEL_DOWNLOAD_PROGRESS_SHARE
+        fun running(progress: Float, message: String) = mutableUiState.update {
+            if (it.drumSeparation?.phase != DrumSeparationPhase.RUNNING) it
+            else it.copy(drumSeparation = DrumSeparationState(DrumSeparationPhase.RUNNING, progress, message))
+        }
+        mutableUiState.update {
+            it.copy(
+                drumSeparation = DrumSeparationState(
+                    DrumSeparationPhase.RUNNING,
+                    0f,
+                    if (modelShare > 0f) "分離モデルを取得しています…" else "ドラムを分離しています…",
+                ),
+                statusMessage = if (modelShare > 0f) {
+                    "初回のみ分離モデル（約166MB）を取得してからドラムを分離します"
+                } else {
+                    "ドラムを分離しています…"
+                },
+            )
+        }
+        val accepted = service.separate(
+            DrumSeparationService.Request(
+                sourceAudio = audio,
+                outputFile = output,
+                onModelProgress = { progress -> running(progress * modelShare, "分離モデルを取得しています…") },
+                onProgress = { progress -> running(modelShare + (1f - modelShare) * progress, "ドラムを分離しています…") },
+                onDone = { file ->
+                    mutableUiState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(
+                                DrumSeparationPhase.DONE, 1f, "ドラム分離が完了しました", file.absolutePath,
+                            ),
+                            statusMessage = "ドラム分離が完了しました。ライブラリへ追加します",
+                        )
+                    }
+                },
+                onError = { message ->
+                    mutableUiState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.FAILED, 0f, message),
+                            statusMessage = "ドラム分離に失敗しました: $message",
+                        )
+                    }
+                },
+                onCancelled = {
+                    mutableUiState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.CANCELLED, 0f, "中止しました"),
+                            statusMessage = "ドラム分離を中止しました",
+                        )
+                    }
+                },
+            ),
+        )
+        if (!accepted) {
+            work.deleteRecursively()
+            mutableUiState.update { it.copy(drumSeparation = null, statusMessage = "分離を実行中です") }
+        }
+    }
+
+    fun cancelDrumSeparation() {
+        drumSeparationService?.cancel()
+    }
+
+    /** Hands the finished stem to the activity for library import; call [discardDrumSeparationWork] after. */
+    fun consumeDrumSeparationResult(): File? {
+        val result = mutableUiState.value.drumSeparation
+        if (result?.phase != DrumSeparationPhase.DONE) return null
+        mutableUiState.update { it.copy(drumSeparation = null) }
+        return result.resultPath?.let(::File)?.takeIf { it.isFile }
+    }
+
+    /** Clears the banner; the stem stays until the library import reads it or the next job starts. */
+    fun discardDrumSeparationWork() {
+        mutableUiState.update { it.copy(drumSeparation = null) }
+    }
+
     override fun onCleared() {
         autosaveWriter.close()
+        runCatching { drumSeparationService?.close() }
+        drumSeparationWorkDir?.let { runCatching { it.deleteRecursively() } }
         runCatching {
             microphoneRecorder.stopAsync { result ->
                 result.onSuccess(captureTempFiles::deleteOwned)
@@ -2573,3 +2692,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         super.onCleared()
     }
 }
+
+/** Tensor G4-class phones: four intra-op threads keep most work off the efficiency cores. */
+private const val ANDROID_SEPARATION_THREADS = 4
+
+/** Share of the separation progress bar used by the one-time model download. */
+private const val MODEL_DOWNLOAD_PROGRESS_SHARE = 0.3f

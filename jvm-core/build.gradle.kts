@@ -9,6 +9,9 @@ dependencies {
     implementation(project(":shared"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // Same ai.onnxruntime API: Windows supplies the desktop JAR, Android the AAR.
+    compileOnly("com.microsoft.onnxruntime:onnxruntime:1.29.0")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
     testImplementation("junit:junit:4.13.2")
 }
 

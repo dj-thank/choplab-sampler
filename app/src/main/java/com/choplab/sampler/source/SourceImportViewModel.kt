@@ -41,15 +41,21 @@ class SourceImportViewModel(application:Application):AndroidViewModel(applicatio
     val spotify=SpotifyImportSession(REDIRECT_URI, { link ->
         application.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }, defaultClientId=com.choplab.sampler.BuildConfig.SPOTIFY_CLIENT_ID)
+    /** Liked tracks import automatically after login; search additions queue behind that import. */
+    val spotifySync=SpotifyFavoritesAutoImport(spotify.state,hub,spotify::loadAllFavorites,
+        isConnected={it.connected},isBusy={it.busy},libraryRevision={it.libraryRevision},libraryTracks={it.tracks})
     private val visibleState=MutableStateFlow(false)
     val visible=visibleState.asStateFlow()
     fun show() { hub.refresh();visibleState.value=true }
     fun hide() {
-        hub.cancel()
+        // Closing the panel keeps an owned Spotify queue running, as on Windows.
+        hub.dismiss()
         if(spotify.state.value.busy && !spotify.state.value.connected) spotify.cancelAuthentication()
         visibleState.value=false
     }
     fun used() { visibleState.value=false }
+    fun disconnectSpotify() { spotifySync.cancel();spotify.disconnect() }
+    fun cancelImport() { spotifySync.cancel();hub.cancel() }
     fun importUris(uris:List<Uri>) {
         val resolver=getApplication<Application>().contentResolver
         hub.importInputs(uris.filter { it.scheme=="content" }.map { uri ->
@@ -77,6 +83,6 @@ class SourceImportViewModel(application:Application):AndroidViewModel(applicatio
             if(file!=null) { show();importUris(listOf(file)) }
         }
     }
-    override fun onCleared() { hub.close();spotify.close() }
+    override fun onCleared() { spotifySync.close();hub.close();spotify.close() }
     companion object { const val REDIRECT_URI="choplab://spotify/callback" }
 }
