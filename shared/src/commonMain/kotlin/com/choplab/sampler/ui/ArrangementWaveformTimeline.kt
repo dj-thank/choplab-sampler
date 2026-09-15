@@ -29,9 +29,7 @@ import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.activeBanksAtStep
 import com.choplab.sampler.model.stepKey
-import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 
 private val TimelineShape = RoundedCornerShape(8.dp)
 private val TimelineFont = FontFamily.Monospace
@@ -47,8 +45,8 @@ fun ArrangementWaveformTimeline(
     loopPlaying: Boolean = false,
 ) {
     val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
-    val peaks = remember(pad.audio?.id, pad.startFrame, pad.endFrame) {
-        buildSlicePeaks(pad)
+    val peaks = remember(pad.audio?.id, pad.audio?.samples, pad.startFrame, pad.endFrame) {
+        buildSliceEnvelope(pad)
     }
     val bankActivityByStep = remember(activeSteps) {
         List(SamplerConfig.STEP_COUNT) { step -> activeSteps.activeBanksAtStep(step) }
@@ -75,12 +73,14 @@ fun ArrangementWaveformTimeline(
     } else {
         null
     }
-    val arrangementDescription = bankActivityByStep.mapIndexedNotNull { step, banks ->
-        if (banks.isEmpty()) null else {
-            val names = banks.joinToString("+") { bank -> ('A'.code + bank).toChar().toString() }
-            "${step + 1}=$names"
-        }
-    }.joinToString("、").ifEmpty { "配置なし" }
+    val arrangementDescription = remember(bankActivityByStep) {
+        bankActivityByStep.mapIndexedNotNull { step, banks ->
+            if (banks.isEmpty()) null else {
+                val names = banks.joinToString("+") { bank -> ('A'.code + bank).toChar().toString() }
+                "${step + 1}=$names"
+            }
+        }.joinToString("、").ifEmpty { "配置なし" }
+    }
     val loopDescription = loopProgress?.let { "ビートループ中 ${(it * 100).toInt()}パーセント。" }.orEmpty()
     val description = "ビート実波形。選択PAD $padLabel。$loopDescription 現在ステップ $stepLabel。" +
         "鳴るBANK $bankText。全配置 $arrangementDescription"
@@ -151,12 +151,12 @@ fun ArrangementWaveformTimeline(
                 )
             }
 
-            peaks.forEachIndexed { index, peak ->
-                val x = timelineLeft + index.toFloat() / max(1, peaks.lastIndex) * timelineWidth
+            for (index in peaks.minimums.indices) {
+                val x = timelineLeft + index.toFloat() / max(1, peaks.minimums.lastIndex) * timelineWidth
                 drawLine(
                     color = DeckGreen,
-                    start = Offset(x, waveCenter - peak.second * waveAmplitude),
-                    end = Offset(x, waveCenter - peak.first * waveAmplitude),
+                    start = Offset(x, waveCenter - peaks.maximums[index] * waveAmplitude),
+                    end = Offset(x, waveCenter - peaks.minimums[index] * waveAmplitude),
                     strokeWidth = 1.1f,
                 )
             }
@@ -233,35 +233,5 @@ fun ArrangementWaveformTimeline(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-    }
-}
-
-private fun buildSlicePeaks(pad: PadModel): List<Pair<Float, Float>> {
-    val audio = pad.audio ?: return emptyList()
-    if (!pad.isAssigned || audio.samples.isEmpty()) return emptyList()
-    val start = pad.startFrame.coerceIn(0, audio.frameCount - 1)
-    val end = pad.endFrame.coerceIn(start + 1, audio.frameCount)
-    val width = min(512, end - start)
-    val framesPerBucket = max(1, (end - start) / width)
-    val rawPeaks = List(width) { bucket ->
-        val from = (start + bucket * framesPerBucket).coerceAtMost(end - 1)
-        val to = (from + framesPerBucket).coerceAtMost(end)
-        val stride = max(1, (to - from) / 32)
-        var minimum = 0f
-        var maximum = 0f
-        var frame = from
-        while (frame < to) {
-            val value = audio.monoSampleAt(frame) / 32_768f
-            if (value < minimum) minimum = value
-            if (value > maximum) maximum = value
-            frame += stride
-        }
-        minimum to maximum
-    }
-    val strongestPeak = rawPeaks.maxOfOrNull { (minimum, maximum) ->
-        max(abs(minimum), abs(maximum))
-    }?.coerceAtLeast(0.05f) ?: 1f
-    return rawPeaks.map { (minimum, maximum) ->
-        minimum / strongestPeak to maximum / strongestPeak
     }
 }

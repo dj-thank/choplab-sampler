@@ -410,7 +410,14 @@ class SamplerEngine(
                 val monitoredLoopPad = currentLoopPadValue.get()
                 val scratchTargetSpeed = normalizeScratchSpeed(Float.fromBits(scratchSpeedBits.get()))
 
-                for (frame in 0 until blockFrames) {
+                val renderFrames = activeRenderFrameCount(
+                    blockFrames = blockFrames,
+                    transportRunning = transportState.running,
+                    sourceActive = sourceVoice.active,
+                    scratchActive = scratchVoice != null,
+                    voices = voices,
+                )
+                for (frame in 0 until renderFrames) {
                     if (transportState.running) processTransportFrame()
 
                     var leftMix = 0f

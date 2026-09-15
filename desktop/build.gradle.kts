@@ -31,7 +31,7 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     // The offscreen input fixture has its own bounded, explicitly headless target.
-    exclude("**/ui/DesktopLongPressUiTest*")
+    exclude("**/ui/DesktopLongPressUiTest*", "**/ui/DesktopUiQualityTest*")
 }
 
 tasks.register<Test>("desktopLongPressUiTest") {
@@ -164,4 +164,31 @@ tasks.register<JavaExec>("separateDrums") {
     providers.gradleProperty("separateInput").orNull?.let { args("--input",it) }
     providers.gradleProperty("separateOutput").orNull?.let { args("--output",it) }
     providers.gradleProperty("separateModels").orNull?.let { args("--models",it) }
+}
+
+// Synthetic, offscreen review of the actual shared UI. No native dialogs or audio.
+tasks.register<Test>("desktopUiQualityTest") {
+    group = "verification"
+    description = "Render representative phone/desktop screens and assert control semantics and bounds"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    filter { includeTestsMatching("com.choplab.desktop.ui.DesktopUiQualityTest") }
+    maxParallelForks = 1
+    outputs.upToDateWhen { false }
+    systemProperty("java.awt.headless", "true")
+    systemProperty("skiko.renderApi", "SOFTWARE")
+    val evidence = layout.buildDirectory.dir("reports/tests/desktopUiQualityTest/evidence")
+    val temporary = layout.buildDirectory.dir("tmp/desktopUiQualityTest")
+    systemProperty("uiReview.evidenceDir", evidence.get().asFile.absolutePath)
+    systemProperty("java.io.tmpdir", temporary.get().asFile.absolutePath)
+    systemProperty("user.home", temporary.get().dir("home").asFile.absolutePath)
+    doFirst {
+        evidence.get().asFile.mkdirs()
+        temporary.get().dir("home").asFile.mkdirs()
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

@@ -18,20 +18,28 @@ class WavFileWriter(
     private val channelCount: Int,
     maximumPcmBytes: Long = MAX_RIFF_PCM_BYTES,
 ) : Closeable {
-    private val randomAccessFile = RandomAccessFile(file, "rw")
+    // Validate before opening a path: invalid settings must not create/truncate a file.
+    private val maximumPcmBytes = validatedPcmLimit(sampleRate, channelCount, maximumPcmBytes)
     private val blockAlign = channelCount * Short.SIZE_BYTES
-    private val maximumPcmBytes = maximumPcmBytes.alignedDown(blockAlign)
+    private val pcmBuffer = ByteArray(8 * 1_024)
+    private val pcmView = ByteBuffer.wrap(pcmBuffer).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+    private val randomAccessFile: RandomAccessFile
     private var pcmBytesWritten = 0L
     private var closed = false
 
     init {
-        require(sampleRate > 0) { "sampleRate must be positive" }
-        require(channelCount in 1..2) { "Only mono and stereo are supported" }
-        require(maximumPcmBytes in blockAlign.toLong()..MAX_RIFF_PCM_BYTES) {
-            "maximumPcmBytes must fit a classic RIFF/WAV file"
+        randomAccessFile = RandomAccessFile(file, "rw")
+        try {
+            randomAccessFile.setLength(0L)
+            writeHeader(dataSize = 0L)
+        } catch (failure: Throwable) {
+            try {
+                randomAccessFile.close()
+            } catch (closeFailure: Throwable) {
+                failure.addSuppressed(closeFailure)
+            }
+            throw failure
         }
-        randomAccessFile.setLength(0L)
-        writeHeader(dataSize = 0L)
     }
 
     @Synchronized
@@ -43,14 +51,16 @@ class WavFileWriter(
         require(byteCountLong <= Int.MAX_VALUE) { "PCM write is too large" }
         ensureWriteFits(byteCountLong)
 
-        val bytes = ByteBuffer.allocate(byteCountLong.toInt())
-            .order(ByteOrder.LITTLE_ENDIAN)
-        for (index in 0 until sampleCount) {
-            bytes.putShort(samples[index])
+        var offset = 0
+        while (offset < sampleCount) {
+            val count = minOf(pcmView.capacity(), sampleCount - offset)
+            pcmView.clear()
+            pcmView.put(samples, offset, count)
+            val bytes = count * Short.SIZE_BYTES
+            randomAccessFile.write(pcmBuffer, 0, bytes)
+            pcmBytesWritten += bytes.toLong()
+            offset += count
         }
-        val array = bytes.array()
-        randomAccessFile.write(array)
-        pcmBytesWritten += array.size.toLong()
     }
 
     @Synchronized
@@ -122,9 +132,18 @@ class WavFileWriter(
         randomAccessFile.write((value ushr 8) and 0xFF)
     }
 
-    private fun Long.alignedDown(alignment: Int): Long = this - this % alignment
-
     companion object {
+        private fun validatedPcmLimit(sampleRate: Int, channelCount: Int, requested: Long): Long {
+            require(sampleRate > 0) { "sampleRate must be positive" }
+            require(channelCount in 1..2) { "Only mono and stereo are supported" }
+            val alignment = channelCount * Short.SIZE_BYTES
+            require(sampleRate.toLong() * alignment <= MAX_UNSIGNED_INT) { "WAV byte rate is too large" }
+            require(requested in alignment.toLong()..MAX_RIFF_PCM_BYTES) {
+                "maximumPcmBytes must fit a classic RIFF/WAV file"
+            }
+            return requested - requested % alignment
+        }
+
         private const val MAX_UNSIGNED_INT = 0xFFFF_FFFFL
         private const val RIFF_HEADER_REMAINDER_BYTES = 36L
 

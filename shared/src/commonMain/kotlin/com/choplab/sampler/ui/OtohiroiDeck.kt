@@ -857,80 +857,61 @@ private fun MachineHeader(
     val playbackActive = state.hasPlaybackActivity()
     val recordingActive = state.hasRecordingActivity()
     val recording = recordingHeaderPresentation(state.recordingSession)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .background(DeckInk, PanelShape)
-            .padding(horizontal = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        StatusLamp(
-            active = playbackActive || recordingActive,
-            alert = recordingActive,
-            contentLabel = recording?.accessibilityLabel,
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "OTOHIROI",
-                color = Color(0xFFFFF1CF),
-                fontFamily = DeckFont,
-                fontWeight = FontWeight.Black,
-                fontSize = if (largeText || showInlineStatus) 10.sp else 14.sp,
-                letterSpacing = if (largeText || showInlineStatus) 1.sp else 1.5.sp,
-                maxLines = 1,
+    BoxWithConstraints(Modifier.fillMaxWidth().height(height)) {
+        val showBankStatus = machineHeaderShowsBankStatus(fontScale) && maxWidth >= 420.dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .background(DeckInk, PanelShape)
+                .padding(horizontal = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            StatusLamp(
+                active = playbackActive || recordingActive,
+                alert = recordingActive,
+                contentLabel = recording?.accessibilityLabel,
             )
-            if (showInlineStatus) {
+            HeaderStatusControl(
+                state = state,
+                stage = stage,
+                largeText = largeText,
+                showInlineStatus = showInlineStatus,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            if (showBankStatus) {
+                val bankRole = bankRoleFor(state.selectedBank)
                 Text(
-                    recording?.statusLabel ?: state.statusMessage,
+                    recording?.statusLabel ?: (if (stage == WorkflowStage.BEAT) {
+                        (state.loopingPadIndex ?: state.configuredLoopPadIndex())?.let { index ->
+                            "ループ ${bankName(index / SamplerConfig.PADS_PER_BANK)}-${"%02d".format(index % SamplerConfig.PADS_PER_BANK + 1)}  ${state.bpm.toInt()} BPM"
+                        }
+                    } else null) ?: "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
                     color = if (recording != null) DeckLamp else DeckGreen,
                     fontFamily = DeckFont,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 7.sp,
-                    lineHeight = 8.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            } else if (machineHeaderShowsCaption(fontScale)) {
-                Text(
-                    "${stage.label} / ${stage.caption}",
-                    color = Color(0xFF9C906F),
-                    fontFamily = DeckFont,
-                    fontSize = 7.sp,
+                    fontSize = 10.sp,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 108.dp),
                 )
             }
-        }
-        if (machineHeaderShowsBankStatus(fontScale)) {
-            val bankRole = bankRoleFor(state.selectedBank)
-            Text(
-                recording?.statusLabel ?: (if (stage == WorkflowStage.BEAT) {
-                    (state.loopingPadIndex ?: state.configuredLoopPadIndex())?.let { index ->
-                        "ループ ${bankName(index / SamplerConfig.PADS_PER_BANK)}-${"%02d".format(index % SamplerConfig.PADS_PER_BANK + 1)}  ${state.bpm.toInt()} BPM"
-                    }
-                } else null) ?: "${bankRole.letter} ${bankRole.englishLabel}  ${state.bpm.toInt()} BPM",
-                color = if (recording != null) DeckLamp else DeckGreen,
-                fontFamily = DeckFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 9.sp,
-                maxLines = 1,
+            MachineButton(
+                label = if (largeText) {
+                    recording?.stopLabel?.substringBefore('\n') ?: "全停止"
+                } else {
+                    recording?.stopLabel ?: "音を全停止\nALL STOP"
+                },
+                onClick = if (recording != null) onStopRecording else onStopAll,
+                enabled = recording?.stopEnabled ?: true,
+                active = recording != null || playbackActive,
+                modifier = Modifier
+                    .width(if (largeText) 72.dp else 82.dp)
+                    .fillMaxHeight(),
+                compact = true,
             )
         }
-        MachineButton(
-            label = if (largeText) {
-                recording?.stopLabel?.substringBefore('\n') ?: "全停止"
-            } else {
-                recording?.stopLabel ?: "音を全停止\nALL STOP"
-            },
-            onClick = if (recording != null) onStopRecording else onStopAll,
-            enabled = recording?.stopEnabled ?: true,
-            active = recording != null || playbackActive,
-            modifier = Modifier
-                .width(if (largeText) 72.dp else 82.dp)
-                .fillMaxHeight(),
-            compact = true,
-        )
     }
 }
 
@@ -1030,80 +1011,6 @@ private fun WorkflowStageRow(
                 onClick = { onSelect(stage) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-        }
-    }
-}
-
-@Composable
-private fun WorkflowStageButton(
-    number: Int,
-    stage: WorkflowStage,
-    selected: Boolean,
-    compact: Boolean,
-    enabled: Boolean,
-    blockedReason: String?,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val hovered by interactionSource.collectIsHoveredAsState()
-    val background = when {
-        pressed -> DeckPadLit
-        selected -> if (hovered && enabled) DeckLampHover else DeckLamp
-        hovered && enabled -> DeckPanelHover
-        else -> DeckPanelDark
-    }
-    Surface(
-        color = background,
-        contentColor = DeckInk,
-        shape = RoundedCornerShape(6.dp),
-        shadowElevation = if (pressed) 0.dp else if (hovered && enabled) 4.dp else 2.dp,
-        modifier = modifier
-            .alpha(if (enabled) 1f else 0.38f)
-            .border(1.5.dp, DeckInk, RoundedCornerShape(6.dp))
-            .clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick,
-            )
-            .semantics {
-                role = Role.Tab
-                contentDescription = "工程$number ${stage.label} ${stage.caption}"
-                stateDescription = workflowStageStateDescription(
-                    WorkflowStageAvailability(enabled, blockedReason),
-                )
-                this.selected = selected
-                if (!enabled) disabled()
-            },
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 2.dp, vertical = 2.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "$number ${stage.label}",
-                color = DeckInk,
-                fontFamily = DeckFont,
-                fontWeight = FontWeight.Black,
-                fontSize = if (compact) 8.sp else 10.sp,
-                maxLines = 1,
-            )
-            if (!compact) {
-                Text(
-                    text = stage.caption,
-                    color = DeckInk.copy(alpha = 0.62f),
-                    fontFamily = DeckFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 6.sp,
-                    maxLines = 1,
-                )
-            }
         }
     }
 }
@@ -2825,11 +2732,9 @@ private fun BeatChopSurface(
         }
     } else {
         Column(
-            modifier = if (metrics.beatWorkspaceNeedsScroll) {
-                Modifier.fillMaxSize().verticalScroll(scrollState)
-            } else {
-                Modifier.fillMaxSize()
-            },
+            modifier = Modifier.fillMaxSize().then(
+                if (metrics.beatWorkspaceNeedsScroll) Modifier.verticalScroll(scrollState) else Modifier,
+            ),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
             Row(
@@ -4343,145 +4248,6 @@ private fun TempoRow(
 }
 
 @Composable
-private fun FinishWorkspace(
-    state: SamplerUiState,
-    metrics: DeckLayoutMetrics,
-    onExportBeat: () -> Unit,
-    onOpenProject: () -> Unit,
-    onSaveProject: () -> Unit,
-    viewModel: SamplerDeckController,
-) {
-    val gap = metrics.gapDp.dp
-    val assignedPads = state.pads.count(PadModel::isAssigned)
-    val audibleSteps = state.audiblePlaybackStepCount()
-    val ready = state.hasAudiblePlaybackPatternContent()
-    val readiness = finishReadinessPresentation(ready)
-    val summary: @Composable (Modifier) -> Unit = { modifier ->
-        MachinePanel(modifier = modifier) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                Text(
-                    text = readiness.title,
-                    color = if (ready) DeckGreen else DeckLamp,
-                    fontFamily = DeckFont,
-                    fontWeight = FontWeight.Black,
-                    fontSize = if (metrics.density == DeckDensity.COMPACT) 12.sp else 16.sp,
-                    maxLines = 2,
-                )
-                Text(
-                    text = readiness.guidance,
-                    color = Color(0xFFE8DDBF),
-                    fontFamily = DeckFont,
-                    fontSize = 9.sp,
-                    lineHeight = 12.sp,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                ) {
-                    ValueDisplay(
-                        label = "使えるPAD",
-                        value = "$assignedPads / ${SamplerConfig.PAD_COUNT}",
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                    ValueDisplay(
-                        label = "鳴るマス",
-                        value = audibleSteps.toString(),
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                    ValueDisplay(
-                        label = "テンポ",
-                        value = "${state.bpm.toInt()} BPM",
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                    ValueDisplay(
-                        label = "再生状態",
-                        value = if (state.transportPlaying) "再生中" else "停止中",
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                }
-            }
-        }
-    }
-
-    val actions: @Composable (Modifier) -> Unit = { modifier ->
-        Column(
-            modifier = modifier,
-            verticalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            MachineButton(
-                label = if (state.transportPlaying) "確認を止める\nSTOP" else "ビートを確認\nPLAY BEAT",
-                onClick = viewModel::toggleTransport,
-                enabled = state.transportPlaying || (ready && externalDocumentActionsEnabled(state)),
-                active = state.transportPlaying,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            MachineButton(
-                label = "WAVを書き出す\nEXPORT 4 BARS",
-                onClick = onExportBeat,
-                enabled = ready && externalDocumentActionsEnabled(state),
-                active = ready,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                MachineButton(
-                    label = "制作を保存\nSAVE PROJECT",
-                    onClick = onSaveProject,
-                    enabled = externalDocumentActionsEnabled(state),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = "制作を開く\nOPEN PROJECT",
-                    onClick = onOpenProject,
-                    enabled = externalDocumentActionsEnabled(state),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                MachineButton(
-                    label = "1つ戻す\nUNDO",
-                    onClick = viewModel::undoEdit,
-                    enabled = state.undoRequestEnabled,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-                MachineButton(
-                    label = "やり直す\nREDO",
-                    onClick = viewModel::redoEdit,
-                    enabled = state.redoRequestEnabled,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    compact = true,
-                )
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(
-            modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(gap),
-        ) {
-            summary(Modifier.fillMaxWidth())
-            actions(Modifier.fillMaxWidth().height(224.dp + gap * 3))
-        }
-    }
-}
-
-@Composable
 private fun SourceEditorWaveform(
     state: SamplerUiState,
     viewModel: SamplerDeckController,
@@ -4639,16 +4405,16 @@ private fun ConsoleStatusStrip(
                     color = DeckLamp,
                     fontFamily = DeckFont,
                     fontWeight = FontWeight.Black,
-                    fontSize = 8.sp,
-                    lineHeight = 9.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
                     maxLines = 2,
                 )
                 Text(
                     text = state.statusMessage,
                     color = Color(0xFFE8DDBF),
                     fontFamily = DeckFont,
-                    fontSize = 7.sp,
-                    lineHeight = 8.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
                     maxLines = 1,
                 )
             }
@@ -4658,13 +4424,14 @@ private fun ConsoleStatusStrip(
                 color = DeckLamp,
                 fontFamily = DeckFont,
                 fontWeight = FontWeight.Black,
-                fontSize = 8.sp,
+                fontSize = 10.sp,
+                maxLines = 1,
             )
             Text(
                 text = "${nextAction.guidance}  /  ${state.statusMessage}",
                 color = Color(0xFFE8DDBF),
                 fontFamily = DeckFont,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
@@ -4675,7 +4442,7 @@ private fun ConsoleStatusStrip(
 }
 
 @Composable
-private fun MachinePanel(
+internal fun MachinePanel(
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -4686,116 +4453,6 @@ private fun MachinePanel(
             .padding(5.dp),
     ) {
         content()
-    }
-}
-
-@Composable
-private fun MachineSlider(
-    label: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    valueLabel: String,
-    enabled: Boolean,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Text(
-            label,
-            color = DeckInk,
-            fontFamily = DeckFont,
-            fontWeight = FontWeight.Black,
-            fontSize = 8.sp,
-            modifier = Modifier.width(50.dp),
-        )
-        Slider(
-            value = value.coerceIn(valueRange.start, valueRange.endInclusive),
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            enabled = enabled,
-            colors = deckSliderColors(),
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            valueLabel,
-            color = DeckInk.copy(alpha = if (enabled) 1f else 0.4f),
-            fontFamily = DeckFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 8.sp,
-            textAlign = TextAlign.End,
-            modifier = Modifier.width(48.dp),
-        )
-    }
-}
-
-@Composable
-private fun StepperControl(
-    label: String,
-    value: String,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
-    Row(
-        modifier = modifier.fillMaxHeight(),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        MachineButton(
-            label = "-",
-            onClick = onDecrease,
-            enabled = enabled,
-            modifier = Modifier.width(48.dp).fillMaxHeight(),
-            compact = true,
-        )
-        ValueDisplay(
-            label = label,
-            value = value,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-        )
-        MachineButton(
-            label = "+",
-            onClick = onIncrease,
-            enabled = enabled,
-            modifier = Modifier.width(48.dp).fillMaxHeight(),
-            compact = true,
-        )
-    }
-}
-
-@Composable
-private fun ValueDisplay(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .background(DeckInk, RoundedCornerShape(5.dp))
-            .border(1.dp, Color.Black, RoundedCornerShape(5.dp))
-            .padding(horizontal = 5.dp, vertical = 2.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            label,
-            color = Color(0xFF958967),
-            fontFamily = DeckFont,
-            fontSize = 6.sp,
-            maxLines = 1,
-        )
-        Text(
-            value,
-            color = DeckGreen,
-            fontFamily = DeckFont,
-            fontWeight = FontWeight.Black,
-            fontSize = 9.sp,
-            maxLines = 1,
-        )
     }
 }
 
@@ -4866,7 +4523,7 @@ internal fun destructiveProjectConfirmationKey(
 )
 
 @Composable
-private fun ConfirmActionButton(
+internal fun ConfirmActionButton(
     label: String,
     confirmLabel: String,
     onConfirm: () -> Unit,
@@ -4902,80 +4559,7 @@ private fun ConfirmActionButton(
 }
 
 @Composable
-private fun MachineButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    active: Boolean? = null,
-    compact: Boolean = false,
-    contentLabel: String? = null,
-) {
-    val fontScale = LocalDensity.current.fontScale
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val hovered by interactionSource.collectIsHoveredAsState()
-    val hoverLift = hovered && enabled && !pressed
-    val background = when {
-        pressed -> DeckPadLit
-        active == true -> if (hoverLift) DeckLampHover else DeckLamp
-        hoverLift -> DeckPanelHover
-        else -> DeckPanelDark
-    }
-    val foreground = if (pressed || active == true) Color(0xFF2A1000) else DeckInk
-    Surface(
-        color = background,
-        contentColor = foreground,
-        shape = RoundedCornerShape(6.dp),
-        shadowElevation = if (!enabled || pressed) 0.dp else if (hoverLift) 4.dp else 2.dp,
-        modifier = modifier
-            .graphicsLayer { translationY = if (pressed) 1.5.dp.toPx() else 0f }
-            .alpha(if (enabled) 1f else 0.38f)
-            .border(1.5.dp, DeckInk, RoundedCornerShape(6.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics {
-                role = Role.Button
-                contentDescription = contentLabel ?: label
-                active?.let { this.selected = it }
-            },
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 3.dp, vertical = 2.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label,
-                color = foreground,
-                fontFamily = DeckFont,
-                fontWeight = FontWeight.Black,
-                fontSize = if (compact) {
-                    compactMachineButtonFontSizeSp(fontScale).sp
-                } else {
-                    10.sp
-                },
-                lineHeight = if (compact) {
-                    compactMachineButtonLineHeightSp(fontScale).sp
-                } else {
-                    11.sp
-                },
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun deckSliderColors() = SliderDefaults.colors(
+internal fun deckSliderColors() = SliderDefaults.colors(
     thumbColor = DeckLamp,
     activeTrackColor = DeckLamp,
     inactiveTrackColor = Color(0xFF887B5E),

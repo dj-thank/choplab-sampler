@@ -9,6 +9,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.concurrent.CancellationException
 
 data class RecoveredProjectState(
     val state: SamplerUiState,
@@ -47,15 +48,24 @@ class AtomicProjectStore(
         } else {
             newestCommittedRevision + 1L
         }
-        save(state, nextRevision)
+        if (nextRevision > newestCommittedRevision) saveValidatedRevision(state, nextRevision)
     }
 
     /** Returns false without touching disk when a newer project revision is already committed. */
     @Synchronized
     fun save(state: SamplerUiState, revision: Long): Boolean = synchronized(directoryLock) {
-        require(directory.exists() || directory.mkdirs()) { "自動保存フォルダーを作成できません" }
+        // This instance never accepts a revision below its own committed high-water mark.
+        // Reject it before any filesystem work; fresh revisions still verify current disk bytes.
+        if (revision <= newestCommittedRevision) return false
         newestCommittedRevision = maxOf(newestCommittedRevision, newestRevisionOnDisk())
         if (revision <= newestCommittedRevision) return false
+        saveValidatedRevision(state, revision)
+        return true
+    }
+
+    /** Caller holds the store monitor and has already verified the on-disk high-water mark. */
+    private fun saveValidatedRevision(state: SamplerUiState, revision: Long) {
+        require(directory.exists() || directory.mkdirs()) { "自動保存フォルダーを作成できません" }
         runCatching { temporaryFile.delete() }
         runCatching { temporaryMetadataFile.delete() }
         try {
@@ -82,7 +92,6 @@ class AtomicProjectStore(
                 throw failure
             }
             newestCommittedRevision = revision
-            return true
         } finally {
             runCatching { temporaryFile.delete() }
             runCatching { temporaryMetadataFile.delete() }
@@ -92,23 +101,43 @@ class AtomicProjectStore(
     @Synchronized
     fun load(): SamplerUiState? = loadWithRevision()?.state
 
+    fun loadWithRevision(): RecoveredProjectState? = loadWithRevision { archive ->
+        // The constructor reader keeps the bounded codec and lets recovery tests count decodes.
+        this.readArchive(archive, maxResidentPcmBytes)
+    }
+
+    /**
+     * Rank the small revision sidecars before hashing/decoding audio. A revision is
+     * only a hint until its archive digest AND the bounded codec both validate.
+     * Stop at the first valid candidate: retaining every decoded generation can
+     * multiply startup PCM memory and work by four.
+     *
+     * The reader seam lets JVM tests count actual codec calls without timing gates.
+     * It runs under the same store lock as save, including the ranking phase.
+     */
     @Synchronized
-    fun loadWithRevision(): RecoveredProjectState? = synchronized(directoryLock) {
+    internal fun loadWithRevision(readArchive: (File) -> SamplerUiState): RecoveredProjectState? = synchronized(directoryLock) {
         val candidates = generations().filter { it.archive.isFile }
         if (candidates.isEmpty()) return null
         var firstFailure: Throwable? = null
         val ranked = candidates.mapNotNull { generation ->
-            runCatching {
-                val revision = readVerifiedRevision(generation)
-                generation to revision
+            recoverableArchiveAttempt {
+                RankedGeneration(generation, readRevisionMetadata(generation))
             }.onFailure { if (firstFailure == null) firstFailure = it }.getOrNull()
-        }.sortedWith(compareByDescending<Pair<Generation, Long?>> { it.second ?: Long.MIN_VALUE }
-            .thenByDescending { it.first.priority })
-        // Only retain one decoded project's PCM. Older generations are fallbacks, not previews.
-        for ((generation, revision) in ranked) {
-            val state = runCatching { readArchive(generation.archive, maxResidentPcmBytes) }
-                .onFailure { if (firstFailure == null) firstFailure = it }.getOrNull()
-            if (state != null) return RecoveredProjectState(state, revision)
+        }.sortedWith(
+            compareByDescending<RankedGeneration> { it.metadata?.revision ?: Long.MIN_VALUE }
+                .thenByDescending { it.generation.priority },
+        )
+        for (candidate in ranked) {
+            val result = recoverableArchiveAttempt {
+                candidate.metadata?.let { verifyRevisionDigest(candidate.generation, it) }
+                RecoveredProjectState(
+                    readArchive(candidate.generation.archive),
+                    candidate.metadata?.revision,
+                )
+            }
+            if (result.isSuccess) return result.getOrThrow()
+            if (firstFailure == null) firstFailure = result.exceptionOrNull()
         }
         throw IllegalStateException("自動保存プロジェクトを復元できません", firstFailure)
     }
@@ -134,19 +163,60 @@ class AtomicProjectStore(
         Generation(olderBackupFile, olderBackupMetadataFile, priority = 1),
     )
 
-    private fun newestRevisionOnDisk(): Long = generations().mapNotNull { generation ->
-        runCatching { readVerifiedRevision(generation) }.getOrNull()
-    }.maxOrNull() ?: Long.MIN_VALUE
+    /** Rank tiny hints, then hash only until the highest valid revision is found. */
+    @Synchronized
+    internal fun newestRevisionOnDisk(hashArchive: (File) -> String = ::sha256): Long {
+        val ranked = generations().mapNotNull { generation ->
+            recoverableArchiveAttempt {
+                readRevisionMetadata(generation)?.let { RankedGeneration(generation, it) }
+            }.getOrNull()
+        }.sortedWith(
+            compareByDescending<RankedGeneration> { requireNotNull(it.metadata).revision }
+                .thenByDescending { it.generation.priority },
+        )
+        for (candidate in ranked) {
+            val metadata = requireNotNull(candidate.metadata)
+            val verified = recoverableArchiveAttempt {
+                require(metadata.digest.equals(hashArchive(candidate.generation.archive), ignoreCase = true)) {
+                    "自動保存revision情報とプロジェクトが一致しません"
+                }
+                metadata.revision
+            }
+            if (verified.isSuccess) return verified.getOrThrow()
+        }
+        return Long.MIN_VALUE
+    }
 
-    private fun readVerifiedRevision(generation: Generation): Long? {
+    private fun readRevisionMetadata(generation: Generation): RevisionMetadata? {
         if (!generation.metadata.isFile) return null
-        val fields = generation.metadata.readText(Charsets.UTF_8).trim().split('\t')
+        // Writer output is at most 86 ASCII bytes (Long, tab, SHA-256, newline).
+        // Allow surrounding whitespace, but never allocate from an untrusted sidecar size.
+        val bytes = ByteArray(128)
+        val count = generation.metadata.inputStream().use { input ->
+            var offset = 0
+            while (offset < bytes.size) {
+                val read = input.read(bytes, offset, bytes.size - offset)
+                if (read < 0) break
+                require(read > 0) { "自動保存revision情報を読み込めません" }
+                offset += read
+            }
+            require(input.read() == -1) { "自動保存revision情報が大きすぎます" }
+            offset
+        }
+        val fields = String(bytes, 0, count, Charsets.UTF_8).trim().split('\t')
         require(fields.size == 2) { "自動保存revision情報が不正です" }
         val revision = fields[0].toLongOrNull() ?: error("自動保存revision情報が不正です")
-        require(fields[1].equals(sha256(generation.archive), ignoreCase = true)) {
+        val digest = fields[1]
+        require(digest.length == 64 && digest.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
+            "自動保存revision情報のダイジェストが不正です"
+        }
+        return RevisionMetadata(revision, digest)
+    }
+
+    private fun verifyRevisionDigest(generation: Generation, metadata: RevisionMetadata) {
+        require(metadata.digest.equals(sha256(generation.archive), ignoreCase = true)) {
             "自動保存revision情報とプロジェクトが一致しません"
         }
-        return revision
     }
 
     private fun writeMetadata(file: File, revision: Long, digest: String) {
@@ -167,7 +237,7 @@ class AtomicProjectStore(
                 if (count > 0) digest.update(buffer, 0, count)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return sha256DigestHex(digest.digest())
     }
 
     private fun moveGeneration(
@@ -212,8 +282,37 @@ class AtomicProjectStore(
     }
 
     private data class Generation(val archive: File, val metadata: File, val priority: Int)
+    private data class RevisionMetadata(val revision: Long, val digest: String)
+    private data class RankedGeneration(
+        val generation: Generation,
+        val metadata: RevisionMetadata?,
+    )
     private companion object {
         // Recreated Activities can overlap the previous writer's final commit.
         val directoryLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
     }
+}
+
+/** Corruption permits backup recovery; cancellation and fatal VM/linkage errors do not. */
+private inline fun <T> recoverableArchiveAttempt(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (canceled: CancellationException) {
+    throw canceled
+} catch (failure: Exception) {
+    Result.failure(failure)
+}
+
+/** SHA-256 is fixed-size; avoid 32 Formatter instances and intermediate strings per file. */
+internal fun sha256DigestHex(digest: ByteArray): String {
+    require(digest.size == 32) { "SHA-256 digest must contain 32 bytes" }
+    val digits = "0123456789abcdef"
+    val output = CharArray(64)
+    var index = 0
+    while (index < digest.size) {
+        val value = digest[index].toInt() and 0xff
+        output[index * 2] = digits[value ushr 4]
+        output[index * 2 + 1] = digits[value and 0x0f]
+        index++
+    }
+    return String(output)
 }
