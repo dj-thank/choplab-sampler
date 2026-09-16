@@ -53,6 +53,15 @@ android {
     }
 
     buildTypes {
+        // An explicitly named, side-by-side hardware preview. Never replace the
+        // installed production application's package, signer or private data.
+        create("ddjPreview") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".ddj200preview"
+            versionNameSuffix = "-ddj200-preview"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isDebuggable = false
             isMinifyEnabled = false
@@ -111,4 +120,12 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4-accessibility")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+// Build-type initWith copies Android settings, not dependency configurations.
+configurations.named("ddjPreviewImplementation") {
+    extendsFrom(configurations.getByName("debugImplementation"))
+}
+configurations.named("ddjPreviewRuntimeOnly") {
+    extendsFrom(configurations.getByName("debugRuntimeOnly"))
 }
