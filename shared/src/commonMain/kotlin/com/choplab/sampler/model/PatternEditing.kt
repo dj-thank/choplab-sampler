@@ -104,3 +104,15 @@ fun Set<Int>.repeatGridForPad(padIndex: Int): RepeatGrid? {
         selectedSteps == (0 until SamplerConfig.STEP_COUNT step repeatGrid.intervalSteps).toSet()
     }
 }
+
+/** Rotate one PAD within the 16-step bar, preserving every other PAD. */
+fun Set<Int>.shiftPadSteps(padIndex: Int, offset: Int): Set<Int> {
+    require(padIndex in 0 until SamplerConfig.PAD_COUNT)
+    val count = SamplerConfig.STEP_COUNT
+    val shift = ((offset % count) + count) % count
+    if (shift == 0) return this
+    val first = stepKey(padIndex, 0)
+    return mapTo(linkedSetOf()) { key ->
+        if (key in first until first + count) first + (key - first + shift) % count else key
+    }
+}

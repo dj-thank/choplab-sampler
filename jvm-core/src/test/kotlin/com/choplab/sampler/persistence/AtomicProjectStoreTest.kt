@@ -13,6 +13,54 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AtomicProjectStoreTest {
+    @Test fun changedShortLibrarySourceCanBeSavedAndReopened() {
+        val directory = Files.createTempDirectory("library-save-reopen").toFile()
+        try {
+            val old = PcmAudio(name="old", samples=ShortArray(256), sampleRate=8000)
+            val next = PcmAudio(name="next", samples=ShortArray(100), sampleRate=8000)
+            val before = SamplerUiState(currentAudio=old, rangeEndFrame=256,
+                sliceMarkers=listOf(0, 200), activeSliceIndex=1)
+            val changed = com.choplab.sampler.model.attachLibrarySource(before, next)
+            AtomicProjectStore(directory).save(changed, 1)
+            val restored = requireNotNull(AtomicProjectStore(directory).load())
+            assertEquals(100, restored.currentAudio?.frameCount)
+            assertTrue(restored.sliceMarkers.isEmpty())
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
+    fun recoveryDecodesOnlyNewestHealthyGeneration() {
+        val directory = Files.createTempDirectory("choplab-lazy-recovery").toFile()
+        try {
+            val store = AtomicProjectStore(directory)
+            for (revision in 1L..3L) store.save(SamplerUiState(bpm = 100f + revision), revision)
+            val decoded = mutableListOf<String>()
+            val reader = AtomicProjectStore(directory, readArchive = { file, limit ->
+                decoded += file.name
+                file.inputStream().use { ProjectArchiveCodec.read(it, limit) }
+            })
+            assertEquals(3L, reader.loadWithRevision()?.revision)
+            assertEquals(listOf("autosave.choplab"), decoded)
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
+    fun decodeFailureFallsBackWithoutDecodingOlderHealthyGenerations() {
+        val directory = Files.createTempDirectory("choplab-lazy-fallback").toFile()
+        try {
+            val store = AtomicProjectStore(directory)
+            for (revision in 1L..3L) store.save(SamplerUiState(bpm = 100f + revision), revision)
+            val decoded = mutableListOf<String>()
+            val reader = AtomicProjectStore(directory, readArchive = { file, limit ->
+                decoded += file.name
+                if (file.name == "autosave.choplab") error("unreadable PCM")
+                file.inputStream().use { ProjectArchiveCodec.read(it, limit) }
+            })
+            assertEquals(2L, reader.loadWithRevision()?.revision)
+            assertEquals(listOf("autosave.choplab", "autosave.previous.choplab"), decoded)
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test
     fun olderRevisionCannotReplaceNewerAutosave() {
         val directory = Files.createTempDirectory("choplab-autosave-revision-test").toFile()

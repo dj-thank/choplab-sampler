@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
+import json
 import stat
 import struct
 import subprocess
@@ -3819,6 +3821,118 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertIn("annotated tag", result.stderr)
         self.assertIn("header", result.stderr)
         self.assertNotIn(token, result.stderr)
+
+
+class PackagedRuntimeArchiveTest(unittest.TestCase):
+    """The Windows app-image ships pinned third-party binaries.
+
+    A released FFmpeg or Node binary carries key-shaped strings of its own, so identity
+    stands in for the secret scan: the shipped bytes must be the artifact the app-image
+    records, and the separator model must also match the digest the repository pins.
+    """
+
+    TOKEN = ("AKIA" + "Q" * 16).encode("ascii")
+
+    def app_image(self, members: dict[str, bytes]) -> BytesIO:
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+            for name, payload in members.items():
+                archive.writestr(name, payload)
+        return BytesIO(buffer.getvalue())
+
+    def test_recorded_digest_stands_in_for_scanning_a_packaged_tool(self) -> None:
+        body = b"MZ" + self.TOKEN + b"\x00" * 64
+        archive = self.app_image(
+            {
+                "ChopLab/tools/ffmpeg.exe": body,
+                "ChopLab/tools/runtime.json": json.dumps(
+                    {"sha256": {"ffmpeg.exe": hashlib.sha256(body).hexdigest()}}
+                ).encode("utf-8"),
+            }
+        )
+
+        self.assertEqual([], scan_zip(archive, label="app-image.zip"))
+
+    def test_packaged_tool_that_does_not_match_the_record_is_reported(self) -> None:
+        archive = self.app_image(
+            {
+                "ChopLab/tools/ffmpeg.exe": b"MZ" + b"\x00" * 64,
+                "ChopLab/tools/runtime.json": json.dumps(
+                    {"sha256": {"ffmpeg.exe": "0" * 64}}
+                ).encode("utf-8"),
+            }
+        )
+
+        findings = scan_zip(archive, label="app-image.zip")
+
+        self.assertTrue(
+            any("does not match the digest" in item for item in findings), findings
+        )
+
+    def test_packaged_tool_without_a_record_is_reported(self) -> None:
+        archive = self.app_image({"ChopLab/tools/ffmpeg.exe": b"MZ" + b"\x00" * 64})
+
+        findings = scan_zip(archive, label="app-image.zip")
+
+        self.assertTrue(any("identify it" in item for item in findings), findings)
+
+    def test_packaged_model_must_match_the_digest_the_repository_pins(self) -> None:
+        body = b"ONNX" + b"\x00" * 64
+        archive = self.app_image(
+            {
+                "ChopLab/models/htdemucs_ft_drums_fp16weights.onnx": body,
+                "ChopLab/models/manifest.json": json.dumps(
+                    {
+                        "model": "htdemucs_ft_drums_fp16weights.onnx",
+                        "sha256": hashlib.sha256(body).hexdigest(),
+                    }
+                ).encode("utf-8"),
+            }
+        )
+
+        findings = scan_zip(archive, label="app-image.zip")
+
+        self.assertTrue(
+            any("pinned in the repository" in item for item in findings), findings
+        )
+
+    def test_onnxruntime_jar_is_scanned_as_a_binary_and_never_opened(self) -> None:
+        inner = BytesIO()
+        with zipfile.ZipFile(inner, "w", zipfile.ZIP_STORED) as jar:
+            jar.writestr("ai/onnxruntime/native/win-x64/onnxruntime.dll", b"MZ" + self.TOKEN)
+        archive = self.app_image({"ChopLab/app/onnxruntime-1.29.0.jar": inner.getvalue()})
+
+        findings = scan_zip(archive, label="app-image.zip")
+
+        self.assertTrue(
+            any("secret-shaped content" in item for item in findings), findings
+        )
+        self.assertFalse(any("nested archive" in item for item in findings), findings)
+
+    def test_an_ordinary_member_of_the_app_image_is_still_scanned(self) -> None:
+        archive = self.app_image(
+            {
+                "ChopLab/tools/notes.txt": b"token " + self.TOKEN,
+                "ChopLab/tools/runtime.json": json.dumps({"sha256": {}}).encode("utf-8"),
+            }
+        )
+
+        findings = scan_zip(archive, label="app-image.zip")
+
+        self.assertTrue(
+            any("secret-shaped content" in item for item in findings), findings
+        )
+
+    def test_a_large_binary_elsewhere_keeps_the_general_member_limit(self) -> None:
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("ChopLab/extras/huge.exe", b"\x00" * (33 * 1024 * 1024))
+
+        findings = scan_zip(BytesIO(buffer.getvalue()), label="app-image.zip")
+
+        self.assertTrue(
+            any("full secret-scan limit" in item for item in findings), findings
+        )
 
 
 if __name__ == "__main__":

@@ -39,12 +39,12 @@ object TransientDetector {
             val to = min(end, from + windowSize)
             var sum = 0.0
             for (frame in from until to) {
-                var channelSum = 0
+                var channelPower = 0.0
                 repeat(channelCount) { channel ->
-                    channelSum += samples[frame * channelCount + channel].toInt()
+                    val value = samples[frame * channelCount + channel] / 32_768f
+                    channelPower += value * value
                 }
-                val value = (channelSum / channelCount) / 32_768f
-                sum += value * value
+                sum += channelPower / channelCount
             }
             val rms = sqrt(sum / max(1, to - from)).toFloat()
             smoothedEnergy = smoothedEnergy * 0.72f + rms * 0.28f

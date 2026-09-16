@@ -23,8 +23,12 @@ internal class CaptureTempFileStore(private val directory: File) {
 
     fun cleanupStale(nowMillis: Long, maxAgeMillis: Long): Int {
         val cutoff = nowMillis - maxAgeMillis.coerceAtLeast(0L)
-        return directory.listFiles().orEmpty().count { file ->
-            file.isFile && isOwned(file) && file.lastModified() <= cutoff && file.delete()
+        // Filter names before creating File objects or resolving canonical paths. Fresh
+        // captures and unrelated cache files must not pay for ownership path resolution.
+        val names = directory.list { _, name -> OWNED_NAME.matches(name) }.orEmpty()
+        return names.count { name ->
+            val file = File(directory, name)
+            file.isFile && file.lastModified() <= cutoff && isOwned(file) && file.delete()
         }
     }
 

@@ -2,17 +2,22 @@ package com.choplab.sampler.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,6 +27,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -133,34 +139,51 @@ private fun StepCell(
 ) {
     val haptics = LocalHapticFeedback.current
     val shape = RoundedCornerShape(5.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
     Box(
         modifier = modifier
             .background(if (!enabled) DeckPanelDark else if (active) DeckLamp else DeckPanel, shape)
             .border(
                 width = when {
-                    playhead -> 3.dp
+                    focused || playhead -> 3.dp
                     step % 4 == 0 -> 2.dp
                     else -> 1.dp
                 },
-                color = if (playhead) Color(0xFFFFF0D0) else DeckInk,
+                color = if (focused) DeckFocusInk else if (playhead) Color(0xFFFFF0D0) else DeckInk,
                 shape = shape,
             )
-            .clickable(enabled = enabled) {
+            .toggleable(
+                value = active,
+                enabled = enabled,
+                role = Role.Checkbox,
+                interactionSource = interactionSource,
+                indication = null,
+            ) {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 onClick()
             }
             .semantics {
-                role = Role.Button
+                role = Role.Checkbox
                 contentDescription = accessibilityDescription
+                stateDescription = if (!enabled) "配置できません" else if (active) "配置オン" else "配置オフ"
             },
         contentAlignment = Alignment.Center,
     ) {
+        if (active) {
+            Box(
+                Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth(0.5f)
+                    .height(3.dp)
+                    .background(DeckInk, RoundedCornerShape(2.dp)),
+            )
+        }
         Text(
             text = (step + 1).toString(),
             color = if (!enabled) DeckInk.copy(alpha = 0.45f) else if (active) Color(0xFF2A1500) else DeckInk,
             fontFamily = FontFamily.Monospace,
             fontWeight = if (step % 4 == 0) FontWeight.Black else FontWeight.Bold,
-            fontSize = 9.sp,
+            fontSize = 12.sp,
         )
     }
 }

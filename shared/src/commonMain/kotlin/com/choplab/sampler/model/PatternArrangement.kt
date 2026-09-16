@@ -182,3 +182,17 @@ private fun SamplerUiState.arrangementBlockedWhilePlaying(): SamplerUiState =
 
 private fun validPatternStepKey(key: Int): Boolean =
     key in 0 until SamplerConfig.PAD_COUNT * SamplerConfig.STEP_COUNT
+
+/** Clear only the editable variation; samples and Song references remain intact. */
+fun SamplerUiState.clearSelectedPattern(): SamplerUiState {
+    if (transportPlaying) return arrangementBlockedWhilePlaying()
+    if (activeSteps.isEmpty()) return this
+    val materialized = materializedPatternArrangement()
+    val stored = materialized.storedStepsBySlot.toMutableList()
+    stored[materialized.selectedSlot] = emptySet()
+    return copy(
+        activeSteps = emptySet(),
+        patternArrangement = materialized.copy(storedStepsBySlot = stored),
+        statusMessage = "パターン${patternVariationLabel(materialized.selectedSlot)}の配置だけを消去しました",
+    )
+}

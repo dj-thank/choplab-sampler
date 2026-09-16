@@ -150,7 +150,7 @@ class PatternRendererTest {
     }
 
     @Test
-    fun noOrMultipleLoopOwnersPreserveAllNonLoopVocals() {
+    fun multipleLoopsProtectTheirChokeGroupsWhileNoLoopKeepsVocals() {
         val audio = PcmAudio(
             name = "ambiguous-loop-vocal",
             samples = ShortArray(128) { 6_000 },
@@ -173,7 +173,7 @@ class PatternRendererTest {
         }
 
         assertEquals(setOf(vocal.globalIndex), frameZeroVocalPadIndicesForRender(noLoopPads))
-        assertEquals(setOf(vocal.globalIndex), frameZeroVocalPadIndicesForRender(multipleLoopPads))
+        assertEquals(emptySet<Int>(), frameZeroVocalPadIndicesForRender(multipleLoopPads))
     }
 
     @Test
@@ -216,6 +216,31 @@ class PatternRendererTest {
         } finally {
             file.delete()
         }
+    }
+
+    @Test fun twoIndependentLoopsRemainAudibleInBothStereoChannelsThroughExport() {
+        val audio = PcmAudio(name = "stereo-layers", samples = ShortArray(512 * 2) { sample ->
+            val frame = sample / 2
+            when {
+                frame < 256 && sample % 2 == 0 -> 8000
+                frame >= 256 && sample % 2 == 1 -> 10000
+                else -> 0
+            }.toShort()
+        }, sampleRate = 8000, channelCount = 2)
+        val pads = List(SamplerConfig.PAD_COUNT) { index -> when(index) {
+            0 -> PadModel(0, audio, 0, 256, playMode = PadPlayMode.LOOP)
+            1 -> PadModel(1, audio, 256, 512, playMode = PadPlayMode.LOOP)
+            else -> PadModel(index)
+        } }
+        val file = File.createTempFile("choplab-two-loops", ".wav")
+        try {
+            val summary = PatternRenderer.renderToWav(file, pads, emptySet(), 120f, 50f, bars = 1, outputSampleRate = 8000)
+            val pcm = readPcm16(file)
+            listOf(128, 2048, summary.frameCount - 128).forEach { frame ->
+                assertTrue("core left channel at $frame", (frame until frame + 48).any { pcm[it * 2] > 100 })
+                assertTrue("layer right channel at $frame", (frame until frame + 48).any { pcm[it * 2 + 1] > 100 })
+            }
+        } finally { file.delete() }
     }
 
     @Test

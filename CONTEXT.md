@@ -70,7 +70,7 @@ The single resumable body of work a person is making: Source, Chops, PAD assignm
 
 ## Chop surface
 
-The continuous performance surface made from the selected Chop waveform, BANK and PAD-page selectors, and the fixed four-by-four PAD grid. CHOP uses it to create Chops; BEAT keeps the same surface visible so the person can play and arrange those Chops without losing material context.
+The continuous performance surface made from the selected Chop waveform, BANK and PAD-page selectors, and the fixed four-by-four PAD grid. CHOP uses it to create and audition Chops. BEAT instead centers the current loop waveform, S/E wheels, and entry points for drums, scratch, and secondary step arrangement.
 
 ## Starter drum kit
 
@@ -80,13 +80,13 @@ An original built-in Drum kit installed into BANK B for a truly new Production. 
 
 Direct, latency-bounded manipulation of the selected Chop from pointer-down through release. Motion has a small noise dead zone, signed speed and a visible playhead; stopping motion becomes silent, and release returns to the Beat loop or transport that was running before the gesture when that target is still valid.
 
-## Precision trim window
+## Automatic selected range
 
-A waveform viewport no wider than one second, centered as closely as source bounds allow around a long-pressed frame. Long-pressing in PAD trim moves the nearer Cut boundary to that frame and opens this window for fine editing without changing the referenced audio asset.
+The selected Chop waveform always displays exactly its start-inclusive/end-exclusive interval. It has no manual zoom, precision mode, or beat-fit buttons. The separate whole-source map retains source-owned cut positions; tapping it starts a new capture session at that frame after source playback is admitted.
 
 ## Cut boundary wheel
 
-The numeric, scrollable control for one start-inclusive or end-exclusive Cut boundary. START and END each show previous/current/next time values plus a dial position and use an explicit frame, one-millisecond, or ten-millisecond step while preserving the minimum valid Chop length.
+Always-visible S and E rolling controls apply relative frame deltas to the rendered PAD. Editing pins that PAD's boundaries against later live-capture reflow. Changing the range updates the live loop while preserving its playback owner. Continuing from TRIM explicitly starts this PAD as the loop with the pattern; navigation follows successful admission, so an earlier loop selection cannot replace the chosen Chop.
 
 ## Production edit
 
@@ -103,3 +103,22 @@ The ordered working context that decides whether an action changes the Productio
 ## Audio parity oracle
 
 A deterministic comparison that renders the same Production input through two audio paths and measures an explicit numeric tolerance. It proves a bounded behavior match for that fixture; it does not by itself prove physical latency, device quality, or human-perceived equivalence.
+
+## Combined beat playback
+A pattern transport can start the configured Beat loop and its eligible vocal companions before advancing drum/sample steps. Stop ends that combined playback. Returning from scratch restores the transport when the loop and pattern were active together.
+
+## Loop layering workbench
+
+BEAT separates selecting a sound from playback: a sound card only selects; Loop starts the chosen slice. An active core can receive additional configured LOOP pads without restarting it, and non-core layers can be removed independently. The loop set uses existing PAD play modes for persistence/export. TRIM Loop and Continue-to-Beat use this same additive workflow. Native slice durations are preserved; replay starts slices together rather than reproducing live entry timestamps.
+
+## Drum sound replacement
+
+A kit change preserves all A/B rhythms and Song order. A starter rhythm is added only when kit slots are empty and no saved variation already contains a groove for those slots. Initial addition also preserves other lanes and the second page of BANK B.
+
+## Personal audio library
+
+An app-private, content-addressed store of the user's source files, separate from project audio/PAD assignments. Selecting a library item attaches a new Chop source while preserving current PADs, patterns and arrangement. Desktop stores it under LOCALAPPDATA/ChopLab/audio-library; Android uses filesDir/audio-library. A .choplib is a bounded portable ZIP of source files, not an app or project bundle.
+
+## Spotify source selection
+
+Saved-track metadata identifies a requested song. The source hub searches YouTube and automatically imports only a single title/artist/duration-compatible candidate; ambiguous results require selection. The resulting local sound is YouTube audio, never Spotify stream/cache content. Spotify credentials stay in memory; a public Client ID may be provided at build time via CHOPLAB_SPOTIFY_CLIENT_ID.

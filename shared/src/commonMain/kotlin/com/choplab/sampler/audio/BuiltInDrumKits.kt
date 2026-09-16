@@ -93,10 +93,22 @@ object BuiltInDrumKits {
         }
     }
 
+    /** Per-preparation PCM ownership; never a global cache or a snapshot of the UI. */
+    class PreparedStarterKit internal constructor(internal val pads: List<PadModel>)
+
+    fun prepareStarterKit(): PreparedStarterKit = PreparedStarterKit(
+        createBankPads(DEFAULT_STARTER_KIT_ID, SamplerConfig.DRUM_BANK_INDEX),
+    )
+
     fun installStarterKit(state: SamplerUiState): SamplerUiState {
         if (!starterDrumKitInstallationAllowed(state)) return state
-        val bankIndex = SamplerConfig.DRUM_BANK_INDEX
-        val starterPads = createBankPads(DEFAULT_STARTER_KIT_ID, bankIndex)
+        return installStarterKit(state, prepareStarterKit())
+    }
+
+    /** Apply prepared audio to the latest state so selection/navigation edits are preserved. */
+    fun installStarterKit(state: SamplerUiState, prepared: PreparedStarterKit): SamplerUiState {
+        if (!starterDrumKitInstallationAllowed(state)) return state
+        val starterPads = prepared.pads
         val pads = state.pads.toMutableList()
         starterPads.forEach { pads[it.globalIndex] = it }
         return state.copy(
