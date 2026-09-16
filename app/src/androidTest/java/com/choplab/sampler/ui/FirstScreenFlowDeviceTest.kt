@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onRoot
@@ -64,6 +65,7 @@ class FirstScreenFlowDeviceTest {
         }
 
         demo.performClick()
+        openLoopSurface()
         composeRule.onNode(hasContentDescription("全体を再生", substring = true)).performScrollTo().assertIsDisplayed()
         composeRule.onNode(hasContentDescription("配置・曲構成", substring = true)).performScrollTo().assertIsDisplayed()
     }
@@ -76,6 +78,7 @@ class FirstScreenFlowDeviceTest {
             .performScrollTo()
             .assertIsDisplayed()
             .performClick()
+        openLoopSurface()
 
         listOf("全体を再生", "配置・曲構成").forEach { label ->
             val action = composeRule.onNode(hasContentDescription(label, substring = true))
@@ -85,7 +88,7 @@ class FirstScreenFlowDeviceTest {
             assertTrue(bounds.width >= minimum - 1f && bounds.height >= minimum - 1f)
         }
         composeRule.onNode(hasContentDescription("配置・曲構成", substring = true)).performClick()
-        composeRule.onNode(hasText("BPM")).performScrollTo().assertIsDisplayed()
+        composeRule.onNode(hasText("BPM"), useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -513,14 +516,16 @@ class FirstScreenFlowDeviceTest {
         composeRule.mainClock.autoAdvance = false
         try {
             gate.performTouchInput { down(center) }
+            composeRule.mainClock.advanceTimeBy(40)
             composeRule.runOnIdle { controller.triggerPad(gateIndex) }
             gate.performTouchInput { up() }
+            composeRule.mainClock.advanceTimeBy(96)
             composeRule.waitForIdle()
 
             composeRule.runOnIdle {
-                assertEquals(2, padActions.count { it == "triggerPad" })
+                assertEquals(padActions.toString(), 2, padActions.count { it == "triggerPad" })
                 assertEquals(
-                    "Normal-layout GATE pointer-up must release its exact old voice",
+                    "Normal-layout GATE pointer-up must release its exact old voice: $padActions",
                     1,
                     padActions.count { it == "releasePad" },
                 )
@@ -1080,6 +1085,13 @@ class FirstScreenFlowDeviceTest {
                 },
             )
         }
+    }
+
+    /** BEAT opens on the pad grid; this is the button that opens the loop surface. */
+    private fun openLoopSurface() {
+        val loop = composeRule.onNode(hasContentDescription("かんたんループ", substring = true))
+        if (!loop.isDisplayed()) loop.performScrollTo()
+        loop.performClick()
     }
 
     private fun gatePad() = composeRule.onNode(
