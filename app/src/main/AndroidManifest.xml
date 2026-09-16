@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
 
+    <!-- onnxruntime-android asks for this so its telemetry can watch connectivity. Drum
+         separation runs entirely on the device, so the permission and the telemetry
+         provider below are both dropped from the merged manifest. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+
     <uses-feature
         android:name="android.hardware.microphone"
         android:required="false" />
@@ -64,6 +69,14 @@
             android:name=".audio.PlaybackCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <!-- onnxruntime-android registers this provider to start its own HTTP telemetry
+             client when the process starts. Nothing in ChopLab reports anything, so it
+             never reaches the merged manifest. -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
     </application>
 
 </manifest>

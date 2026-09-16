@@ -19,6 +19,10 @@ from pathlib import Path
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 ANDROID = f"{{{ANDROID_NS}}}"
 ALLOWED_PERMISSIONS = {
+    # Spotify sign-in, the YouTube audio fetch behind an import, and the one-time
+    # separator model download all need the network. Everything else, including the
+    # separation itself, runs on the device.
+    "android.permission.INTERNET",
     "android.permission.RECORD_AUDIO",
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
