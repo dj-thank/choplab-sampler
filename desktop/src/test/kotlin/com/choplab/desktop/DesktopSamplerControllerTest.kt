@@ -3194,9 +3194,13 @@ class DesktopSamplerControllerTest {
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
+            // Hold the transport worker so no step can trigger pads or advance currentStep
+            // while the failing loop startup is compared against the playing production.
+            controller.transportWorkerStarter = {}
             controller.toggleTransport()
             val before = controller.state.value
-            engine.nextTriggerFailure = AssertionError("test fatal initial loop error")
+            assertTrue(before.transportPlaying)
+            engine.nextLoopSessionStartFailure = AssertionError("test fatal initial loop error")
 
             val failure = assertFailsWith<AssertionError> {
                 controller.toggleBeatLoopControl()
@@ -3217,9 +3221,13 @@ class DesktopSamplerControllerTest {
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
+            // Hold the transport worker so no step can trigger pads or advance currentStep
+            // while the failing loop startup is compared against the playing production.
+            controller.transportWorkerStarter = {}
             controller.toggleTransport()
             val before = controller.state.value
-            engine.nextTriggerFailure = IllegalStateException("test contract violation")
+            assertTrue(before.transportPlaying)
+            engine.nextLoopSessionStartFailure = IllegalStateException("test contract violation")
 
             val failure = assertFailsWith<IllegalStateException> {
                 controller.toggleBeatLoopControl()
@@ -3588,6 +3596,7 @@ class DesktopSamplerControllerTest {
         var failNextStopAll: Boolean = false
         var failClose: Boolean = false
         var nextTriggerFailure: Throwable? = null
+        var nextLoopSessionStartFailure: Throwable? = null
         var exclusiveStartHook: (() -> Unit)? = null
         var exclusiveRetireHook: (() -> Unit)? = null
         @Volatile var exclusiveStartCount: Int = 0
@@ -3678,8 +3687,8 @@ class DesktopSamplerControllerTest {
             val candidates = listOf(loopPad to true) + companionPads.map { it to false }
             return DesktopPreparedLoopSession {
                 exclusiveStartHook?.invoke()
-                nextTriggerFailure?.let { failure ->
-                    nextTriggerFailure = null
+                nextLoopSessionStartFailure?.let { failure ->
+                    nextLoopSessionStartFailure = null
                     throw failure
                 }
                 if (failNextExclusiveStart) {
