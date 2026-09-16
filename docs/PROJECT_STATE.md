@@ -1,6 +1,6 @@
 # Project state
 
-## DDJ-200 Android PR #102 candidate — 2026-09-16
+> **DDJ-200 Android PR #102 candidate — 2026-09-16**
 
 **PR #102 follow-up candidate, not a release.** Based on
 `eeda0d28cac42374920dd1441fdde95a13b8bd78`; exact-head publication and CI
