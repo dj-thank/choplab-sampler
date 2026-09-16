@@ -60,17 +60,19 @@ jobs:
           sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;29.0.14206865' 'cmake;3.22.1'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - name: Check the preview task graph before full validation
+        run: ./gradlew -PchoplabDdjPreview=true :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --dry-run
       - name: Validate and build the isolated preview
         run: |
           ./scripts/validate_project.sh
-          ./gradlew --stacktrace :shared:testAndroidHostTest :app:testDdjPreviewUnitTest :app:lintDdjPreview :app:assembleDdjPreview
+          ./gradlew --stacktrace -PchoplabDdjPreview=true :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
       - name: Inspect signed APK and bind it to this source
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
         shell: bash
         run: |
-          mapfile -t apks < <(find app/build/outputs/apk/ddjPreview -maxdepth 1 -type f -name '*.apk')
+          mapfile -t apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk')
           test "${#apks[@]}" -eq 1
           python3 scripts/stage_ddj_preview.py --apk "${apks[0]}" --destination ddj-dist \
             --version "$VERSION" --version-code "$BUILD_NUMBER" --commit "$GITHUB_SHA"

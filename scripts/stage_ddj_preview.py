@@ -50,13 +50,22 @@ def verify_preview_manifest(root: ET.Element, version: str, code: int) -> None:
         if len(rows) != 1 or rows[0].get(ANDROID + "maxSdkVersion") != "30":
             raise VerificationError("Legacy Bluetooth/location permission must stop at API 30")
     scan = next(e for e in declarations if e.get(ANDROID + "name") == "android.permission.BLUETOOTH_SCAN")
-    if scan.get(ANDROID + "usesPermissionFlags") != "neverForLocation":
+    # AAPT may print this official flag as either a symbol or its integer value.
+    # Accept only the exact 0x00010000 mask, never missing/additional flags.
+    flag = scan.get(ANDROID + "usesPermissionFlags", "")
+    try:
+        never_for_location = flag == "neverForLocation" or int(flag, 0) == 0x10000
+    except ValueError:
+        never_for_location = False
+    if not never_for_location:
         raise VerificationError("BLE scan must not be used for location")
     app = root.find("application")
     if app is None or not read_manifest_boolean(app, "debuggable", default=False):
         raise VerificationError("This artifact must be explicitly marked as a debug preview")
     if read_manifest_boolean(app, "allowBackup", default=True) or read_manifest_boolean(app, "usesCleartextTraffic", default=True):
         raise VerificationError("Backup/cleartext restrictions must be preserved")
+    if read_manifest_boolean(app, "testOnly", default=False):
+        raise VerificationError("A click-installable preview must not require adb test-only installation")
     allowed = dict(EXPORTED_COMPONENT_PERMISSIONS)
     allowed.update({name: None for name in DEBUG_PREVIEW_TOOLING_COMPONENTS})
     exported: set[str] = set()

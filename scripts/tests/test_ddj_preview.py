@@ -62,6 +62,32 @@ class DdjPreviewTest(unittest.TestCase):
         next(e for e in r.findall('uses-permission') if e.get(ANDROID+'name').endswith('BLUETOOTH_SCAN')).attrib.pop(ANDROID+'usesPermissionFlags')
         with self.assertRaises(VerificationError): self.check(r)
 
+    def test_exact_numeric_never_for_location_flag_is_allowed(self):
+        for flag in ('0x00010000', '0x10000', '65536'):
+            r = manifest()
+            next(e for e in r.findall('uses-permission') if e.get(ANDROID+'name').endswith('BLUETOOTH_SCAN')).set(ANDROID+'usesPermissionFlags', flag)
+            self.check(r)
+
+    def test_malformed_or_additional_flags_are_rejected(self):
+        for flag in ('0', '0x10001', 'neverForLocation|unknown', '', 'invalid'):
+            r = manifest()
+            next(e for e in r.findall('uses-permission') if e.get(ANDROID+'name').endswith('BLUETOOTH_SCAN')).set(ANDROID+'usesPermissionFlags', flag)
+            with self.assertRaises(VerificationError): self.check(r)
+
+    def test_adb_only_apk_is_not_click_installable(self):
+        r = manifest(); r.find('application').set(ANDROID+'testOnly', 'true')
+        with self.assertRaises(VerificationError): self.check(r)
+        r.find('application').set(ANDROID+'testOnly', 'false'); self.check(r)
+
+    def test_preview_mode_is_opt_in_and_normal_package_is_preserved(self):
+        text = (Path(__file__).resolve().parents[2] / 'app/build.gradle.kts').read_text()
+        self.assertIn('gradleProperty("choplabDdjPreview")', text)
+        self.assertIn('.orElse(false)', text)
+        self.assertIn('if (ddjPreview.get())', text)
+        self.assertIn('applicationId = "com.choplab.sampler"', text)
+        self.assertIn('applicationIdSuffix = ".ddj200preview"', text)
+        self.assertNotIn('create("ddjPreview")', text)
+
     def test_backup_cleartext_and_debug_contract(self):
         for key, value in [('allowBackup', 'true'), ('usesCleartextTraffic', 'true'), ('debuggable', 'false')]:
             r = manifest(); r.find('application').set(ANDROID+key, value)
@@ -89,8 +115,9 @@ class DdjPreviewTest(unittest.TestCase):
         build, publish = text.split('  publish:', 1)
         self.assertNotIn('contents: write', build)
         self.assertIn('contents: write', publish)
-        self.assertIn(':app:testDdjPreviewUnitTest', build)
-        self.assertIn(':app:lintDdjPreview', build)
+        self.assertIn('-PchoplabDdjPreview=true', build)
+        self.assertIn(':app:testDebugUnitTest', build)
+        self.assertIn(':app:lintDebug', build)
 
 
 if __name__ == '__main__':

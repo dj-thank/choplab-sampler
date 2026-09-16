@@ -33,14 +33,18 @@ USB給電したDDJ-200を他のDJアプリから切断し、試験版の
 
 ## 配布経路と検査
 
-`app`に`ddjPreview`ビルドタイプを追加し、通常のdebug/releaseのID・署名・版数は維持する。
+`-PchoplabDdjPreview=true` を明示したdebugビルドだけを別ID・別表示名の試験版にする。
+通常のdebug/releaseではID・署名・版数を維持する。試験版も既存の
+`testDebugUnitTest`・`lintDebug`・`assembleDebug` を同じ明示プロパティで実行する。
+初回のカスタムbuildTypeはホストで単体テストtaskが生成されなかったため廃止した。
+テストの省略ではなく、既存の検証可能なdebug経路を使用する。
 `.github/workflows/ddj200-apk.yml`は指定された自分のリポジトリのDDJブランチだけで動作する。
 PRから公開しない。ビルドジョブにはread権限だけを与え、テスト・lint・APK検査・
 公開対象スキャンを通過した同一実行の成果物だけを別のpublishジョブへ渡す。
 失敗・未完了のビルドをリリースしない。
 
 公開前に実APKのID・版数・SDK・権限・外部公開コンポーネント・デバッグ区分・
-APK署名・16KiB対応alignmentを検査する。SHA-256とsource commit、署名の指紋を同梱する。
+APK署名・16KiB対応alignment・testOnly無効を検査する。SHA-256とsource commit、署名の指紋を同梱する。
 秘密鍵・keystore・ユーザー音声・トークンは成果物に含めない。
 公開はrun/attempt/sourceで一意な新しいPre-releaseを作成し、既存タグ・資産を上書きしない。
 本番用v*リリースとlatestの指し先を変更しない。
