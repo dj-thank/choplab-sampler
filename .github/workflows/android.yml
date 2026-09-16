@@ -45,6 +45,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action defaults to "tools platform-tools"; the obsolete SDK Tools package is
+          # gone from the remote repository, so sdkmanager now fails on it. The step below
+          # installs every component this workflow needs anyway.
+          packages: platform-tools
 
       - name: Install Android components
         shell: bash
