@@ -96,6 +96,8 @@ ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
 ZIP_NESTED_TOTAL_LIMIT = 256 * 1024 * 1024
 CURRENT_ZIP_ARCHIVE_COUNT_LIMIT = 128
+# The Windows app-image is close to a gigabyte once the media tools and the separator model
+# are in it, and each member is still ratio-checked and capped on its own.
 CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 1536 * 1024 * 1024
 CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 1536 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
@@ -146,11 +148,11 @@ ZIP_BINARY_SECRET_MEMBER_LIMIT = 32 * 1024 * 1024
 ZIP_JIMAGE_FULL_SCAN_LIMIT = 128 * 1024 * 1024
 ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
 # The packaged Windows app-image carries third-party binaries that are far larger than a
-# general archive member: FFmpeg and FFprobe (about 231 MB each), Node, yt-dlp and the
-# commit-pinned drum separator model (about 158 MB). scripts/prepare_media_tools.py and
-# scripts/prepare_separator_model.py fetch each one from a pinned source and verify a
-# digest before packaging. They keep their own ceiling so the general limits stay tight,
-# and every byte of them is still scanned.
+# general archive member: FFmpeg and FFprobe (about 231 MB each), Node, yt-dlp, the
+# commit-pinned drum separator model (about 158 MB) and the ONNX Runtime jar.
+# scripts/prepare_media_tools.py and scripts/prepare_separator_model.py fetch each one from
+# a pinned source and verify a digest before packaging. They keep their own ceiling, so the
+# general limits stay tight for every other member of every other archive.
 ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT = 320 * 1024 * 1024
 ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT = 1024 * 1024 * 1024
 PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
