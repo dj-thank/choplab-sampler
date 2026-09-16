@@ -2,6 +2,9 @@ package com.choplab.sampler.persistence
 
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.Buffer
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /** Strict canonical mono/stereo WAV codec used inside `.choplab` archives. */
 internal object Pcm16WavCodec {
@@ -29,15 +32,15 @@ internal object Pcm16WavCodec {
         output.writeAscii("data")
         output.writeLittleEndianInt(dataBytes)
 
-        val buffer = ByteArray(8 * 1024)
+        if (samples.isEmpty()) return
+        val buffer = ByteArray(minOf(dataBytes, 8 * 1024))
+        val pcm = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
         var sampleIndex = 0
         while (sampleIndex < samples.size) {
             val count = minOf(buffer.size / BYTES_PER_SAMPLE, samples.size - sampleIndex)
-            for (offset in 0 until count) {
-                val value = samples[sampleIndex + offset].toInt()
-                buffer[offset * 2] = (value and 0xFF).toByte()
-                buffer[offset * 2 + 1] = ((value ushr 8) and 0xFF).toByte()
-            }
+            // Match the reader's bounded bulk conversion; keep Java 8/Android signatures.
+            (pcm as Buffer).position(0)
+            pcm.put(samples, sampleIndex, count)
             output.write(buffer, 0, count * BYTES_PER_SAMPLE)
             sampleIndex += count
         }
@@ -73,13 +76,28 @@ internal object Pcm16WavCodec {
         require(header.littleEndianInt(4) == 36 + expectedDataBytes) { "WAVのRIFFサイズが一致しません" }
         require(header.littleEndianInt(40) == expectedDataBytes) { "WAVのdataサイズが一致しません" }
 
-        val pcm = input.readExactly(expectedDataBytes)
-        return ShortArray(expectedSamples) { index ->
-            val offset = index * BYTES_PER_SAMPLE
-            val low = pcm[offset].toInt() and 0xFF
-            val high = pcm[offset + 1].toInt()
-            ((high shl 8) or low).toShort()
+        // Decode into the final PCM array: scratch space never grows with the recording.
+        val samples = ShortArray(expectedSamples)
+        if (samples.isEmpty()) return samples
+        val buffer = ByteArray(minOf(expectedDataBytes, 8 * 1024))
+        val pcm = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        var sampleIndex = 0
+        while (sampleIndex < samples.size) {
+            val sampleCount = minOf(buffer.size / BYTES_PER_SAMPLE, samples.size - sampleIndex)
+            val byteCount = sampleCount * BYTES_PER_SAMPLE
+            var offset = 0
+            // Streams may return odd byte counts. Fill a complete block before decoding.
+            while (offset < byteCount) {
+                val count = input.read(buffer, offset, byteCount - offset)
+                require(count > 0) { "音声データが途中で終わっています" }
+                offset += count
+            }
+            // Use the Java 8/Android Buffer signature even when built on a newer JDK.
+            (pcm as Buffer).position(0)
+            pcm.get(samples, sampleIndex, sampleCount)
+            sampleIndex += sampleCount
         }
+        return samples
     }
 
     private fun InputStream.readExactly(size: Int): ByteArray {

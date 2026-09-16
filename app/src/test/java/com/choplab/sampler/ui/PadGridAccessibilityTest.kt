@@ -19,11 +19,11 @@ class PadGridAccessibilityTest {
 
         assertEquals(
             "PAD 01 割り当て済み。再生モード ONE SHOT。素材タイプ SAMPLE。" +
-                "タップで試聴。長押しで微調整",
+                "タップで試聴。長押しで微調整。BANK A、A-01",
             padAccessibilityDescription(assignedPad, captureMode = true),
         )
         assertEquals(
-            "PAD 02 空。現在位置をチョップ",
+            "PAD 02 空。現在位置をチョップ。BANK A、A-02",
             padAccessibilityDescription(emptyPad, captureMode = true),
         )
     }
@@ -61,7 +61,7 @@ class PadGridAccessibilityTest {
     @Test
     fun pendingStartExplainsThatAnEmptyPadOnlyChangesSelection() {
         assertEquals(
-            "PAD 02 空。再生準備中。音が鳴るまで選択のみ",
+            "PAD 02 空。再生準備中。音が鳴るまで選択のみ。BANK A、A-02",
             padAccessibilityDescription(
                 pad = PadModel(1),
                 captureMode = false,
@@ -102,7 +102,7 @@ class PadGridAccessibilityTest {
 
         assertEquals(
             "PAD 01 割り当て済み。再生モード ONE SHOT。素材タイプ SAMPLE。" +
-                "タップで現在位置を上書き。長押しで微調整",
+                "タップで現在位置を上書き。長押しで微調整。BANK A、A-01",
             padAccessibilityDescription(
                 assignedPad,
                 captureMode = true,
@@ -110,4 +110,16 @@ class PadGridAccessibilityTest {
             ),
         )
     }
+    @Test
+    fun all128PadDescriptionsAreUniqueAndKeepThePageLocatorPrefix() {
+        val descriptions = (0 until 128).map { index ->
+            val description = padAccessibilityDescription(PadModel(index), captureMode = false)
+            val bank = ('A'.code + index / 32).toChar()
+            assertTrue(description.startsWith("PAD %02d 空".format(index % 32 + 1)))
+            assertTrue(description.endsWith("。BANK $bank、$bank-%02d".format(index % 32 + 1)))
+            description
+        }
+        assertEquals(128, descriptions.toSet().size)
+    }
+
 }

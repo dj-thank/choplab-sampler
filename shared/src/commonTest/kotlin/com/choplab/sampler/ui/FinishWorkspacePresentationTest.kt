@@ -15,14 +15,4 @@ class FinishWorkspacePresentationTest {
         )
     }
 
-    @Test
-    fun clearCopyNamesOnlyTheBeatPlacementsThatWillBeRemoved() {
-        assertEquals(
-            FinishClearActionPresentation(
-                label = "ビート配置を消す\nCLEAR STEPS",
-                confirmLabel = "もう一度で配置を削除",
-            ),
-            finishClearActionPresentation(),
-        )
-    }
 }

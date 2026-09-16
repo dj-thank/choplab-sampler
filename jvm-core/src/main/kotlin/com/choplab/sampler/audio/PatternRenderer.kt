@@ -7,7 +7,7 @@ import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.SamplerConfig
 import com.choplab.sampler.model.samePadVoiceConflictsForRetrigger
 import com.choplab.sampler.model.stepKey
-import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
+import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.floor
@@ -356,24 +356,21 @@ object PatternRenderer : PatternRenderService {
 }
 
 /**
- * Mirrors live loop-start ownership when one loop owner is unambiguous.
- *
- * With no loop or multiple assigned loops, export preserves the historical
- * all-vocal behavior instead of silently choosing an owner the live UI cannot
- * represent.
+ * Keep every configured loop protected from conflicting one-shot vocal choke groups,
+ * using the same companion policy as live playback.
  */
 internal fun frameZeroVocalPadIndicesForRender(pads: List<PadModel>): Set<Int> {
     val loopOwnerIndex = pads.asSequence()
         .filter { it.isAssigned && it.playMode == PadPlayMode.LOOP }
         .map(PadModel::globalIndex)
-        .singleOrNull()
+        .firstOrNull()
     val vocalIndices = if (loopOwnerIndex == null) {
         pads.asSequence()
             .filter { it.isAssigned && it.contentKind == PadContentKind.VOCAL && it.playMode != PadPlayMode.LOOP }
             .map(PadModel::globalIndex)
             .toList()
     } else {
-        pads.vocalCompanionPadIndicesForLoopStart(loopOwnerIndex)
+        pads.loopCompanionPadIndicesForLoopStart(loopOwnerIndex).filter { pads[it].contentKind == PadContentKind.VOCAL && pads[it].playMode != PadPlayMode.LOOP }
     }
     return vocalIndices.toCollection(linkedSetOf())
 }

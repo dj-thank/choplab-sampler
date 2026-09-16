@@ -14,6 +14,12 @@ sealed interface ProductionCommand {
     data class SelectSliceAt(val frame: Int) : ProductionCommand
     data object ToggleSelectedPadPerformanceMode : ProductionCommand
     data object CreateQuickSketch : ProductionCommand
+    data object AssignWholeSourceToPad : ProductionCommand
+    data class FillSelectedPadPattern(val grid: RepeatGrid) : ProductionCommand
+    data object ClearSelectedPadPattern : ProductionCommand
+    data class ShiftSelectedPadPattern(val offset: Int) : ProductionCommand
+    data object ClearSelectedPattern : ProductionCommand
+    data object ClearAllPatterns : ProductionCommand
     data class SelectPatternVariation(val slot: Int) : ProductionCommand
     data object DuplicateSelectedPatternToOther : ProductionCommand
     data class ToggleSongSectionPattern(val sectionIndex: Int) : ProductionCommand
@@ -48,11 +54,8 @@ fun reduceProductionCommand(
     if (command is ProductionCommand.SelectSliceAt) {
         return selectSliceAt(state, command.frame)
     }
-    if (state.isLoading) {
-        return sessionFeedback(state, "現在の処理が終わってから編集してください")
-    }
-    if (!editingRequestAllowedDuringRecording(state.recordingSession)) {
-        return sessionFeedback(state, "録音をSTOPしてから編集してください")
+    projectEditBlockedReason(state)?.let { reason ->
+        return sessionFeedback(state, reason)
     }
 
     return when (command) {
@@ -63,6 +66,14 @@ fun reduceProductionCommand(
         is ProductionCommand.SelectSliceAt -> error("Selection is handled before edit admission")
         ProductionCommand.ToggleSelectedPadPerformanceMode -> toggleSelectedPadPerformanceMode(state)
         ProductionCommand.CreateQuickSketch -> createQuickSketch(state)
+        ProductionCommand.AssignWholeSourceToPad -> assignWholeSourceToPad(state)
+        is ProductionCommand.FillSelectedPadPattern -> editSelectedPadPattern(state, command)
+        ProductionCommand.ClearSelectedPadPattern -> editSelectedPadPattern(state, command)
+        is ProductionCommand.ShiftSelectedPadPattern -> editSelectedPadPattern(state, command)
+        ProductionCommand.ClearSelectedPattern -> arrangementCommandResult(state, state.clearSelectedPattern())
+        ProductionCommand.ClearAllPatterns -> arrangementCommandResult(
+            state, state.clearEveryPattern().copy(statusMessage = "A/B両方のパターンを全消去しました"),
+        )
         is ProductionCommand.SelectPatternVariation -> arrangementCommandResult(
             state,
             state.selectPatternVariation(command.slot),
@@ -84,55 +95,6 @@ fun canCreateQuickSketch(state: SamplerUiState): Boolean =
 
 fun minimumChopFrames(sampleRate: Int): Int =
     (sampleRate.coerceAtLeast(1) * MINIMUM_CHOP_SECONDS).toInt().coerceAtLeast(64)
-
-fun snapFrameToZeroCrossing(
-    audio: PcmAudio,
-    targetFrame: Int,
-    lowerBound: Int,
-    upperBound: Int,
-): Int {
-    if (audio.frameCount < 2) return targetFrame.coerceIn(lowerBound, upperBound)
-
-    val safeLower = lowerBound.coerceIn(0, audio.frameCount)
-    val safeUpper = upperBound.coerceIn(safeLower, audio.frameCount)
-    val target = targetFrame.coerceIn(safeLower, safeUpper)
-    if (target == 0 || target == audio.frameCount) return target
-
-    val radius = (audio.sampleRate * ZERO_CROSSING_SEARCH_SECONDS)
-        .toInt()
-        .coerceIn(32, 1_024)
-    val from = maxOf(1, safeLower, target - radius)
-    val to = minOf(audio.frameCount - 1, safeUpper, target + radius)
-    if (from > to) return target
-
-    var bestCrossing = -1
-    var bestDistance = Int.MAX_VALUE
-    for (frame in from..to) {
-        val previous = audio.monoSampleAt(frame - 1).toInt()
-        val current = audio.monoSampleAt(frame).toInt()
-        val crossesZero =
-            (previous <= 0 && current >= 0) || (previous >= 0 && current <= 0)
-        if (crossesZero) {
-            val distance = kotlin.math.abs(frame - target)
-            if (distance < bestDistance) {
-                bestCrossing = frame
-                bestDistance = distance
-            }
-        }
-    }
-    if (bestCrossing >= 0) return bestCrossing
-
-    var quietestFrame = target
-    var quietestMagnitude = kotlin.math.abs(audio.monoSampleAt(target).toInt())
-    for (frame in from..to) {
-        val magnitude = kotlin.math.abs(audio.monoSampleAt(frame).toInt())
-        if (magnitude < quietestMagnitude) {
-            quietestFrame = frame
-            quietestMagnitude = magnitude
-        }
-    }
-    return quietestFrame
-}
 
 private fun setSourceRangeStart(
     state: SamplerUiState,
@@ -333,6 +295,31 @@ private fun createQuickSketch(state: SamplerUiState): ProductionCommandResult =
         }
     }
 
+private fun assignWholeSourceToPad(state: SamplerUiState): ProductionCommandResult {
+    val audio = state.currentAudio ?: return sessionFeedback(state, "先に素材を入れてください")
+    if (audio.frameCount < minimumChopFrames(audio.sampleRate)) {
+        return sessionFeedback(state, "素材が短すぎます")
+    }
+    val assignment = assignRangesToPads(
+        state,
+        listOf(SliceRange(0, audio.frameCount)),
+        "元曲全体をPADへ割り当てました",
+    )
+    if (assignment.changedPads.isEmpty()) {
+        return ProductionCommandResult(state = assignment.state, mutation = ProductionMutation.SESSION)
+    }
+    val assigned = assignment.changedPads.last()
+    return ProductionCommandResult(
+        state = assignment.state.copy(
+            selectedBank = assigned.bankIndex,
+            selectedPad = assigned.globalIndex,
+            statusMessage = "元曲全体を割り当てました。ループで重ねられます",
+        ),
+        mutation = ProductionMutation.PROJECT,
+        effects = assignment.changedPads.map(ProductionEffect::RefreshPad),
+    )
+}
+
 private sealed interface QuickSketchEvaluation {
     data class Ready(val ranges: List<SliceRange>) : QuickSketchEvaluation
     data class Rejected(val message: String) : QuickSketchEvaluation
@@ -407,6 +394,29 @@ private fun quickSketchPreconditionMessage(state: SamplerUiState): String? {
     return null
 }
 
+private fun editSelectedPadPattern(
+    state: SamplerUiState,
+    command: ProductionCommand,
+): ProductionCommandResult {
+    val pad = state.pads.getOrNull(state.selectedPad) ?: return unchanged(state)
+    if (command != ProductionCommand.ClearSelectedPadPattern && !pad.canUsePatternSteps()) {
+        return sessionFeedback(state, "音の入った通常PADを選んでください。LOOPとVOICEは配置対象外です")
+    }
+    val steps = when (command) {
+        is ProductionCommand.FillSelectedPadPattern -> state.activeSteps.replacePadSteps(state.selectedPad, command.grid)
+        ProductionCommand.ClearSelectedPadPattern -> state.activeSteps.clearPadSteps(state.selectedPad)
+        is ProductionCommand.ShiftSelectedPadPattern -> state.activeSteps.shiftPadSteps(state.selectedPad, command.offset)
+        else -> return unchanged(state)
+    }
+    if (steps == state.activeSteps) return unchanged(state)
+    val message = when (command) {
+        is ProductionCommand.FillSelectedPadPattern -> "${command.grid.statusLabel}を選択PADに配置しました"
+        ProductionCommand.ClearSelectedPadPattern -> "選択PADの配置を消去しました"
+        else -> "選択PADの配置をずらしました"
+    }
+    return arrangementCommandResult(state, state.copy(activeSteps = steps, statusMessage = message))
+}
+
 private fun classifiedResult(
     before: SamplerUiState,
     after: SamplerUiState,
@@ -462,7 +472,6 @@ private fun unchanged(state: SamplerUiState): ProductionCommandResult = Producti
 )
 
 private const val MINIMUM_CHOP_SECONDS = 0.008f
-private const val ZERO_CROSSING_SEARCH_SECONDS = 0.004f
 private const val QUICK_SKETCH_SLICE_COUNT = 8
 private const val QUICK_SKETCH_UNSAFE_MESSAGE =
     "安全な8つの境界を作れないため、制作は変更していません"

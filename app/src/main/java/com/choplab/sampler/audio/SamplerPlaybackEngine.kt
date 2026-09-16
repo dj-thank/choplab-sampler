@@ -20,6 +20,7 @@ interface SamplerPlaybackEngine {
     /** Returns an ownership token only when the realtime trigger command was admitted. */
     fun triggerPad(globalIndex: Int): Long?
     /** Returns true only when one complete owner/companion loop session command was admitted. */
+    fun setPadLoopLayer(pad: PadModel, enabled: Boolean): Boolean
     fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean
     fun stopPad(globalIndex: Int)
     fun beginScratch(globalIndex: Int, startFrame: Int)
@@ -29,13 +30,13 @@ interface SamplerPlaybackEngine {
     fun releasePad(globalIndex: Int)
     fun releasePadIfOwned(globalIndex: Int, ownership: Long)
     fun preview(audio: PcmAudio, startFrame: Int, endFrame: Int)
-    fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float)
+    fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float): Boolean
     fun stopSource()
     fun setPattern(activeSteps: Set<Int>, bpm: Float, swing: Float)
     fun setPatternSequence(patterns: List<Set<Int>>, bpm: Float, swing: Float) {
         setPattern(patterns.firstOrNull() ?: emptySet(), bpm, swing)
     }
-    fun startTransport()
+    fun startTransport(): Boolean
     fun stopTransport()
     fun stopAllVoices()
     fun stopAllPlayback() {

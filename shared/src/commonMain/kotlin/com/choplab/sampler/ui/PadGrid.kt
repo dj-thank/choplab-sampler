@@ -324,18 +324,11 @@ private fun PerformancePad(
     val largeText = usesLargeTextDeckMode(LocalDensity.current.fontScale)
     val shape = RoundedCornerShape(9.dp)
     val bankRole = bankRoleFor(pad.bankIndex)
-    val accent = bankRoleAccent(pad.bankIndex)
-    val background = when {
-        pressed -> accent
-        pad.isAssigned -> accent.copy(alpha = if (hovered) 0.86f else 0.72f)
-        hovered -> DeckPadAssigned
-        else -> DeckPad
+    val colors = remember(pad.bankIndex, pad.isAssigned, pressed, hovered) {
+        padVisualColors(pad.bankIndex, pad.isAssigned, pressed, hovered)
     }
-    val foreground = when {
-        pressed -> Color(0xFF2A1500)
-        pad.isAssigned -> Color(0xFFF1DFAD)
-        else -> Color(0xFF91825C)
-    }
+    val background = colors.background
+    val foreground = colors.foreground
     val description = padAccessibilityDescription(pad, captureMode, sourcePhase)
     val deferDestructiveCapture = shouldDeferDestructiveCaptureUntilTap(
         assigned = pad.isAssigned,
@@ -503,16 +496,18 @@ private fun PerformancePad(
         )
         if (!compact) {
             Text(
-                text = padCenterLabel(pad).ifEmpty { "EMPTY" },
-                color = if (pressed) Color(0xFF241400) else Color(0xFFFFE8B8),
+                text = padCenterLabel(pad).ifEmpty { "空き" },
+                color = foreground,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
-                fontSize = 8.sp,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.align(Alignment.Center).padding(bottom = 6.dp),
             )
             if (pad.isAssigned) {
-                val peaks = remember(pad.audio?.id, pad.startFrame, pad.endFrame) {
+                val peaks = remember(pad.audio?.id, pad.audio?.samples, pad.startFrame, pad.endFrame) {
                     buildPadMiniPeaks(pad)
                 }
                 Canvas(
@@ -528,7 +523,7 @@ private fun PerformancePad(
                         peaks.forEachIndexed { index, amount ->
                             val barHeight = (size.height * amount).coerceAtLeast(1f)
                             drawRoundRect(
-                                color = Color(0xFFFFE8B8).copy(alpha = 0.72f),
+                                color = foreground,
                                 topLeft = Offset(index * (barWidth + spacing), (size.height - barHeight) / 2f),
                                 size = Size(barWidth, barHeight),
                                 cornerRadius = CornerRadius(barWidth / 2f),
@@ -546,9 +541,9 @@ private fun PerformancePad(
                     pad.contentKind == PadContentKind.VOCAL -> "VOX"
                     else -> keyLabel
                 },
-                color = if (pressed) Color(0xFF5A3210) else Color(0xFF756743),
+                color = foreground,
                 fontFamily = FontFamily.Monospace,
-                fontSize = if (compact) 7.sp else 8.sp,
+                fontSize = if (compact) 9.sp else 10.sp,
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
         }
@@ -591,6 +586,8 @@ fun padAccessibilityDescription(
     } else if (captureMode) {
         append("。現在位置をチョップ")
     }
+    append("。BANK ${bankRoleFor(pad.bankIndex).letter}、")
+    append("${bankRoleFor(pad.bankIndex).letter}-%02d".format(pad.indexInBank + 1))
 }
 
 fun shouldDeferDestructiveCaptureUntilTap(
@@ -598,29 +595,6 @@ fun shouldDeferDestructiveCaptureUntilTap(
     captureMode: Boolean,
     sourcePhase: SourceUiPhase,
 ): Boolean = assigned && captureMode && sourcePhase == SourceUiPhase.PLAYING
-
-private fun buildPadMiniPeaks(pad: PadModel): FloatArray {
-    val audio = pad.audio ?: return FloatArray(0)
-    if (!pad.isAssigned || audio.samples.isEmpty()) return FloatArray(0)
-    val start = pad.startFrame.coerceIn(0, audio.frameCount - 1)
-    val end = pad.endFrame.coerceIn(start + 1, audio.frameCount)
-    val bucketCount = 9
-    val bucketSize = max(1, (end - start) / bucketCount)
-    val peaks = FloatArray(bucketCount) { bucket ->
-        val from = (start + bucket * bucketSize).coerceAtMost(end - 1)
-        val to = (from + bucketSize).coerceAtMost(end)
-        var peak = 0f
-        var frame = from
-        val stride = max(1, (to - from) / 24)
-        while (frame < to) {
-            peak = max(peak, abs(audio.monoSampleAt(frame) / 32_768f))
-            frame += stride
-        }
-        peak
-    }
-    val strongest = peaks.maxOrNull()?.coerceAtLeast(0.08f) ?: 1f
-    return FloatArray(bucketCount) { index -> (peaks[index] / strongest).coerceIn(0.12f, 1f) }
-}
 
 private fun padCenterLabel(pad: PadModel): String {
     val audio = pad.audio ?: return ""

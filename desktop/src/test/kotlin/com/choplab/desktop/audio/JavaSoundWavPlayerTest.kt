@@ -19,6 +19,27 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class JavaSoundWavPlayerTest {
+    @Test fun addingAndRemovingALoopKeepsTheCoreClipRunning() {
+        val core = ClipProbe(label = "core")
+        val layer = ClipProbe(label = "layer")
+        val clips = ArrayDeque(listOf(core, layer))
+        val player = JavaSoundWavPlayer(DesktopClipFactory { clips.removeFirst().clip })
+        try {
+            player.triggerPad(testPad(PadPlayMode.LOOP, 1), forceLoop = true)
+            val initialStops = core.stopCount
+            val initialStarts = core.loopCount
+            player.triggerPad(testPad(PadPlayMode.LOOP, 0), forceLoop = true)
+            assertEquals(initialStops, core.stopCount)
+            assertEquals(initialStarts, core.loopCount)
+            assertEquals(0, core.closeCount)
+            assertEquals(1, layer.loopCount)
+            player.stopPad(0)
+            assertEquals(1, layer.closeCount)
+            assertEquals(0, core.closeCount)
+            assertEquals(initialStops, core.stopCount)
+        } finally { player.close() }
+    }
+
     @Test
     fun sourceRenderDoesNotHoldTheEngineMonitor() {
         val probe = ClipProbe()

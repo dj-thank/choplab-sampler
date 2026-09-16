@@ -14,15 +14,8 @@ import kotlin.math.floor
 import kotlin.math.pow
 
 /** Streaming bidirectional scratch voice for one bounded PCM range. */
-class DesktopScratchPlayer : AutoCloseable {
-    private val running = AtomicBoolean(false)
-    @Volatile private var targetSpeed = 0f
-    @Volatile private var line: SourceDataLine? = null
-    @Volatile private var worker: Thread? = null
-    @Volatile var currentFrame: Int = -1
-        private set
-
-    @Synchronized
+interface ScratchVoicePlayer : AutoCloseable {
+    val currentFrame: Int
     fun start(
         audio: PcmAudio,
         startFrame: Int,
@@ -32,6 +25,29 @@ class DesktopScratchPlayer : AutoCloseable {
         tone: Float = 1f,
         gain: Float = 1f,
         reverse: Boolean = false,
+    )
+    fun updateSpeed(speed: Float)
+    fun stop()
+}
+
+class DesktopScratchPlayer : ScratchVoicePlayer {
+    private val running = AtomicBoolean(false)
+    @Volatile private var targetSpeed = 0f
+    @Volatile private var line: SourceDataLine? = null
+    @Volatile private var worker: Thread? = null
+    @Volatile override var currentFrame: Int = -1
+        private set
+
+    @Synchronized
+    override fun start(
+        audio: PcmAudio,
+        startFrame: Int,
+        endFrame: Int,
+        initialFrame: Int,
+        pitchSemitones: Float,
+        tone: Float,
+        gain: Float,
+        reverse: Boolean,
     ) {
         stop()
         val start = startFrame.coerceIn(0, (audio.frameCount - 1).coerceAtLeast(0))
@@ -58,11 +74,11 @@ class DesktopScratchPlayer : AutoCloseable {
         thread.start()
     }
 
-    fun updateSpeed(speed: Float) {
+    override fun updateSpeed(speed: Float) {
         targetSpeed = normalizeScratchSpeed(speed)
     }
 
-    fun stop() {
+    override fun stop() {
         running.set(false)
         targetSpeed = 0f
         val activeLine = line

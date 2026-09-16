@@ -1,15 +1,20 @@
 package com.choplab.sampler
 
+import android.app.ActivityManager
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.ContextCompat
+import androidx.core.os.trace
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.choplab.sampler.audio.AudioDecoder
 import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
 import com.choplab.sampler.audio.AndroidBeatLoopSessionResult
+import com.choplab.sampler.audio.stopAndroidReplacedLoopLayers
 import com.choplab.sampler.audio.AndroidBeatLoopSessionTransaction
+import com.choplab.sampler.audio.startAndroidLayeredTransport
+import com.choplab.sampler.model.configuredLoopPadIndex
 import com.choplab.sampler.audio.startAndroidPadLoopSession
 import com.choplab.sampler.audio.BuiltInDrumKits
 import com.choplab.sampler.audio.CaptureEventBus
@@ -24,6 +29,7 @@ import com.choplab.sampler.audio.PlaybackSilencer
 import com.choplab.sampler.audio.PlaybackStartDecision
 import com.choplab.sampler.audio.SamplerEngine
 import com.choplab.sampler.audio.SamplerPlaybackEngine
+import com.choplab.sampler.audio.prepareSamplerStartup
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.TransientDetector
 import com.choplab.sampler.audio.discardVocalTakeAfterLoopAdmissionFailure
@@ -31,6 +37,10 @@ import com.choplab.sampler.audio.normalizeScratchSpeed
 import com.choplab.sampler.model.DrumKitApplyDecision
 import com.choplab.sampler.model.HistoryRequestDenial
 import com.choplab.sampler.model.PadContentKind
+import com.choplab.sampler.model.loopLayerChangeBlockedReason
+import com.choplab.sampler.model.withLoopLayer
+import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
+import com.choplab.sampler.model.attachLibrarySource
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PerformancePadPressAction
@@ -98,6 +108,7 @@ import com.choplab.sampler.model.recordPadStep
 import com.choplab.sampler.model.reconcilePendingSourceCommand
 import com.choplab.sampler.model.recordingStartPolicy
 import com.choplab.sampler.model.removePadFromEveryPattern
+import com.choplab.sampler.model.withInitialDrumKitPattern
 import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
 import com.choplab.sampler.model.replacePadSteps
 import com.choplab.sampler.model.replaceSourceAudio
@@ -111,7 +122,6 @@ import com.choplab.sampler.model.selectPlayableBank as selectPlayableBankState
 import com.choplab.sampler.model.selectPlayablePad as selectPlayablePadState
 import com.choplab.sampler.model.selectPlayablePadPage as selectPlayablePadPageState
 import com.choplab.sampler.model.selectSourceRangeForScratch
-import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.model.selectedPadModel
 import com.choplab.sampler.model.sliceRanges
 import com.choplab.sampler.model.sourcePlaybackAppliedStatusMessage
@@ -150,6 +160,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.choplab.sampler.model.DrumSeparationPhase
+import com.choplab.sampler.model.DrumSeparationState
+import com.choplab.sampler.separation.DrumSeparationService
+import com.choplab.sampler.separation.OnnxDrumChunkInference
+import com.choplab.sampler.separation.SeparationMemoryPolicy
+import com.choplab.sampler.separation.SeparatorModelStore
 import java.io.File
 import java.util.UUID
 import kotlin.math.pow
@@ -173,10 +189,20 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     private val beatLoopSessionTransaction = AndroidBeatLoopSessionTransaction(productionSession, engine)
     private val autosaveStore = AtomicProjectStore(File(application.filesDir, "projects"))
     private val captureTempFiles = CaptureTempFileStore(File(application.cacheDir, "captures"))
-    private var autosaveJob: Job? = null
+    private val autosaveWriter = com.choplab.sampler.persistence.ProjectAutosaveWriter(
+        save = { state, revision -> autosaveStore.save(state, revision); Unit },
+        onFailure = { revision, failure ->
+            viewModelScope.launch {
+                if (productionSession.revision == revision) {
+                    setStatus(failure.message ?: "自動保存できませんでした")
+                }
+            }
+        },
+    )
     private var scratchIdleJob: Job? = null
     private var projectLaunchRevision = 0L
     private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
+    private var scratchPausedLoopOwner: Int? = null
     private val projectOperations = ProjectOperationEpoch()
     private val microphoneSourceCapture = SourceCaptureOperation(projectOperations)
     private val systemSourceCapture = SourceCaptureOperation(projectOperations)
@@ -185,12 +211,15 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            captureTempFiles.cleanupStale(
-                nowMillis = System.currentTimeMillis(),
-                maxAgeMillis = STALE_CAPTURE_MAX_AGE_MS,
-            )
+            runStartupMaintenance(uiState) {
+                trace("ChopLab.capture.cleanup") {
+                    captureTempFiles.cleanupStale(
+                        nowMillis = System.currentTimeMillis(),
+                        maxAgeMillis = STALE_CAPTURE_MAX_AGE_MS,
+                    )
+                }
+            }
         }
-        engine.start()
         observePlaybackCapture()
         pollTransportStep()
         recoverAutosave()
@@ -274,6 +303,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
         loopToStop?.let { loopPad ->
             engine.stopPad(loopPad)
+            mutableUiState.value.pads.loopCompanionPadIndicesForLoopStart(loopPad).forEach(engine::stopPad)
             playbackInterruptionCoordinator.endPlaybackSession()
         }
     }
@@ -386,11 +416,16 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun clearScratchRuntime() {
         scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleJob?.cancel()
         scratchIdleJob = null
     }
 
     fun loadAudio(uri: Uri) {
+        if (mutableUiState.value.isLoading) {
+            setStatus("現在の処理が終わってから素材を読み込んでください")
+            return
+        }
         if (mutableUiState.value.recordingSession.isActive) {
             setStatus("録音をSTOPしてから別の素材を読み込んでください")
             return
@@ -398,11 +433,30 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         loadAudio(uri, projectOperations.begin())
     }
 
+    fun addLibrarySource(uri: Uri, title: String) {
+        if (mutableUiState.value.isLoading || mutableUiState.value.recordingSession.isActive) {
+            setStatus("現在の処理や録音を終えてから音源を追加してください")
+            return
+        }
+        loadAudio(uri, projectOperations.begin(), preserveProduction=true, title=title)
+    }
+
+    /** REPLACE SOURCE entries (CHOP coach, CAPTURE import): new song drops old chops and beats. */
+    fun replaceLibrarySource(uri: Uri, title: String) {
+        if (mutableUiState.value.isLoading || mutableUiState.value.recordingSession.isActive) {
+            setStatus("現在の処理や録音を終えてから素材を入れ替えてください")
+            return
+        }
+        loadAudio(uri, projectOperations.begin(), preserveProduction=false, title=title)
+    }
+
     private fun loadAudio(
         uri: Uri,
         operation: Long,
         completedRecordingKind: RecordingKind? = null,
         ownedCaptureFile: File? = null,
+        preserveProduction: Boolean = false,
+        title: String? = null,
     ) {
         viewModelScope.launch {
             try {
@@ -411,21 +465,28 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 engine.stopAllPlayback()
                 playbackInterruptionCoordinator.endPlaybackSession()
                 mutableUiState.update(::beginSourceReplacement)
-                runCatching { decoder.decode(uri) }
+                runCatching { decoder.decode(uri).let { audio -> if(title==null) audio else audio.copy(name=title.take(240)) } }
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
                             val previous = mutableUiState.value
-                            val newProduction = BuiltInDrumKits.installStarterKit(
+                            val newProduction = runCatching { (if(preserveProduction) attachLibrarySource(
+                                previous, audio, com.choplab.sampler.audio.AudioResourceLimits.MAX_MOBILE_PROJECT_PCM_BYTES,
+                            ) else BuiltInDrumKits.installStarterKit(
                                 replaceSourceAudio(previous, audio),
-                            ).copy(
+                            )).copy(
                                 projectLaunchTarget = ProjectLaunchTarget.CHOP,
                                 projectLaunchRevision = nextProjectLaunchRevision(),
                             )
+                            }.getOrElse { failure ->
+                                mutableUiState.value = previous.copy(isLoading = false,
+                                    statusMessage = failure.message ?: "音源を追加できませんでした")
+                                return@completeIfCurrent
+                            }
                             val replaced = preserveAppliedSourceTruthWhileStopping(
                                 previousState = previous,
                                 replacementState = newProduction,
                             )
-                            val transition = productionSession.replaceProject(replaced)
+                            val transition = if(preserveProduction) productionSession.applyEdit(previous,replaced) else productionSession.replaceProject(replaced)
                             mutableUiState.value = transition.state
                             engine.updateAllPads(transition.state.pads)
                             syncPattern()
@@ -641,10 +702,12 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 }
                     .onSuccess { audio ->
                         projectOperations.completeIfCurrent(operation) {
-                            assignVocalTake(audio)
+                            // The validated stop operation owns this completion. Release its
+                            // recording state before entering the ordinary project edit gate.
                             mutableUiState.update {
                                 endRecordingSession(it, RecordingKind.VOCAL_OVERDUB)
                             }
+                            assignVocalTake(audio)
                         }
                     }
                     .onFailure { throwable ->
@@ -694,6 +757,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
+        com.choplab.sampler.model.projectEditBlockedReason(mutableUiState.value)?.let {
+            setStatus(it)
+            return
+        }
         val bankIndex = SamplerConfig.DRUM_BANK_INDEX
         if (
             drumKitApplyDecision(mutableUiState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&
@@ -709,16 +776,18 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             }
         val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
         val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
-        mutableUiState.value.loopingPadIndex
-            ?.takeIf { it in bankStart until bankEnd }
-            ?.let(engine::stopPad)
+        if (mutableUiState.value.loopingPadIndex in bankStart until bankEnd) {
+            // Replacing the core ends its whole playback session, including outside layers.
+            stopAllSounds()
+        } else if (!stopAndroidReplacedLoopLayers(engine, mutableUiState.value, bankStart until bankEnd)) {
+            setStatus("音色変更を中止しました。全体を再生し直してから試してください")
+            return
+        }
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.replaceBankStepsAcrossPatterns(
-                bankStart = bankStart,
-                bankEndExclusive = bankEnd,
-                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            state.withInitialDrumKitPattern(
+                BuiltInDrumKits.starterPattern(kitId, bankIndex),
             ).copy(
                 pads = pads,
                 selectedBank = bankIndex,
@@ -745,21 +814,25 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (!preparePlaybackStart()) return
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: the beat keeps flowing underneath. Only a previous scratch
+        // voice is replaced, plus the loop voice of the scratched pad itself so the
+        // same region does not double while the dial moves.
+        clearScratchRuntime()
+        engine.endScratch()
+        val loopsOwner = state.loopingPadIndex == padIndex
+        if (loopsOwner) engine.stopPad(padIndex)
+        scratchPausedLoopOwner = padIndex.takeIf { loopsOwner }
         val startFrame = state.loopPlayheadFrame.takeIf { it in pad.startFrame until pad.endFrame }
             ?: pad.startFrame
         engine.beginScratch(padIndex, startFrame)
         mutableUiState.update {
             it.copy(
-                loopingPadIndex = null,
-                loopPlayheadFrame = -1,
                 scratchingPadIndex = padIndex,
                 scratchPlayheadFrame = startFrame,
                 sourceScratchActive = false,
                 scratchSpeed = 0f,
-                scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                statusMessage = "指を左右へ動かしてスクラッチ",
+                scratchReturnAvailable = false,
+                statusMessage = "ビートに重ねてスクラッチ中",
             )
         }
     }
@@ -773,20 +846,24 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         if (!preparePlaybackStart()) return
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: loops and the pattern keep flowing. Only the source song
+        // voice itself is paused so the scratched range does not double underneath.
+        clearScratchRuntime()
+        engine.endScratch()
+        val sourceWasPlaying = state.sourcePlaying
+        if (sourceWasPlaying) engine.stopSource()
         engine.beginSourceScratch(audio, range.startFrame, range.endFrame)
         mutableUiState.update { current ->
             current.copy(
+                sourcePlaying = false,
                 pendingSourceCommand = pendingSourceCommandAfterStopRequest(current.sourcePlaying),
-                loopingPadIndex = null,
-                loopPlayheadFrame = -1,
                 scratchingPadIndex = null,
                 scratchPlayheadFrame = range.startFrame,
                 sourceScratchActive = true,
                 scratchSpeed = 0f,
-                scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                statusMessage = "選んだ元曲の範囲をスクラッチ中",
+                scratchReturnAvailable = false,
+                statusMessage = if (sourceWasPlaying) "元曲を止めてスクラッチ中。離したら再生ボタンで再開できます"
+                else "ビートに重ねて元曲をスクラッチ中",
             )
         }
     }
@@ -843,10 +920,23 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         val target = scratchReturnTarget
+        restartScratchPausedLoopOwner()
         clearScratchRuntime()
         if (!resumeAfterScratch(target)) {
             playbackInterruptionCoordinator.endPlaybackSession()
         }
+    }
+
+    /** Restarts only the loop voice paused for a layered pad scratch, if it still owns the loop. */
+    private fun restartScratchPausedLoopOwner() {
+        val owner = scratchPausedLoopOwner
+        scratchPausedLoopOwner = null
+        if (owner == null) return
+        val current = mutableUiState.value
+        if (current.loopingPadIndex != owner) return
+        val pad = current.pads.getOrNull(owner)
+        if (pad?.isAssigned != true) return
+        runCatching { engine.setPadLoopLayer(pad, true) }
     }
 
     fun startSystemAudioCapture(resultCode: Int, resultData: Intent) {
@@ -977,7 +1067,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 blank
             }
         }
-        autosaveJob?.cancel()
         engine.stopAllPlayback()
         playbackInterruptionCoordinator.endPlaybackSession()
         runCatching {
@@ -996,16 +1085,8 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         mutableUiState.value = transition.state
         engine.updateAllPads(transition.state.pads)
         syncPattern()
-        autosaveJob = viewModelScope.launch {
-            val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(reset, revision) }.exceptionOrNull()
-            }
-            if (failure != null && productionSession.revision == revision) {
-                mutableUiState.update {
-                    it.copy(statusMessage = failure.message ?: "リセット状態を保存できませんでした")
-                }
-            }
-        }
+        autosaveWriter.submit(reset, revision)
+        autosaveWriter.flush()
     }
 
     fun toggleManualChop() {
@@ -1065,32 +1146,47 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun autoChopTransient() {
         val snapshot = mutableUiState.value
-        val revisionAtStart = productionSession.revision
+        com.choplab.sampler.model.projectEditBlockedReason(snapshot)?.let {
+            setStatus(it)
+            return
+        }
         val audio = snapshot.currentAudio ?: return
-        viewModelScope.launch(Dispatchers.Default) {
-            withContext(Dispatchers.Main) {
-                mutableUiState.update { it.copy(isLoading = true, statusMessage = "トランジェントを検出しています…") }
-            }
-            val detectedMarkers = TransientDetector.detect(
-                samples = audio.samples,
-                startFrame = snapshot.rangeStartFrame,
-                endFrame = snapshot.rangeEndFrame,
-                sampleRate = audio.sampleRate,
-                maxSlices = SamplerConfig.PADS_PER_BANK,
-                channelCount = audio.channelCount,
-            )
-            val markers = detectedMarkers
-                .map { marker ->
-                    snapToZeroCrossing(
-                        audio = audio,
-                        targetFrame = marker,
-                        lowerBound = snapshot.rangeStartFrame + minimumSliceFrames(audio.sampleRate),
-                        upperBound = snapshot.rangeEndFrame - minimumSliceFrames(audio.sampleRate),
-                    )
+        val revisionAtStart = productionSession.revision
+        val operation = projectOperations.begin()
+        mutableUiState.update { it.copy(isLoading = true, statusMessage = "トランジェントを検出しています…") }
+        viewModelScope.launch {
+            val markers = try {
+                withContext(Dispatchers.Default) {
+                    TransientDetector.detect(
+                        samples = audio.samples,
+                        startFrame = snapshot.rangeStartFrame,
+                        endFrame = snapshot.rangeEndFrame,
+                        sampleRate = audio.sampleRate,
+                        maxSlices = SamplerConfig.PADS_PER_BANK,
+                        channelCount = audio.channelCount,
+                    ).map { marker ->
+                        snapToZeroCrossing(
+                            audio = audio,
+                            targetFrame = marker,
+                            lowerBound = snapshot.rangeStartFrame + minimumSliceFrames(audio.sampleRate),
+                            upperBound = snapshot.rangeEndFrame - minimumSliceFrames(audio.sampleRate),
+                        )
+                    }.distinct().sorted()
                 }
-                .distinct()
-                .sorted()
-            withContext(Dispatchers.Main) {
+            } catch (cancelled: CancellationException) {
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update { it.copy(isLoading = false, statusMessage = "自動チョップを中止しました") }
+                }
+                throw cancelled
+            } catch (failure: Exception) {
+                projectOperations.completeIfCurrent(operation) {
+                    mutableUiState.update {
+                        it.copy(isLoading = false, statusMessage = "自動チョップに失敗しました: ${failure.message ?: "不明なエラー"}")
+                    }
+                }
+                return@launch
+            }
+            projectOperations.completeIfCurrent(operation) {
                 val current = mutableUiState.value
                 if (!transientAnalysisStillCurrent(
                         snapshot = snapshot,
@@ -1099,16 +1195,14 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         currentRevision = productionSession.revision,
                     )
                 ) {
-                    mutableUiState.update { state ->
-                        state.copy(
-                            isLoading = false,
-                            statusMessage = "範囲が変更されたため、自動チョップ結果を破棄しました",
-                        )
+                    mutableUiState.update {
+                        it.copy(isLoading = false, statusMessage = "範囲が変更されたため、自動チョップ結果を破棄しました")
                     }
                 } else {
+                    // Only this current operation may release the edit barrier and publish.
+                    mutableUiState.update { it.copy(isLoading = false) }
                     commitEdit { state ->
                         state.copy(
-                            isLoading = false,
                             sliceMarkers = markers,
                             activeSliceIndex = if (markers.isEmpty()) null else 0,
                             manualChopEnabled = false,
@@ -1468,20 +1562,40 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun playSourceFrom(frame: Int) {
+    override fun rechopSourceFrom(frame: Int): Boolean {
+        val before = mutableUiState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val audio = before.currentAudio ?: return false
+        if (audio.frameCount < 2) return false
+        if (!tryPlaySourceFrom(frame.coerceIn(0, audio.frameCount - 1))) return false
+        commitEdit { state ->
+            com.choplab.sampler.model.prepareDefaultMelodyChopDestination(state.copy(
+                rangeStartFrame = 0, rangeEndFrame = audio.frameCount, activeSliceIndex = null,
+            ))
+        }
+        return true
+    }
+
+    override fun playSourceFrom(frame: Int) { tryPlaySourceFrom(frame) }
+
+    private fun tryPlaySourceFrom(frame: Int): Boolean {
         val state = mutableUiState.value
         if (state.pendingSourceCommand == PendingSourceCommand.STOP) {
             setStatus("停止処理中です。音が止まってから位置を選んでください")
-            return
+            return false
         }
         val audio = state.currentAudio ?: run {
             setStatus("先に曲を読み込んでください")
-            return
+            return false
         }
         val safe = frame.coerceIn(0, audio.frameCount - 1)
-        if (!preparePlaybackStart()) return
+        if (!preparePlaybackStart()) return false
         stopCompetingPlayback()
-        engine.playSource(audio, safe, state.masterPitchSemitones)
+        if (!engine.playSource(audio, safe, state.masterPitchSemitones)) {
+            stopAllSounds()
+            setStatus("元曲の再生を開始できませんでした")
+            return false
+        }
         mutableUiState.update { current ->
             val feedback = sourcePlaybackRequestFeedback(
                 appliedPlaying = current.sourcePlaying,
@@ -1496,6 +1610,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 statusMessage = feedback.statusMessage,
             )
         }
+        return true
     }
 
     override fun seekSourcePlayback(frame: Int) {
@@ -1626,12 +1741,78 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         toggleBeatLoop(mutableUiState.value.selectedPad)
     }
 
+    override fun rollPadBoundary(index: Int, boundary: PadTrimBoundary, deltaFrames: Int) {
+        val before = mutableUiState.value.pads.getOrNull(index) ?: return
+        if (!before.isAssigned) return
+        updateSelectedPad(parameter = "trim-${boundary.name}", padIndex = index) {
+            com.choplab.sampler.model.trimPadBoundary(it, boundary, deltaFrames)
+        }
+    }
+
+    override fun setPadLoopLayer(index: Int, enabled: Boolean, withPattern: Boolean): Boolean {
+        val before = mutableUiState.value
+        before.loopLayerChangeBlockedReason(index, enabled)?.let { setStatus(it); return false }
+        if (enabled && before.loopingPadIndex == null) return startPadLoopInternal(index, withPattern, preserveLayers = true)
+        val after = before.withLoopLayer(index, enabled)
+        if (after == before) {
+            if (withPattern && !before.transportPlaying) {
+                syncPattern()
+                if (!startLayeredTransport()) return false
+                mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
+            }
+            return true
+        }
+        val candidate = after.pads[index]
+        val result = try {
+            beatLoopSessionTransaction.changeLayer(before, index, enabled)
+        } catch (failure: Exception) {
+            setStatus("ループの重ね方を変更できませんでした: ${failure.message ?: failure.javaClass.simpleName}")
+            return false
+        }
+        if (result !is AndroidBeatLoopSessionResult.Started) {
+            setStatus("ループの操作を受け付けられませんでした。現在の音を維持します")
+            return false
+        }
+        val transition = result.transition
+        mutableUiState.value = transition.state
+        engine.updatePad(candidate)
+        syncPattern()
+        if (transition.persistenceRequired) scheduleAutosave()
+        if (withPattern && !mutableUiState.value.transportPlaying) {
+            if (!engine.startTransport()) { stopAllSounds(); return false }
+            mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
+        }
+        return true
+    }
+
+    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean =
+        startPadLoopInternal(index, withPattern, preserveLayers = false)
+
+    private fun startPadLoopInternal(index: Int, withPattern: Boolean, preserveLayers: Boolean): Boolean {
+        val before = mutableUiState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val pad = before.pads.getOrNull(index)
+        if (pad?.isAssigned != true || pad.contentKind == PadContentKind.VOCAL) return false
+        if (before.loopingPadIndex != index) toggleBeatLoop(index, preserveLayers)
+        if (mutableUiState.value.loopingPadIndex != index) return false
+        if ((withPattern || before.transportPlaying) && !mutableUiState.value.transportPlaying) {
+            syncPattern()
+            if (!engine.startTransport()) {
+                stopAllSounds()
+                setStatus("ビートを開始できませんでした")
+                return false
+            }
+            mutableUiState.update { it.copy(transportPlaying = true, currentStep = 0) }
+        }
+        return true
+    }
+
     override fun toggleBeatLoopControl() {
         val state = mutableUiState.value
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
     }
 
-    private fun toggleBeatLoop(globalIndex: Int) {
+    private fun toggleBeatLoop(globalIndex: Int, preserveLayers: Boolean = false) {
         val state = mutableUiState.value
         val pad = state.pads.getOrNull(globalIndex) ?: return
         if (!pad.isAssigned) {
@@ -1641,9 +1822,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (state.loopingPadIndex == globalIndex) {
             engine.stopPad(globalIndex)
             state.pads
-                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = globalIndex)
+                .loopCompanionPadIndicesForLoopStart(globalIndex)
                 .forEach(engine::stopPad)
-            playbackInterruptionCoordinator.endPlaybackSession()
+            if (!state.transportPlaying) playbackInterruptionCoordinator.endPlaybackSession()
             mutableUiState.update {
                 it.copy(
                     loopingPadIndex = null,
@@ -1657,7 +1838,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (!preparePlaybackStart()) return
 
         val result = try {
-            beatLoopSessionTransaction.start(state, globalIndex)
+            beatLoopSessionTransaction.start(state, globalIndex, preserveLayers)
         } catch (failure: Throwable) {
             if (!focusWasActive) playbackInterruptionCoordinator.endPlaybackSession()
             throw failure
@@ -1705,18 +1886,19 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun updateSelectedPad(
         parameter: String? = null,
+        padIndex: Int = mutableUiState.value.selectedPad,
         transform: (PadModel) -> PadModel,
     ) {
         var changed: PadModel? = null
-        val selectedPad = mutableUiState.value.selectedPad
+        val selectedPad = padIndex
         val mergeKey = parameter?.let { "pad-$selectedPad-$it" }
         commitEdit(mergeKey = mergeKey) { state ->
             val mutablePads = state.pads.toMutableList()
-            val current = state.selectedPadModel()
+            val current = state.pads.getOrNull(padIndex) ?: return@commitEdit state
             val updated = transform(current)
-            mutablePads[state.selectedPad] = updated
+            mutablePads[padIndex] = updated
             changed = updated
-            state.copy(pads = mutablePads)
+            state.copy(pads = mutablePads, liveChopPadIndices = if (current.startFrame != updated.startFrame || current.endFrame != updated.endFrame) state.liveChopPadIndices?.minus(padIndex) else state.liveChopPadIndices)
         }
         changed?.let(engine::updatePad)
     }
@@ -1748,15 +1930,13 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     override fun toggleTransport() {
         val playing = mutableUiState.value.transportPlaying
         if (playing) {
-            engine.stopTransport()
-            playbackInterruptionCoordinator.endPlaybackSession()
-            mutableUiState.update { it.copy(transportPlaying = false, currentStep = -1) }
+            stopAllSounds()
         } else {
             if (!preparePlaybackStart()) return
             val recordArmed = mutableUiState.value.recordArmed
-            stopCompetingPlayback()
+            if (mutableUiState.value.loopingPadIndex == null) stopCompetingPlayback()
             syncPattern()
-            engine.startTransport()
+            if (!startLayeredTransport()) return
             mutableUiState.update {
                 it.copy(
                     transportPlaying = true,
@@ -1779,7 +1959,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         if (!state.transportPlaying) {
             stopCompetingPlayback()
             syncPattern()
-            engine.startTransport()
+            if (!startLayeredTransport()) return
             mutableUiState.update {
                 it.copy(
                     transportPlaying = true,
@@ -1798,30 +1978,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun clearSelectedPadPattern() {
-        commitEdit { state ->
-            val filtered = state.activeSteps.clearPadSteps(state.selectedPad)
-            state.copy(activeSteps = filtered, statusMessage = "選択PADのシーケンスを消去しました")
-        }
-        syncPattern()
-    }
-
-    override fun fillSelectedPadPattern(repeatGrid: RepeatGrid) {
-        val selectedPad = mutableUiState.value.selectedPadModel()
-        patternStepBlockedMessage(selectedPad)?.let { message ->
-            setStatus(message)
-            return
-        }
-        commitEdit { state ->
-            state.copy(
-                activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, repeatGrid),
-                statusMessage = "${repeatGrid.statusLabel}を BANK ${('A'.code + state.selectedBank).toChar()}-%02d に配置しました"
-                    .format(state.selectedPadModel().indexInBank + 1),
-            )
-        }
-        syncPattern()
-    }
-
     private fun patternStepBlockedMessage(pad: PadModel): String? = when {
         pad.canUsePatternSteps() -> null
         !pad.isAssigned -> "先に音が入ったPADを選んでください"
@@ -1829,11 +1985,6 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             "ビートループは音声全体を繰り返します。配置は別PADへ追加してください"
         pad.contentKind == PadContentKind.VOCAL -> "VOICE TAKE はビート開始時に1回だけ再生します"
         else -> "このPADはステップへ配置できません"
-    }
-
-    override fun clearAllPattern() {
-        commitEdit { it.clearEveryPattern().copy(statusMessage = "A/B両方のパターンを全消去しました") }
-        syncPattern()
     }
 
     override fun stopAllSounds() {
@@ -1913,6 +2064,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveProject(destination: Uri) {
         val snapshot = mutableUiState.value
+        com.choplab.sampler.model.projectEditBlockedReason(snapshot)?.let {
+            setStatus(it)
+            return
+        }
         val revision = productionSession.revision
         viewModelScope.launch {
             mutableUiState.update { it.copy(isLoading = true, statusMessage = "プロジェクトを保存しています…") }
@@ -1964,6 +2119,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadProject(source: Uri) {
+        if (mutableUiState.value.isLoading) {
+            setStatus("現在の処理が終わってからプロジェクトを開いてください")
+            return
+        }
         if (mutableUiState.value.recordingSession.isActive) {
             setStatus("録音をSTOPして保存が終わってからプロジェクトを開いてください")
             return
@@ -2042,8 +2201,11 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         mergeKey: String? = null,
         transform: (SamplerUiState) -> SamplerUiState,
     ) {
-        if (rejectEditWhileRecording()) return
         val before = mutableUiState.value
+        com.choplab.sampler.model.projectEditBlockedReason(before)?.let {
+            setStatus(it)
+            return
+        }
         val after = transform(before)
         val transition = productionSession.applyEdit(before, after, mergeKey)
         if (transition.mutation == ProductionMutation.NONE) return
@@ -2109,31 +2271,46 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun scheduleAutosave() {
-        val snapshot = mutableUiState.value
-        val revision = productionSession.revision
-        autosaveJob?.cancel()
-        autosaveJob = viewModelScope.launch {
-            delay(AUTOSAVE_DELAY_MS)
-            val failure = withContext(Dispatchers.IO) {
-                runCatching { autosaveStore.save(snapshot, revision) }.exceptionOrNull()
-            }
-            if (failure != null && productionSession.revision == revision) {
-                mutableUiState.update {
-                    it.copy(statusMessage = failure.message ?: "自動保存できませんでした")
-                }
-            }
-        }
+        autosaveWriter.submit(mutableUiState.value, productionSession.revision)
+    }
+
+    fun flushAutosave() {
+        autosaveWriter.flush()
+    }
+    /** Waits for an accepted autosave, then reads; fatal executor failures stay fatal. */
+    private fun <T> readAfterPendingAutosave(read: () -> T): T = try {
+        autosaveWriter.readAfterPending(read).get()
+    } catch (wrapped: java.util.concurrent.ExecutionException) {
+        throw wrapped.cause ?: wrapped
     }
 
     private fun recoverAutosave() {
         val operation = projectOperations.begin()
         val revisionAtStart = productionSession.revision
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { autosaveStore.loadWithRevision() } }
+            val result = prepareSamplerStartup(
+                startAudio = { trace("ChopLab.audioEngine.start") { engine.start() } },
+                stopAudio = engine::shutdown,
+                loadProject = {
+                    prepareStartupProject(
+                        load = {
+                            trace("ChopLab.autosave.read") {
+                                // A recreated Activity can overlap the previous writer's final commit.
+                                readAfterPendingAutosave { autosaveStore.loadWithRevision() }
+                            }
+                        },
+                        createStarter = {
+                            trace("ChopLab.starter.synthesize") { BuiltInDrumKits.prepareStarterKit() }
+                        },
+                    )
+                },
+            )
+            // Preparation can suspend: preserve BOTH stale-project guards before publishing.
             if (productionSession.revision != revisionAtStart) return@launch
             projectOperations.completeIfCurrent(operation) {
-                result.onSuccess { recovered ->
-                    if (recovered != null) {
+                result.onSuccess { prepared ->
+                    if (prepared is PreparedStartupProject.Restored) {
+                        val recovered = prepared.project
                         val restored = recovered.state
                         val transition = productionSession.replaceProject(
                             restored,
@@ -2150,7 +2327,10 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                         )
                     } else {
                         val blank = completeAutosaveRecoveryWithoutProject(mutableUiState.value)
-                        val starter = BuiltInDrumKits.installStarterKit(blank).copy(
+                        val starter = BuiltInDrumKits.installStarterKit(
+                            blank,
+                            (prepared as PreparedStartupProject.Fresh).kit,
+                        ).copy(
                             projectLaunchTarget = ProjectLaunchTarget.CAPTURE,
                             projectLaunchRevision = nextProjectLaunchRevision(),
                             statusMessage = "新しい制作を準備しました — BANK BにDUSTY JAZZをセット済み",
@@ -2181,7 +2361,7 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
             ScratchReturnTarget.Transport -> {
                 if (!preparePlaybackStart()) return false
                 syncPattern()
-                engine.startTransport()
+                if (!startLayeredTransport()) return false
                 mutableUiState.update {
                     it.copy(
                         transportPlaying = true,
@@ -2210,6 +2390,24 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
                 true
             }
         }
+    }
+
+    private fun startLayeredTransport(): Boolean {
+        val state = mutableUiState.value
+        if (!startAndroidLayeredTransport(engine, state)) {
+            stopAllSounds()
+            setStatus("操作が集中しているため、ビート再生を開始できませんでした")
+            return false
+        }
+        if (state.loopingPadIndex != null) return true
+        val loop = state.configuredLoopPadIndex()
+        mutableUiState.update {
+            it.copy(loopingPadIndex = loop, loopPlayheadFrame = loop?.let { index ->
+                val pad = state.pads[index]
+                if (pad.reverse) pad.endFrame - 1 else pad.startFrame
+            } ?: -1)
+        }
+        return true
     }
 
     private fun syncPattern() {
@@ -2366,7 +2564,130 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         const val STALE_CAPTURE_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
     }
 
+    private val drumSeparationModels = SeparatorModelStore(
+        File(getApplication<Application>().noBackupFilesDir, "separator-models"),
+    )
+    private var drumSeparationService: DrumSeparationService? = null
+    private var drumSeparationWorkDir: File? = null
+
+    private fun separationService(): DrumSeparationService = synchronized(this) {
+        drumSeparationService ?: DrumSeparationService(
+            modelsDir = drumSeparationModels.modelFile.parentFile
+                ?: File(getApplication<Application>().noBackupFilesDir, "separator-models"),
+            decode = { throw IllegalStateException("Android separation reads the in-memory source") },
+            backendFactory = { model ->
+                OnnxDrumChunkInference(model, threads = ANDROID_SEPARATION_THREADS, lowMemory = true)
+            },
+            modelProvider = { progress, cancelled -> drumSeparationModels.ensure(progress, cancelled) },
+            releaseBackendAfterJob = true,
+        ).also { drumSeparationService = it }
+    }
+
+    /** CAPTURE "separate drums": renders nothing new; the current source is separated in memory. */
+    fun separateDrumsFromCurrentSource() {
+        val snapshot = mutableUiState.value
+        val audio = snapshot.currentAudio ?: return setStatus("先に素材を入れてください")
+        if (snapshot.drumSeparation?.phase == DrumSeparationPhase.RUNNING) return
+        com.choplab.sampler.model.projectEditBlockedReason(snapshot)?.let {
+            setStatus(it)
+            return
+        }
+        val memory = ActivityManager.MemoryInfo().also {
+            getApplication<Application>().getSystemService(ActivityManager::class.java)?.getMemoryInfo(it)
+        }
+        // One model segment needs several GB; refuse before downloading or allocating.
+        SeparationMemoryPolicy.blockedReason(memory.totalMem, memory.lowMemory)?.let {
+            setStatus(it)
+            return
+        }
+        val service = separationService()
+        drumSeparationWorkDir?.deleteRecursively()
+        val work = File(getApplication<Application>().cacheDir, "separation/${UUID.randomUUID()}")
+        if (!work.mkdirs()) return setStatus("分離の作業領域を作成できませんでした")
+        drumSeparationWorkDir = work
+        val stemName = audio.name.substringBeforeLast('.').take(60)
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "source" } + "-drums.wav"
+        val output = File(work, stemName)
+        val modelShare = if (drumSeparationModels.isInstalled()) 0f else MODEL_DOWNLOAD_PROGRESS_SHARE
+        fun running(progress: Float, message: String) = mutableUiState.update {
+            if (it.drumSeparation?.phase != DrumSeparationPhase.RUNNING) it
+            else it.copy(drumSeparation = DrumSeparationState(DrumSeparationPhase.RUNNING, progress, message))
+        }
+        mutableUiState.update {
+            it.copy(
+                drumSeparation = DrumSeparationState(
+                    DrumSeparationPhase.RUNNING,
+                    0f,
+                    if (modelShare > 0f) "分離モデルを取得しています…" else "ドラムを分離しています…",
+                ),
+                statusMessage = if (modelShare > 0f) {
+                    "初回のみ分離モデル（約166MB）を取得してからドラムを分離します。分離中は他のアプリを閉じると安定します"
+                } else {
+                    "ドラムを分離しています…（分離中は他のアプリを閉じると安定します）"
+                },
+            )
+        }
+        val accepted = service.separate(
+            DrumSeparationService.Request(
+                sourceAudio = audio,
+                outputFile = output,
+                onModelProgress = { progress -> running(progress * modelShare, "分離モデルを取得しています…") },
+                onProgress = { progress -> running(modelShare + (1f - modelShare) * progress, "ドラムを分離しています…") },
+                onDone = { file ->
+                    mutableUiState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(
+                                DrumSeparationPhase.DONE, 1f, "ドラム分離が完了しました", file.absolutePath,
+                            ),
+                            statusMessage = "ドラム分離が完了しました。ライブラリへ追加します",
+                        )
+                    }
+                },
+                onError = { message ->
+                    mutableUiState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.FAILED, 0f, message),
+                            statusMessage = "ドラム分離に失敗しました: $message",
+                        )
+                    }
+                },
+                onCancelled = {
+                    mutableUiState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.CANCELLED, 0f, "中止しました"),
+                            statusMessage = "ドラム分離を中止しました",
+                        )
+                    }
+                },
+            ),
+        )
+        if (!accepted) {
+            work.deleteRecursively()
+            mutableUiState.update { it.copy(drumSeparation = null, statusMessage = "分離を実行中です") }
+        }
+    }
+
+    fun cancelDrumSeparation() {
+        drumSeparationService?.cancel()
+    }
+
+    /** Hands the finished stem to the activity for library import; call [discardDrumSeparationWork] after. */
+    fun consumeDrumSeparationResult(): File? {
+        val result = mutableUiState.value.drumSeparation
+        if (result?.phase != DrumSeparationPhase.DONE) return null
+        mutableUiState.update { it.copy(drumSeparation = null) }
+        return result.resultPath?.let(::File)?.takeIf { it.isFile }
+    }
+
+    /** Clears the banner; the stem stays until the library import reads it or the next job starts. */
+    fun discardDrumSeparationWork() {
+        mutableUiState.update { it.copy(drumSeparation = null) }
+    }
+
     override fun onCleared() {
+        autosaveWriter.close()
+        runCatching { drumSeparationService?.close() }
+        drumSeparationWorkDir?.let { runCatching { it.deleteRecursively() } }
         runCatching {
             microphoneRecorder.stopAsync { result ->
                 result.onSuccess(captureTempFiles::deleteOwned)
@@ -2381,3 +2702,9 @@ class SamplerViewModel(application: Application) : AndroidViewModel(application)
         super.onCleared()
     }
 }
+
+/** Tensor G4-class phones: four intra-op threads keep most work off the efficiency cores. */
+private const val ANDROID_SEPARATION_THREADS = 4
+
+/** Share of the separation progress bar used by the one-time model download. */
+private const val MODEL_DOWNLOAD_PROGRESS_SHARE = 0.3f

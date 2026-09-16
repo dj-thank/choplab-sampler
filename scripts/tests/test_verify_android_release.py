@@ -29,6 +29,7 @@ BASE_MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
     <permission
         android:name="com.choplab.sampler.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
@@ -54,6 +55,8 @@ AAPT2_MANIFEST = """N: android=http://schemas.android.com/apk/res/android (line=
         A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.choplab.sampler.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" (Raw: "com.choplab.sampler.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
         A: http://schemas.android.com/apk/res/android:protectionLevel(0x01010009)=0x00000002
       E: uses-permission (line=9)
+        A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.permission.INTERNET" (Raw: "android.permission.INTERNET")
+      E: uses-permission (line=10)
         A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.permission.RECORD_AUDIO" (Raw: "android.permission.RECORD_AUDIO")
       E: uses-permission (line=10)
         A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.permission.FOREGROUND_SERVICE" (Raw: "android.permission.FOREGROUND_SERVICE")

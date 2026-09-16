@@ -1,5 +1,7 @@
 package com.choplab.desktop.provider
 
+import com.choplab.sampler.source.SourceTrack
+import com.choplab.sampler.source.SourceRecipes
 import com.choplab.desktop.spotify.JdkSpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyApi
 import com.choplab.desktop.spotify.SpotifyApiClient
@@ -39,6 +41,12 @@ data class SpotifyDesktopState(
     val clientIdSource: String? = null,
     val currentTrack: String = "現在再生情報は未取得です",
     val savedTracks: List<String> = emptyList(),
+    val sourceTracks: List<SourceTrack> = emptyList(),
+    val sourceHasMore: Boolean = false,
+    val importLibraryRevision: Long = 0,
+    val searchQuery: String = "",
+    val searchResults: List<SourceTrack> = emptyList(),
+    val searchMessage: String = "",
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
@@ -81,7 +89,7 @@ internal object DesktopSpotifyBrowser : SpotifyBrowser {
  */
 class SpotifyDesktopSession(
     private val onStatus: (String) -> Unit,
-    clientId: String = System.getenv("CHOPLAB_SPOTIFY_CLIENT_ID").orEmpty(),
+    clientId: String = System.getProperty("choplab.spotifyClientId") ?: System.getenv("CHOPLAB_SPOTIFY_CLIENT_ID").orEmpty(),
     private val tokenClient: SpotifyTokenClient = JdkSpotifyTokenClient(),
     private val api: SpotifyApiClient = SpotifyApi(),
     private val callbackFactory: SpotifyAuthorizationCallbackFactory = SpotifyAuthorizationCallbackFactory { SpotifyLoopbackCallbackServer() },
@@ -98,6 +106,7 @@ class SpotifyDesktopSession(
     private val providedClientIdWasInvalid = clientId.isNotBlank() && configuredClientId.isBlank()
     private var credentials: Credentials? = null
     private var nextLoginId = 0L
+    private var libraryOffset = 0
     private var activeLogin: ActiveLogin? = null
     private val mutableState = MutableStateFlow(initialState())
     val state: StateFlow<SpotifyDesktopState> = mutableState.asStateFlow()
@@ -198,17 +207,47 @@ class SpotifyDesktopSession(
         }
     }
 
+    fun setSearchQuery(value: String) = synchronized(lock) {
+        val query=value.take(240)
+        if(query!=mutableState.value.searchQuery) setStateLocked(mutableState.value.copy(
+            searchQuery=query,searchResults=emptyList(),searchMessage="",
+        ))
+    }
+
+    fun searchForImport() {
+        val query=mutableState.value.searchQuery.trim()
+        if(query.isBlank())return
+        synchronized(lock) {
+            if(mutableState.value.busy)return
+            setStateLocked(mutableState.value.copy(searchResults=emptyList(),searchMessage=""))
+        }
+        withAccessToken("Spotify検索") { token,lease ->
+            val response=api.searchTracks(token,query)
+            generation.requireCurrent(lease)
+            if(response.statusCode !in 200..299)throw SpotifyApiException(response,"検索")
+            val results=SourceRecipes.parseSpotifySearch(response.body)
+            OperationResult("Spotify検索が完了しました",transform={ state ->
+                if(state.searchQuery.trim()!=query)state else state.copy(searchResults=results,
+                    searchMessage=if(results.isEmpty())"曲が見つかりませんでした" else "${results.size}曲見つかりました")
+            })
+        }
+    }
+
     fun showLibrary() = withAccessToken("Spotifyライブラリ") { token, lease ->
         val response = api.savedTracks(token)
         generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
         val parsed = SpotifyPlaybackJson.savedTracks(response.body)
+        val sourceTracks = runCatching { SourceRecipes.parseSpotifyTracks(response.body) }.getOrDefault(emptyList())
+        libraryOffset = 20
         when {
             !parsed.recognized -> OperationResult(
                 "Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください",
                 transform = {
                     it.copy(
                         savedTracks = emptyList(),
+                        sourceTracks = emptyList(),
+                        sourceHasMore = false,
                         librarySummary = "ライブラリの応答を読み取れませんでした",
                     )
                 },
@@ -218,6 +257,8 @@ class SpotifyDesktopSession(
                 transform = {
                     it.copy(
                         savedTracks = emptyList(),
+                        sourceTracks = emptyList(),
+                        sourceHasMore = false,
                         librarySummary = "保存済みトラックはありません",
                     )
                 },
@@ -227,11 +268,48 @@ class SpotifyDesktopSession(
                 transform = {
                     it.copy(
                         savedTracks = parsed.tracks,
+                        sourceTracks = sourceTracks,
+                        sourceHasMore = runCatching{SourceRecipes.spotifyHasNext(response.body)}.getOrDefault(false),
                         librarySummary = "保存済みトラックを${parsed.tracks.size}件表示中",
                     )
                 },
             )
         }
+    }
+
+    fun showMoreLibrary() {
+        if(mutableState.value.sourceTracks.isEmpty()) { showLibrary();return }
+        withAccessToken("Spotifyライブラリ") { token,lease ->
+            val response=api.savedTracksPage(token,libraryOffset)
+            generation.requireCurrent(lease)
+            if(response.statusCode !in 200..299) throw SpotifyApiException(response,"ライブラリ")
+            val parsed=SpotifyPlaybackJson.savedTracks(response.body)
+            val sources=SourceRecipes.parseSpotifyTracks(response.body)
+            libraryOffset+=20
+            OperationResult(if(sources.isEmpty()) "すべてのお気に入りを表示しました" else "お気に入りを追加表示しました",transform={ current ->
+                current.copy(savedTracks=(current.savedTracks+parsed.tracks).distinct(),sourceTracks=(current.sourceTracks+sources).distinctBy(SourceTrack::spotifyUrl),sourceHasMore=SourceRecipes.spotifyHasNext(response.body))
+            })
+        }
+    }
+
+    /** Read-only metadata pagination, bounded to the private library's 2000-item display limit. */
+    fun loadImportLibrary() = withAccessToken("Spotifyのお気に入りを確認") { token,lease ->
+        val tracks = linkedMapOf<String,SourceTrack>()
+        var offset = 0
+        var more: Boolean
+        do {
+            generation.requireCurrent(lease)
+            val response = api.savedTracksPage(token,offset)
+            generation.requireCurrent(lease)
+            if(response.statusCode !in 200..299) throw SpotifyApiException(response,"お気に入り")
+            require(SpotifyPlaybackJson.savedTracks(response.body).recognized) { "お気に入りを読み取れませんでした" }
+            SourceRecipes.parseSpotifyTracks(response.body).forEach { tracks[it.spotifyUrl] = it }
+            more = SourceRecipes.spotifyHasNext(response.body)
+            offset += 20
+        } while(more && offset < 2000)
+        OperationResult(if(more) "最新2000曲を取り込みます。残りは今回の対象外です" else "${tracks.size}曲のお気に入りを取り込みます",transform={
+            it.copy(sourceTracks=tracks.values.take(2000),sourceHasMore=more,importLibraryRevision=it.importLibraryRevision+1)
+        })
     }
 
     fun pause() = withAccessToken("Spotify一時停止") { token, lease ->
@@ -293,12 +371,12 @@ class SpotifyDesktopSession(
                     mutableState.value.copy(
                         phase = SpotifyConnectionPhase.CONNECTED,
                         busy = false,
-                        message = "Spotifyと接続しました。表示とSpotify Connectの再生制御のみを行います",
+                        message = "Spotifyと接続しました",
                     ),
                 )
                 true
             }
-            if (connected) onStatus("Spotifyと接続しました。音声取込はローカル素材または録音を使用します")
+            if (connected) onStatus("Spotifyと接続しました")
         } catch (error: Throwable) {
             val failure = synchronized(lock) {
                 if (!isCurrentLoginLocked(login)) return@synchronized null

@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 class DesktopAudioImportPolicyTest {
     @Test
-    fun acceptsOnlyRealWavFilesWithoutPretendingMp3OrVideoSupport() {
+    fun acceptsSupportedFilesForBundledDecoderAndRejectsMissingOrUnrelatedFiles() {
         val directory = Files.createTempDirectory("choplab-audio-picker").toFile()
         try {
             val wav = File(directory, "sample.WAV").apply { writeBytes(byteArrayOf(1)) }
@@ -17,8 +17,8 @@ class DesktopAudioImportPolicyTest {
             val text = File(directory, "notes.txt").apply { writeText("not audio") }
 
             assertTrue(DesktopAudioImportPolicy.accepts(wav))
-            assertFalse(DesktopAudioImportPolicy.accepts(mp3))
-            assertFalse(DesktopAudioImportPolicy.accepts(video))
+            assertTrue(DesktopAudioImportPolicy.accepts(mp3))
+            assertTrue(DesktopAudioImportPolicy.accepts(video))
             assertFalse(DesktopAudioImportPolicy.accepts(text))
             assertFalse(DesktopAudioImportPolicy.accepts(File(directory, "missing.wav")))
         } finally {

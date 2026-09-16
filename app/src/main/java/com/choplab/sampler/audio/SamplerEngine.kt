@@ -214,6 +214,16 @@ class SamplerEngine(
             EngineCommand.Trigger(globalIndex, ownership)
         }
 
+    override fun setPadLoopLayer(pad: PadModel, enabled: Boolean): Boolean {
+        if (!pad.isAssigned) return false
+        return if (enabled) {
+            val snapshot = PadSnapshot.from(pad.copy(playMode = PadPlayMode.LOOP))
+            enqueuePrepared { EngineCommand.AddPadLoopLayer(snapshot) }
+        } else {
+            enqueue(EngineCommand.StopPad(pad.globalIndex))
+        }
+    }
+
     override fun startPadLoopSession(loopPad: PadModel, companionPads: List<PadModel>): Boolean {
         if (!loopPad.isAssigned) return false
         val session = preparePadLoopSessionSnapshots(loopPad, companionPads)
@@ -303,14 +313,14 @@ class SamplerEngine(
         )
     }
 
-    override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float) {
+    override fun playSource(audio: PcmAudio, startFrame: Int, pitchSemitones: Float): Boolean {
         if (!running.get() || audio.frameCount < 1) {
             sourcePlaybackState.forceStopped()
-            return
+            return false
         }
         val generation = sourcePlaybackState.issuePlay()
         val safeStart = startFrame.coerceIn(0, audio.frameCount - 1)
-        enqueue(
+        return enqueue(
             EngineCommand.PlaySource(
                 source = PadSnapshot(
                     padIndex = SOURCE_PAD_INDEX,
@@ -348,9 +358,7 @@ class SamplerEngine(
         )
     }
 
-    override fun startTransport() {
-        enqueue(EngineCommand.StartTransport)
-    }
+    override fun startTransport(): Boolean = enqueue(EngineCommand.StartTransport)
 
     override fun stopTransport() {
         enqueue(EngineCommand.StopTransport)
@@ -402,7 +410,14 @@ class SamplerEngine(
                 val monitoredLoopPad = currentLoopPadValue.get()
                 val scratchTargetSpeed = normalizeScratchSpeed(Float.fromBits(scratchSpeedBits.get()))
 
-                for (frame in 0 until blockFrames) {
+                val renderFrames = activeRenderFrameCount(
+                    blockFrames = blockFrames,
+                    transportRunning = transportState.running,
+                    sourceActive = sourceVoice.active,
+                    scratchActive = scratchVoice != null,
+                    voices = voices,
+                )
+                for (frame in 0 until renderFrames) {
                     if (transportState.running) processTransportFrame()
 
                     var leftMix = 0f
@@ -507,6 +522,7 @@ class SamplerEngine(
                     val pad = padKit.getOrNull(command.padIndex)
                     if (pad != null) startVoice(pad, command.ownership)
                 }
+                is EngineCommand.AddPadLoopLayer -> startVoice(command.pad)
                 is EngineCommand.StartPadLoopSession -> {
                     applyPendingPadUpdates()
                     applyExclusivePadLoopSession(
@@ -759,6 +775,7 @@ class SamplerEngine(
 
     private sealed interface EngineCommand {
         data class Trigger(val padIndex: Int, val ownership: Long) : EngineCommand
+        data class AddPadLoopLayer(val pad: PadSnapshot) : EngineCommand
         data class StartPadLoopSession(
             val session: PadLoopSessionSnapshots,
             val sourceStopGeneration: Long,
@@ -919,6 +936,16 @@ class SamplerEngine(
 
         fun updateLiveParameters(pad: PadSnapshot, outputSampleRate: Int) {
             if (!active || pad.padIndex != padIndex || pad.audio.id != audioId) return
+            if (playMode == PadPlayMode.LOOP && pad.playMode == PadPlayMode.LOOP &&
+                (startFrame != pad.startFrame || endFrame != pad.endFrame || reverse != pad.reverse)
+            ) {
+                startFrame = pad.startFrame
+                endFrame = pad.endFrame
+                reverse = pad.reverse
+                cursor.reset(startFrame, endFrame, reverse, playMode)
+                filterStateLeft = 0f
+                filterStateRight = 0f
+            }
             sourceStep = sourceStepFor(pad, outputSampleRate)
             tone = pad.tone
             filterAlpha = SamplerDspPrimitives.toneFilterAlpha(pad.tone, outputSampleRate)

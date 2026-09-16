@@ -30,6 +30,7 @@ sealed interface ScratchReturnTarget {
 }
 
 fun selectScratchReturnTarget(state: SamplerUiState): ScratchReturnTarget {
+    if (state.transportPlaying && state.hasAudiblePlaybackPatternContent()) return ScratchReturnTarget.Transport
     state.loopingPadIndex
         ?.takeIf { index -> state.pads.getOrNull(index)?.isAssigned == true }
         ?.let { return ScratchReturnTarget.PadLoop(it) }
@@ -48,3 +49,7 @@ fun scratchReturnTargetIsValid(
     ScratchReturnTarget.Transport -> state.hasAudiblePlaybackPatternContent()
     is ScratchReturnTarget.PadLoop -> state.pads.getOrNull(target.padIndex)?.isAssigned == true
 }
+
+/** The one configured non-vocal loop that accompanies a pattern transport. */
+fun SamplerUiState.configuredLoopPadIndex(): Int? =
+    pads.firstOrNull { it.isAssigned && it.playMode == PadPlayMode.LOOP && it.contentKind != PadContentKind.VOCAL }?.globalIndex
