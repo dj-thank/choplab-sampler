@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import bz2
 import codecs
+import hashlib
+import json
 import lzma
 import re
 import stat
@@ -94,8 +96,8 @@ ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
 ZIP_NESTED_TOTAL_LIMIT = 256 * 1024 * 1024
 CURRENT_ZIP_ARCHIVE_COUNT_LIMIT = 128
-CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 512 * 1024 * 1024
-CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 512 * 1024 * 1024
+CURRENT_ZIP_COMPRESSED_INPUT_LIMIT = 1536 * 1024 * 1024
+CURRENT_ZIP_EXPANDED_OUTPUT_LIMIT = 1536 * 1024 * 1024
 HISTORICAL_NON_COMMIT_BLOB_LIMIT = 128
 HISTORICAL_ZIP_CHANGE_RECORD_LIMIT = 4_096
 HISTORICAL_OBJECT_CHANGE_RECORD_LIMIT = 262_144
@@ -143,6 +145,31 @@ ZIP_SKIKO_ICU_SCAN_LIMIT = 16 * 1024 * 1024
 ZIP_BINARY_SECRET_MEMBER_LIMIT = 32 * 1024 * 1024
 ZIP_JIMAGE_FULL_SCAN_LIMIT = 128 * 1024 * 1024
 ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
+# The packaged Windows app-image carries third-party binaries that are far larger than a
+# general archive member: FFmpeg and FFprobe (about 231 MB each), Node, yt-dlp and the
+# commit-pinned drum separator model (about 158 MB). scripts/prepare_media_tools.py and
+# scripts/prepare_separator_model.py fetch each one from a pinned source and verify a
+# digest before packaging. They keep their own ceiling so the general limits stay tight,
+# and every byte of them is still scanned.
+ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT = 320 * 1024 * 1024
+ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT = 1024 * 1024 * 1024
+PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
+    {"ffmpeg.exe", "ffprobe.exe", "node.exe", "yt-dlp.exe"}
+)
+# A released build of FFmpeg or Node carries strings that read like credentials -- PEM
+# headers and key-shaped literals in its own test material -- so scanning those bytes for
+# secrets can only produce false reports. What matters instead is that the shipped bytes are
+# the pinned third-party artifact and nothing else, which the digest the app-image records
+# for each one establishes. The separator model is checked against the digest pinned in
+# scripts/prepare_separator_model.py as well.
+PACKAGED_RUNTIME_MANIFESTS = {
+    "tools": "ChopLab/tools/runtime.json",
+    "models": "ChopLab/models/manifest.json",
+}
+PACKAGED_RUNTIME_MANIFEST_LIMIT = 64 * 1024
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+SEPARATOR_MODEL_PIN = REPOSITORY_ROOT / "scripts" / "prepare_separator_model.py"
+SHA256_TEXT = re.compile(r"\A[0-9a-f]{64}\Z")
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
 APK_SIGNING_BLOCK_MAX_SIZE = 16 * 1024 * 1024
 APK_SIGNING_BLOCK_PAIR_LIMIT = 128
@@ -1105,6 +1132,121 @@ def is_app_main_executable_path(path: PurePosixPath) -> bool:
 def is_jdk_modules_path(path: PurePosixPath) -> bool:
     parts = tuple(part.lower() for part in path.parts)
     return parts[-3:] == ("runtime", "lib", "modules")
+
+
+def is_packaged_runtime_binary_path(
+    path: PurePosixPath,
+    container_path: PurePosixPath | None,
+) -> bool:
+    """A third-party binary the Windows app-image ships at a fixed place.
+
+    The media tools and the separator model are plain binaries. The ONNX Runtime jar is
+    read as one binary too rather than being opened: it carries prebuilt native libraries
+    for every platform, and the ones this app never loads embed PEM template strings that
+    a content scan can only report as false positives.
+    """
+    if container_path is not None:
+        return False
+    parts = tuple(part.lower() for part in path.parts)
+    if len(parts) != 3 or parts[0] != "choplab":
+        return False
+    if parts[1] == "tools":
+        return parts[2] in PACKAGED_RUNTIME_TOOL_NAMES
+    if parts[1] == "models":
+        return parts[2].endswith(".onnx")
+    return (
+        parts[1] == "app"
+        and parts[2].startswith("onnxruntime-")
+        and parts[2].endswith(".jar")
+    )
+
+
+def is_digest_verified_runtime_path(path: PurePosixPath) -> bool:
+    """A packaged binary whose identity the app-image records a digest for."""
+    parts = tuple(part.lower() for part in path.parts)
+    return len(parts) == 3 and parts[0] == "choplab" and parts[1] in PACKAGED_RUNTIME_MANIFESTS
+
+
+def pinned_separator_model_digest() -> str | None:
+    """The separator model digest pinned in the repository, when it can be read."""
+    try:
+        source = SEPARATOR_MODEL_PIN.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r'MODEL_SHA256\s*=\s*"([0-9a-f]{64})"', source)
+    return match.group(1) if match else None
+
+
+def read_small_archive_member(
+    archive: zipfile.ZipFile,
+    name: str,
+    limit: int,
+) -> bytes | None:
+    """Read one small member without disturbing the position of the ongoing scan."""
+    try:
+        info = archive.getinfo(name)
+    except KeyError:
+        return None
+    if info.file_size > limit or info.compress_size > limit:
+        return None
+    stream = archive.fp
+    position = stream.tell() if stream is not None else None
+    try:
+        with archive.open(info) as handle:
+            return handle.read(limit + 1)
+    except (OSError, RuntimeError, ValueError, zlib.error, zipfile.BadZipFile):
+        return None
+    finally:
+        if stream is not None and position is not None:
+            stream.seek(position)
+
+
+def packaged_runtime_digest_findings(
+    archive: zipfile.ZipFile,
+    entry: PurePosixPath,
+    content: bytes,
+    declared_size: int,
+    member_label: str,
+) -> list[str]:
+    """Check a packaged third-party binary against the digest the app-image records."""
+    scope = entry.parts[1].lower()
+    manifest_name = PACKAGED_RUNTIME_MANIFESTS[scope]
+    if len(content) != declared_size:
+        return [f"{member_label}: packaged runtime binary was read only in part"]
+    raw = read_small_archive_member(archive, manifest_name, PACKAGED_RUNTIME_MANIFEST_LIMIT)
+    if raw is None:
+        return [
+            f"{member_label}: the app-image carries no readable {manifest_name} to "
+            "identify it"
+        ]
+    try:
+        manifest = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return [f"{member_label}: {manifest_name} is not readable JSON"]
+    if not isinstance(manifest, dict):
+        return [f"{member_label}: {manifest_name} is not a JSON object"]
+    if scope == "tools":
+        recorded = manifest.get("sha256")
+        expected = recorded.get(entry.name) if isinstance(recorded, dict) else None
+    else:
+        expected = (
+            manifest.get("sha256") if manifest.get("model") == entry.name else None
+        )
+    if not isinstance(expected, str) or not SHA256_TEXT.match(expected):
+        return [f"{member_label}: {manifest_name} records no digest for it"]
+    actual = hashlib.sha256(content).hexdigest()
+    if actual != expected:
+        return [
+            f"{member_label}: content does not match the digest {manifest_name} records"
+        ]
+    if scope == "models":
+        pinned = pinned_separator_model_digest()
+        if pinned is not None and pinned != actual:
+            return [
+                f"{member_label}: content does not match the separator model digest "
+                "pinned in the repository"
+            ]
+    return []
 
 
 def is_skiko_icu_data_path(
@@ -2292,6 +2434,8 @@ def scan_zip(
     scanned_compressed_bytes = 0
     scanned_large_binary_bytes = 0
     scanned_large_binary_compressed_bytes = 0
+    packaged_runtime_bytes = 0
+    packaged_runtime_compressed_bytes = 0
     archive_label = redact_secret_text(label or str(source))
     nested_budget = _nested_budget or ZipNestedScanBudget()
     candidate_budget = _candidate_budget
@@ -2685,9 +2829,14 @@ def scan_zip(
                     continue
                 bounded_apk_binary = False
                 bounded_binary_secret = False
+                bounded_packaged_runtime = False
+                packaged_runtime_entry = is_packaged_runtime_binary_path(
+                    entry, _container_path
+                )
                 if (
                     entry_suffix in ARCHIVE_BINARY_SUFFIXES
                     or is_known_archive_binary_path(entry)
+                    or packaged_runtime_entry
                 ):
                     if reason is not None:
                         continue
@@ -2703,6 +2852,19 @@ def scan_zip(
                                 "member scan limit"
                             )
                             continue
+                    elif packaged_runtime_entry:
+                        if (
+                            info.file_size > ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT
+                            or info.compress_size > ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT
+                        ):
+                            findings.append(
+                                f"{archive_label}: archive entry {name!r}: packaged "
+                                f"runtime binary exceeds the "
+                                f"{ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT}-byte member "
+                                "scan limit"
+                            )
+                            continue
+                        bounded_packaged_runtime = True
                     else:
                         if (
                             info.file_size > ZIP_BINARY_SECRET_MEMBER_LIMIT
@@ -2721,7 +2883,9 @@ def scan_zip(
                         "offset is unavailable"
                     )
                     continue
-                if entry_suffix in ZIP_NESTED_ARCHIVE_SUFFIXES:
+                if entry_suffix in ZIP_NESTED_ARCHIVE_SUFFIXES and not (
+                    bounded_packaged_runtime
+                ):
                     if _nested_depth >= ZIP_NESTED_DEPTH_LIMIT:
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: nested archive "
@@ -2871,6 +3035,7 @@ def scan_zip(
                     and not bounded_skiko_icu
                     and not bounded_apk_binary
                     and not bounded_binary_secret
+                    and not bounded_packaged_runtime
                     and not bounded_jimage
                 ):
                     findings.append(
@@ -2879,6 +3044,9 @@ def scan_zip(
                     )
                     continue
                 entry_compressed_input_limit = (
+                    ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT
+                    if bounded_packaged_runtime
+                    else (
                     APK_BINARY_MEMBER_SCAN_LIMIT
                     if bounded_apk_binary
                     else (
@@ -2893,6 +3061,7 @@ def scan_zip(
                                 else compressed_input_limit
                             )
                         )
+                    )
                     )
                 )
                 if info.compress_size > entry_compressed_input_limit:
@@ -2924,6 +3093,19 @@ def scan_zip(
                         findings.append(
                             f"{archive_label}: binary/JIMAGE content exceeds the "
                             f"{ZIP_BINARY_SECRET_TOTAL_LIMIT}-byte aggregate scan limit"
+                        )
+                        continue
+                elif bounded_packaged_runtime:
+                    if (
+                        packaged_runtime_bytes + info.file_size
+                        > ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT
+                        or packaged_runtime_compressed_bytes + info.compress_size
+                        > ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT
+                    ):
+                        findings.append(
+                            f"{archive_label}: packaged runtime content exceeds the "
+                            f"{ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT}-byte aggregate scan "
+                            "limit"
                         )
                         continue
                 elif bounded_skiko_icu:
@@ -2963,6 +3145,9 @@ def scan_zip(
                 elif bounded_binary_secret or bounded_jimage:
                     binary_secret_budget.expanded_bytes += info.file_size
                     binary_secret_budget.compressed_bytes += info.compress_size
+                elif bounded_packaged_runtime:
+                    packaged_runtime_bytes += info.file_size
+                    packaged_runtime_compressed_bytes += info.compress_size
                 elif bounded_skiko_icu:
                     scanned_large_binary_bytes += info.file_size
                     scanned_large_binary_compressed_bytes += info.compress_size
@@ -2980,6 +3165,9 @@ def scan_zip(
                         info,
                         payload_offset=local_payload_offset,
                         output_limit=(
+                            ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT
+                            if bounded_packaged_runtime
+                            else (
                             APK_BINARY_MEMBER_SCAN_LIMIT
                             if bounded_apk_binary
                             else (
@@ -2998,6 +3186,7 @@ def scan_zip(
                                         )
                                     )
                                 )
+                            )
                             )
                         ),
                         compressed_input_limit=entry_compressed_input_limit,
@@ -3047,6 +3236,7 @@ def scan_zip(
                 elif (
                     not bounded_apk_binary
                     and not bounded_binary_secret
+                    and not bounded_packaged_runtime
                     and not bounded_jimage
                 ):
                     if scanned_bytes + len(content) > total_scan_limit:
@@ -3097,7 +3287,7 @@ def scan_zip(
                         f"format {unsupported_format!r} is not supported"
                     )
                     continue
-                if is_zip_compatible_payload(content):
+                if is_zip_compatible_payload(content) and not bounded_packaged_runtime:
                     if _nested_depth >= ZIP_NESTED_DEPTH_LIMIT:
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: nested archive "
@@ -3166,6 +3356,17 @@ def scan_zip(
                     )
                     continue
                 member_label = f"{archive_label}: archive entry {name!r}"
+                if bounded_packaged_runtime and is_digest_verified_runtime_path(entry):
+                    findings.extend(
+                        packaged_runtime_digest_findings(
+                            archive,
+                            entry,
+                            content,
+                            info.file_size,
+                            member_label,
+                        )
+                    )
+                    continue
                 audio_signature = audio_payload_signature(content)
                 if audio_signature:
                     findings.append(
@@ -3212,6 +3413,7 @@ def scan_zip(
                 if (
                     bounded_apk_binary
                     or bounded_binary_secret
+                    or bounded_packaged_runtime
                     or bounded_jimage
                     or bounded_skiko_icu
                     or bounded_app_executable
