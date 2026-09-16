@@ -5,6 +5,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -513,6 +514,10 @@ class FirstScreenFlowDeviceTest {
 
         val gateIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
         val gate = gatePad()
+        // The play-mode change has to reach composition before the clock stops. With the clock
+        // frozen first, the press lands while the pad is still ONE SHOT and the chop surface
+        // captures it, which is what this scenario is not about.
+        gate.assert(hasContentDescription("再生モード GATE", substring = true))
         composeRule.mainClock.autoAdvance = false
         try {
             gate.performTouchInput { down(center) }
