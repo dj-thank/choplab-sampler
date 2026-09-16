@@ -1,5 +1,23 @@
 # UI follow-up — 2026-09-11
 
+## DDJ-200 Android PR #102 candidate — 2026-09-16
+
+**PR #102 follow-up candidate, not a release.** Based on
+`eeda0d28cac42374920dd1441fdde95a13b8bd78`; exact-head publication and CI
+status are recorded on the PR. Added Android
+Bluetooth-first UI/discovery hardening, two live mix groups, crossfader/CH/3-band
+EQ, user-confirmed wired split headphones and MIDI LED feedback. Source is
+implemented; hardware, Android build and installation are NOT verified.
+
+Supplemental host tests: **74/74 PASS**. These do not inherit any historical
+Android/Windows/iOS result below. Windows/iOS MIDI adapters remain absent.
+Mixer changes affect live Android output only, not project persistence or WAV
+export. [Current scope/acceptance](DDJ200.md),
+[selected plan](../plans/active/ddj200-controller-20260916.md),
+[validation receipt](../outputs/ddj200-bluetooth-20260916.md).
+
+### Historical project evidence below (not this candidate's validation)
+
 | Area | Candidate change | Current boundary |
 |---|---|---|
 | Buttons/tabs/settings | Readable text hierarchy, disabled labels, keyboard focus, named +/- and slider state | Pure presentation/type diagnostics; new exact-head Compose/physical checks required |

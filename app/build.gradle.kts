@@ -8,6 +8,11 @@ val choplabBuildNumber = providers.gradleProperty("choplabBuildNumber")
     .map { value -> value.toInt() }
     .orElse(1)
 
+// Opt-in distribution mode; ordinary debug/release builds are unchanged.
+val ddjPreview = providers.gradleProperty("choplabDdjPreview")
+    .map { value -> value.toBooleanStrict() }
+    .orElse(false)
+
 val releaseStorePath = providers.environmentVariable("CHOPLAB_ANDROID_KEYSTORE").orNull
 val releaseStorePassword = providers.environmentVariable("CHOPLAB_ANDROID_STORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("CHOPLAB_ANDROID_KEY_ALIAS").orNull
@@ -53,6 +58,14 @@ android {
     }
 
     buildTypes {
+        // An explicitly named, side-by-side hardware preview. Never replace the
+        // installed production application's package, signer or private data.
+        debug {
+            if (ddjPreview.get()) {
+                applicationIdSuffix = ".ddj200preview"
+                versionNameSuffix = "-ddj200-preview"
+            }
+        }
         release {
             isDebuggable = false
             isMinifyEnabled = false
@@ -64,6 +77,10 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+
+    if (ddjPreview.get()) {
+        sourceSets.getByName("debug").res.srcDir("src/ddjPreview/res")
     }
 
     compileOptions {

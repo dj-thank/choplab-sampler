@@ -1,5 +1,23 @@
 # Project state
 
+> **DDJ-200 Android PR #102 candidate — 2026-09-16**
+
+**PR #102 follow-up candidate, not a release.** Based on
+`eeda0d28cac42374920dd1441fdde95a13b8bd78`; exact-head publication and CI
+status are recorded on the PR. Added Android
+Bluetooth-first UI/discovery hardening, two live mix groups, crossfader/CH/3-band
+EQ, user-confirmed wired split headphones and MIDI LED feedback. Source is
+implemented; hardware, Android build and installation are NOT verified.
+
+Supplemental host tests: **74/74 PASS**. These do not inherit any historical
+Android/Windows/iOS result below. Windows/iOS MIDI adapters remain absent.
+Mixer changes affect live Android output only, not project persistence or WAV
+export. [Current scope/acceptance](DDJ200.md),
+[selected plan](../plans/active/ddj200-controller-20260916.md),
+[validation receipt](../outputs/ddj200-bluetooth-20260916.md).
+
+### Historical project evidence below (not this candidate's validation)
+
 > **Local integration — 2026-09-16, unmerged (0.18.0 / 30).** Branch `claude/choplab-latest-android-20260916` merges the local production line `8a279bc` (Spotify automatic import and search/add, built-in drum separation, BEAT finishing hub) with the draft PR #92–#97 chain `348d341`, and brings Spotify liked-track import, Spotify search → add and drum separation to Android. Local gate: shared 157/157, JVM core 195, Desktop 223 + H13 UI 38 + UI quality 4, Android unit 337 (1 skipped), Android lint errors 0. Windows 0.18.0 is installed with the signed-JDK launcher, the Pixel 9a is updated with project data preserved, and Android drum separation ran end to end on the 4 GB review emulator (20 s fixture in 60 s, peak PSS 699 MB). The final APK `79baa2d0…` (`e9d3d5e`) is installed on the Pixel. Selected plan: [latest integration and Android parity](../plans/active/latest-android-integration-20260916.md).
 
 > **UI follow-up — 2026-09-11, unmerged.** Current selected plan: [UI quality](../plans/active/ui-quality-20260911.md). Exact baseline PR96 `3fe5906bbc29e54bb46689606ffb0cac3599e1ca` passed Windows/iOS/policy; Android failed three debug-sensitive startup assertions. This follow-up improves readable shared controls, PAD contrast/identity, SAVE sizing and state details, and adds actual shared-UI rendering tests. Supplemental host:74 distinct bodies, both debug modes PASS. Supported new-head CI and physical UI/audio remain separate. See [current UI receipt](ui/UI_QUALITY_20260911.md). No merge, release or installation. The first historical release snapshot below is retained unchanged.

@@ -1,0 +1,157 @@
+name: DDJ-200 installable APK preview
+
+on:
+  push:
+    branches: ['feat/ddj200-controller-20260916']
+    paths:
+      - '.github/workflows/ddj200-apk.yml'
+      - 'app/**'
+      - 'shared/**'
+      - 'jvm-core/**'
+      - 'scripts/stage_ddj_preview.py'
+      - 'scripts/tests/test_ddj_preview.py'
+      - 'gradle.properties'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ddj200-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'dj-thank/choplab-sampler' && github.ref == 'refs/heads/feat/ddj200-controller-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Public surface and policy tests
+        run: |
+          python3 scripts/check_public_surface.py
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+      - name: Read version
+        id: version
+        run: python3 scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
+      - name: Set up JDK 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: platform-tools
+      - name: Install Android components
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          status=${PIPESTATUS[1]}
+          set -o pipefail
+          test "$status" -eq 0
+          sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;29.0.14206865' 'cmake;3.22.1'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - name: Check the preview task graph before full validation
+        run: ./gradlew -PchoplabDdjPreview=true :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --dry-run
+      - name: Validate and build the isolated preview
+        run: |
+          ./scripts/validate_project.sh
+          ./gradlew --stacktrace -PchoplabDdjPreview=true :shared:testAndroidHostTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Inspect signed APK and bind it to this source
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build_number }}
+        shell: bash
+        run: |
+          mapfile -t apks < <(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk')
+          test "${#apks[@]}" -eq 1
+          python3 scripts/stage_ddj_preview.py --apk "${apks[0]}" --destination ddj-dist \
+            --version "$VERSION" --version-code "$BUILD_NUMBER" --commit "$GITHUB_SHA"
+          python3 scripts/check_public_surface.py --archive ddj-dist/Otohiroi-DDJ200-preview.apk \
+            --text-file ddj-dist/build.json --text-file ddj-dist/SHA256SUMS \
+            --text-file ddj-dist/Otohiroi-DDJ200-preview.apk.sha256
+      - name: Upload verified APK only with its checksums and receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ddj200-installable-apk
+          if-no-files-found: error
+          path: ddj-dist/*
+          retention-days: 14
+      - name: Upload diagnostic reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ddj200-apk-build-reports
+          if-no-files-found: warn
+          path: |
+            app/build/reports/**
+            app/build/test-results/**
+            shared/build/test-results/testAndroidHostTest/**
+
+  publish:
+    needs: build
+    if: github.repository == 'dj-thank/choplab-sampler' && github.ref == 'refs/heads/feat/ddj200-controller-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout verification scripts without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download this run's verified APK
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ddj200-installable-apk
+          path: ddj-dist
+      - name: Verify publication allowlist and checksums
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          d = Path('ddj-dist')
+          expected = {'Otohiroi-DDJ200-preview.apk', 'Otohiroi-DDJ200-preview.apk.sha256', 'build.json', 'SHA256SUMS'}
+          if {p.name for p in d.iterdir()} != expected or any(p.is_symlink() or not p.is_file() for p in d.iterdir()):
+              raise SystemExit('Unexpected publication contents')
+          receipt = json.loads((d / 'build.json').read_text())
+          if receipt['source_commit'] != os.environ['GITHUB_SHA'] or receipt['application_id'] != 'com.choplab.sampler.ddj200preview':
+              raise SystemExit('Source/package mismatch')
+          PY
+          (cd ddj-dist && sha256sum -c SHA256SUMS && sha256sum -c Otohiroi-DDJ200-preview.apk.sha256)
+          python3 scripts/check_public_surface.py --archive ddj-dist/Otohiroi-DDJ200-preview.apk \
+            --text-file ddj-dist/build.json --text-file ddj-dist/SHA256SUMS \
+            --text-file ddj-dist/Otohiroi-DDJ200-preview.apk.sha256
+      - name: Publish a new immutable prerelease and direct APK link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="ddj200-preview-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${tag}/Otohiroi-DDJ200-preview.apk"
+          {
+            printf '# おとひろい DDJ-200試験版\n\n[APKをダウンロード](%s)\n\n' "$link"
+            printf 'Android 10以降。APKを開き、Androidのインストール確認へ進んでください。\n\n'
+            printf '通常版とは別アプリです。既存の通常版・保存データを削除せず導入できます。通常版のデータは自動では共有されません。\n\n'
+            printf 'デバッグ署名の試験版です。CIごとに署名が変わり得るため、既存の試験版への上書きは保証しません。署名不一致時に通常版を削除しないでください。\n\n'
+            printf 'DDJ-200 → Bluetoothで接続する → 権限許可 → 機器選択。実機接続・LED点灯・音声分離・音質/遅延は未確認です。\n\n'
+            printf 'Source: `%s`\n\nBuild: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/ddj-preview-notes.md"
+          gh release create "$tag" ddj-dist/Otohiroi-DDJ200-preview.apk \
+            ddj-dist/Otohiroi-DDJ200-preview.apk.sha256 ddj-dist/build.json ddj-dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false \
+            --title "おとひろい DDJ-200試験版 ${GITHUB_SHA:0:7}" --notes-file "$RUNNER_TEMP/ddj-preview-notes.md"
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets,isDraft,isPrerelease
+          printf '## Androidにインストール\n\n[APKをダウンロード](%s)\n\n通常版とは別アプリの試験版です。\n' "$link" >> "$GITHUB_STEP_SUMMARY"
