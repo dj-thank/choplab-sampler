@@ -255,4 +255,13 @@ class Ddj200Test {
         listOf("DDJ-200", "Pioneer DDJ-200", "DDJ 200", "ddj200 MIDI").forEach { assertTrue(isDdj200Name(it), it) }
         listOf(null, "DDJ-400", "DDJ-2000", "NotDDJ200", "Keyboard").forEach { assertFalse(isDdj200Name(it)) }
     }
+    @Test fun mixerModeDoesNotAlsoEditPadGain() {
+        val t = Target(); val s = Ddj200Session(t, channelFadersControlPads = false)
+        send(s, 0x97, 0, 127)
+        cc(s, 0, 0x13, 8192); cc(s, 0, 0x13, 16383)
+        assertTrue(t.values.isEmpty())
+        cc(s, 6, 0x17, 8192)
+        assertTrue(t.values.containsKey(DdjParameter.PAD_TONE to 0))
+    }
+
 }

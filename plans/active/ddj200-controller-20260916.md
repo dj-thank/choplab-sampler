@@ -1,3 +1,56 @@
+# DDJ-200 Android Bluetooth and live mixer follow-up
+
+## Current selected outcome — 2026-09-16
+
+Android in-app Bluetooth MIDI discovery/control, two live sampler mix groups,
+crossfader, CH faders, three-band EQ, explicit wired split-CUE output and LED
+state feedback. Windows/iOS MIDI remains unimplemented. See `docs/DDJ200.md`.
+
+## Baseline and publication
+
+Baseline PR #102 head: `eeda0d28cac42374920dd1441fdde95a13b8bd78`.
+Reconstructed source tree exactly matches `672f030b7e98df566e81d190898191e43ed6e4f5`.
+The user requested publication of the previously delivered source/patch to
+existing PR #102. This follow-up targets `feat/ddj200-controller-20260916` as a
+non-force child of the observed head, with no unrelated code changes. The earlier
+blocked handoff is historical; exact-head read-back and CI belong on PR #102.
+No merge, release, APK or installation is included.
+
+## Invariants and decisions
+
+- Keep dependency versions, minSdk, signing, release and project/export formats.
+- Live-only mixer state, immutable per-block audio snapshots; no per-frame locks,
+  allocations, MIDI IO or device queries. Disconnected stereo path stays original.
+- Stable left/right PAD groups, not two DJ decks. CH faders change live groups,
+  not saved PAD gain. COLOR FX keeps the previous saved PAD-TONE mapping.
+- Fail closed on reported split-route changes; explicitly document OS buffering
+  and callback delay. Require a user-confirmed physical DJ splitter.
+- BLE input and LED output are separate ports; output errors must not erase input.
+- No permission request or scanning at application startup; explicit reconnect.
+
+## Progress and acceptance
+
+- [x] BLE discovery fallback, batch results, radio enable/settings and OFF handling.
+- [x] Main-owned MIDI state, two live groups, mixer/EQ, split-CUE and LED messages.
+- [x] Host tests: 74 distinct bodies PASS (32 session, 28 mixer, 6 LED, 8 lease/route).
+- [x] Exact baseline tree verification; documentation and patch handoff.
+- [ ] Supported new-code Android/Compose/Gradle/lint/APK gates.
+- [ ] Physical DDJ BLE/USB, routing, lamps, audio and latency acceptance.
+- [x] User-authorized publication preparation: archive/patch round-trip and 74 tests rechecked.
+- [ ] Exact-head publication/CI read-back: record on PR #102; not inferred from this file.
+- [ ] Windows/iOS MIDI adapters (out of this Android-priority candidate).
+
+Existing old-head Android run 35040366506 failed during lint-engine dependency
+download (TLS handshake), after earlier tests. It does not validate this local
+follow-up. Local whole-project validation is blocked by old Kotlin CLI 1.9
+`MutableList.addLast` resolution in unrelated EditHistory; no dependency or
+baseline workaround was introduced. See `outputs/ddj200-bluetooth-20260916.md`.
+
+## Historical initial implementation (superseded scope)
+
+The following records the earlier iteration. Its exclusions, selected baseline
+and 31-test count are historical; current scope and evidence are above.
+
 # Make DDJ-200 an opt-in Otohiroi Android controller
 
 ## Purpose and user-visible outcome

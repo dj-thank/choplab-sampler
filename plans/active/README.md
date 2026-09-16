@@ -7,7 +7,10 @@ Updated: 2026-09-16
 Exactly one plan is selected on this feature branch: [DDJ-200 Android controller](ddj200-controller-20260916.md).
 
 This is a stacked change on PR #101 at `6a508d3802ba11f6f6858270891ab48519282c6c`.
-It adds an opt-in USB/BLE MIDI sampler controller. Pure host evidence is not
+The follow-up candidate adds Bluetooth-first control, live mixer/EQ, explicit wired
+split-CUE and LED feedback. Publication targets the existing PR #102 branch;
+see the DDJ-200 plan and the PR for exact-head publication/CI status.
+The initial PR adds an opt-in USB/BLE MIDI sampler controller. Pure host evidence is not
 Android/device acceptance. It does not merge, tag, release or change signing.
 The change-specific current status and feature/evidence matrix are in
 [DDJ-200](../../docs/DDJ200.md); older project snapshots are historical baseline

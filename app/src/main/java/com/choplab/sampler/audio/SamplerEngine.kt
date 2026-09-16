@@ -5,6 +5,10 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import com.choplab.sampler.midi.AndroidDdjAudioRoute
+import com.choplab.sampler.midi.AndroidDdjPerformance
+import com.choplab.sampler.midi.DdjMixerDsp
+import com.choplab.sampler.midi.ddjPadBus
 import android.os.Process
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
@@ -399,6 +403,10 @@ class SamplerEngine(
         val sourceFrame = MutableStereoFrame()
         val scratchFrame = MutableStereoFrame()
         val padFrame = MutableStereoFrame()
+        val ddjMixer = DdjMixerDsp(outputSampleRate)
+        var mixerWasEnabled = false
+        var mixerWasIdle = true
+        val ddjRoute = AndroidDdjAudioRoute(track)
 
         try {
             while (running.get()) {
@@ -409,6 +417,10 @@ class SamplerEngine(
                 var latestScratchFrame = -1
                 val monitoredLoopPad = currentLoopPadValue.get()
                 val scratchTargetSpeed = normalizeScratchSpeed(Float.fromBits(scratchSpeedBits.get()))
+                val mixerSettings = AndroidDdjPerformance.snapshot
+                if (mixerWasIdle || mixerWasEnabled != mixerSettings.enabled) ddjMixer.reset(mixerSettings)
+                mixerWasEnabled = mixerSettings.enabled
+                val scratchBus = ddjPadBus(currentScratchPadValue.get())
 
                 val renderFrames = activeRenderFrameCount(
                     blockFrames = blockFrames,
@@ -422,10 +434,13 @@ class SamplerEngine(
 
                     var leftMix = 0f
                     var rightMix = 0f
+                    var aLeft = 0f; var aRight = 0f
+                    var bLeft = 0f; var bRight = 0f
                     if (sourceVoice.active) {
                         sourceVoice.renderStereo(outputSampleRate, sourceFrame)
                         leftMix += sourceFrame.left
                         rightMix += sourceFrame.right
+                        aLeft += sourceFrame.left; aRight += sourceFrame.right
                         latestSourceFrame = sourceVoice.currentFrame
                         if (sourceVoice.finished) {
                             val completedGeneration = sourceVoiceGeneration
@@ -442,12 +457,15 @@ class SamplerEngine(
                         )
                         leftMix += scratchFrame.left
                         rightMix += scratchFrame.right
+                        if (scratchBus == 0) { aLeft += scratchFrame.left; aRight += scratchFrame.right }
+                        else { bLeft += scratchFrame.left; bRight += scratchFrame.right }
                         latestScratchFrame = scratch.currentFrame
                     }
                     var voiceIndex = 0
                     while (voiceIndex < voices.size) {
                         val voice = voices[voiceIndex]
                         if (voice.active) {
+                            val padBus = ddjPadBus(voice.padIndex) // retain identity before terminal-frame retirement
                             renderPadVoiceStereoFrameForMix(voice, outputSampleRate, padFrame)
                             if (voice.active) {
                                 if (voice.padIndex == monitoredLoopPad && voice.playMode == PadPlayMode.LOOP) {
@@ -456,15 +474,24 @@ class SamplerEngine(
                             }
                             leftMix += padFrame.left
                             rightMix += padFrame.right
+                            if (padBus == 0) { aLeft += padFrame.left; aRight += padFrame.right }
+                            else { bLeft += padFrame.left; bRight += padFrame.right }
                         }
                         voiceIndex++
                     }
 
                     // Smooth saturating limiter protects against polyphonic overload.
                     val outputIndex = frame * 2
+                    if (mixerSettings.enabled) {
+                        ddjMixer.process(aLeft, aRight, bLeft, bRight, mixerSettings)
+                        leftMix = ddjMixer.left; rightMix = ddjMixer.right
+                    }
                     output[outputIndex] = masterSampleForAudioTrack(leftMix)
                     output[outputIndex + 1] = masterSampleForAudioTrack(rightMix)
                 }
+                // Inactive frames are intentional silence, not deferred EQ filter history.
+                mixerWasIdle = renderFrames == 0
+                if (renderFrames < blockFrames) ddjMixer.reset(mixerSettings)
                 if (latestSourceFrame >= 0) currentSourceFrameValue.set(latestSourceFrame)
                 if (monitoredLoopPad >= 0) {
                     if (latestLoopFrame >= 0) {
@@ -494,6 +521,7 @@ class SamplerEngine(
                 onError(throwable.message ?: "オーディオ再生中にエラーが発生しました")
             }
         } finally {
+            ddjRoute.close()
             runCatching { track.stop() }
             runCatching { track.release() }
             if (audioTrack === track) audioTrack = null

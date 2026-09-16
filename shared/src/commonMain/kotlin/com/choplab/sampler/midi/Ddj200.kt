@@ -90,7 +90,10 @@ class MidiPickup {
  * Pads use channels 8/10, SHIFT pads 9/11 (one-based), NOT deck channels 1/2.
  * This is a sampler mapping, not a two-deck mixer or headphone audio interface.
  */
-class Ddj200Session(private val target: Ddj200Target) {
+class Ddj200Session(
+    private val target: Ddj200Target,
+    private val channelFadersControlPads: Boolean = true,
+) {
     private data class Held(val pad: Int, val token: Long)
     private val held = arrayOfNulls<Held>(16) // physical keys, independent of SHIFT and bank
     private val buttons = BooleanArray(6)
@@ -200,7 +203,7 @@ class Ddj200Session(private val target: Ddj200Target) {
                 deck = channel; slot = channel
                 kind = if (channel == 0) DdjParameter.SOURCE_PITCH else DdjParameter.BPM
             }
-            channel in 0..1 && base == 0x13 -> {
+            channelFadersControlPads && channel in 0..1 && base == 0x13 -> {
                 deck = channel; slot = 2 + channel; kind = DdjParameter.PAD_GAIN
             }
             channel == 6 && base in 0x17..0x18 -> {
