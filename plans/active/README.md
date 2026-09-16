@@ -4,11 +4,21 @@ Updated: 2026-09-16
 
 ## Current selection
 
-Exactly one plan is selected: [Latest local integration and Android parity](latest-android-integration-20260916.md).
+Exactly one plan is selected on this feature branch: [DDJ-200 Android controller](ddj200-controller-20260916.md).
 
-It merges the local production line (`8a279bc`) with the unmerged draft PR #92–#97 chain (`348d341`), then brings the Windows-only Spotify library import/search and built-in drum separation to Android. It does not merge on GitHub, tag, publish or change signing material.
+This is a stacked change on PR #101 at `6a508d3802ba11f6f6858270891ab48519282c6c`.
+It adds an opt-in USB/BLE MIDI sampler controller. Pure host evidence is not
+Android/device acceptance. It does not merge, tag, release or change signing.
+The change-specific current status and feature/evidence matrix are in
+[DDJ-200](../../docs/DDJ200.md); older project snapshots are historical baseline
+receipts, not claims about this new controller.
 
 ## Retained prior plans
+
+[Latest local integration and Android parity](latest-android-integration-20260916.md)
+was the PR #101 selection. It merges local production `8a279bc` with the
+unmerged PR #92–#97 chain `348d341` and brings Windows Spotify/library and drum
+separation to Android. That baseline is preserved, not independently revalidated.
 
 [UI clarity and responsive control quality](ui-quality-20260911.md) was the PR #97 selection. [Runtime-quality integration](runtime-quality-20260910.md) preceded it.
 
