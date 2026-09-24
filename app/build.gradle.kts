@@ -115,6 +115,13 @@ android {
 
     packaging {
         jniLibs.useLegacyPackaging = true
+        // Preserve the exact official AAR bytes audited by android_runtime_pins.json.
+        // NDK strip availability must not change the distributed runtime identity.
+        jniLibs.keepDebugSymbols += setOf(
+            "**/libpython.so", "**/libpython.zip.so", "**/libqjs.so",
+            "**/libffmpeg.so", "**/libffmpeg.zip.so", "**/libffprobe.so",
+            "**/libonnxruntime.so", "**/libonnxruntime4j_jni.so",
+        )
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
