@@ -133,7 +133,7 @@ fun main(args: Array<String>) = application {
             )
         },
         onCloseRequest = closeApplication,
-        title = "ChopLab — おとひろい PC",
+        title = desktopAppName(),
         icon = DesktopWindowIcon,
         resizable = true,
         onPreviewKeyEvent = { event ->
@@ -339,7 +339,7 @@ fun main(args: Array<String>) = application {
                 if (spotifyState.canCancelLogin) spotify.cancelLogin()
                 spotifyPanelVisible = false
             },
-            title = "ChopLab — 連携・音源追加",
+            title = desktopSourceWindowTitle(),
             state = remember { WindowState(width=760.dp,height=660.dp) },
         ) {
             ChopLabTheme {

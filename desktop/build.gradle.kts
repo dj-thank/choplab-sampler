@@ -1,14 +1,24 @@
 import org.gradle.api.tasks.Exec
 
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-    id("org.jetbrains.compose")
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.compose.compiler)
     application
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 application {
@@ -21,11 +31,11 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(compose.desktop.currentOs)
-    implementation("org.jetbrains.compose.material3:material3:1.9.0")
-    implementation("net.java.dev.jna:jna:5.19.1")
-    implementation("net.java.dev.jna:jna-platform:5.19.1")
-    implementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
-    testImplementation(kotlin("test"))
+    implementation(libs.compose.material3)
+    implementation(libs.jna.core)
+    implementation(libs.jna.platform)
+    implementation(libs.onnxruntime.desktop)
+    testImplementation(libs.kotlin.test)
 }
 
 tasks.test {
@@ -76,13 +86,13 @@ tasks.register<JavaExec>("runWasapiProbe") {
     mainClass.set("com.choplab.desktop.audio.wasapi.WasapiProbeMainKt")
 }
 
-val prepareMediaTools by tasks.registering(Exec::class) {
+val prepareMediaTools = tasks.register<Exec>("prepareMediaTools") {
     onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
     workingDir(rootProject.projectDir)
     commandLine("python", "scripts/prepare_media_tools.py", "--out", "work/media-tools")
 }
 
-val prepareSeparatorModel by tasks.registering(Exec::class) {
+val prepareSeparatorModel = tasks.register<Exec>("prepareSeparatorModel") {
     onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
     workingDir(rootProject.projectDir)
     commandLine("python", "scripts/prepare_separator_model.py", "--out", "work/separator-models")
@@ -90,6 +100,9 @@ val prepareSeparatorModel by tasks.registering(Exec::class) {
 
 val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
 require(windowsPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
+val windowsRuntimeToolchain = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+}
 
 tasks.register<Exec>("packageWindows") {
     dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
@@ -98,6 +111,12 @@ tasks.register<Exec>("packageWindows") {
     val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
     val destinationDir = layout.buildDirectory.dir(windowsPackageDirectory).get().asFile
     doFirst {
+        val buildRoot = layout.buildDirectory.get().asFile.canonicalFile.toPath()
+        val packageRoot = destinationDir.canonicalFile.toPath()
+        check(packageRoot != buildRoot && packageRoot.startsWith(buildRoot)) {
+            "Windows app image destination must stay strictly below desktop/build."
+        }
+        executable(windowsRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
         val executable=destinationDir.resolve("ChopLab/ChopLab.exe").canonicalFile.path
         val running=ProcessHandle.allProcesses().use { handles ->
             handles.anyMatch { it.info().command().orElse("").equals(executable,ignoreCase=true) }
@@ -118,7 +137,7 @@ tasks.register<Exec>("packageWindows") {
         "--app-version", choplabVersion.get(),
         "--description", "ChopLab original-style おとひろい desktop sampler",
         "--copyright", "ChopLab contributors",
-        // Startup trims that stay valid on the JDK 17 CI runtime: skip the hsperfdata mmap and
+        // Startup trims for the JDK 21 runtime: skip the hsperfdata mmap and
         // start with a heap that already fits the deck so the first frames avoid resize GCs.
         "--java-options", "-XX:-UsePerfData",
         "--java-options", "-Xms160m",
