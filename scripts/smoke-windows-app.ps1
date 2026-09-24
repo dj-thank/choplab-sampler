@@ -80,6 +80,13 @@ function Update-SmokeDescendants {
                 if ($childStarted -lt $owner.StartedAt -or $childStarted -gt $parentEnd) { continue }
                 $childPath = [IO.Path]::GetFullPath([string]$child.ExecutablePath)
                 if (-not $childPath.StartsWith($appPrefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+                # CIM may retain a row after graceful exit. Reuse the pinned handle
+                # for an already-owned PID + creation time instead of reopening it.
+                $known = @($owned | Where-Object {
+                    $_.Process.Id -eq [int]$child.ProcessId -and
+                    [Math]::Abs(($_.StartedAt - $childStarted).TotalMilliseconds) -lt 1
+                })
+                if ($known.Count) { continue }
                 $candidate = [Diagnostics.Process]::GetProcessById([int]$child.ProcessId)
                 # Keep a kernel handle before exit; a lookup-only Process can lose
                 # the exit code when the child disappears from the process table.
