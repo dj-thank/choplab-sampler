@@ -2,6 +2,7 @@ name: Supply-chain policy
 
 on:
   push:
+    branches: [main]
   pull_request:
   schedule:
     - cron: '17 18 * * 1'

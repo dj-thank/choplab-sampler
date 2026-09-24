@@ -2,6 +2,7 @@ name: Windows desktop verification
 
 on:
   push:
+    branches: [main]
   pull_request:
     paths:
       - '.github/workflows/desktop.yml'
@@ -9,7 +10,7 @@ on:
       - 'shared/**'
       - 'jvm-core/**'
       - 'scripts/**'
-      - 'docs/ui/**'
+      - 'docs/DESIGN.md'
       - 'gradle/**'
       - 'gradle.properties'
       - 'gradlew'
