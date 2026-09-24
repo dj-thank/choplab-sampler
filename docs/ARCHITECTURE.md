@@ -1,191 +1,59 @@
-# ChopLab アーキテクチャ
+# アーキテクチャ
 
-## 1. 設計目標
+現行0.18.0と再構築の設計を分けます。採用・移植・廃止の進捗は [ROADMAP](ROADMAP.md) が管理します。
 
-ChopLabのMVPは、Android端末だけで次のループを成立させることを目的にしています。
+## 現行の境界
 
-1. 音を取り込む
-2. 長尺音声から範囲を選ぶ
-3. チョップする
-4. PADへ順番に割り当てる
-5. PADを演奏／編集する
-6. 16ステップでビートを組む
-7. WAVへ書き出す
+| Module | 0.18.0の責務 |
+|---|---|
+| `shared` | Compose画面、sampler/domain、ProductionCommand reducer、ProductionSession、共有DSP primitive |
+| `jvm-core` | Android/Windowsのarchive・autosave・WAV/export・library・online取込・分離 |
+| `app` | Android ViewModel、AudioTrack、MediaCodec、AudioRecord、SAF、Playback Capture |
+| `desktop` | Windows controller、Java Sound、native dialog、provider UI、WASAPI endpoint probe |
 
-UI層、制作状態、リアルタイム音声処理、オフライン書き出しを分離し、リアルタイム音声スレッド上でメモリアロケーションやAndroid UI処理を行わない構成です。
+編集の計画→必要な副作用→commit/cancelを維持します。PROJECT/SESSION/NONEを分け、失敗した停止や読込を編集成功として公開しません。2つのcontrollerとreal-time/offline voice実装は残っており、共通primitiveを使うことだけでは統一engine完成になりません。
 
-## 2. データモデル
+`PcmAudio`はsample rateと1/2channelのPCM16を保持し、PADは同じaudioの範囲を参照します。フレーム範囲は `[start, end)`。波形用mono投影は音声channelを置き換えません。schema7 writer/1–7 readerは現行の保存境界です。schema8/9の後続ローカル実験を基準mainへ読み込み済みと扱いません。
 
-`model/SamplerModels.kt`
+## 目標の6 module（段階2から追加）
 
-- `PcmAudio`
-  - 16-bit signed PCMの1ch/2ch interleaved `ShortArray`
-  - `frameCount`は全channelを一緒に進める時間座標。`sampleAt`はchannel identity、`monoSampleAt`は表示／解析用の明示投影
-  - 元サンプルレート
-  - 表示名と一意ID
-- `SliceRange`
-  - start inclusive / end exclusiveのフレーム範囲
-- `PadModel`
-  - 参照する `PcmAudio`
-  - 開始／終了フレーム
-  - Pitch、Tone、Gain、Reverse、Play mode、Choke group
-- `SamplerUiState`
-  - 現在音源、選択範囲、境界、PAD、シーケンス、録音／Transport状態
+| Module | 責務と依存 |
+|---|---|
+| `engine` | 純Kotlin DSP、EngineCore、voice/sequence/mix/scratch。標準library以外のruntime依存なしを目標 |
+| `core` | engine＋coroutines/serialization。Project、Intent/Reducer/EditSession、Studio、ports、取込・歌詞timing |
+| `ui` | 共通Compose画面・部品・ja/en resources。coreのstateを描画しintentを送る |
+| `jvm` | core portsの保存、asset、network、AI、ONNX、WAV実装 |
+| `app` | AndroidHostがcore/ui/jvmとOS driverを組み立てる |
+| `desktop` | DesktopHostがcore/ui/jvmとWindows driverを組み立てる |
 
-同じ音源から複数スライスをPADへ割り当てた場合、PCM本体はコピーせず共有します。これにより典型的な1音源→16スライスではメモリ重複を避けます。
+依存は `ui → core → engine` と `jvm → core`。OS参照をengineへ入れず、DI frameworkは導入せずhostで組み立てます。旧moduleは移植が合格するまで残します。KMPの対象はAndroid/JVMであり、Native互換を同時に証明しません。
 
-## 3. 入力パイプライン
+## 状態・時刻・仕事の所有
 
-### 3.1 ファイル
+`Project`は不変の保存文書。`Intent → Reducer → EditSession` がrevision、結合キー、最大100段のUndoを管理します。Studioが唯一の振る舞いの持ち主となり、文書・選択・job・playback stateを分離します。coreは文言でなくtyped `Notice`を出します。
 
-`AudioDecoder`
+- UI/main: intent受付、状態と必要な表示の更新。表示の時計はLiveReadoutを描画へ橋渡しする。
+- Studio/control: producerを一つへ集約。命令に絶対 `effectiveFrame` と順序IDを付ける。
+- render: ControlRingを読み、命令/Program変更のframeでblockを分割。EventRingは適用frameを返す。late/overflow/Stop優先/取りこぼし/再同期を定義する。
+- worker: decode、prefetch、network、推論、録音書込み、保存、offline render。job IDとproject revisionでcancel後やproject交換後の応答を拒否する。
 
-1. `MediaExtractor`で最初のaudio trackを選択
-2. MIMEに対応する`MediaCodec` decoderを作成
-3. decoder outputをPCMとして取得
-4. 2chは左右を保持し、1chはmonoのまま、3–8chはspeaker layoutを推測せず従来どおり平均monoへ変換
-5. PCM float/8/16/24/32-bitを内部PCM-16へ正規化
-6. 微小なDC offsetをchannel別に除去
+音声クロックが主時計です。tick（960/四分音符）とframeの変換は端数を保持。LiveReadoutは整合した小さなsnapshotで、原子変数を読むだけで再描画が発生すると仮定しません。render内にI/O・ロック・確保を持ち込まず、実際のJVM/ARTで測定します。
 
-import sample rateはproject/archive契約と同じ8–192 kHzです。AndroidとWindowsはこの範囲外をproject stateへ公開する前に拒否します。展開可能なaudio frame数は `min(30,000,000, sampleRate × 600秒)` です。duration metadataが欠落・不正確でも両platformのstreaming builderが同じ上限で停止し、2chではinterleaved sample数を2倍として容量へ反映します。最初のPCM出力後にsample rateまたは保存channel shapeが変わった場合は、後続PCMの有無にかかわらずfail closedにします。
+## 音声資産と保存（schema10の受入契約）
 
-### 3.2 マイク
+- `.choplab`: 先頭 `project.json`、`assets/<sha256>.<許可拡張子>`。元圧縮素材、編集/録音/生成float32 WAV、再生成可能PCM cacheを区別する。manifestから必須/派生/再生成可能を判断し、含まれるbytesをhash検証する。
+- AssetStore: 短いPADはresident、長い伴奏/歌はprefetch。全音声を128PAD分展開しない。cache missの無音/停止通知、再読込、RAM/disk上限をengine spike前に決める。
+- Autosave: 資産をtempへ書込み→flush/検証→atomic publish→参照する小さなdocumentを3世代で確定。文書だけが先に残らない順序にする。
+- Asset lifetime: Undo/Redo、autosave全世代、実行中jobが参照する資産を保持。GCはrender外で、参照保護・中断復旧の検証後に導入する。
+- Import validation: 未知schema、path traversal、case衝突、重複ID/entry、不整合hash、ZIP bomb、過大size/frame、非有限値を拒否。拡張子・metadataだけを信頼しない。
+- Legacy salvage: schema1–7をまず実fixtureで音声救出。schema8/9は別履歴のfixtureが揃った場合だけ追加し、対応を自称しない。hash・frame長・channelを照合し、元を保持。容量不足・cancel・再試行は再実行可能にする。
 
-`MicrophoneRecorder`
+PreviewはAndroid package/authority/deep link、Windows設定/autosave/library/cache/lock領域を分離します。正式な同一データ領域切替でのみ旧autosaveを `legacy/` へ退避し、Previewから旧アプリの私有データへ直接入れるとは仮定しません。
 
-- `AudioRecord`
-- 48 kHz / mono / PCM-16
-- `UNPROCESSED` audio sourceを優先し、使用できない端末では`MIC`へフォールバック
-- 専用audio-priority threadでストリーミングWAV書き込み
+## 移植と判断
 
-### 3.3 端末再生音
+ProductionCommand/Sessionはcore edit、モデルはcore doc、mailbox/voice ownership/DSPはengine、zero-crossing/合成drumは共通実装へ移します。archiveの保護機能と振る舞いテストは意味を保って移植します。新旧の小さい制作経路が通ってから旧codeを削除します。
 
-`PlaybackCaptureService`
+JDK21・Java/Kotlin target17、CMP更新、NewPipe、YIN/PSOLA、WASAPI等は段階ごとの候補です。versionの存在だけでこのrepositoryの互換性を保証しません。pure Kotlin engineが計測条件を満たさなければ、全面UI配線へ進む前にADRで再設計します。C++/Oboeへ自動的に切り替えません。
 
-- Foreground Service type: `mediaProjection`
-- `MediaProjectionManager`のユーザー許可結果を受け取る
-- `AudioPlaybackCaptureConfiguration`でMEDIA/GAME/UNKNOWN usageを対象化
-- stereoを優先し、初期化できなければmonoへフォールバック
-- PCM-16 WAVへストリーミング保存
-- 完了ファイルを`CaptureEventBus`経由でViewModelへ通知
-
-録音元アプリがPlayback Captureを許可していない場合、Androidの仕様により音声は取得できません。
-
-## 4. 波形とチョップ
-
-`WaveformEditor`
-
-- 表示区間だけをCanvasへ描画
-- ピクセル幅ごとにmin/max peakを抽出して長尺波形の描画量を制限
-- S/E handleと各slice markerを`draggable`で操作
-- zoom倍率からvisible frame rangeを算出
-- タップ位置をframeへ逆変換
-
-`TransientDetector`
-
-- 約5 ms windowのRMS energy
-- 指数平滑化後の正方向energy差分をnoveltyとして計算
-- mean + standard deviation × sensitivityを閾値に使用
-- local peakをscore順に選択
-- 65 msのminimum distanceで密集した候補を排除
-
-これはドラム／フレーズ用の軽量ヒューリスティックです。商用品質へ進める場合はspectral flux、multi-band onset、zero-crossing snap、ML onset detectorなどを追加できます。
-
-## 5. PAD割り当て
-
-`SamplerViewModel.assignRanges`
-
-- 現在BANK内で選択PADから順に割り当て
-- 16を超える場合はBANK内で循環
-- PAD parameterは再割り当て前の値を保持
-- AUTO NEXTがONの場合、最後に割り当てた次のPADへ移動
-- 単一slice割り当て時はactive sliceも次へ移動
-- 変更されたPADだけをリアルタイムengineへcommand queueで同期
-
-## 6. リアルタイム音声エンジン
-
-`SamplerEngine`
-
-### Thread model
-
-- UI/ViewModel threadは`ConcurrentLinkedQueue`へcommandを投入
-- audio threadがblock境界でcommandをdrain
-- `THREAD_PRIORITY_AUDIO`
-- Android UI、Coroutine、ファイルI/Oをaudio threadから呼ばない
-
-### Output
-
-- `AudioTrack.MODE_STREAM`
-- `ENCODING_PCM_FLOAT`
-- stereo output（mono sourceはL/Rへ複製し、stereo source/PAD/scratchは左右を別々にmix・limit）
-- `PERFORMANCE_MODE_LOW_LATENCY`
-- 端末が申告するnative sample rateを優先
-- partial writeを考慮し、block全体を書き切るまでループ
-
-### Voice DSP
-
-- 最大32 voices
-- Pitch: semitoneからratioを求めるvariable-rate resampling
-- Interpolation: linear
-- Tone: one-pole low-pass、最大値付近ではbypass
-- Gain: per voice
-- Reverse
-- One Shot / Gate
-- Choke group: 同groupを48 framesでfast release
-- 境界クリック抑制: source boundaryの短いfade-in/fade-out
-- Mix protection: `abs(x) <= 0.9` は bit-for-bit linear、超過時だけ C1 連続の rational knee で `0.98` 未満へ漸近する shared master limiter。Android AudioTrack と offline WAV が同じ関数を使用
-
-### Sequencer
-
-- audio frame単位で次stepまでの残りframeをカウント
-- BPMから16分音符長を算出
-- Swing値により偶数stepを長く、奇数stepを短くするが、2 step合計長は一定
-- fractionalなstep deadlineは、その時刻より前ではない最初の整数frame（ceiling）で発火する
-- step onsetで該当PAD voiceを開始
-
-## 7. オフライン書き出し
-
-`PatternRenderer`
-
-- リアルタイムengineと同じPitch/Tone/Gain/Reverse/Choke/limiterロジック
-- Pattern modeの選択A/B × 4 bars、またはSong modeのA/B 4 sectionsについて、Android countdownと同じ連続fractional timingでevent frameを先に計算
-- realtimeと同じfractional countdown残差をbar間でも持ち越し、step長を加算→ceilingで整数frameを進行→量子化残差を次stepへ渡す
-- 実際に発音する素材がmonoだけなら48 kHz mono、stereoを含むなら48 kHz interleaved stereo PCM-16をchunk単位で`WavFileWriter`へ送る
-- UIのCreate Documentで選ばれたURIへ一時ファイルをコピー
-
-リアルタイムengineとoffline rendererのVoice lifecycleは現状別実装です。一方、pitch step、tone coefficient、gain sanitation、forward/reverse boundary fade、master limiter、swing step durationはallocation-free shared primitivesへ移し、Android realtime Voiceとhost PAD rendererのPCM oracleを持ちます。default gain 0.9のfull-scale source/PADはmasterで非線形変形せず、2〜32 voice相当の過負荷だけを有限・正負対称・単調な0.98未満へ制限します。single PAD / single event / full barではmonoと左右非対称stereoの両方をrealtime Voice + shared limiterとoffline WAVで全frame比較し、channelごと最大1 PCM unitをgateとします。polyphony/choke/loop/vocalをさらに拡張してから共通Voice kernelまたはnative moduleへ進みます。
-
-### 7.1 制作archive
-
-`ProjectArchiveCodec`
-
-- current schema 7はaudio manifestへ`channelCount`を記録し、1ch/2ch PCM-16 WAVのchannel、byte rate、block align、frame count、data lengthを相互検証
-- schema 1–6はchannel identityを持たないため、既存contractどおりmonoとして移行
-- manifest宣言時点と各entry読込時の両方で、frame × channel × 2 bytesをarchive／resident PCM budgetへ算入
-- current sourceと複数PADが同じaudio IDを共有する場合、name/rate/channel shape/sample bytesが一致しなければ拒否
-
-## 8. メモリ戦略
-
-- PCMはFloatArrayではなくShortArrayで保持
-- PADはPCM本体をコピーせずrange参照
-- waveformは全frameをPath化せず、表示ピクセル単位でpeak抽出
-- decoderにduration/frame上限
-
-次段階では、memory-mapped PCM cache、LRU source cache、background waveform pyramid、streaming decoderを導入する余地があります。
-
-## 9. 製品化ロードマップ
-
-優先順位の高い順:
-
-1. shared `ProductionCommand` / effect spineと、編集履歴・revision・autosaveを持つ`ProductionSession`
-2. persistent Production、session selection、実適用済みruntime stateの分離
-3. realtime/offline共通event compiler・DSP parity harnessと、その下でのOboe/AAudio段階移行
-4. Stereo sample path、multi-output renderer、実機latency/xRun matrix
-5. Zero-crossing snap、fade editor、normalize、trim、time-stretch independent from pitch
-6. ADSR/filter envelope/LFO/insert and send FX
-7. bounded A/B Songを越える任意数pattern、可変section repeat、per-track length/polymeter
-8. MIDI/USB MIDI、velocity、aftertouch
-9. Stem export、share、portable project package
-10. Instrumented tests、Macrobenchmark、battery/thermal profilingとgate別release automation
-
-全体方針と評価軸は`docs/architecture/global-product-optimization-2026-08-24.md`を正本とする。native engineだけを先行させても、platformごとの編集規則、履歴、保存、runtime truthの分岐は解消しないため、semantic spineとparity harnessを先に成立させる。
+歴史的判断は [ADR1](adr/ADR-0001-production-command-effect-seam.md)、[ADR2](adr/ADR-0002-production-session-transactions.md)、[ADR3](adr/ADR-0003-audio-parity-primitives.md)、[ADR4](adr/ADR-0004-pattern-master-parity-gate.md)、[ADR5](adr/ADR-0005-guided-first-screen-flow.md) に保持します。旧4画面など置換する契約は新要件の受入まで現行に適用し、[ADR6](adr/ADR-0006-android-windows-focus.md) / [ADR7](adr/ADR-0007-concise-development-governance.md) とROADMAPで変更を明示します。

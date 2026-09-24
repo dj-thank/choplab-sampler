@@ -1,39 +1,29 @@
-# ChopLab プライバシー方針
+# おとひろい / Earth Song プライバシー方針
 
-最終更新: 2026-08-19
+更新: 2026-09-25。ChopLabの対象はAndroidとWindowsです。音の編集・保存・内蔵ドラム・ローカル分離は端末内で行います。オンライン取込は外部サービスへ接続します。AI機能は再構築計画の段階6以降であり、下記のAI欄は実装時に守る契約です。
 
-ChopLab は、音声制作を端末内で行うオープンソース Android / iOS アプリです。現在のアプリはインターネット権限や独自サーバーへの音声アップロードを実装していません。広告、アカウント、分析 SDK、クラッシュ送信も行いません。
+## データと通信
 
-## 扱うデータ
+| 機能 | 扱う情報・接続先 | 境界 |
+|---|---|---|
+| ファイル、録音、制作 | 元音声、録音、PAD、配置、設定をアプリ専用領域へ保存 | 制作ファイルとWAVは利用者が選んだ保存先へ書出し |
+| Spotify連携 | SpotifyへのOAuth、選んだアカウントの曲情報・検索。現行Windowsには再生状態/操作も存在 | Spotify音声bytesを取得する機能ではない。OAuth tokenは現行セッションのメモリ内で保持 |
+| YouTube取込 | URL・検索語・曲照合情報をYouTube/取得先へ送り、対応する音声をダウンロード | 取得とdecode検証の完了後にローカルライブラリへ登録。既存素材のアップロード機能とは別 |
+| 分離モデル取得 | Hugging Faceの指定モデルとその配信先からモデルbytesを取得 | commit/hashを検証。モデルの取得は利用者音声のアップロードではなく、分離処理はローカル |
+| AI作詞・TTS・説明（計画） | 利用者が選んだ提供元へ、明示した歌詞・設定などを送信 | 送信先・項目・利用条件を先に表示。音声は明示選択時だけ送信。端末TTSを残す |
 
-- 読み込んだ音声、マイク録音、端末音声録音、チョップ、PAD、シーケンス、設定。
-- アプリ内の自動保存と一時録音はアプリ専用領域に保存されます。一時録音WAVは音声への変換が成功・失敗・取消のいずれで終了しても削除し、異常終了で残ったChopLab命名の一時録音だけを24時間後の起動時清掃対象にします。
-- WAV と `.choplab` プロジェクトは、Android のファイル選択画面でユーザーが指定した保存先にのみ書き出します。
-- アプリは Android バックアップを無効にしています。ユーザーが書き出したファイルは、選択した保存先の管理方法に従います。
-- iOSで選択した音声は、security-scoped file accessを使って読み取り、アプリ専用のApplication Support内へコピーしてから再生します。ユーザー音源はこのGitリポジトリやGitHub Releaseへ送信・同梱しません。
+現行0.18.0はSpotify接続後にお気に入りの自動取込を開始する構成です。選んだ曲だけを取り込む方式への変更は段階3で行います。接続状態・取消・再試行を画面で確認し、曲情報が表示されただけでは音声取得済みと扱いません。
 
-Windows desktop preview is separate from the mobile permission model. Its optional Spotify login sends OAuth requests and current-playback metadata/control requests to Spotify, keeps the first-slice token in memory, and does not upload local WAV files or expose Spotify audio bytes to the sampler.
+広告・独自の分析SDK・独自のクラッシュ送信は現行製品の機能に含めません。OSや選択した提供元の処理は、それぞれの設定・方針に従います。書き出したファイルは選択した保存先の管理対象になります。
 
-## 権限と目的
+## 権限・保存・消去
 
-- `RECORD_AUDIO`: マイク素材、ボーカルテイク、および Android の端末音声キャプチャ開始に必要です。要求した操作を開始するときだけ許可を求めます。
-- MediaProjection の画面共有同意: 端末音声録音を開始するたびに Android の確認画面を使います。録音元アプリが Playback Capture を許可した音声だけが対象です。
-- `FOREGROUND_SERVICE_MEDIA_PROJECTION`: 端末音声録音を、Android が管理するフォアグラウンドサービスとして実行するために使います。
-- `POST_NOTIFICATIONS`（Android 13 以降）: 端末音声録音中のサービス通知に使います。拒否してもアプリ内の停止操作は残ります。
-- iOSのマイク権限: iOS版で録音を開始したときだけ、録音素材を作る目的で要求します。拒否した場合は録音を開始しません。
+マイク録音の開始時に `RECORD_AUDIO` を要求します。Androidの端末音キャプチャは毎回MediaProjectionの同意を得て、対象アプリが許した音声だけをforeground serviceで記録します。通知権限は録音中の表示に使います。権限の拒否やルート喪失を、録音成功として扱いません。
 
-DRM、録音元アプリの制限、OS の権限を回避しません。録音・サンプリングする音源について必要な権利と利用条件を確認してください。
+ライブラリは制作ファイルとは別のアプリ専用領域、制作の自動保存は検証済み最大3世代です。「新しい制作」は安全コピーを含む完全消去ではありません。Androidではバックアップを無効にし、アンインストールするとOSがアプリ専用データを削除します。Windowsの配布物削除と制作データ削除は別です。手動で書き出したWAV・`.choplab`・`.choplib`は自動削除されません。
 
-## iOS previewの境界
+録音一時ファイルの清掃はアプリが所有するcache内の対象に限定し、取り込んだ元音声や書出し先へ広げません。再構築Previewは設定・自動保存・ライブラリ・cacheを既存版から分離し、既存の制作を自動上書きしない契約です。
 
-公開Releaseに含めるiOS artifactは署名なしのSimulator `.app.zip`だけです。Apple Developer certificate、provisioning profile、private signing key、App Store Connect credentialはソース、GitHub Actions artifact、Release asset、ログへ置きません。iPhone/iPadの実機配布には利用者自身の署名環境が必要です。
+AIのAPIキーはAndroid Keystore/Windows DPAPIに結び付けて保管する計画です。鍵・token・raw requestをログ、制作ファイル、クラッシュ送信へ入れず、別の接続先へ既存キーを自動転送しません。詳しくは [AI契約](docs/AI.md) を参照してください。
 
-## 消去と持ち出し
-
-アプリ内の「新しい制作を始める」は現在の制作状態を空にします。破損や保存途中から復旧するため、アプリ専用領域には直近の検証済み自動保存を最大三世代保持します。この操作は安全コピーを含む完全消去ではありません。アプリをアンインストールするとアプリ専用領域は Android により削除されます。ファイル選択画面から書き出した WAV や `.choplab` は自動削除されないため、保存先のファイルアプリで管理してください。
-
-一時録音の清掃対象は、アプリ専用cacheの`captures`内にChopLab自身が`microphone_数字.wav`、`system_数字.wav`、`vocal_数字.wav`として作成したファイルだけです。ファイル選択画面で読み込んだ音声、ユーザーが書き出したWAV、`.choplab`プロジェクトはこの清掃で削除しません。
-
-## 確認と問い合わせ
-
-実装は公開リポジトリで確認できます。不具合やプライバシー上の懸念は、個人の音声・プロジェクト・認証情報を添付せずに GitHub Issues へ報告してください。
+不具合の公開報告には個人の音声・制作・認証情報を添付しないでください。秘密情報が関わる報告は [SECURITY](SECURITY.md) の非公開経路を使います。
