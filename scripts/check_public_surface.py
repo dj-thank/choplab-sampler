@@ -1770,11 +1770,142 @@ def der_signing_material_outside_ranges(
     return der_signing_material_signature(content[cursor:])
 
 
+def pkcs12_trusted_certificate_count(content: bytes) -> int | None:
+    """Recognize only the passwordless, unencrypted CertBag form used by JDK 21.
+
+    RFC 7292 sections 4.1/4.2: every ContentInfo must be Data and every bag a
+    CertBag. Encrypted, key, secret, nested, unknown and extra fields fail closed;
+    the Java provider alone could silently ignore an unknown bag or attribute.
+    """
+    if not content or len(content) > ZIP_MEMBER_SCAN_LIMIT:
+        return None
+    data_oid = bytes.fromhex("06092a864886f70d010701")
+    cert_bag_oid = bytes.fromhex("060b2a864886f70d010c0a0103")
+    x509_oid = bytes.fromhex("060a2a864886f70d01091601")
+    friendly_oid = bytes.fromhex("06092a864886f70d010914")
+    trusted_usage_oid = bytes.fromhex("060c6086480186f966adca7b0101")
+
+    def value(node: bytes, tag: int) -> bytes:
+        bounds = der_tlv_value_bounds(node)
+        if bounds is None or bounds[0] != tag or bounds[2] != len(node):
+            raise ValueError("Malformed or trailing DER")
+        return node[bounds[1]:bounds[2]]
+
+    def children(node: bytes, tag: int = 0x30) -> list[bytes]:
+        body = value(node, tag)
+        result = []
+        offset = 0
+        while offset < len(body):
+            bounds = der_tlv_value_bounds(body, offset)
+            if bounds is None or len(result) >= JKS_ENTRY_LIMIT:
+                raise ValueError("Malformed or oversized DER sequence")
+            result.append(body[offset:bounds[2]])
+            offset = bounds[2]
+        return result
+
+    def public_data(node: bytes) -> bytes:
+        fields = children(node)
+        if len(fields) != 2 or fields[0] != data_oid:
+            raise ValueError("Only unencrypted PKCS7 Data is inspectable")
+        return value(value(fields[1], 0xA0), 0x04)
+
+    try:
+        pfx = children(content)
+        if len(pfx) != 2 or pfx[0] != b"\x02\x01\x03":
+            return None  # This exception does not cover password/MAC protected PFX.
+        count = 0
+        for safe in children(public_data(pfx[1])):
+            for bag in children(public_data(safe)):
+                fields = children(bag)
+                if len(fields) != 3 or fields[0] != cert_bag_oid:
+                    return None
+                cert_fields = children(value(fields[1], 0xA0))
+                if len(cert_fields) != 2 or cert_fields[0] != x509_oid:
+                    return None
+                certificate = value(value(cert_fields[1], 0xA0), 0x04)
+                value(certificate, 0x30)  # Java CertificateFactory checks the X.509 body below.
+                if der_private_key_material_signature(certificate):
+                    return None
+                attributes = children(fields[2], 0x31)
+                seen = set()
+                for attribute in attributes:
+                    pair = children(attribute)
+                    if len(pair) != 2 or pair[0] in seen:
+                        return None
+                    seen.add(pair[0])
+                    values = children(pair[1], 0x31)
+                    if len(values) != 1:
+                        return None
+                    if pair[0] == friendly_oid:
+                        alias = value(values[0], 0x1E).decode("utf-16-be")
+                        if not alias or len(alias) > 512 or any(ord(c) < 32 for c in alias):
+                            return None
+                    elif pair[0] == trusted_usage_oid:
+                        if values[0] != bytes.fromhex("0604551d2500"):
+                            return None
+                    else:
+                        return None
+                if seen != {friendly_oid, trusted_usage_oid}:
+                    return None
+                count += 1
+                if count > JKS_ENTRY_LIMIT:
+                    return None
+        return count if count else None
+    except (ValueError, UnicodeError):
+        return None
+
+
+def verify_pkcs12_trust_with_java(content: bytes, expected_count: int) -> bool:
+    """No password/key export: ask Java for the entry types after structural proof."""
+    import shutil
+
+    java = shutil.which("java")
+    if java is None:
+        return False
+    source = '''import java.nio.file.*;
+import java.security.*;
+import java.security.cert.X509Certificate;
+class ChopLabTruststoreCheck {
+  public static void main(String[] args) throws Exception {
+    KeyStore store = KeyStore.getInstance("PKCS12");
+    try (var input = Files.newInputStream(Path.of(args[0]))) { store.load(input, null); }
+    int expected = Integer.parseInt(args[1]);
+    if (expected < 1 || expected > 4096 || store.size() != expected) System.exit(1);
+    var aliases = store.aliases();
+    while (aliases.hasMoreElements()) {
+      String alias = aliases.nextElement();
+      if (store.isKeyEntry(alias) || !store.isCertificateEntry(alias)
+          || !store.entryInstanceOf(alias, KeyStore.TrustedCertificateEntry.class)
+          || !(store.getCertificate(alias) instanceof X509Certificate)) System.exit(1);
+    }
+    System.out.print("TRUSTED:" + expected);
+  }
+}
+'''
+    try:
+        with tempfile.TemporaryDirectory(prefix="choplab-public-truststore-") as directory:
+            root = Path(directory)
+            helper = root / "ChopLabTruststoreCheck.java"
+            helper.write_text(source, encoding="utf-8")
+            public_store = root / "public-store"
+            public_store.write_bytes(content)
+            result = subprocess.run(
+                [java, "-Xmx64m", "-XX:MaxMetaspaceSize=64m", str(helper), str(public_store), str(expected_count)],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=15,
+            )
+            return result.returncode == 0 and result.stdout == f"TRUSTED:{expected_count}".encode("ascii")
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def is_trusted_jdk_cacerts(path: PurePosixPath, content: bytes) -> bool:
     """Accept a structurally bounded JDK JKS only when every entry is a trusted cert."""
     parts = tuple(part.lower() for part in path.parts)
     if parts[-4:] != ("runtime", "lib", "security", "cacerts"):
         return False
+    if not content.startswith(JKS_MAGIC):
+        count = pkcs12_trusted_certificate_count(content)
+        return count is not None and verify_pkcs12_trust_with_java(content, count)
     if len(content) < 12 + 20 or not content.startswith(JKS_MAGIC):
         return False
     version = int.from_bytes(content[4:8], "big")
@@ -3403,6 +3534,8 @@ def scan_zip(
                         content,
                         pe_certificate_ranges,
                     )
+                elif trusted_jdk_cacerts:
+                    der_signature = der_private_key_material_signature(content)
                 elif public_certificate_container:
                     der_signature = (
                         pkcs12_container_signature(content)
