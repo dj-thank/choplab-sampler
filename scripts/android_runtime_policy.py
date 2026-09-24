@@ -102,6 +102,86 @@ def verify_runtime_content(pin: RuntimePin, content: bytes) -> bool:
     return pin.kind == "raw_ytdlp" and content.startswith(b"#!/usr/bin/env python")
 
 
+def required_native_preservation_globs(pins: tuple[RuntimePin, ...]) -> set[str]:
+    """Keep upstream native bytes identical regardless of the installed NDK."""
+    return {"**/" + PurePosixPath(pin.apk_path).name for pin in pins if pin.apk_path is not None}
+
+
+def validate_packaging_preservation(gradle_source: str, pins: tuple[RuntimePin, ...]) -> None:
+    """Check the deliberately literal keepDebugSymbols declaration in app Gradle.
+
+    This is a source contract, not an AGP interpreter or a replacement for final
+    APK byte verification. Comments and unrelated string literals cannot satisfy it.
+    """
+    tokens: list[tuple[str, str]] = []
+    index = 0
+    while index < len(gradle_source):
+        if gradle_source[index].isspace():
+            index += 1
+        elif gradle_source.startswith("//", index):
+            end = gradle_source.find("\n", index)
+            index = len(gradle_source) if end < 0 else end + 1
+        elif gradle_source.startswith("/*", index):
+            index += 2
+            depth = 1
+            while depth and index < len(gradle_source):
+                if gradle_source.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif gradle_source.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            if depth:
+                raise ValueError("Unterminated Gradle comment")
+        elif gradle_source.startswith('"""', index):
+            end = gradle_source.find('"""', index + 3)
+            if end < 0:
+                raise ValueError("Unterminated Gradle raw string")
+            tokens.append(("raw", gradle_source[index + 3:end]))
+            index = end + 3
+        elif gradle_source[index] == '"':
+            start = index
+            index += 1
+            while index < len(gradle_source) and gradle_source[index] != '"':
+                index += 2 if gradle_source[index] == "\\" else 1
+            if index >= len(gradle_source):
+                raise ValueError("Unterminated Gradle string")
+            index += 1
+            tokens.append(("string", gradle_source[start:index]))
+        else:
+            word = re.match(r"[A-Za-z_][A-Za-z0-9_]*", gradle_source[index:])
+            if word:
+                tokens.append(("code", word[0]))
+                index += len(word[0])
+            else:
+                tokens.append(("code", gradle_source[index]))
+                index += 1
+    declaration = [("code", word) for word in ("jniLibs", ".", "keepDebugSymbols", "+", "=", "setOf", "(")]
+    positions = [i for i in range(len(tokens)) if tokens[i:i + len(declaration)] == declaration]
+    mentions = [i for i in range(len(tokens)) if tokens[i:i + 3] == declaration[:3]]
+    if len(positions) != 1 or len(mentions) != 1:
+        raise ValueError("Expected one literal jniLibs.keepDebugSymbols += setOf declaration")
+    cursor = positions[0] + len(declaration)
+    actual = set()
+    while cursor < len(tokens) and tokens[cursor] != ("code", ")"):
+        kind, value = tokens[cursor]
+        if kind != "string":
+            raise ValueError("Native preservation must use literal filename globs")
+        actual.add(json.loads(value))
+        cursor += 1
+        if cursor < len(tokens) and tokens[cursor] == ("code", ","):
+            cursor += 1
+        elif cursor >= len(tokens) or tokens[cursor] != ("code", ")"):
+            raise ValueError("Malformed native preservation declaration")
+    if cursor >= len(tokens):
+        raise ValueError("Unterminated native preservation declaration")
+    expected = required_native_preservation_globs(pins)
+    if actual != expected:
+        raise ValueError(f"Native preservation differs from runtime pins; missing={sorted(expected - actual)}, extra={sorted(actual - expected)}")
+
+
 def valid_resource_table(content: bytes) -> bool:
     """Bounded Android ResTable header/chunk check; callers still scan all bytes."""
     if len(content) < 12:
