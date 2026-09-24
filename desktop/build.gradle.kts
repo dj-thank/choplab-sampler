@@ -21,15 +21,17 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(compose.desktop.currentOs)
+    implementation("org.jetbrains.compose.material3:material3:1.9.0")
     implementation("net.java.dev.jna:jna:5.19.1")
     implementation("net.java.dev.jna:jna-platform:5.19.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
     testImplementation(kotlin("test"))
 }
 
 tasks.test {
     useJUnitPlatform()
     // The offscreen input fixture has its own bounded, explicitly headless target.
-    exclude("**/ui/DesktopLongPressUiTest*")
+    exclude("**/ui/DesktopLongPressUiTest*", "**/ui/DesktopUiQualityTest*")
 }
 
 tasks.register<Test>("desktopLongPressUiTest") {
@@ -74,14 +76,34 @@ tasks.register<JavaExec>("runWasapiProbe") {
     mainClass.set("com.choplab.desktop.audio.wasapi.WasapiProbeMainKt")
 }
 
+val prepareMediaTools by tasks.registering(Exec::class) {
+    onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
+    workingDir(rootProject.projectDir)
+    commandLine("python", "scripts/prepare_media_tools.py", "--out", "work/media-tools")
+}
+
+val prepareSeparatorModel by tasks.registering(Exec::class) {
+    onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
+    workingDir(rootProject.projectDir)
+    commandLine("python", "scripts/prepare_separator_model.py", "--out", "work/separator-models")
+}
+
+val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
+require(windowsPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
+
 tasks.register<Exec>("packageWindows") {
-    dependsOn(tasks.installDist)
+    dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
     onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
 
     val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
-    val destinationDir = layout.buildDirectory.dir("windows-app-image").get().asFile
+    val destinationDir = layout.buildDirectory.dir(windowsPackageDirectory).get().asFile
     doFirst {
-        destinationDir.deleteRecursively()
+        val executable=destinationDir.resolve("ChopLab/ChopLab.exe").canonicalFile.path
+        val running=ProcessHandle.allProcesses().use { handles ->
+            handles.anyMatch { it.info().command().orElse("").equals(executable,ignoreCase=true) }
+        }
+        check(!running) { "Windows app image is running. Choose a fresh -PwindowsPackageDirectory name." }
+        check(destinationDir.deleteRecursively()) { "Windows app image is in use. Choose a fresh -PwindowsPackageDirectory name." }
         destinationDir.mkdirs()
     }
     commandLine(
@@ -102,4 +124,71 @@ tasks.register<Exec>("packageWindows") {
         "--java-options", "-Xms160m",
         "--java-options", "-Dfile.encoding=UTF-8",
     )
+    val spotifyClient=providers.environmentVariable("CHOPLAB_SPOTIFY_CLIENT_ID").orElse("").get()
+    require(spotifyClient.isEmpty() || spotifyClient.matches(Regex("[A-Za-z0-9]{16,128}")))
+    if(spotifyClient.isNotEmpty()) args(
+        "--java-options", "-Dchoplab.spotifyClientId=$spotifyClient",
+    )
+}
+
+tasks.named("packageWindows") {
+    doLast {
+        copy {
+            from(rootProject.file("work/media-tools"))
+            into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/tools"))
+        }
+        copy {
+            from(rootProject.file("work/separator-models"))
+            into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/models"))
+        }
+    }
+}
+
+tasks.register<JavaExec>("sourceImport") {
+    dependsOn(tasks.classes)
+    classpath=sourceSets["main"].runtimeClasspath
+    mainClass.set("com.choplab.desktop.source.SourceImportCliKt")
+    workingDir(rootProject.projectDir)
+    providers.gradleProperty("sourceSpotifyCheck").orNull?.let { args("--spotify-check",it) }
+    providers.gradleProperty("sourceListFile").orNull?.let { args("--list",it) }
+    providers.gradleProperty("sourceLibrary").orNull?.let { args("--library",it) }
+    providers.gradleProperty("sourceYoutube").orNull?.let { args("--youtube",it) }
+    providers.gradleProperty("sourceExport").orNull?.let { args("--export",it) }
+}
+
+tasks.register<JavaExec>("separateDrums") {
+    dependsOn(tasks.classes)
+    classpath=sourceSets["main"].runtimeClasspath
+    mainClass.set("com.choplab.desktop.separation.SeparateDrumsCliKt")
+    workingDir(rootProject.projectDir)
+    providers.gradleProperty("separateInput").orNull?.let { args("--input",it) }
+    providers.gradleProperty("separateOutput").orNull?.let { args("--output",it) }
+    providers.gradleProperty("separateModels").orNull?.let { args("--models",it) }
+}
+
+// Synthetic, offscreen review of the actual shared UI. No native dialogs or audio.
+tasks.register<Test>("desktopUiQualityTest") {
+    group = "verification"
+    description = "Render representative phone/desktop screens and assert control semantics and bounds"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform()
+    filter { includeTestsMatching("com.choplab.desktop.ui.DesktopUiQualityTest") }
+    maxParallelForks = 1
+    outputs.upToDateWhen { false }
+    systemProperty("java.awt.headless", "true")
+    systemProperty("skiko.renderApi", "SOFTWARE")
+    val evidence = layout.buildDirectory.dir("reports/tests/desktopUiQualityTest/evidence")
+    val temporary = layout.buildDirectory.dir("tmp/desktopUiQualityTest")
+    systemProperty("uiReview.evidenceDir", evidence.get().asFile.absolutePath)
+    systemProperty("java.io.tmpdir", temporary.get().asFile.absolutePath)
+    systemProperty("user.home", temporary.get().dir("home").asFile.absolutePath)
+    doFirst {
+        evidence.get().asFile.mkdirs()
+        temporary.get().dir("home").asFile.mkdirs()
+    }
+    testLogging {
+        events("passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

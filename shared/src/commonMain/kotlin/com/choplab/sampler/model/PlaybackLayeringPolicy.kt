@@ -58,7 +58,7 @@ fun SamplerUiState.chokeLoopSessionTransition(triggeredPadIndex: Int): LoopSessi
     val group = triggeredPad.chokeGroup.takeIf { it > 0 && loopOwner.chokeGroup == it }
         ?: return unchanged()
     val ownedPads = buildList {
-        addAll(pads.vocalCompanionPadIndicesForLoopStart(loopPadIndex = loopOwnerIndex))
+        addAll(pads.loopCompanionPadIndicesForLoopStart(loopOwnerIndex))
         add(loopOwnerIndex)
     }.distinct()
 

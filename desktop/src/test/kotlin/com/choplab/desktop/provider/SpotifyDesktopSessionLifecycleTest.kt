@@ -21,6 +21,88 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SpotifyDesktopSessionLifecycleTest {
+    @Test fun searchReturnsImportableTracksWithoutOverwritingFavorites() {
+        var searched=""
+        var fail=false
+        val api=object:SpotifyApiClient by FakeApi() {
+            override fun searchTracks(accessToken:String,query:String,limit:Int):SpotifyApiResponse {
+                searched=query
+                if(fail)return SpotifyApiResponse(429,"{}")
+                return SpotifyApiResponse(200,"""{"tracks":{"items":[{"id":"0000000000000000000001","name":"Song","artists":[{"name":"Artist"}],"duration_ms":120000}]}}""")
+            }
+        }
+        session(api=api,callbackFactory=SpotifyAuthorizationCallbackFactory { ImmediateCallback }).use { session ->
+            connect(session)
+            session.setSearchQuery("Artist Song")
+            session.searchForImport()
+            await { !session.state.value.busy && session.state.value.searchResults.size==1 }
+            assertEquals("Artist Song",searched)
+            assertEquals(120.0,session.state.value.searchResults.single().durationSeconds)
+            assertTrue(session.state.value.sourceTracks.isEmpty())
+            fail=true;session.searchForImport()
+            await { !session.state.value.busy }
+            assertTrue(session.state.value.searchResults.isEmpty())
+            session.setSearchQuery("next")
+            assertTrue(session.state.value.searchResults.isEmpty())
+        }
+    }
+
+    @Test
+    fun oauthConnectionPaginatesAndPopulatesLibraryWithoutPickingAnySong() {
+        val root=java.nio.file.Files.createTempDirectory("spotify-oauth-library").toFile()
+        val offsets=java.util.Collections.synchronizedList(mutableListOf<Int>())
+        val downloads=java.util.concurrent.atomic.AtomicInteger()
+        val api=object:SpotifyApiClient by FakeApi() {
+            override fun savedTracksPage(accessToken:String,offset:Int):SpotifyApiResponse {
+                offsets.add(offset)
+                val n=if(offset==0)1 else 2
+                val id=n.toString().padStart(22,'0')
+                val next=if(offset==0) "\"https://api.spotify.com/v1/me/tracks?offset=20\"" else "null"
+                return SpotifyApiResponse(200,"""{"items":[{"track":{"id":"$id","name":"Song $n","artists":[{"name":"Artist"}],"duration_ms":120000}}],"next":$next}""")
+            }
+            override fun searchTracks(accessToken:String,query:String,limit:Int)=SpotifyApiResponse(200,
+                """{"tracks":{"items":[{"id":"0000000000000000000003","name":"Song 3","artists":[{"name":"Artist"}],"duration_ms":120000}]}}""")
+        }
+        val backend=object:com.choplab.sampler.source.YoutubeSourceBackend {
+            override fun search(query:String,jobId:String):List<com.choplab.sampler.source.YoutubeSource> {
+                val n=query.substringAfterLast(' ').toInt()
+                return listOf(com.choplab.sampler.source.YoutubeSource(n.toString().padStart(11,'0'),query,"Artist",120.0))
+            }
+            override fun info(url:String,jobId:String)=search("Artist Song ${url.substringAfter("v=").toInt()}",jobId).single()
+            override fun download(source:com.choplab.sampler.source.YoutubeSource,folder:java.io.File,jobId:String,progress:(Float)->Unit):java.io.File {
+                downloads.incrementAndGet()
+                return java.io.File(folder,"source.wav").also { file ->
+                    com.choplab.sampler.audio.WavFileWriter(file,8000,1).use { it.writePcm16(ShortArray(80){source.id.toInt().toShort()}) }
+                }
+            }
+            override fun cancel(jobId:String)=Unit
+        }
+        try {
+            com.choplab.sampler.source.AudioSourceController(com.choplab.sampler.source.LocalAudioLibrary(root){},backend).use { hub ->
+                session(api=api,callbackFactory=SpotifyAuthorizationCallbackFactory { ImmediateCallback }).use { session ->
+                    com.choplab.desktop.source.SpotifyAutoImport(session.state,hub,session::loadImportLibrary).use { sync ->
+                        connect(session)
+                        await { hub.state.value.spotifySync?.completed==2 && !hub.state.value.busy }
+                        assertEquals(listOf(0,20),offsets.toList())
+                        assertEquals(2,hub.state.value.library.size)
+                        assertEquals(null,hub.state.value.pendingUseId)
+                        assertEquals(2,downloads.get())
+                        session.setSearchQuery("Song 3");session.searchForImport()
+                        await { !session.state.value.busy && session.state.value.searchResults.size==1 }
+                        assertTrue(sync.addTrack(session.state.value.searchResults.single()))
+                        await { hub.state.value.library.size==3 && !hub.state.value.busy }
+                        assertEquals(3,downloads.get())
+                        assertTrue(hub.state.value.library.all { it.origin.startsWith("https://www.youtube.com/") })
+                        assertEquals(null,hub.state.value.pendingUseId)
+                        sync.syncAgain()
+                        await { offsets.size==4 && hub.state.value.spotifySync?.existing==2 && !hub.state.value.busy }
+                        assertEquals(3,downloads.get())
+                    }
+                }
+            }
+        } finally { root.deleteRecursively() }
+    }
+
     @Test
     fun unavailableDefaultBrowserHasSpecificRecoveryGuidance() {
         val session = session(

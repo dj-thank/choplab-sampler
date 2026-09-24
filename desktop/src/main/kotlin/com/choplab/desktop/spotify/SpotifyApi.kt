@@ -27,9 +27,10 @@ object SpotifyApiRequestBuilder {
     fun currentPlayback(accessToken: String): SpotifyApiRequest =
         authorized("GET", URI("https://api.spotify.com/v1/me/player"), accessToken)
 
-    fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiRequest {
+    fun savedTracks(accessToken: String, limit: Int = 20, offset: Int = 0): SpotifyApiRequest {
         require(limit in 1..50) { "Spotify saved-track limit must be between 1 and 50" }
-        return authorized("GET", URI("https://api.spotify.com/v1/me/tracks?limit=$limit"), accessToken)
+        require(offset >= 0)
+        return authorized("GET", URI("https://api.spotify.com/v1/me/tracks?limit=$limit" + if(offset == 0) "" else "&offset=$offset"), accessToken)
     }
 
     fun pausePlayback(accessToken: String): SpotifyApiRequest =
@@ -86,6 +87,7 @@ interface SpotifyApiClient {
     fun searchTracks(accessToken: String, query: String, limit: Int = 10): SpotifyApiResponse
     fun currentPlayback(accessToken: String): SpotifyApiResponse
     fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiResponse
+    fun savedTracksPage(accessToken: String, offset: Int): SpotifyApiResponse = savedTracks(accessToken)
     fun pausePlayback(accessToken: String): SpotifyApiResponse
     fun resumePlayback(accessToken: String): SpotifyApiResponse
 }
@@ -101,6 +103,9 @@ class SpotifyApi(
 
     override fun savedTracks(accessToken: String, limit: Int): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.savedTracks(accessToken, limit))
+
+    override fun savedTracksPage(accessToken: String, offset: Int): SpotifyApiResponse =
+        transport.send(SpotifyApiRequestBuilder.savedTracks(accessToken,offset=offset))
 
     override fun pausePlayback(accessToken: String): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.pausePlayback(accessToken))

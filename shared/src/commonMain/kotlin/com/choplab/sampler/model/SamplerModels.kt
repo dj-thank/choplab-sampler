@@ -65,6 +65,21 @@ enum class PendingSourceCommand {
     STOP,
 }
 
+/** Runtime-only drum separation intent. Project archives intentionally do not persist it. */
+enum class DrumSeparationPhase {
+    RUNNING,
+    DONE,
+    FAILED,
+    CANCELLED,
+}
+
+data class DrumSeparationState(
+    val phase: DrumSeparationPhase,
+    val progress: Float = 0f,
+    val message: String = "",
+    val resultPath: String? = null,
+)
+
 data class PcmAudio(
     val id: Long = nextPcmAudioId(),
     val name: String,
@@ -165,6 +180,8 @@ data class SamplerUiState(
     val sourcePlaying: Boolean = false,
     val pendingSourceCommand: PendingSourceCommand = PendingSourceCommand.NONE,
     val sourcePlayheadFrame: Int = 0,
+    /** Runtime capture-session membership. Source startup uses emptySet; null supports legacy direct calls. */
+    val liveChopPadIndices: Set<Int>? = null,
     val loopingPadIndex: Int? = null,
     val loopPlayheadFrame: Int = -1,
     val scratchingPadIndex: Int? = null,
@@ -182,6 +199,7 @@ data class SamplerUiState(
     val masterPitchSemitones: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
+    val drumSeparation: DrumSeparationState? = null,
 ) {
     val microphoneRecording: Boolean
         get() = recordingSession.isActiveKind(RecordingKind.SOURCE_MICROPHONE)

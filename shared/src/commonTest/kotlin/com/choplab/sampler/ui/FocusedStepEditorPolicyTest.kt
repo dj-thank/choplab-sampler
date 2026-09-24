@@ -75,18 +75,27 @@ class FocusedStepEditorPolicyTest {
     @Test
     fun workspaceModesExposeExactlyOneSurfaceAndUnknownStateRestoresQuick() {
         val quick = beatWorkspaceSurface(BeatWorkspaceMode.QUICK)
+        val loopFirst = beatWorkspaceSurface(BeatWorkspaceMode.LOOP_FIRST)
         val focused = beatWorkspaceSurface(BeatWorkspaceMode.FOCUSED_STEPS)
         val fine = beatWorkspaceSurface(BeatWorkspaceMode.FINE_CONTROLS)
 
         assertTrue(quick.showPadGrid)
+        assertFalse(quick.showLoopFirst)
         assertFalse(quick.showFocusedStepEditor)
         assertFalse(quick.showDetailedSequencer)
 
+        assertFalse(loopFirst.showPadGrid)
+        assertTrue(loopFirst.showLoopFirst)
+        assertFalse(loopFirst.showFocusedStepEditor)
+        assertFalse(loopFirst.showDetailedSequencer)
+
         assertFalse(focused.showPadGrid)
+        assertFalse(focused.showLoopFirst)
         assertTrue(focused.showFocusedStepEditor)
         assertFalse(focused.showDetailedSequencer)
 
         assertFalse(fine.showPadGrid)
+        assertFalse(fine.showLoopFirst)
         assertFalse(fine.showFocusedStepEditor)
         assertTrue(fine.showDetailedSequencer)
 
@@ -101,6 +110,10 @@ class FocusedStepEditorPolicyTest {
     fun explicitNavigationRoundTripsQuickFocusedAndFineControls() {
         var mode = BeatWorkspaceMode.QUICK
 
+        mode = transitionBeatWorkspace(mode, BeatWorkspaceAction.SHOW_LOOP_FIRST)
+        assertEquals(BeatWorkspaceMode.LOOP_FIRST, mode)
+        mode = transitionBeatWorkspace(mode, BeatWorkspaceAction.SHOW_QUICK)
+        assertEquals(BeatWorkspaceMode.QUICK, mode)
         mode = transitionBeatWorkspace(mode, BeatWorkspaceAction.SHOW_FOCUSED_STEPS)
         assertEquals(BeatWorkspaceMode.FOCUSED_STEPS, mode)
         mode = transitionBeatWorkspace(mode, BeatWorkspaceAction.SHOW_FINE_CONTROLS)

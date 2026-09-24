@@ -27,6 +27,29 @@ fun replaceSourceAudio(
     statusMessage = "${audio.name} を新しいプロジェクトとして読み込みました — A メロディーへチョップします",
 )
 
+/** A library source is an addition to the current Production, not a project reset. */
+fun attachLibrarySource(
+    state: SamplerUiState,
+    audio: PcmAudio,
+    maxPcmBytes: Long = Long.MAX_VALUE,
+): SamplerUiState {
+    val audioBytes = (listOf(audio) + state.pads.mapNotNull { it.audio })
+        .distinctBy { it.id }.sumOf { it.samples.size.toLong() * 2L }
+    require(audioBytes <= maxPcmBytes) {
+        "保存できる音声容量を超えます。音源を短くするか、不要なPADを外してから追加してください"
+    }
+    return prepareDefaultMelodyChopDestination(stopAllPlaybackState(state).copy(
+        currentAudio = audio,
+        rangeStartFrame = 0,
+        rangeEndFrame = audio.frameCount,
+        sliceMarkers = emptyList(),
+        activeSliceIndex = null,
+        isLoading = false,
+        sourcePlayheadFrame = 0,
+        statusMessage = "${audio.name} を追加しました。今のPADとビートは保持しています",
+    ))
+}
+
 fun pendingSourceCommandAfterStopRequest(appliedPlaying: Boolean): PendingSourceCommand =
     if (appliedPlaying) PendingSourceCommand.STOP else PendingSourceCommand.NONE
 
@@ -47,6 +70,7 @@ fun stopAllPlaybackState(state: SamplerUiState): SamplerUiState {
     return state.copy(
         pendingSourceCommand = pendingSourceCommandAfterStopRequest(state.sourcePlaying),
         transportPlaying = false,
+        liveChopPadIndices = emptySet(),
         recordArmed = false,
         currentStep = -1,
         loopingPadIndex = null,
@@ -425,8 +449,9 @@ fun assignRangesToPads(
 /**
  * Assigns the source playhead to a pad and keeps live chops contiguous in time.
  *
- * Only pads in the currently visible bank that reference the current audio are
- * reflowed. Per-pad performance settings are intentionally preserved.
+ * Only participants in this source-playback capture session are reflowed. Prior
+ * trimmed chops remain intact when the user starts a new pass from the source map.
+ * Unscoped legacy calls retain their original same-bank behavior.
  */
 fun assignLiveChopToPad(
     state: SamplerUiState,
@@ -455,7 +480,9 @@ fun assignLiveChopToPad(
         endFrame = selectionEnd,
     )
 
-    val livePadIndices = (bankStart until bankEndExclusive)
+    val candidates = (state.liveChopPadIndices ?: (bankStart until bankEndExclusive).toSet()) + padIndex
+    val livePadIndices = candidates
+        .filter { it in bankStart until bankEndExclusive }
         .filter { index ->
             val pad = mutablePads[index]
             pad.audio?.id == audio.id && pad.startFrame in selectionStart until selectionEnd
@@ -482,6 +509,7 @@ fun assignLiveChopToPad(
             pads = mutablePads,
             selectedBank = bank,
             selectedPad = padIndex,
+            liveChopPadIndices = livePadIndices.toSet(),
             sliceMarkers = markers,
             loopingPadIndex = state.loopingPadIndex?.takeUnless { it == padIndex },
             loopPlayheadFrame = if (state.loopingPadIndex == padIndex) -1 else state.loopPlayheadFrame,

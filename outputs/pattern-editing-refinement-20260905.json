@@ -1,0 +1,43 @@
+{
+  "observedAt": "2026-09-05T07:13:59.407589+09:00",
+  "base": "bed7a55",
+  "branch": "codex/choplab-production-refinement-20260905",
+  "root": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\choplab-production-refinement-20260905",
+  "gate": "LOCAL_PASS",
+  "tests": {
+    "sharedDesktop": 100,
+    "sharedAndroidHost": 100,
+    "android": 289,
+    "jvmCore": 88,
+    "desktop": 192,
+    "uiAndController": 25,
+    "failure": 0,
+    "error": 0,
+    "skip": 0
+  },
+  "checks": [
+    "doctor (optional NDK/CMake absent)",
+    "Android lint/APK",
+    "Windows package",
+    "validate_project.sh",
+    "public surface 491 candidates",
+    "independent review: layout issue fixed"
+  ],
+  "artifacts": [
+    {
+      "path": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\choplab-production-refinement-20260905\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+      "sha256": "19d095be5d38518a94902509cfa46036d41d5c5ecccebb691982305e8b17f29a",
+      "bytes": 31885422
+    },
+    {
+      "path": "C:\\Users\\rambo\\Documents\\ChatGPT\\pad\\work\\choplab-production-refinement-20260905\\desktop\\build\\windows-app-image\\ChopLab\\ChopLab.exe",
+      "sha256": "80eb19b96454d408c2b75ea62043249cf34ea5ec1744def1c1f4399608fe54c5",
+      "bytes": 449024
+    }
+  ],
+  "limits": [
+    "Physical audio and devices not tested",
+    "iOS runtime not tested",
+    "No publication or Human acceptance claimed"
+  ]
+}

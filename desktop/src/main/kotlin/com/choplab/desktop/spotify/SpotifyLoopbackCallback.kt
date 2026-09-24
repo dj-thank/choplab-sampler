@@ -89,17 +89,19 @@ class SpotifyLoopbackCallbackServer : SpotifyAuthorizationCallback {
 
             val error = query["error"]
             if (error != null) {
+                respond(exchange, 200, "Spotifyへの連携を中止しました。この画面を閉じてChopLabへ戻ってください。")
                 result.completeExceptionally(SpotifyAuthorizationDeniedException())
-                respond(exchange, 200, "Spotify authorization was denied. You can close this window.")
                 return
             }
             val code = query["code"]
             require(!code.isNullOrBlank()) { "Spotify callback did not contain an authorization code" }
+            // The awaiting worker closes this server as soon as the future completes.
+            // Finish the browser response first so successful login cannot reset its connection.
+            respond(exchange, 200, "Spotifyの認証を受け取りました。この画面を閉じてChopLabへ戻ってください。")
             result.complete(SpotifyCallbackResult(code, receivedState))
-            respond(exchange, 200, "Spotify authorization succeeded. You can close this window.")
         } catch (error: Throwable) {
-            result.completeExceptionally(error)
-            respond(exchange, 400, "Spotify authorization failed. You can close this window.")
+            try { respond(exchange, 400, "Spotifyの認証に失敗しました。ChopLabでやり直してください。") }
+            finally { result.completeExceptionally(error) }
         }
     }
 

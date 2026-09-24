@@ -1,6 +1,8 @@
 package com.choplab.desktop
 
 import com.choplab.desktop.audio.DesktopWavDecoder
+import com.choplab.desktop.source.DesktopAudioDecoder
+import com.choplab.sampler.model.attachLibrarySource
 import com.choplab.desktop.audio.DesktopMicrophoneRecorder
 import com.choplab.desktop.audio.DesktopSystemAudioRecorder
 import com.choplab.desktop.audio.DesktopAudioRecorder
@@ -8,13 +10,23 @@ import com.choplab.desktop.audio.DesktopLoopSessionStartupException
 import com.choplab.desktop.audio.DesktopSamplerAudioEngine
 import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
+import com.choplab.desktop.audio.ScratchVoicePlayer
+import com.choplab.sampler.separation.DrumSeparationService
+import com.choplab.desktop.separation.defaultSeparatorModelsDir
 import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
 import com.choplab.sampler.audio.AudioResourceLimits
 import com.choplab.sampler.audio.BuiltInDrumKits
+import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.audio.SCRATCH_GESTURE_IDLE_TIMEOUT_MS
 import com.choplab.sampler.audio.normalizeScratchSpeed
+import com.choplab.sampler.model.configuredLoopPadIndex
+import com.choplab.sampler.model.DrumSeparationPhase
+import com.choplab.sampler.model.DrumSeparationState
+import com.choplab.sampler.model.loopLayerChangeBlockedReason
+import com.choplab.sampler.model.withLoopLayer
+import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPressAction
 import com.choplab.sampler.model.PerformancePadPressAction
@@ -56,7 +68,7 @@ import com.choplab.sampler.model.prepareDefaultMelodyChopDestination
 import com.choplab.sampler.model.patternSequenceForExport
 import com.choplab.sampler.model.patternSequenceForPlayback
 import com.choplab.sampler.model.removePadFromEveryPattern
-import com.choplab.sampler.model.replaceBankStepsAcrossPatterns
+import com.choplab.sampler.model.withInitialDrumKitPattern
 import com.choplab.sampler.model.togglePadStep
 import com.choplab.sampler.model.audibleStepKeys
 import com.choplab.sampler.model.stepKey
@@ -77,7 +89,6 @@ import com.choplab.sampler.model.ScratchReturnTarget
 import com.choplab.sampler.model.inferProjectLaunchTarget
 import com.choplab.sampler.model.ensurePlayablePadSelected as ensurePlayablePadSelectedState
 import com.choplab.sampler.model.scratchReturnTargetIsValid
-import com.choplab.sampler.model.selectScratchReturnTarget
 import com.choplab.sampler.ui.SamplerDeckController
 import com.choplab.sampler.ui.PadTriggerOwnership
 import com.choplab.sampler.ui.DocumentAction
@@ -87,6 +98,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
+import java.nio.file.Files
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -134,7 +146,7 @@ class DesktopSamplerController(
         startWorker = { worker -> transportWorkerStarter(worker) },
         onStep = ::onTransportStep,
     )
-    private val scratch = DesktopScratchPlayer()
+    internal var scratch: ScratchVoicePlayer = DesktopScratchPlayer()
     private val playbackMonitor = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "ChopLab-Windows-Playback-Monitor").apply { isDaemon = true }
     }.also { executor ->
@@ -166,6 +178,7 @@ class DesktopSamplerController(
     private var pendingSourcePitchResumeFrame: Int? = null
     @Volatile private var scratchIdleFuture: ScheduledFuture<*>? = null
     @Volatile private var scratchReturnTarget: ScratchReturnTarget = ScratchReturnTarget.None
+    @Volatile private var scratchPausedLoopOwner: Int? = null
     private val projectLaunchRevision = AtomicLong(0L)
     val state: StateFlow<SamplerUiState> = mutableState.asStateFlow()
 
@@ -177,29 +190,143 @@ class DesktopSamplerController(
         }
     }
 
-    fun loadWav(file: File) {
+    fun loadWav(file: File) = loadAudioFile(file, preserveProduction = false, title = null)
+
+    fun addLibrarySource(file: File, title: String) {
+        if (rejectEditRequest()) return
+        loadAudioFile(file, preserveProduction = true, title = title)
+    }
+
+    /** REPLACE SOURCE entries (CHOP coach, CAPTURE import): new song drops old chops and beats. */
+    fun replaceLibrarySource(file: File, title: String) {
+        if (rejectEditRequest()) return
+        loadAudioFile(file, preserveProduction = false, title = title)
+    }
+
+    private var drumSeparationService: DrumSeparationService? = null
+    private var drumSeparationWorkDir: File? = null
+
+    private fun separationService(): DrumSeparationService = synchronized(this) {
+        drumSeparationService ?: DrumSeparationService(
+            defaultSeparatorModelsDir(),
+            DesktopAudioDecoder::decode,
+        ).also { drumSeparationService = it }
+    }
+
+    /** CAPTURE "separate drums": renders the current source and extracts its drum stem. */
+    fun separateDrumsFromCurrentSource() {
+        val audio = mutableState.value.currentAudio ?: return setStatus("先に素材を入れてください")
+        if (mutableState.value.drumSeparation?.phase == DrumSeparationPhase.RUNNING) return
+        if (rejectEditRequest()) return
+        val service = separationService()
+        if (!service.isModelAvailable()) {
+            return setStatus("分離モデルがありません。ChopLabのアプリ一式を使用してください")
+        }
+        drumSeparationWorkDir?.deleteRecursively()
+        val work = Files.createTempDirectory("choplab-separation").toFile()
+        drumSeparationWorkDir = work
+        val input = work.resolve("source.wav")
+        val renderFailure = runCatching {
+            WavFileWriter(input, audio.sampleRate, audio.channelCount).use { it.writePcm16(audio.samples) }
+        }.exceptionOrNull()
+        if (renderFailure != null) {
+            work.deleteRecursively()
+            return setStatus("分離の下準備に失敗しました: ${renderFailure.message ?: renderFailure.javaClass.simpleName}")
+        }
+        val stemName = audio.name.substringBeforeLast('.').take(60)
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "source" } + "-drums.wav"
+        val output = work.resolve(stemName)
+        mutableState.update {
+            it.copy(drumSeparation = DrumSeparationState(DrumSeparationPhase.RUNNING, 0f, "ドラムを分離しています…"))
+        }
+        val accepted = service.separate(
+            DrumSeparationService.Request(
+                sourceFile = input,
+                outputFile = output,
+                onProgress = { progress ->
+                    mutableState.update {
+                        it.copy(drumSeparation = DrumSeparationState(
+                            DrumSeparationPhase.RUNNING, progress, "ドラムを分離しています…",
+                        ))
+                    }
+                },
+                onDone = { file ->
+                    mutableState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(
+                                DrumSeparationPhase.DONE, 1f, "ドラム分離が完了しました", file.absolutePath,
+                            ),
+                            statusMessage = "ドラム分離が完了しました。ライブラリへ追加します",
+                        )
+                    }
+                },
+                onError = { message ->
+                    mutableState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.FAILED, 0f, message),
+                            statusMessage = "ドラム分離に失敗しました: $message",
+                        )
+                    }
+                },
+                onCancelled = {
+                    mutableState.update {
+                        it.copy(
+                            drumSeparation = DrumSeparationState(DrumSeparationPhase.CANCELLED, 0f, "中止しました"),
+                            statusMessage = "ドラム分離を中止しました",
+                        )
+                    }
+                },
+            ),
+        )
+        if (!accepted) {
+            work.deleteRecursively()
+            setStatus("分離を実行中です")
+        }
+    }
+
+    fun cancelDrumSeparation() {
+        drumSeparationService?.cancel()
+    }
+
+    /**
+     * Hands the finished stem file to the shell for library import. The shell
+     * must call [discardDrumSeparationWork] after importing.
+     */
+    fun consumeDrumSeparationResult(): File? {
+        val result = mutableState.value.drumSeparation
+        if (result?.phase != DrumSeparationPhase.DONE) return null
+        mutableState.update { it.copy(drumSeparation = null) }
+        return result.resultPath?.let(::File)?.takeIf { it.isFile }
+    }
+
+    /**
+     * Clears the separation banner. Temp audio is retained for the pending
+     * library import and removed on the next job or on close.
+     */
+    fun discardDrumSeparationWork() {
+        mutableState.update { it.copy(drumSeparation = null) }
+    }
+
+    private fun loadAudioFile(file: File, preserveProduction: Boolean, title: String?) {
         statusOperations.invalidate()
         val operation = projectOperations.begin()
         stopCompetingPlayback()
         mutableState.update { it.copy(isLoading = true, statusMessage = "${file.name}を解析しています") }
         ioExecutor.execute {
-            runCatching { DesktopWavDecoder.decode(file) }
+            runCatching { DesktopAudioDecoder.decode(file).let { audio -> if (title == null) audio else audio.copy(name=title.take(240)) } }
                 .onSuccess { audio ->
                     projectOperations.completeIfCurrent(operation) {
                         recoveryOperations.invalidate()
                         val playbackFailure = loadSourcePcm(audio)
-                        val next = BuiltInDrumKits.installStarterKit(
-                            SamplerUiState(
-                                statusMessage = playbackFailure?.let(::sourcePlaybackFailureMessage)
-                                    ?: "${file.name}を読み込みました。チョップで音を切ってください",
-                                currentAudio = audio,
-                                rangeEndFrame = audio.frameCount,
-                            ),
-                        ).copy(
-                            projectLaunchTarget = ProjectLaunchTarget.CHOP,
-                            projectLaunchRevision = nextProjectLaunchRevision(),
+                        val previous = mutableState.value
+                        val next = (if (preserveProduction) attachLibrarySource(previous,audio) else BuiltInDrumKits.installStarterKit(
+                            SamplerUiState(currentAudio=audio,rangeEndFrame=audio.frameCount)
+                        )).copy(
+                            statusMessage=playbackFailure?.let(::sourcePlaybackFailureMessage) ?: "${audio.name}を読み込みました。チョップで音を切ってください",
+                            projectLaunchTarget=ProjectLaunchTarget.CHOP,
+                            projectLaunchRevision=nextProjectLaunchRevision(),
                         )
-                        mutableState.value = productionSession.replaceProject(next).state
+                        mutableState.value = if(preserveProduction) productionSession.applyEdit(previous,next).state else productionSession.replaceProject(next).state
                         scheduleAutosave()
                     }
                 }
@@ -338,7 +465,11 @@ class DesktopSamplerController(
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
             val loopPlaybackFailure = if (loopPad != null) {
                 stopAllSounds()
-                runCatching { triggerPlayerPad(loopPad, forceLoop = true) }.exceptionOrNull()
+                runCatching {
+                    triggerPlayerPad(loopPad, forceLoop = true)
+                    before.pads.loopCompanionPadIndicesForLoopStart(loopPad.globalIndex, includeVocals = false)
+                        .forEach { triggerPlayerPad(before.pads[it], forceLoop = true) }
+                }.exceptionOrNull()
             } else {
                 null
             }
@@ -363,6 +494,10 @@ class DesktopSamplerController(
     }
 
     private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, output: File, error: Throwable) {
+        // A later layer may fail after the core started. Recorder cleanup must still run
+        // if an output device also rejects the stop request.
+        val cleanupFailure = runCatching { player.stopAll() }.exceptionOrNull()
+        cleanupFailure?.let(error::addSuppressed)
         val message = "ビートを開始できないため声の録音を停止しました。Windowsの出力デバイスを確認してください: " +
             (error.message ?: error.javaClass.simpleName)
         mutableState.update { state ->
@@ -477,6 +612,7 @@ class DesktopSamplerController(
     override fun stopAllSounds() {
         clearPendingSourcePitchResume()
         scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         transport.stop()
@@ -688,18 +824,36 @@ class DesktopSamplerController(
             )
         }
     }
-    override fun playSourceFrom(frame: Int) = synchronized(sourcePitchResumeLock) {
+    override fun rechopSourceFrom(frame: Int): Boolean {
+        val before = mutableState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val audio = before.currentAudio ?: return false
+        if (audio.frameCount < 2) return false
+        if (!tryPlaySourceFrom(frame.coerceIn(0, audio.frameCount - 1))) return false
+        commitEdit { state ->
+            com.choplab.sampler.model.prepareDefaultMelodyChopDestination(state.copy(
+                rangeStartFrame = 0, rangeEndFrame = audio.frameCount, activeSliceIndex = null,
+            ))
+        }
+        return true
+    }
+
+    override fun playSourceFrom(frame: Int) { tryPlaySourceFrom(frame) }
+
+    private fun tryPlaySourceFrom(frame: Int): Boolean = synchronized(sourcePitchResumeLock) {
         val state = mutableState.value
-        if (state.currentAudio == null) return@synchronized
-        if (!sourcePlaybackIsReady()) return@synchronized
-        val safe = frame.coerceIn(0, state.rangeEndFrame)
+        val audio = state.currentAudio ?: return@synchronized false
+        if (!sourcePlaybackIsReady()) return@synchronized false
+        com.choplab.sampler.model.playbackStartBlockedReason(state)?.let { setStatus(it); return@synchronized false }
+        val safe = frame.coerceIn(0, audio.frameCount - 1)
         stopCompetingPlayback()
         val playbackFailure = runCatching { player.playFrom(safe) }.exceptionOrNull()
         if (playbackFailure != null) {
             publishSourcePlaybackFailure(playbackFailure)
-            return@synchronized
+            return@synchronized false
         }
         mutableState.update { it.copy(sourcePlayheadFrame = safe, sourcePlaying = true, statusMessage = "元曲を再生中です") }
+        true
     }
     override fun seekSourcePlayback(frame: Int) = synchronized(sourcePitchResumeLock) {
         if (mutableState.value.currentAudio != null && !sourcePlaybackIsReady()) return@synchronized
@@ -721,8 +875,16 @@ class DesktopSamplerController(
             ?: state.pads.firstOrNull(PadModel::isAssigned)?.globalIndex
         val pad = index?.let(state.pads::get)
         if (pad?.isAssigned != true) return setStatus("スクラッチするビートPADを選んでください")
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: the beat keeps flowing underneath. Only a previous scratch
+        // voice is replaced, plus the loop voice of the scratched pad itself so the
+        // same region does not double while the dial moves.
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
+        scratch.stop()
+        val loopsOwner = state.loopingPadIndex == index
+        if (loopsOwner) runCatching { player.stopPad(index) }
+        scratchPausedLoopOwner = index.takeIf { loopsOwner }
+        scratchReturnTarget = ScratchReturnTarget.None
         runCatching {
             scratch.start(
                 audio = requireNotNull(pad.audio),
@@ -737,20 +899,16 @@ class DesktopSamplerController(
         }.onSuccess {
             mutableState.update {
                 it.copy(
-                    transportPlaying = false,
-                    currentStep = -1,
-                    loopingPadIndex = null,
-                    loopPlayheadFrame = -1,
                     scratchingPadIndex = index,
                     scratchPlayheadFrame = pad.startFrame,
                     sourceScratchActive = false,
                     scratchSpeed = 0f,
-                    scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                    statusMessage = "指を左右へ動かしてスクラッチ",
+                    scratchReturnAvailable = false,
+                    statusMessage = "ビートに重ねてスクラッチ中",
                 )
             }
         }.onFailure { error ->
-            scratchReturnTarget = ScratchReturnTarget.None
+            restartScratchPausedLoopOwner()
             setStatus("スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}")
         }
     }
@@ -760,28 +918,30 @@ class DesktopSamplerController(
         val audio = state.currentAudio
         val range = state.sourceScratchRange()
         if (audio == null || range == null) return setStatus("先に元曲の波形でスクラッチ範囲を選んでください")
-        scratchReturnTarget = selectScratchReturnTarget(state)
-        stopCompetingPlayback(preserveScratchReturn = true)
+        // Layered scratch: loops and the pattern keep flowing. Only the source song
+        // voice itself is paused so the scratched range does not double underneath.
+        scratchIdleFuture?.cancel(false)
+        scratchIdleFuture = null
+        scratch.stop()
+        val sourceWasPlaying = state.sourcePlaying
+        if (sourceWasPlaying) toggleSource(false)
+        scratchPausedLoopOwner = null
+        scratchReturnTarget = ScratchReturnTarget.None
         runCatching {
             scratch.start(audio, range.startFrame, range.endFrame, range.startFrame, state.masterPitchSemitones)
         }.onSuccess {
             mutableState.update {
                 it.copy(
-                    transportPlaying = false,
-                    currentStep = -1,
-                    sourcePlaying = false,
-                    loopingPadIndex = null,
-                    loopPlayheadFrame = -1,
                     scratchingPadIndex = null,
                     scratchPlayheadFrame = range.startFrame,
                     sourceScratchActive = true,
                     scratchSpeed = 0f,
-                    scratchReturnAvailable = scratchReturnTarget != ScratchReturnTarget.None,
-                    statusMessage = "選んだ元曲の範囲をスクラッチ中",
+                    scratchReturnAvailable = false,
+                    statusMessage = if (sourceWasPlaying) "元曲を止めてスクラッチ中。離したら再生ボタンで再開できます"
+                    else "ビートに重ねて元曲をスクラッチ中",
                 )
             }
         }.onFailure { error ->
-            scratchReturnTarget = ScratchReturnTarget.None
             setStatus("元曲スクラッチ開始失敗: ${error.message ?: error.javaClass.simpleName}")
         }
     }
@@ -815,6 +975,7 @@ class DesktopSamplerController(
         val active = mutableState.value.let { it.scratchingPadIndex != null || it.sourceScratchActive }
         if (!active) {
             scratchReturnTarget = ScratchReturnTarget.None
+            scratchPausedLoopOwner = null
             scratchIdleFuture?.cancel(false)
             scratchIdleFuture = null
             return
@@ -834,7 +995,20 @@ class DesktopSamplerController(
         }
         val target = scratchReturnTarget
         scratchReturnTarget = ScratchReturnTarget.None
+        restartScratchPausedLoopOwner()
         resumeAfterScratch(target)
+    }
+
+    /** Restarts only the loop voice paused for a layered pad scratch, if it still owns the loop. */
+    private fun restartScratchPausedLoopOwner() {
+        val owner = scratchPausedLoopOwner
+        scratchPausedLoopOwner = null
+        if (owner == null) return
+        val current = mutableState.value
+        if (current.loopingPadIndex != owner) return
+        val pad = current.pads.getOrNull(owner)
+        if (pad?.isAssigned != true) return
+        runCatching { triggerPlayerPad(pad, forceLoop = true) }
     }
 
     private fun toggleSource(shouldPlay: Boolean) = synchronized(sourcePitchResumeLock) {
@@ -1000,28 +1174,80 @@ class DesktopSamplerController(
         }
     }
 
-    override fun fillSelectedPadPattern(grid: RepeatGrid) = commitEdit { state ->
-        state.copy(activeSteps = state.activeSteps.replacePadSteps(state.selectedPad, grid))
-    }
-    override fun clearSelectedPadPattern() = commitEdit { it.copy(activeSteps = it.activeSteps.clearPadSteps(it.selectedPad)) }
     override fun toggleStep(step: Int) = commitEdit { state ->
         val pad = state.pads[state.selectedPad]
         state.copy(activeSteps = state.activeSteps.togglePadStep(pad, step))
     }
-    override fun clearAllPattern() = commitEdit { it.clearEveryPattern() }
+    override fun rollPadBoundary(index: Int, boundary: com.choplab.sampler.model.PadTrimBoundary, deltaFrames: Int) {
+        val before = mutableState.value.pads.getOrNull(index) ?: return
+        if (!before.isAssigned) return
+        updateSelected(mergeKey = "pad-$index-trim-${boundary.name}", padIndex = index) {
+            com.choplab.sampler.model.trimPadBoundary(it, boundary, deltaFrames)
+        }
+    }
+
+    override fun setPadLoopLayer(index: Int, enabled: Boolean, withPattern: Boolean): Boolean {
+        val before = mutableState.value
+        before.loopLayerChangeBlockedReason(index, enabled)?.let { setStatus(it); return false }
+        if (enabled && before.loopingPadIndex == null) return startPadLoopInternal(index, withPattern, preserveLayers = true)
+        val after = before.withLoopLayer(index, enabled)
+        if (after == before) return !withPattern || before.transportPlaying ||
+            startTransport("重ねた音でビートを再生中です", "ビート再生開始失敗")
+        val candidate = after.pads[index]
+        val plan = productionSession.planEdit(before, after)
+        val admitted = try {
+            if (before.loopingPadIndex != null) {
+                if (enabled) {
+                    check(player.triggerPad(candidate, forceLoop = true) > 0L) { "ループを開始できませんでした" }
+                } else player.stopPad(index)
+            }
+            true
+        } catch (failure: Exception) {
+            productionSession.cancel(plan)
+            setStatus("ループの重ね方を変更できませんでした: ${failure.message ?: failure.javaClass.simpleName}")
+            return false
+        }
+        if (!admitted) {
+            productionSession.cancel(plan)
+            setStatus("ループの操作を受け付けられませんでした。現在の音を維持します")
+            return false
+        }
+        val transition = productionSession.commit(plan)
+        mutableState.value = transition.state
+        if (transition.persistenceRequired) scheduleAutosave()
+        return !withPattern || mutableState.value.transportPlaying ||
+            startTransport("重ねた音でビートを再生中です", "ビート再生開始失敗")
+    }
+
+    override fun startPadLoop(index: Int, withPattern: Boolean): Boolean =
+        startPadLoopInternal(index, withPattern, preserveLayers = false)
+
+    private fun startPadLoopInternal(index: Int, withPattern: Boolean, preserveLayers: Boolean): Boolean {
+        val before = mutableState.value
+        com.choplab.sampler.model.playbackStartBlockedReason(before)?.let { setStatus(it); return false }
+        val pad = before.pads.getOrNull(index)
+        if (pad?.isAssigned != true || pad.contentKind == PadContentKind.VOCAL) return false
+        if (before.loopingPadIndex != index) toggleBeatLoop(index, preserveLayers)
+        if (mutableState.value.loopingPadIndex != index) return false
+        if ((withPattern || before.transportPlaying) && !mutableState.value.transportPlaying) {
+            return startTransport("ループを軸にビートを再生中です", "ビート再生開始失敗")
+        }
+        return true
+    }
+
     override fun toggleBeatLoopControl() {
         val state = mutableState.value
         toggleBeatLoop(state.loopingPadIndex ?: state.selectedPad)
     }
 
-    private fun toggleBeatLoop(index: Int) {
+    private fun toggleBeatLoop(index: Int, preserveLayers: Boolean = false) {
         val state = mutableState.value
         val pad = state.pads.getOrNull(index)
         if (pad?.isAssigned != true) return setStatus("先に音の入ったPADを選んでください")
         if (state.loopingPadIndex == index) {
             player.stopPad(index)
             state.pads
-                .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+                .loopCompanionPadIndicesForLoopStart(index)
                 .forEach(player::stopPad)
             mutableState.update { it.copy(loopingPadIndex = null, loopPlayheadFrame = -1, statusMessage = "ビートループを停止しました") }
             return
@@ -1031,13 +1257,13 @@ class DesktopSamplerController(
         val pads = state.pads.map { candidate ->
             when {
                 candidate.globalIndex == index -> candidate.copy(playMode = PadPlayMode.LOOP)
-                candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
+                candidate.playMode == PadPlayMode.LOOP && pad.playMode != PadPlayMode.LOOP && !preserveLayers -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
                 else -> candidate
             }
         }
         val loopPad = pads[index]
         val companionPads = pads
-            .vocalCompanionPadIndicesForLoopStart(loopPadIndex = index)
+            .loopCompanionPadIndicesForLoopStart(index)
             .map(pads::get)
         val target = state.copy(
             pads = pads,
@@ -1089,6 +1315,7 @@ class DesktopSamplerController(
             }
 
             scratchReturnTarget = ScratchReturnTarget.None
+            scratchPausedLoopOwner = null
             scratchIdleFuture?.cancel(false)
             scratchIdleFuture = null
             transport.requestStop()
@@ -1102,10 +1329,10 @@ class DesktopSamplerController(
     override fun toggleTransport() {
         val state = mutableState.value
         if (state.transportPlaying) {
-            transport.stop()
-            mutableState.update { it.copy(transportPlaying = false, currentStep = -1, statusMessage = "ビートを停止しました") }
+            stopAllSounds()
         } else {
-            stopCompetingPlayback()
+            if (rejectEditRequest()) return
+            if (state.loopingPadIndex == null) stopCompetingPlayback()
             startTransport(
                 statusMessage = "ビートを再生中です",
                 failurePrefix = "ビート再生開始失敗",
@@ -1117,6 +1344,10 @@ class DesktopSamplerController(
     override fun redoEdit() = applyHistoryOperation(HistoryOperation.REDO)
 
     override fun applyBuiltInDrumKit(kitId: String, replaceExisting: Boolean) {
+        com.choplab.sampler.model.projectEditBlockedReason(mutableState.value)?.let {
+            setStatus(it)
+            return
+        }
         val bankIndex = SamplerConfig.DRUM_BANK_INDEX
         if (
             drumKitApplyDecision(mutableState.value.pads) == DrumKitApplyDecision.CONFIRM_REPLACE &&
@@ -1132,16 +1363,26 @@ class DesktopSamplerController(
             }
         val bankStart = bankIndex * SamplerConfig.PADS_PER_BANK
         val bankEnd = bankStart + SamplerConfig.DRUM_KIT_PAD_COUNT
-        mutableState.value.loopingPadIndex
-            ?.takeIf { it in bankStart until bankEnd }
-            ?.let(player::stopPad)
+        val current = mutableState.value
+        if (current.loopingPadIndex != null) {
+            val stopFailure = runCatching {
+                if (current.loopingPadIndex in bankStart until bankEnd) {
+                    stopAllSounds()
+                } else {
+                    current.pads.filter { it.globalIndex in bankStart until bankEnd && it.isAssigned && it.playMode == PadPlayMode.LOOP }
+                        .forEach { player.stopPad(it.globalIndex) }
+                }
+            }.exceptionOrNull()
+            if (stopFailure != null) {
+                setStatus("音色変更を中止しました。全体を再生し直してから試してください")
+                return
+            }
+        }
         commitEdit { state ->
             val pads = state.pads.toMutableList()
             replacement.forEach { pads[it.globalIndex] = it }
-            state.replaceBankStepsAcrossPatterns(
-                bankStart = bankStart,
-                bankEndExclusive = bankEnd,
-                selectedPatternReplacement = BuiltInDrumKits.starterPattern(kitId, bankIndex),
+            state.withInitialDrumKitPattern(
+                BuiltInDrumKits.starterPattern(kitId, bankIndex),
             ).copy(
                 pads = pads,
                 selectedBank = bankIndex,
@@ -1163,16 +1404,16 @@ class DesktopSamplerController(
         transport.updateTempo(mutableState.value.bpm, mutableState.value.swing)
     }
 
-    private fun updateSelected(mergeKey: String? = null, transform: (PadModel) -> PadModel) {
+    private fun updateSelected(mergeKey: String? = null, padIndex: Int = mutableState.value.selectedPad, transform: (PadModel) -> PadModel) {
         val before = mutableState.value
         if (before.isLoading) return setStatus("現在の処理が終わってから編集してください")
         if (rejectEditWhileRecording()) return
-        val selected = before.selectedPad
+        val selected = padIndex
         val currentPad = before.pads.getOrNull(selected) ?: return
         val candidate = transform(currentPad)
         if (candidate == currentPad) return
 
-        if (before.loopingPadIndex == selected && candidate.isAssigned) {
+        if (before.loopingPadIndex != null && currentPad.playMode == PadPlayMode.LOOP && candidate.isAssigned) {
             val failure = try {
                 player.triggerPad(candidate, forceLoop = true)
                 null
@@ -1188,7 +1429,7 @@ class DesktopSamplerController(
         }
 
         commitEdit(mergeKey) { state ->
-            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate })
+            state.copy(pads = state.pads.toMutableList().also { pads -> pads[selected] = candidate }, liveChopPadIndices = if (currentPad.startFrame != candidate.startFrame || currentPad.endFrame != candidate.endFrame) state.liveChopPadIndices?.minus(selected) else state.liveChopPadIndices)
         }
     }
 
@@ -1248,7 +1489,8 @@ class DesktopSamplerController(
         restored: SamplerUiState,
     ): Boolean {
         val ownerIndex = current.loopingPadIndex ?: return false
-        return restored.loopingPadIndex == ownerIndex &&
+        return current.pads.indices.all { index -> index == ownerIndex || current.pads[index] == restored.pads[index] } &&
+            restored.loopingPadIndex == ownerIndex &&
             restored.pads.getOrNull(ownerIndex)?.isAssigned == true &&
             current.currentAudio == restored.currentAudio &&
             current.masterPitchSemitones == restored.masterPitchSemitones &&
@@ -1314,6 +1556,7 @@ class DesktopSamplerController(
         transport.stop()
         scratch.stop()
         scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         player.stopAll()
@@ -1786,6 +2029,7 @@ class DesktopSamplerController(
     ) {
         clearPendingSourcePitchResume()
         if (!preserveScratchReturn) scratchReturnTarget = ScratchReturnTarget.None
+        scratchPausedLoopOwner = null
         scratchIdleFuture?.cancel(false)
         scratchIdleFuture = null
         transport.stop()
@@ -1796,6 +2040,7 @@ class DesktopSamplerController(
                 transportPlaying = false,
                 currentStep = -1,
                 sourcePlaying = false,
+                liveChopPadIndices = emptySet(),
                 pendingSourceCommand = PendingSourceCommand.NONE,
                 loopingPadIndex = null,
                 loopPlayheadFrame = -1,
@@ -1834,7 +2079,7 @@ class DesktopSamplerController(
                 runCatching {
                     triggerPlayerPad(pad, forceLoop = true)
                     current.pads
-                        .vocalCompanionPadIndicesForLoopStart(loopPadIndex = target.padIndex)
+                        .loopCompanionPadIndicesForLoopStart(target.padIndex)
                         .map(current.pads::get)
                         .forEach { triggerPlayerPad(it, forceLoop = false) }
                 }.onSuccess {
@@ -1861,6 +2106,10 @@ class DesktopSamplerController(
         val current = mutableState.value
         val recordArmedBeforeStart = current.recordArmed
         return runCatching {
+            (current.loopingPadIndex ?: current.configuredLoopPadIndex())?.let { loop ->
+                if (mutableState.value.loopingPadIndex != loop) toggleBeatLoop(loop)
+                check(mutableState.value.loopingPadIndex == loop) { "ループを開始できませんでした" }
+            }
             transport.start(current.bpm, current.swing) {
                 mutableState.update {
                     it.copy(
@@ -1873,9 +2122,12 @@ class DesktopSamplerController(
             }
         }.onFailure { error ->
             transport.stop()
+            player.stopAll()
             mutableState.update {
                 it.copy(
                     transportPlaying = false,
+                    loopingPadIndex = null,
+                    loopPlayheadFrame = -1,
                     recordArmed = if (disarmRecording) recordArmedBeforeStart else it.recordArmed,
                     currentStep = -1,
                     statusMessage = "$failurePrefix: ${error.message ?: error.javaClass.simpleName}",
@@ -1951,6 +2203,8 @@ class DesktopSamplerController(
         }
         runCatching { ioExecutor.shutdownNow() }
         runCatching { playbackMonitor.shutdownNow() }
+        runCatching { drumSeparationService?.close() }
+        runCatching { drumSeparationWorkDir?.deleteRecursively() }
         runCatching { stopCompetingPlayback(stopAudioEngine = false) }
         runCatching { transport.close() }
         runCatching { scratch.close() }

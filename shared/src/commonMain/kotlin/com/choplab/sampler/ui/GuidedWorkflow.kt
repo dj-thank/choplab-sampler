@@ -241,16 +241,19 @@ internal data class BeatWorkspaceModeSurface(
     val showPadGrid: Boolean,
     val showFocusedStepEditor: Boolean,
     val showDetailedSequencer: Boolean,
+    val showLoopFirst: Boolean = false,
 )
 
 internal enum class BeatWorkspaceMode {
     QUICK,
+    LOOP_FIRST,
     FOCUSED_STEPS,
     FINE_CONTROLS,
 }
 
 internal enum class BeatWorkspaceAction {
     SHOW_QUICK,
+    SHOW_LOOP_FIRST,
     SHOW_FOCUSED_STEPS,
     SHOW_FINE_CONTROLS,
 }
@@ -264,6 +267,7 @@ internal fun transitionBeatWorkspace(
 ): BeatWorkspaceMode {
     val target = when (action) {
         BeatWorkspaceAction.SHOW_QUICK -> BeatWorkspaceMode.QUICK
+        BeatWorkspaceAction.SHOW_LOOP_FIRST -> BeatWorkspaceMode.LOOP_FIRST
         BeatWorkspaceAction.SHOW_FOCUSED_STEPS -> BeatWorkspaceMode.FOCUSED_STEPS
         BeatWorkspaceAction.SHOW_FINE_CONTROLS -> BeatWorkspaceMode.FINE_CONTROLS
     }
@@ -275,6 +279,12 @@ internal fun beatWorkspaceSurface(mode: BeatWorkspaceMode): BeatWorkspaceModeSur
         showPadGrid = true,
         showFocusedStepEditor = false,
         showDetailedSequencer = false,
+    )
+    BeatWorkspaceMode.LOOP_FIRST -> BeatWorkspaceModeSurface(
+        showPadGrid = false,
+        showFocusedStepEditor = false,
+        showDetailedSequencer = false,
+        showLoopFirst = true,
     )
     BeatWorkspaceMode.FOCUSED_STEPS -> BeatWorkspaceModeSurface(
         showPadGrid = false,
@@ -398,17 +408,6 @@ fun finishReadinessPresentation(readyForWav: Boolean): FinishReadinessPresentati
         )
     }
 
-data class FinishClearActionPresentation(
-    val label: String,
-    val confirmLabel: String,
-)
-
-fun finishClearActionPresentation(): FinishClearActionPresentation =
-    FinishClearActionPresentation(
-        label = "ビート配置を消す\nCLEAR STEPS",
-        confirmLabel = "もう一度で配置を削除",
-    )
-
 data class CaptureInputPolicy(
     val fileEnabled: Boolean,
     val microphoneEnabled: Boolean,
@@ -429,7 +428,7 @@ fun captureInputPolicy(state: SamplerUiState): CaptureInputPolicy {
 }
 
 fun externalDocumentActionsEnabled(state: SamplerUiState): Boolean =
-    !state.isLoading && state.recordingSession == RecordingSession.Idle
+    com.choplab.sampler.model.projectEditBlockedReason(state) == null
 
 data class RecordingControlPresentation(
     val label: String,

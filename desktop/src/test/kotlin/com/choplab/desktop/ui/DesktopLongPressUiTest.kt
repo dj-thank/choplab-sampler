@@ -43,6 +43,606 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
+    @Test fun spotifySearchResultCanBeAddedWhileFavoritesAreImporting() = runBlocking {
+        var added=0
+        val scene=ImageComposeScene(width=390,height=720,density=Density(1f),coroutineContext=coroutineContext) {
+            ChopLabTheme { com.choplab.desktop.SpotifySearchPanel(
+                com.choplab.desktop.provider.SpotifyDesktopState(searchQuery="Song",searchResults=listOf(
+                    com.choplab.sampler.source.SourceTrack("Song","Artist","test"))),true,{},{},{added++;true},{},{},{},
+            ) }
+        }
+        try {
+            repeat(10){scene.render(System.nanoTime()).close();delay(15)}
+            val nodes=buildList<SemanticsNode> {
+                fun visit(n:SemanticsNode){add(n);n.children.forEach(::visit)}
+                scene.semanticsOwners.forEach{visit(it.unmergedRootSemanticsNode)}
+            }
+            val text=nodes.first { it.config.getOrNull(SemanticsProperties.Text)?.any { it.text=="追加" }==true }
+            val button=generateSequence(text){it.parent}.first { it.config.getOrNull(SemanticsActions.OnClick)?.action!=null }
+            assertTrue(button.boundsInRoot.bottom<=720)
+            assertTrue(requireNotNull(button.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+            assertEquals(1,added)
+        } finally {scene.close()}
+    }
+
+    @Test
+    fun automaticSpotifyFlowHasNoTrackPickerAndCompletedAudioIsUsableDuringSync() = runBlocking {
+        for(width in listOf(390,960)) {
+            val source=androidx.compose.runtime.mutableStateOf(com.choplab.sampler.source.AudioSourceState(
+                section=com.choplab.sampler.source.SourceSection.SPOTIFY,busy=true,
+                library=listOf(com.choplab.sampler.source.AudioLibraryItem("fixture","追加された曲","YouTube",1024)),
+                spotifySync=com.choplab.sampler.source.SpotifySyncProgress(total=3,completed=1,added=1),
+            ))
+            var uses=0
+            val scene=ImageComposeScene(width=width,height=720,density=Density(1f),coroutineContext=coroutineContext) {
+                ChopLabTheme {
+                    com.choplab.sampler.ui.AudioSourceHubContent(source.value,true,
+                        onSection={source.value=source.value.copy(section=it)},onQuery={},onSearch={},onDownload={},
+                        onPickFiles={},onUse={uses++},onCancel={},onClose={},spotifyContent={
+                            com.choplab.sampler.ui.SpotifySourcePicker(
+                                com.choplab.sampler.source.SpotifyImportState(connected=true,configured=true,
+                                    tracks=listOf(com.choplab.sampler.source.SourceTrack("曲を選ばない","Artist","test"))),
+                                true,"http://127.0.0.1/callback",{},{},{},{},{},automaticSync=true,
+                                onLibrary={source.value=source.value.copy(section=com.choplab.sampler.source.SourceSection.LIBRARY)},
+                            )
+                        })
+                }
+            }
+            fun nodes():List<SemanticsNode> = buildList {
+                fun visit(n:SemanticsNode){add(n);n.children.forEach(::visit)}
+                scene.semanticsOwners.forEach{visit(it.unmergedRootSemanticsNode)}
+            }
+            suspend fun settle(){repeat(10){scene.render(System.nanoTime()).close();delay(15)}}
+            try {
+                settle()
+                val texts=nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+                assertFalse(texts.any { it=="タップで取り込む" || it=="さらに読み込む" || it=="曲を選ばない" })
+                val library=nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text=="ライブラリを開く" }==true }
+                val clickable=generateSequence(library){it.parent}.first { it.config.getOrNull(SemanticsActions.OnClick)?.action!=null }
+                assertTrue(clickable.boundsInRoot.bottom<=720)
+                assertTrue(requireNotNull(clickable.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                settle()
+                val audio=nodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("ライブラリ音源 追加された曲を使う")==true }
+                assertTrue(requireNotNull(audio.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                assertEquals(1,uses)
+                val directory=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}
+                scene.render(System.nanoTime()).use { image->requireNotNull(image.encodeToData()).use { data->File(directory,"spotify-auto-library-$width.png").writeBytes(data.bytes) } }
+            } finally {scene.close()}
+        }
+    }
+
+    @Test
+    fun connectPanelOpensTheImportDestinationAndKeepsSetupOutOfTheMainView() = runBlocking {
+        for(width in listOf(760,1100)) {
+            val destination=androidx.compose.runtime.mutableStateOf<com.choplab.sampler.source.SourceSection?>(null)
+            var logins=0
+            val scene=ImageComposeScene(width=width,height=660,density=Density(1f),coroutineContext=coroutineContext) {
+                ChopLabTheme {
+                    val selected=destination.value
+                    if(selected==null) com.choplab.desktop.SpotifyPanel(
+                        com.choplab.desktop.provider.SpotifyDesktopState(phase=com.choplab.desktop.provider.SpotifyConnectionPhase.READY,clientIdConfigured=true),
+                        4,{destination.value=it},{},{},{},{},
+                    ) else com.choplab.sampler.ui.AudioSourceHubContent(
+                        state=com.choplab.sampler.source.AudioSourceState(section=selected),canUseAudio=true,
+                        onSection={destination.value=it},onQuery={},onSearch={},onDownload={},onPickFiles={},onUse={},onCancel={},onClose={destination.value=null},
+                        spotifyContent={com.choplab.sampler.ui.SpotifySourcePicker(
+                            com.choplab.sampler.source.SpotifyImportState(configured=true),false,"http://127.0.0.1/callback",
+                            {logins++},{},{},{},{})},
+                    )
+                }
+            }
+            try {
+                fun nodes():List<SemanticsNode> = buildList {
+                    fun visit(n:SemanticsNode){add(n);n.children.forEach(::visit)}
+                    scene.semanticsOwners.forEach{visit(it.unmergedRootSemanticsNode)}
+                }
+                suspend fun settle() {repeat(12){scene.render(System.nanoTime()).close();delay(15)}}
+                suspend fun clickDescription(text:String) {
+                    settle()
+                    val n=nodes().single { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains(text)==true }
+                    val position=n.boundsInRoot.center
+                    assertTrue(position.x>0 && position.x<width && position.y>0 && position.y<660)
+                    scene.sendPointerEvent(PointerEventType.Move,position,type=PointerType.Mouse)
+                    scene.sendPointerEvent(PointerEventType.Press,position,type=PointerType.Mouse,buttons=PointerButtons(isPrimaryPressed=true),button=PointerButton.Primary)
+                    settle()
+                    scene.sendPointerEvent(PointerEventType.Release,position,type=PointerType.Mouse,buttons=PointerButtons(),button=PointerButton.Primary)
+                    settle()
+                }
+                settle()
+                assertFalse(nodes().any { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text.contains("Client ID")||text.text.contains("Developer Dashboard") }==true })
+                val output=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}
+                scene.render(System.nanoTime()).use { image->requireNotNull(image.encodeToData()).use { data->File(output,"desktop-connect-$width.png").writeBytes(data.bytes) } }
+                clickDescription("Spotifyのお気に入りから音源を追加")
+                assertEquals(com.choplab.sampler.source.SourceSection.SPOTIFY,destination.value)
+                val login=nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text=="Spotifyにログイン" }==true }
+                val clickable=generateSequence(login){it.parent}.first { it.config.getOrNull(SemanticsActions.OnClick)?.action!=null }
+                assertTrue(requireNotNull(clickable.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                assertEquals(1,logins)
+                destination.value=null;clickDescription("YouTubeから音源を追加")
+                assertEquals(com.choplab.sampler.source.SourceSection.YOUTUBE,destination.value)
+                destination.value=null;clickDescription("PCのファイルから音源を追加")
+                assertEquals(com.choplab.sampler.source.SourceSection.LIBRARY,destination.value)
+                destination.value=null;clickDescription("内部ライブラリを開く")
+                assertEquals(com.choplab.sampler.source.SourceSection.LIBRARY,destination.value)
+            } finally {scene.close()}
+        }
+    }
+
+    @Test
+    fun audioSourceHubShowsLibraryAndOneTapFavoritesAtCompactAndWideWidths() = runBlocking {
+        for(width in listOf(390,960)) {
+            var chosen=""
+            val track=com.choplab.sampler.source.SourceTrack("テスト曲","テスト奏者","https://open.spotify.com/track/0123456789012345678901",120.0)
+            val scene=ImageComposeScene(width=width,height=720,density=Density(1f),coroutineContext=coroutineContext) {
+                ChopLabTheme {
+                    com.choplab.sampler.ui.AudioSourceHubContent(
+                        state=com.choplab.sampler.source.AudioSourceState(section=com.choplab.sampler.source.SourceSection.SPOTIFY),
+                        canUseAudio=true,onSection={},onQuery={},onSearch={},onDownload={},onPickFiles={},onUse={},onCancel={},onClose={},
+                        spotifyContent={com.choplab.sampler.ui.SpotifySourcePicker(
+                            com.choplab.sampler.source.SpotifyImportState(connected=true,configured=true,tracks=listOf(track),message="お気に入りを取得しました"),false,"choplab://spotify/callback",
+                            {},{},{},{chosen=it.title},{})},
+                    )
+                }
+            }
+            try {
+                fun nodes():List<SemanticsNode> = buildList {
+                    fun visit(node:SemanticsNode){add(node);node.children.forEach(::visit)}
+                    scene.semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
+                }
+                var card:SemanticsNode?=null
+                withTimeout(10000) {
+                    while(card==null) {
+                        scene.render(System.nanoTime()).close()
+                        card=nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { text ->text.startsWith("Spotifyのお気に入り ") }==true && it.boundsInRoot.height>0 }
+                        if(card==null)delay(20)
+                    }
+                }
+                val node=requireNotNull(card)
+                assertTrue(node.boundsInRoot.bottom<=720f)
+                assertTrue(requireNotNull(node.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                assertEquals("テスト曲",chosen)
+                val directory=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}
+                scene.render(System.nanoTime()).use { image ->requireNotNull(image.encodeToData()).use { data ->File(directory,"source-favorites-$width.png").writeBytes(data.bytes) } }
+            } finally {scene.close()}
+        }
+    }
+
+    @Test
+    fun editedChopJoinsPreviousLoopWhenContinuingToBeat() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.startPadLoop(0)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                fixture.mousePress("この音を回してビートへ", 40)
+                fixture.mousePress("かんたんループ", 40)
+                assertEquals(0, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(PadPlayMode.LOOP, fixture.controller.state.value.pads[1].playMode)
+                assertTrue(fixture.controller.state.value.transportPlaying)
+                assertTrue(fixture.nodeWithDescription("選択範囲の波形").stateDescription().contains("16000から32000"))
+                fixture.capture("chosen-loop-handoff")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun rejectedLoopHandoffKeepsTheEditorAndPreviousLoop() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.startPadLoop(0)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                val before = fixture.controller.state.value
+                fixture.audio.failNextTrigger = true
+                fixture.mousePress("この音を回してビートへ", 40)
+                assertEquals(0, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(before.pads, fixture.controller.state.value.pads)
+                assertEquals(before.canUndo, fixture.controller.state.value.canUndo)
+                assertTrue(fixture.hasDescription("切り出した音へ戻る"))
+                assertFalse(fixture.hasDescription("ドラムを足す"))
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun compactBeatKeepsWaveformAndControlsReachable() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 520, fontScale = 1.3f)
+            try {
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.reveal("選択音をループ", 48f)
+                fixture.mousePress("選択音をループ", 40)
+                assertEquals(0, fixture.controller.state.value.loopingPadIndex)
+                fixture.capture("compact-loop-beat")
+                fixture.reveal("選択範囲の波形", 80f)
+                assertTrue(fixture.nodeWithDescription("選択範囲の波形").boundsInRoot.height >= 80f)
+                fixture.capture("compact-loop-waveform")
+                for (label in listOf("S 始まり", "E 終わり", "ドラムを足す", "スクラッチ")) {
+                    fixture.reveal(label, 48f)
+                    val bounds = fixture.nodeWithDescription(label).boundsInRoot
+                    assertTrue(bounds.width >= 48f && bounds.height >= 48f && bounds.bottom <= 520f, "$label: $bounds")
+                }
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun selectThenLoopAndAddAnotherSoundWithoutRestartingTheCore() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.mousePress("音を選ぶ A-02", 40)
+                assertEquals(null, fixture.controller.state.value.loopingPadIndex)
+                assertTrue(fixture.audio.loopRequests.isEmpty())
+                fixture.mousePress("選択音をループ", 40)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                val coreStarts = fixture.audio.loopRequests.count { it.globalIndex == 1 }
+                fixture.mousePress("音を選ぶ A-01", 40)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(PadPlayMode.ONE_SHOT, fixture.controller.state.value.pads[0].playMode)
+                fixture.mousePress("選択音をループ", 40)
+                assertEquals(PadPlayMode.LOOP, fixture.controller.state.value.pads[0].playMode)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(coreStarts, fixture.audio.loopRequests.count { it.globalIndex == 1 })
+                assertTrue(fixture.hasDescription("重ねている音 A-01を選ぶ"))
+                assertTrue(fixture.hasDescription("重ねている音 A-02を選ぶ"))
+                fixture.capture("select-loop-add-layers")
+                fixture.mousePress("A-01のループを外す", 40)
+                assertEquals(PadPlayMode.ONE_SHOT, fixture.controller.state.value.pads[0].playMode)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(coreStarts, fixture.audio.loopRequests.count { it.globalIndex == 1 })
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun beatGridFinishesWithOneTapDrumsAndPresetRhythm() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                assertTrue(fixture.hasDescription("ドラムを追加"))
+                assertTrue(fixture.hasDescription("4つ打ち"))
+                fixture.mousePress("ドラムを追加", 40)
+                val drumStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
+                assertTrue(fixture.controller.state.value.pads.subList(
+                    drumStart, drumStart + SamplerConfig.DRUM_KIT_PAD_COUNT).any(PadModel::isAssigned))
+                assertTrue(fixture.hasDescription("ドラム音色"))
+                val selected = fixture.controller.state.value.selectedPad
+                val before = fixture.controller.state.value.activeSteps
+                fixture.mousePress("4つ打ち", 40)
+                val added = fixture.controller.state.value.activeSteps - before
+                assertTrue(added.isNotEmpty())
+                assertTrue(added.all { it / SamplerConfig.STEP_COUNT == selected })
+                fixture.capture("beat-finish-row")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun failedRechopStartKeepsSelectionHistoryAndTheCurrentEditor() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.setRangeEnd(20000)
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                val before = fixture.controller.state.value
+                fixture.audio.failNextSourcePlay = true
+                fixture.mousePress("元曲全体のチョップ地図", 40)
+                val after = fixture.controller.state.value
+                assertEquals(before.selectedPad, after.selectedPad)
+                assertEquals(before.rangeEndFrame, after.rangeEndFrame)
+                assertEquals(before.canUndo, after.canUndo)
+                assertFalse(after.sourcePlaying)
+                assertTrue(fixture.hasDescription("選択範囲の波形"))
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun selectedRangeAutomaticallyFillsTheEditorWithoutZoomOrPrecisionButtons() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 800, fontScale = 1.3f,
+                targetStart = 76000, targetEnd = 80000)
+            try {
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                val wave = fixture.nodeWithDescription("選択範囲の波形")
+                assertTrue(wave.description().contains("S 0:09.500、E 0:10.000"))
+                assertTrue(wave.stateDescription().contains("76000から80000フレーム"))
+                for (removed in listOf("波形を拡大", "波形を縮小", "トリム精度", "細かく調整", "終わりを")) {
+                    assertFalse(fixture.hasDescription(removed), removed)
+                }
+                for (label in listOf("S 始まり", "E 終わり", "ループを回す")) {
+                    val bounds = fixture.nodeWithDescription(label).boundsInRoot
+                    assertTrue(bounds.height >= 48f && bounds.bottom <= 800f && bounds.right <= 360f, "$label $bounds")
+                }
+                val before = fixture.controller.state.value.pads[1]
+                fixture.mousePress(wave, 40)
+                assertEquals(before, fixture.controller.state.value.pads[1])
+                fixture.capture("automatic-range-portrait")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun rollingEndRebindsLiveLoopAndRefitsTheDisplayedRange() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                fixture.mousePress("ループを回す", 40)
+                val dial = fixture.nodeWithDescription("E 終わり")
+                requireNotNull(dial.config.getOrNull(SemanticsActions.ScrollBy)?.action).invoke(0f, -60f)
+                fixture.settle(600)
+                val after = fixture.controller.state.value.pads[1]
+                assertTrue(after.endFrame > 32000)
+                assertEquals(16000, after.startFrame)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertEquals(after.endFrame, fixture.audio.loopRequests.last().endFrame)
+                assertTrue(fixture.nodeWithDescription("選択範囲の波形").stateDescription().contains("16000から${after.endFrame}フレーム"))
+                fixture.capture("automatic-range-live-dial")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun fullSourceMapRechopsFromTheTappedPositionAndRetainsEarlierCuts() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.setRangeEnd(20000)
+                val originals = fixture.controller.state.value.pads.take(2).map { listOf(it.globalIndex, it.audio?.id, it.startFrame, it.endFrame) }
+                fixture.mousePress("PAD 02 割り当て済み", 700)
+                fixture.mousePress("元曲全体のチョップ地図", 40, fractionX = 0.5f)
+                assertTrue(fixture.controller.state.value.sourcePlaying)
+                assertEquals(40000, fixture.controller.state.value.sourcePlayheadFrame)
+                assertEquals(80000, fixture.controller.state.value.rangeEndFrame)
+                assertEquals(originals, fixture.controller.state.value.pads.take(2).map { listOf(it.globalIndex, it.audio?.id, it.startFrame, it.endFrame) })
+                fixture.mousePress("PAD 03 空", 40)
+                assertEquals(40000, fixture.controller.state.value.pads[2].startFrame)
+                assertEquals(originals, fixture.controller.state.value.pads.take(2).map { listOf(it.globalIndex, it.audio?.id, it.startFrame, it.endFrame) })
+                fixture.controller.rollPadBoundary(2, com.choplab.sampler.model.PadTrimBoundary.END, -800)
+                val trimmedEnd = fixture.controller.state.value.pads[2].endFrame
+                fixture.audio.advanceSourceTo(60000)
+                fixture.mousePress("PAD 04 空", 40)
+                assertEquals(trimmedEnd, fixture.controller.state.value.pads[2].endFrame)
+                fixture.controller.setSelectedPadStartFrame(60100)
+                fixture.controller.setSelectedPadEndFrame(79000)
+                fixture.audio.advanceSourceTo(70000)
+                fixture.mousePress("PAD 05 空", 40)
+                assertEquals(60100, fixture.controller.state.value.pads[3].startFrame)
+                assertEquals(79000, fixture.controller.state.value.pads[3].endFrame)
+                fixture.capture("automatic-range-rechop")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun drumSoundChangeKeepsThePlayingLoopAndEditedRhythm() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.mousePress("ドラムを足す", 40)
+                fixture.mousePress("Bに音色をセット", 40)
+                fixture.controller.toggleStep(0)
+                fixture.controller.toggleStep(3)
+                fixture.controller.duplicateSelectedPatternToOther()
+                fixture.controller.toggleStep(15)
+                fixture.controller.startPadLoop(1, withPattern = true)
+                assertTrue(fixture.controller.setPadLoopLayer(32, true))
+                val before = fixture.controller.state.value
+                val rhythm = before.activeSteps
+                val other = before.patternArrangement.storedStepsBySlot[0]
+                val starts = fixture.audio.loopRequests.size
+                val sound = before.pads[32].audio?.id
+                fixture.mousePress("BOOM BAP ドラムキット", 40)
+                fixture.mousePress("リズムを保って音色変更", 40)
+                assertEquals(sound, fixture.controller.state.value.pads[32].audio?.id)
+                fixture.mousePress("もう一度で音色変更", 40)
+                val after = fixture.controller.state.value
+                assertTrue(sound != after.pads[32].audio?.id)
+                assertEquals(rhythm, after.activeSteps)
+                assertEquals(other, after.patternArrangement.storedStepsBySlot[0])
+                assertEquals(1, after.loopingPadIndex)
+                assertTrue(after.transportPlaying)
+                assertTrue(32 in fixture.audio.stoppedPads)
+                assertTrue(1 !in fixture.audio.stoppedPads)
+                assertEquals(PadPlayMode.ONE_SHOT, after.pads[32].playMode)
+                assertEquals(starts, fixture.audio.loopRequests.size)
+                fixture.capture("drum-sound-change-preserves-rhythm")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun beatKeepsItsLoopRunningAcrossSelectionDrumsAndBoundaryRolls() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.mousePress("音を選ぶ A-02", 40)
+                fixture.mousePress("選択音をループ", 40)
+                fixture.controller.toggleTransport()
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertTrue(fixture.controller.state.value.transportPlaying)
+                val starts = fixture.audio.loopRequests.size
+                fixture.mousePress("音を選ぶ A-02", 40)
+                assertEquals(starts, fixture.audio.loopRequests.size)
+                fixture.mousePress("ドラムを足す", 40)
+                fixture.mousePress("Bに音色をセット", 40)
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertTrue(fixture.controller.state.value.transportPlaying)
+                fixture.mousePress("閉じる", 40)
+                val drum = fixture.controller.state.value.pads[32]
+                fixture.mousePress("重ねている音 A-02を選ぶ", 40)
+                // Input targets the rendered selection, after the flow collector has
+                // replaced the former drum's dial semantics and scroll callback.
+                withTimeout(5_000) {
+                    while (!fixture.nodeWithDescription("S 始まり").stateDescription().contains("16000フレーム")) {
+                        fixture.settle(20)
+                    }
+                }
+                assertEquals(1, fixture.controller.state.value.selectedPad)
+                val dial = fixture.nodeWithDescription("S 始まり")
+                requireNotNull(dial.config.getOrNull(SemanticsActions.ScrollBy)?.action).invoke(0f, -30f)
+                fixture.settle(600)
+                assertTrue(fixture.controller.state.value.pads[1].startFrame > 16000,
+                    "Selected PAD ${fixture.controller.state.value.selectedPad}, dial ${dial.stateDescription()}")
+                assertEquals(drum, fixture.controller.state.value.pads[32])
+                assertEquals(1, fixture.controller.state.value.loopingPadIndex)
+                assertTrue(fixture.controller.state.value.transportPlaying)
+                fixture.capture("loop-first-beat")
+                fixture.mousePress("スクラッチ", 40)
+                assertEquals(1, fixture.controller.state.value.selectedPad)
+                fixture.capture("loop-first-scratch")
+                fixture.controller.stopAllSounds()
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun chopAndDrumKitControlsExplainAndRejectBusyDisplayState() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.displayOverride.value = { it.copy(isLoading = true) }
+                fixture.settle()
+                for (label in listOf("音声を読込中", "微調整", "音を足す", "スクラッチ")) {
+                    assertTrue(fixture.nodeWithDescription(label).config.contains(SemanticsProperties.Disabled), label)
+                }
+                fixture.capture("audit-chop-loading")
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                for (label in listOf("ドラムを足す", "スクラッチ", "選択音をループ", "S 始まり", "E 終わり")) {
+                    assertTrue(fixture.nodeWithDescription(label).config.contains(SemanticsProperties.Disabled), label)
+                }
+                fixture.capture("audit-beat-loading")
+                fixture.displayOverride.value = null
+                fixture.settle()
+                fixture.mousePress("ドラムを足す", 40)
+                fixture.displayOverride.value = { it.copy(recordingSession = com.choplab.sampler.model.RecordingSession.Active(
+                    com.choplab.sampler.model.RecordingKind.SOURCE_MICROPHONE,
+                    com.choplab.sampler.model.RecordingPhase.RECORDING)) }
+                fixture.settle()
+                val apply = fixture.nodeWithDescription("Bに音色をセット")
+                assertTrue(apply.config.contains(SemanticsProperties.Disabled))
+                val before = fixture.controller.state.value.pads
+                fixture.mousePress(apply, 40)
+                assertEquals(before, fixture.controller.state.value.pads)
+                fixture.capture("audit-drums-recording")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun selectedPadClearDisarmsWhenSelectionChanges() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.toggleStep(0)
+                fixture.controller.selectPlayablePad(1)
+                fixture.controller.toggleStep(4)
+                fixture.controller.selectPlayablePad(0)
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.mousePress("ドラムを足す", 40)
+                fixture.mousePress("SOUNDS", 40)
+                fixture.mousePress("配置を消す", 40)
+                fixture.controller.selectPlayablePad(1)
+                fixture.settle()
+                assertTrue(fixture.hasDescription("配置を消す"))
+                fixture.mousePress("配置を消す", 40)
+                assertEquals(setOf(0, 20), fixture.controller.state.value.activeSteps)
+                fixture.mousePress("もう一度で削除", 40)
+                assertEquals(setOf(0), fixture.controller.state.value.activeSteps)
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun arrangementCopyDisarmsAfterContentChangesAndTimeout() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext)
+            try {
+                fixture.controller.toggleStep(0)
+                fixture.controller.duplicateSelectedPatternToOther()
+                fixture.controller.toggleStep(4)
+                fixture.controller.selectPatternVariation(0)
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.mousePress("配置・曲構成", 40)
+                fixture.mousePress("曲にする", 40)
+                val originalB = fixture.controller.state.value.patternArrangement.storedStepsBySlot[1]
+                fixture.mousePress("AをBへコピー", 40)
+                fixture.controller.toggleStep(8)
+                fixture.settle()
+                assertTrue(fixture.hasDescription("AをBへコピー"))
+                fixture.mousePress("AをBへコピー", 40)
+                assertEquals(originalB, fixture.controller.state.value.patternArrangement.storedStepsBySlot[1])
+                fixture.settle(4200)
+                assertTrue(fixture.hasDescription("AをBへコピー"))
+                fixture.mousePress("AをBへコピー", 40)
+                assertEquals(originalB, fixture.controller.state.value.patternArrangement.storedStepsBySlot[1])
+                fixture.mousePress("Bを上書き", 40)
+                assertEquals(1, fixture.controller.state.value.patternArrangement.selectedSlot)
+                assertEquals(setOf(0, 8), fixture.controller.state.value.activeSteps)
+                fixture.capture("audit-arrangement-confirmation")
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun portraitSaveActionsRemainTouchSized() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportWidth = 360, viewportHeight = 800, fontScale = 1.3f)
+            try {
+                fixture.controller.toggleStep(0)
+                fixture.mousePress("工程4", 40)
+                fixture.capture("audit-save-portrait")
+                assertFalse(fixture.hasDescription("ビート配置を消す"))
+                assertFalse(fixture.hasDescription("ビートへ戻る"))
+                for (label in listOf("ビートを確認", "WAVを書き出す", "制作を保存", "制作を開く", "1つ戻す", "やり直す")) {
+                    val bounds = fixture.nodeWithDescription(label).boundsInRoot
+                    assertTrue(bounds.height >= 48f, "$label must remain touch-sized: $bounds")
+                    assertTrue(bounds.left >= 0 && bounds.right <= 360 && bounds.bottom <= 800, "$label outside viewport: $bounds")
+                }
+            } finally { fixture.close() }
+        }
+    }
+
+    @Test
+    fun compactLayerEditorKeepsShiftControlsReachable() = runBlocking {
+        withTimeout(H13_UI_TIMEOUT_MILLIS) {
+            val fixture = DeckFixture.create(coroutineContext, viewportHeight = 520)
+            try {
+                fixture.controller.selectPlayablePad(0)
+                fixture.controller.toggleStep(0)
+                fixture.mousePress("工程3", 40)
+                fixture.mousePress("かんたんループ", 40)
+                fixture.reveal("ドラムを足す")
+                fixture.mousePress("ドラムを足す", 40)
+                fixture.capture("pattern-layer-compact-open")
+                fixture.mousePress("SOUNDS", 40)
+                fixture.capture("pattern-layer-compact-top")
+                fixture.scrollDown()
+                val button = fixture.nodeWithDescription("1ステップ後へ")
+                assertTrue(button.boundsInRoot.height >= 48f)
+                assertTrue(button.boundsInRoot.top >= 0f && button.boundsInRoot.bottom <= 520f)
+                fixture.mousePress(button, 40)
+                assertEquals(setOf(com.choplab.sampler.model.stepKey(0, 1)), fixture.controller.state.value.activeSteps)
+                fixture.capture("pattern-layer-compact-shift")
+            } finally {
+                fixture.close()
+            }
+        }
+    }
+
     @Test
     fun liveSourceMouseClickStillCapturesAnEmptyPadThroughTheRealController() = runBlocking {
         withTimeout(H13_UI_TIMEOUT_MILLIS) {
@@ -58,85 +658,8 @@ class DesktopLongPressUiTest {
                 assertEquals(24_000, fixture.controller.state.value.pads[2].startFrame)
                 assertEquals(80_000, fixture.controller.state.value.pads[2].endFrame)
                 assertTrue(fixture.controller.state.value.sourcePlaying)
-                assertFalse(fixture.hasDescription("全体波形。PAD範囲"))
+                assertFalse(fixture.hasDescription("選択範囲の波形"))
                 assertTrue(fixture.audio.padRequests.isEmpty(), "Live capture must not request a PAD voice")
-                fixture.assertOffscreen()
-            } finally {
-                fixture.close()
-            }
-        }
-    }
-
-    @Test
-    fun waveformOrdinaryMouseClickEditsTheBoundaryWithoutPrecisionZoom() = runBlocking {
-        withTimeout(H13_UI_TIMEOUT_MILLIS) {
-            val fixture = DeckFixture.create(coroutineContext)
-            try {
-                fixture.mousePress("PAD 02 割り当て済み", 700)
-                fixture.mousePress("音声波形。タップで近い境界", 40, fractionX = 0.75f)
-                // Waveform supports double-click; allow its real single-click decision to settle.
-                fixture.settle(350)
-                fixture.capture("waveform-short-click")
-
-                assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(29_000, fixture.controller.state.value.pads[1].endFrame)
-                assertEquals(
-                    "拡大表示。14000から33999フレーム。全体80000フレーム",
-                    fixture.nodeWithDescription("音声波形。タップで近い境界").stateDescription(),
-                )
-                fixture.assertOffscreen()
-            } finally {
-                fixture.close()
-            }
-        }
-    }
-
-    @Test
-    fun sourceEndChopKeepsOneSecondFloorAndClampsEndFocus() = runBlocking {
-        withTimeout(H13_UI_TIMEOUT_MILLIS) {
-            val fixture = DeckFixture.create(coroutineContext, targetStart = 76_000, targetEnd = 80_000)
-            try {
-                fixture.mousePress("PAD 02 割り当て済み", 700)
-                fixture.capture("source-end-initial")
-                assertEquals(
-                    "全体波形。PAD範囲 0:09.500 から 0:10.000。編集表示 0:09.000 から 0:10.000",
-                    fixture.nodeWithDescription("全体波形。PAD範囲").description(),
-                )
-                fixture.mousePress("音声波形。タップで近い境界", 700, fractionX = 0.8f)
-                fixture.capture("source-end-focus")
-
-                assertEquals(76_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(78_400, fixture.controller.state.value.pads[1].endFrame)
-                val waveform = fixture.nodeWithDescription("音声波形。タップで近い境界")
-                assertEquals("拡大表示。72000から79999フレーム。全体80000フレーム", waveform.stateDescription())
-                fixture.assertInsideScene(waveform)
-                fixture.assertOffscreen()
-            } finally {
-                fixture.close()
-            }
-        }
-    }
-
-    @Test
-    fun sourceStartChopKeepsOneSecondFloorAndClampsStartFocus() = runBlocking {
-        withTimeout(H13_UI_TIMEOUT_MILLIS) {
-            val fixture = DeckFixture.create(coroutineContext, targetStart = 0, targetEnd = 4_000)
-            try {
-                fixture.mousePress("PAD 02 割り当て済み", 700)
-                fixture.capture("source-start-initial")
-                assertEquals(
-                    "全体波形。PAD範囲 0:00.000 から 0:00.500。編集表示 0:00.000 から 0:01.000",
-                    fixture.nodeWithDescription("全体波形。PAD範囲").description(),
-                )
-                fixture.mousePress("音声波形。タップで近い境界", 700, fractionX = 0.25f)
-                fixture.capture("source-start-focus")
-
-                // At the midpoint of this half-second Chop, the existing tie rule chooses START.
-                assertEquals(2_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(4_000, fixture.controller.state.value.pads[1].endFrame)
-                val waveform = fixture.nodeWithDescription("音声波形。タップで近い境界")
-                assertEquals("拡大表示。0から7999フレーム。全体80000フレーム", waveform.stateDescription())
-                fixture.assertInsideScene(waveform)
                 fixture.assertOffscreen()
             } finally {
                 fixture.close()
@@ -155,7 +678,7 @@ class DesktopLongPressUiTest {
 
                     assertEquals(2, fixture.controller.state.value.selectedPad)
                     assertFalse(fixture.controller.state.value.pads[2].isAssigned)
-                    assertFalse(fixture.hasDescription("全体波形。PAD範囲"))
+                    assertFalse(fixture.hasDescription("選択範囲の波形"))
                     assertTrue(fixture.audio.padRequests.isEmpty())
                     fixture.assertOffscreen()
                 } finally {
@@ -176,99 +699,8 @@ class DesktopLongPressUiTest {
                 assertEquals(1, fixture.controller.state.value.selectedPad)
                 assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
                 assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
-                assertFalse(fixture.hasDescription("全体波形。PAD範囲"))
+                assertFalse(fixture.hasDescription("選択範囲の波形"))
                 assertEquals(listOf(1), fixture.audio.padRequests)
-                fixture.assertOffscreen()
-            } finally {
-                fixture.close()
-            }
-        }
-    }
-
-    @Test
-    fun assignedPadMouseLongPressOpensItsExistingFittedTrim() = runBlocking {
-        withTimeout(H13_UI_TIMEOUT_MILLIS) {
-            val fixture = DeckFixture.create(coroutineContext)
-            try {
-                fixture.capture("assigned-before")
-                assertEquals(0, fixture.controller.state.value.selectedPad)
-                assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
-                val target = fixture.nodeWithDescription("PAD 02 割り当て済み")
-                val shortNegative = java.lang.Boolean.getBoolean("h13.negativeShortPress")
-                fixture.mousePress(target, if (shortNegative) 40 else 700)
-                fixture.capture(if (shortNegative) "short-negative-after" else "assigned-after")
-
-                val overview = fixture.nodeWithDescription("全体波形。PAD範囲")
-                assertEquals(1, fixture.controller.state.value.selectedPad)
-                assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
-                assertEquals(
-                    "全体波形。PAD範囲 0:02.000 から 0:04.000。編集表示 0:01.750 から 0:04.250",
-                    overview.description(),
-                )
-                assertEquals(
-                    "拡大表示。14000から33999フレーム。全体80000フレーム",
-                    fixture.nodeWithDescription("音声波形。タップで近い境界").stateDescription(),
-                )
-                fixture.assertOffscreen()
-            } finally {
-                fixture.close()
-            }
-        }
-    }
-
-    @Test
-    fun beatPadMouseLongPressPreservesItsRangeAndOpensFittedTrim() = runBlocking {
-        withTimeout(H13_UI_TIMEOUT_MILLIS) {
-            val fixture = DeckFixture.create(coroutineContext)
-            try {
-                fixture.mousePress("工程3 ビート BEAT", 40)
-                fixture.capture("beat-before")
-                fixture.mousePress("PAD 02 割り当て済み", 700)
-                fixture.capture("beat-after")
-
-                assertEquals(1, fixture.controller.state.value.selectedPad)
-                assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
-                val overview = fixture.nodeWithDescription("全体波形。PAD範囲")
-                assertEquals(
-                    "全体波形。PAD範囲 0:02.000 から 0:04.000。編集表示 0:01.750 から 0:04.250",
-                    overview.description(),
-                )
-                val waveform = fixture.nodeWithDescription("音声波形。タップで近い境界")
-                assertEquals(
-                    "拡大表示。14000から33999フレーム。全体80000フレーム",
-                    waveform.stateDescription(),
-                )
-                fixture.assertInsideScene(overview)
-                fixture.assertInsideScene(waveform)
-                fixture.assertOffscreen()
-            } finally {
-                fixture.close()
-            }
-        }
-    }
-
-    @Test
-    fun waveformMouseLongPressMovesTheCloserEndAndFocusesOneSecond() = runBlocking {
-        withTimeout(H13_UI_TIMEOUT_MILLIS) {
-            val fixture = DeckFixture.create(coroutineContext)
-            try {
-                fixture.mousePress("工程3 ビート BEAT", 40)
-                fixture.mousePress("PAD 02 割り当て済み", 700)
-                fixture.mousePress("音声波形。タップで近い境界", 700, fractionX = 0.75f)
-                fixture.capture("waveform-end-focus")
-
-                assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
-                assertEquals(29_000, fixture.controller.state.value.pads[1].endFrame)
-                val waveform = fixture.nodeWithDescription("音声波形。タップで近い境界")
-                assertEquals("拡大表示。25000から32999フレーム。全体80000フレーム", waveform.stateDescription())
-                assertEquals(
-                    "全体波形。PAD範囲 0:02.000 から 0:03.625。編集表示 0:03.125 から 0:04.125",
-                    fixture.nodeWithDescription("全体波形。PAD範囲").description(),
-                )
-                fixture.assertInsideScene(waveform)
                 fixture.assertOffscreen()
             } finally {
                 fixture.close()
@@ -287,8 +719,8 @@ class DesktopLongPressUiTest {
 
                 assertEquals(16_000, fixture.controller.state.value.pads[1].startFrame)
                 assertEquals(32_000, fixture.controller.state.value.pads[1].endFrame)
-                assertTrue(fixture.hasDescription("全体波形。PAD範囲"))
-                assertTrue(fixture.hasDescription("音声波形。タップで近い境界"))
+                assertTrue(fixture.hasDescription("選択範囲の波形"))
+                assertTrue(fixture.hasDescription("選択範囲の波形"))
                 fixture.assertOffscreen()
             } finally {
                 fixture.close()
@@ -341,6 +773,7 @@ private class DeckFixture private constructor(
     private val scene: ImageComposeScene,
     private val directory: File,
     private val project: File,
+    val displayOverride: androidx.compose.runtime.MutableState<((SamplerUiState) -> SamplerUiState)?>,
 ) : AutoCloseable {
     private val inputTrace = mutableListOf<String>()
     private fun nodes(): List<SemanticsNode> = buildList {
@@ -361,7 +794,9 @@ private class DeckFixture private constructor(
 
     private suspend fun readyNodeWithDescription(prefix: String): SemanticsNode {
         var lastMatches: List<SemanticsNode> = emptyList()
-        repeat(100) {
+        var stableBounds: androidx.compose.ui.geometry.Rect? = null
+        var stableFrames = 0
+        repeat(150) {
             scene.render(System.nanoTime()).close()
             lastMatches = nodes().filter { it.description().startsWith(prefix) }
             val ready = lastMatches.singleOrNull()?.takeIf { node ->
@@ -377,7 +812,11 @@ private class DeckFixture private constructor(
                     bounds.right <= 1_100f &&
                     bounds.bottom <= 1_000f
             }
-            if (ready != null) return ready
+            // Dialog dismissal and bank changes can move an already-present node.
+            // A pointer press needs settled geometry, not just nonzero bounds.
+            if (ready != null && ready.boundsInRoot == stableBounds) stableFrames++
+            else { stableBounds=ready?.boundsInRoot;stableFrames=0 }
+            if (ready != null && stableFrames >= 12) return ready
             delay(10)
         }
         error(
@@ -418,6 +857,39 @@ private class DeckFixture private constructor(
 
     suspend fun mousePress(description: String, holdMillis: Long, fractionX: Float = 0.5f) {
         mousePress(readyNodeWithDescription(description), holdMillis, fractionX)
+    }
+
+    suspend fun reveal(description: String, minimumHeight: Float = 48f) {
+        val initial = nodes().singleOrNull { it.description().startsWith(description) }
+        if (initial != null && initial.boundsInRoot.height >= minimumHeight) return
+        scrollDown(-10000f)
+        repeat(24) {
+            val node = nodes().singleOrNull { it.description().startsWith(description) }
+            if (node != null && node.boundsInRoot.height >= minimumHeight) return
+            scrollDown(80f)
+        }
+        error("Could not scroll $description into view")
+    }
+
+    suspend fun scrollDown(distance: Float = 1000f) {
+        val scrollNodes = nodes().filter { node ->
+            node.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null &&
+                node.config.getOrNull(SemanticsProperties.Role) != androidx.compose.ui.semantics.Role.Button
+        }
+        val ranges = scrollNodes.mapNotNull { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) }
+        scrollNodes.forEach { it.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, distance) }
+        // Semantics ScrollBy animates. Wait for geometry to settle so the next pointer
+        // click reaches its button instead of merely cancelling the pending scroll.
+        var positions = ranges.map { it.value() }
+        var stableFrames = 0
+        repeat(100) {
+            settle(20)
+            val next = ranges.map { it.value() }
+            stableFrames = if (next == positions) stableFrames + 1 else 0
+            if (stableFrames >= 8) return
+            positions = next
+        }
+        error("Scroll animation did not settle")
     }
 
     suspend fun settle(durationMillis: Long = 100) {
@@ -500,6 +972,9 @@ private class DeckFixture private constructor(
             targetStart: Int = 16_000,
             targetEnd: Int = 32_000,
             targetPlayMode: PadPlayMode = PadPlayMode.ONE_SHOT,
+            viewportHeight: Int = 1_000,
+            viewportWidth: Int = 1_100,
+            fontScale: Float = 1f,
         ): DeckFixture {
             check(GraphicsEnvironment.isHeadless()) { "Use :desktop:desktopLongPressUiTest, not an interactive launcher" }
             val temporaryRoot = File(System.getProperty("java.io.tmpdir"))
@@ -532,6 +1007,7 @@ private class DeckFixture private constructor(
                 systemAudio = ForbiddenRecorder(),
                 autosaveStore = null,
             )
+            val displayOverride = androidx.compose.runtime.mutableStateOf<((SamplerUiState) -> SamplerUiState)?>(null)
             var scene: ImageComposeScene? = null
             try {
                 controller.openProject(project)
@@ -541,10 +1017,10 @@ private class DeckFixture private constructor(
                 check(controller.state.value.pads[1].startFrame == targetStart && controller.state.value.pads[1].endFrame == targetEnd) {
                     "Synthetic project did not load through the public controller"
                 }
-                val readyScene = ImageComposeScene(width = 1_100, height = 1_000, density = Density(1f), coroutineContext = context) {
+                val readyScene = ImageComposeScene(width = viewportWidth, height = viewportHeight, density = Density(1f, fontScale), coroutineContext = context) {
                     ChopLabTheme {
                         OtohiroiDeck(
-                            state = controller.state.collectAsState().value,
+                            state = controller.state.collectAsState().value.let { displayOverride.value?.invoke(it) ?: it },
                             onImportAudio = { error("Native file picker is outside H13") },
                             onToggleMicrophoneRecording = { error("Recording is outside H13") },
                             onToggleVocalRecording = { error("Recording is outside H13") },
@@ -557,7 +1033,7 @@ private class DeckFixture private constructor(
                     }
                 }
                 scene = readyScene
-                return DeckFixture(controller, audioPort, readyScene, directory, project).also { it.settle() }
+                return DeckFixture(controller, audioPort, readyScene, directory, project, displayOverride).also { it.settle() }
             } catch (failure: Throwable) {
                 runCatching { scene?.close() }.onFailure(failure::addSuppressed)
                 runCatching { controller.close() }.onFailure(failure::addSuppressed)
@@ -581,6 +1057,8 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
     val padRequests = mutableListOf<Int>()
     val releasedOwnedPads = mutableListOf<Pair<Int, Long>>()
     var failNextTrigger = false
+    var failNextSourcePlay = false
+    var failNextLoopStart = false
     private var sourceFrames = 0
     @Volatile private var sourcePosition = 0
     @Volatile private var sourcePlaying = false
@@ -591,6 +1069,7 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
         sourcePlaying = false
     }
     override fun playFrom(frame: Int) {
+        if (failNextSourcePlay) { failNextSourcePlay = false; error("test source unavailable") }
         check(frame in 0 until sourceFrames)
         sourcePosition = frame
         sourcePlaying = true
@@ -609,15 +1088,32 @@ private class SilentAudioPort : DesktopSamplerAudioEngine {
             error("test output unavailable")
         }
         padRequests += pad.globalIndex
+        if (forceLoop) loopRequests += pad
         return ++ownership
     }
+    val loopRequests = mutableListOf<PadModel>()
     override fun prepareExclusiveLoopSession(loopPad: PadModel, companionPads: List<PadModel>): DesktopPreparedLoopSession =
-        error("Loop playback is outside H13")
+        DesktopPreparedLoopSession {
+            if (failNextLoopStart) {
+                failNextLoopStart = false
+                throw com.choplab.desktop.audio.DesktopLoopSessionStartupException(IllegalStateException("test loop unavailable"))
+            }
+            object : com.choplab.desktop.audio.DesktopStartedLoopSession {
+                override fun retirePriorPlayback() {
+                    sourcePlaying = false
+                    loopRequests += loopPad
+                    padRequests += loopPad.globalIndex
+                    padRequests += companionPads.map { it.globalIndex }
+                }
+                override fun abandonCandidates() = Unit
+            }
+        }
     override fun releasePad(index: Int) = Unit
     override fun releasePadIfOwned(index: Int, ownership: Long) {
         releasedOwnedPads += index to ownership
     }
-    override fun stopPad(index: Int) = Unit
+    val stoppedPads = mutableListOf<Int>()
+    override fun stopPad(index: Int) { stoppedPads += index }
     override fun stopAll() { sourcePlaying = false }
     override fun close() { sourcePlaying = false }
 }

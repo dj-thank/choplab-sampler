@@ -3,15 +3,15 @@ package com.choplab.desktop
 import java.io.File
 import javax.swing.filechooser.FileNameExtensionFilter
 
-/** Windows currently decodes PCM WAV only; never advertise formats the packaged app cannot open. */
+/** The packaged Windows importer includes FFmpeg for compressed audio and video containers. */
 internal object DesktopAudioImportPolicy {
-    private val extensions = arrayOf("wav")
+    private val extensions = (com.choplab.sampler.source.LocalAudioLibrary.extensions + setOf("choplib","zip")).toTypedArray()
 
     val fileFilter = FileNameExtensionFilter(
-        "音声ファイル（WAV）",
+        "音声・動画・音源セット",
         *extensions,
     )
 
     fun accepts(file: File): Boolean =
-        file.isFile && file.extension.equals("wav", ignoreCase = true)
+        file.isFile && file.extension.lowercase() in extensions
 }

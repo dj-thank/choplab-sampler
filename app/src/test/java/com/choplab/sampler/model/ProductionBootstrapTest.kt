@@ -63,7 +63,7 @@ class ProductionBootstrapTest {
     }
 
     @Test
-    fun scratchReturnPrefersTheActiveLoopThenAnAudibleTransport() {
+    fun scratchReturnRestoresTheCombinedTransportBeforeAnIsolatedLoop() {
         val pads = SamplerUiState().pads.toMutableList().also {
             it[0] = PadModel(0, audio, 0, 500, playMode = PadPlayMode.LOOP)
             it[1] = PadModel(1, audio, 500, 1_000)
@@ -75,7 +75,8 @@ class ProductionBootstrapTest {
         )
         val loop = transport.copy(loopingPadIndex = 0)
 
-        assertEquals(ScratchReturnTarget.PadLoop(0), selectScratchReturnTarget(loop))
+        assertEquals(ScratchReturnTarget.Transport, selectScratchReturnTarget(loop))
+        assertEquals(ScratchReturnTarget.PadLoop(0), selectScratchReturnTarget(loop.copy(transportPlaying = false)))
         assertEquals(ScratchReturnTarget.Transport, selectScratchReturnTarget(transport))
         assertEquals(ScratchReturnTarget.None, selectScratchReturnTarget(SamplerUiState()))
         val songTransport = transport.copy(

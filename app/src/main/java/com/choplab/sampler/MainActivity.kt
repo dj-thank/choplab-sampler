@@ -7,11 +7,23 @@ import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.compose.BackHandler
+import com.choplab.sampler.source.SourceImportViewModel
+import com.choplab.sampler.ui.AudioSourceHub
+import com.choplab.sampler.model.DrumSeparationPhase
+import com.choplab.sampler.source.SourceSection
+import com.choplab.sampler.ui.SpotifySearchPanel
+import com.choplab.sampler.ui.SpotifySourcePicker
+import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,29 +40,49 @@ import com.choplab.sampler.ui.theme.ChopLabTheme
 
 class MainActivity : ComponentActivity() {
     private val samplerViewModel: SamplerViewModel by viewModels()
+    private val sourceViewModel: SourceImportViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if(savedInstanceState==null) sourceViewModel.handleIntent(intent)
         setContent {
             ChopLabTheme {
                 val context = LocalContext.current
                 val state by samplerViewModel.uiState.collectAsStateWithLifecycle()
+                // First frame is not readiness: include autosave recovery in fully-drawn timing.
+                ReportDrawnWhen { !state.isLoading }
                 var pendingAction by rememberSaveable { mutableStateOf(PendingPermissionAction.NONE) }
 
-                val importLauncher = rememberLauncherForActivityResult(
-                    contract = AudioOpenDocumentContract(),
-                ) { uri ->
-                    if (uri == null) {
-                        samplerViewModel.setStatus(documentPickerCanceledMessage(DocumentAction.IMPORT_AUDIO))
-                        return@rememberLauncherForActivityResult
+                val importState by sourceViewModel.hub.state.collectAsStateWithLifecycle()
+                val spotifyState by sourceViewModel.spotify.state.collectAsStateWithLifecycle()
+                val sourceVisible by sourceViewModel.visible.collectAsStateWithLifecycle()
+                var pendingSourceReplace by rememberSaveable { mutableStateOf(false) }
+                val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                    if(uris.isNotEmpty()) sourceViewModel.importUris(uris)
+                }
+                fun useLibrary(id:String) {
+                    if(!externalDocumentActionsEnabled(samplerViewModel.uiState.value)) return
+                    val item=sourceViewModel.hub.state.value.library.firstOrNull { it.id==id }?:return
+                    if(pendingSourceReplace) samplerViewModel.replaceLibrarySource(android.net.Uri.fromFile(sourceViewModel.hub.file(id)),item.title)
+                    else samplerViewModel.addLibrarySource(android.net.Uri.fromFile(sourceViewModel.hub.file(id)),item.title)
+                    pendingSourceReplace=false
+                    sourceViewModel.hub.consumed(id);sourceViewModel.used()
+                }
+                LaunchedEffect(importState.pendingUseId) { importState.pendingUseId?.let(::useLibrary) }
+                BackHandler(enabled=sourceVisible) { sourceViewModel.hide() }
+                val separation = state.drumSeparation
+                LaunchedEffect(separation?.phase, separation?.resultPath) {
+                    if (separation?.phase == DrumSeparationPhase.DONE && separation.resultPath != null) {
+                        val stem = samplerViewModel.consumeDrumSeparationResult()
+                        if (stem != null) sourceViewModel.hub.importFiles(listOf(stem))
+                        samplerViewModel.discardDrumSeparationWork()
                     }
-                    runCatching {
-                        context.contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                        )
-                    }
-                    samplerViewModel.loadAudio(uri)
+                }
+                val separating = separation?.phase == DrumSeparationPhase.RUNNING
+                DisposableEffect(separating) {
+                    // A long on-device separation must not stop because the screen timed out.
+                    if (separating) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
                 }
 
                 val exportLauncher = rememberLauncherForActivityResult(
@@ -89,9 +121,12 @@ class MainActivity : ComponentActivity() {
                     samplerViewModel.saveProject(uri)
                 }
 
-                val projectionManager = remember {
-                    requireNotNull(context.getSystemService(MediaProjectionManager::class.java)) {
-                        "MediaProjectionManager is unavailable on this device"
+                // Recording-only Binder lookup must not run during the first composition.
+                val projectionManager = remember(context) {
+                    lazy(LazyThreadSafetyMode.NONE) {
+                        requireNotNull(context.getSystemService(MediaProjectionManager::class.java)) {
+                            "MediaProjectionManager is unavailable on this device"
+                        }
                     }
                 }
                 val projectionLauncher = rememberLauncherForActivityResult(
@@ -110,7 +145,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     // A foreground media-projection service may still run when notifications
                     // are denied, but the stop action remains available inside the app.
-                    projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                    projectionLauncher.launch(projectionManager.value.createScreenCaptureIntent())
                 }
 
                 fun requestSystemAudioProjection() {
@@ -124,7 +159,7 @@ class MainActivity : ComponentActivity() {
                     if (needsNotificationPermission) {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     } else {
-                        projectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+                        projectionLauncher.launch(projectionManager.value.createScreenCaptureIntent())
                     }
                 }
 
@@ -152,7 +187,10 @@ class MainActivity : ComponentActivity() {
 
                 SamplerScreen(
                     state = state,
-                    onImportAudio = { importLauncher.launch(Unit) },
+                    onImportAudio = { sourceViewModel.show() },
+                    onReplaceAudio = { pendingSourceReplace=true; sourceViewModel.show() },
+                    onSeparateDrums = samplerViewModel::separateDrumsFromCurrentSource,
+                    onCancelDrumSeparation = samplerViewModel::cancelDrumSeparation,
                     onToggleMicrophoneRecording = {
                         if (state.microphoneRecording) {
                             samplerViewModel.stopMicrophoneRecording()
@@ -200,13 +238,40 @@ class MainActivity : ComponentActivity() {
                     },
                     viewModel = samplerViewModel,
                 )
+                if(sourceVisible) AudioSourceHub(
+                    state=importState,canUseAudio=externalDocumentActionsEnabled(state),
+                    onSection=sourceViewModel.hub::section,onQuery=sourceViewModel.hub::query,onSearch=sourceViewModel.hub::search,
+                    onDownload=sourceViewModel.hub::download,
+                    onPickFiles={importLauncher.launch(arrayOf("audio/*","video/mp4","video/webm","application/zip","application/octet-stream"))},
+                    onUse=::useLibrary,onCancel=sourceViewModel::cancelImport,onClose={pendingSourceReplace=false;sourceViewModel.hide()},
+                    spotifyContent={
+                        if(spotifyState.connected) SpotifySearchPanel(
+                            query=spotifyState.searchQuery,results=spotifyState.searchResults,
+                            message=spotifyState.searchMessage.ifEmpty { spotifyState.message },
+                            busy=spotifyState.busy,importBusy=importState.busy,
+                            onQuery=sourceViewModel.spotify::setSearchQuery,onSearch=sourceViewModel.spotify::search,
+                            onAdd=sourceViewModel.spotifySync::addTrack,onLibrary={sourceViewModel.hub.section(SourceSection.LIBRARY)},
+                            onSync=sourceViewModel.spotifySync::syncAgain,onDisconnect=sourceViewModel::disconnectSpotify,
+                        ) else SpotifySourcePicker(spotifyState,importState.busy,SourceImportViewModel.REDIRECT_URI,
+                            sourceViewModel.spotify::login,sourceViewModel::disconnectSpotify,sourceViewModel.spotifySync::syncAgain,
+                            sourceViewModel.hub::importFavorite,{link->startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(link)))},
+                            automaticSync=true,onLibrary={sourceViewModel.hub.section(SourceSection.LIBRARY)})
+                    },
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        sourceViewModel.handleIntent(intent)
+        setIntent(Intent(this,MainActivity::class.java))
     }
 
     override fun onStop() {
         if (shouldInterruptPlaybackOnActivityStop(isChangingConfigurations)) {
             samplerViewModel.handlePlaybackInterruption(PlaybackInterruption.APP_BACKGROUND)
+            samplerViewModel.flushAutosave()
         }
         super.onStop()
     }

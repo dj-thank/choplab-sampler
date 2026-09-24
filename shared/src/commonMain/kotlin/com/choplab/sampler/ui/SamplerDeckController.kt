@@ -1,5 +1,6 @@
 package com.choplab.sampler.ui
 
+import com.choplab.sampler.model.PadTrimBoundary
 import com.choplab.sampler.model.PadTrimSnapshot
 import com.choplab.sampler.model.ProductionCommand
 import com.choplab.sampler.model.RepeatGrid
@@ -71,6 +72,7 @@ interface SamplerDeckController {
     fun triggerPadWithOwnership(index: Int): Long
     fun releasePadIfOwned(index: Int, ownership: Long)
     fun playSourceFrom(frame: Int)
+    fun rechopSourceFrom(frame: Int): Boolean
     fun seekSourcePlayback(frame: Int)
     fun toggleSourcePlayback()
     fun toggleChopPlayback()
@@ -80,22 +82,28 @@ interface SamplerDeckController {
     fun setSelectedPadGain(value: Float)
     fun setSelectedPadStartFrame(frame: Int)
     fun setSelectedPadEndFrame(frame: Int)
+    fun rollPadBoundary(index: Int, boundary: PadTrimBoundary, deltaFrames: Int)
+    fun setPadLoopLayer(index: Int, enabled: Boolean, withPattern: Boolean = false): Boolean
+    fun startPadLoop(index: Int, withPattern: Boolean = false): Boolean
     fun previewPad(index: Int)
     fun restoreSelectedPadTrim(snapshot: PadTrimSnapshot)
     fun setSelectedPadChokeGroup(group: Int)
     fun toggleSelectedPadReverse()
     fun toggleSelectedPadPlayMode() = dispatch(ProductionCommand.ToggleSelectedPadPerformanceMode)
     fun clearSelectedPad()
-    fun fillSelectedPadPattern(grid: RepeatGrid)
-    fun clearSelectedPadPattern()
+    fun fillSelectedPadPattern(grid: RepeatGrid) = dispatch(ProductionCommand.FillSelectedPadPattern(grid))
+    fun clearSelectedPadPattern() = dispatch(ProductionCommand.ClearSelectedPadPattern)
+    fun shiftSelectedPadPattern(offset: Int) = dispatch(ProductionCommand.ShiftSelectedPadPattern(offset))
+    fun clearSelectedPattern() = dispatch(ProductionCommand.ClearSelectedPattern)
     fun createQuickSketch() = dispatch(ProductionCommand.CreateQuickSketch)
+    fun assignWholeSourceToPad() = dispatch(ProductionCommand.AssignWholeSourceToPad)
     fun selectPatternVariation(slot: Int) = dispatch(ProductionCommand.SelectPatternVariation(slot))
     fun duplicateSelectedPatternToOther() = dispatch(ProductionCommand.DuplicateSelectedPatternToOther)
     fun toggleSongSectionPattern(sectionIndex: Int) =
         dispatch(ProductionCommand.ToggleSongSectionPattern(sectionIndex))
     fun toggleSongMode() = dispatch(ProductionCommand.ToggleSongMode)
     fun toggleStep(step: Int)
-    fun clearAllPattern()
+    fun clearAllPattern() = dispatch(ProductionCommand.ClearAllPatterns)
     fun toggleBeatLoopControl()
     fun toggleTransport()
     fun toggleRecordArm()

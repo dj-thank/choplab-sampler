@@ -1,12 +1,13 @@
 package com.choplab.sampler.audio
 
+import com.choplab.sampler.model.withLoopLayer
 import com.choplab.sampler.model.PadModel
 import com.choplab.sampler.model.PadPlayMode
 import com.choplab.sampler.model.ProductionSession
 import com.choplab.sampler.model.ProductionSessionTransition
 import com.choplab.sampler.model.SamplerUiState
 import com.choplab.sampler.model.stopAllPlaybackState
-import com.choplab.sampler.model.vocalCompanionPadIndicesForLoopStart
+import com.choplab.sampler.model.loopCompanionPadIndicesForLoopStart
 
 internal fun startAndroidPadLoopSession(
     engine: SamplerPlaybackEngine,
@@ -16,11 +17,7 @@ internal fun startAndroidPadLoopSession(
 ): Boolean {
     val loopPad = pads.getOrNull(loopPadIndex) ?: return false
     if (!loopPad.isAssigned) return false
-    val companions = if (includeCompanions) {
-        pads.vocalCompanionPadIndicesForLoopStart(loopPadIndex).map(pads::get)
-    } else {
-        emptyList()
-    }
+    val companions = pads.loopCompanionPadIndicesForLoopStart(loopPadIndex, includeVocals = includeCompanions).map(pads::get)
     return engine.startPadLoopSession(loopPad, companions)
 }
 
@@ -38,7 +35,24 @@ internal class AndroidBeatLoopSessionTransaction(
     private val productionSession: ProductionSession,
     private val engine: SamplerPlaybackEngine,
 ) {
-    fun start(state: SamplerUiState, loopPadIndex: Int): AndroidBeatLoopSessionResult {
+    fun changeLayer(state: SamplerUiState, index: Int, enabled: Boolean): AndroidBeatLoopSessionResult {
+        val target = state.withLoopLayer(index, enabled)
+        val candidate = target.pads[index]
+        val plan = productionSession.planEdit(state, target)
+        val admitted = try {
+            state.loopingPadIndex == null || engine.setPadLoopLayer(candidate, enabled)
+        } catch (failure: Throwable) {
+            productionSession.cancel(plan)
+            throw failure
+        }
+        if (!admitted) {
+            productionSession.cancel(plan)
+            return AndroidBeatLoopSessionResult.Rejected
+        }
+        return AndroidBeatLoopSessionResult.Started(productionSession.commit(plan), listOf(candidate))
+    }
+
+    fun start(state: SamplerUiState, loopPadIndex: Int, preserveLayers: Boolean = false): AndroidBeatLoopSessionResult {
         val currentLoopPad = requireNotNull(state.pads.getOrNull(loopPadIndex))
         require(currentLoopPad.isAssigned) { "Beat loop PAD has no audio" }
 
@@ -46,7 +60,7 @@ internal class AndroidBeatLoopSessionTransaction(
         val pads = state.pads.map { candidate ->
             val updated = when {
                 candidate.globalIndex == loopPadIndex -> candidate.copy(playMode = PadPlayMode.LOOP)
-                candidate.playMode == PadPlayMode.LOOP -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
+                candidate.playMode == PadPlayMode.LOOP && currentLoopPad.playMode != PadPlayMode.LOOP && !preserveLayers -> candidate.copy(playMode = PadPlayMode.ONE_SHOT)
                 else -> candidate
             }
             if (updated != candidate) changedPads += updated
@@ -76,4 +90,11 @@ internal class AndroidBeatLoopSessionTransaction(
             changedPads = changedPads,
         )
     }
+}
+
+/** Retire every active loop whose sound is about to be replaced, never the outside core. */
+internal fun stopAndroidReplacedLoopLayers(engine: SamplerPlaybackEngine, state: SamplerUiState, indices: IntRange): Boolean {
+    if (state.loopingPadIndex == null) return true
+    return state.pads.filter { it.globalIndex in indices && it.isAssigned && it.playMode == PadPlayMode.LOOP }
+        .all { engine.setPadLoopLayer(it, enabled = false) }
 }
