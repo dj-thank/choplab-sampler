@@ -1,13 +1,13 @@
 import org.cyclonedx.model.Component
 
 plugins {
-    id("org.cyclonedx.bom") version "3.4.1"
-    id("com.android.application") version "9.3.2" apply false
-    id("com.android.kotlin.multiplatform.library") version "9.3.2" apply false
-    id("org.jetbrains.kotlin.jvm") version "2.4.10" apply false
-    id("org.jetbrains.kotlin.multiplatform") version "2.4.10" apply false
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.10" apply false
-    id("org.jetbrains.compose") version "1.11.1" apply false
+    alias(libs.plugins.cyclonedx)
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.kotlin.multiplatform) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.compose.compiler) apply false
+    alias(libs.plugins.compose.multiplatform) apply false
 }
 
 val choplabVersion = providers.gradleProperty("choplabVersion").orElse("0.0.0-dev")

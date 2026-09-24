@@ -1,18 +1,28 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.jvm)
 }
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 dependencies {
     implementation(project(":shared"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
     // Same ai.onnxruntime API: Windows supplies the desktop JAR, Android the AAR.
-    compileOnly("com.microsoft.onnxruntime:onnxruntime:1.29.0")
-    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
-    testImplementation("junit:junit:4.13.2")
+    compileOnly(libs.onnxruntime.desktop)
+    testImplementation(libs.onnxruntime.desktop)
+    testImplementation(libs.junit)
 }
 
 // Opt-in, synthetic fixture only. No timing threshold is used by the test gate.
