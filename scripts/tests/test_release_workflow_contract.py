@@ -15,7 +15,7 @@ def job_body(name: str, next_name: str) -> str:
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
     def test_android_release_runs_shared_host_contract(self) -> None:
-        android = job_body("build-android", "build-ios")
+        android = job_body("build-android", "build-windows")
 
         self.assertIn(":shared:testAndroidHostTest", android)
         self.assertLess(

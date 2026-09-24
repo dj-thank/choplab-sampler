@@ -13,8 +13,8 @@ class ReleaseManifestTest(unittest.TestCase):
         self.directory = Path(tempfile.mkdtemp(prefix="choplab-release-manifest-"))
         self.addCleanup(lambda: __import__("shutil").rmtree(self.directory, ignore_errors=True))
         for name, content in {
-            "ChopLab-v0.16.2-android-debug.apk": b"android",
-            "ChopLab-v0.16.2-ios-simulator.app.zip": b"ios",
+            "ChopLab-v0.16.2-android-release.apk": b"android",
+            "ChopLab-v0.16.2-windows-app-image.zip": b"windows",
             "ChopLab-v0.16.2-sbom.cdx.json": b"{}",
         }.items():
             (self.directory / name).write_bytes(content)
@@ -49,13 +49,13 @@ class ReleaseManifestTest(unittest.TestCase):
         self.assertEqual("a" * 40, payload["source"]["commit"])  # type: ignore[index]
 
     def test_rejects_missing_platform_artifact(self) -> None:
-        (self.directory / "ChopLab-v0.16.2-android-debug.apk").unlink()
+        (self.directory / "ChopLab-v0.16.2-android-release.apk").unlink()
 
         with self.assertRaisesRegex(ValueError, "exactly one android"):
             self.write()
 
     def test_rejects_missing_required_checksum_sidecar(self) -> None:
-        (self.directory / "ChopLab-v0.16.2-ios-simulator.app.zip.sha256").unlink()
+        (self.directory / "ChopLab-v0.16.2-windows-app-image.zip.sha256").unlink()
 
         with self.assertRaisesRegex(ValueError, "Missing checksum sidecar"):
             self.write()
@@ -76,17 +76,17 @@ class ReleaseManifestTest(unittest.TestCase):
             self.write()
 
     def test_rejects_checksum_mismatch(self) -> None:
-        sidecar = self.directory / "ChopLab-v0.16.2-android-debug.apk.sha256"
+        sidecar = self.directory / "ChopLab-v0.16.2-android-release.apk.sha256"
         sidecar.write_text(
-            f"{'0' * 64}  ChopLab-v0.16.2-android-debug.apk\n",
+            f"{'0' * 64}  ChopLab-v0.16.2-android-release.apk\n",
             encoding="utf-8",
         )
 
         with self.assertRaisesRegex(ValueError, "Checksum mismatch"):
             self.write()
 
-    def test_rejects_windows_binary_on_the_public_surface(self) -> None:
-        name = "ChopLab-v0.16.2-windows-app-image.zip"
+    def test_rejects_debug_binary_on_the_public_surface(self) -> None:
+        name = "ChopLab-v0.16.2-android-debug.apk"
         content = b"windows"
         (self.directory / name).write_bytes(content)
         (self.directory / f"{name}.sha256").write_text(
@@ -94,14 +94,14 @@ class ReleaseManifestTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with self.assertRaisesRegex(ValueError, "Forbidden public windows binary"):
+        with self.assertRaisesRegex(ValueError, "Forbidden public debug_android binary"):
             self.write()
 
     def test_rejects_sidecar_that_declares_another_asset(self) -> None:
-        sidecar = self.directory / "ChopLab-v0.16.2-android-debug.apk.sha256"
+        sidecar = self.directory / "ChopLab-v0.16.2-android-release.apk.sha256"
         digest = hashlib.sha256(b"android").hexdigest()
         sidecar.write_text(
-            f"{digest}  ChopLab-v0.16.2-ios-simulator.app.zip\n",
+            f"{digest}  ChopLab-v0.16.2-windows-app-image.zip\n",
             encoding="utf-8",
         )
 
