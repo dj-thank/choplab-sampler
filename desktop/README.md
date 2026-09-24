@@ -1,65 +1,27 @@
-# ChopLab Windows Desktop
+# ChopLab Windows
 
-This target is the local Windows EXE for ChopLab. It renders the Android-origin おとひろい deck through Compose Multiplatform: the four-step workflow, exact source/chop/beat/save copy, 4 x 4 PAD surface, selected-PAD editor, BANK A–D dock, guided production actions, and 16-step sequencer are the same shared UI source.
+現行0.18.0は `shared` のCompose画面と `jvm-core` の保存/取込/分離処理を使い、Windows controllerがJava Sound、ファイルdialog、録音、provider UIをつなぎます。再構築の計画と実装範囲は [ROADMAP](../docs/ROADMAP.md) が正本です。
 
-## Run locally
+## 起動・package
 
-```powershell
-./gradlew.bat :desktop:test
-./gradlew.bat :desktop:run
-```
-
-The packaged launcher also accepts a `.wav` or `.choplab` path as its first argument, which is used for Windows “Open with” workflows and deterministic loaded-state visual checks.
-
-The visible 4 × 4 PAD page is playable from the computer keyboard using `1234 / QWER / ASDF / ZXCV`. A key-down triggers one assigned PAD and key-up releases that exact PAD. The mapping is intentionally inactive while a source is playing, a recording is active, or a project is loading, and Ctrl/Alt/Meta combinations remain available to Windows shortcuts. Native `ファイル`, `編集`, and `トランスポート` menus expose WAV/project open, save, export, Undo/Redo, source playback, and ALL STOP.
-
-The desktop app supports user-selected WAV import, microphone recording, a driver-exposed Windows playback loopback such as `Stereo Mix`, PAD voice controls, 16-step transport, scratch, four-bar WAV export, Undo/Redo, manual `.choplab` save/open, and app-owned three-generation autosave. Closing first awaits startup state publication, revokes recovered-audio hydration without waiting for a device open, then invalidates and drains any admitted project publication before capturing the resulting snapshot. Recovery, project replacement and save/export status use separate ownership: manual save/export cannot cancel hydration, a failed replacement falls back to recovery, and only a successful replacement supersedes it. Recovered-audio device work has its own revision, so a master-pitch edit wins over queued hydration; playback requested during hydration reports that preparation is in progress, and successful hydration restores the recovery status. A failed pitch reload stops the retained source instead of leaving old audio playing. Output-device failures retain the recovered source, publish the same actionable error as a normal WAV load, and make subsequent source playback fail safely instead of throwing. Neither a recovery-error placeholder, an unchanged successful recovery, nor the fresh placeholder shown while an explicit startup file has not loaded is persisted unless a later edit owns new work. Close stops live audio before waiting on autosave, performs teardown best-effort so an unavailable device cannot skip the final flush, flushes one scheduled save, waits for an already-running successful save without duplicating a recovery generation, and retries the latest snapshot after a failed save; a newer close revision is persisted once after an older successful body. A loopback input is never silently replaced with a microphone; unsupported drivers return a visible error.
-
-Local source import on Windows is intentionally WAV-only. The chooser disables the All Files option and re-checks the selected file before the existing bounded WAV decoder. Android has a separate audio-MIME picker and platform decoder path; Windows does not advertise MP3 until a packaged, reviewed decoder exists.
-
-Use `診断 > Windows 音声エンドポイント` to run the JNA/WASAPI endpoint probe. It reports the current shared-mode render/capture formats when available and an explicit unavailable reason otherwise; it does not record audio.
-
-## Spotify development login
-
-1. Register a Spotify Developer app for Web API use.
-2. Register the dynamic-port loopback redirect `http://127.0.0.1/callback` (no port in the dashboard entry; the app adds its one-shot local port).
-3. In Development Mode, make sure the app owner has Spotify Premium and the intended Spotify account is on the app allowlist. Development Mode is limited to five authenticated users.
-4. Set only the public client ID in the current shell:
+repository rootから、checkoutに合うJDKで実行します。
 
 ```powershell
-$env:CHOPLAB_SPOTIFY_CLIENT_ID = 'your-public-client-id'
-./gradlew.bat :desktop:run
+.\gradlew.bat :desktop:test
+.\gradlew.bat :desktop:run
+.\gradlew.bat :desktop:packageWindows
 ```
 
-Start `連携 > Spotify Connect パネル` from the native Windows menu. The panel makes the setup state, OAuth progress, retryable errors, current playback, library metadata, and Connect control state visible. It lets the user cancel an in-progress login and treats cancellation or disconnect as authoritative: a late callback cannot reconnect the session. The OAuth session uses Authorization Code with PKCE and keeps access/refresh tokens in memory only. No client secret or token belongs in source control, logs, project archives, or release artifacts.
+app-imageは `desktop/build/windows-app-image/ChopLab/ChopLab.exe`。`app` / `runtime` 等の隣接ファイルを含めて保持します。EXE単体やpackage成功だけで音声出力を確認したとは扱いません。
 
-The public Client ID can be supplied by `CHOPLAB_SPOTIFY_CLIENT_ID` or entered into the panel for the current process only. It is not written to disk, and a malformed environment value fails closed as unconfigured. The panel shows connection state, current playback, an explicit empty/error/populated summary for up to 20 saved-library track titles/artists, pause/resume controls, and recovery guidance for denial, timeout, missing default browser, unavailable loopback port, network failure, expired login, missing Premium or allowlist access, missing Connect devices, rate limits, and temporary provider errors.
+現行launcherは最初の引数に `.wav` / `.choplab` を受け取ります。表示中の4×4PADは `1234 / QWER / ASDF / ZXCV` で演奏でき、keyupは元のPADを解放します。録音・loading・source再生中や修飾shortcutとの競合では所有を守ります。native menuからopen/save/export、Undo/Redo、transportへ到達します。
 
-Spotify is deliberately a metadata/playback-control integration. The desktop app does not capture Spotify audio, download Spotify Content, stream-rip, record, extract, or convert Spotify tracks to MP3. Use a user-selected local WAV as the sampler source.
+ローカルchooserの基準はWAVです。オンライン取込で使う外部取得/decode経路とは別であり、新しいpackaged decoderのfixtureが通る前に全形式対応と表示しません。現行loopbackはdriverの「Stereo Mix」等に依存し、対応しない時は理由を表示してmicへ勝手に切り替えません。WASAPI endpoint診断は形式を読むprobeで、出力/input/loopbackの全面採用は段階11です。
 
-Spotify's current official rules require an explicit loopback IP rather than `localhost`, permit dynamically assigned ports for a registered loopback IP literal, recommend PKCE for desktop clients, and impose Development Mode Premium/allowlist limits. See [Redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri), [Authorization Code with PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), [Quota Modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes), and the [Get Playback State reference](https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback).
+## データ・接続・検証
 
-## Build the Windows app image
+制作autosaveとlibraryはapp専用領域にあり、実行ファイルの更新と分けます。既存install scriptはversion/hashに結び付いたapp-imageを保持し、利用者の制作を上書きしません。Previewの専用設定/autosave/library/cache/lock分離は段階1Cで検証します。
 
-```powershell
-./gradlew.bat :desktop:packageWindows
-```
+Spotifyには公開Client IDを設定し、PKCEのOAuthで接続します。tokenをsource/log/projectへ保存しません。現行のお気に入り自動取込は曲情報をYouTube候補へ照合し、取得・decode・library保存の成功後に使える音声となります。選択式への刷新は段階3です。登録/redirect/mode/scopeは採用時の公式設定と実accountを照合し、UI表示だけでprovider成功としません。
 
-The generated self-contained launcher is under `desktop/build/windows-app-image/ChopLab/ChopLab.exe`. This is an app-image containing a private Java runtime, not yet a signed installer or public release.
-
-The embedded desktop version comes from the same `choplabVersion` property used by Android/iOS release metadata. Every GitHub PR touching the desktop target runs the Windows test/package/install workflow and uploads the app-image plus an EXE SHA-256 receipt. A `v*` GitHub Release also packages the Windows app-image beside the Android APK and iOS Simulator preview.
-
-## Install for daily use
-
-After packaging, install the exact app-image into a version-and-hash-bound user directory and create Start Menu/Desktop shortcuts:
-
-```powershell
-$release = python scripts/release_metadata.py | ConvertFrom-Json
-./scripts/install-windows-app.ps1 `
-  -AppImage 'desktop/build/windows-app-image/ChopLab' `
-  -Version $release.version
-```
-
-The destination is `%LOCALAPPDATA%\Programs\ChopLab\<version>-<app-image-hash-prefix>`. The underlying full SHA-256 covers every launcher, runtime, library, and resource file in deterministic relative-path order and is recorded in the install receipt. Re-running the command with identical bytes is idempotent; different or tampered bytes never overwrite/reuse that immutable app-image directory. Older app versions are retained, while the two `ChopLab.lnk` shortcuts move to the exact newly selected EXE. The installer never removes or rewrites `%LOCALAPPDATA%\ChopLab\projects`, where app-owned autosaves live.
-
-This app-image is self-contained but not a single-file program; keep its runtime directory together. It is not a code-signed MSI/MSIX, so Windows reputation/signing remains a separate release boundary.
+Windows配布物はWindowsで起動・応答・停止、native dialog、音声routeを試し、対象revisionと全app-image bytesを結果に結び付けます。詳しくは [TESTING](../docs/TESTING.md)、[RELEASE](../docs/RELEASE.md)、[PRIVACY](../PRIVACY.md) を参照してください。

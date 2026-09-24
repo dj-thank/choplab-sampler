@@ -24,10 +24,6 @@ compile_commands.json
 # Codex/local execution artifacts
 /.codex-log/
 /codex-logs/
-/work/capture-window.ps1
-/work/click-window.ps1
-/work/desktop-quality-luna-project-ledger.json
-/work/device-evidence/
 *.apk
 *.aab
 *.ipa
@@ -53,9 +49,6 @@ compile_commands.json
 *.opus
 *.zip.tmp
 
-# Generated iOS project/build output
-/ios/ChopLab.xcodeproj/
-/ios/build/
 
 # Local environment
 .env
@@ -69,9 +62,14 @@ compile_commands.json
 /app/src/test/resources/generated/
 
 # Private import runtime and read-only dependency references
-/work/media-tools/
-/work/separator-models/
-/work/vendor-reference/
-/work/audio-source-intent.json
 
-/work/source-seed-files.tsv
+# Generated local work and user projects
+/work/
+/outputs/
+*.choplab
+*.choplib
+*.onnx
+engine/build/
+core/build/
+ui/build/
+jvm/build/

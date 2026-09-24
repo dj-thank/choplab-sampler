@@ -1,52 +1,48 @@
-# Android testing strategy
+# 検証の契約
 
-## Layers and claims
+変更の影響に合う最小の意味ある試験から始め、必要なCIを完了して差分を確認します。結果の索引は [ROADMAP](ROADMAP.md)、詳細はrevisionに束縛されたPR/CI artifactに置きます。同じ入力の無変更な高コスト試験を毎回やり直す必要はありません。
 
-| Layer | Tooling | What it proves | What it does not prove |
-|---|---|---|---|
-| LOCAL | JUnit and pure Kotlin policies | state machines, viewport math, boundary contracts | Android framework behavior |
-| COMPOSE_INSTRUMENTATION | Compose UI test APIs and Accessibility Test Framework | deterministic gestures, semantics, labels, state, 48 dp targets, common accessibility defects | TalkBack speech or physical touch feel |
-| FRAMEWORK_NODE | `UiAutomation` / `AccessibilityNodeInfo` and UI Automator 2.4.0 | nodes and actions exposed to an Android accessibility service, framework depth-first tree order, advertised focus actions, custom-action dispatch | actual accessibility-focus movement, TalkBack's traversal policy, or TTS wording |
-| DEVICE | physical Pixel evidence | retained-data install, real lifecycle/audio/microphone/service behavior | subjective quality |
-| HUMAN_GO | a person using TalkBack and the phone | spoken clarity, one-hand comfort, audio quality | reproducible automated regression coverage |
+## 層と言えること
 
-Never promote a result across these boundaries. In particular, a Compose semantics callback is not a TalkBack action, and an emulator microphone is not physical microphone evidence.
+| 層 | 言えること | 言えないこと |
+|---|---|---|
+| LOCAL unit/host/DSP | reducer、範囲、保存、取消、fixtureに対する音声差/性能 | 実端末の音・権限・provider・主観品質 |
+| Compose / ImageComposeScene / Xvfb | state、geometry、semantics、合成入力、48dp、選択した画面 | native dialog、physical touch、マイク、読み上げ |
+| Android instrumentation / framework node / emulator | Android frameworkのnode/action/gesture、選択したemulator上の動作 | TalkBackが実際に何を読むか、物理音・route品質 |
+| DEVICE | 指定bytes・機種・routeのinstall、lifecycle、音声/録音/割込み | 全機種保証、人間の品質評価 |
+| PROVIDER | 実アカウントの指定操作と結果・拒否/取消 | 公開配布の適合、人間の受入 |
+| PUBLIC | 公開先からのversion/signature/hash/内容readback | 実機品質、Human GO |
+| HUMAN_GO | 人間による試聴、TalkBack、操作感、製品受入 | 全自動回帰の代替 |
 
-## Commands
+`LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` は別の境界です。必要な層を省略・昇格せず、scopeと未確認を併記します。historical receipt、画像、health応答、子agentの文章は新しい上位passではありません。
 
-Run the complete local gate from the repository root with JDK 17 and the configured Android SDK:
+## 0.18.0 moduleのコマンド
 
-```powershell
-.\gradlew.bat clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --max-workers=1 --no-watch-fs
-```
-
-Run the deterministic waveform suite on one explicitly selected emulator or device. Do not use Gradle's all-connected-device task when a retained-data Pixel is also attached:
+checkoutのJDK/SDKを設定してrepository rootから実行します。Windowsは `gradlew.bat`、他hostは `./gradlew` を使います。
 
 ```powershell
-adb -s <serial> install -r app\build\outputs\apk\debug\app-debug.apk
-adb -s <serial> install -r app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk
-adb -s <serial> shell am instrument -w -r `
-  -e class com.choplab.sampler.ui.SourceWaveformDeviceTest `
-  com.choplab.sampler.test/androidx.test.runner.AndroidJUnitRunner
+.\gradlew.bat :shared:desktopTest :shared:testAndroidHostTest :jvm-core:test :desktop:test
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+.\gradlew.bat :desktop:packageWindows
 ```
 
-`SourceWaveformDeviceTest` renders in-memory PCM and does not read or mutate project autosaves. Physical retained-data deployment must continue to use `scripts/collect-device-evidence.ps1`, which performs signer, package, version, APK readback, autosave, and terminal-state checks fail closed.
+関連するUI suiteと公開surface/配布検査も選びます。新module/Preview variantを追加したPRで実在するtask名をROADMAP/CIへ反映し、全体 `check`だけで全module実行とみなしません。文書だけならリンク、契約の整合、機密/個人path、必須CIを確認し、fresh buildと報告しません。
 
-## Virtual device policy
+## 必須の振る舞い
 
-Use the ChopLab-only configuration in `config/choplab-review-avd.json` for repeatable framework-node regression. Set `CHOPLAB_AVD_HOME` to an isolated directory, then use the repository scripts:
+- editing: 純reducer、plan/effect/commit/cancel、revision、Undo/Redo、busy/no-op、対象を固定した確認、stale job拒否。
+- persistence: roundtrip、hash/channel/frame、未知schema/重複/path/ZIP bomb/上限、atomic publish、中断/容量不足、復旧3世代とUndo資産保全。
+- audio: [AUDIO](AUDIO.md) の固定fixture、command frame、block一致、左右、quantize/tail、停止/steal/loopと負経路。
+- UI: SOURCE→CHOP→PAD→step→再生→書出し→保存→再開→Undoの通し、文字倍率1.3/2.0、scroll/focus/keyboard。kit変更・loop・record/interrupt/route loss・共有/.choplib・アクセス不能資産を追加。
+- online/AI: fake contractの後に明示された実accountで確認。取消/429/失効/遅い応答、metadataと音声の分離を試す。
+- package: Windowsの実app-imageをWindowsで起動/停止、native処理を確認。Androidは対象variantのlint/assemble、signature/package/version/hashをreadback。
 
-```powershell
-$env:CHOPLAB_AVD_HOME = 'F:\CodexData\ChopLab\avd' # local example; never commit a machine path
-.\scripts\check-choplab-review-avd.ps1
-.\scripts\provision-choplab-review-avd.ps1 -InstallMissingImage
-.\scripts\start-choplab-review-avd.ps1
-.\scripts\write-build-provenance.ps1 -OutputPath work\build-provenance.json
-.\scripts\run-choplab-review-avd-tests.ps1 -Serial emulator-5592 -BuildProvenancePath work\build-provenance.json
-```
+## 実機の所有
 
-Provisioning creates only the pinned AVD and refuses to replace an incomplete or mismatched existing AVD. Starting uses the tracked-process registry, 4096 MiB, no snapshots, and disables emulator Bluetooth emulation because the Google Play API 36 image reproducibly produced Bluetooth/startup crashes in the headless review configuration. The runner rejects every non-emulator serial, so it cannot fall through to a connected Pixel. It also requires a tracked-clean HEAD/tree and a matching build-provenance JSON before installation. It runs the complete deterministic waveform suite at portrait font scales 1.0/1.3/2.0 and landscape 1.0. Each run must produce exactly one positive `OK (N tests)` summary and no JUnit failure, instrumentation failure/abort or process-crash marker; zero tests and ambiguous summaries fail closed. The observed count is recorded in each receipt run, so adding or removing a test cannot make a successful suite fail only because a script constant drifted. The runner also checks fatal/ANR logs, restores and reads back font/rotation settings, and force-stops ChopLab.
+ADBは一つの明示serialだけを対象にし、全connected device taskを使いません。install前にowner/lease、対象APKと署名、残すデータを確認します。無断uninstallや端末初期化を行いません。合成fixtureと隔離profileを優先し、最終状態をreadbackして解放します。
 
-Accessibility Test Devices are intentionally not used for TalkBack because their reduced system image omits or disables Settings/SystemUI components. AVD results remain separate from physical Pixel and HUMAN_GO evidence.
+既存の `config/choplab-review-avd.json` とemulator runnerは、対象AVD・source provenance・実test数・fatal/ANR・font/rotation復元を検査します。テストをcompileしただけでは実行済みになりません。emulator runnerがphysical serialを拒否する保護を保持してください。
 
-Primary references and fixed reference-repository revisions are recorded in `docs/research/android-audio-accessibility-reference-review-2026-08-17.md`.
+性能試験はwarm-up、rate/buffer、機種、OS、冷間/熱時、反復数、p99/最大/underrunを添えます。サイズは同じbuild種別・圧縮形式で測り、初回DL・展開・利用者素材/cacheを分けます。human確認は最大5項目に絞り、未回答は未確認のまま残します。
+
+研究資料は [Android audio/accessibility review](research/android-audio-accessibility-reference-review-2026-08-17.md) に保存しています。資料の日時とsource revisionを現在の検証結果へ読み替えません。

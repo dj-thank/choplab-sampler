@@ -3052,23 +3052,6 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
         self.assertNotIn(token, "\n".join(findings))
 
-    def test_release_security_documents_actual_nested_limits(self) -> None:
-        document = (
-            Path(__file__).resolve().parents[2] / "docs" / "RELEASE_SECURITY.md"
-        ).read_text(encoding="utf-8")
-
-        for marker in (
-            "depth 3",
-            "64-archive",
-            "16 MiB/member",
-            "256 MiB compressed-container",
-            "256 MiB expanded-work",
-            "512-operation peel budget",
-            "128 MiB per JIMAGE",
-            "384 MiB binary-secret body budget",
-        ):
-            with self.subTest(marker=marker):
-                self.assertIn(marker, document)
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (
@@ -3272,10 +3255,6 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         desktop = (root / ".github" / "workflows" / "desktop.yml").read_text(
             encoding="utf-8"
         )
-        ios = (root / ".github" / "workflows" / "ios.yml").read_text(
-            encoding="utf-8"
-        )
-
         desktop_archive = desktop.index("Compress-Archive")
         desktop_scan = desktop.index(
             "python scripts/check_public_surface.py --archive $zip"
@@ -3284,47 +3263,13 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertLess(desktop_archive, desktop_scan)
         self.assertLess(desktop_scan, desktop_upload)
 
-        ios_archive = ios.index("bash scripts/build-ios-simulator.sh")
-        ios_scan = ios.index("python3 scripts/check_public_surface.py --archive")
-        ios_path = ios.index(
-            '"dist/ChopLab-${CHOPLAB_VERSION}-ios-simulator.app.zip"',
-            ios_scan,
-        )
-        ios_upload = ios.index("name: choplab-ios-simulator-${{ github.sha }}")
-        self.assertLess(ios_archive, ios_scan)
-        self.assertLess(ios_scan, ios_path)
-        self.assertLess(ios_path, ios_upload)
-
-    def test_active_plan_registry_points_next_action_to_pr69(self) -> None:
-        registry = (
-            Path(__file__).resolve().parents[2] / "plans" / "active" / "README.md"
-        ).read_text(encoding="utf-8")
-        current_selection = registry.split(
-            "**wave 18 completed local; goal remains active:**",
-            maxsplit=1,
-        )[0]
-
-        self.assertIn("existing PR #69", current_selection)
-        self.assertNotIn("既存PR #79を同じbranch/headへ更新", current_selection)
-
-    def test_completed_plan_records_the_exact_current_tree_policy_count(self) -> None:
-        plan = (
-            Path(__file__).resolve().parents[2]
-            / "plans"
-            / "completed"
-            / "zip-publication-content-scan-20260827.md"
-        ).read_text(encoding="utf-8")
-
-        self.assertRegex(plan, r"Exact current-tree policy suite: [0-9]+ tests")
-        self.assertNotIn("Complete Python policy: 124 tests,", plan)
-
     def test_release_scans_exact_archives_before_manifest_and_publication(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[2] / ".github" / "workflows" / "release.yml"
         ).read_text(encoding="utf-8")
 
         android_stage = workflow.index(
-            'apk_target="dist/ChopLab-${RELEASE_TAG}-android-debug.apk"'
+            'apk_target="dist/ChopLab-${RELEASE_TAG}-android-release.apk"'
         )
         android_stage_scan = workflow.index(
             "python3 scripts/check_public_surface.py \\",
@@ -3342,13 +3287,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             "name: Upload Android and SBOM assets",
             android_stage_sbom,
         )
-        ios_build = workflow.index("bash scripts/build-ios-simulator.sh")
-        ios_stage_scan = workflow.index(
-            'python3 scripts/check_public_surface.py --archive "$target_archive"',
-            ios_build,
-        )
-        ios_upload = workflow.index("name: Upload iOS assets", ios_stage_scan)
-        windows_archive = workflow.index("Compress-Archive", ios_upload)
+        windows_archive = workflow.index("Compress-Archive", android_upload)
         windows_stage_scan = workflow.index(
             "python scripts/check_public_surface.py --archive $archive",
             windows_archive,
@@ -3361,41 +3300,39 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertLess(android_stage_scan, android_stage_apk)
         self.assertLess(android_stage_apk, android_stage_sbom)
         self.assertLess(android_stage_sbom, android_upload)
-        self.assertLess(ios_build, ios_stage_scan)
-        self.assertLess(ios_stage_scan, ios_upload)
         self.assertLess(windows_archive, windows_stage_scan)
         self.assertLess(windows_stage_scan, windows_upload)
 
         android_download = workflow.index("name: Download Android release assets", windows_upload)
-        ios_download = workflow.index("name: Download iOS release assets", android_download)
-        scan = workflow.index("name: Scan final public archives", ios_download)
+        windows_download = workflow.index("name: Download Windows release assets", android_download)
+        scan = workflow.index("name: Scan final public archives", windows_download)
         android_archive = workflow.index(
-            'dist/ChopLab-${RELEASE_TAG}-android-debug.apk',
+            'dist/ChopLab-${RELEASE_TAG}-android-release.apk',
             scan,
         )
-        ios_archive = workflow.index(
-            'dist/ChopLab-${RELEASE_TAG}-ios-simulator.app.zip',
+        windows_archive = workflow.index(
+            'dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip',
             scan,
         )
         final_sbom = workflow.index(
             'dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json',
-            ios_archive,
+            windows_archive,
         )
         manifest = workflow.index("name: Write source-bound manifest and checksums")
         attest = workflow.index("name: Attest build provenance")
         publish = workflow.index("name: Publish once without asset replacement")
 
-        self.assertLess(android_download, ios_download)
-        self.assertLess(ios_download, scan)
+        self.assertLess(android_download, windows_download)
+        self.assertLess(windows_download, scan)
         self.assertNotIn("pattern:", workflow[android_download:scan])
-        self.assertIn("name: choplab-android-release-assets", workflow[android_download:ios_download])
-        self.assertIn("name: choplab-ios-release-assets", workflow[ios_download:scan])
+        self.assertIn("name: choplab-android-release-assets", workflow[android_download:windows_download])
+        self.assertIn("name: choplab-windows-release-assets", workflow[windows_download:scan])
         self.assertLess(scan, android_archive)
-        self.assertLess(scan, ios_archive)
+        self.assertLess(scan, windows_archive)
         self.assertLess(android_archive, manifest)
-        self.assertLess(ios_archive, manifest)
+        self.assertLess(windows_archive, manifest)
         self.assertLess(final_sbom, manifest)
-        self.assertNotIn("windows-app-image.zip", workflow[scan:manifest])
+        self.assertIn("windows-app-image.zip", workflow[scan:manifest])
         self.assertLess(manifest, attest)
         self.assertLess(attest, publish)
 

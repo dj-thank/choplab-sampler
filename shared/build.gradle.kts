@@ -12,15 +12,6 @@ kotlin {
         withHostTest {}
     }
     jvm("desktop")
-    iosArm64()
-    iosSimulatorArm64()
-
-    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
-        binaries.framework {
-            baseName = "ChopLabShared"
-            isStatic = true
-        }
-    }
 
     sourceSets {
         commonMain.dependencies {
