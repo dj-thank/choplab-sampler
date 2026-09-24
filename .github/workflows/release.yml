@@ -136,7 +136,7 @@ jobs:
             :app:assembleRelease \
             cyclonedxBom
 
-      - name: Inspect and stage Android artifact
+      - name: Verify identity and archive content before staging Android artifact
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}

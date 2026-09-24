@@ -107,6 +107,7 @@ jobs:
             --apk "${release_apk}" \
             --version "${RELEASE_VERSION}" \
             --version-code "${RELEASE_BUILD_NUMBER}"
+          python3 scripts/check_public_surface.py --archive "${release_apk}"
 
       - name: Instrumentation, accessibility, and XML result verification on API 36 emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
