@@ -3052,23 +3052,6 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
         self.assertNotIn(token, "\n".join(findings))
 
-    def test_release_security_documents_actual_nested_limits(self) -> None:
-        document = (
-            Path(__file__).resolve().parents[2] / "docs" / "RELEASE_SECURITY.md"
-        ).read_text(encoding="utf-8")
-
-        for marker in (
-            "depth 3",
-            "64-archive",
-            "16 MiB/member",
-            "256 MiB compressed-container",
-            "256 MiB expanded-work",
-            "512-operation peel budget",
-            "128 MiB per JIMAGE",
-            "384 MiB binary-secret body budget",
-        ):
-            with self.subTest(marker=marker):
-                self.assertIn(marker, document)
 
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (

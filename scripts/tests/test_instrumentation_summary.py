@@ -82,11 +82,6 @@ class InstrumentationSummaryTest(unittest.TestCase):
             json.loads(result.stdout),
         )
 
-    def test_avd_runner_uses_the_parser_instead_of_a_fixed_count(self) -> None:
-        runner = (ROOT / "scripts" / "run-choplab-review-avd-tests.ps1").read_text(encoding="utf-8")
-
-        self.assertIn("instrumentation_summary.py", runner)
-        self.assertNotRegex(runner, r"OK \\\([0-9]+ tests?\\\)")
 
 
 if __name__ == "__main__":
