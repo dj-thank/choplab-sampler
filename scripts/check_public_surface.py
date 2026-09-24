@@ -1150,7 +1150,7 @@ def is_packaged_runtime_binary_path(
     if container_path is not None:
         return False
     parts = tuple(part.lower() for part in path.parts)
-    if len(parts) != 3 or parts[0] != "choplab":
+    if len(parts) != 3 or parts[0] not in {"choplab", "choplab preview"}:
         return False
     if parts[1] == "tools":
         return parts[2] in PACKAGED_RUNTIME_TOOL_NAMES
@@ -1166,7 +1166,7 @@ def is_packaged_runtime_binary_path(
 def is_digest_verified_runtime_path(path: PurePosixPath) -> bool:
     """A packaged binary whose identity the app-image records a digest for."""
     parts = tuple(part.lower() for part in path.parts)
-    return len(parts) == 3 and parts[0] == "choplab" and parts[1] in PACKAGED_RUNTIME_MANIFESTS
+    return len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] in PACKAGED_RUNTIME_MANIFESTS
 
 
 def pinned_separator_model_digest() -> str | None:
@@ -1212,7 +1212,7 @@ def packaged_runtime_digest_findings(
 ) -> list[str]:
     """Check a packaged third-party binary against the digest the app-image records."""
     scope = entry.parts[1].lower()
-    manifest_name = PACKAGED_RUNTIME_MANIFESTS[scope]
+    manifest_name = PACKAGED_RUNTIME_MANIFESTS[scope].replace("ChopLab/", entry.parts[0] + "/", 1)
     if len(content) != declared_size:
         return [f"{member_label}: packaged runtime binary was read only in part"]
     raw = read_small_archive_member(archive, manifest_name, PACKAGED_RUNTIME_MANIFEST_LIMIT)

@@ -1,0 +1,345 @@
+name: ChopLab verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  CHOPLAB_SPOTIFY_CLIENT_ID: ${{ vars.CHOPLAB_SPOTIFY_CLIENT_ID }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Enable KVM group permissions
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Check public surface
+        run: python3 scripts/check_repo.py
+
+      - name: Test release policy scripts
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Read release metadata
+        id: release
+        run: python3 scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          # The action defaults to "tools platform-tools"; the obsolete SDK Tools package is
+          # gone from the remote repository, so sdkmanager now fails on it. The step below
+          # installs every component this workflow needs anyway.
+          packages: platform-tools
+
+      - name: Install Android components
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager_status=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$sdkmanager_status" -ne 0 ]; then
+            exit "$sdkmanager_status"
+          fi
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-37.0" \
+            "build-tools;36.0.0" \
+            "emulator" \
+            "system-images;android-36;google_apis;x86_64"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Unit tests, lint, and debug APK
+        run: >-
+          ./gradlew --stacktrace
+          :shared:desktopTest
+          :jvm-core:test
+          :shared:testAndroidHostTest
+          :app:testDebugUnitTest
+          :app:lintDebug
+          :app:lintRelease
+          :app:assembleDebug
+
+      - name: Build release APK without publishing
+        shell: bash
+        run: |
+          mkdir -p app/build/reports
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --info :app:assembleRelease 2>&1 \
+            | tee app/build/reports/release-assemble.log
+
+      - name: Inspect final release APK
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          release_apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "${release_apk}"
+          python3 scripts/verify_android_release.py \
+            --apk "${release_apk}" \
+            --version "${RELEASE_VERSION}" \
+            --version-code "${RELEASE_BUILD_NUMBER}"
+
+      - name: Instrumentation, accessibility, and XML result verification on API 36 emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          script: python3 scripts/run_android_instrumentation_gate.py
+
+      - name: Configure trusted Preview signing
+        if: github.repository == 'dj-thank/choplab-sampler' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          CHOPLAB_PREVIEW_KEYSTORE_BASE64: ${{ secrets.CHOPLAB_PREVIEW_KEYSTORE_BASE64 }}
+          CHOPLAB_PREVIEW_STORE_PASSWORD: ${{ secrets.CHOPLAB_PREVIEW_STORE_PASSWORD }}
+          CHOPLAB_PREVIEW_KEY_ALIAS: ${{ secrets.CHOPLAB_PREVIEW_KEY_ALIAS }}
+          CHOPLAB_PREVIEW_KEY_PASSWORD: ${{ secrets.CHOPLAB_PREVIEW_KEY_PASSWORD }}
+          CHOPLAB_PREVIEW_CERT_SHA256: ${{ secrets.CHOPLAB_PREVIEW_CERT_SHA256 }}
+        run: python3 scripts/configure_android_signing.py --channel preview
+
+      - name: Build isolated Preview
+        run: ./gradlew --stacktrace :app:testPreviewUnitTest :app:lintPreview :app:assemblePreview
+
+      - name: Verify isolated Preview identity and archive
+        id: preview_verify
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          mapfile -t apks < <(find app/build/outputs/apk/preview -maxdepth 1 -type f -name '*.apk')
+          [[ "${#apks[@]}" -eq 1 ]] || exit 1
+          args=(--apk "${apks[0]}" --application-id com.choplab.sampler.preview --version "${RELEASE_VERSION}-preview" --version-code "$RELEASE_BUILD_NUMBER")
+          if [[ -n "${CHOPLAB_PREVIEW_CERT_SHA256:-}" ]]; then
+            args+=(--require-signed --expected-cert-sha256 "$CHOPLAB_PREVIEW_CERT_SHA256")
+          fi
+          python3 scripts/verify_android_release.py "${args[@]}"
+          python3 scripts/check_public_surface.py --archive "${apks[0]}"
+
+      - name: Remove transient Preview key
+        if: always()
+        run: python3 scripts/configure_android_signing.py --channel preview --cleanup
+
+      - name: Upload reports and APKs
+        if: always() && steps.preview_verify.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-android-preview-and-reports
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            app/build/outputs/apk/preview/*.apk
+            app/build/reports/**
+            app/build/test-results/**
+            app/build/outputs/androidTest-results/**
+            shared/build/test-results/testAndroidHostTest/**
+
+  windows:
+    name: Test and package EXE
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check public surface
+        shell: pwsh
+        run: python scripts/check_repo.py
+
+      - name: Test release policy scripts
+        shell: pwsh
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Archive committed source for review validation
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          git archive --format=zip --output=dist/choplab-source-snapshot.zip HEAD
+          python scripts/check_public_surface.py --source-archive dist/choplab-source-snapshot.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload committed source snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-source-snapshot
+          if-no-files-found: error
+          path: dist/choplab-source-snapshot.zip
+          retention-days: 7
+
+      - name: Read release metadata
+        id: release
+        shell: pwsh
+        run: python scripts/release_metadata.py --github-output $env:GITHUB_OUTPUT
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Test and package Windows app-image
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:desktopUiQualityTest :desktop:packageWindows :desktop:packageWindowsPreview
+
+      - name: Verify EXE version, record digest, and archive app-image
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          .\scripts\verify-windows-artifact.ps1 `
+            -AppImage 'desktop/build/windows-app-image/ChopLab' `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -MetadataOutput 'dist/ChopLab-windows-metadata.json'
+          Compress-Archive `
+            -Path 'desktop/build/windows-app-image/ChopLab' `
+            -DestinationPath 'dist/ChopLab-windows-app-image.zip' `
+            -CompressionLevel Optimal
+          $zip = Resolve-Path 'dist/ChopLab-windows-app-image.zip'
+          python scripts/check_public_surface.py --archive $zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path -Leaf $zip) |
+            Set-Content -Encoding utf8 "$zip.sha256"
+
+      - name: Test data-preserving Windows user install
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: >-
+          .\scripts\test-install-windows-app.ps1
+          -AppImage 'desktop/build/windows-app-image/ChopLab'
+          -ExpectedVersion $env:RELEASE_VERSION
+
+      - name: Verify and smoke isolated Windows Preview
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          .\scripts\verify-windows-artifact.ps1 -AppImage 'desktop/build/windows-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -ExpectedVersion $env:RELEASE_VERSION
+          .\scripts\smoke-windows-app.ps1 -AppImage 'desktop/build/windows-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe'
+          Compress-Archive -Path 'desktop/build/windows-preview-app-image/ChopLab Preview' -DestinationPath 'dist/ChopLab-windows-preview.zip' -CompressionLevel Optimal
+          python scripts/check_public_surface.py --archive dist/ChopLab-windows-preview.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $zip = Resolve-Path 'dist/ChopLab-windows-preview.zip'
+          (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path -Leaf $zip) | Set-Content -Encoding utf8 "$zip.sha256"
+
+      - name: Upload Windows app-image artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-windows-app-image
+          if-no-files-found: error
+          path: |
+            dist/ChopLab-windows-preview.zip
+            dist/ChopLab-windows-preview.zip.sha256
+          retention-days: 7
+
+      - name: Archive synthetic UI review evidence
+        id: ui_review_archive
+        if: always()
+        shell: pwsh
+        run: |
+          $evidence = 'desktop/build/reports/tests/desktopUiQualityTest/evidence'
+          if (Test-Path $evidence) {
+            New-Item -ItemType Directory -Force -Path dist | Out-Null
+            Compress-Archive -Path "$evidence/*" -DestinationPath dist/choplab-ui-review.zip -Force
+            python scripts/check_public_surface.py --archive dist/choplab-ui-review.zip
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload synthetic UI review evidence
+        if: ${{ always() && steps.ui_review_archive.outcome == 'success' && hashFiles('dist/choplab-ui-review.zip') != '' && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-ui-review
+          if-no-files-found: error
+          path: dist/choplab-ui-review.zip
+          retention-days: 7
+
+  policy:
+    name: History scan and dependency SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout complete reachable history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Test policy scripts
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+      - name: Scan current and historical public surface
+        run: python3 scripts/check_public_surface.py --history
+
+      - name: Scan secrets with pinned gitleaks
+        run: bash scripts/run-gitleaks.sh
+
+      - name: Set up JDK 21
+        if: github.event_name != 'pull_request'
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        if: github.event_name != 'pull_request'
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Resolve dependencies and generate CycloneDX SBOM
+        if: github.event_name != 'pull_request'
+        run: ./gradlew --stacktrace cyclonedxBom
+
+      - name: Verify release-bound CycloneDX JSON
+        if: github.event_name != 'pull_request'
+        run: >-
+          python3 scripts/verify_sbom.py
+          --sbom build/reports/cyclonedx/bom.json
+          --group com.choplab
+          --name ChopLab
+          --version "$(python3 scripts/release_metadata.py | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+
+      - name: Upload dependency evidence
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-cyclonedx-sbom
+          if-no-files-found: error
+          path: |
+            build/reports/cyclonedx/bom.json
+            build/reports/cyclonedx/bom.xml
+          retention-days: 7

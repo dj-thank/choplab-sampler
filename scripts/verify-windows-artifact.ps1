@@ -6,7 +6,9 @@ param(
     [string]$ExpectedVersion,
 
     [Parameter(Mandatory = $false)]
-    [string]$MetadataOutput
+    [string]$MetadataOutput,
+
+    [string]$ExecutableName = 'ChopLab.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,7 +19,8 @@ if ($ExpectedVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
 }
 
 $appImagePath = Resolve-Path -LiteralPath $AppImage
-$exePath = Join-Path $appImagePath 'ChopLab.exe'
+if ($ExecutableName -notin @('ChopLab.exe', 'ChopLab Preview.exe')) { throw 'Unsupported packaged executable name' }
+$exePath = Join-Path $appImagePath $ExecutableName
 if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
     throw "Packaged executable not found: $exePath"
 }
@@ -58,7 +61,7 @@ $metadata = [ordered]@{
     version = $ExpectedVersion
     product_version = $productVersionText
     file_version = $fileVersionText
-    executable = 'ChopLab.exe'
+    executable = $ExecutableName
     executable_sha256 = $exeHash
     commit = $env:GITHUB_SHA
 }

@@ -293,9 +293,12 @@ def verify_manifest(
     expected_version: str,
     expected_version_code: int,
     allow_debug_preview: bool = False,
+    expected_application_id: str = "com.choplab.sampler",
 ) -> None:
     package_name = root.attrib.get("package", "")
-    if package_name != "com.choplab.sampler":
+    if expected_application_id not in {"com.choplab.sampler", "com.choplab.sampler.preview"}:
+        raise VerificationError("Unsupported expected application ID")
+    if package_name != expected_application_id:
         raise VerificationError(f"Unexpected application ID: {package_name!r}")
 
     actual_version = root.attrib.get(f"{ANDROID}versionName")
@@ -395,7 +398,7 @@ def verify_manifest(
                 f"Exported component {component} must require {expected}; found {actual}"
             )
 
-    main_activity = normalize_component_name(package_name, ".MainActivity")
+    main_activity = "com.choplab.sampler.MainActivity"
     if main_activity not in exported:
         raise VerificationError("Launcher MainActivity is not exported")
 
@@ -490,6 +493,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--version-code", type=int, required=True)
+    parser.add_argument("--application-id", default="com.choplab.sampler", choices=["com.choplab.sampler", "com.choplab.sampler.preview"])
     parser.add_argument("--require-signed", action="store_true")
     parser.add_argument("--expected-cert-sha256")
     parser.add_argument("--allow-debug-preview", action="store_true")
@@ -507,6 +511,7 @@ def main() -> int:
         expected_version=args.version,
         expected_version_code=args.version_code,
         allow_debug_preview=args.allow_debug_preview,
+        expected_application_id=args.application_id,
     )
     verify_alignment(args.apk)
     fingerprint = verify_signature(

@@ -72,7 +72,7 @@ class SourceImportViewModel(application:Application):AndroidViewModel(applicatio
     fun handleIntent(intent:Intent?) {
         if(intent==null)return
         val data=intent.data
-        if(data?.scheme=="choplab" && data.host=="spotify") {
+        if(data?.scheme==spotifyCallbackScheme(com.choplab.sampler.BuildConfig.APPLICATION_ID) && data.host=="spotify") {
             spotify.acceptCallback(data.toString());show();hub.section(SourceSection.SPOTIFY);return
         }
         if(intent.action==Intent.ACTION_SEND) {
@@ -84,5 +84,7 @@ class SourceImportViewModel(application:Application):AndroidViewModel(applicatio
         }
     }
     override fun onCleared() { spotifySync.close();hub.close();spotify.close() }
-    companion object { const val REDIRECT_URI="choplab://spotify/callback" }
+    companion object {
+        val REDIRECT_URI = spotifyCallbackScheme(com.choplab.sampler.BuildConfig.APPLICATION_ID) + "://spotify/callback"
+    }
 }

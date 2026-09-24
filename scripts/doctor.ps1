@@ -12,7 +12,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) { Ok (git --version) } else {
 if (Get-Command java -ErrorAction SilentlyContinue) {
     $JavaLine = (& java -version 2>&1 | Select-Object -First 1)
     Ok "java: $JavaLine"
-} else { Warn "java is not installed; install JDK 17" }
+} else { Warn "java is not installed; install JDK 21" }
 
 $SdkRoot = $env:ANDROID_SDK_ROOT
 if (-not $SdkRoot) { $SdkRoot = $env:ANDROID_HOME }
@@ -26,9 +26,7 @@ if ($SdkRoot -and (Test-Path $SdkRoot)) {
     $Packages = @(
         "platforms\android-37.0",
         "build-tools\36.0.0",
-        "platform-tools",
-        "ndk\29.0.14206865",
-        "cmake\3.22.1"
+        "platform-tools"
     )
     foreach ($Package in $Packages) {
         if (Test-Path (Join-Path $SdkRoot $Package)) { Ok "SDK component: $Package" } else { Warn "missing SDK component: $Package" }
@@ -36,11 +34,6 @@ if ($SdkRoot -and (Test-Path $SdkRoot)) {
 } else { Warn "ANDROID_HOME/ANDROID_SDK_ROOT or local.properties is not configured" }
 
 if (Get-Command adb -ErrorAction SilentlyContinue) { Ok ((& adb version | Select-Object -First 1)) } else { Warn "adb is not on PATH" }
-if (Get-Command codex -ErrorAction SilentlyContinue) {
-    Ok "codex: $(& codex --version | Select-Object -First 1)"
-    & codex login status *> $null
-    if ($LASTEXITCODE -eq 0) { Ok "Codex authentication is available" } else { Warn "Codex is not signed in; run codex login" }
-} else { Warn "Codex CLI is not installed or not on PATH" }
 
 if (Test-Path ".git") {
     Ok "Git repository"

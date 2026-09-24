@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-DESKTOP_WORKFLOW = (ROOT / ".github" / "workflows" / "desktop.yml").read_text(encoding="utf-8")
+DESKTOP_WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
 
 def job_body(name: str, next_name: str) -> str:

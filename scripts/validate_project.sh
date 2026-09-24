@@ -1,62 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-EXPECTED_WRAPPER_SHA="7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d"
-
-python "$ROOT/scripts/check_public_surface.py"
-
-tracked_executables="$(git -C "$ROOT" ls-files --stage -- gradlew 'scripts/*.sh')"
-non_executable=()
-while IFS=$'\t' read -r metadata path; do
-  [[ -n "$path" ]] || continue
-  mode="${metadata%% *}"
-  if [[ "$mode" != "100755" ]]; then
-    non_executable+=("$path ($mode)")
-  fi
-done <<< "$tracked_executables"
-if (( ${#non_executable[@]} > 0 )); then
-  printf 'Tracked executable must use Git mode 100755: %s\n' "${non_executable[@]}" >&2
-  exit 1
-fi
-echo "Tracked executable modes OK"
-
-if command -v kotlinc >/dev/null 2>&1; then
-  "$ROOT/scripts/run_pure_logic_smoke.sh"
-else
-  echo "INFO: standalone kotlinc unavailable; using Gradle JVM-core/Desktop tests"
-  "$ROOT/gradlew" :jvm-core:test :desktop:test --no-daemon --max-workers=1 --no-watch-fs
-fi
-
-"$ROOT/gradlew" :desktop:desktopLongPressUiTest --no-daemon --max-workers=1 --no-watch-fs
-
-python - "$ROOT" <<'PY'
-from pathlib import Path
-import sys
-import xml.etree.ElementTree as ET
-
-root = Path(sys.argv[1])
-paths = sorted((root / "app" / "src" / "main").rglob("*.xml"))
-if not paths:
-    raise SystemExit("No Android XML files found")
-for path in paths:
-    ET.parse(path)
-    print(f"XML OK: {path.relative_to(root)}")
-PY
-
-actual_sha="$(sha256sum "$ROOT/gradle/wrapper/gradle-wrapper.jar" | awk '{print $1}')"
-if [[ "$actual_sha" != "$EXPECTED_WRAPPER_SHA" ]]; then
-  echo "Gradle Wrapper checksum mismatch: $actual_sha" >&2
-  exit 1
-fi
-echo "Wrapper SHA-256 OK: $actual_sha"
-
-for wrapper_script in "$ROOT/gradlew" "$ROOT/gradlew.bat"; do
-  if ! grep -Fq -- '-Dfile.encoding=UTF-8' "$wrapper_script"; then
-    echo "Gradle wrapper must force UTF-8: $wrapper_script" >&2
-    exit 1
-  fi
-done
-echo "Gradle wrapper UTF-8 policy OK"
-
-echo "PASS: project-level offline validation completed"
+python3 "$ROOT/scripts/check_repo.py"
+cd "$ROOT"
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+echo 'PASS: repository and policy validation; Gradle and runtime gates run separately'

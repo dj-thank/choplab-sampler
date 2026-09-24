@@ -117,6 +117,16 @@ class ReleaseManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no published target"):
             self.write()
 
+    def test_rejects_unexpected_release_file(self):
+        (self.directory / "extra.txt").write_text("unreviewed", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Unexpected release asset"):
+            self.write()
+
+    def test_rejects_directory_entry(self):
+        (self.directory / "unexpected").mkdir()
+        with self.assertRaisesRegex(ValueError, "Non-regular release asset"):
+            self.write()
+
     def test_rejects_tag_version_mismatch(self) -> None:
         with self.assertRaisesRegex(ValueError, "Tag/version mismatch"):
             self.write(tag="v0.16.1")

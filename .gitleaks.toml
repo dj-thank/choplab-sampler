@@ -1,0 +1,12 @@
+title = "ChopLab source and history secret policy"
+
+[extend]
+useDefault = true
+
+# Test credentials are composed at runtime. No path-wide test exclusion: a real
+# credential copied into a test or release fixture must still fail the scan.
+
+[[allowlists]]
+description = "Historical PAD keyboard label constants, verified as UI labels"
+regexTarget = "match"
+regexes = ['''PAD_(?:KEYS|KEY_LABELS) = "1234QWERASDFZXCV"''']

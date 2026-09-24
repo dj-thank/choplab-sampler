@@ -38,6 +38,9 @@ def sha256(path: Path) -> str:
 
 
 def collect_assets(directory: Path, output: Path) -> list[ReleaseAsset]:
+    for path in directory.iterdir():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"Non-regular release asset: {path.name}")
     files = sorted(
         path
         for path in directory.iterdir()
@@ -141,6 +144,10 @@ def write_manifest(
     assets = collect_assets(directory, output)
     validate_expected_binaries(assets, version)
     validate_checksum_sidecars(directory, assets, version)
+    expected = {f"ChopLab-v{version}-android-release.apk", f"ChopLab-v{version}-windows-app-image.zip", f"ChopLab-v{version}-sbom.cdx.json"}
+    unexpected = {asset.name for asset in assets} - expected
+    if unexpected:
+        raise ValueError(f"Unexpected release asset(s): {sorted(unexpected)}")
     payload: dict[str, object] = {
         "schema_version": 1,
         "product": "ChopLab",

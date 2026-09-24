@@ -3052,14 +3052,13 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
         self.assertNotIn(token, "\n".join(findings))
 
-
     def test_desktop_source_snapshot_is_scanned_before_archive_and_upload(self) -> None:
         workflow = (
-            Path(__file__).resolve().parents[2] / ".github" / "workflows" / "desktop.yml"
+            Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
         ).read_text(encoding="utf-8")
 
         policy_tests = workflow.index("python -m unittest discover -s scripts/tests")
-        public_scan = workflow.index("python scripts/check_public_surface.py")
+        public_scan = workflow.index("python scripts/check_repo.py")
         source_archive = workflow.index("git archive --format=zip")
         archive_scan = workflow.index(
             "python scripts/check_public_surface.py --source-archive "
@@ -3252,7 +3251,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
     def test_platform_archives_are_scanned_after_creation_before_upload(self) -> None:
         root = Path(__file__).resolve().parents[2]
-        desktop = (root / ".github" / "workflows" / "desktop.yml").read_text(
+        desktop = (root / ".github" / "workflows" / "ci.yml").read_text(
             encoding="utf-8"
         )
         desktop_archive = desktop.index("Compress-Archive")

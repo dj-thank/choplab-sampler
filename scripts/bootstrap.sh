@@ -21,7 +21,7 @@ done
 chmod +x gradlew scripts/*.sh
 
 if ! command -v java >/dev/null 2>&1; then
-  echo "ERROR: Java is missing. Install JDK 17." >&2
+  echo "ERROR: Java is missing. Install JDK 21." >&2
   exit 1
 fi
 
@@ -52,9 +52,7 @@ if $INSTALL_SDK; then
   sdkmanager \
     "platform-tools" \
     "platforms;android-37.0" \
-    "build-tools;36.0.0" \
-    "ndk;29.0.14206865" \
-    "cmake;3.22.1"
+    "build-tools;36.0.0"
 fi
 
 ./scripts/validate_project.sh

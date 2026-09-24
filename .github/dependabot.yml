@@ -3,11 +3,10 @@ updates:
   - package-ecosystem: gradle
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "03:00"
       timezone: Asia/Tokyo
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - dependencies
       - gradle
@@ -24,11 +23,13 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
       time: "03:30"
       timezone: Asia/Tokyo
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - dependencies
       - github-actions
+    groups:
+      actions:
+        patterns: ["*"]
