@@ -128,6 +128,9 @@ tasks.register<Exec>("packageWindows") {
     commandLine(
         "jpackage",
         "--type", "app-image",
+        // jdeps plus reflective desktop/HTTPS locale providers; omit compiler tools and ct.sym.
+        "--add-modules", "java.base,java.desktop,java.instrument,java.logging,java.management,java.net.http,java.naming,jdk.httpserver,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets",
+        "--jlink-options", "--strip-debug --no-header-files --no-man-pages --compress=2",
         "--name", "ChopLab",
         "--input", inputDir.absolutePath,
         "--main-jar", tasks.jar.get().archiveFileName.get(),
