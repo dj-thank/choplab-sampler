@@ -90,6 +90,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 | 2026-09-25 | Spotify/YouTube連携の配布条件、pure Kotlin性能、voice補正品質は採用時の判定事項 | 該当段階のspike/terms/実観測が成立するまで完成と表示しない |
 | 2026-09-26 | macOSは開発hostで配布対象外（ADR6）。desktopのmenuを⌘/⌘Q/⌘⇧Zにし、app menuの終了もowned shutdownへ通す。mainではmacOSの終了要求がautosave flushを経ずに終了していた | Windowsの操作は不変。macOSのdata領域（現在 `~/AppData/Local`）、Dock名、Java Sound実音は未対応・未確認 |
 | 2026-09-26 | Mac開発hostで既存desktop機能を使う。取り込みツールはアプリ一式またはPATH/Homebrew、システム音声はループバック装置かScreenCaptureKit、診断はJava Sound、新規データはApplication Support。既存のAppDataは維持。このMacでツール解決、48kHzモノラルのマイク読取、Java Soundへの短音書込、ScreenCaptureKitのWAV、0.2秒音のドラム分離6秒を確認 | WindowsのループバックとWASAPIは不変。人が聴いた音、YouTube/Spotifyの実アカウント、非bundle起動のDock名は未確認 |
+| 2026-09-26 | Macの音源選択はモーダルな音源ハブを閉じてからネイティブのファイルパネルを出す。複数選択が空でも単一選択を採用し、ウィンドウへのドロップも同じ判定でライブラリへ入れる | 実ファイルをパネルから選ぶ操作と、人が聴いた読込結果は未確認 |
 
 ## 履歴の入口
 
