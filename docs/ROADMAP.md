@@ -2,13 +2,17 @@
 
 更新: 2026-09-25。対象はおとひろい / Earth SongのAndroid 10+・Windows。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
+## UIの固定条件
+
+共有タスク「Choplab UIを改善」で選んだ案2の改訂版を維持する。8月版の4工程・大きなPAD・濃い波形面を土台に、右側の自由配置、原曲の連携、試聴音量、可変幅を組み込む。5画面カード案と9月21日の素材棚中心版は採用しない。詳しくは [DESIGN](DESIGN.md)。
+
 ## 現在地・選択中の作業
 
 - 基準: [PR101](https://github.com/dj-thank/choplab-sampler/pull/101) のmerge `2866683a5118681cf518ef47e29cac8baf882edb`、保存tag `archive/pre-rebuild-v0.18.0`。0.18.0/build30のAndroid/Windowsを出発点にする。後続の別ローカルeditor/schema8/9やDDJ-200を混ぜない。
-- sourceの現状: `app / desktop / shared / jvm-core`、4工程、schema7 writer / schemas1–7 reader。新6module、schema10、5画面、AI・4stem等は下表で受入が完了するまでは計画。
-- 選択中: **1C CI・Previewの統合**。1Aは[PR106](https://github.com/dj-thank/choplab-sampler/pull/106)、1Bは[PR107](https://github.com/dj-thank/choplab-sampler/pull/107)で各3件のCI成功後にmainへ統合済み。rootが配布物と新しいCIを読み戻す。
+- sourceの現状: `app / desktop / shared / jvm-core`、4工程、schema7 writer / schemas1–7 reader。新core/JVM/UI、schema10、AI・4stem等は下表で受入が完了するまでは計画。
+- 選択中: **2Aの独立engineを導入**。1Aは[PR106](https://github.com/dj-thank/choplab-sampler/pull/106)、1Bは[PR107](https://github.com/dj-thank/choplab-sampler/pull/107)で各3件のCI成功後にmainへ統合済み。1Cも[PR110](https://github.com/dj-thank/choplab-sampler/pull/110)で3件のCI成功後、mainへ統合済み。新engineは独立moduleで、本番hostは従来のものを維持する。
 - 1Cローカル候補: 専用ID/署名の非debuggable Preview APK、別profileのWindows Previewを作成。APKのpackage/version/署名指紋、Windowsの隔離起動・AWT応答・全所有processの正常終了を確認。実機音声/マイク/Pixel/Humanは未確認。
-- 次の一手: 1Cのexact headでCI・公開面・署名を確認して統合し、2Aのengine/core/jvm/ui候補を接続する。候補単体の成功を2A全体の完了にしない。
+- 次の一手: engineの57契約テストをCIへ追加し、続くcore/JVM・指定UI・Preview接続を別PRで統合する。engineは配置/独立原曲/試聴音量/96frame接続をローカル検証済み。実音・実機・Human受入は未確認。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
@@ -21,8 +25,8 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 | 0 出発点 | 完了 | PR101を通常mergeし保存tagを固定。cleanな専用worktree。#92–97は統合済み、#103は同一patchを照合してclose、#102は見送り・branch保持。source保存点はuser audio/未commit作業のbackupではない |
 | 1A 文書・iOS整理 | main統合済み / PR106 | 9文書と短いAGENTSへ統合。ADR1–5/research保存、ADR6/7、iOS/referenceと旧記録のtracked allowlist整理。参照切れ/iOS依存/必須CIを確認。appの音・編集挙動は変更しない |
 | 1B build・依存 | main統合済み / PR107 | version一元管理を維持しcatalog化。JDK/SDK検出と非破壊setup、依存更新を一組ずつ検証。Android/JVM/Windowsのtest/lint/packageと実行可能性 |
-| 1C CI・Preview | ローカル検証済み・CI統合待ち | push重複除去、既存required check名、source/history/artifact検査、署名/identity。Previewのpackage/authority/OAuth/data/鍵を分離。ja/en名、旧版併存、Windows実package起動 |
-| 2A engine・core・design | 計画 | 1素材→1PAD→step→render→WAV spikeを先に測定。DSP/finite memory成功後にschema10/edit/saveへ拡張。fake portの制作通し、5画面mock/PNG、新旧音A/B。旧app回帰なし |
+| 1C CI・Preview | main統合済み / PR110 | push重複除去、既存required check名、source/history/artifact検査、署名/identity。Previewのpackage/authority/OAuth/data/鍵を分離。ja/en名、旧版併存、Windows実package起動 |
+| 2A engine・core・design | 独立engine導入・後続接続待ち | 1素材→1PAD→step→render→WAV spikeを先に測定。DSP/finite memory成功後にschema10/edit/saveへ拡張。fake portの制作通し、指定された4工程UIの比較/PNG、新旧音A/B。旧app回帰なし |
 | 2B-1 NEXTの制作通し | 計画 | Previewだけに実hostを配線。取込→chop→PAD→step→再生→保存/再開→書出し/Undoを両OSで通す。Java Sound/AudioTrack driverと診断、Pixel CPU/underrunを測る |
 | 2B-2 移植・切替 | 計画 | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
@@ -41,7 +45,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 |---|---|---|
 | 日本語「おとひろい」/英語「Earth Song」、内部ChopLab | [DESIGN](DESIGN.md) / 1C–2B | resource/実APK/Windows/title、2段label廃止、Preview識別 |
 | Android10+とWindows、iOS廃止 | [ADR6](adr/ADR-0006-android-windows-focus.md) / 1A | target/workflow/scriptの残存参照、archive復元経路 |
-| 5画面と共通保存/Undo/再生/BPM | [PRODUCT](PRODUCT.md)・DESIGN / 2A–2B | stateを伴う制作通し、狭画面/横/font1.3/2.0 |
+| 元の4工程とPAD/自由配置の編集構成 | [PRODUCT](PRODUCT.md)・DESIGN / 2A–2B | stateを伴う制作通し、狭画面/横/font1.3/2.0 |
 | 既存のライブchop/Undo/合成drum/安全策 | PRODUCT・[ARCHITECTURE](ARCHITECTURE.md) / 2B-2 | 機能別の移植・意図的廃止・未完をPRへ列挙 |
 | 128PADをA–H×16へ、役割/名前/色自由 | PRODUCT・DESIGN / 2B–4 | selection/identity、保存、音数、scroll/input |
 | 統一DSP・高音質・元音保持 | [AUDIO](AUDIO.md) / 2A–7 | 同一命令/seed/block一致、左右/headroom、帯域/alias/click/tail/ディザ |
@@ -60,7 +64,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 **1B / 1C:** JDK21＋Java/Kotlin target17は候補。Kotlin/CMP/AGP/Gradleの版は採用時に公式互換表と小さなbuildで一組ずつ確認する。既存SDK/local.propertiesを上書きしない。scanner簡素化は検出case/上限/negative fixtureとrelease署名/version/hashを保持してから行う。必須check名 `verify` / `Test and package EXE` / `History scan and dependency SBOM` を移行期に維持し、Windows固有testとpackageはWindowsで走らせる。
 
-**2A:** 初めは1素材1PADのspike。ControlRing/EventRing/LiveReadout、32voice＋fade等の予算、resident/prefetch/cache miss、命令late/full/Stop再同期を定義する。[音の9試験](AUDIO.md) をfixture条件ごと固定し、core/persistenceの拡張前に有限メモリと性能を確認。5画面mockはAndroid縦/横/Windows/font1.3/2.0でPNGを出す。pure Kotlin性能が成立しなければ全面配線前にADRで設計を戻す。
+**2A:** 初めは1素材1PADのspike。ControlRing/EventRing/LiveReadout、32voice＋fade等の予算、resident/prefetch/cache miss、命令late/full/Stop再同期を定義する。[音の9試験](AUDIO.md) をfixture条件ごと固定し、core/persistenceの拡張前に有限メモリと性能を確認。指定4工程の画面はAndroid縦/横/Windows/font1.3/2.0でPNGを出す。pure Kotlin性能が成立しなければ全面配線前にADRで設計を戻す。
 
 **2B:** NEXTはPreview専用の実装選択と専用dataを持つ。旧online取込は段階3までadapterで包む。音声/Undo/保存の一連が通ってから残存機能を移し、保護testと旧codeを最後に削除する。Androidは実native rate/format/buffer/timestamp、Windowsは連続Java Soundを確認。実機CPU条件は2B-1で初めて判定する。
 
