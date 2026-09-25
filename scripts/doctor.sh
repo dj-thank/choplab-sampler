@@ -20,11 +20,11 @@ if command -v java >/dev/null 2>&1; then
   JAVA_LINE="$(java -version 2>&1 | head -n 1)"
   ok "java: $JAVA_LINE"
   JAVA_MAJOR="$(java -version 2>&1 | awk -F[\".] '/version/ {print ($2==1?$3:$2); exit}')"
-  if [[ "$JAVA_MAJOR" != "17" ]]; then
-    warn "JDK 17 is recommended; detected major version ${JAVA_MAJOR:-unknown}"
+  if [[ "$JAVA_MAJOR" != "21" ]]; then
+    warn "JDK 21 is recommended; detected major version ${JAVA_MAJOR:-unknown}"
   fi
 else
-  warn "java is not installed; install JDK 17"
+  warn "java is not installed; install JDK 21"
 fi
 
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -37,9 +37,7 @@ if [[ -n "$SDK_ROOT" && -d "$SDK_ROOT" ]]; then
   for pkg in \
     "platforms/android-37.0" \
     "build-tools/36.0.0" \
-    "platform-tools" \
-    "ndk/29.0.14206865" \
-    "cmake/3.22.1"; do
+    "platform-tools"; do
     if [[ -e "$SDK_ROOT/$pkg" ]]; then ok "SDK component: $pkg"; else warn "missing SDK component: $pkg"; fi
   done
 else
@@ -48,17 +46,8 @@ fi
 
 if command -v adb >/dev/null 2>&1; then
   ok "adb: $(adb version 2>/dev/null | head -n 1)"
-  DEVICE_COUNT="$(adb devices 2>/dev/null | awk 'NR>1 && $2=="device" {n++} END {print n+0}')"
-  info "connected Android devices: $DEVICE_COUNT"
 else
   warn "adb is not on PATH"
-fi
-
-if command -v codex >/dev/null 2>&1; then
-  ok "codex: $(codex --version 2>/dev/null | head -n 1)"
-  if codex login status >/dev/null 2>&1; then ok "Codex authentication is available"; else warn "Codex is installed but not signed in; run: codex login"; fi
-else
-  warn "Codex CLI is not installed or not on PATH"
 fi
 
 if [[ -x ./gradlew ]]; then
@@ -75,4 +64,4 @@ else
   warn "not a Git repository"
 fi
 
-info "Run ./scripts/bootstrap.sh, then ./scripts/verify.sh when the Android SDK is ready."
+info "Run ./scripts/dev-setup.sh, then ./scripts/verify.sh when the Android SDK is ready."

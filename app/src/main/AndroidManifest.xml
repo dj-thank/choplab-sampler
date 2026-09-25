@@ -54,7 +54,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="choplab" android:host="spotify" android:path="/callback" />
+                <data android:scheme="${spotifyScheme}" android:host="spotify" android:path="/callback" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

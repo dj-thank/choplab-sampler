@@ -457,7 +457,7 @@ class DesktopSamplerController(
         }
         if (vocalLoopPadIndex == null) stopAllSounds()
         val output = File(
-            File(System.getProperty("java.io.tmpdir"), "ChopLab/recordings"),
+            DesktopProfile.recordingDirectory(),
             "${kind.name.lowercase()}-${Instant.now().toEpochMilli()}.wav",
         )
         mutableState.value = prepared
@@ -2295,12 +2295,8 @@ class DesktopSamplerController(
         private const val SOURCE_PLAYBACK_PENDING_MESSAGE = "音声の再生を準備しています"
 
         internal fun defaultAutosaveStore(): AtomicProjectStore {
-            val root = System.getenv("LOCALAPPDATA")
-                ?.takeIf(String::isNotBlank)
-                ?.let(::File)
-                ?: File(System.getProperty("user.home"), "AppData/Local")
             return AtomicProjectStore(
-                directory = File(root, "ChopLab/projects"),
+                directory = File(DesktopProfile.dataDirectory(), "projects"),
                 maxResidentPcmBytes = AudioResourceLimits.MAX_DESKTOP_PROJECT_PCM_BYTES,
             )
         }

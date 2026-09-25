@@ -6,9 +6,9 @@
 
 - 基準: [PR101](https://github.com/dj-thank/choplab-sampler/pull/101) のmerge `2866683a5118681cf518ef47e29cac8baf882edb`、保存tag `archive/pre-rebuild-v0.18.0`。0.18.0/build30のAndroid/Windowsを出発点にする。後続の別ローカルeditor/schema8/9やDDJ-200を混ぜない。
 - sourceの現状: `app / desktop / shared / jvm-core`、4工程、schema7 writer / schemas1–7 reader。新6module、schema10、5画面、AI・4stem等は下表で受入が完了するまでは計画。
-- 選択中: **1A 文書・iOS・reference整理**。文書ownerは文書だけ、rootは統合とiOS/code/script、build/CI担当はそれぞれの割当を持つ。別worktreeで作業しrootが最後に統合する。
-- この文書変更の確認対象: 9文書の契約、local link、旧文書のarchive経路、個人情報の混入、差分。APK/実機/providerを新たに試したという主張はしない。統合PR/CIのreadback後に1A全体の状態を更新する。
-- 次の一手: 1Aの全変更を統合し、旧文書pathを参照するvalidator/workflowも更新して必須CIを通す。その後1B、1Cを独立PRで進める。
+- 選択中: **1C CI・Previewの統合**。1Aは[PR106](https://github.com/dj-thank/choplab-sampler/pull/106)、1Bは[PR107](https://github.com/dj-thank/choplab-sampler/pull/107)で各3件のCI成功後にmainへ統合済み。rootが配布物と新しいCIを読み戻す。
+- 1Cローカル候補: 専用ID/署名の非debuggable Preview APK、別profileのWindows Previewを作成。APKのpackage/version/署名指紋、Windowsの隔離起動・AWT応答・全所有processの正常終了を確認。実機音声/マイク/Pixel/Humanは未確認。
+- 次の一手: 1Cのexact headでCI・公開面・署名を確認して統合し、2Aのengine/core/jvm/ui候補を接続する。候補単体の成功を2A全体の完了にしない。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
@@ -19,9 +19,9 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 | 段階 | 状態 | 完成状態と必須の確認 |
 |---|---|---|
 | 0 出発点 | 完了 | PR101を通常mergeし保存tagを固定。cleanな専用worktree。#92–97は統合済み、#103は同一patchを照合してclose、#102は見送り・branch保持。source保存点はuser audio/未commit作業のbackupではない |
-| 1A 文書・iOS整理 | 作業中 | 9文書と短いAGENTSへ統合。ADR1–5/research保存、ADR6/7、iOS/referenceと旧記録のtracked allowlist整理。参照切れ/iOS依存/必須CIを確認。appの音・編集挙動は変更しない |
-| 1B build・依存 | 計画 | version一元管理を維持しcatalog化。JDK/SDK検出と非破壊setup、依存更新を一組ずつ検証。Android/JVM/Windowsのtest/lint/packageと実行可能性 |
-| 1C CI・Preview | 計画 | push重複除去、既存required check名、source/history/artifact検査、署名/identity。Previewのpackage/authority/OAuth/data/鍵を分離。ja/en名、旧版併存、Windows実package起動 |
+| 1A 文書・iOS整理 | main統合済み / PR106 | 9文書と短いAGENTSへ統合。ADR1–5/research保存、ADR6/7、iOS/referenceと旧記録のtracked allowlist整理。参照切れ/iOS依存/必須CIを確認。appの音・編集挙動は変更しない |
+| 1B build・依存 | main統合済み / PR107 | version一元管理を維持しcatalog化。JDK/SDK検出と非破壊setup、依存更新を一組ずつ検証。Android/JVM/Windowsのtest/lint/packageと実行可能性 |
+| 1C CI・Preview | ローカル検証済み・CI統合待ち | push重複除去、既存required check名、source/history/artifact検査、署名/identity。Previewのpackage/authority/OAuth/data/鍵を分離。ja/en名、旧版併存、Windows実package起動 |
 | 2A engine・core・design | 計画 | 1素材→1PAD→step→render→WAV spikeを先に測定。DSP/finite memory成功後にschema10/edit/saveへ拡張。fake portの制作通し、5画面mock/PNG、新旧音A/B。旧app回帰なし |
 | 2B-1 NEXTの制作通し | 計画 | Previewだけに実hostを配線。取込→chop→PAD→step→再生→保存/再開→書出し/Undoを両OSで通す。Java Sound/AudioTrack driverと診断、Pixel CPU/underrunを測る |
 | 2B-2 移植・切替 | 計画 | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
@@ -89,3 +89,5 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 [保存点全体](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb) / [旧docs](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb/docs) / [旧plans](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb/plans) / [旧prompts](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb/prompts)。旧記録を別のcurrent ledgerとして再開しません。
 
 ADR1–5は元の決定を保持し、[ADR6](adr/ADR-0006-android-windows-focus.md) / [ADR7](adr/ADR-0007-concise-development-governance.md) が新しい対象と運用を定めます。[research](research) は調査日時付きの入力資料であり、現行の機能・性能・権限の証明ではありません。
+
+- 2026-09-25: CMP1.12.0はWindows installDistの重複JARを再現したため1.11.1を維持。Kotlin2.4.20/AGP9.4.0/JDK21/出力Java17は対象repositoryで確認済み。JDKの公開truststoreは公開証明書だけを検証し、秘密鍵検出を緩めずに対応した。

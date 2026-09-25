@@ -1,13 +1,13 @@
 package com.choplab.desktop.source
 
 import com.choplab.sampler.source.*
+import com.choplab.desktop.DesktopProfile
 import java.io.File
 
 /** Local acceptance helper. Inputs are user-owned files; no Spotify credentials are accepted. */
 fun main(args:Array<String>) {
     val options=args.toList().chunked(2).associate { it[0] to it.getOrElse(1){""} }
-    val appData=System.getenv("LOCALAPPDATA")?.let(::File) ?: File(System.getProperty("user.home"),"AppData/Local")
-    val library=LocalAudioLibrary(options["--library"]?.let(::File) ?: File(appData,"ChopLab/audio-library")) { DesktopAudioDecoder.decode(it);Unit }
+    val library=LocalAudioLibrary(options["--library"]?.let(::File) ?: File(DesktopProfile.dataDirectory(),"audio-library")) { DesktopAudioDecoder.decode(it);Unit }
     options["--spotify-check"]?.let {
         com.choplab.desktop.provider.SpotifyDesktopSession(onStatus={}).use { session ->
             session.login()

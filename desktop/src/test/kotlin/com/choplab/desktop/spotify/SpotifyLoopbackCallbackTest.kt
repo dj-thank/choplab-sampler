@@ -12,13 +12,18 @@ import kotlin.test.assertFailsWith
 
 class SpotifyLoopbackCallbackTest {
     @Test fun activeWaiterReceivesCodeWithoutResettingBrowserResponse() {
+        // Initialize the HTTP client before starting the server's expiry clock.
+        // A cold Windows CI/JDK client can otherwise consume the five-second
+        // callback lifetime before it even attempts its first connection.
+        val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
         repeat(3) {
             val callback=SpotifyLoopbackCallbackServer()
             val executor=java.util.concurrent.Executors.newSingleThreadExecutor()
             try {
                 callback.expectState("expected-state")
-                val result=executor.submit<SpotifyCallbackResult> { callback.await(Duration.ofSeconds(5)) }
-                val response=HttpClient.newHttpClient().send(request(callback,"code=code-123&state=expected-state"),HttpResponse.BodyHandlers.ofString())
+                val request = request(callback,"code=code-123&state=expected-state")
+                val result=executor.submit<SpotifyCallbackResult> { callback.await(Duration.ofSeconds(30)) }
+                val response=client.send(request,HttpResponse.BodyHandlers.ofString())
                 assertEquals(200,response.statusCode())
                 kotlin.test.assertTrue(response.body().contains("ChopLabへ戻ってください"))
                 assertEquals("code-123",result.get(5,java.util.concurrent.TimeUnit.SECONDS).code)
@@ -102,5 +107,6 @@ class SpotifyLoopbackCallbackTest {
     }
 
     private fun request(callback: SpotifyLoopbackCallbackServer, query: String): HttpRequest =
-        HttpRequest.newBuilder(URI("${callback.redirectUri}?$query")).GET().build()
+        HttpRequest.newBuilder(URI("${callback.redirectUri}?$query"))
+            .timeout(Duration.ofSeconds(10)).GET().build()
 }

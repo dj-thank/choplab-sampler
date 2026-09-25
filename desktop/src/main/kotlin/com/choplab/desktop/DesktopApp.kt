@@ -80,8 +80,7 @@ fun main(args: Array<String>) = application {
     val spotifyState by spotify.state.collectAsState()
     var spotifyPanelVisible by remember { mutableStateOf(false) }
     val sourceHub = remember {
-        val appData=System.getenv("LOCALAPPDATA")?.let(::File) ?: File(System.getProperty("user.home"),"AppData/Local")
-        AudioSourceController(LocalAudioLibrary(File(appData,"ChopLab/audio-library")) { com.choplab.desktop.source.DesktopAudioDecoder.decode(it);Unit },DesktopYoutubeBackend())
+        AudioSourceController(LocalAudioLibrary(File(DesktopProfile.dataDirectory(),"audio-library")) { com.choplab.desktop.source.DesktopAudioDecoder.decode(it);Unit },DesktopYoutubeBackend())
     }
     val sourceState by sourceHub.state.collectAsState()
     val spotifySync = remember { SpotifyAutoImport(spotify.state,sourceHub,spotify::loadImportLibrary) }

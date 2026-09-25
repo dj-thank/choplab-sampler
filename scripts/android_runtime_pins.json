@@ -1,0 +1,305 @@
+{
+  "schema": 1,
+  "verified_at": "2026-09-25",
+  "sources": [
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/library/0.18.1/library-0.18.1.aar",
+      "sha256": "579b5fb480892b1abc2b218c2089699d52759cc8d7ba256bf876453f0365faef",
+      "checksum_url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/library/0.18.1/library-0.18.1.aar.sha256",
+      "checksum_algorithm": "sha256",
+      "checksum": "579b5fb480892b1abc2b218c2089699d52759cc8d7ba256bf876453f0365faef"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:common:0.18.1",
+      "url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/common/0.18.1/common-0.18.1.aar",
+      "sha256": "e0c0530bdbdf203e1598e900085d3582e27360731872872f3a67f23a9b24c0b5",
+      "checksum_url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/common/0.18.1/common-0.18.1.aar.sha256",
+      "checksum_algorithm": "sha256",
+      "checksum": "e0c0530bdbdf203e1598e900085d3582e27360731872872f3a67f23a9b24c0b5"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/ffmpeg/0.18.1/ffmpeg-0.18.1.aar",
+      "sha256": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49",
+      "checksum_url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/ffmpeg/0.18.1/ffmpeg-0.18.1.aar.sha256",
+      "checksum_algorithm": "sha256",
+      "checksum": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.29.0/onnxruntime-android-1.29.0.aar",
+      "sha256": "e97540ca78fe36f6fe2013f82843414fb843b6c7681fb04644cba5e1406662dd",
+      "checksum_url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.29.0/onnxruntime-android-1.29.0.aar.sha1",
+      "checksum_algorithm": "sha1",
+      "checksum": "22c4a984c9c6f86c188b4d5ae792527db4527889",
+      "sha256_verified_by": "fresh full HTTPS AAR download"
+    }
+  ],
+  "members": [
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "res/raw/ytdlp",
+      "apk_path": null,
+      "kind": "raw_ytdlp",
+      "size": 3170726,
+      "sha256": "89a0d9058ea9018e380b7771898ff46e393a1986dcd13fef331693c87ce1fca4"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/arm64-v8a/libpython.so",
+      "apk_path": "lib/arm64-v8a/libpython.so",
+      "kind": "native_elf",
+      "size": 4384,
+      "sha256": "58ba29cfc5a6d88281c07b2b480fb1d8cce1b78f280b002347f792cfd9cf5901"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/arm64-v8a/libpython.zip.so",
+      "apk_path": "lib/arm64-v8a/libpython.zip.so",
+      "kind": "native_zip",
+      "size": 14305904,
+      "sha256": "7edecb6c9bd3a94456168d44911d8aea9f917bedef90c320a29500d92ac3eb62"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/arm64-v8a/libqjs.so",
+      "apk_path": "lib/arm64-v8a/libqjs.so",
+      "kind": "native_elf",
+      "size": 916104,
+      "sha256": "a0fe160a8cd76eec34132f945664856e96687d701e3b1ff28dff44ea1fad13bc"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/armeabi-v7a/libpython.so",
+      "apk_path": "lib/armeabi-v7a/libpython.so",
+      "kind": "native_elf",
+      "size": 3016,
+      "sha256": "33fb8c0fd0a6c2b0d8178f68c05c4d62e09d30d49455ec65ce3a4edb52fa74d0"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/armeabi-v7a/libpython.zip.so",
+      "apk_path": "lib/armeabi-v7a/libpython.zip.so",
+      "kind": "native_zip",
+      "size": 12822487,
+      "sha256": "4d860f1434442c69f128279705806916def2b323d1b43b7fa6ada7dfab0a0571"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/armeabi-v7a/libqjs.so",
+      "apk_path": "lib/armeabi-v7a/libqjs.so",
+      "kind": "native_elf",
+      "size": 634624,
+      "sha256": "f0358430cd1377d77bc44378ce7223418648d4ad3986fc750477127bc220d9ab"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/x86/libpython.so",
+      "apk_path": "lib/x86/libpython.so",
+      "kind": "native_elf",
+      "size": 3240,
+      "sha256": "7984cfef7f1213628043d1b4b025ac2f3697e4f72a3c8dc7a15969af04de36a2"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/x86/libpython.zip.so",
+      "apk_path": "lib/x86/libpython.zip.so",
+      "kind": "native_zip",
+      "size": 13979299,
+      "sha256": "66ebb37673d4f005f56e4b433907026e23064fc74e0a10aadd3144de20d8bc82"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/x86/libqjs.so",
+      "apk_path": "lib/x86/libqjs.so",
+      "kind": "native_elf",
+      "size": 949596,
+      "sha256": "a7ff53d2c939aadf7d6b238e614924c8258be58c67fd974a401ee951e226242e"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/x86_64/libpython.so",
+      "apk_path": "lib/x86_64/libpython.so",
+      "kind": "native_elf",
+      "size": 4272,
+      "sha256": "894dd7e4f8dcc47dd8e87b5d2696e0e6eb03d125683e8b81475682fb8f619e87"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/x86_64/libpython.zip.so",
+      "apk_path": "lib/x86_64/libpython.zip.so",
+      "kind": "native_zip",
+      "size": 14302766,
+      "sha256": "27caa316e09681ada860fdb6b35c1914e541e266e674141361758ac127fe2f15"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "aar_member": "jni/x86_64/libqjs.so",
+      "apk_path": "lib/x86_64/libqjs.so",
+      "kind": "native_elf",
+      "size": 981912,
+      "sha256": "d295c3d13f5cbd17ac8de1a4e4352ac7099617e3cfa2706977a7c2ac7092b487"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/arm64-v8a/libffmpeg.so",
+      "apk_path": "lib/arm64-v8a/libffmpeg.so",
+      "kind": "native_elf",
+      "size": 317120,
+      "sha256": "1b8d5c371ea79e6e7a1930b31f2ad6a2731e48d75ceddc9c36dffda6e0092401"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/arm64-v8a/libffmpeg.zip.so",
+      "apk_path": "lib/arm64-v8a/libffmpeg.zip.so",
+      "kind": "native_zip",
+      "size": 35624931,
+      "sha256": "4664a895283f9f31786be39b0c484c1f96631f02c7c7f9c70a4a4a2da324a092"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/arm64-v8a/libffprobe.so",
+      "apk_path": "lib/arm64-v8a/libffprobe.so",
+      "kind": "native_elf",
+      "size": 233664,
+      "sha256": "a4d4a6d1562aa87934e99ee1a43f8090ec1040659cedb667d6edf3aa08408c5e"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/armeabi-v7a/libffmpeg.so",
+      "apk_path": "lib/armeabi-v7a/libffmpeg.so",
+      "kind": "native_elf",
+      "size": 235228,
+      "sha256": "3d6207c6dd682b080d8784b627a7b2aeb034dba854dc24685517747eddc2e231"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/armeabi-v7a/libffmpeg.zip.so",
+      "apk_path": "lib/armeabi-v7a/libffmpeg.zip.so",
+      "kind": "native_zip",
+      "size": 30476956,
+      "sha256": "5b4a436358e28fc0f0788f5f917dcce9d35c0107b7454ca78dda3191e6dc120c"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/armeabi-v7a/libffprobe.so",
+      "apk_path": "lib/armeabi-v7a/libffprobe.so",
+      "kind": "native_elf",
+      "size": 166580,
+      "sha256": "dcf506cb00e210753afd67c0a9129328f84bdd2fe74b3afc18d986f67da9036f"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/x86/libffmpeg.so",
+      "apk_path": "lib/x86/libffmpeg.so",
+      "kind": "native_elf",
+      "size": 320692,
+      "sha256": "e6a70426f742e41bb5d68a7bfbb84f9df288e51e8e8598e4e075ad5d2b84005f"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/x86/libffmpeg.zip.so",
+      "apk_path": "lib/x86/libffmpeg.zip.so",
+      "kind": "native_zip",
+      "size": 34544829,
+      "sha256": "45652e124a27c823fdd76c31207caaf5879eab1e3c69677dd2e89df4e6bc6b50"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/x86/libffprobe.so",
+      "apk_path": "lib/x86/libffprobe.so",
+      "kind": "native_elf",
+      "size": 209704,
+      "sha256": "2b8ffca5bca69851698a892af21a50677f68e2e30a6c134dcc047e147d27697a"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/x86_64/libffmpeg.so",
+      "apk_path": "lib/x86_64/libffmpeg.so",
+      "kind": "native_elf",
+      "size": 334776,
+      "sha256": "37418c3df1dcf7303fc5b9ec30e6c615dc85110893b57cb070771b19349c55b7"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/x86_64/libffmpeg.zip.so",
+      "apk_path": "lib/x86_64/libffmpeg.zip.so",
+      "kind": "native_zip",
+      "size": 38595503,
+      "sha256": "79a442979bfc0363fcdd7e47f75daf022891e84fc01f3fdd866af785d22321ef"
+    },
+    {
+      "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+      "aar_member": "jni/x86_64/libffprobe.so",
+      "apk_path": "lib/x86_64/libffprobe.so",
+      "kind": "native_elf",
+      "size": 231304,
+      "sha256": "5ca32e9d8514ed21a63510a3cba268db1e2c43ad13fb39e895a32e23127734f2"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/arm64-v8a/libonnxruntime.so",
+      "apk_path": "lib/arm64-v8a/libonnxruntime.so",
+      "kind": "native_elf",
+      "size": 32120992,
+      "sha256": "3a602b463d434d20fbf69cd1b8bdfd2f86a2cb67d08de97aec8f62476fa4ab87"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/arm64-v8a/libonnxruntime4j_jni.so",
+      "apk_path": "lib/arm64-v8a/libonnxruntime4j_jni.so",
+      "kind": "native_elf",
+      "size": 111648,
+      "sha256": "45673d7fba377fe0555892460766051b5993d65c9f65e528dc9d515c07c9f683"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/armeabi-v7a/libonnxruntime.so",
+      "apk_path": "lib/armeabi-v7a/libonnxruntime.so",
+      "kind": "native_elf",
+      "size": 22727712,
+      "sha256": "76fcaa5a49e939295cdd8b2f304a8fda0fa52aeca8fc4dd8215ee29089e00ccb"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/armeabi-v7a/libonnxruntime4j_jni.so",
+      "apk_path": "lib/armeabi-v7a/libonnxruntime4j_jni.so",
+      "kind": "native_elf",
+      "size": 81552,
+      "sha256": "930d6e89a8e16ce820ad9e345bb25efc29bde6d79b525d203ee02f9e9e177886"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/x86/libonnxruntime.so",
+      "apk_path": "lib/x86/libonnxruntime.so",
+      "kind": "native_elf",
+      "size": 38442284,
+      "sha256": "811892fdad82237373e7bc50a2cd6ca687af150cbb3bce9996d29f93d4861128"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/x86/libonnxruntime4j_jni.so",
+      "apk_path": "lib/x86/libonnxruntime4j_jni.so",
+      "kind": "native_elf",
+      "size": 93636,
+      "sha256": "58f6543f7d850f6763fe76fafe282b97ad3f21d72c5590da2e8ef3cbb4094e09"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/x86_64/libonnxruntime.so",
+      "apk_path": "lib/x86_64/libonnxruntime.so",
+      "kind": "native_elf",
+      "size": 38473056,
+      "sha256": "1fbfff77a79d79d4e99c2ae78d048044b689782da7e2b0a268443279ae615566"
+    },
+    {
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "aar_member": "jni/x86_64/libonnxruntime4j_jni.so",
+      "apk_path": "lib/x86_64/libonnxruntime4j_jni.so",
+      "kind": "native_elf",
+      "size": 100032,
+      "sha256": "d1c4b89f0b88d8f9cb722ca5cedca0855001b6922d8abc268822f3c7936b2469"
+    }
+  ]
+}

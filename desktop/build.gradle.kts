@@ -104,67 +104,70 @@ val windowsRuntimeToolchain = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }
 
-tasks.register<Exec>("packageWindows") {
-    dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
-    onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
-
-    val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
-    val destinationDir = layout.buildDirectory.dir(windowsPackageDirectory).get().asFile
-    doFirst {
-        val buildRoot = layout.buildDirectory.get().asFile.canonicalFile.toPath()
-        val packageRoot = destinationDir.canonicalFile.toPath()
-        check(packageRoot != buildRoot && packageRoot.startsWith(buildRoot)) {
-            "Windows app image destination must stay strictly below desktop/build."
+fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean) {
+    tasks.register<Exec>(taskName) {
+        dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
+        onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
+        val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
+        val destinationDir = layout.buildDirectory.dir(outputFolder).get().asFile
+        doFirst {
+            val buildRoot = layout.buildDirectory.get().asFile.canonicalFile.toPath()
+            val packageRoot = destinationDir.canonicalFile.toPath()
+            check(packageRoot != buildRoot && packageRoot.startsWith(buildRoot)) {
+                "Windows app image destination must stay strictly below desktop/build."
+            }
+            executable(windowsRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
+            val imageExecutable = destinationDir.resolve("$imageName/$imageName.exe").canonicalFile.path
+            val running = ProcessHandle.allProcesses().use { handles ->
+                handles.anyMatch { it.info().command().orElse("").equals(imageExecutable, ignoreCase = true) }
+            }
+            check(!running) { "This Windows app image is running; close that exact instance before packaging." }
+            check(destinationDir.deleteRecursively()) { "Windows app image is in use." }
+            check(destinationDir.mkdirs() || destinationDir.isDirectory) { "Cannot create package directory" }
         }
-        executable(windowsRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
-        val executable=destinationDir.resolve("ChopLab/ChopLab.exe").canonicalFile.path
-        val running=ProcessHandle.allProcesses().use { handles ->
-            handles.anyMatch { it.info().command().orElse("").equals(executable,ignoreCase=true) }
-        }
-        check(!running) { "Windows app image is running. Choose a fresh -PwindowsPackageDirectory name." }
-        check(destinationDir.deleteRecursively()) { "Windows app image is in use. Choose a fresh -PwindowsPackageDirectory name." }
-        destinationDir.mkdirs()
-    }
-    commandLine(
-        "jpackage",
-        "--type", "app-image",
-        // jdeps plus reflective desktop/HTTPS locale providers; omit compiler tools and ct.sym.
-        "--add-modules", "java.base,java.desktop,java.instrument,java.logging,java.management,java.net.http,java.naming,jdk.httpserver,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets",
-        "--jlink-options", "--strip-debug --no-header-files --no-man-pages --compress=2",
-        "--name", "ChopLab",
-        "--input", inputDir.absolutePath,
-        "--main-jar", tasks.jar.get().archiveFileName.get(),
-        "--main-class", application.mainClass.get(),
-        "--dest", destinationDir.absolutePath,
-        "--vendor", "ChopLab",
-        "--app-version", choplabVersion.get(),
-        "--description", "ChopLab original-style おとひろい desktop sampler",
-        "--copyright", "ChopLab contributors",
-        // Startup trims for the JDK 21 runtime: skip the hsperfdata mmap and
-        // start with a heap that already fits the deck so the first frames avoid resize GCs.
-        "--java-options", "-XX:-UsePerfData",
-        "--java-options", "-Xms160m",
-        "--java-options", "-Dfile.encoding=UTF-8",
-    )
-    val spotifyClient=providers.environmentVariable("CHOPLAB_SPOTIFY_CLIENT_ID").orElse("").get()
-    require(spotifyClient.isEmpty() || spotifyClient.matches(Regex("[A-Za-z0-9]{16,128}")))
-    if(spotifyClient.isNotEmpty()) args(
-        "--java-options", "-Dchoplab.spotifyClientId=$spotifyClient",
-    )
-}
-
-tasks.named("packageWindows") {
-    doLast {
-        copy {
-            from(rootProject.file("work/media-tools"))
-            into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/tools"))
-        }
-        copy {
-            from(rootProject.file("work/separator-models"))
-            into(layout.buildDirectory.dir("${windowsPackageDirectory.get()}/ChopLab/models"))
+        commandLine(
+            "jpackage", "--type", "app-image",
+            // jdeps plus reflective desktop/HTTPS locale providers; omit compiler tools and ct.sym.
+            "--add-modules", "java.base,java.desktop,java.instrument,java.logging,java.management,java.net.http,java.naming,jdk.httpserver,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets",
+            "--jlink-options", "--strip-debug --no-header-files --no-man-pages --compress=2",
+            "--name", imageName,
+            "--input", inputDir.absolutePath,
+            "--main-jar", tasks.jar.get().archiveFileName.get(),
+            "--main-class", application.mainClass.get(),
+            "--dest", destinationDir.absolutePath,
+            "--vendor", "ChopLab", "--app-version", choplabVersion.get(),
+            "--description", "Earth Song / おとひろい desktop sampler",
+            "--copyright", "ChopLab contributors",
+            "--java-options", "-XX:-UsePerfData",
+            "--java-options", "-Xms160m",
+            "--java-options", "-Dfile.encoding=UTF-8",
+            "--java-options", "-Dchoplab.preview=$preview",
+        )
+        val spotifyClient = providers.environmentVariable("CHOPLAB_SPOTIFY_CLIENT_ID").orElse("").get()
+        require(spotifyClient.isEmpty() || spotifyClient.matches(Regex("[A-Za-z0-9]{16,128}")))
+        if (spotifyClient.isNotEmpty()) args("--java-options", "-Dchoplab.spotifyClientId=$spotifyClient")
+        doLast {
+            project.copy {
+                from(rootProject.file("work/media-tools"))
+                into(destinationDir.resolve("$imageName/tools"))
+            }
+            project.copy {
+                from(rootProject.file("work/separator-models"))
+                into(destinationDir.resolve("$imageName/models"))
+            }
+            project.copy {
+                from(rootProject.file("LICENSE"), rootProject.file("NOTICE.md"))
+                into(destinationDir.resolve(imageName))
+            }
         }
     }
 }
+
+registerWindowsImage("packageWindows", "ChopLab", windowsPackageDirectory, false)
+val windowsPreviewPackageDirectory = providers.gradleProperty("windowsPreviewPackageDirectory").orElse("windows-preview-app-image")
+require(windowsPreviewPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
+require(windowsPreviewPackageDirectory.get() != windowsPackageDirectory.get()) { "Preview and production outputs must be separate" }
+registerWindowsImage("packageWindowsPreview", "ChopLab Preview", windowsPreviewPackageDirectory, true)
 
 tasks.register<JavaExec>("sourceImport") {
     dependsOn(tasks.classes)

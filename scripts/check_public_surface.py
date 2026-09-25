@@ -21,6 +21,11 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 
+if __package__:
+    from .android_runtime_policy import load_pins, runtime_candidate, verify_runtime_content, valid_resource_table
+else:
+    from android_runtime_policy import load_pins, runtime_candidate, verify_runtime_content, valid_resource_table
+
 
 SENSITIVE_SUFFIXES = {
     ".cer",
@@ -1150,7 +1155,7 @@ def is_packaged_runtime_binary_path(
     if container_path is not None:
         return False
     parts = tuple(part.lower() for part in path.parts)
-    if len(parts) != 3 or parts[0] != "choplab":
+    if len(parts) != 3 or parts[0] not in {"choplab", "choplab preview"}:
         return False
     if parts[1] == "tools":
         return parts[2] in PACKAGED_RUNTIME_TOOL_NAMES
@@ -1166,7 +1171,7 @@ def is_packaged_runtime_binary_path(
 def is_digest_verified_runtime_path(path: PurePosixPath) -> bool:
     """A packaged binary whose identity the app-image records a digest for."""
     parts = tuple(part.lower() for part in path.parts)
-    return len(parts) == 3 and parts[0] == "choplab" and parts[1] in PACKAGED_RUNTIME_MANIFESTS
+    return len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] in PACKAGED_RUNTIME_MANIFESTS
 
 
 def pinned_separator_model_digest() -> str | None:
@@ -1212,7 +1217,7 @@ def packaged_runtime_digest_findings(
 ) -> list[str]:
     """Check a packaged third-party binary against the digest the app-image records."""
     scope = entry.parts[1].lower()
-    manifest_name = PACKAGED_RUNTIME_MANIFESTS[scope]
+    manifest_name = PACKAGED_RUNTIME_MANIFESTS[scope].replace("ChopLab/", entry.parts[0] + "/", 1)
     if len(content) != declared_size:
         return [f"{member_label}: packaged runtime binary was read only in part"]
     raw = read_small_archive_member(archive, manifest_name, PACKAGED_RUNTIME_MANIFEST_LIMIT)
@@ -2574,6 +2579,14 @@ def scan_zip(
     candidate_budget = _candidate_budget
     apk_archive = is_apk_archive(source, _container_path)
     apk_content_context = apk_archive or _apk_content_context
+    # Admission is only for a top-level APK, using repository-reviewed AAR pins.
+    runtime_pins = ()
+    admitted_runtime_ids: set[str] = set()
+    if apk_archive and _nested_depth == 0 and _container_path is None:
+        try:
+            runtime_pins = load_pins()
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            return [f"{archive_label}: trusted Android runtime pins unavailable ({type(error).__name__})"]
     apk_binary_budget = _apk_binary_budget
     if apk_content_context and apk_binary_budget is None:
         apk_binary_budget = ApkContentScanBudget()
@@ -2960,6 +2973,52 @@ def scan_zip(
                         f"format {entry_suffix!r} is not supported"
                     )
                     continue
+                # Exact upstream runtime bytes get their own finite, one-copy-per-pin
+                # admission. They still consume the existing root archive work budget.
+                # No APK-provided manifest, basename-only rule, or generic size bypass.
+                runtime_pin = None
+                if runtime_pins:
+                    try:
+                        runtime_pin = runtime_candidate(name, info.file_size, runtime_pins)
+                    except ValueError as error:
+                        findings.append(f"{archive_label}: archive entry {name!r}: {error}")
+                        continue
+                if runtime_pin is not None:
+                    if unsafe_reason or reason or name != entry.as_posix() or is_zip_symbolic_link(info):
+                        findings.append(f"{archive_label}: archive entry {name!r}: noncanonical pinned runtime path/type")
+                        continue
+                    if runtime_pin.identity in admitted_runtime_ids:
+                        findings.append(f"{archive_label}: duplicate pinned Android runtime member {name!r}")
+                        continue
+                    admitted_runtime_ids.add(runtime_pin.identity)
+                    if local_payload_offset is None or info.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
+                        findings.append(f"{archive_label}: archive entry {name!r}: unsupported pinned runtime ZIP encoding")
+                        continue
+                    if info.compress_size > runtime_pin.size + 4096 or info.file_size > max(info.compress_size, 1) * compression_ratio_limit:
+                        findings.append(f"{archive_label}: archive entry {name!r}: pinned runtime compression bounds exceeded")
+                        continue
+                    if not reserve_candidate_work(info.compress_size, info.file_size):
+                        continue
+                    runtime_stream = archive.fp
+                    runtime_position = runtime_stream.tell() if runtime_stream is not None else None
+                    try:
+                        if runtime_stream is None:
+                            raise ValueError("archive stream unavailable")
+                        runtime_content = read_verified_zip_member(
+                            runtime_stream, info, payload_offset=local_payload_offset,
+                            output_limit=runtime_pin.size,
+                            compressed_input_limit=runtime_pin.size + 4096,
+                            lzma_dictionary_limit=lzma_dictionary_limit,
+                        )
+                        if not verify_runtime_content(runtime_pin, runtime_content):
+                            findings.append(f"{archive_label}: archive entry {name!r}: pinned Android runtime SHA-256/type mismatch")
+                    except (EOFError, MemoryError, NotImplementedError, OSError, RuntimeError, ValueError, lzma.LZMAError, struct.error, zipfile.BadZipFile, zlib.error) as error:
+                        findings.append(f"{archive_label}: archive entry {name!r}: pinned runtime read failed ({type(error).__name__})")
+                    finally:
+                        if runtime_stream is not None and runtime_position is not None:
+                            runtime_stream.seek(runtime_position)
+                    continue
+                bounded_resource_table = apk_archive and _nested_depth == 0 and name == "resources.arsc"
                 bounded_apk_binary = False
                 bounded_binary_secret = False
                 bounded_packaged_runtime = False
@@ -2970,6 +3029,7 @@ def scan_zip(
                     entry_suffix in ARCHIVE_BINARY_SUFFIXES
                     or is_known_archive_binary_path(entry)
                     or packaged_runtime_entry
+                    or bounded_resource_table
                 ):
                     if reason is not None:
                         continue
@@ -3352,6 +3412,12 @@ def scan_zip(
                                 f"{archive_label}: archive entry {name!r}: member stream "
                                 "position restore failed"
                             )
+                if bounded_resource_table and not valid_resource_table(content):
+                    findings.append(f"{archive_label}: archive entry {name!r}: invalid Android resource table chunks")
+                    continue
+                if apk_content_context and content.startswith(b"#!"):
+                    findings.append(f"{archive_label}: archive entry {name!r}: unknown executable script in APK")
+                    continue
                 if bounded_jimage:
                     if not has_valid_jimage_header(content, len(content)):
                         findings.append(

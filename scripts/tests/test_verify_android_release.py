@@ -85,6 +85,13 @@ AAPT2_MANIFEST = """N: android=http://schemas.android.com/apk/res/android (line=
 
 
 class AndroidReleaseManifestPolicyTest(unittest.TestCase):
+    def test_preview_identity_is_explicit_and_keeps_main_namespace(self):
+        xml = BASE_MANIFEST.replace('package="com.choplab.sampler"', 'package="com.choplab.sampler.preview"').replace('com.choplab.sampler.DYNAMIC_', 'com.choplab.sampler.preview.DYNAMIC_').replace('android:name=".MainActivity"', 'android:name="com.choplab.sampler.MainActivity"')
+        root = parse_manifest(xml)
+        verify_manifest(root, expected_version="0.16.2", expected_version_code=26, expected_application_id="com.choplab.sampler.preview")
+        with self.assertRaisesRegex(VerificationError, "application ID"):
+            verify_manifest(root, expected_version="0.16.2", expected_version_code=26)
+
     @staticmethod
     def pem_certificate(certificate: bytes) -> str:
         label = "CERTI" + "FICATE"

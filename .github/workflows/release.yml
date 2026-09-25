@@ -15,6 +15,8 @@ concurrency:
 
 env:
   JAVA_VERSION: '21'
+  PYTHONUTF8: '1'
+  CHOPLAB_SPOTIFY_CLIENT_ID: ${{ vars.CHOPLAB_SPOTIFY_CLIENT_ID }}
 
 jobs:
   metadata:
@@ -46,7 +48,8 @@ jobs:
         run: |
           args=(--github-output "$GITHUB_OUTPUT")
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            args+=(--tag "$GITHUB_REF_NAME")
+            git fetch --no-tags origin main:refs/remotes/origin/main
+            args+=(--tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --verify-annotated-tag --check-monotonic --reachable-ref refs/remotes/origin/main)
           fi
           python3 scripts/release_metadata.py "${args[@]}"
 
@@ -84,13 +87,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 21
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
 
       - name: Install Android components
         shell: bash
@@ -103,47 +108,21 @@ jobs:
           sdkmanager \
             "platform-tools" \
             "platforms;android-37.0" \
-            "build-tools;36.0.0" \
-            "ndk;29.0.14206865" \
-            "cmake;3.22.1"
+            "build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       - name: Configure stable release signing
+        if: needs.metadata.outputs.is_tag_release == 'true'
         shell: bash
         env:
-          IS_TAG_RELEASE: ${{ needs.metadata.outputs.is_tag_release }}
-          KEYSTORE_BASE64: ${{ secrets.CHOPLAB_ANDROID_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.CHOPLAB_ANDROID_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.CHOPLAB_ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.CHOPLAB_ANDROID_KEY_PASSWORD }}
-          CERT_SHA256: ${{ secrets.CHOPLAB_ANDROID_CERT_SHA256 }}
-        run: |
-          if [[ "$IS_TAG_RELEASE" != 'true' ]]; then
-            echo 'Manual verification run: building an explicitly unsigned release candidate.'
-            exit 0
-          fi
-          for value_name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD CERT_SHA256; do
-            [[ -n "${!value_name}" ]] || {
-              echo "Missing required tag-release secret: $value_name" >&2
-              exit 1
-            }
-          done
-          keystore="$RUNNER_TEMP/choplab-release.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
-          chmod 0600 "$keystore"
-          [[ -s "$keystore" ]] || {
-            echo 'Decoded Android keystore is empty.' >&2
-            exit 1
-          }
-          {
-            echo "CHOPLAB_ANDROID_KEYSTORE=$keystore"
-            echo "CHOPLAB_ANDROID_STORE_PASSWORD=$STORE_PASSWORD"
-            echo "CHOPLAB_ANDROID_KEY_ALIAS=$KEY_ALIAS"
-            echo "CHOPLAB_ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "CHOPLAB_ANDROID_CERT_SHA256=$CERT_SHA256"
-          } >> "$GITHUB_ENV"
+          CHOPLAB_ANDROID_KEYSTORE_BASE64: ${{ secrets.CHOPLAB_ANDROID_KEYSTORE_BASE64 }}
+          CHOPLAB_ANDROID_STORE_PASSWORD: ${{ secrets.CHOPLAB_ANDROID_STORE_PASSWORD }}
+          CHOPLAB_ANDROID_KEY_ALIAS: ${{ secrets.CHOPLAB_ANDROID_KEY_ALIAS }}
+          CHOPLAB_ANDROID_KEY_PASSWORD: ${{ secrets.CHOPLAB_ANDROID_KEY_PASSWORD }}
+          CHOPLAB_ANDROID_CERT_SHA256: ${{ secrets.CHOPLAB_ANDROID_CERT_SHA256 }}
+        run: python3 scripts/configure_android_signing.py --channel android
 
       - name: Validate, test, lint, build signed release, and generate SBOM
         shell: bash
@@ -157,7 +136,7 @@ jobs:
             :app:assembleRelease \
             cyclonedxBom
 
-      - name: Inspect and stage Android artifact
+      - name: Verify identity and archive content before staging Android artifact
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
@@ -192,6 +171,7 @@ jobs:
             --version "$RELEASE_VERSION"
           mkdir -p dist
           apk_target="dist/ChopLab-${RELEASE_TAG}-android-release.apk"
+          if [[ "$IS_TAG_RELEASE" != 'true' ]]; then apk_target="dist/ChopLab-${RELEASE_TAG}-android-unsigned-ci.apk"; fi
           sbom_target="dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
           cp "${release_apks[0]}" "$apk_target"
           cp "$sbom" "$sbom_target"
@@ -201,6 +181,10 @@ jobs:
           for file in "$apk_target" "$sbom_target"; do
             printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$(basename "$file")" > "$file.sha256"
           done
+
+      - name: Remove transient release key
+        if: always()
+        run: python3 scripts/configure_android_signing.py --channel android --cleanup
 
       - name: Upload Android and SBOM assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -222,7 +206,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 21
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -233,6 +217,10 @@ jobs:
       - name: Test and package Windows app-image
         shell: pwsh
         run: .\gradlew.bat --no-daemon --stacktrace :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:packageWindows
+
+      - name: Smoke packaged Windows app
+        shell: pwsh
+        run: .\scripts\smoke-windows-app.ps1 -AppImage 'desktop/build/windows-app-image/ChopLab'
 
       - name: Test data-preserving Windows user install
         shell: pwsh
@@ -286,6 +274,8 @@ jobs:
     steps:
       - name: Checkout release metadata
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Download Android release assets
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -314,6 +304,7 @@ jobs:
             echo 'Release commit is no longer reachable from main.' >&2
             exit 1
           }
+          python3 scripts/release_metadata.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA" --verify-annotated-tag --check-monotonic --reachable-ref refs/remotes/origin/main
 
       - name: Scan final public archives
         shell: bash
@@ -477,6 +468,27 @@ jobs:
             dist/ChopLab-${{ needs.metadata.outputs.tag }}-windows-app-image.zip
           subject-version: ${{ needs.metadata.outputs.version }}
           sbom-path: dist/ChopLab-${{ needs.metadata.outputs.tag }}-sbom.cdx.json
+
+      - name: Revalidate annotated tag and release history before publication
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          # Refresh refs without changing the source checkout or its built artifacts.
+          # A changed existing tag must fail; only the main tracking ref may advance.
+          git fetch --atomic --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            'refs/tags/*:refs/tags/*'
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+            echo 'Release commit is no longer reachable from main.' >&2
+            exit 1
+          }
+          python3 scripts/release_metadata.py \
+            --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" \
+            --verify-annotated-tag \
+            --check-monotonic \
+            --reachable-ref refs/remotes/origin/main
 
       - name: Publish once without asset replacement
         shell: bash

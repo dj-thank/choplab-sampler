@@ -26,12 +26,20 @@ val releaseSigningAvailable = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
+val previewStorePath = providers.environmentVariable("CHOPLAB_PREVIEW_KEYSTORE").orNull
+val previewStorePassword = providers.environmentVariable("CHOPLAB_PREVIEW_STORE_PASSWORD").orNull
+val previewKeyAlias = providers.environmentVariable("CHOPLAB_PREVIEW_KEY_ALIAS").orNull
+val previewKeyPassword = providers.environmentVariable("CHOPLAB_PREVIEW_KEY_PASSWORD").orNull
+val previewSigningAvailable = listOf(previewStorePath, previewStorePassword, previewKeyAlias, previewKeyPassword)
+    .all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.choplab.sampler"
     compileSdk = 37
 
     defaultConfig {
         applicationId = "com.choplab.sampler"
+        manifestPlaceholders["spotifyScheme"] = "choplab"
         minSdk = 29
         targetSdk = 36
         versionCode = choplabBuildNumber.get()
@@ -45,6 +53,18 @@ android {
     }
 
     signingConfigs {
+        if (previewSigningAvailable) {
+            create("preview") {
+                storeFile = file(requireNotNull(previewStorePath))
+                storePassword = requireNotNull(previewStorePassword)
+                keyAlias = requireNotNull(previewKeyAlias)
+                keyPassword = requireNotNull(previewKeyPassword)
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
         if (releaseSigningAvailable) {
             create("release") {
                 storeFile = file(requireNotNull(releaseStorePath))
@@ -71,6 +91,16 @@ android {
                 "proguard-rules.pro",
             )
         }
+        create("preview") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
+            manifestPlaceholders["spotifyScheme"] = "choplab-preview"
+            // Never inherit the production signer when preview credentials are absent.
+            signingConfig = if (previewSigningAvailable) signingConfigs.getByName("preview") else null
+        }
     }
 
     compileOptions {
@@ -85,7 +115,21 @@ android {
 
     packaging {
         jniLibs.useLegacyPackaging = true
+        // Preserve the exact official AAR bytes audited by android_runtime_pins.json.
+        // NDK strip availability must not change the distributed runtime identity.
+        jniLibs.keepDebugSymbols += setOf(
+            "**/libpython.so", "**/libpython.zip.so", "**/libqjs.so",
+            "**/libffmpeg.so", "**/libffmpeg.zip.so", "**/libffprobe.so",
+            "**/libonnxruntime.so", "**/libonnxruntime4j_jni.so",
+        )
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+}
+
+androidComponents {
+    beforeVariants(selector().withBuildType("preview")) { variantBuilder ->
+        // Test the release-like Preview without making its APK debuggable.
+        variantBuilder.hostTests.getValue(com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE).enable = true
     }
 }
 

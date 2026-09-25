@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
-if (-not (Get-Command java -ErrorAction SilentlyContinue)) { throw "Java is missing. Install JDK 17." }
+if (-not (Get-Command java -ErrorAction SilentlyContinue)) { throw "Java is missing. Install JDK 21." }
 
 $SdkRoot = $env:ANDROID_SDK_ROOT
 if (-not $SdkRoot) { $SdkRoot = $env:ANDROID_HOME }
