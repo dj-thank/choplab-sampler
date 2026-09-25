@@ -25,11 +25,22 @@ application {
     mainClass.set("com.choplab.desktop.DesktopAppKt")
 }
 
+tasks.register<JavaExec>("runLinkedPreview") {
+    group = "application"
+    description = "Open the preserved four-stage editor against the isolated Preview backend"
+    dependsOn("classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.choplab.desktop.next.LinkedPreviewMainKt")
+    systemProperty("choplab.preview", "true")
+}
+
 val choplabVersion = providers.gradleProperty("choplabVersion").orElse("0.0.0")
 
 dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
+    implementation(project(":jvm"))
+    implementation(project(":ui"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
     implementation(libs.jna.core)
@@ -104,7 +115,7 @@ val windowsRuntimeToolchain = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }
 
-fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean) {
+fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean, linked: Boolean = false) {
     tasks.register<Exec>(taskName) {
         dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
         onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
@@ -133,7 +144,7 @@ fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.
             "--name", imageName,
             "--input", inputDir.absolutePath,
             "--main-jar", tasks.jar.get().archiveFileName.get(),
-            "--main-class", application.mainClass.get(),
+            "--main-class", if (linked) "com.choplab.desktop.next.LinkedPreviewMainKt" else application.mainClass.get(),
             "--dest", destinationDir.absolutePath,
             "--vendor", "ChopLab", "--app-version", choplabVersion.get(),
             "--description", "Earth Song / おとひろい desktop sampler",
@@ -168,6 +179,7 @@ val windowsPreviewPackageDirectory = providers.gradleProperty("windowsPreviewPac
 require(windowsPreviewPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
 require(windowsPreviewPackageDirectory.get() != windowsPackageDirectory.get()) { "Preview and production outputs must be separate" }
 registerWindowsImage("packageWindowsPreview", "ChopLab Preview", windowsPreviewPackageDirectory, true)
+registerWindowsImage("packageWindowsLinkedPreview", "ChopLab Preview", providers.provider { "windows-linked-preview-app-image" }, true, linked = true)
 
 tasks.register<JavaExec>("sourceImport") {
     dependsOn(tasks.classes)

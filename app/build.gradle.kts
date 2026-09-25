@@ -134,6 +134,8 @@ androidComponents {
 }
 
 dependencies {
+    add("previewImplementation", project(":jvm"))
+    add("previewImplementation", project(":ui"))
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(libs.youtubedl.library)
