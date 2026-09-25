@@ -79,7 +79,7 @@ jobs:
       - name: Unit tests, lint, and debug APK
         run: >-
           ./gradlew --stacktrace
-          :engine:desktopTest :shared:desktopTest
+          :engine:desktopTest :core:desktopTest :core:compileAndroidMain :jvm:test :shared:desktopTest
           :jvm-core:test
           :shared:testAndroidHostTest
           :app:testDebugUnitTest
@@ -216,7 +216,7 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :engine:desktopTest :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:desktopUiQualityTest :desktop:packageWindows :desktop:packageWindowsPreview
+        run: .\gradlew.bat --no-daemon --stacktrace :engine:desktopTest :core:desktopTest :core:compileAndroidMain :jvm:test :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:desktopUiQualityTest :desktop:packageWindows :desktop:packageWindowsPreview
 
       - name: Verify EXE version, record digest, and archive app-image
         shell: pwsh

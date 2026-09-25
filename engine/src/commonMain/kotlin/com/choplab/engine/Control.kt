@@ -208,6 +208,8 @@ class EngineSnapshot {
     @Volatile var programRevision = 0L
     @Volatile var activeVoices = 0
     @Volatile var fadeVoices = 0
+    @Volatile var playingPadsLow = 0L
+    @Volatile var playingPadsHigh = 0L
     @Volatile var sequencePlaying = false
     @Volatile var sequencePaused = false
     @Volatile var sequenceFrame = 0L
@@ -237,6 +239,8 @@ class LiveReadout internal constructor() {
         data.programRevision = engine.programRevision
         data.activeVoices = engine.activeVoiceCount
         data.fadeVoices = engine.fadeVoiceCount
+        data.playingPadsLow = engine.playingPadMask(false)
+        data.playingPadsHigh = engine.playingPadMask(true)
         data.sequencePlaying = engine.sequencePlaying
         data.sequencePaused = engine.sequencePaused
         data.sequenceFrame = engine.sequenceFrame
@@ -264,6 +268,8 @@ class LiveReadout internal constructor() {
                 target.programRevision = data.programRevision
                 target.activeVoices = data.activeVoices
                 target.fadeVoices = data.fadeVoices
+                target.playingPadsLow = data.playingPadsLow
+                target.playingPadsHigh = data.playingPadsHigh
                 target.sequencePlaying = data.sequencePlaying
                 target.sequencePaused = data.sequencePaused
                 target.sequenceFrame = data.sequenceFrame

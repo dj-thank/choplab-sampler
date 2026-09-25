@@ -56,6 +56,15 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     val programRevision: Long get() = program.revision
     val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES)
     val fadeVoiceCount: Int get() = countVoices(PRIMARY_VOICES, voices.size)
+    internal fun playingPadMask(upper: Boolean): Long {
+        var mask = 0L
+        for (voice in voices) {
+            val pad = voice.pad ?: continue
+            if (voice.suspended || (sequencePaused && voice.transportVoice)) continue
+            if ((pad.id >= 64) == upper) mask = mask or (1L shl (pad.id and 63))
+        }
+        return mask
+    }
     var residentBytes: Long = initialProgram.residentBytes
         private set
     val latencyFrames: Int get() = MasterLimiter.LOOKAHEAD_FRAMES
