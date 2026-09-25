@@ -1,29 +1,16 @@
-# 共通UI（段階2A）
+# 共通4工程UI
 
-`com.choplab.ui.ChopLabApp` は `StudioUiState` の不変な表示投影を描画し、`UiAction` をhostへ返します。Project、Undo、jobs、port、保存や音声処理を所有しません。hostがcore/Studioの結果を新しい投影へ反映するまで、操作結果を成功表示しません。テスト素材は `desktopTest/MockStudioFixture` のみです。
+`ContinuousEditor` は `ContinuousEditorState` を描画し、typed `ContinuousEditorAction` を返します。ユーザーが選択した案2の改訂版を基準に、4工程、左のPAD面、右の濃い自由配置、共通原曲バー、曲全体バーを維持します。画面契約は [DESIGN](../docs/DESIGN.md)、進捗は [ROADMAP](../docs/ROADMAP.md) が正本です。
 
-```kotlin
-ChopLabApp(
-    state = projectedUiState,
-    onAction = adapter::dispatch,
-    playhead = { adapter.readPlaybackSnapshot() },
-)
-```
+`ContinuousEditorPresenter` はcoreの `Studio` へ編集を渡し、結果を投影します。Project/Undo/jobの正本はStudioです。表示用の選択・幅・zoomだけをUI側で持ち、Projectを複製して別管理しません。5画面カード案は採用せず、履歴へ保全しました。
 
-rootが `settings.gradle.kts` へ `:ui` を登録し、Android/desktop hostから依存します。coreへのadapterはhostの責任とし、このmoduleはまだcoreに依存しません。KMP Android/JVM、CMP 1.11.1、JDK21/bytecode17、Android resources有効です。Compose resourcesは `com.choplab.ui.resources` へ生成します。
+- 原曲のidentity、native frame、試聴音量は、PAD選択と曲全体の48kHz clockから分離します。
+- 128 PADはA–H×16。大きい4×4 PADを保ち、BANKは必要に応じて横スクロールします。
+- 自由配置は48kHz frame位置とsourceの半開区間で編集します。1回の移動・トリム・分割・複製は1回のStudio/Undo操作です。
+- Readoutは波形/時刻の小さい領域で読み、停止中seekもrefreshKeyで反映します。実際の再生PADはengineのcoherent maskから取得します。
+- 試聴音量は保存する音量と別です。未接続操作はcapabilityで無効にし、成功表示を作りません。
+- 文言は122組の日英resource。合成fixtureを実素材や実音の証拠にしません。
 
-## 接続の契約
+KMP Android/JVM、CMP1.11.1、JDK21/bytecode17。`:ui:desktopTest` は4工程、PAD/clip入力、原曲identity、Undo、音量分離、disabled、compact/font拡大、frame readoutを検証します。`:ui:compileAndroidMain` はAndroid向けコンパイルです。
 
-- `StudioUiState` は保存しない表示投影。list/setは変更しないsnapshotを渡します。既定capabilitiesは空で、接続できた操作だけ有効化します。候補metadataに `UseSource` は表示しません。全5画面・settings・viewportはhostが選択を保持します。
-- `SetChopRange` は元音全体に対する0–1端点、`NudgeRange` は±1frame。coreが `[start,end)` の範囲を確定します。波形peaksは描画専用です。
-- PADはglobal ID 0–127、BANK A–H×16。短tapはrelease後に `SelectPad/PadTap` を送り、hostがplay modeに応じて試聴を扱います。`PadDown/PadUp` は実際の保持だけに使います。long pressの閾値を超えてvoiceを所有し、release/cancel/navigationで `PadUp` を1回送ります。scrollが取消になった短pressは再生しません。誤爆抑止のため発音開始をrelease/long press判定まで待つ構成であり、即時PAD演奏のlatencyを達成したとは扱いません。hostは同様にdevice/route/cancelで音声所有を解放します。
-- `bars * 16` が総step。`viewportColumns`（16/32/64）と `viewportStart` は表示だけで、曲長を変更しません。48dpのstepと固定PAD名を横scrollします。
-- `playhead` は小さい読み取りsnapshotを返します。`withFrameNanos` が再生中の波形/時刻部分だけを明示的に更新し、whole app/documentへ24msごとのcopyを流しません。停止中のseekなどはhostのobservable状態と該当投影更新に束縛します。
-- gainは0–2、panは−1–1、tempo操作は20–300、barsは1–8。host/coreで受理・拒否を判定し、拒否はtyped noticeへ投影します。音量単位はratioをpercent表示します。
-- 画面文言は133組のja/en resource。project名、素材名、歌詞等の利用者データはそのまま表示します。通常の文字色組は4.5:1以上、touch操作は48dp以上。拡大fontではtoolbar/navigationを横scrollして全操作へ到達できます。
-
-## 検証
-
-`:ui:desktopTest` はImageComposeSceneによる35枚（5画面×phone縦/横・tablet・desktop・font1.3/2.0）と、pointer/callback・disabled・metadata境界・step範囲・PAD所有解放・slider/歌詞・frame polling・contrastを検証します。`-PuiEvidenceDir=<path>` でPNG出力先を指定できます。拡大fontで末尾の書出しに到達した画像1枚を加え、計36枚です。PNGをsourceへcommitしません。
-
-この検証の上限はJVM offscreen componentの `LOCAL_PASS` です。host制作通し、native dialog、Android実機TalkBack、実音/実マイク、provider、Human受入はここでは証明しません。音量/FX/録音/オンライン等の可用性はhost capabilitiesで決まり、見た目だけで実装済みとしません。
+Windowsは `:desktop:runLinkedPreview` または `:desktop:packageWindowsLinkedPreview` で専用profileの候補へ接続できます。既定の本番入口は保持しています。Androidの新Activity/FilePorts接続、残る機能移行、実機の音声/TalkBackとHuman受入は別途残ります。
