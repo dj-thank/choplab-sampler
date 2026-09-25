@@ -281,7 +281,7 @@ private fun runDesktopApplication(args: Array<String>) = application {
                 Item("YouTubeから追加…", onClick = { openAudioSource(SourceSection.YOUTUBE) })
             }
             Menu("診断") {
-                Item("Windows 音声エンドポイント", onClick = audioDiagnostics::run)
+                Item(desktopDiagnosticsMenuTitle(), onClick = audioDiagnostics::run)
             }
         }
         fun useLibrary(id:String) {

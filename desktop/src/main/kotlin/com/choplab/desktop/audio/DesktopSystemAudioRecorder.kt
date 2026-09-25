@@ -1,5 +1,6 @@
 package com.choplab.desktop.audio
 
+import com.choplab.desktop.isMacOsHost
 import java.io.File
 import java.util.Locale
 import javax.sound.sampled.AudioFormat
@@ -8,15 +9,13 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
 
 /**
- * Records a Windows playback-loopback input exposed by the installed driver.
- * It deliberately refuses an arbitrary capture line so a missing loopback does
- * not silently record the microphone instead.
+ * Records a playback-loopback input when the driver exposes one.
+ * It deliberately refuses an ordinary microphone. macOS uses the ScreenCaptureKit
+ * helper when no loopback device is installed.
  */
-class DesktopSystemAudioRecorder : DesktopAudioRecorder {
-    private val delegate = DesktopTargetLineRecorder(
-        lineFactory = ::findLoopbackLine,
-        threadName = "ChopLab-Windows-System-Audio",
-    )
+class DesktopSystemAudioRecorder(
+    private val delegate: DesktopAudioRecorder = DesktopSystemAudioRecorder.defaultSystemAudioRecorder(),
+) : DesktopAudioRecorder {
 
     override val isRecording: Boolean
         get() = delegate.isRecording
@@ -43,9 +42,23 @@ class DesktopSystemAudioRecorder : DesktopAudioRecorder {
                     }.getOrNull()
                 }
             }
-            return match ?: error(
-                "Windowsの再生ループバック入力が見つかりません。サウンド設定で「ステレオ ミキサー」等を有効にしてください",
-            )
+            return match ?: error(missingSystemAudioMessage(isMacOsHost()))
+        }
+
+        internal fun missingSystemAudioMessage(macOs: Boolean): String = if (macOs) {
+            "システムの音声入力が見つかりません。画面収録とシステムオーディオ録音を許可するか、BlackHoleなどのループバック装置を有効にしてください"
+        } else {
+            "Windowsの再生ループバック入力が見つかりません。サウンド設定で「ステレオ ミキサー」等を有効にしてください"
+        }
+
+        internal fun defaultSystemAudioRecorder(
+            loopbackAvailable: Boolean = AudioSystem.getMixerInfo().any { looksLikeLoopback(it.name, it.description) },
+            helper: File? = locateMacSystemAudioHelper(),
+            macOs: Boolean = isMacOsHost(),
+        ): DesktopAudioRecorder = when {
+            loopbackAvailable -> DesktopTargetLineRecorder(::findLoopbackLine, "ChopLab-System-Audio")
+            macOs && helper != null -> MacSystemAudioProcessRecorder(helper)
+            else -> DesktopTargetLineRecorder({ error(missingSystemAudioMessage(macOs)) }, "ChopLab-System-Audio")
         }
 
         internal fun candidateFormats(): List<AudioFormat> = listOf(
@@ -63,6 +76,9 @@ class DesktopSystemAudioRecorder : DesktopAudioRecorder {
             "ステレオ ミキサー",
             "ステレオミキサー",
             "再生リダイレクト",
+            "blackhole",
+            "soundflower",
+            "background music",
         )
     }
 }
