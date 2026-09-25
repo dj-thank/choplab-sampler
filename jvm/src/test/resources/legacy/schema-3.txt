@@ -1,0 +1,71 @@
+CHOPLAB_PROJECT	3
+audioCount	1
+audio	0	42	48000	4	bGVnYWN5Lndhdg	audio/0.wav
+state	0	4	-1	0	0	0	1	120.0	50.0	0	0.0	0
+slices
+steps
+padCount	64
+pad	0	0	0	4	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	1	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	2	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	3	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	4	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	5	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	6	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	7	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	8	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	9	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	10	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	11	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	12	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	13	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	14	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	15	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	16	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	17	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	18	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	19	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	20	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	21	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	22	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	23	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	24	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	25	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	26	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	27	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	28	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	29	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	30	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	31	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	32	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	33	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	34	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	35	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	36	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	37	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	38	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	39	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	40	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	41	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	42	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	43	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	44	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	45	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	46	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	47	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	48	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	49	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	50	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	51	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	52	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	53	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	54	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	55	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	56	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	57	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	58	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	59	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	60	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	61	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	62	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
+pad	63	-1	0	0	0.0	1.0	1.0	0	ONE_SHOT	0
