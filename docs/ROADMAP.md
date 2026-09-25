@@ -88,6 +88,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 | 2026-09-25 | 0.18.0固定点から再構築。旧文書のschema/未merge表記は履歴へ移す | source7/reader1–7を現行として維持し、schema10はfixtureで受入 |
 | 2026-09-25 | 一つのROADMAPへ統合、ADR1–5/researchを保持。stage1A文書はコード変更の証拠ではない | root統合後のlink/policy/required CIで1A全体を確認 |
 | 2026-09-25 | Spotify/YouTube連携の配布条件、pure Kotlin性能、voice補正品質は採用時の判定事項 | 該当段階のspike/terms/実観測が成立するまで完成と表示しない |
+| 2026-09-26 | macOSは開発hostで配布対象外（ADR6）。desktopのmenuを⌘/⌘Q/⌘⇧Zにし、app menuの終了もowned shutdownへ通す。mainではmacOSの終了要求がautosave flushを経ずに終了していた | Windowsの操作は不変。macOSのdata領域（現在 `~/AppData/Local`）、Dock名、Java Sound実音は未対応・未確認 |
 
 ## 履歴の入口
 

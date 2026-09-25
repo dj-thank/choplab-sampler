@@ -4,6 +4,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -41,6 +42,7 @@ import com.choplab.sampler.ui.DocumentAction
 import com.choplab.sampler.ui.documentPickerCanceledMessage
 import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
+import java.awt.Desktop
 import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
@@ -62,7 +64,12 @@ internal fun desktopHistoryActionEnabled(
     DesktopHistoryAction.REDO -> state.redoRequestEnabled
 }
 
-fun main(args: Array<String>) = application {
+fun main(args: Array<String>) {
+    applyMacOsHostProperties(desktopAppName())
+    runDesktopApplication(args)
+}
+
+private fun runDesktopApplication(args: Array<String>) = application {
     val startupFile = remember {
         args.asSequence()
             .map(::File)
@@ -117,6 +124,20 @@ fun main(args: Array<String>) = application {
         audioDiagnostics.close()
         controller.close()
         exitApplication()
+    }
+    val currentCloseApplication by rememberUpdatedState(closeApplication)
+    DisposableEffect(Unit) {
+        // The macOS application menu otherwise exits the JVM without the owned shutdown.
+        val desktop = if (Desktop.isDesktopSupported()) {
+            Desktop.getDesktop().takeIf { it.isSupported(Desktop.Action.APP_QUIT_HANDLER) }
+        } else {
+            null
+        }
+        desktop?.setQuitHandler { _, response ->
+            response.cancelQuit()
+            currentCloseApplication()
+        }
+        onDispose { desktop?.setQuitHandler(null) }
     }
 
     LaunchedEffect(startupFile?.absolutePath) {
@@ -195,41 +216,41 @@ fun main(args: Array<String>) = application {
             Menu("ファイル") {
                 Item(
                     "音源ライブラリを開く",
-                    shortcut = KeyShortcut(Key.O, ctrl = true),
+                    shortcut = desktopMenuShortcut(DesktopMenuCommand.OPEN_LIBRARY),
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { openAudioSource(SourceSection.LIBRARY) },
                 )
                 Item(
                     "制作を開く",
-                    shortcut = KeyShortcut(Key.O, ctrl = true, shift = true),
+                    shortcut = desktopMenuShortcut(DesktopMenuCommand.OPEN_PROJECT),
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { chooseProject(controller, FileDialog.LOAD) },
                 )
                 Item(
                     "制作を保存",
-                    shortcut = KeyShortcut(Key.S, ctrl = true),
+                    shortcut = desktopMenuShortcut(DesktopMenuCommand.SAVE_PROJECT),
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { chooseProject(controller, FileDialog.SAVE) },
                 )
                 Item(
                     "ビートをWAV書き出し",
-                    shortcut = KeyShortcut(Key.E, ctrl = true),
+                    shortcut = desktopMenuShortcut(DesktopMenuCommand.EXPORT_WAV),
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { chooseExportWav(controller) },
                 )
                 Separator()
-                Item("終了", shortcut = KeyShortcut(Key.F4, alt = true), onClick = closeApplication)
+                Item("終了", shortcut = desktopMenuShortcut(DesktopMenuCommand.QUIT), onClick = closeApplication)
             }
             Menu("編集") {
                 Item(
                     "元に戻す",
-                    shortcut = KeyShortcut(Key.Z, ctrl = true),
+                    shortcut = desktopMenuShortcut(DesktopMenuCommand.UNDO),
                     enabled = desktopHistoryActionEnabled(state, DesktopHistoryAction.UNDO),
                     onClick = controller::undoEdit,
                 )
                 Item(
                     "やり直す",
-                    shortcut = KeyShortcut(Key.Y, ctrl = true),
+                    shortcut = desktopMenuShortcut(DesktopMenuCommand.REDO),
                     enabled = desktopHistoryActionEnabled(state, DesktopHistoryAction.REDO),
                     onClick = controller::redoEdit,
                 )
