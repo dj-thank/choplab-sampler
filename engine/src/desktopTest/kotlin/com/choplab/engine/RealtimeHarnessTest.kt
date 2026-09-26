@@ -33,7 +33,9 @@ class RealtimeHarnessTest {
             engine.controls.offer(EngineCommand.SetSongMonitorGain(engine.frame, id++, (block % 2).toFloat()))
             engine.controls.offer(EngineCommand.SetOriginalMonitorGain(engine.frame, id++, if (block % 3 == 0) 0f else 1f))
             engine.controls.offer(EngineCommand.SeekOriginalSource(engine.frame, id++, block * 192L % 4096))
-            repeat(16) { engine.controls.offer(EngineCommand.Trigger(engine.frame, id++, 0)) }
+            // The worst case for the original: a pitched key through the widest band-limited reader, changing every block.
+            engine.controls.offer(EngineCommand.SetOriginalPitch(engine.frame, id++, if (block % 2 == 0) 24f else 17f))
+            repeat(15) { engine.controls.offer(EngineCommand.Trigger(engine.frame, id++, 0)) }
             engine.render(output)
         }
         val blocks = 10000
@@ -44,6 +46,7 @@ class RealtimeHarnessTest {
                 1 -> EngineCommand.SetSongMonitorGain(engine.frame + block * 192L, id + i, (block % 2).toFloat())
                 2 -> EngineCommand.SetOriginalMonitorGain(engine.frame + block * 192L, id + i, if (block % 3 == 0) 0f else 1f)
                 3 -> EngineCommand.SeekOriginalSource(engine.frame + block * 192L, id + i, block * 192L % 4096)
+                4 -> EngineCommand.SetOriginalPitch(engine.frame + block * 192L, id + i, if (block % 2 == 0) 24f else 17f)
                 else -> EngineCommand.Trigger(engine.frame + block * 192L, id + i, 0)
             }
         }
@@ -71,7 +74,7 @@ class RealtimeHarnessTest {
         val allocated = bean.getThreadAllocatedBytes(thread) - before
         times.sort()
         println("ARRANGEMENT JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=$blocks " +
-            "documentClips=1024 tracks=16 activeClips=32 pads=32+16fade originalSources=1 dualMonitorGainChanges=true bothBusesSeekEveryBlock=true sourceCrossfadeFrames=96 renderAllocatedBytes=$renderAllocated " +
+            "documentClips=1024 tracks=16 activeClips=32 pads=32+16fade originalSources=1 originalKeyChangesEveryBlock=24/17st dualMonitorGainChanges=true bothBusesSeekEveryBlock=true sourceCrossfadeFrames=96 renderAllocatedBytes=$renderAllocated " +
             "wholeHarnessAllocatedBytes=$allocated firstAllocatingRenderBlock=$firstAllocatingBlock " +
             "p99ns=${times[9899]} maxNs=${times.last()} p99BlockFraction=${times[9899] / 4_000_000.0}; desktop synthetic only")
         assertEquals(0L, renderAllocated)

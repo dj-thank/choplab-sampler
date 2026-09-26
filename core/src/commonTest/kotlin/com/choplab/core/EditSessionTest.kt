@@ -81,6 +81,25 @@ class EditSessionTest {
         assertFailsWith<IllegalArgumentException> { session.acknowledge(failed, 0) }
     }
 
+    @Test fun songKeyIsAnUndoableSourceSettingThatANewImportResets() {
+        val session = EditSession()
+        assertFailsWith<IllegalArgumentException>("No source yet") { session.plan(Intent.SetSourcePitch(3.0)) }
+        apply(session, Intent.ImportAsset(asset))
+        apply(session, Intent.EqualChop(3))
+        apply(session, Intent.AssignSlice(1, 0))
+        val chopped = session.project
+        apply(session, Intent.SetSourcePitch(2.0, "key-1"))
+        apply(session, Intent.SetSourcePitch(3.0, "key-1"))
+        assertEquals(chopped.source!!.copy(pitchSemitones = 3.0), session.project.source, "Only the key changes; the range and chops stay")
+        assertEquals(chopped.pads, session.project.pads, "PADs never take the song key")
+        commit(session, assertNotNull(session.planUndo()))
+        assertEquals(chopped, session.project, "One gesture is one Undo")
+        apply(session, Intent.SetSourcePitch(-24.0))
+        for (bad in doubleArrayOf(24.5, -24.5, Double.NaN)) assertFailsWith<IllegalArgumentException>("$bad") { session.plan(Intent.SetSourcePitch(bad)) }
+        apply(session, Intent.ImportAsset(asset))
+        assertEquals(0.0, session.project.source!!.pitchSemitones, "A newly imported source starts at its own key")
+    }
+
     @Test fun coalescingIsOneUndoAndHistoryCapsAtOneHundred() {
         val session = EditSession()
         apply(session, Intent.SetTempo(Tempo(121_000), "drag-1"))

@@ -258,6 +258,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
             }
             is EngineCommand.SetOriginalMonitorGain -> originalVoice.monitorGain.set(command.gain, 96)
+            is EngineCommand.SetOriginalPitch -> originalVoice.pitch(command.semitones)
             is EngineCommand.SetSongMonitorGain -> songGain.set(command.gain, 96)
             is EngineCommand.SetTempo -> clock.setTempo(command.tempo)
             is EngineCommand.ScratchStart -> accepted = startScratch(command)

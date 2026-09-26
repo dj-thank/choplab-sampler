@@ -208,6 +208,32 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun songKeyIsSavedWithTheDocumentAndShownOnTheOriginal() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            suspend fun settled(condition: (ContinuousEditorState) -> Boolean) =
+                withTimeout(2000) { h.presenter.state.first { condition(it) && it.status != ContinuousStatus.LOADING } }
+            val open = settled { it.original != null }
+            assertTrue(open.permits(ContinuousCapability.ORIGINAL_PITCH))
+            assertEquals(0f, open.original!!.pitchSemitones)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(3f)))
+            assertEquals(3.0, h.studio.document.value.project.source!!.pitchSemitones)
+            assertEquals(3f, settled { it.original?.pitchSemitones == 3f }.original!!.pitchSemitones)
+            assertEquals(h.initial.pads, h.studio.document.value.project.pads, "The key is for listening to the original only")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(25f)), "The key stays within two octaves")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(0.0, h.studio.document.value.project.source!!.pitchSemitones)
+        } finally { h.close() }
+
+        val empty = Harness { it.copy(source = null) }
+        try {
+            val state = withTimeout(2000) { empty.presenter.state.first { it.status != ContinuousStatus.LOADING && it.permits(ContinuousCapability.TEMPO) } }
+            assertFalse(state.permits(ContinuousCapability.ORIGINAL_PITCH), "No original, no key")
+            assertFalse(empty.presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(2f)))
+        } finally { empty.close() }
+    }
+
     @Test fun hostsWithoutKitsKeepDrumsUnavailable() = runBlocking<Unit> {
         val h = Harness()
         try {

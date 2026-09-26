@@ -42,6 +42,12 @@ class EditorBackend private constructor(
                 catch (_: Exception) { persistenceFailed.value = true }
             }
         }
+        // The original is heard at the document's song key however the document changed: edit, Undo, open or import.
+        scope.launch {
+            studio.document.map { it.project.source?.pitchSemitones ?: 0.0 }.distinctUntilChanged().collect { semitones ->
+                audition.pitch(semitones.toFloat())
+            }
+        }
     }
 
     suspend fun flushAutosave() = withContext(Dispatchers.IO) {

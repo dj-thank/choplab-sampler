@@ -162,6 +162,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     requireGain(action.gain); ports.setSongMonitorGain(action.gain).also { ok -> if (ok) view.update { it.copy(songGain = action.gain) } }
                 }
                 is ContinuousEditorAction.SetSourceRange -> edit(Intent.SetSourceRange(FrameRange(action.startFrame, action.endFrame)))
+                // The song key is part of the document (saved, one Undo per step); the backend plays the original at it.
+                is ContinuousEditorAction.SetOriginalPitch -> edit(Intent.SetSourcePitch(action.semitones.toDouble()))
                 ContinuousEditorAction.AutoChop -> edit(Intent.EqualChop(16))
                 is ContinuousEditorAction.AssignSourceRange -> project.source?.let {
                     edit(Intent.AssignRange(it.assetHash, it.range, action.padId))
@@ -238,7 +240,6 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 } ?: false
                 ContinuousEditorAction.DismissDrumKit -> { view.update { it.copy(kitChooser = false, kitQuestion = null) }; true }
                 // Keep these controls visible but unavailable until their real adapters are integrated.
-                is ContinuousEditorAction.SetOriginalPitch,
                 ContinuousEditorAction.BeginLiveChop,
                 ContinuousEditorAction.RecordVoice, ContinuousEditorAction.OpenScratch -> false
             }
@@ -317,7 +318,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun project(input: EditorInputs, v: EditorView, peaks: Map<String, List<Float>>): ContinuousEditorState {
         val p = input.document.project
         val source = p.source?.let { s -> p.asset(s.assetHash).let { a -> ContinuousSource(a.hash, a.name, a.frames, a.sampleRate,
-            peaks[a.hash].orEmpty(), s.range.start, s.range.end) } }
+            peaks[a.hash].orEmpty(), s.range.start, s.range.end, s.pitchSemitones.toFloat()) } }
         val busy = input.work.jobId != null || input.work.preparationId != null
         val selected = p.pads[input.selection.padId]
         val capabilities = mutableSetOf(ContinuousCapability.OPEN_PROJECT, ContinuousCapability.IMPORT_AUDIO, ContinuousCapability.STOP_ALL)
@@ -325,7 +326,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             capabilities += setOf(ContinuousCapability.SAVE_PROJECT, ContinuousCapability.HISTORY, ContinuousCapability.TEMPO,
                 ContinuousCapability.MOVE_CLIP, ContinuousCapability.TRIM_CLIP, ContinuousCapability.SPLIT_CLIP,
                 ContinuousCapability.DUPLICATE_CLIP, ContinuousCapability.DELETE_CLIP, ContinuousCapability.TRACK_MUTE, ContinuousCapability.CLIP_GAIN)
-            if (source != null) capabilities += setOf(ContinuousCapability.SOURCE_RANGE, ContinuousCapability.ASSIGN_SOURCE_RANGE, ContinuousCapability.AUTO_CHOP)
+            if (source != null) capabilities += setOf(ContinuousCapability.SOURCE_RANGE, ContinuousCapability.ASSIGN_SOURCE_RANGE,
+                ContinuousCapability.AUTO_CHOP, ContinuousCapability.ORIGINAL_PITCH)
             if (selected.assetHash != null) {
                 capabilities += setOf(ContinuousCapability.PAD_PITCH, ContinuousCapability.PAD_TONE, ContinuousCapability.PAD_GAIN)
                 // A placed clip plays the source as it is; pitch, reverse and tone stay PAD-only until processed placement.

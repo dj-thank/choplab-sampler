@@ -124,6 +124,53 @@ class EditorBackendTest {
         } finally { listening.cancelAndJoin(); backend.shutdown() }
     }
 
+    @Test fun theOriginalPlaysAtTheDocumentSongKeyThroughEditsUndoAndARebuiltOutput() = runBlocking<Unit> {
+        val lost = java.util.concurrent.atomic.AtomicBoolean(false)
+        val paced = { object : AudioSink {
+            override val encoding = SinkEncoding.FLOAT32
+            override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
+                check(!lost.get()) { "Audio output route changed" }
+                java.util.concurrent.locks.LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000L / 48_000)
+                return length
+            }
+            override fun close() = Unit
+        } }
+        val dir = directory()
+        val files = CountingFiles()
+        val backend = EditorBackend.create(dir.resolve("profile"), { StreamingEnginePort(it, paced) }, files::services)
+        /** Source frames the original moves per output frame over a short stretch of playback. */
+        suspend fun rate(): Double {
+            val source = backend.engine.originalPlayback().sourceFrame
+            val output = backend.engine.snapshot().frame
+            delay(200)
+            return (backend.engine.originalPlayback().sourceFrame - source).toDouble() / (backend.engine.snapshot().frame - output)
+        }
+        suspend fun rateBecomes(expected: Double) = withTimeout(5_000) { while (kotlin.math.abs(rate() - expected) > expected * .05) Unit }
+        try {
+            waitUntil { backend.engine.status.value.phase == DriverPhase.ATTACHED }
+            val input = dir.resolve("Song.wav").also { Files.write(it, Fixtures.wav(samples = ShortArray(48_000 * 2 * 30) { i -> ((i / 2) % 480 * 60 - 14_000).toShort() })) }
+            assertTrue(backend.studio.dispatch(Action.Import(files.register(input))).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && backend.studio.document.value.project.source != null }
+            val project = backend.studio.document.value.project
+            val asset = project.asset(project.source!!.assetHash)
+            assertTrue(backend.audition.play(asset))
+            rateBecomes(1.0)
+
+            assertTrue(backend.studio.dispatch(Action.Edit(Intent.SetSourcePitch(12.0))).accepted)
+            rateBecomes(2.0)
+            // A lost and reopened output rebuilds the engine without the original; playing again brings the key back.
+            lost.set(true)
+            waitUntil { backend.engine.status.value.phase == DriverPhase.EDITING_ONLY }
+            lost.set(false)
+            assertTrue(backend.engine.reattach())
+            waitUntil { backend.engine.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(backend.audition.play(asset))
+            rateBecomes(2.0)
+            assertTrue(backend.studio.dispatch(Action.Undo).accepted)
+            rateBecomes(1.0)
+        } finally { backend.shutdown() }
+    }
+
     @Test fun shutdownKeepsTheDocumentForTheNextLaunch() = runBlocking<Unit> {
         val dir = directory()
         val input = dir.resolve("Voice.wav").also { Files.write(it, Fixtures.wav(samples = ShortArray(2048) { (it % 400 - 200).toShort() })) }

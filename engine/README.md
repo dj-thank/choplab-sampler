@@ -114,9 +114,14 @@ Source seek/replacement never reset the shared master or alter the music bus.
 `SetOriginalMonitorGain` (0–2) scales only original audition. Both use 96-frame ramps and reach
 exact zero; gain zero keeps cursor advancement. Master lookahead can contain another 72 frames
 of prior sound. Below limiter threshold the gains are independent; overloaded mixed material
-shares the linked safety limiter. Original playback is transparent unity-rate sample playback
-using the shared reader/smoother; it adds no pitch-control capability. Readout publishes
-`originalLoaded`, `originalPlaying`, `originalSourceFrame`, both monitor gains and the song clock.
+shares the linked safety limiter. Original playback uses the shared reader/smoother and is
+transparent unity-rate sample playback at zero semitones. `SetOriginalPitch` (−24…+24 st) is
+varispeed like the earlier app's song key: 2^(st/12) source frames per output frame, so pitch and
+tempo change together, through the same band-limited reader as a pitched PAD. A pitched loop keeps
+its fraction across the seam; a change while sounding is blended over the 96-frame transition. The
+pitch belongs to the audition voice and survives source replacement, seek, pause and stop. Readout publishes
+`originalLoaded`, `originalPlaying`, `originalSourceFrame` (the source frame, rounded down while
+pitched), both monitor gains and the song clock.
 As with manual PADs, a song seek/pause's shared-limiter reset also removes pending original
 history while its independent source cursor/play state continues. Original pause/seek itself
 preserves the other bus's limiter history.
@@ -126,7 +131,8 @@ with `MONITOR_DISABLED`, keeps song gain at unity, and never renders the origina
 `OfflineRender` selects this mode and explicitly filters monitor commands. A platform streaming
 export adapter must also select EXPORT. Monitor output now has at most **81** simultaneous
 sources: 32 arrangement + 32 PAD + 16 fade + one original. Allocation/performance fixtures include
-all of them, per-block seeks and changes to both gains; old 48-source numbers are not reused.
+all of them, per-block seeks, changes to both gains and the original's key alternating between +24 and
++17 semitones (its widest reader); old 48-source numbers are not reused.
 
 ONE_SHOT/GATE stop at their exclusive end; LOOP keeps its original period. Attack/decay/release
 use smoothstep ADSR envelopes with configurable sustain, clamped for very short one-shots.

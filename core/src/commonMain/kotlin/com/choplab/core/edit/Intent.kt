@@ -11,6 +11,7 @@ sealed interface Intent {
     data class SetBank(val bank: Bank) : Intent
     data class ImportAsset(val asset: Asset) : Intent
     data class SetSourceRange(val range: FrameRange, val gesture: String? = null) : Intent
+    data class SetSourcePitch(val semitones: Double, val gesture: String? = null) : Intent
     data class AddMarker(val frame: Long) : Intent
     data class MoveMarker(val index: Int, val frame: Long, val gesture: String? = null) : Intent
     data class EqualChop(val count: Int) : Intent
@@ -57,6 +58,7 @@ object Reducer {
                 val source = requireNotNull(before.source) { "No source" }
                 before.copy(source = source.copy(range = intent.range, markers = source.markers.filter { it > intent.range.start && it < intent.range.end }.frozen()))
             }
+            is Intent.SetSourcePitch -> before.copy(source = requireNotNull(before.source) { "No source" }.copy(pitchSemitones = intent.semitones))
             is Intent.AddMarker -> {
                 val source = requireNotNull(before.source) { "No source" }
                 before.copy(source = source.copy(markers = (source.markers + intent.frame).distinct().sorted().frozen()))
@@ -144,6 +146,7 @@ object Reducer {
         val key = when (intent) {
             is Intent.SetTempo -> intent.gesture?.let { "tempo:$it" }
             is Intent.SetSourceRange -> intent.gesture?.let { "range:$it" }
+            is Intent.SetSourcePitch -> intent.gesture?.let { "source-pitch:$it" }
             is Intent.MoveMarker -> intent.gesture?.let { "marker:${intent.index}:$it" }
             is Intent.SetPad -> intent.gesture?.let { "pad:${intent.pad.id}:$it" }
             else -> null

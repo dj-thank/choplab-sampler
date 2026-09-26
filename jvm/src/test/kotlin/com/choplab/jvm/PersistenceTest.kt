@@ -86,6 +86,27 @@ class PersistenceTest {
         assertFailsWith<IllegalArgumentException> { ProjectJson.decode(tonedJson.replace("\"tone\":0.4", "\"colour\":0.4").toByteArray()) }
     }
 
+    @Test fun sourceKeyIsWrittenOnlyWhenSetAndOlderDocumentsReadUntouched() {
+        val asset = Fixtures.asset(Fixtures.wav())
+        val plain = Fixtures.project(asset)
+        val plainJson = ProjectJson.encode(plain).toString(Charsets.UTF_8)
+        assertFalse("pitchSemitones" in plainJson.substringAfter("\"source\":"), "A document at the original key keeps the earlier encoding")
+        assertEquals(plain, ProjectJson.decode(plainJson.toByteArray()))
+
+        val keyed = plain.copy(source = plain.source!!.copy(pitchSemitones = -5.0))
+        val keyedJson = ProjectJson.encode(keyed).toString(Charsets.UTF_8)
+        assertTrue("\"markers\":[],\"pitchSemitones\":-5.0" in keyedJson.substringAfter("\"source\":"), keyedJson.substringAfter("\"source\":"))
+        assertEquals(keyed, ProjectJson.decode(keyedJson.toByteArray()))
+        for (bad in listOf("24.5", "-25", "\"-5\"", "null", "1e999")) {
+            assertFailsWith<IllegalArgumentException>(bad) {
+                ProjectJson.decode(keyedJson.replace("\"markers\":[],\"pitchSemitones\":-5.0", "\"markers\":[],\"pitchSemitones\":$bad").toByteArray())
+            }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            ProjectJson.decode(keyedJson.replace("\"markers\":[],\"pitchSemitones\":-5.0", "\"markers\":[],\"key\":-5").toByteArray())
+        }
+    }
+
     @Test fun humanTitlePunctuationSurvivesWithoutSerializingHostLocations() {
         val title = "Artist: Song / Verse\\Chorus"
         val location = com.choplab.core.Location("host-only-private-handle")
