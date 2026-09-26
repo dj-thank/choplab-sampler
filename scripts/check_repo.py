@@ -19,6 +19,12 @@ def contains_personal_path(text: str) -> bool:
     for match in PERSONAL_HOME.finditer(text):
         if match[1].lower() in EXAMPLE_USERS:
             continue
+        # JDK bundle Home/lib is a platform layout, not a person's home directory.
+        if match[1] == "lib" and text[:match.start()].endswith((
+            "ChopLab.app/Contents/runtime/Contents",
+            "ChopLab Preview.app/Contents/runtime/Contents",
+        )):
+            continue
         # Standard devcontainer Gradle volume only; other folders still fail.
         container_home = "/home/" + "vscode"
         if match[0] == container_home and re.match(r"/\.gradle(?:[/,\s\"\']|$)", text[match.end():]):
