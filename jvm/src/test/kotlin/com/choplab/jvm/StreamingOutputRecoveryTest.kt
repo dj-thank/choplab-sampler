@@ -224,12 +224,16 @@ class StreamingOutputRecoveryTest {
             TroubleSink().also { sinks += it }
         })
         try {
+            waitUntil { driver.diagnostics().openingDevice }
+            val looping = driver.diagnostics().loops
             val started = System.nanoTime()
             assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 1, program())), "An edit while the first device opens")
             assertTrue(System.nanoTime() - started < 1_000_000_000L, "The edit did not wait for the device")
             assertEquals(1L, driver.snapshot().programRevision)
             assertFalse(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)), "Nothing sounds before a device is attached")
+            assertTrue(driver.diagnostics().let { it.loops > looping && it.openingDevice && it.queued == 0 && it.inFlight == 0 }, "${driver.diagnostics()}")
             waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            waitUntil { !driver.diagnostics().openingDevice }
             assertEquals(1L, driver.snapshot().programRevision, "The opened device plays the edited Program")
 
             sinks[0].stalled.set(true)

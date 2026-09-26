@@ -39,6 +39,8 @@ data class DriverReceipt(
     val acknowledged: Boolean, val eventLosses: Long,
 )
 data class DriverPlayback(val fraction: Float = 0f, val elapsedSeconds: Int = 0, val sequenceRenderFrames: Long = 0)
+/** What the audio owner last reported: how often it looped, what waits for it, and whether a device is still opening. */
+data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int, val openingDevice: Boolean, val engineFrame: Long)
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
 
 /** Continuous EngineCore output. All sink and EngineCore access belongs to one thread.
@@ -79,6 +81,9 @@ open class StreamingEnginePort(
     @Volatile private var stoppedElapsedFrames = 0L
     @Volatile var lastReceipt: DriverReceipt? = null
         private set
+    @Volatile private var ownerLoops = 0L
+    @Volatile private var ownerInFlight = 0
+    @Volatile private var ownerOpening = false
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
     /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
     private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
@@ -193,6 +198,8 @@ open class StreamingEnginePort(
             sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused)
     }
 
+    fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
+
     /** Audio-clock readout; callers use it only in a small display subtree. */
     fun playback(): DriverPlayback {
         val snapshot = snapshots.get()
@@ -283,6 +290,7 @@ open class StreamingEnginePort(
 
         try {
             while (!closed) {
+                ownerLoops++
                 opening?.let { pending -> if (pending.isDone) adoptOpened(pending) }
                 if (sink != null && !outputWanted) resetToEditingOnly(DriverFault.NONE)
                 if (sink == null && opening == null && outputWanted && !faultLatched.get()) startOpening()
@@ -301,7 +309,9 @@ open class StreamingEnginePort(
                     inFlight[slot] = request
                     work = true
                 }
-                if (sink == null && !work && inFlight.all { it == null }) { LockSupport.parkNanos(20_000_000); continue }
+                ownerOpening = opening != null
+                ownerInFlight = inFlight.count { it != null }
+                if (sink == null && !work && ownerInFlight == 0) { LockSupport.parkNanos(20_000_000); continue }
 
                 val count = if (sink == null) 1 else blockFrames
                 activeEngine.render(floats, 0, count)

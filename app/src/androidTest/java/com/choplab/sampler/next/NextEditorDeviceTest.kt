@@ -8,9 +8,12 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.core.Action
+import com.choplab.core.Notice
+import com.choplab.jvm.DriverDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -79,27 +82,43 @@ class NextEditorDeviceTest {
     /**
      * What the editor and its output reported during a step, for a failure message: notices and output changes timed
      * from the start of the step (a StateFlow may skip a quickly undone change), the last engine receipt and the work.
-     * One line each with the notices first, so a CI summary that shortens long lines still shows why.
+     * A refusal also records the audio driver's own report and what its threads were doing at that moment.
+     * One short line each with the notices first, so a CI summary that shortens long lines still shows why.
      */
     private inner class EditorTrace(private val session: NextSession) : AutoCloseable {
         private val begin = SystemClock.elapsedRealtime()
         private val notices = CopyOnWriteArrayList<String>()
         private val outputs = CopyOnWriteArrayList<String>()
+        private val refusals = CopyOnWriteArrayList<String>()
+        private val samples = CopyOnWriteArrayList<String>()
         private val listening = CoroutineScope(Dispatchers.Default)
 
         init {
             val subscribed = CountDownLatch(2)
             listening.launch {
-                session.backend.studio.notices.onSubscription { subscribed.countDown() }.collect { notices += "${elapsed()} $it" }
+                session.backend.studio.notices.onSubscription { subscribed.countDown() }.collect { notice ->
+                    notices += "${elapsed()} $notice"
+                    if (notice is Notice.Rejected) refusals += listOf("refused ${elapsed()}: ${session.backend.engine.diagnostics()}") + threads()
+                }
             }
             listening.launch {
                 session.backend.engine.status.onSubscription { subscribed.countDown() }
                     .collect { outputs += "${elapsed()} ${it.phase} ${it.encoding} ${it.fault} losses=${it.faults}" }
             }
             assertTrue("The trace did not start", subscribed.await(10, TimeUnit.SECONDS))
+            // The driver's own report twice a second for the first eight seconds: is its audio thread looping?
+            listening.launch { repeat(16) { samples += "${elapsed()} ${compact(session.backend.engine.diagnostics())}"; delay(500) } }
         }
 
+        private fun compact(report: DriverDiagnostics) = "L${report.loops} Q${report.queued} F${report.inFlight}" +
+            (if (report.openingDevice) " opening" else "") + " @${report.engineFrame}"
+
         private fun elapsed() = "+${SystemClock.elapsedRealtime() - begin}ms"
+
+        /** The audio threads' states and top frames, one short line per thread. */
+        private fun threads() = Thread.getAllStackTraces().filterKeys { it.name.startsWith("ChopLab-NEXT") }.map { (thread, stack) ->
+            "  ${thread.name} ${thread.state} " + stack.take(5).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+        }
 
         fun waitUntil(failure: String, timeoutMillis: Long = 30_000, condition: () -> Boolean) {
             try {
@@ -110,7 +129,8 @@ class NextEditorDeviceTest {
         }
 
         override fun toString() = "\nnotices: $notices\nlast receipt: ${session.backend.engine.lastReceipt}" +
-            "\nwork: ${session.backend.studio.work.value}\noutput: $outputs\nat ${elapsed()}"
+            "\nwork: ${session.backend.studio.work.value}\noutput: $outputs" + samples.chunked(4).joinToString("") { "\nsamples: " + it.joinToString(" | ") } +
+            refusals.joinToString("") { "\n$it" } + "\nnow ${elapsed()}: ${session.backend.engine.diagnostics()}" + threads().joinToString("") { "\n$it" }
 
         override fun close() { listening.cancel() }
     }
