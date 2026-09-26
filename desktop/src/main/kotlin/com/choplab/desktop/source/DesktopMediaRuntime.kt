@@ -82,7 +82,12 @@ class DesktopYoutubeBackend : YoutubeSourceBackend {
 }
 
 object DesktopAudioDecoder {
-    fun decode(file:File):PcmAudio {
+    private val handoff = ValidatedAudioHandoff(::decodeUncached)
+
+    fun validate(file: File) = handoff.validate(file)
+    fun decode(file: File): PcmAudio = handoff.decode(file)
+
+    private fun decodeUncached(file: File): PcmAudio {
         if(file.extension.equals("wav",true)) return DesktopWavDecoder.decode(file)
         require(file.extension.lowercase() in LocalAudioLibrary.extensions) { "未対応の音声形式です" }
         AudioResourceLimits.requireImportFileSize(file.length())

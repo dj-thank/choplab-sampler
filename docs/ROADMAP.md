@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-09-25。対象はおとひろい / Earth SongのAndroid 10+・Windows。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-09-26。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## UIの固定条件
 
@@ -9,11 +9,12 @@
 ## 現在地・選択中の作業
 
 - 基準: [PR101](https://github.com/dj-thank/choplab-sampler/pull/101) のmerge `2866683a5118681cf518ef47e29cac8baf882edb`、保存tag `archive/pre-rebuild-v0.18.0`。0.18.0/build30のAndroid/Windowsを出発点にする。後続の別ローカルeditor/schema8/9やDDJ-200を混ぜない。
-- sourceの現状: `app / desktop / shared / jvm-core`、4工程、schema7 writer / schemas1–7 reader。新core/JVM/UI、schema10、AI・4stem等は下表で受入が完了するまでは計画。
-- 選択中: **2Aの編集・保存core/JVMを導入**。1Aは[PR106](https://github.com/dj-thank/choplab-sampler/pull/106)、1Bは[PR107](https://github.com/dj-thank/choplab-sampler/pull/107)で各3件のCI成功後にmainへ統合済み。1Cも[PR110](https://github.com/dj-thank/choplab-sampler/pull/110)で3件のCI成功後、mainへ統合済み。新engineは独立moduleで、本番hostは従来のものを維持する。
+- sourceの現状: 本番は `app / desktop / shared / jvm-core`、4工程、schema7 writer / schemas1–7 reader。独立した `engine / core / jvm` とschema10は導入済みで、4工程UI/本番hostへの全面接続は未完。AI・4stem等は下表で受入が完了するまでは計画。
+- 選択中: **2A/2Bの4工程UI接続と、Mac全機能対応・取込速度/UXの検証**。1Aは[PR106](https://github.com/dj-thank/choplab-sampler/pull/106)、1Bは[PR107](https://github.com/dj-thank/choplab-sampler/pull/107)で各3件のCI成功後にmainへ統合済み。1Cも[PR110](https://github.com/dj-thank/choplab-sampler/pull/110)で3件のCI成功後、mainへ統合済み。新engineは独立moduleで、本番hostは従来のものを維持する。
 - 1Cローカル候補: 専用ID/署名の非debuggable Preview APK、別profileのWindows Previewを作成。APKのpackage/version/署名指紋、Windowsの隔離起動・AWT応答・全所有processの正常終了を確認。実機音声/マイク/Pixel/Humanは未確認。
 - engineは[PR112](https://github.com/dj-thank/choplab-sampler/pull/112)で3件のCI成功後にmainへ統合済み。core/JVMはschema10、frame固定配置、Undo、atomic save、3世代autosave、PCM cache、streaming WAV、独立原曲と共通output driverを追加。
-- 次の一手: core/JVMの契約テストとAndroid compileをCIで確認し、指定された4工程UIとPreview接続を後続PRで統合する。長尺prefetch、残る機能移行、実機・実音・Human受入は未完。
+- core/JVMは[PR113](https://github.com/dj-thank/choplab-sampler/pull/113)でmain統合済み。Mac host対応は[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)の最新head `544f2c7`で必須CI3件成功、merge `29c80b2`。
+- 次の一手: 指定された4工程UIとPreview接続のPR114を検証・統合し、Macの機能別受入と取り込み速度/UXを確認する。長尺prefetch、残る機能移行、実機・実音・Human受入は未完。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
@@ -80,6 +81,23 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 各PRで「revision / 実行commandとCI link / artifact bytes / 実際に確認したOS・route・scope / 未確認 / 次の一手」を最小限残します。全体check名だけで対象module全通過とせず、必要taskを列挙します。数値の目標、source上の構造、過去のreceipt、新しい測定を区別します。
 
 現時点で再構築のfreshな実音・実マイク・provider・Human GOはありません。音質A/B、デザイン案、NEXTの両OS制作通し、TalkBack/操作感などの確認用成果は実装に合わせて提示します。人間への確認は最大5項目にし、未回答を承認や合格へ変換しません。既存の包括的実装/統合許可は保持します。
+
+## Mac全機能対応とWindows正本の照合 — 2026-09-26
+
+担当はroot。起点はmain `29c80b2`、変更範囲はdesktop取込adapter・共有取込controller・既存契約文書。圧縮音源の登録時の検証済みPCMを最大64MiB/1素材だけ保持して同じbytesの初回使用へ渡し、二重decodeを除く。保持上限外も従来品質でdecodeする。複数取込は件数・失敗ファイル・再試行を表示し、成功分を保持。URLのscheme省略を補い共有パラメーターを正規化。RollbackはPRのrevert、利用者音源と保存形式は変更しない。
+
+WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty状態と通常起動先をreadbackした。指定先は同じoriginの再構築候補 `a5c6343`（tracked clean）、UI用checkoutは `d7f2a55`。通常起動先は別の0.17.2候補 `53655c46e0a1`。Android用worktreeと外側のSSOT台帳には未コミット変更があり保持した。Windowsの古い候補やインストール済みアプリをGitHub mainの成功根拠にしない。既存SSOTの入口を参照し、私有パスや台帳内容を公開repoへ複製しない。
+
+| 機能/受入 | 今回の確認 | 残る確認 |
+|---|---|---|
+| ファイル/ライブラリ取込・書出し | Macのnativeパネルから合成FLACを選択、元bytes一致のlibrary保存と原曲読込成功。CLIの`.choplib`書出しも成功。重複decode削減、一部失敗/取消/再試行の回帰test成功 | 他形式・長尺の実操作 |
+| YouTube | ユーザー指定の1素材をMacで取得→48kHz stereo、12,276,298frames→保存後読込成功 | 他のprovider条件、失効/制限時の実応答、公開配布適合 |
+| 4工程/PAD/ループ/保存導線 | `544f2c7`のMacでdesktop249件（実録音1skip）/JVM196件/UI4件/操作38件成功 | nativeの⌘Sで514,306bytesのschema7制作を保存（stereo 5,760,000frames、ZIP CRC正常）、⌘Qでexit0。人が聴く制作通し・操作感は未確認 |
+| マイク/システム音/分離 | PR117でadapter統合、Swift build・fake helperの途中終了/権限待ち/PCM分割を確認。追加で0.5秒の合成stereoを実モデルで分離し、9秒でWAV生成 | 今回revisionの実マイク/実音、親Java音声の除外、分離音質 |
+| Spotify | 共通PKCE/同期・取消の自動testを保持 | Spotify本体の起動は確認。ChopLab側の実接続と操作は未確認 |
+| Mac配布/対応範囲 | MacでinstallDist成功。確認hostはmacOS arm64/JDK21 | 他OS版/Intel、署名・公証済みMac配布、Human GO |
+
+速度比較は120秒/48kHz stereoの合成FLAC、同一Mac/JVMでwarm-up後3回。旧経路の検証＋使用開始の中央値392.70ms、改善後221.31ms（約44%減）、使用開始2.40ms。全PCMサンプル・rate・左右・frameが一致。ネットワーク取得速度や全素材の性能保証とは区別する。新しい変更はMacでdesktop255件（実録音1skip）/JVM199件/UI4件が成功。WAVではhashの追加が逆効果だったため保持を使わず、既存の直接decodeを維持する。必須CIはPRで確認する。
 
 ## 判断・失敗・次の一手の記録
 

@@ -9,6 +9,76 @@ import org.junit.Test
 import org.junit.Assert.*
 
 class AudioSourceImportTest {
+    private val noNetwork = object: YoutubeSourceBackend {
+        override fun search(query:String,jobId:String):List<YoutubeSource> = error("unexpected network search")
+        override fun info(url:String,jobId:String):YoutubeSource = error("unexpected network info")
+        override fun download(source:YoutubeSource,folder:File,jobId:String,progress:(Float)->Unit):File = error("unexpected network download")
+        override fun cancel(jobId:String) = Unit
+    }
+    private fun awaitImport(hub: AudioSourceController) {
+        val deadline=System.currentTimeMillis()+5000
+        while(hub.state.value.busy && System.currentTimeMillis()<deadline) Thread.sleep(10)
+        assertFalse("import did not finish",hub.state.value.busy)
+    }
+
+    @Test fun batchContinuesAfterBrokenFileAndDoesNotNavigateAwayFromItsSummary() {
+        val root=Files.createTempDirectory("batch-import").toFile()
+        try {
+            val broken=File(root,"broken.wav").apply { writeText("broken") }
+            val good=File(root,"good.wav").also(::wav)
+            AudioSourceController(testLibrary(File(root,"library")),noNetwork).use { hub ->
+                hub.importFiles(listOf(broken,good))
+                awaitImport(hub)
+                assertEquals(1,hub.state.value.library.size)
+                assertTrue(hub.state.value.message.orEmpty().contains("1件を追加・1件失敗"))
+                assertTrue(hub.state.value.message.orEmpty().contains("broken.wav"))
+                assertNull(hub.state.value.pendingUseId)
+                // Retrying the successful file keeps the existing bytes and can open it normally.
+                hub.importFiles(listOf(good))
+                awaitImport(hub)
+                assertEquals(1,hub.state.value.library.size)
+                assertNotNull(hub.state.value.pendingUseId)
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun batchReportsItsPositionAndCancelDoesNotStartTheNextFile() {
+        val root=Files.createTempDirectory("batch-cancel").toFile()
+        val entered=java.util.concurrent.CountDownLatch(1)
+        val release=java.util.concurrent.CountDownLatch(1)
+        val opens=java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val good=File(root,"good.wav").also(::wav)
+            AudioSourceController(testLibrary(File(root,"library")),noNetwork).use { hub ->
+                val first=LibrarySourceInput({"first.wav"},{ entered.countDown(); release.await(); good.inputStream() })
+                val next=LibrarySourceInput({"next.wav"},{ opens.incrementAndGet(); good.inputStream() })
+                hub.importInputs(listOf(first,next))
+                assertTrue(entered.await(2,java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue(hub.state.value.message.orEmpty().startsWith("1/2件目"))
+                hub.cancel()
+                release.countDown()
+                // A queued retry is also a barrier after the cancelled task has unwound.
+                hub.importFiles(listOf(good))
+                awaitImport(hub)
+                assertEquals(0,opens.get())
+                assertEquals("1件を追加しました",hub.state.value.message)
+            }
+        } finally { release.countDown(); root.deleteRecursively() }
+    }
+
+    @Test fun pastedBareYoutubeUrlIsCanonicalBeforeTheQueryLengthLimit() {
+        val root=Files.createTempDirectory("bare-youtube").toFile()
+        try {
+            AudioSourceController(testLibrary(File(root,"library")),noNetwork).use { hub ->
+                hub.query("youtube.com/watch?v=abcdefghijk&source="+"x".repeat(500))
+                assertEquals("https://www.youtube.com/watch?v=abcdefghijk",hub.state.value.query)
+            }
+            assertEquals("https://www.youtube.com/watch?v=abcdefghijk",SourceRecipes.youtubeUrl("youtu.be/abcdefghijk?si=shared"))
+            assertThrows(IllegalArgumentException::class.java) { SourceRecipes.youtubeUrl("youtube.com.evil.test/watch?v=abcdefghijk") }
+            assertThrows(IllegalArgumentException::class.java) { SourceRecipes.youtubeUrl("http://youtube.com/watch?v=abcdefghijk") }
+        } finally { root.deleteRecursively() }
+    }
+
     private fun testLibrary(file:File)=LocalAudioLibrary(file) { input ->
         val bytes=input.inputStream().use { it.readNBytes(12) }
         require(bytes.size==12 && String(bytes,0,4,Charsets.US_ASCII)=="RIFF" && String(bytes,8,4,Charsets.US_ASCII)=="WAVE")
