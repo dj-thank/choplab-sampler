@@ -13,7 +13,7 @@
 - 選択中: **2A/2Bの4工程UI接続と、Mac全機能対応・取込速度/UXの検証**。1Aは[PR106](https://github.com/dj-thank/choplab-sampler/pull/106)、1Bは[PR107](https://github.com/dj-thank/choplab-sampler/pull/107)で各3件のCI成功後にmainへ統合済み。1Cも[PR110](https://github.com/dj-thank/choplab-sampler/pull/110)で3件のCI成功後、mainへ統合済み。新engineは独立moduleで、本番hostは従来のものを維持する。
 - 1Cローカル候補: 専用ID/署名の非debuggable Preview APK、別profileのWindows Previewを作成。APKのpackage/version/署名指紋、Windowsの隔離起動・AWT応答・全所有processの正常終了を確認。実機音声/マイク/Pixel/Humanは未確認。
 - engineは[PR112](https://github.com/dj-thank/choplab-sampler/pull/112)で3件のCI成功後にmainへ統合済み。core/JVMはschema10、frame固定配置、Undo、atomic save、3世代autosave、PCM cache、streaming WAV、独立原曲と共通output driverを追加。
-- core/JVMは[PR113](https://github.com/dj-thank/choplab-sampler/pull/113)でmain統合済み。Mac host対応は[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)の最新head `544f2c7`で必須CI3件成功、merge `29c80b2`。
+- core/JVMは[PR113](https://github.com/dj-thank/choplab-sampler/pull/113)でmain統合済み。Mac取込高速化/UXは[PR118](https://github.com/dj-thank/choplab-sampler/pull/118)のhead `749132d`で必須CI3件成功、merge `d254e3c`。Mac host対応は[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)の最新head `544f2c7`で必須CI3件成功、merge `29c80b2`。
 - 次の一手: 指定された4工程UIとPreview接続のPR114を検証・統合し、Macの機能別受入と取り込み速度/UXを確認する。長尺prefetch、残る機能移行、実機・実音・Human受入は未完。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
@@ -80,7 +80,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 各PRで「revision / 実行commandとCI link / artifact bytes / 実際に確認したOS・route・scope / 未確認 / 次の一手」を最小限残します。全体check名だけで対象module全通過とせず、必要taskを列挙します。数値の目標、source上の構造、過去のreceipt、新しい測定を区別します。
 
-現時点で再構築のfreshな実音・実マイク・provider・Human GOはありません。音質A/B、デザイン案、NEXTの両OS制作通し、TalkBack/操作感などの確認用成果は実装に合わせて提示します。人間への確認は最大5項目にし、未回答を承認や合格へ変換しません。既存の包括的実装/統合許可は保持します。
+NEXT再構築の実音・実マイク・provider・Human GOは未受入です。現行desktopのMac実マイク・YouTube・システム音の測定は下記で個別に記録し、NEXTへ昇格しません。音質A/B、デザイン案、NEXTの両OS制作通し、TalkBack/操作感などの確認用成果は実装に合わせて提示します。人間への確認は最大5項目にし、未回答を承認や合格へ変換しません。既存の包括的実装/統合許可は保持します。
 
 ## Mac全機能対応とWindows正本の照合 — 2026-09-26
 
@@ -98,6 +98,20 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 | Mac配布/対応範囲 | MacでinstallDist成功。確認hostはmacOS arm64/JDK21 | 他OS版/Intel、署名・公証済みMac配布、Human GO |
 
 速度比較は120秒/48kHz stereoの合成FLAC、同一Mac/JVMでwarm-up後3回。旧経路の検証＋使用開始の中央値392.70ms、改善後221.31ms（約44%減）、使用開始2.40ms。全PCMサンプル・rate・左右・frameが一致。ネットワーク取得速度や全素材の性能保証とは区別する。新しい変更はMacでdesktop255件（実録音1skip）/JVM199件/UI4件が成功。WAVではhashの追加が逆効果だったため保持を使わず、既存の直接decodeを維持する。必須CIはPRで確認する。
+
+## Mac同梱Previewの受入 — 2026-09-26
+
+担当root、[PR119](https://github.com/dj-thank/choplab-sampler/pull/119)、起点main `d254e3c`。範囲はMac用package、依存ツール配置、再現可能な音声受入、Mac構造への既存archive検査の適用。`packageMacPreview` はJava・ツール・ScreenCaptureKit helper・モデルを同梱するローカルad-hoc Preview。`packageMacSignedPreview` はDeveloper IDがないと失敗し、公証/公開の成功にはしない。公開前には署名・公証に加え、同梱した各依存の対応source/licenseを配布物へ整備する。RollbackはPR revertと前の生成物への復帰で、既存app/dataを変更しない。
+
+| 受入 | 観測結果 | 未完/必要条件 |
+|---|---|---|
+| 自己音声の除外 | 開発JDK/実ScreenCaptureKit、5秒の非対称周波数fixture。外部音振幅828.10、自分の音0.0953、比-78.78dB、277,440frame、helper exit0。生録音はメモリのみ | 同梱Javaの再確認は「表示中のディスプレイが見つかりません」で失敗。許可/表示環境を確認して再試験する。旧成功で代用しない |
+| 同梱codec/長尺 | HomebrewなしPATH、作業folder外で11素材+破損1件。FLAC/ALAC/AIFFは全PCM一致。MP3/AAC/Ogg/Opus/MP4/WebMは左右保持、590秒FLACは28,320,000frame。再現は `scripts/run_mac_acceptance.py` | raw AACのみgapless metadataがなく1,408frame余白を観測。暗黙に切り捨てない。全素材の音質保証ではない |
+| 同梱provider/分離 | 指定YouTube1素材の取得/保存/読込、48kHz stereo/12,276,298frame。0.5秒fixtureの実モデル分離11秒 | Spotify実接続は登録Client ID/ChopLab内認証の特定待ち。公式Spotifyのログインと別 |
+| 同梱録音/制作 | 実マイク48kHz mono/18,944frame（検証後削除）、出力48kHz stereo/4,800frame。schema7制作の全PCM/位置/14step再読込、WAV出力成功。隔離起動でPreview領域にautosave作成 | 同梱アプリのnative操作はmacOSが補助アクセスを拒否。設定画面を開き、ユーザーの許可を待つ。人間の聴感/操作感は未判定 |
+| package検査 | `0.18.0`/build30・専用bundle ID・マイク説明・helper/model/tools配置をreadback。ツール40ファイルはハッシュ付き固定名一覧。公開証明書と秘密鍵の区別、未知library/改変/別manifest/nestedを検査 | 他Mac/Intel、Apple Developer ID/公証、公開download readbackは未受入 |
+
+この候補のrepository/policyは303件成功。ローカル生成した全app ZIPのarchive検査も成功し、最終revision/bytes/必須CIはPR119で追跡する。受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能や未統合PR114の成功を、この現行hostの測定から推定しない。
 
 ## 判断・失敗・次の一手の記録
 

@@ -28,6 +28,20 @@ JDK21とXcode Command Line Toolsを用意し、repository rootで `./gradlew :de
 
 Macの配布・OS/CPU別の受入と、開発起動の成功は区別します。最新結果はROADMAPで確認してください。
 
+## Mac同梱Preview
+
+`./gradlew :desktop:packageMacPreview` は `desktop/build/mac-preview-app-image/ChopLab Preview.app` を生成します。Java、録音helper、取得/decodeツール、分離モデルを含み、起動folderやHomebrew PATHに依存しません。Previewの保存先は正式版と分離します。初回準備はHomebrewのffmpeg/nodeとXcode CLI、Python3.11以降が必要です。yt-dlpはupstreamの固定version/hashで取得し、native依存の一覧変更は `config/mac-media-tool-files.txt` のreviewが必要です。検証用Ogg fixtureには `brew install vorbis-tools` を使います。
+
+このtargetは**ローカルad-hoc署名**です。Developer ID署名を求める場合は `CHOPLAB_MAC_SIGNING_IDENTITY` にKeychainの証明書名を設定し、`:desktop:packageMacSignedPreview` を使います。未設定/無効な証明書で自動的にad-hocへ切り替えません。署名・公証・再配布条件の実確認は別の受入です。product versionとMac buildは同じ `gradle.properties` のversion/buildNumberから生成します。
+
+```sh
+python3 scripts/run_mac_acceptance.py \
+  --app 'desktop/build/mac-preview-app-image/ChopLab Preview.app' \
+  --java-home "$JAVA_HOME"
+```
+
+`--system-audio` は短い確認音を鳴らし、他process音の取得と自分の音の除外を測ります。無関係な再生を止め、画面収録/システム音声の許可がある表示sessionで実行します。raw録音はメモリだけ、codec fixtureは一時領域に作成し最後に削除します。聴感を自動認定しません。
+
 ## データ・接続・検証
 
 制作autosaveとlibraryはapp専用領域にあり、実行ファイルの更新と分けます。既存install scriptはversion/hashに結び付いたapp-imageを保持し、利用者の制作を上書きしません。Previewの専用設定/autosave/library/cache/lock分離は段階1Cで検証します。
