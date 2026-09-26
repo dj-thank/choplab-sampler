@@ -234,6 +234,89 @@ class ContinuousEditorPresenterTest {
         } finally { empty.close() }
     }
 
+    @Test fun liveChopCutsWhereEachTapWasHeardAndUndoEndsThePass() = runBlocking<Unit> {
+        val h = Harness { it.copy(source = it.source!!.copy(range = FrameRange(12_000, 90_000))) }
+        try {
+            fun pads() = h.studio.document.value.project.pads
+            val untouched = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, 40_000)), "A tap outside a pass is not an error")
+            assertEquals(untouched, h.studio.document.value.project, "It cuts nothing")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            assertEquals(listOf(12_000L), h.ports.seeks, "A pass plays the original from the start of the range")
+            withTimeout(2000) { h.presenter.state.first { it.liveChopping && it.originalPlaying } }
+            // A tap cuts where it was heard: 60 ms, 2 880 frames at 48 kHz, before the original's position at the press.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, 42_880)))
+            assertEquals(FrameRange(40_000, 90_000), pads()[3].range)
+            assertEquals(h.original.hash, pads()[3].assetHash)
+            assertEquals(3, h.studio.selection.value.padId, "The chopped PAD is selected")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(0, 62_880)))
+            assertEquals(listOf(FrameRange(40_000, 60_000), FrameRange(60_000, 90_000)), listOf(pads()[3].range, pads()[0].range))
+            assertEquals(h.original.hash, pads()[0].assetHash, "A PAD that held another sound takes the original")
+            assertEquals(PlayMode.GATE, pads()[0].mode, "and keeps its other settings")
+            assertEquals(listOf(40_000L, 60_000L), h.studio.document.value.project.source!!.markers)
+            val cut = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, 92_880)), "A tap heard after the range is not an error")
+            assertEquals(cut, h.studio.document.value.project, "It cuts nothing")
+
+            // Undo takes back one tap and, as in the earlier app, ends the pass with the original.
+            val stops = h.ports.stops
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(FrameRange(40_000, 90_000), pads()[3].range)
+            assertEquals(h.initial.pads[0], pads()[0])
+            assertEquals(stops + 1, h.ports.stops)
+            assertFalse(withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }.originalPlaying)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, 80_000)))
+            assertNull(pads()[5].assetHash, "No pass, no cut")
+        } finally { h.close() }
+    }
+
+    @Test fun liveChopFollowsTheKeyAndEndsWithTheOriginal() = runBlocking<Unit> {
+        // An octave up the original plays twice as fast, so the same 60 ms spans twice as many of its frames.
+        val h = Harness { it.copy(source = it.source!!.copy(pitchSemitones = 12.0)) }
+        try {
+            h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, 30_000)))
+            assertEquals(FrameRange(24_240, 96_000), h.studio.document.value.project.pads[2].range)
+
+            // Leaving the CHOP stage ends the pass; the original keeps playing.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping && it.originalPlaying } }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
+
+            // The original reaching its end by itself ends the pass.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            withTimeout(2000) { h.presenter.state.first { it.liveChopping } }
+            h.ports.playing = false
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping && !it.originalPlaying } }
+
+            // A reading of the original taken just before a pass began does not end that pass.
+            h.ports.duringReading = {
+                runBlocking { assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop)) }
+                h.ports.playing = true
+            }
+            withTimeout(2000) { while (h.ports.duringReading != null) delay(5) }
+            delay(600)
+            assertTrue(h.presenter.state.value.liveChopping, "The pass that began during the reading is still running")
+
+            // Playing on past the range end ends the pass there, with the original.
+            val playedOn = h.ports.stops
+            h.ports.originalFrame = 96_000
+            assertFalse(withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }.originalPlaying)
+            assertEquals(playedOn + 1, h.ports.stops)
+            h.ports.originalFrame = 0
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            withTimeout(2000) { h.presenter.state.first { it.liveChopping } }
+
+            // Stopping the pass stops the original.
+            val stops = h.ports.stops
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndLiveChop))
+            assertEquals(stops + 1, h.ports.stops)
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }
+        } finally { h.close() }
+    }
+
     @Test fun hostsWithoutKitsKeepDrumsUnavailable() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -329,8 +412,13 @@ class ContinuousEditorPresenterTest {
         override fun snapshot() = transport
     }
     private class FakePorts(private val kits: Boolean = false) : ContinuousEditorPorts {
-        var originalFrame = 0L
-        var stops = 0
+        @Volatile var originalFrame = 0L
+        @Volatile var stops = 0
+        val seeks = java.util.concurrent.CopyOnWriteArrayList<Long>()
+        /** What the output reports about the original; null when this host does not report it. */
+        @Volatile var playing: Boolean? = null
+        /** Runs once inside the next reading of [playing], after the value was taken: a change the reading misses. */
+        @Volatile var duringReading: (() -> Unit)? = null
         var songGain = 1f
         var originalGain = 1f
         var exportFrames = 0L
@@ -346,8 +434,14 @@ class ContinuousEditorPresenterTest {
         override fun readout() = ContinuousEditorReadout(originalFrame = originalFrame)
         override suspend fun setSongMonitorGain(gain: Float): Boolean { songGain = gain; return true }
         override suspend fun setOriginalMonitorGain(gain: Float): Boolean { originalGain = gain; return true }
+        override fun originalPlaying(): Boolean? {
+            val value = playing
+            duringReading?.let { duringReading = null; it() }
+            return value
+        }
         override suspend fun playOriginal(asset: Asset) = true
         override suspend fun stopOriginal(): Boolean { stops++; return true }
+        override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
         override val drumKitsAvailable get() = kits
         fun kitHash(kitId: String, slot: Int) = (DrumKits.catalog.indexOfFirst { it.id == kitId } * 16 + slot + 1).toString(16).padStart(64, '0')
         override suspend fun drumKit(kitId: String): List<Asset>? = if (!kits) null else (0 until 16).map { slot ->

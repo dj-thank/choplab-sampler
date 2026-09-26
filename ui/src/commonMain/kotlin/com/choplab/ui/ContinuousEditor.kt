@@ -227,18 +227,20 @@ import kotlin.math.roundToLong
 
 @Composable private fun CEChop(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean) {
+    // During a live chop pass a PAD cuts the original where it was playing when the PAD went down.
+    val capture: (() -> Long)? = if (state.liveChopping) ({ readout().originalFrame }) else null
     if (compact) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxWidth(), 240.dp)
         CEBanks(state, onAction)
-        CEPads(state, onAction, maximumSide = 140.dp)
+        CEPads(state, onAction, maximumSide = 140.dp, capture = capture)
     } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.weight(.58f).fillMaxHeight()) {
             CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxSize(), null)
         }
         Column(Modifier.weight(.42f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CEBanks(state, onAction)
-            Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CEPads(state, onAction, maximumSide = 160.dp) }
+            CEChopHint(state)
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CEPads(state, onAction, maximumSide = 160.dp, capture = capture) }
         }
     }
 }
@@ -254,7 +256,11 @@ import kotlin.math.roundToLong
             onSeek = if (original != null && state.permits(ContinuousCapability.ORIGINAL_SEEK)) ({ onAction(ContinuousEditorAction.SeekOriginal((it * original.frames).roundToLong())) }) else null,
             tag = "ce-original-wave")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEActionButton(stringResource(Res.string.ce_chop_start), ContinuousEditorAction.BeginLiveChop, state, ContinuousCapability.LIVE_CHOP, onAction, Modifier.weight(1f))
+            // Ending a pass is always possible; starting one needs the original on an output.
+            if (state.liveChopping) CEActionButton(stringResource(Res.string.ce_chop_stop), ContinuousEditorAction.EndLiveChop, state,
+                ContinuousCapability.STOP_ALL, onAction, Modifier.weight(1f), primary = true, tag = "ce-live-chop")
+            else CEActionButton(stringResource(Res.string.ce_chop_start), ContinuousEditorAction.BeginLiveChop, state,
+                ContinuousCapability.LIVE_CHOP, onAction, Modifier.weight(1f), tag = "ce-live-chop")
             CEActionButton(stringResource(Res.string.ce_play_from_start), ContinuousEditorAction.SeekOriginal(0), state, ContinuousCapability.ORIGINAL_SEEK, onAction, Modifier.weight(1f))
             CEActionButton(stringResource(Res.string.ce_add_audio), ContinuousEditorAction.ImportAudio, state, ContinuousCapability.IMPORT_AUDIO, onAction, Modifier.weight(1f))
         }
@@ -262,7 +268,7 @@ import kotlin.math.roundToLong
             { onAction(ContinuousEditorAction.SetOriginalPitch(it)) }, true, Modifier.fillMaxWidth())
         CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
             { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.fillMaxWidth(), tag = "ce-source-monitor")
-        Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
+        CEChopHint(state)
         val frames = original?.frames ?: 1
         fun framesOf(range: ClosedFloatingPointRange<Float>): Pair<Long, Long> {
             val a = (range.start * frames).roundToLong().coerceIn(0, frames - 1)
@@ -285,6 +291,11 @@ import kotlin.math.roundToLong
             CEButton(stringResource(Res.string.ce_to_beat), { onAction(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)) }, Modifier.weight(1f), primary = true)
         }
     }
+}
+
+@Composable private fun CEChopHint(state: ContinuousEditorState) {
+    if (state.liveChopping) Text(stringResource(Res.string.ce_chop_live_hint), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
+    else Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
 }
 
 @Composable internal fun CEAdjustment(label: String, value: Float, state: ContinuousEditorState, capability: ContinuousCapability,

@@ -99,6 +99,8 @@ enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCE
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
     val original: ContinuousSource? = null,
     val originalPlaying: Boolean = false,
+    /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
+    val liveChopping: Boolean = false,
     val originalMonitorGain: Float = 1f,
     val banks: List<ContinuousBank> = (0..7).map(::ContinuousBank),
     val selectedBank: Int = 0,
@@ -161,6 +163,9 @@ sealed interface ContinuousEditorAction {
     data class SetOriginalPitch(val semitones: Float) : ContinuousEditorAction
     data class SetSourceRange(val startFrame: Long, val endFrame: Long) : ContinuousEditorAction
     data object BeginLiveChop : ContinuousEditorAction
+    data object EndLiveChop : ContinuousEditorAction
+    /** [originalFrame] is the original's position sampled when the PAD was pressed, in the source's own frames. */
+    data class CapturePad(val padId: Int, val originalFrame: Long) : ContinuousEditorAction
     data object AutoChop : ContinuousEditorAction
     data class AssignSourceRange(val padId: Int) : ContinuousEditorAction
     data class SelectBank(val bankId: Int) : ContinuousEditorAction

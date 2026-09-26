@@ -30,6 +30,9 @@
     <string name="ce_mic_record">マイクで録音</string>
     <string name="ce_device_record">端末音声を録音</string>
     <string name="ce_chop_start">チョップ開始</string>
+    <string name="ce_chop_stop">チョップを止める</string>
+    <string name="ce_chop_live_hint">音に合わせてPADを叩くと、その瞬間から切ります。</string>
+    <string name="ce_chop_pad_action">今の位置で切る</string>
     <string name="ce_play_from_start">頭から再生</string>
     <string name="ce_add_audio">音源を追加</string>
     <string name="ce_chop_hint">音を流しながらPADで切る。音ありPADを長押しして微調整</string>

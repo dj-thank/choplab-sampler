@@ -236,6 +236,65 @@ class ContinuousEditorTest {
         } finally { Locale.setDefault(previous) }
     }
 
+    @Test fun liveChopCutsWhereThePadWentDown() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            var frame = 1_000L
+            val base = ContinuousEditorFixture.state(ContinuousStage.CHOP)
+            val state = mutableStateOf(base.copy(capabilities = base.capabilities + ContinuousCapability.LIVE_CHOP))
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { action ->
+                    actions += action
+                    when (action) {
+                        ContinuousEditorAction.BeginLiveChop -> state.value = state.value.copy(liveChopping = true, originalPlaying = true)
+                        ContinuousEditorAction.EndLiveChop -> state.value = state.value.copy(liveChopping = false, originalPlaying = false)
+                        else -> Unit
+                    }
+                }, { ContinuousEditorReadout(originalFrame = frame) })
+            }
+            fun texts() = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            try {
+                scene.settle()
+                scene.click("ce-live-chop")
+                assertEquals(ContinuousEditorAction.BeginLiveChop, actions.last())
+                assertTrue(texts().any { "音に合わせてPADを叩く" in it })
+                actions.clear()
+
+                // The position is read as the PAD goes down; the original plays on before the release.
+                val pad = requireNotNull(scene.tag("ce-pad-5")).boundsInRoot.center
+                scene.sendPointerEvent(PointerEventType.Press, pad, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                scene.render(System.nanoTime()).close()
+                frame = 9_000
+                scene.sendPointerEvent(PointerEventType.Release, pad, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+                scene.settle()
+                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.CapturePad(5, 1_000)), actions,
+                    "During a pass a PAD cuts; it neither plays nor selects by itself")
+
+                // A touch that turns into a drag cuts nothing.
+                scene.drag(requireNotNull(scene.tag("ce-pad-2")).boundsInRoot.center, Offset(0f, 120f))
+                assertEquals(1, actions.size, "$actions")
+
+                // A screen reader activates the PAD and cuts at that moment.
+                frame = 12_000
+                val node = requireNotNull(scene.tag("ce-pad-6"))
+                val click = requireNotNull(node.config.getOrNull(SemanticsActions.OnClick))
+                assertEquals("今の位置で切る", click.label)
+                assertTrue(requireNotNull(click.action).invoke())
+                assertEquals(ContinuousEditorAction.CapturePad(6, 12_000), actions.last())
+                scene.capture("chop-live-desktop.png")
+
+                scene.click("ce-live-chop")
+                assertEquals(ContinuousEditorAction.EndLiveChop, actions.last())
+                assertTrue(texts().none { "音に合わせてPADを叩く" in it })
+                scene.click("ce-pad-2")
+                assertTrue(actions.takeLast(2).any { it == ContinuousEditorAction.SelectPad(2) }, "After the pass a PAD selects and plays again")
+                assertTrue(actions.none { it is ContinuousEditorAction.CapturePad && it.padId == 2 })
+            } finally { scene.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }

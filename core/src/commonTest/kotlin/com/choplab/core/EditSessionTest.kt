@@ -100,6 +100,50 @@ class EditSessionTest {
         assertEquals(0.0, session.project.source!!.pitchSemitones, "A newly imported source starts at its own key")
     }
 
+    @Test fun liveChopCutsAtEachTapAndEndsEachChopWhereTheNextOneStarts() {
+        val song = Asset("c".repeat(64), "wav", 100, 48_000, 2, 48_000, "song.wav")
+        val session = EditSession()
+        assertFailsWith<IllegalArgumentException>("No source yet") { session.plan(Intent.LiveChop(3, 1_000)) }
+        apply(session, Intent.ImportAsset(song))
+        apply(session, Intent.SetSourceRange(FrameRange(500, 40_000)))
+        apply(session, Intent.SetPad(session.project.pads[3].copy(pitchSemitones = 5.0, tone = .5f, gain = .7f)))
+        fun pad(id: Int) = session.project.pads[id]
+
+        apply(session, Intent.LiveChop(3, 1_000))
+        assertEquals(FrameRange(1_000, 40_000), pad(3).range, "The first chop runs to the range end")
+        assertEquals(song.hash, pad(3).assetHash)
+        assertEquals(Triple(5.0, .5f, .7f), Triple(pad(3).pitchSemitones, pad(3).tone, pad(3).gain), "Other PAD settings stay")
+        apply(session, Intent.LiveChop(1, 20_000, frozenListOf(3)))
+        assertEquals(FrameRange(1_000, 20_000), pad(3).range, "An earlier chop ends where the next one starts")
+        assertEquals(FrameRange(20_000, 40_000), pad(1).range)
+        // Chops keep their order in time, not in tap order.
+        apply(session, Intent.LiveChop(2, 10_000, frozenListOf(3, 1)))
+        assertEquals(listOf(FrameRange(1_000, 10_000), FrameRange(10_000, 20_000), FrameRange(20_000, 40_000)), listOf(pad(3), pad(2), pad(1)).map { it.range })
+        assertEquals(listOf(1_000L, 10_000L, 20_000L), session.project.source!!.markers)
+        val beforeRetap = session.project
+        // Tapping a chopped PAD again moves it; the others close up around it.
+        apply(session, Intent.LiveChop(3, 30_000, frozenListOf(3, 1, 2)))
+        assertEquals(listOf(FrameRange(10_000, 20_000), FrameRange(20_000, 30_000), FrameRange(30_000, 40_000)), listOf(pad(2), pad(1), pad(3)).map { it.range })
+        assertEquals(listOf(1_000L, 10_000L, 20_000L, 30_000L), session.project.source!!.markers, "Earlier markers stay")
+        commit(session, assertNotNull(session.planUndo()))
+        assertEquals(beforeRetap, session.project, "Each tap is one Undo")
+
+        // Only this pass, this bank and this source take part; a tap before the range starts at the range start.
+        apply(session, Intent.SetPad(session.project.pads[17].copy(assetHash = song.hash, range = FrameRange(600, 700))))
+        apply(session, Intent.LiveChop(4, 35_000, frozenListOf(17)))
+        assertEquals(FrameRange(600, 700), pad(17).range, "Another bank's PAD is not part of this pass")
+        assertEquals(FrameRange(35_000, 40_000), pad(4).range)
+        assertFailsWith<IllegalArgumentException>("A tap after the range cuts nothing") { session.plan(Intent.LiveChop(4, 40_000)) }
+        apply(session, Intent.LiveChop(5, 0))
+        assertEquals(FrameRange(500, 40_000), pad(5).range)
+        assertFalse(500L in session.project.source!!.markers, "No marker on the range edge")
+        // PADs cut at the same moment share the chop; neither is left with a single frame.
+        apply(session, Intent.LiveChop(6, 0, frozenListOf(5)))
+        assertEquals(listOf(FrameRange(500, 40_000), FrameRange(500, 40_000)), listOf(pad(5).range, pad(6).range))
+        apply(session, Intent.LiveChop(7, 30_000, frozenListOf(5, 6)))
+        assertEquals(listOf(FrameRange(500, 30_000), FrameRange(500, 30_000), FrameRange(30_000, 40_000)), listOf(pad(5).range, pad(6).range, pad(7).range))
+    }
+
     @Test fun coalescingIsOneUndoAndHistoryCapsAtOneHundred() {
         val session = EditSession()
         apply(session, Intent.SetTempo(Tempo(121_000), "drag-1"))

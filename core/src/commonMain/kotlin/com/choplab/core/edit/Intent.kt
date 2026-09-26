@@ -17,6 +17,13 @@ sealed interface Intent {
     data class EqualChop(val count: Int) : Intent
     data class AssignSlice(val slice: Int, val padId: Int) : Intent
     data class AssignRange(val assetHash: String, val range: FrameRange, val padId: Int) : Intent
+    /**
+     * Live chop, as in the earlier app: while the original plays, the tapped PAD takes the source from [frame] (before
+     * the range: its start) to the range end, and the PADs chopped earlier in this pass ([session], same bank and
+     * source) each end where the next later one starts. A marker is added at [frame] inside the range. The PADs' other
+     * settings stay; each tap is one Undo. A [frame] at or after the range end is refused.
+     */
+    data class LiveChop(val padId: Int, val frame: Long, val session: FrozenList<Int> = frozenListOf()) : Intent
     data class SetPad(val pad: Pad, val gesture: String? = null) : Intent
     data class ClearPad(val padId: Int) : Intent
     data class PutPattern(val pattern: Pattern) : Intent
@@ -81,6 +88,7 @@ object Reducer {
                 assign(before, source.assetHash, slices[intent.slice], intent.padId)
             }
             is Intent.AssignRange -> assign(before, intent.assetHash, intent.range, intent.padId)
+            is Intent.LiveChop -> liveChop(before, intent)
             is Intent.SetPad -> before.copy(pads = before.pads.map { if (it.id == intent.pad.id) intent.pad else it }.frozen())
             is Intent.ClearPad -> {
                 require(intent.padId in 0..127)
@@ -169,6 +177,27 @@ object Reducer {
         require(padId in 0..127)
         val asset = before.asset(hash)
         return before.copy(pads = before.pads.map { if (it.id == padId) it.copy(assetHash = hash, range = range, name = asset.name.take(80)) else it }.frozen())
+    }
+    private fun liveChop(before: Project, intent: Intent.LiveChop): Project {
+        val source = requireNotNull(before.source) { "No source" }
+        require(intent.padId in 0..127 && intent.session.all { it in 0..127 })
+        val range = source.range
+        // A tap after the range cuts nothing; one just before it (the latency correction) starts at the range start.
+        require(intent.frame < range.end) { "Past the range" }
+        val start = intent.frame.coerceAtLeast(range.start)
+        val chopped = assign(before, source.assetHash, FrameRange(start, range.end), intent.padId)
+        val bank = intent.padId / 16
+        // This pass's chops in time order: each lasts until the next later one starts, the last until the range end.
+        // PADs cut at the same moment (two fingers in one audio block) share one chop instead of one going silent.
+        val starts = (intent.session + intent.padId).distinct().map { chopped.pads[it] }
+            .filter { pad -> pad.id / 16 == bank && pad.assetHash == source.assetHash && pad.range?.start?.let { it in range.start until range.end } == true }
+            .associate { it.id to requireNotNull(it.range).start }
+        val pads = chopped.pads.map { pad ->
+            val from = starts[pad.id] ?: return@map pad
+            pad.copy(range = FrameRange(from, starts.values.filter { it > from }.minOrNull() ?: range.end))
+        }
+        val markers = if (start > range.start && start !in source.markers && source.markers.size < 127) (source.markers + start).sorted() else source.markers
+        return chopped.copy(pads = pads.frozen(), source = source.copy(markers = markers.frozen()))
     }
     private fun editPattern(before: Project, id: String, edit: (Pattern) -> Pattern): Project {
         require(before.patterns.any { it.id == id })

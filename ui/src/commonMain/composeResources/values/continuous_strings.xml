@@ -30,6 +30,9 @@
     <string name="ce_mic_record">Record microphone</string>
     <string name="ce_device_record">Record device audio</string>
     <string name="ce_chop_start">Start chopping</string>
+    <string name="ce_chop_stop">Stop chopping</string>
+    <string name="ce_chop_live_hint">Tap a pad in time with the sound to cut from that moment.</string>
+    <string name="ce_chop_pad_action">Cut here</string>
     <string name="ce_play_from_start">Play from start</string>
     <string name="ce_add_audio">Add audio</string>
     <string name="ce_chop_hint">Chop with a pad while playing. Hold an assigned pad for fine adjustment.</string>

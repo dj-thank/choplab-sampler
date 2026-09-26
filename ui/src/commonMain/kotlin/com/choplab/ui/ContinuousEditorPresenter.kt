@@ -11,6 +11,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.math.pow
+import kotlin.math.roundToLong
 
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
@@ -36,6 +38,12 @@ interface ContinuousEditorPorts {
     suspend fun drumKit(kitId: String): List<Asset>? = null
 }
 
+/**
+ * How far behind the engine the user hears the original, which live chop subtracts from a tap: the earlier app's
+ * fixed 60 ms until the output's measured latency is used.
+ */
+private const val LIVE_CHOP_LATENCY_SECONDS = .06
+
 /** A question is bound to the drum BANK it counted; any change there asks again. */
 private data class KitQuestion(val kitId: String, val bank: List<Pad>, val replaced: Int)
 
@@ -53,6 +61,10 @@ private data class EditorView(
     val playingPads: Set<Int> = emptySet(),
     val kitChooser: Boolean = false,
     val kitQuestion: KitQuestion? = null,
+    /** PADs chopped in the running live chop pass, in tap order; null when no pass runs. */
+    val liveChop: List<Int>? = null,
+    /** Live chop passes begun so far: a reading of the original taken before a pass began cannot end that pass. */
+    val livePasses: Int = 0,
 )
 private data class EditorInputs(val document: DocumentState, val selection: SelectionState,
                                 val work: WorkState, val playing: Boolean, val attached: Boolean)
@@ -107,8 +119,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         } }
         jobs.launch { while (isActive) {
             studio.dispatch(Action.RefreshTransport)
-            ports.originalPlaying()?.let { playing -> view.update { it.copy(originalPlaying = playing) } }
+            val passes = view.value.livePasses
+            ports.originalPlaying()?.let { playing -> view.update { v ->
+                // A pass ends with the original, also when it reaches the end by itself.
+                if (v.livePasses != passes) v else v.copy(originalPlaying = playing, liveChop = v.liveChop.takeIf { playing })
+            } }
             ports.playingPads()?.let { pads -> view.update { it.copy(playingPads = pads) } }
+            endLiveChopPastRange(passes)
             delay(200)
         } }
         jobs.launch { for (action in queue) dispatch(action) }
@@ -136,24 +153,58 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             view.update { it.copy(status = null) }
             val project = studio.document.value.project
             val accepted = when (action) {
-                is ContinuousEditorAction.Navigate -> { releaseHeld(); view.update { it.copy(stage = action.stage) }; true }
+                is ContinuousEditorAction.Navigate -> {
+                    releaseHeld()
+                    view.update { it.copy(stage = action.stage, liveChop = it.liveChop.takeIf { action.stage == ContinuousStage.CHOP }) }; true
+                }
                 ContinuousEditorAction.ImportAudio -> ports.chooseAudio()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.OpenProject -> ports.chooseOpen()?.let { releaseHeld(); stopOriginal(); loopModes.clear(); send(Action.Open(it)) } ?: cancelled()
                 ContinuousEditorAction.SaveProject -> ports.chooseSave()?.let { send(Action.Save(it)) } ?: cancelled()
                 ContinuousEditorAction.ExportWav -> ports.chooseExport(songFrames(project))?.let {
                     send(Action.Export(it, PlaybackTarget.Arrangement()))
                 } ?: cancelled()
-                ContinuousEditorAction.Undo -> send(Action.Undo)
-                ContinuousEditorAction.Redo -> send(Action.Redo)
+                // Undo and Redo change what this pass has cut: as in the earlier app, they stop a running pass.
+                ContinuousEditorAction.Undo -> { endLiveChop(); send(Action.Undo) }
+                ContinuousEditorAction.Redo -> { endLiveChop(); send(Action.Redo) }
                 ContinuousEditorAction.StopAll -> {
                     releaseHeld(); val stopped = send(Action.Stop)
                     if (ports.originalAvailable) ports.stopOriginal()
-                    view.update { it.copy(originalPlaying = false, playingPads = emptySet()) }; stopped
+                    view.update { it.copy(originalPlaying = false, playingPads = emptySet(), liveChop = null) }; stopped
                 }
                 ContinuousEditorAction.PlayOriginal -> project.source?.let { source ->
                     ports.playOriginal(project.asset(source.assetHash)).also { ok -> if (ok) view.update { it.copy(originalPlaying = true) } }
                 } ?: false
-                ContinuousEditorAction.StopOriginal -> ports.stopOriginal().also { ok -> if (ok) view.update { it.copy(originalPlaying = false) } }
+                ContinuousEditorAction.StopOriginal -> ports.stopOriginal().also { ok ->
+                    view.update { it.copy(originalPlaying = if (ok) false else it.originalPlaying, liveChop = null) }
+                }
+                ContinuousEditorAction.BeginLiveChop -> project.source?.let { source ->
+                    releaseHeld()
+                    // Like the earlier app, a pass plays the original from the top of the range.
+                    val started = ports.seekOriginal(source.range.start) && ports.playOriginal(project.asset(source.assetHash))
+                    if (started) view.update { it.copy(originalPlaying = true, liveChop = emptyList(), livePasses = it.livePasses + 1) }
+                    started
+                } ?: false
+                ContinuousEditorAction.EndLiveChop -> endLiveChop()
+                is ContinuousEditorAction.CapturePad -> {
+                    val pass = view.value.liveChop
+                    val source = project.source
+                    // A tap still queued when its pass ended (the original reached the end meanwhile) cuts nothing.
+                    if (pass == null || source == null) true else {
+                        // The PAD was pressed on what was heard, which the output plays this far behind the engine
+                        // (the earlier app's 60 ms), in source frames at the original's key.
+                        val rate = 2.0.pow(source.pitchSemitones / 12.0)
+                        val heard = action.originalFrame - (LIVE_CHOP_LATENCY_SECONDS * project.asset(source.assetHash).sampleRate * rate).roundToLong()
+                        // Heard after the range ends (the pass ends there): there is nothing left to cut.
+                        if (heard >= source.range.end) true else {
+                            val chopped = edit(Intent.LiveChop(action.padId, heard, pass.frozen()))
+                            if (chopped) {
+                                view.update { it.copy(liveChop = it.liveChop?.let { cut -> cut - action.padId + action.padId }) }
+                                send(Action.SelectPad(action.padId))
+                            }
+                            chopped
+                        }
+                    }
+                }
                 is ContinuousEditorAction.SeekOriginal -> ports.seekOriginal(action.sourceFrame)
                 is ContinuousEditorAction.SetOriginalMonitorGain -> {
                     requireGain(action.gain); ports.setOriginalMonitorGain(action.gain).also { ok -> if (ok) view.update { it.copy(originalGain = action.gain) } }
@@ -240,7 +291,6 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 } ?: false
                 ContinuousEditorAction.DismissDrumKit -> { view.update { it.copy(kitChooser = false, kitQuestion = null) }; true }
                 // Keep these controls visible but unavailable until their real adapters are integrated.
-                ContinuousEditorAction.BeginLiveChop,
                 ContinuousEditorAction.RecordVoice, ContinuousEditorAction.OpenScratch -> false
             }
             if (!accepted && view.value.status != ContinuousStatus.CANCELLED) view.update { it.copy(status = ContinuousStatus.FAILED) }
@@ -288,10 +338,26 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         taps.values.forEach(Job::cancel); taps.clear()
         release.forEach { send(Action.Release(it)) }; held.clear()
     }
+    /**
+     * A pass covers the range only: once the original has played past its end, [pass] ends with the original. Never
+     * waits behind other work such as an import; the next poll looks again.
+     */
+    private suspend fun endLiveChopPastRange(pass: Int) {
+        fun pastRange() = studio.document.value.project.source?.let { ports.readout().originalFrame >= it.range.end } == true
+        if (view.value.liveChop == null || !pastRange() || !serialized.tryLock()) return
+        try { if (view.value.livePasses == pass && pastRange()) endLiveChop() } finally { serialized.unlock() }
+    }
+    /** Ends a running live chop pass together with the original it plays. */
+    private suspend fun endLiveChop(): Boolean {
+        if (view.value.liveChop == null) return true
+        val stopped = ports.stopOriginal()
+        view.update { it.copy(originalPlaying = if (stopped) false else it.originalPlaying, liveChop = null) }
+        return stopped
+    }
     private suspend fun stopOriginal() {
         ports.cancelOriginalPreparation()
         if (ports.originalAvailable) ports.resetOriginal()
-        view.update { it.copy(originalPlaying = false) }
+        view.update { it.copy(originalPlaying = false, liveChop = null) }
     }
     private fun freshId(prefix: String): String {
         val p = studio.document.value.project
@@ -341,12 +407,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     ContinuousCapability.SONG_PLAYBACK, ContinuousCapability.SONG_SEEK, ContinuousCapability.SONG_MONITOR_GAIN)
             }
             if (source != null && ports.originalAvailable) capabilities += setOf(ContinuousCapability.ORIGINAL_PLAYBACK,
-                ContinuousCapability.ORIGINAL_SEEK, ContinuousCapability.ORIGINAL_MONITOR_GAIN)
+                ContinuousCapability.ORIGINAL_SEEK, ContinuousCapability.ORIGINAL_MONITOR_GAIN, ContinuousCapability.LIVE_CHOP)
             if (ports.drumKitsAvailable) capabilities += ContinuousCapability.ADD_DRUM
         }
         val kitSounds = p.pads.map { pad -> pad.assetHash?.let { DrumKits.identify(p.asset(it)) } }
         return ContinuousEditorState(stage = v.stage, projectTitle = p.title, original = source,
-            originalPlaying = v.originalPlaying, originalMonitorGain = v.originalGain,
+            originalPlaying = v.originalPlaying, liveChopping = v.liveChop != null, originalMonitorGain = v.originalGain,
             banks = p.banks.map { ContinuousBank(it.id, it.name) }, selectedBank = input.selection.padId / 16,
             pads = p.pads.map { pad -> ContinuousPad(pad.id, pad.name,
                 when { pad.assetHash == null -> ContinuousPadKind.EMPTY; kitSounds[pad.id] != null -> ContinuousPadKind.DRUM; else -> ContinuousPadKind.SAMPLE },
