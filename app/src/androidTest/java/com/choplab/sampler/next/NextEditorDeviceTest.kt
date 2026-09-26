@@ -1,11 +1,17 @@
 package com.choplab.sampler.next
 
 import android.net.Uri
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.core.Action
+import com.choplab.core.Notice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,12 +42,19 @@ class NextEditorDeviceTest {
         rule.waitUntil(30_000) { rule.onAllNodesWithTag("next-editor").fetchSemanticsNodes().isNotEmpty() }
         val studio = session.backend.studio
         val before = studio.document.value
+        // Kept for the failure message: what the editor reported while the import was expected to finish.
+        val notices = java.util.concurrent.CopyOnWriteArrayList<Notice>()
+        val listening = CoroutineScope(Dispatchers.Default).apply { launch { studio.notices.collect { notices += it } } }
 
         val file = File(rule.activity.cacheDir, "next-device-test.wav").apply { writeBytes(stereoWav(4_800)) }
         val location = session.documents.opened(Uri.fromFile(file))
         val started = runBlocking { studio.dispatch(Action.Import(location)) }
         assertTrue("Import was refused: $started", started.accepted)
-        rule.waitUntil(30_000) { studio.work.value.jobId == null && studio.document.value.project.source != before.project.source }
+        try {
+            rule.waitUntil(30_000) { studio.work.value.jobId == null && studio.document.value.project.source != before.project.source }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError("Import did not finish: work ${studio.work.value}, output ${session.backend.engine.status.value}, notices $notices", timeout)
+        } finally { listening.cancel() }
         val project = studio.document.value.project
         val source = requireNotNull(project.source) { "Import finished without a source; output ${session.backend.engine.status.value}" }
         assertEquals("next-device-test.wav", project.asset(source.assetHash).name)
