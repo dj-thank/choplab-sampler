@@ -92,7 +92,7 @@ private fun runDesktopApplication(args: Array<String>) = application {
     val spotifyState by spotify.state.collectAsState()
     var spotifyPanelVisible by remember { mutableStateOf(false) }
     val sourceHub = remember {
-        AudioSourceController(LocalAudioLibrary(File(DesktopProfile.dataDirectory(),"audio-library")) { com.choplab.desktop.source.DesktopAudioDecoder.decode(it);Unit },DesktopYoutubeBackend())
+        AudioSourceController(LocalAudioLibrary(File(DesktopProfile.dataDirectory(),"audio-library")) { com.choplab.desktop.source.DesktopAudioDecoder.validate(it) },DesktopYoutubeBackend())
     }
     val sourceState by sourceHub.state.collectAsState()
     val spotifySync = remember { SpotifyAutoImport(spotify.state,sourceHub,spotify::loadImportLibrary) }
@@ -109,6 +109,10 @@ private fun runDesktopApplication(args: Array<String>) = application {
     var audioPickRequest by remember { mutableStateOf(0) }
     var reopenLibraryAfterPick by remember { mutableStateOf(false) }
     fun importAudioFiles(files: List<File>) {
+        if (sourceHub.state.value.busy) {
+            controller.setStatus("取り込み中です。完了または取消の後に、もう一度ファイルを追加してください")
+            return
+        }
         val selection = selectAudioImports(files)
         selection.accepted.firstOrNull()?.parentFile?.let { lastDocumentDirectory = it.absolutePath }
         if (selection.accepted.isNotEmpty()) {
@@ -421,8 +425,12 @@ private fun nativeAudioFiles(owner: Frame): List<File> {
     val dialog = FileDialog(owner, "ChopLabに音源を追加", FileDialog.LOAD)
     lastDocumentDirectory?.let { dialog.directory = it }
     dialog.isMultipleMode = true
-    dialog.isVisible = true
-    return dialog.files?.toList().orEmpty()
+    return try {
+        dialog.isVisible = true
+        dialog.files?.toList().orEmpty()
+    } finally {
+        dialog.dispose()
+    }
 }
 
 private fun swingAudioFiles(owner: Frame): List<File> {

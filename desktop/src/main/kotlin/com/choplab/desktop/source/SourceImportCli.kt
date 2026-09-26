@@ -7,7 +7,7 @@ import java.io.File
 /** Local acceptance helper. Inputs are user-owned files; no Spotify credentials are accepted. */
 fun main(args:Array<String>) {
     val options=args.toList().chunked(2).associate { it[0] to it.getOrElse(1){""} }
-    val library=LocalAudioLibrary(options["--library"]?.let(::File) ?: File(DesktopProfile.dataDirectory(),"audio-library")) { DesktopAudioDecoder.decode(it);Unit }
+    val library=LocalAudioLibrary(options["--library"]?.let(::File) ?: File(DesktopProfile.dataDirectory(),"audio-library")) { DesktopAudioDecoder.validate(it) }
     options["--spotify-check"]?.let {
         com.choplab.desktop.provider.SpotifyDesktopSession(onStatus={}).use { session ->
             session.login()
@@ -24,8 +24,8 @@ fun main(args:Array<String>) {
         File(list).readLines(Charsets.UTF_8).filter { it.isNotBlank() }.forEach { row ->
             val fields=row.split('\t',limit=2)
             val input=File(fields[0])
-            val decoded=DesktopAudioDecoder.decode(input)
             val item=library.importFile(input,fields.getOrNull(1)?:input.nameWithoutExtension,"既存の音源")
+            val decoded=DesktopAudioDecoder.decode(library.resolve(item.id))
             println("IMPORTED ${item.id} ${item.title} frames=${decoded.frameCount} rate=${decoded.sampleRate}")
         }
     }

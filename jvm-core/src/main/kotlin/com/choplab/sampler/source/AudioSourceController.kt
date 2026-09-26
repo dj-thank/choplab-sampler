@@ -28,7 +28,11 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
     private var jobId: String? = null
     init { refresh() }
     fun section(value: SourceSection) = mutable.update { it.copy(section=value) }
-    fun query(value: String) = mutable.update { if(it.query==value.take(240))it else it.copy(query=value.take(240),candidates=emptyList()) }
+    fun query(value: String) {
+        val trimmed = value.trim()
+        val query = (if (SourceRecipes.isUrlInput(trimmed)) runCatching { SourceRecipes.youtubeUrl(trimmed) }.getOrDefault(trimmed) else value).take(240)
+        mutable.update { if(it.query==query)it else it.copy(query=query,candidates=emptyList()) }
+    }
     fun refresh() { executor.execute { mutable.update { it.copy(library=library.list()) } } }
     fun file(id: String): File = library.resolve(id)
     fun consumed(id: String) = mutable.update { if(it.pendingUseId==id) it.copy(pendingUseId=null) else it }
@@ -57,21 +61,33 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
     fun importFiles(files: List<File>) = importInputs(files.map { file -> LibrarySourceInput({file.name},{file.inputStream()}) })
     fun importInputs(inputs: List<LibrarySourceInput>) = job("音源をライブラリに追加しています") { lease,_ ->
         val added=mutableListOf<AudioLibraryItem>()
-        inputs.forEach { incoming ->
+        val failed=mutableListOf<String>()
+        inputs.forEachIndexed { index,incoming ->
             current(lease)
-            val name=incoming.name().take(300)
-            val extension=name.substringAfterLast('.',"").lowercase()
-            incoming.open().use { input ->
-                added += if(extension in setOf("zip","choplib")) library.importBundle(input)
-                else listOf(library.importStream(input,extension,name.substringBeforeLast('.'),"ファイル"))
+            var name="${index+1}件目"
+            try {
+                name=incoming.name().filter { it.code >= 32 }.take(300)
+                publish(lease) { it.copy(message="${index+1}/${inputs.size}件目を確認・保存中 · ${name.take(80)}") }
+                val extension=name.substringAfterLast('.',"").lowercase()
+                incoming.open().use { input ->
+                    added += if(extension in setOf("zip","choplib")) library.importBundle(input)
+                    else listOf(library.importStream(input,extension,name.substringBeforeLast('.'),"ファイル"))
+                }
+            } catch (error: Exception) {
+                current(lease)
+                if(error is InterruptedException || inputs.size==1) throw error
+                failed += name.take(80)
             }
         }
         current(lease)
-        publish(lease) { it.copy(library=library.list(),section=SourceSection.LIBRARY,message="${added.size}件を追加しました",pendingUseId=added.singleOrNull()?.id) }
+        val message=if(failed.isEmpty()) "${added.size}件を追加しました" else
+            "${added.size}件を追加・${failed.size}件失敗（${failed.take(3).joinToString("、")}）。失敗したファイルを確認して再追加してください"
+        publish(lease) { it.copy(library=library.list(),section=SourceSection.LIBRARY,message=message,
+            pendingUseId=if(inputs.size==1) added.singleOrNull()?.id else null) }
     }
     fun search() = job("YouTubeで音源を探しています") { lease,id ->
         val query=mutable.value.query.trim()
-        if(query.startsWith("https://")) {
+        if(SourceRecipes.isUrlInput(query)) {
             val source=backend.info(SourceRecipes.youtubeUrl(query),id); current(lease); download(lease,id,source)
         } else {
             val candidates=backend.search(query,id); current(lease)
