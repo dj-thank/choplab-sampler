@@ -1,4 +1,5 @@
-from io import BytesIO
+from contextlib import redirect_stderr
+from io import BytesIO, StringIO
 from pathlib import PurePosixPath
 import unittest
 from unittest.mock import patch
@@ -67,8 +68,47 @@ class Pkcs12TruststoreTest(unittest.TestCase):
             self.assertFalse(policy.is_trusted_jdk_cacerts(PurePosixPath('cacerts'), fixture()))
             java.assert_not_called()
 
+    def setUp(self):
+        policy._JAVA_TRUSTED_STORES.clear()
+
+    @staticmethod
+    def answer(code=0, stdout=b'TRUSTED:1', stderr=b''):
+        return policy.subprocess.CompletedProcess(['java'], code, stdout, stderr)
+
     def test_java_unavailable_or_timeout_is_not_success(self):
-        with patch('shutil.which', return_value=None):
+        with patch('shutil.which', return_value=None), redirect_stderr(StringIO()):
             self.assertFalse(policy.verify_pkcs12_trust_with_java(fixture(), 1))
-        with patch('shutil.which', return_value='java'), patch.object(policy.subprocess, 'run', side_effect=policy.subprocess.TimeoutExpired('java', 15)):
+        report = StringIO()
+        with patch('shutil.which', return_value='java'), redirect_stderr(report), \
+                patch.object(policy.subprocess, 'run', side_effect=policy.subprocess.TimeoutExpired('java', 60)) as run:
             self.assertFalse(policy.verify_pkcs12_trust_with_java(fixture(), 1))
+        self.assertEqual(policy.JAVA_TRUSTSTORE_ATTEMPTS, run.call_count)
+        self.assertIn('timed out after 60 s (attempt 2 of 2)', report.getvalue())
+
+    def test_a_slow_or_failed_check_is_tried_once_more_and_reported(self):
+        for first in (policy.subprocess.TimeoutExpired('java', 60), self.answer(1, b'', b'Picked up options\nError: VM could not start')):
+            policy._JAVA_TRUSTED_STORES.clear()
+            report = StringIO()
+            with self.subTest(first=type(first).__name__), patch('shutil.which', return_value='java'), redirect_stderr(report), \
+                    patch.object(policy.subprocess, 'run', side_effect=[first, self.answer()]) as run:
+                self.assertTrue(policy.verify_pkcs12_trust_with_java(fixture(), 1))
+                self.assertEqual(2, run.call_count)
+                self.assertIn('(attempt 1 of 2)', report.getvalue())
+        self.assertIn('exited 1 without TRUSTED:1 (attempt 1 of 2): Error: VM could not start', report.getvalue())
+
+    def test_an_answer_other_than_trusted_fails_after_both_attempts(self):
+        for answer in (self.answer(stdout=b'TRUSTED:2'), self.answer(1, b'TRUSTED:1'), self.answer(stdout=b'TRUSTED:1\n')):
+            with self.subTest(answer=answer), patch('shutil.which', return_value='java'), redirect_stderr(StringIO()), \
+                    patch.object(policy.subprocess, 'run', return_value=answer) as run:
+                self.assertFalse(policy.verify_pkcs12_trust_with_java(fixture(), 1))
+                self.assertEqual(policy.JAVA_TRUSTSTORE_ATTEMPTS, run.call_count)
+
+    def test_an_accepted_store_is_not_checked_again(self):
+        with patch('shutil.which', return_value='java'), redirect_stderr(StringIO()), \
+                patch.object(policy.subprocess, 'run', return_value=self.answer()) as run:
+            self.assertTrue(policy.verify_pkcs12_trust_with_java(fixture(), 1))
+            self.assertTrue(policy.verify_pkcs12_trust_with_java(fixture(), 1))
+            self.assertEqual(1, run.call_count)
+            # Other content, or another expected count, is checked on its own.
+            self.assertFalse(policy.verify_pkcs12_trust_with_java(fixture(), 2))
+            self.assertEqual(1 + policy.JAVA_TRUSTSTORE_ATTEMPTS, run.call_count)
