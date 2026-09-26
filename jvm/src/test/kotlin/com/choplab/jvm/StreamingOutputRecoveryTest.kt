@@ -100,6 +100,45 @@ class StreamingOutputRecoveryTest {
         } finally { driver.close() }
     }
 
+    @Test fun lossesAreCountedOncePerTroubleNotPerFailedRetry() = runBlocking<Unit> {
+        val available = AtomicBoolean(true)
+        val sinks = CopyOnWriteArrayList<Sink>()
+        val attempts = AtomicInteger()
+        val driver = StreamingEnginePort(compiler(), {
+            attempts.incrementAndGet()
+            check(available.get()) { "No output device" }
+            Sink().also { sinks += it }
+        })
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(0L, driver.status.value.faults)
+            assertTrue(driver.releaseOutput())
+            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY), driver.status.value, "Releasing is not a loss")
+
+            // Wanted back, but the device is gone: a new trouble.
+            available.set(false)
+            assertTrue(driver.reattach())
+            waitUntil { driver.status.value.fault == DriverFault.NO_OUTPUT }
+            assertEquals(1L, driver.status.value.faults)
+            // Trying again while it is still gone is the same trouble.
+            assertTrue(driver.reattach())
+            waitUntil { attempts.get() == 3 }
+            delay(30)
+            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT, faults = 1), driver.status.value)
+
+            available.set(true)
+            assertTrue(driver.reattach())
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(1L, driver.status.value.faults)
+            // The reopened device failing is a new trouble.
+            sinks.last().fail.set(true)
+            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = 2), driver.status.value)
+        } finally { driver.close() }
+        assertEquals(DriverStatus(DriverPhase.CLOSED, faults = 2), driver.status.value)
+    }
+
     @Test fun releasedOutputHoldsNoDeviceUntilTheEditorReturns() = runBlocking<Unit> {
         val sinks = CopyOnWriteArrayList<Sink>()
         val driver = StreamingEnginePort(compiler(), { Sink().also { sinks += it } })
@@ -227,7 +266,7 @@ class StreamingOutputRecoveryTest {
             firstOpen.countDown()
             waitUntil { sinks.size == 1 && sinks[0].closed }
             delay(30)
-            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.ACK_CANCELLED), driver.status.value)
+            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.ACK_CANCELLED, faults = 1), driver.status.value)
             assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 2, program())), "Edits stay usable")
 
             assertTrue(driver.reattach())

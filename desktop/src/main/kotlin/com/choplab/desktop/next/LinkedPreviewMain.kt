@@ -9,11 +9,14 @@ import com.choplab.core.*
 import com.choplab.core.model.Asset
 import com.choplab.desktop.DesktopProfile
 import com.choplab.desktop.applyMacOsHostProperties
+import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.closeAfterAutosave
 import com.choplab.ui.*
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.Window as AwtWindow
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
@@ -38,6 +41,8 @@ fun main() {
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
     val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+    // A device change or a stalled driver drops output to editing-only; bring it back while the window is open.
+    val recovery = OutputRecovery(backend.engine, scope).apply { start() }
     val closedWithoutAutosave = AtomicBoolean(false)
     try {
         application {
@@ -74,6 +79,14 @@ fun main() {
                 state = rememberWindowState(width = 1440.dp, height = 1024.dp),
                 onCloseRequest = requestClose) {
                 SideEffect { parent.set(window) }
+                DisposableEffect(window) {
+                    // Java Sound reports no device changes: coming back to the window tries a lost output once more.
+                    val focus = object : WindowAdapter() {
+                        override fun windowGainedFocus(event: WindowEvent) { recovery.retry() }
+                    }
+                    window.addWindowFocusListener(focus)
+                    onDispose { window.removeWindowFocusListener(focus) }
+                }
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
@@ -81,7 +94,7 @@ fun main() {
                     presenter::onAction, presenter::readout, refresh)
             }
         }
-    } finally { runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+    } finally { recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
 }
 
 private class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {

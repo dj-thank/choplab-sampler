@@ -7,12 +7,9 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.choplab.jvm.DriverFault
-import com.choplab.jvm.DriverPhase
-import com.choplab.jvm.DriverStatus
+import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.StreamingEnginePort
 import com.choplab.sampler.audio.AndroidPlaybackFocusAdapter
 import kotlinx.coroutines.*
@@ -37,7 +34,7 @@ class NextViewModel(application: Application) : AndroidViewModel(application) {
 
     private var session: NextSession? = null
     private var focus: AndroidPlaybackFocusAdapter? = null
-    private var recovery: OutputRecovery? = null
+    private var recovery: AndroidOutputRecovery? = null
     private var visible = false
     private var hiding: Job? = null
     private var closing = false
@@ -50,7 +47,7 @@ class NextViewModel(application: Application) : AndroidViewModel(application) {
             session = opened
             val adapter = AndroidPlaybackFocusAdapter(application) { opened.stopForInterruption() }
             focus = adapter
-            recovery = OutputRecovery(application, opened.backend.engine, viewModelScope)
+            recovery = AndroidOutputRecovery(application, opened.backend.engine, viewModelScope)
             // Only the song and the original hold audio focus; short PAD hits play like an instrument.
             launch {
                 opened.presenter.state.map { it.songPlaying || it.originalPlaying }.distinctUntilChanged().collect { playing ->
@@ -122,70 +119,25 @@ class NextViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 /**
- * While the editor is visible, reopens output lost to a route change or a missing device: a few spaced
- * attempts after each loss, and again whenever the set of audio devices changes. Playback never resumes;
- * a lost output already stopped every voice. An output that fails again soon after reopening counts as
- * the same trouble; after a few such losses it waits for a device change instead of cycling.
+ * The shared [OutputRecovery] plus Android's device events: plugging or unplugging headphones, USB or
+ * Bluetooth output tries once more at once, while the editor is visible.
  */
-class OutputRecovery(context: Context, private val engine: StreamingEnginePort, private val scope: CoroutineScope) {
+class AndroidOutputRecovery(context: Context, engine: StreamingEnginePort, scope: CoroutineScope) {
     private val audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
-    private var watcher: Job? = null
-    private var attempts: Job? = null
-    private var attachedSince = 0L
-    private var quickLosses = 0
+    private val policy = OutputRecovery(engine, scope)
+    private var registered = false
     private val devices = object : AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) { retry() }
-        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) { retry() }
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) { policy.retry() }
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) { policy.retry() }
     }
 
-    /** Main thread, like every other entry point here. */
     fun start() {
-        if (watcher != null) return
-        audioManager?.registerAudioDeviceCallback(devices, Handler(Looper.getMainLooper()))
-        watcher = scope.launch {
-            var wasLost = false
-            engine.status.collect { status ->
-                val lost = lost(status)
-                if (status.phase == DriverPhase.ATTACHED) { attachedSince = SystemClock.elapsedRealtime(); attempts?.cancel() }
-                // A failed attempt changes the fault (WRITE_FAILED to NO_OUTPUT) but is not a new loss.
-                if (lost && !wasLost) onLoss()
-                wasLost = lost
-            }
-        }
+        policy.start()
+        if (!registered) { audioManager?.registerAudioDeviceCallback(devices, Handler(Looper.getMainLooper())); registered = true }
     }
 
     fun stop() {
-        watcher?.cancel()
-        watcher = null
-        attempts?.cancel()
-        attempts = null
-        audioManager?.unregisterAudioDeviceCallback(devices)
-    }
-
-    private fun onLoss() {
-        val now = SystemClock.elapsedRealtime()
-        quickLosses = if (attachedSince != 0L && now - attachedSince >= STABLE_MS) 1 else quickLosses + 1
-        attachedSince = 0L
-        attempts?.cancel()
-        if (quickLosses > MAX_QUICK_LOSSES) return
-        attempts = scope.launch {
-            for (wait in RETRY_DELAYS_MS) {
-                delay(wait)
-                engine.reattach()
-            }
-        }
-    }
-
-    private fun retry() {
-        quickLosses = 0
-        if (watcher != null && lost(engine.status.value)) engine.reattach()
-    }
-
-    private fun lost(status: DriverStatus) = status.phase == DriverPhase.EDITING_ONLY && status.fault != DriverFault.NONE
-
-    private companion object {
-        val RETRY_DELAYS_MS = longArrayOf(300, 1_000, 3_000)
-        const val STABLE_MS = 10_000L
-        const val MAX_QUICK_LOSSES = 3
+        policy.stop()
+        if (registered) { audioManager?.unregisterAudioDeviceCallback(devices); registered = false }
     }
 }

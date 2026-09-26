@@ -26,7 +26,14 @@ interface AudioSink : AutoCloseable {
 
 enum class DriverPhase { STARTING, ATTACHED, EDITING_ONLY, CLOSED }
 enum class DriverFault { NONE, NO_OUTPUT, WRITE_FAILED, ACK_TIMEOUT, ACK_CANCELLED, EVENT_LOSS }
-data class DriverStatus(val phase: DriverPhase, val encoding: SinkEncoding? = null, val fault: DriverFault = DriverFault.NONE)
+/**
+ * [faults] counts every loss of output since the driver started: a failed device, an engine fault, or no device when
+ * output was first wanted or wanted back after a release. A failed attempt to reopen output already lost to a fault
+ * is not a new loss. A watcher of the conflated status flow can miss a short reopening between two identical
+ * failures; the count still tells it how many losses happened.
+ */
+data class DriverStatus(val phase: DriverPhase, val encoding: SinkEncoding? = null, val fault: DriverFault = DriverFault.NONE,
+                        val faults: Long = 0)
 data class DriverReceipt(
     val orderId: Long, val requestedFrame: Long, val appliedFrame: Long, val appliedLate: Boolean,
     val acknowledged: Boolean, val eventLosses: Long,
@@ -219,6 +226,7 @@ open class StreamingEnginePort(
         var activeEngine = EngineCore()
         engineView = EngineView(activeEngine, 0)
         val self = Thread.currentThread()
+        var faults = 0L
         var sink: AudioSink? = null
         // Until a device is adopted the owner keeps acknowledging edits silently, as in EDITING_ONLY.
         var opening: java.util.concurrent.Future<AudioSink>? = null
@@ -230,15 +238,16 @@ open class StreamingEnginePort(
             val opened = try { pending.get() } catch (_: Exception) { null }
             when {
                 opened == null -> {
+                    val retrying = statusValue.value.let { it.phase == DriverPhase.EDITING_ONLY && it.fault != DriverFault.NONE }
                     faultLatched.set(true)
-                    statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT)
+                    statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT, faults = if (retrying) faults else ++faults)
                 }
                 !outputWanted || closed || faultLatched.get() -> {
                     // Hidden while it opened, or a fault meanwhile that waits for reattach: hand the device straight back.
                     try { opened.close() } catch (_: Exception) { }
-                    if (statusValue.value.phase == DriverPhase.STARTING) statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY)
+                    if (statusValue.value.phase == DriverPhase.STARTING) statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, faults = faults)
                 }
-                else -> { sink = opened; statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding) }
+                else -> { sink = opened; statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults) }
             }
         }
         startOpening()
@@ -268,7 +277,7 @@ open class StreamingEnginePort(
             // Published after the rebuild: a caller reacting to EDITING_ONLY must already target the new
             // engine, or its first edit is bound to the discarded one and refused. Published before the
             // refusals below, so a caller told "false" already sees why.
-            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault)
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault, faults = if (fault == DriverFault.NONE) faults else ++faults)
             inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false, dropped = true) }; inFlight[index] = null }
         }
 
@@ -355,7 +364,7 @@ open class StreamingEnginePort(
                 } catch (_: Exception) { resetToEditingOnly(DriverFault.WRITE_FAILED) }
             }
         } catch (_: Exception) {
-            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED)
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = ++faults)
         } finally {
             try { sink?.close() } catch (_: Exception) { }
             // A device still opening is closed as soon as it exists.
@@ -364,7 +373,7 @@ open class StreamingEnginePort(
             inFlight.forEach { it?.let { pending -> complete(pending, false) } }
             while (true) { val pending = requests.poll() ?: break; queued.decrementAndGet(); complete(pending, false) }
             closed = true
-            statusValue.value = DriverStatus(DriverPhase.CLOSED)
+            statusValue.value = DriverStatus(DriverPhase.CLOSED, faults = faults)
         }
     }
 
