@@ -16,8 +16,8 @@ class StreamingOutputRecoveryTest {
     private fun compiler() = ProgramCompiler(object : PcmPort {
         override suspend fun load(asset: Asset): PcmAsset = error("No file loading in driver-only tests")
     })
-    private fun program() = EngineProgram(listOf(Pad(0, PcmAsset.fromInterleaved(FloatArray(8192) { if (it % 2 == 0) .3f else -.09f }),
-        mode = PlayMode.LOOP, attackFrames = 0, releaseFrames = 96)), revision = 1)
+    private fun program(revision: Long = 1) = EngineProgram(listOf(Pad(0, PcmAsset.fromInterleaved(FloatArray(8192) { if (it % 2 == 0) .3f else -.09f }),
+        mode = PlayMode.LOOP, attackFrames = 0, releaseFrames = 96)), revision = revision)
     private suspend fun waitUntil(condition: () -> Boolean) = withTimeout(15_000) { while (!condition()) delay(5) }
 
     /** Float sink that paces like a device and can be made to fail, like an unplugged route. */
@@ -174,6 +174,68 @@ class StreamingOutputRecoveryTest {
             assertEquals(1L, driver.snapshot().programRevision, "The output plays the edited Program")
             assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
         } finally { driver.close() }
+    }
+
+    @Test fun editsAreAcknowledgedWhileASlowDeviceIsStillOpening() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<TroubleSink>()
+        val slowOpens = AtomicBoolean(true)
+        // Like an emulator's audio server: creating the output takes longer than an edit may wait.
+        val driver = StreamingEnginePort(compiler(), {
+            if (slowOpens.get()) Thread.sleep(1_500)
+            TroubleSink().also { sinks += it }
+        })
+        try {
+            val started = System.nanoTime()
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 1, program())), "An edit while the first device opens")
+            assertTrue(System.nanoTime() - started < 1_000_000_000L, "The edit did not wait for the device")
+            assertEquals(1L, driver.snapshot().programRevision)
+            assertFalse(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)), "Nothing sounds before a device is attached")
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(1L, driver.snapshot().programRevision, "The opened device plays the edited Program")
+
+            sinks[0].stalled.set(true)
+            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertTrue(driver.reattach())
+            val again = System.nanoTime()
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 3, program(revision = 2))), "An edit while a device reopens")
+            assertTrue(System.nanoTime() - again < 1_000_000_000L, "The edit did not wait for the reopening")
+            assertEquals(2L, driver.snapshot().programRevision)
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(2, sinks.size)
+            assertEquals(2L, driver.snapshot().programRevision, "The reopened device plays the latest Program")
+        } finally { driver.close() }
+    }
+
+    @Test fun aFaultWhileADeviceOpensKeepsOutputClosedUntilReattached() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<Sink>()
+        val firstOpen = java.util.concurrent.CountDownLatch(1)
+        val driver = StreamingEnginePort(compiler(), {
+            if (sinks.isEmpty()) firstOpen.await()
+            Sink().also { sinks += it }
+        })
+        try {
+            // An edit bound far ahead stays in flight; abandoning it resets the engine with a fault meanwhile.
+            val abandoned = launch(Dispatchers.Default) {
+                driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame + EngineFormat.SAMPLE_RATE * 3_600L, 1, program()))
+            }
+            delay(100)
+            abandoned.cancelAndJoin()
+            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(DriverFault.ACK_CANCELLED, driver.status.value.fault)
+
+            // The device finishes opening after that fault: like any faulted output it waits for a reattach.
+            firstOpen.countDown()
+            waitUntil { sinks.size == 1 && sinks[0].closed }
+            delay(30)
+            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.ACK_CANCELLED), driver.status.value)
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 2, program())), "Edits stay usable")
+
+            assertTrue(driver.reattach())
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(2, sinks.size)
+            assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 3, 0)))
+            waitUntil { sinks[1].energy > 1 }
+        } finally { firstOpen.countDown(); driver.close() }
     }
 
     @Test fun quickReturnAfterReleaseEndsAttached() = runBlocking<Unit> {

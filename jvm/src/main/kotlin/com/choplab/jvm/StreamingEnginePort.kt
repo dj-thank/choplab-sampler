@@ -73,6 +73,10 @@ open class StreamingEnginePort(
     @Volatile var lastReceipt: DriverReceipt? = null
         private set
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
+    /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
+    private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "ChopLab-NEXT-device-open").apply { isDaemon = true; priority = Thread.NORM_PRIORITY }
+    }
     private val owner: Thread
 
     /** Listening only, after EngineCore; does not enter documents or offline export. */
@@ -111,7 +115,7 @@ open class StreamingEnginePort(
 
     init {
         require(blockFrames in 64..2048 && acknowledgementMillis in 50..1_500)
-        owner = Thread(::runOwner, "ChopLab-NEXT-audio").apply { isDaemon = true; start() }
+        owner = Thread(::runOwner, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
     }
     override suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram =
         compiler.compile(project, patternId, revision)
@@ -214,14 +218,30 @@ open class StreamingEnginePort(
     private fun runOwner() {
         var activeEngine = EngineCore()
         engineView = EngineView(activeEngine, 0)
-        fun openSink(): AudioSink? = try {
-            sinkFactory().also { statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
-        } catch (_: Exception) {
-            faultLatched.set(true)
-            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT)
-            null
+        val self = Thread.currentThread()
+        var sink: AudioSink? = null
+        // Until a device is adopted the owner keeps acknowledging edits silently, as in EDITING_ONLY.
+        var opening: java.util.concurrent.Future<AudioSink>? = null
+        fun startOpening() {
+            opening = opener.submit(java.util.concurrent.Callable { try { sinkFactory() } finally { LockSupport.unpark(self) } })
         }
-        var sink: AudioSink? = openSink()
+        fun adoptOpened(pending: java.util.concurrent.Future<AudioSink>) {
+            opening = null
+            val opened = try { pending.get() } catch (_: Exception) { null }
+            when {
+                opened == null -> {
+                    faultLatched.set(true)
+                    statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT)
+                }
+                !outputWanted || closed || faultLatched.get() -> {
+                    // Hidden while it opened, or a fault meanwhile that waits for reattach: hand the device straight back.
+                    try { opened.close() } catch (_: Exception) { }
+                    if (statusValue.value.phase == DriverPhase.STARTING) statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY)
+                }
+                else -> { sink = opened; statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding) }
+            }
+        }
+        startOpening()
         val floats = FloatArray(blockFrames * 2)
         val bytes = ByteArray(blockFrames * 2 * 4)
         val quantizer = PcmQuantizer(0x43484f50, bits = 16, dither = true)
@@ -254,8 +274,9 @@ open class StreamingEnginePort(
 
         try {
             while (!closed) {
+                opening?.let { pending -> if (pending.isDone) adoptOpened(pending) }
                 if (sink != null && !outputWanted) resetToEditingOnly(DriverFault.NONE)
-                if (sink == null && outputWanted && !faultLatched.get()) sink = openSink()
+                if (sink == null && opening == null && outputWanted && !faultLatched.get()) startOpening()
                 var work = false
                 inFlight.firstOrNull { it?.cancelled == true }?.let { resetToEditingOnly(it.cancelFault) }
                 while (true) {
@@ -337,6 +358,9 @@ open class StreamingEnginePort(
             statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED)
         } finally {
             try { sink?.close() } catch (_: Exception) { }
+            // A device still opening is closed as soon as it exists.
+            opening?.let { pending -> opener.execute { try { pending.get().close() } catch (_: Exception) { } } }
+            opener.shutdown()
             inFlight.forEach { it?.let { pending -> complete(pending, false) } }
             while (true) { val pending = requests.poll() ?: break; queued.decrementAndGet(); complete(pending, false) }
             closed = true
@@ -347,7 +371,10 @@ open class StreamingEnginePort(
     override fun close() {
         closed = true
         LockSupport.unpark(owner)
-        if (Thread.currentThread() !== owner) owner.join(2_000)
+        if (Thread.currentThread() !== owner) {
+            owner.join(2_000)
+            opener.awaitTermination(2_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
         check(!owner.isAlive) { "Audio owner did not stop within its deadline" }
     }
 

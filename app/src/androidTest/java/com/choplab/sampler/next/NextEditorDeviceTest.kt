@@ -1,6 +1,7 @@
 package com.choplab.sampler.next
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -21,6 +22,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The NEXT entry on a real Android runtime: the shared editor starts on the new core, draws, and imports
@@ -41,22 +43,33 @@ class NextEditorDeviceTest {
         val session = (startup as NextViewModel.Startup.Ready).session
         rule.waitUntil(30_000) { rule.onAllNodesWithTag("next-editor").fetchSemanticsNodes().isNotEmpty() }
         val studio = session.backend.studio
+        val engine = session.backend.engine
         val before = studio.document.value
-        // Kept for the failure message: what the editor reported while the import was expected to finish.
-        val notices = java.util.concurrent.CopyOnWriteArrayList<Notice>()
-        val listening = CoroutineScope(Dispatchers.Default).apply { launch { studio.notices.collect { notices += it } } }
+        // Kept for the failure message: what the editor and its output reported while the import was expected to
+        // finish, with the output's changes timed from here (a StateFlow may skip a change that is quickly undone).
+        val notices = CopyOnWriteArrayList<Notice>()
+        val outputs = CopyOnWriteArrayList<String>()
+        val begin = SystemClock.elapsedRealtime()
+        val listening = CoroutineScope(Dispatchers.Default).apply {
+            launch { studio.notices.collect { notices += it } }
+            launch { engine.status.collect { outputs += "+${SystemClock.elapsedRealtime() - begin}ms $it" } }
+        }
+        fun diagnostics() = "work ${studio.work.value}, output history $outputs, last receipt ${engine.lastReceipt}, " +
+            "notices $notices at +${SystemClock.elapsedRealtime() - begin}ms"
 
         val file = File(rule.activity.cacheDir, "next-device-test.wav").apply { writeBytes(stereoWav(4_800)) }
         val location = session.documents.opened(Uri.fromFile(file))
-        val started = runBlocking { studio.dispatch(Action.Import(location)) }
-        assertTrue("Import was refused: $started", started.accepted)
-        try {
-            rule.waitUntil(30_000) { studio.work.value.jobId == null && studio.document.value.project.source != before.project.source }
-        } catch (timeout: ComposeTimeoutException) {
-            throw AssertionError("Import did not finish: work ${studio.work.value}, output ${session.backend.engine.status.value}, notices $notices", timeout)
+        val project = try {
+            val started = runBlocking { studio.dispatch(Action.Import(location)) }
+            assertTrue("Import was refused: $started; ${diagnostics()}", started.accepted)
+            try {
+                rule.waitUntil(30_000) { studio.work.value.jobId == null && studio.document.value.project.source != before.project.source }
+            } catch (timeout: ComposeTimeoutException) {
+                throw AssertionError("Import did not finish: ${diagnostics()}", timeout)
+            }
+            studio.document.value.project.also { requireNotNull(it.source) { "Import finished without a source; ${diagnostics()}" } }
         } finally { listening.cancel() }
-        val project = studio.document.value.project
-        val source = requireNotNull(project.source) { "Import finished without a source; output ${session.backend.engine.status.value}" }
+        val source = requireNotNull(project.source)
         assertEquals("next-device-test.wav", project.asset(source.assetHash).name)
         assertEquals(4_800L, project.asset(source.assetHash).frames)
 
