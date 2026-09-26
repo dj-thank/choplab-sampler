@@ -101,7 +101,7 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 ## Mac同梱Previewの受入 — 2026-09-26
 
-担当root、起点main `d254e3c`。範囲はMac用package、依存ツール配置、再現可能な音声受入、Mac構造への既存archive検査の適用。`packageMacPreview` はJava・ツール・ScreenCaptureKit helper・モデルを同梱するローカルad-hoc Preview。`packageMacSignedPreview` はDeveloper IDがないと失敗し、公証/公開の成功にはしない。公開前には署名・公証に加え、同梱した各依存の対応source/licenseを配布物へ整備する。RollbackはPR revertと前の生成物への復帰で、既存app/dataを変更しない。
+担当root、[PR119](https://github.com/dj-thank/choplab-sampler/pull/119)、起点main `d254e3c`。範囲はMac用package、依存ツール配置、再現可能な音声受入、Mac構造への既存archive検査の適用。`packageMacPreview` はJava・ツール・ScreenCaptureKit helper・モデルを同梱するローカルad-hoc Preview。`packageMacSignedPreview` はDeveloper IDがないと失敗し、公証/公開の成功にはしない。公開前には署名・公証に加え、同梱した各依存の対応source/licenseを配布物へ整備する。RollbackはPR revertと前の生成物への復帰で、既存app/dataを変更しない。
 
 | 受入 | 観測結果 | 未完/必要条件 |
 |---|---|---|
@@ -111,7 +111,7 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 | 同梱録音/制作 | 実マイク48kHz mono/18,944frame（検証後削除）、出力48kHz stereo/4,800frame。schema7制作の全PCM/位置/14step再読込、WAV出力成功。隔離起動でPreview領域にautosave作成 | 同梱アプリのnative操作はmacOSが補助アクセスを拒否。設定画面を開き、ユーザーの許可を待つ。人間の聴感/操作感は未判定 |
 | package検査 | `0.18.0`/build30・専用bundle ID・マイク説明・helper/model/tools配置をreadback。ツール40ファイルはハッシュ付き固定名一覧。公開証明書と秘密鍵の区別、未知library/改変/別manifest/nestedを検査 | 他Mac/Intel、Apple Developer ID/公証、公開download readbackは未受入 |
 
-受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能や未統合PR114の成功を、この現行hostの測定から推定しない。
+この候補のrepository/policyは303件成功。ローカル生成した全app ZIPのarchive検査も成功し、最終revision/bytes/必須CIはPR119で追跡する。受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能や未統合PR114の成功を、この現行hostの測定から推定しない。
 
 ## 判断・失敗・次の一手の記録
 
