@@ -40,6 +40,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         return studio.dispatch(Action.Export(ExportRequest(files.register(path), frames ?: patternFrames(project, pattern), bits = bits)))
     }
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = shared.loadPeaks(asset, maximumBuckets)
+    suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
 
     /** [flush] is false only after the user chose to close without the final autosave. */
     suspend fun shutdown(flush: Boolean = true) = shared.shutdown(flush)

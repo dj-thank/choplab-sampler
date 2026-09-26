@@ -1,5 +1,6 @@
 package com.choplab.core.edit
 
+import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.engine.Tempo
 
@@ -25,6 +26,11 @@ sealed interface Intent {
     data class SetSong(val sections: FrozenList<SongSection>) : Intent
     /** Replaces only explicitly assigned PADs; other music, source and pattern placement survives. */
     data class ApplyKit(val assets: FrozenList<Asset>, val pads: FrozenList<Pad>) : Intent
+    /**
+     * Puts one built-in kit on all 16 PADs of one BANK, slot order. Placed clips of any built-in kit sound
+     * take this kit's sound in the same slot, so a placed beat keeps its rhythm. Other clips stay.
+     */
+    data class InstallKit(val assets: FrozenList<Asset>, val pads: FrozenList<Pad>) : Intent
     data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
 }
@@ -39,7 +45,7 @@ data class Reduction(val project: Project, val mutation: Mutation, val effects: 
 
 object Reducer {
     fun reduce(before: Project, intent: Intent): Reduction {
-        val after = when (intent) {
+        val edited = when (intent) {
             is Intent.Rename -> before.copy(title = intent.title)
             is Intent.SetTempo -> before.copy(tempo = intent.tempo)
             is Intent.SetBank -> before.copy(banks = before.banks.map { if (it.id == intent.bank.id) intent.bank else it }.frozen())
@@ -110,9 +116,31 @@ object Reducer {
                 val incoming = intent.pads.associateBy { it.id }
                 before.copy(assets = mergeAssets(before.assets, intent.assets), pads = before.pads.map { incoming[it.id] ?: it }.frozen())
             }
+            is Intent.InstallKit -> {
+                require(intent.pads.size == DrumKits.SOUNDS)
+                val first = intent.pads.first().id
+                require(first % 16 == 0)
+                val assets = mergeAssets(before.assets, intent.assets)
+                val byHash = assets.associateBy { it.hash }
+                val kitAssets = intent.pads.mapIndexed { slot, pad ->
+                    require(pad.id == first + slot)
+                    val asset = requireNotNull(byHash[requireNotNull(pad.assetHash)]) { "Missing kit asset" }
+                    require(DrumKits.identify(asset)?.slot == slot) { "Not this slot's kit sound" }
+                    asset
+                }
+                require(kitAssets.map { DrumKits.identify(it)!!.kit }.distinct().size == 1) { "Sounds from more than one kit" }
+                val incoming = intent.pads.associateBy { it.id }
+                before.copy(assets = assets, pads = before.pads.map { incoming[it.id] ?: it }.frozen(),
+                    clips = before.clips.map { clip ->
+                        val slot = DrumKits.identify(byHash.getValue(clip.assetHash))?.slot
+                        val next = slot?.let { kitAssets[it] }
+                        if (next == null || clip.range.end > next.frames) clip else clip.copy(assetHash = next.hash)
+                    }.frozen())
+            }
             is Intent.SetArrangement -> before.copy(tracks = intent.tracks, clips = intent.clips, takes = intent.takes)
             is Intent.SetLyrics -> before.copy(lyrics = intent.lines)
         }
+        val after = withoutUnusedKitSounds(edited)
         val key = when (intent) {
             is Intent.SetTempo -> intent.gesture?.let { "tempo:$it" }
             is Intent.SetSourceRange -> intent.gesture?.let { "range:$it" }
@@ -151,5 +179,20 @@ object Reducer {
             merged[asset.hash] = asset
         }
         return merged.values.sortedBy { it.hash }.frozen()
+    }
+    /**
+     * Built-in kit sounds stay in the document only while something uses them; choosing the kit again renders them
+     * again. Without this every kit tried would stay in each save and count against the asset limit.
+     */
+    private fun withoutUnusedKitSounds(project: Project): Project {
+        if (project.assets.none { DrumKits.identify(it) != null }) return project
+        val used = HashSet<String>()
+        project.source?.let { used += it.assetHash }
+        project.pads.forEach { pad -> pad.assetHash?.let { used += it } }
+        project.clips.forEach { used += it.assetHash }
+        project.takes.forEach { used += it.assetHash }
+        project.assets.forEach { asset -> asset.derivedFrom?.let { used += it } }
+        val kept = project.assets.filter { it.hash in used || DrumKits.identify(it) == null }
+        return if (kept.size == project.assets.size) project else project.copy(assets = kept.frozen())
     }
 }

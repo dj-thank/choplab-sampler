@@ -56,6 +56,14 @@ enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCE
     val looping: Boolean = false,
 ) { init { require(id in 0..127 && sourceRate > 0) } }
 
+/** A built-in drum kit the host can install; the name is the kit's own name in every language. */
+@Immutable data class ContinuousDrumKit(val id: String, val name: String)
+
+/** Asked before a kit replaces the user's own sounds on the drum BANK. */
+@Immutable data class ContinuousKitQuestion(val kitId: String, val replacedSounds: Int) {
+    init { require(replacedSounds in 1..16) }
+}
+
 @Immutable data class ContinuousTrack(
     val id: String,
     val name: String,
@@ -113,6 +121,11 @@ enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCE
     val capabilities: Set<ContinuousCapability> = emptySet(),
     val unavailable: Map<ContinuousCapability, ContinuousUnavailable> = emptyMap(),
     val status: ContinuousStatus? = null,
+    val drumKits: List<ContinuousDrumKit> = emptyList(),
+    /** The kit on the drum BANK when its PADs hold one kit's sounds. */
+    val installedDrumKit: String? = null,
+    val drumKitChooserOpen: Boolean = false,
+    val drumKitQuestion: ContinuousKitQuestion? = null,
 ) {
     init {
         require(selectedBank in 0..7 && selectedPadId in 0..127)
@@ -182,7 +195,12 @@ sealed interface ContinuousEditorAction {
     /** Playback monitoring only, separate from track/clip/export gains. */
     data class SetSongMonitorGain(val gain: Float) : ContinuousEditorAction
     data class SetTempo(val bpm: Int) : ContinuousEditorAction
+    /** Opens the kit chooser; a kit fills the drum BANK only after [ChooseDrumKit]. */
     data object AddDrum : ContinuousEditorAction
+    data class ChooseDrumKit(val kitId: String) : ContinuousEditorAction
+    /** Answers the question about replacing the user's own sounds; it applies only to the sounds it counted. */
+    data object ConfirmDrumKit : ContinuousEditorAction
+    data object DismissDrumKit : ContinuousEditorAction
     data object RecordVoice : ContinuousEditorAction
     data object OpenScratch : ContinuousEditorAction
 }

@@ -53,6 +53,36 @@ import kotlin.math.roundToLong
                 CEStatus(state.status)
             }
         }
+        CEDrumKitDialogs(state, onAction)
+    }
+}
+
+@Composable private fun CEDrumKitDialogs(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
+    if (state.drumKitChooserOpen) AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.DismissDrumKit) },
+        modifier = Modifier.testTag("ce-kit-chooser"), title = { Text(stringResource(Res.string.ce_kit_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(Res.string.ce_kit_hint), fontSize = 14.sp, lineHeight = 20.sp)
+                val inUse = stringResource(Res.string.ce_kit_in_use)
+                state.drumKits.forEach { kit ->
+                    val installed = kit.id == state.installedDrumKit
+                    val character = when (kit.id) {
+                        "dusty-jazz" -> Res.string.ce_kit_dusty_jazz; "boom-bap" -> Res.string.ce_kit_boom_bap
+                        "vinyl-soul" -> Res.string.ce_kit_vinyl_soul; "lofi-tape" -> Res.string.ce_kit_lofi_tape
+                        "clean-studio" -> Res.string.ce_kit_clean_studio; else -> null
+                    }?.let { "\n" + stringResource(it) }.orEmpty()
+                    CEButton("${kit.name}$character${if (installed) "\n$inUse" else ""}", { onAction(ContinuousEditorAction.ChooseDrumKit(kit.id)) },
+                        Modifier.fillMaxWidth().semantics { selected = installed }, primary = installed, tag = "ce-kit-${kit.id}")
+                }
+            }
+        },
+        confirmButton = { CEButton(stringResource(Res.string.ce_close), { onAction(ContinuousEditorAction.DismissDrumKit) }, tag = "ce-kit-close") })
+    state.drumKitQuestion?.let { question ->
+        AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.DismissDrumKit) },
+            modifier = Modifier.testTag("ce-kit-question"), title = { Text(stringResource(Res.string.ce_kit_replace_title)) },
+            text = { Text(stringResource(Res.string.ce_kit_replace_body, question.replacedSounds), fontSize = 14.sp, lineHeight = 20.sp) },
+            confirmButton = { CEButton(stringResource(Res.string.ce_kit_replace), { onAction(ContinuousEditorAction.ConfirmDrumKit) }, primary = true, tag = "ce-kit-replace") },
+            dismissButton = { CEButton(stringResource(Res.string.ce_kit_keep), { onAction(ContinuousEditorAction.DismissDrumKit) }, tag = "ce-kit-keep") })
     }
 }
 

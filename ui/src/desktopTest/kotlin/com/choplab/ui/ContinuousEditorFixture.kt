@@ -32,7 +32,7 @@ internal object ContinuousEditorFixture {
                 clip("scratch-1", "scratch", "C01", 10.5, 2.0)),
         selectedClipId = "warm-1", selectedTrackId = "melody", pixelsPerSecond = 25f,
         bpm = 92,
-        capabilities = ContinuousCapability.entries.toSet() - setOf(ContinuousCapability.ADD_DRUM, ContinuousCapability.RECORD_VOICE,
+        capabilities = ContinuousCapability.entries.toSet() - setOf(ContinuousCapability.RECORD_VOICE,
             ContinuousCapability.SCRATCH, ContinuousCapability.LIVE_CHOP),
     )
     fun readout() = ContinuousEditorReadout(originalFrame = 0, songFrame = frames(8.3))

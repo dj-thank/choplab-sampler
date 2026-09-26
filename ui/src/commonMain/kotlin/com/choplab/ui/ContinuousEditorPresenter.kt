@@ -2,6 +2,7 @@ package com.choplab.ui
 
 import com.choplab.core.*
 import com.choplab.core.edit.Intent
+import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.engine.PlayMode
 import com.choplab.engine.Tempo
@@ -29,7 +30,14 @@ interface ContinuousEditorPorts {
     suspend fun resetOriginal(): Boolean = stopOriginal()
     suspend fun seekOriginal(frame: Long): Boolean = false
     suspend fun setOriginalMonitorGain(gain: Float): Boolean = false
+    /** Whether [drumKit] can render and store the built-in kits. */
+    val drumKitsAvailable: Boolean get() = false
+    /** A built-in kit's 16 sounds in slot order, stored and verified; null when this host has none. */
+    suspend fun drumKit(kitId: String): List<Asset>? = null
 }
+
+/** A question is bound to the drum BANK it counted; any change there asks again. */
+private data class KitQuestion(val kitId: String, val bank: List<Pad>, val replaced: Int)
 
 private data class EditorView(
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
@@ -43,6 +51,8 @@ private data class EditorView(
     val songGain: Float = 1f,
     val status: ContinuousStatus? = null,
     val playingPads: Set<Int> = emptySet(),
+    val kitChooser: Boolean = false,
+    val kitQuestion: KitQuestion? = null,
 )
 private data class EditorInputs(val document: DocumentState, val selection: SelectionState,
                                 val work: WorkState, val playing: Boolean, val attached: Boolean)
@@ -220,9 +230,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.PauseSong -> send(Action.Pause)
                 ContinuousEditorAction.StopSong -> send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) } }
                 is ContinuousEditorAction.SetTempo -> edit(Intent.SetTempo(Tempo(action.bpm * 1000, project.tempo.swingPermille)))
+                ContinuousEditorAction.AddDrum -> ports.drumKitsAvailable.also { if (it) view.update { v -> v.copy(kitChooser = true, kitQuestion = null) } }
+                is ContinuousEditorAction.ChooseDrumKit -> ports.drumKitsAvailable && chooseKit(DrumKits.kit(action.kitId).id, project)
+                ContinuousEditorAction.ConfirmDrumKit -> view.value.kitQuestion?.let { question ->
+                    if (drumBank(project) == question.bank) installKit(question.kitId) else chooseKit(question.kitId, project)
+                } ?: false
+                ContinuousEditorAction.DismissDrumKit -> { view.update { it.copy(kitChooser = false, kitQuestion = null) }; true }
                 // Keep these controls visible but unavailable until their real adapters are integrated.
                 is ContinuousEditorAction.SetOriginalPitch, is ContinuousEditorAction.SetPadTone,
-                ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.AddDrum,
+                ContinuousEditorAction.BeginLiveChop,
                 ContinuousEditorAction.RecordVoice, ContinuousEditorAction.OpenScratch -> false
             }
             if (!accepted && view.value.status != ContinuousStatus.CANCELLED) view.update { it.copy(status = ContinuousStatus.FAILED) }
@@ -231,6 +247,33 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         } catch (cancel: CancellationException) { throw cancel }
         catch (_: Exception) { view.update { it.copy(status = ContinuousStatus.FAILED) }; false }
         }
+    }
+
+    private fun drumBank(project: Project): List<Pad> = project.pads.subList(DrumKits.BANK * 16, DrumKits.BANK * 16 + 16).toList()
+
+    /** The user's own sounds on the drum BANK are replaced only after they agree; kit sounds just change kit. */
+    private suspend fun chooseKit(kitId: String, project: Project): Boolean {
+        val bank = drumBank(project)
+        val replaced = bank.count { pad -> pad.assetHash?.let { DrumKits.identify(project.asset(it)) == null } == true }
+        if (replaced == 0) return installKit(kitId)
+        view.update { it.copy(kitChooser = false, kitQuestion = KitQuestion(kitId, bank, replaced)) }
+        return true
+    }
+
+    private suspend fun installKit(kitId: String): Boolean {
+        view.update { it.copy(kitChooser = false, kitQuestion = null) }
+        val sounds = ports.drumKit(kitId) ?: return false
+        val first = DrumKits.BANK * 16
+        val project = studio.document.value.project
+        val pads = sounds.mapIndexed { slot, asset ->
+            // Changing kits swaps only the sound: a PAD that holds this drum from any kit keeps the user's settings.
+            val current = project.pads[first + slot]
+            val sameDrum = current.assetHash?.let { DrumKits.identify(project.asset(it))?.slot } == slot
+            if (sameDrum && requireNotNull(current.range).end <= asset.frames) current.copy(assetHash = asset.hash)
+            else DrumKits.pad(first + slot, slot, asset)
+        }
+        releaseHeld()
+        return edit(Intent.InstallKit(sounds.frozen(), pads.frozen())) && send(Action.SelectPad(first))
     }
 
     private suspend fun selectArrangement(): Boolean = if (studio.selection.value.playbackTarget is PlaybackTarget.Arrangement) true
@@ -293,12 +336,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             }
             if (source != null && ports.originalAvailable) capabilities += setOf(ContinuousCapability.ORIGINAL_PLAYBACK,
                 ContinuousCapability.ORIGINAL_SEEK, ContinuousCapability.ORIGINAL_MONITOR_GAIN)
+            if (ports.drumKitsAvailable) capabilities += ContinuousCapability.ADD_DRUM
         }
+        val kitSounds = p.pads.map { pad -> pad.assetHash?.let { DrumKits.identify(p.asset(it)) } }
         return ContinuousEditorState(stage = v.stage, projectTitle = p.title, original = source,
             originalPlaying = v.originalPlaying, originalMonitorGain = v.originalGain,
             banks = p.banks.map { ContinuousBank(it.id, it.name) }, selectedBank = input.selection.padId / 16,
             pads = p.pads.map { pad -> ContinuousPad(pad.id, pad.name,
-                if (pad.assetHash == null) ContinuousPadKind.EMPTY else ContinuousPadKind.SAMPLE,
+                when { pad.assetHash == null -> ContinuousPadKind.EMPTY; kitSounds[pad.id] != null -> ContinuousPadKind.DRUM; else -> ContinuousPadKind.SAMPLE },
                 ContinuousPadMode.valueOf(pad.mode.name), slicePeaks(p, pad.assetHash, pad.range, peaks),
                 pad.range?.start ?: 0, pad.range?.end ?: 0, pad.assetHash?.let { p.asset(it).sampleRate } ?: 48_000,
                 pad.pitchSemitones.toFloat(), gain = pad.gain, looping = pad.mode == PlayMode.LOOP && pad.id in v.playingPads) },
@@ -315,6 +360,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             canUndo = input.document.canUndo, canRedo = input.document.canRedo, capabilities = capabilities,
             unavailable = ContinuousCapability.entries.filterNot { it in capabilities }.associateWith {
                 if (busy) ContinuousUnavailable.BUSY else ContinuousUnavailable.NOT_CONNECTED },
-            status = if (busy) ContinuousStatus.LOADING else v.status)
+            status = if (busy) ContinuousStatus.LOADING else v.status,
+            drumKits = if (ports.drumKitsAvailable) DrumKits.catalog.map { ContinuousDrumKit(it.id, it.name) } else emptyList(),
+            // In use only while every sound on the drum BANK comes from that one kit.
+            installedDrumKit = (DrumKits.BANK * 16 until DrumKits.BANK * 16 + 16).filter { p.pads[it].assetHash != null }
+                .map { kitSounds[it]?.kit?.id }.distinct().singleOrNull(),
+            drumKitChooserOpen = v.kitChooser, drumKitQuestion = v.kitQuestion?.let { ContinuousKitQuestion(it.kitId, it.replaced) })
     }
 }
