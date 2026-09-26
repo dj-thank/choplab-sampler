@@ -92,8 +92,8 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 |---|---|---|
 | ファイル/ライブラリ取込・書出し | Macのnativeパネルから合成FLACを選択、元bytes一致のlibrary保存と原曲読込成功。CLIの`.choplib`書出しも成功。重複decode削減、一部失敗/取消/再試行の回帰test成功 | 他形式・長尺の実操作 |
 | YouTube | ユーザー指定の1素材をMacで取得→48kHz stereo、12,276,298frames→保存後読込成功 | 他のprovider条件、失効/制限時の実応答、公開配布適合 |
-| 4工程/PAD/ループ/保存導線 | `544f2c7`のMacでdesktop249件（実録音1skip）/JVM196件/UI4件/操作38件成功 | nativeの⌘Sで514,306bytesのschema7制作を保存（stereo 5,760,000frames、ZIP CRC正常）、⌘Qでexit0。人が聴く制作通し・操作感は未確認 |
-| マイク/システム音/分離 | PR117でadapter統合、Swift build・fake helperの途中終了/権限待ち/PCM分割を確認。追加で0.5秒の合成stereoを実モデルで分離し、9秒でWAV生成 | 今回revisionの実マイク/実音、親Java音声の除外、分離音質 |
+| 4工程/PAD/ループ/保存導線 | `544f2c7`のMacでdesktop249件（実録音1skip）/JVM196件/UI4件/操作38件成功 | nativeの⌘Sで514,306bytesのschema7制作を保存（stereo 5,760,000frames、ZIP CRC正常）、⌘Qでexit0。再読込後の全PCM・chop位置・14step保持とbeat WAV出力も成功。人が聴く制作通し・操作感は未確認 |
+| マイク/システム音/分離 | PR117でadapter統合、Swift build・fake helperの途中終了/権限待ち/PCM分割を確認。追加で0.5秒の合成stereoを実モデルで分離し、9秒でWAV生成 | `e28307a`の実マイクは48kHz mono/17,920frames、出力lineは48kHz stereo/4,800frames書込成功（録音は検証後削除）。聴感、親Java音声の除外、分離音質は未確認 |
 | Spotify | 共通PKCE/同期・取消の自動testを保持 | Spotify本体の起動は確認。ChopLab側の実接続と操作は未確認 |
 | Mac配布/対応範囲 | MacでinstallDist成功。確認hostはmacOS arm64/JDK21 | 他OS版/Intel、署名・公証済みMac配布、Human GO |
 
