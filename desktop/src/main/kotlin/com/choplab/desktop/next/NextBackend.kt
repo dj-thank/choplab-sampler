@@ -72,8 +72,9 @@ class NextBackend private constructor(
             abs(peaks.minimum(bucket, 1)), abs(peaks.maximum(bucket, 1))) }
     }
 
-    suspend fun shutdown() {
-        try { flushAutosave(); studio.dispatch(Action.Stop); studio.dispatch(Action.Close) }
+    /** [flush] is false only after the user chose to close without the final autosave. */
+    suspend fun shutdown(flush: Boolean = true) {
+        try { if (flush) flushAutosave(); studio.dispatch(Action.Stop); studio.dispatch(Action.Close) }
         finally {
             audition.close()
             try { withContext(Dispatchers.IO) { engine.close() } }
@@ -88,17 +89,25 @@ class NextBackend private constructor(
             require(!Files.isSymbolicLink(directory)) { "Profile directory must not be a symbolic link" }
             val files = NextFileLocations()
             val assets = FileAssetStore(directory.toRealPath().resolve("assets"))
-            val pcm = WavPcmPort(assets)
-            val compiler = ProgramCompiler(pcm)
             val autosave = AutosaveStore(directory.toRealPath().resolve("autosave"), assets)
             val recovered = autosave.recover()
             val hadSavedDocument = (0..2).any { Files.exists(autosave.directory.resolve("autosave.$it.json")) }
             check(recovered != null || !hadSavedDocument) { "Autosave recovery failed; existing files were preserved" }
-            val engine = if (sinkFactory == null) JavaSoundEnginePort(compiler) else JavaSoundEnginePort(compiler, sinkFactory)
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            val studio = Studio(scope, Services(assets, WavImportPort(assets, files::resolve), FileProjectPort(assets, files::resolve),
-                WavExportPort(compiler, files::resolve), engine), recovered?.project ?: Project(), recovered?.revision ?: 0)
-            return NextBackend(studio, engine, files, assets, pcm, scope, SourceAuditionController(engine, pcm, scope), autosave)
+            // Owned resources start only after recovery, and a failed composition releases them again.
+            val pcm = WavPcmPort(assets)
+            var engine: JavaSoundEnginePort? = null
+            try {
+                val compiler = ProgramCompiler(pcm)
+                val output = if (sinkFactory == null) JavaSoundEnginePort(compiler) else JavaSoundEnginePort(compiler, sinkFactory)
+                engine = output
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                val studio = Studio(scope, Services(assets, WavImportPort(assets, files::resolve), FileProjectPort(assets, files::resolve),
+                    WavExportPort(compiler, files::resolve), output), recovered?.project ?: Project(), recovered?.revision ?: 0)
+                return NextBackend(studio, output, files, assets, pcm, scope, SourceAuditionController(output, pcm, scope), autosave)
+            } catch (failure: Throwable) {
+                try { engine?.close() } finally { pcm.close() }
+                throw failure
+            }
         }
 
         fun patternFrames(project: Project, pattern: Pattern): Int =

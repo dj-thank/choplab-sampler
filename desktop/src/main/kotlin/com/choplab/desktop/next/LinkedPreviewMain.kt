@@ -14,6 +14,7 @@ import java.awt.Window as AwtWindow
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JFileChooser
 import javax.swing.JOptionPane
@@ -32,6 +33,7 @@ fun main() {
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
     val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+    val closedWithoutAutosave = AtomicBoolean(false)
     try {
         application {
             var closing by remember { mutableStateOf(false) }
@@ -41,8 +43,13 @@ fun main() {
                     if (!closing) {
                         closing = true
                         scope.launch {
-                            try { backend.flushAutosave(); presenter.close(); exitApplication() }
-                            catch (_: Exception) { closing = false }
+                            val closed = try {
+                                closeAfterAutosave(backend::flushAutosave,
+                                    { ports.confirmCloseWithoutAutosave().also { if (it) closedWithoutAutosave.set(true) } }) {
+                                    presenter.close(); exitApplication()
+                                }
+                            } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
+                            if (!closed) closing = false
                         }
                     }
                 }) {
@@ -54,7 +61,19 @@ fun main() {
                     presenter::onAction, presenter::readout, refresh)
             }
         }
-    } finally { backend.close(); scope.cancel() }
+    } finally { runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+}
+
+/**
+ * A failing autosave (full or read-only disk) must never trap the window open. After a failed
+ * final save the user decides; declining keeps the window and its unsaved work.
+ */
+internal suspend fun closeAfterAutosave(flush: suspend () -> Unit, confirmWithoutAutosave: suspend () -> Boolean,
+                                        finish: suspend () -> Unit): Boolean {
+    val saved = try { flush(); true } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
+    if (!saved && !confirmWithoutAutosave()) return false
+    finish()
+    return true
 }
 
 private class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {
@@ -81,6 +100,16 @@ private class DesktopEditorPorts(private val backend: NextBackend, private val p
     override suspend fun chooseExport(frames: Long): ExportRequest? {
         val path = choose(true, "wav", if (japanese) "WAVを書き出す" else "Export WAV") ?: return null
         return ExportRequest(backend.files.register(path), Math.toIntExact(frames), bits = 24)
+    }
+    suspend fun confirmCloseWithoutAutosave(): Boolean = suspendCancellableCoroutine { answer ->
+        SwingUtilities.invokeLater {
+            if (!answer.isActive) return@invokeLater
+            val choice = JOptionPane.showConfirmDialog(parent(),
+                if (japanese) "自動保存できませんでした。このまま閉じると、最後に自動保存できた後の変更は失われます。閉じますか？"
+                else "Autosave failed. Closing now loses the changes made after the last successful autosave. Close anyway?",
+                if (japanese) "おとひろい Preview" else "Earth Song Preview", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE)
+            if (answer.isActive) answer.resume(choice == JOptionPane.YES_OPTION)
+        }
     }
     private suspend fun choose(save: Boolean, extension: String, title: String): Path? = suspendCancellableCoroutine { answer ->
         SwingUtilities.invokeLater {
