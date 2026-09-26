@@ -142,6 +142,7 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 | 2026-09-26 | レビュー指摘を修正。システム音声の経路を録音開始ごとに選び、Windowsでステレオミキサーを後から有効にしても再起動不要。Macはヘルパーを優先。Macの録音は約100msごとに書き、開始時の待ちは最大1.5秒。停止前にキャプチャが止まったら失敗として報告。取り込み失敗の表示は人向けの文だけ | Swiftヘルパーの変更（停止エラーでの終了、常に2ch）はMacでのビルドと実録音が未確認。DropTarget、PATH上の古いyt-dlpは未変更 |
 | 2026-09-26 | 編集の組み立て（Studio・出力・3世代自動保存・波形・終了処理）を `jvm` の `EditorBackend` に共通化し、desktopの `NextBackend` はJava Soundとパス用ファイル窓口を渡す薄い包みにした。経路変更・機器なし・応答遅れで出力が外れた後、編集画面を作り直さずに新しい出力を開く `reattach()` を追加。自動ではつながず、確定済みProgramを保ち、発音中の音は止まる。`:jvm:test` 41件（共通の組み立て6件・再接続2件を追加、再接続を無効にすると2件とも失敗）、`:desktop:test` 268件（Mac実録音1skip）、`:app:compilePreviewKotlin` 成功 | Android NEXTの入口・SAF・音声フォーカス・経路変更からの復帰を次のPRで接続する。desktopの再接続操作は未接続。実機の経路変更・実音は未確認 |
 | 2026-09-26 | Android NEXT（debug/Preview）を接続。SAFの文書はアプリ専用の一時ファイルを通して共通のWAV/制作/書出し処理へ渡し、完成したものだけを書き込み、失敗・取消時は作りかけを破棄する。出力は画面を離れると手放し（`releaseOutput`）、戻ると開き直す。機器の故障は明示の再接続まで開き直さない。手放し/再接続の高速な繰り返しで見つかった競合を、希望状態と故障ラッチの設計に直した。画面を離れる時・フォーカス喪失時は音だけを止め、取込・保存・書出しは続ける。`:jvm:test` 53件、`:app:testDebugUnitTest`/`testPreviewUnitTest` の文書選択5件ずつ、`:desktop:test` 268件（1skip）、`:ui:desktopTest` 23件、lint 0 error、debug/Preview/release APKを生成し、NEXTはreleaseのmanifestに含まれないことを確認 | CIのAPI36エミュレーターでNEXTの起動・描画・WAV取込を確認する（音声なしのため音の証拠ではない）。Pixel実機での音・遅延・CPU・underrun、スマホ縦の見え方は未確認 |
+| 2026-09-26 | PR124のWindows CIで、同梱FFmpegの取得先がHTTP 503を返し `:desktop:prepareMediaTools` が失敗した（変更とは無関係）。取得処理を、一時的なHTTP（408/425/429/5xx）と通信断だけ間隔を広げて最大4回試す形にし、途中で切れたファイルを完成扱いしないよう `.part` 経由で保存する。チェックサム検証は従来どおり。policy test 310件 | 上流が長時間止まる場合は再試行でも失敗する。その時は別の取得元の検討が必要 |
 
 ## 履歴の入口
 
