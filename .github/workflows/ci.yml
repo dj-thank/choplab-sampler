@@ -79,7 +79,7 @@ jobs:
       - name: Unit tests, lint, and debug APK
         run: >-
           ./gradlew --stacktrace
-          :engine:desktopTest :core:desktopTest :core:compileAndroidMain :jvm:test :shared:desktopTest
+          :engine:desktopTest :core:desktopTest :core:compileAndroidMain :jvm:test :ui:desktopTest :ui:compileAndroidMain :app:compilePreviewKotlin :app:mergeExtDexPreview :shared:desktopTest
           :jvm-core:test
           :shared:testAndroidHostTest
           :app:testDebugUnitTest
@@ -216,7 +216,7 @@ jobs:
 
       - name: Test and package Windows app-image
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --stacktrace :engine:desktopTest :core:desktopTest :core:compileAndroidMain :jvm:test :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:desktopUiQualityTest :desktop:packageWindows :desktop:packageWindowsPreview
+        run: .\gradlew.bat --no-daemon --stacktrace :engine:desktopTest :core:desktopTest :core:compileAndroidMain :jvm:test :ui:desktopTest :ui:compileAndroidMain :app:compilePreviewKotlin :app:mergeExtDexPreview :shared:desktopTest :jvm-core:test :desktop:test :desktop:desktopLongPressUiTest :desktop:desktopUiQualityTest :desktop:packageWindows :desktop:packageWindowsPreview :desktop:packageWindowsLinkedPreview
 
       - name: Verify EXE version, record digest, and archive app-image
         shell: pwsh
@@ -259,6 +259,13 @@ jobs:
           $zip = Resolve-Path 'dist/ChopLab-windows-preview.zip'
           (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path -Leaf $zip) | Set-Content -Encoding utf8 "$zip.sha256"
 
+      - name: Verify linked editor Preview lifecycle without audio output
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          .\scripts\verify-windows-artifact.ps1 -AppImage 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -ExpectedVersion $env:RELEASE_VERSION
+          .\scripts\smoke-windows-app.ps1 -AppImage 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -SilentAudio
       - name: Upload Windows app-image artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
