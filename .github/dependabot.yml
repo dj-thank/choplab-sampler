@@ -10,6 +10,12 @@ updates:
     labels:
       - dependencies
       - gradle
+    ignore:
+      # Compose Multiplatform 1.12 ships runtime jars named like the AndroidX jars it depends on
+      # (runtime-saveable-desktop-1.12.x.jar), so desktop installDist stops on a duplicate entry.
+      # Keep 1.11.x until that collision is resolved; other Kotlin/Compose updates still arrive.
+      - dependency-name: "org.jetbrains.compose*"
+        versions: [">= 1.12.0, < 1.13.0"]
     groups:
       kotlin-and-compose:
         patterns:

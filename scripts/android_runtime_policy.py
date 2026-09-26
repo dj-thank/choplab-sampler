@@ -22,7 +22,7 @@ COORDINATES = frozenset({
     "io.github.junkfood02.youtubedl-android:library:0.18.1",
     "io.github.junkfood02.youtubedl-android:common:0.18.1",
     "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
-    "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+    "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
 })
 NATIVE_PATH = re.compile(r"lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/lib[A-Za-z0-9_.-]+\.so")
 RAW_PATH = re.compile(r"res/(?:raw/)?[A-Za-z0-9_][A-Za-z0-9_.-]{0,79}")
