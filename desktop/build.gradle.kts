@@ -1,4 +1,6 @@
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.Sync
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -32,6 +34,30 @@ tasks.register<JavaExec>("runLinkedPreview") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.choplab.desktop.next.LinkedPreviewMainKt")
     systemProperty("choplab.preview", "true")
+}
+
+val macHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+val macSystemAudioHelper = layout.buildDirectory.file("choplab-sck-audio")
+val compileMacSystemAudioHelper = tasks.register<Exec>("compileMacSystemAudioHelper") {
+    onlyIf { macHost }
+    val source = layout.projectDirectory.file("src/main/swift/ChoplabSystemAudio.swift")
+    inputs.file(source)
+    outputs.file(macSystemAudioHelper)
+    commandLine(
+        "swiftc", "-O", "-parse-as-library",
+        "-o", macSystemAudioHelper.get().asFile.absolutePath,
+        source.asFile.absolutePath,
+    )
+}
+if (macHost) {
+    tasks.named<JavaExec>("run") {
+        dependsOn(compileMacSystemAudioHelper)
+        systemProperty("choplab.systemAudioHelper", macSystemAudioHelper.get().asFile.absolutePath)
+    }
+    tasks.named<Sync>("installDist") {
+        dependsOn(compileMacSystemAudioHelper)
+        from(macSystemAudioHelper) { into("lib") }
+    }
 }
 
 val choplabVersion = providers.gradleProperty("choplabVersion").orElse("0.0.0")

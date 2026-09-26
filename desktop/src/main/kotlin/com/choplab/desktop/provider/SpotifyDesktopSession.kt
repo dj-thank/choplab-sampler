@@ -470,7 +470,7 @@ class SpotifyDesktopSession(
         is SpotifyAuthorizationDeniedException ->
             "Spotify連携が拒否または中止されました。許可する場合は、もう一度ログインしてください"
         is SpotifyBrowserUnavailableException ->
-            "既定ブラウザーを開けませんでした。Windowsの既定ブラウザー設定を確認して、もう一度ログインしてください"
+            "既定ブラウザーを開けませんでした。既定のブラウザー設定を確認して、もう一度ログインしてください"
         is BindException ->
             "Spotify認証用の127.0.0.1ポートを開けませんでした。ほかの認証画面を閉じて、もう一度ログインしてください"
         is IOException ->

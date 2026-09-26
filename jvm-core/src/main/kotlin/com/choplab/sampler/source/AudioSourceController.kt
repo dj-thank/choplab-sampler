@@ -43,6 +43,8 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
                 publish(lease) { it.copy(message=when(error) {
                     is InterruptedException -> "取り込みを中止しました"
                     is IllegalArgumentException -> error.message ?: "入力を確認してください"
+                    // Only messages written for people; internal check failures keep the generic text.
+                    is SourceImportUserError -> error.message ?: "入力を確認してください"
                     else -> "取り込みに失敗しました。URL・接続状態・音源形式を確認してください"
                 }) }
             } finally { publish(lease) { it.copy(busy=false,library=library.list()) } }

@@ -3,7 +3,12 @@ package com.choplab.desktop.provider
 import com.choplab.desktop.audio.wasapi.EndpointFlow
 import com.choplab.desktop.audio.wasapi.WasapiEndpointProbe
 import com.choplab.desktop.audio.wasapi.WasapiProbeReceipt
+import com.choplab.desktop.isMacOsHost
 import java.util.concurrent.Executors
+import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.Mixer
+import javax.sound.sampled.SourceDataLine
+import javax.sound.sampled.TargetDataLine
 
 class WindowsAudioDiagnostics(
     private val onStatus: (String) -> Unit,
@@ -14,6 +19,11 @@ class WindowsAudioDiagnostics(
     }
 
     fun run() {
+        if (isMacOsHost()) {
+            onStatus("音声デバイスを確認しています")
+            executor.submit { onStatus(javaSoundDeviceStatus()) }
+            return
+        }
         onStatus("Windows音声エンドポイントを診断しています")
         executor.submit {
             runCatching { probe.probe() }
@@ -28,6 +38,28 @@ class WindowsAudioDiagnostics(
         executor.shutdownNow()
     }
 }
+internal data class NamedAudioDevice(val name: String, val playback: Boolean, val capture: Boolean)
+
+internal fun javaSoundDeviceStatus(
+    devices: List<NamedAudioDevice> = AudioSystem.getMixerInfo().map { info ->
+        val mixer = AudioSystem.getMixer(info)
+        NamedAudioDevice(
+            name = info.name.ifBlank { info.description },
+            playback = mixer.supports(SourceDataLine::class.java),
+            capture = mixer.supports(TargetDataLine::class.java),
+        )
+    },
+): String {
+    if (devices.isEmpty()) return "音声デバイスが見つかりません"
+    fun names(selected: List<NamedAudioDevice>) =
+        selected.joinToString("、") { it.name }.ifBlank { "なし" }
+    return "音声デバイス: 出力[${names(devices.filter { it.playback })}] 入力[${names(devices.filter { it.capture })}]"
+}
+
+private fun Mixer.supports(lineType: Class<*>): Boolean =
+    sourceLineInfo.any { lineType.isAssignableFrom(it.lineClass) } ||
+        targetLineInfo.any { lineType.isAssignableFrom(it.lineClass) }
+
 internal fun WasapiProbeReceipt.statusMessage(): String {
     val render = endpoints.firstOrNull { it.flow == EndpointFlow.RENDER }
     val capture = endpoints.firstOrNull { it.flow == EndpointFlow.CAPTURE }
