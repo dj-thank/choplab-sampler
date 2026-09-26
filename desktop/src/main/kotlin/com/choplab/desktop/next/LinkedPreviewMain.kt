@@ -8,8 +8,10 @@ import androidx.compose.ui.window.rememberWindowState
 import com.choplab.core.*
 import com.choplab.core.model.Asset
 import com.choplab.desktop.DesktopProfile
+import com.choplab.desktop.applyMacOsHostProperties
 import com.choplab.ui.*
 import kotlinx.coroutines.*
+import java.awt.Desktop
 import java.awt.Window as AwtWindow
 import java.nio.file.Files
 import java.nio.file.Path
@@ -25,6 +27,8 @@ import kotlin.coroutines.resume
 /** Development Preview entry; the existing production/default launcher remains unchanged. */
 fun main() {
     check(java.lang.Boolean.getBoolean("choplab.preview")) { "Linked editor requires the isolated Preview profile" }
+    val title = if (Locale.getDefault().language == "ja") "おとひろい Preview" else "Earth Song Preview"
+    applyMacOsHostProperties(title)
     val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
     val backend = if (java.lang.Boolean.getBoolean("choplab.silentSmoke"))
         NextBackend.create(directory, sinkFactory = { error("Audio disabled for isolated lifecycle verification") })
@@ -37,22 +41,37 @@ fun main() {
     try {
         application {
             var closing by remember { mutableStateOf(false) }
-            Window(title = if (Locale.getDefault().language == "ja") "おとひろい Preview" else "Earth Song Preview",
-                state = rememberWindowState(width = 1440.dp, height = 1024.dp),
-                onCloseRequest = {
-                    if (!closing) {
-                        closing = true
-                        scope.launch {
-                            val closed = try {
-                                closeAfterAutosave(backend::flushAutosave,
-                                    { ports.confirmCloseWithoutAutosave().also { if (it) closedWithoutAutosave.set(true) } }) {
-                                    presenter.close(); exitApplication()
-                                }
-                            } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
-                            if (!closed) closing = false
-                        }
+            val requestClose: () -> Unit = {
+                if (!closing) {
+                    closing = true
+                    scope.launch {
+                        val closed = try {
+                            closeAfterAutosave(backend::flushAutosave,
+                                { ports.confirmCloseWithoutAutosave().also { if (it) closedWithoutAutosave.set(true) } }) {
+                                presenter.close(); exitApplication()
+                            }
+                        } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
+                        if (!closed) closing = false
                     }
-                }) {
+                }
+            }
+            val currentRequestClose by rememberUpdatedState(requestClose)
+            DisposableEffect(Unit) {
+                // Command-Q in the macOS application menu otherwise exits the JVM before the final autosave.
+                val desktop = if (Desktop.isDesktopSupported()) {
+                    Desktop.getDesktop().takeIf { it.isSupported(Desktop.Action.APP_QUIT_HANDLER) }
+                } else {
+                    null
+                }
+                desktop?.setQuitHandler { _, response ->
+                    response.cancelQuit()
+                    currentRequestClose()
+                }
+                onDispose { desktop?.setQuitHandler(null) }
+            }
+            Window(title = title,
+                state = rememberWindowState(width = 1440.dp, height = 1024.dp),
+                onCloseRequest = requestClose) {
                 SideEffect { parent.set(window) }
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
