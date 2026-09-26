@@ -34,6 +34,8 @@ Macの配布・OS/CPU別の受入と、開発起動の成功は区別します�
 
 このtargetは**ローカルad-hoc署名**です。Developer ID署名を求める場合は `CHOPLAB_MAC_SIGNING_IDENTITY` にKeychainの証明書名を設定し、`:desktop:packageMacSignedPreview` を使います。未設定/無効な証明書で自動的にad-hocへ切り替えません。署名・公証・再配布条件の実確認は別の受入です。product versionとMac buildは同じ `gradle.properties` のversion/buildNumberから生成します。
 
+登録済みの公開Spotify Client IDは、Windowsと同じ `CHOPLAB_SPOTIFY_CLIENT_ID` をビルド時に指定するとMacアプリにも引き継がれます。Client Secretやtokenは同梱しません。未設定でもファイル取込などの制作は使え、Spotify接続時にClient IDを入力できます。実アカウントでのOAuthとAPI操作は別途確認します。
+
 ```sh
 python3 scripts/run_mac_acceptance.py \
   --app 'desktop/build/mac-preview-app-image/ChopLab Preview.app' \

@@ -19,6 +19,10 @@ def run(*args, **kwargs):
 
 
 def build(java_home, tools, signed=False):
+    spotify_client = os.environ.get('CHOPLAB_SPOTIFY_CLIENT_ID', '')
+    if spotify_client and not re.fullmatch(r'[A-Za-z0-9]{16,128}', spotify_client):
+        raise RuntimeError('CHOPLAB_SPOTIFY_CLIENT_ID must contain 16 to 128 letters or digits')
+    spotify_options = ['--java-options', '-Dchoplab.spotifyClientId=' + spotify_client] if spotify_client else []
     identity = os.environ.get('CHOPLAB_MAC_SIGNING_IDENTITY', '')
     if signed:
         if not identity or not identity.startswith('Developer ID Application: '):
@@ -52,7 +56,7 @@ def build(java_home, tools, signed=False):
             '--java-options', '-Dfile.encoding=UTF-8', '--java-options', '-XX:-UsePerfData',
             '--java-options', '-Dchoplab.mediaTools=$APPDIR/tools',
             '--java-options', '-Dchoplab.separatorModels=$APPDIR/models',
-            '--java-options', '-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio')
+            '--java-options', '-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio', *spotify_options)
         app = stage / 'image' / f'{image_name}.app'
         application = app / 'Contents/app'
         shutil.copytree(tools, application / 'tools')

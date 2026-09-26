@@ -113,9 +113,11 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 この候補のrepository/policyは303件成功。ローカル生成した全app ZIPのarchive検査も成功し、最終revision/bytes/必須CIはPR119で追跡する。受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能や未統合PR114の成功を、この現行hostの測定から推定しない。
 
-### 表示先がない場合の録音案内
+### Mac受入で判明した録音案内と設定の補完
 
 担当root、[PR120](https://github.com/dj-thank/choplab-sampler/pull/120)、起点main `bb2b66b`。helperの `NO_DISPLAY` を録音adapterで区別し、画面ロック解除・デスクトップ表示・再試行を案内する。すべての起動失敗を権限不足と扱って設定変更を繰り返させない。Swift実buildとMac上のhelperでロック時のcode/exit1、解除後に同梱Javaで実録音成功を確認。子processを使う回帰testで録音中にならず空ファイルも残さないことを検証。Rollbackはこの変更のrevert。最新headの必須CI、生成物のhashとbyte数はPRで追跡する。
+
+同じ受入で、Mac packageだけがビルド時の公開Spotify Client IDを引き継がない差分を確認し、Windowsと同じ入力検証/JVM設定に揃えた。実jpackage呼出しへ渡す引数、未設定時、無効値でbuild前に止まる契約を検証。登録済みClient IDの引継ぎと、実accountの接続成功は区別する。
 
 ## 判断・失敗・次の一手の記録
 
