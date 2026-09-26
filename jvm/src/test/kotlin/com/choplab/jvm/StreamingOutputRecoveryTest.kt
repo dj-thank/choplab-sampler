@@ -99,4 +99,95 @@ class StreamingOutputRecoveryTest {
             assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
         } finally { driver.close() }
     }
+
+    @Test fun releasedOutputHoldsNoDeviceUntilTheEditorReturns() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<Sink>()
+        val driver = StreamingEnginePort(compiler(), { Sink().also { sinks += it } })
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(driver.apply(EngineCommand.SwapProgram(0, 1, program())))
+            assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
+            waitUntil { sinks[0].energy > 1 }
+
+            assertTrue(driver.releaseOutput())
+            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(DriverFault.NONE, driver.status.value.fault, "Releasing for the background is not a fault")
+            assertTrue(sinks[0].closed)
+            assertEquals(0, driver.snapshot().activeVoices)
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 3, program())), "Edits stay usable")
+            assertFalse(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 4, 0)))
+            delay(50)
+            assertEquals(1, sinks.size, "Nothing reopens while the editor is hidden")
+
+            assertTrue(driver.reattach())
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(2, sinks.size)
+            assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 5, 0)))
+            waitUntil { sinks[1].energy > 1 }
+        } finally { driver.close() }
+    }
+
+    /** Paces like a device until told to stall (writes nothing) or freeze (a write that does not return). */
+    private class TroubleSink : AudioSink {
+        override val encoding = SinkEncoding.FLOAT32
+        val stalled = AtomicBoolean(false)
+        val frozenMillis = AtomicInteger(0)
+        override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
+            if (stalled.get()) return 0
+            // Unlike a park, a sleeping write is not woken early when a command arrives, like a stuck device call.
+            frozenMillis.getAndSet(0).takeIf { it > 0 }?.let { Thread.sleep(it.toLong()) }
+            LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000L / 48_000)
+            return length
+        }
+        override fun close() = Unit
+    }
+
+    @Test fun documentChangesSurviveADeviceThatStallsWhileTheyAreApplied() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<TroubleSink>()
+        val driver = StreamingEnginePort(compiler(), { TroubleSink().also { sinks += it } })
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            sinks[0].stalled.set(true)
+            // The edit arrives while the owner waits on the stalled device. It gives up after its stall deadline and
+            // rebuilds a silent engine, dropping what was queued for the old one; the Program must still arrive.
+            delay(100)
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 1, program())), "A stalled device must not lose an edit")
+            assertEquals(1L, driver.snapshot().programRevision)
+            assertEquals(DriverPhase.EDITING_ONLY, driver.status.value.phase)
+            assertEquals(DriverFault.WRITE_FAILED, driver.status.value.fault)
+            assertTrue(driver.apply(EngineCommand.Release(driver.snapshot().frame, 2, 0)), "Stopping a PAD needs no device")
+            assertFalse(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 3, 0)), "Nothing may claim to sound without a device")
+        } finally { driver.close() }
+    }
+
+    @Test fun documentChangesSurviveAWriteThatOutlivesTheAcknowledgementDeadline() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<TroubleSink>()
+        val driver = StreamingEnginePort(compiler(), { TroubleSink().also { sinks += it } }, acknowledgementMillis = 200)
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            sinks[0].frozenMillis.set(600)
+            delay(20)
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 1, program())), "A frozen write must not lose an edit")
+            assertEquals(1L, driver.snapshot().programRevision)
+            if (driver.status.value.phase != DriverPhase.ATTACHED) assertTrue(driver.reattach())
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(1L, driver.snapshot().programRevision, "The output plays the edited Program")
+            assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
+        } finally { driver.close() }
+    }
+
+    @Test fun quickReturnAfterReleaseEndsAttached() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<Sink>()
+        val driver = StreamingEnginePort(compiler(), { Sink().also { sinks += it } })
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            repeat(20) {
+                assertTrue(driver.releaseOutput())
+                assertTrue(driver.reattach())
+            }
+            delay(100)
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(1, sinks.count { !it.closed }, "Exactly one device stays open")
+        } finally { driver.close() }
+    }
 }

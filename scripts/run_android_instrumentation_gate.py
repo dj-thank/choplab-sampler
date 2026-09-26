@@ -13,7 +13,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from instrumentation_summary import summarize_instrumentation_xml_files
+from instrumentation_summary import failing_instrumentation_cases, summarize_instrumentation_xml_files
 
 
 def instrumentation_xml_paths(build_root: Path) -> list[Path]:
@@ -51,6 +51,8 @@ def run_gate(repo_root: Path) -> int:
         summary = summarize_instrumentation_xml_files(paths)
         print(json.dumps(asdict(summary), ensure_ascii=False, separators=(",", ":")))
         summary_status = 0 if summary.passed else 1
+        for case in failing_instrumentation_cases(paths):
+            print(case, file=sys.stderr)
     except (OSError, UnicodeError) as error:
         print(f"Could not read Android instrumentation XML: {error}", file=sys.stderr)
 

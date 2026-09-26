@@ -132,3 +132,51 @@ class AndroidInstrumentationGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailingCaseReportTests(unittest.TestCase):
+    """A red emulator run names the failing test and its message in the job log."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="choplab gate report ")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def run_gate_with(self, xml: str) -> tuple[int, str, str]:
+        result = self.root / "app/build/outputs/androidTest-results/connected/debug/TEST-AVD.xml"
+        result.parent.mkdir(parents=True, exist_ok=True)
+        result.write_text(xml, encoding="utf-8")
+        output, errors = io.StringIO(), io.StringIO()
+        with (
+            patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)),
+            redirect_stdout(output),
+            redirect_stderr(errors),
+        ):
+            status = gate.run_gate(self.root)
+        return status, output.getvalue(), errors.getvalue()
+
+    def test_failed_case_name_message_and_first_stack_lines_reach_the_log(self) -> None:
+        xml = (
+            '<testsuite tests="2" failures="1" errors="0" skipped="0">'
+            '<testcase classname="com.choplab.sampler.next.NextEditorDeviceTest" name="editorStarts"/>'
+            '<testcase classname="com.choplab.sampler.next.NextEditorDeviceTest" name="importsAWav">'
+            '<failure message="expected:&lt;a.wav&gt; but was:&lt;b.wav&gt;">java.lang.AssertionError: expected\n'
+            '\tat org.junit.Assert.fail(Assert.java:89)</failure></testcase></testsuite>'
+        )
+        status, output, errors = self.run_gate_with(xml)
+        self.assertNotEqual(status, 0)
+        self.assertEqual(1, json.loads(output)["failures"], "The machine-readable line is unchanged")
+        self.assertIn("FAILURE: com.choplab.sampler.next.NextEditorDeviceTest.importsAWav", errors)
+        self.assertIn("expected:<a.wav> but was:<b.wav>", errors)
+        self.assertIn("at org.junit.Assert.fail", errors)
+        self.assertNotIn("editorStarts", errors)
+
+    def test_report_is_bounded(self) -> None:
+        body = "line\n" * 100
+        cases = "".join(
+            f'<testcase classname="C" name="t{index}"><error message="boom">{body}</error></testcase>'
+            for index in range(30)
+        )
+        _, _, errors = self.run_gate_with(f'<testsuite tests="30" failures="0" errors="30" skipped="0">{cases}</testsuite>')
+        self.assertEqual(10, errors.count("ERROR: C.t"))
+        self.assertLessEqual(errors.count("line"), 10 * 25)

@@ -257,6 +257,37 @@ def summarize_instrumentation_xml_files(paths: Sequence[Path]) -> Instrumentatio
     )
 
 
+def failing_instrumentation_cases(
+    paths: Sequence[Path], *, limit: int = 10, lines: int = 25
+) -> list[str]:
+    """Names and first lines of failed or errored test cases, bounded for a CI log.
+
+    Counts decide the gate; this only says which test failed and why, so a red run can be read
+    without downloading reports.
+    """
+
+    report: list[str] = []
+    for path in paths:
+        try:
+            root = ET.fromstring(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ET.ParseError):
+            continue
+        for testcase in root.iter():
+            if _local_name(testcase.tag) != "testcase":
+                continue
+            for child in list(testcase):
+                kind = _local_name(child.tag)
+                if kind not in {"failure", "error"}:
+                    continue
+                if len(report) >= limit:
+                    return report
+                name = f"{testcase.attrib.get('classname', '?')}.{testcase.attrib.get('name', '?')}"
+                message = " ".join((child.attrib.get("message") or "").split())[:500]
+                body = [line.rstrip()[:300] for line in (child.text or "").strip().splitlines()[:lines]]
+                report.append("\n".join([f"{kind.upper()}: {name}", *([message] if message else []), *body]))
+    return report
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(

@@ -36,6 +36,11 @@ EXPORTED_COMPONENT_PERMISSIONS: dict[str, str | None] = {
     # check would turn a dependency manifest regression into a public attack surface.
     "androidx.profileinstaller.ProfileInstallReceiver": "android.permission.DUMP",
 }
+# Only the isolated Preview app carries the second launcher that opens the linked editor
+# ("おとひろい NEXT"). A release APK exposing it fails the allowlist like any other component.
+PREVIEW_EXPORTED_COMPONENT_PERMISSIONS: dict[str, str | None] = {
+    "com.choplab.sampler.next.NextActivity": None,
+}
 DEBUG_PREVIEW_TOOLING_COMPONENTS = {
     "androidx.compose.ui.tooling.PreviewActivity",
     "androidx.activity.ComponentActivity",
@@ -378,6 +383,8 @@ def verify_manifest(
         )
 
     allowed_exported = dict(EXPORTED_COMPONENT_PERMISSIONS)
+    if package_name == "com.choplab.sampler.preview":
+        allowed_exported.update(PREVIEW_EXPORTED_COMPONENT_PERMISSIONS)
     if allow_debug_preview:
         allowed_exported.update({component: None for component in DEBUG_PREVIEW_TOOLING_COMPONENTS})
     unexpected_exported = set(exported) - set(allowed_exported)

@@ -48,8 +48,11 @@ open class StreamingEnginePort(
         val answer = CompletableDeferred<Boolean>()
         @Volatile var cancelled = false
         @Volatile var cancelFault = DriverFault.ACK_CANCELLED
+        /** Discarded unapplied because the owner timed it out or rebuilt its engine, not refused on its merits. */
+        @Volatile var dropped = false
         var offered = false
     }
+    private enum class Outcome { APPLIED, REFUSED, DROPPED }
     private val requests = ConcurrentLinkedQueue<Pending>()
     private val queued = AtomicInteger()
     private val producer = Mutex()
@@ -58,7 +61,10 @@ open class StreamingEnginePort(
     private val statusValue = MutableStateFlow(DriverStatus(DriverPhase.STARTING))
     val status: StateFlow<DriverStatus> = statusValue.asStateFlow()
     @Volatile private var closed = false
-    private val reattachRequested = AtomicBoolean(false)
+    /** Host lifecycle: false while the editor is hidden and should hold no output device. */
+    @Volatile private var outputWanted = true
+    /** Set by a device failure; output stays closed until [reattach], so a broken device is never retried in a loop. */
+    private val faultLatched = AtomicBoolean(false)
     @Volatile private var requestedMonitorGain = 1f
     @Volatile private var engineView: EngineView? = null
     @Volatile private var confirmedProgram = EngineProgram.EMPTY
@@ -76,14 +82,29 @@ open class StreamingEnginePort(
     }
 
     /**
-     * After output was lost (route change, focus loss, device or acknowledgement fault), ask the audio owner
-     * to open a fresh sink. The document stays in Studio and the rebuilt engine keeps the confirmed Program;
-     * voices restart silent. Returns false while starting, attached or closed. The outcome arrives in
-     * [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is still unavailable.
+     * After output was lost (route change, focus loss, device or acknowledgement fault) or released by
+     * [releaseOutput], ask the audio owner to open a fresh sink. The document stays in Studio and the rebuilt
+     * engine keeps the confirmed Program; voices restart silent. Returns false while starting, attached or
+     * closed. The outcome arrives in [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is
+     * still unavailable.
      */
     fun reattach(): Boolean {
-        if (closed || statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
-        reattachRequested.set(true)
+        if (closed) return false
+        val releasing = !outputWanted
+        outputWanted = true
+        if (!releasing && statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
+        faultLatched.set(false)
+        LockSupport.unpark(owner)
+        return true
+    }
+
+    /**
+     * Host lifecycle: close the output device while the editor is hidden, so nothing keeps rendering silence.
+     * Voices stop and edits stay usable in EDITING_ONLY without a fault; [reattach] opens a new device.
+     */
+    fun releaseOutput(): Boolean {
+        if (closed) return false
+        outputWanted = false
         LockSupport.unpark(owner)
         return true
     }
@@ -97,22 +118,35 @@ open class StreamingEnginePort(
     override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram =
         compiler.compile(project, target, revision)
 
-    override suspend fun apply(command: EngineCommand): Boolean = applyForClient(command, 0)
+    /**
+     * Output trouble (a stalled, frozen or lost device) can drop a command unapplied while the owner rebuilds its
+     * engine. An edit's Program or a stop must not be lost to that: they need no device, so they are offered again,
+     * a bounded number of times. Studio awaits each apply, so a retry never overtakes a later command.
+     */
+    override suspend fun apply(command: EngineCommand): Boolean {
+        var attempt = 0
+        while (true) {
+            val outcome = submit(command, 0, retry = attempt > 0)
+            if (outcome != Outcome.DROPPED || !command.needsNoDevice() || ++attempt >= DROPPED_ATTEMPTS || closed) return outcome == Outcome.APPLIED
+        }
+    }
 
     /** A separate logical client may control monitoring, never overwrite the document program. */
     suspend fun applyMonitoring(command: EngineCommand): Boolean {
         require(command is EngineCommand.OriginalSourceCommand || command is EngineCommand.SetSongMonitorGain)
-        return applyForClient(command, 1)
+        return submit(command, 1, retry = false) == Outcome.APPLIED
     }
 
-    private suspend fun applyForClient(command: EngineCommand, client: Int): Boolean {
+    private suspend fun submit(command: EngineCommand, client: Int, retry: Boolean): Outcome {
         val request = producer.withLock {
-            if (closed) return false
-            if (command.orderId <= lastClientOrder[client]) return false
+            if (closed) return Outcome.REFUSED
+            val last = lastClientOrder[client]
+            // Only a retry of the command that was just dropped may reuse its order.
+            if (command.orderId < last || (command.orderId == last && !retry)) return Outcome.REFUSED
             while (engineView == null && !closed) delay(1)
-            val current = engineView ?: return false
+            val current = engineView ?: return Outcome.REFUSED
             val pending = Pending(command, command.relativeTo(current.offset, ++nextWireOrder), current)
-            if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); return false }
+            if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); return Outcome.REFUSED }
             requests.add(pending)
             lastClientOrder[client] = command.orderId
             LockSupport.unpark(owner)
@@ -120,12 +154,17 @@ open class StreamingEnginePort(
         }
         // Never hold the producer while awaiting audio: Stop must overtake a future deadline.
         return try {
-            withTimeoutOrNull(acknowledgementMillis) { request.answer.await() } ?: run {
+            val answer = withTimeoutOrNull(acknowledgementMillis) { request.answer.await() } ?: run {
                 request.cancelFault = DriverFault.ACK_TIMEOUT
                 request.cancelled = true
                 LockSupport.unpark(owner)
+                // Once cancelled the owner never applies it; an answer that raced the deadline still counts.
                 withTimeoutOrNull(500) { request.answer.await() }
-                false
+            }
+            when {
+                answer == true -> Outcome.APPLIED
+                answer == null || request.dropped -> Outcome.DROPPED
+                else -> Outcome.REFUSED
             }
         } catch (cancel: CancellationException) {
             request.cancelled = true
@@ -176,8 +215,12 @@ open class StreamingEnginePort(
         var activeEngine = EngineCore()
         engineView = EngineView(activeEngine, 0)
         fun openSink(): AudioSink? = try {
-            sinkFactory().also { reattachRequested.set(false); statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
-        } catch (_: Exception) { statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT); null }
+            sinkFactory().also { statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
+        } catch (_: Exception) {
+            faultLatched.set(true)
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT)
+            null
+        }
         var sink: AudioSink? = openSink()
         val floats = FloatArray(blockFrames * 2)
         val bytes = ByteArray(blockFrames * 2 * 4)
@@ -189,7 +232,7 @@ open class StreamingEnginePort(
         var monitorTarget = 1f
         var monitorRamp = 0
 
-        fun complete(request: Pending, accepted: Boolean) { request.answer.complete(accepted) }
+        fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) { request.dropped = dropped; request.answer.complete(accepted) }
         fun resetToEditingOnly(fault: DriverFault) {
             try { sink?.close() } catch (_: Exception) { }
             sink = null
@@ -200,28 +243,28 @@ open class StreamingEnginePort(
             engineView = EngineView(activeEngine, offset)
             previousLosses = 0
             sequenceStart = 0; stoppedElapsedFrames = 0
-            // Only a request made after this failure is visible may reopen output.
-            reattachRequested.set(false)
+            // A failure needs a fresh reattach request; a lifecycle release (NONE) reopens when wanted again.
+            if (fault != DriverFault.NONE) faultLatched.set(true)
             // Published after the rebuild: a caller reacting to EDITING_ONLY must already target the new
             // engine, or its first edit is bound to the discarded one and refused. Published before the
             // refusals below, so a caller told "false" already sees why.
             statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault)
-            inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false) }; inFlight[index] = null }
+            inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false, dropped = true) }; inFlight[index] = null }
         }
 
         try {
             while (!closed) {
-                if (sink == null && reattachRequested.getAndSet(false)) sink = openSink()
+                if (sink != null && !outputWanted) resetToEditingOnly(DriverFault.NONE)
+                if (sink == null && outputWanted && !faultLatched.get()) sink = openSink()
                 var work = false
                 inFlight.firstOrNull { it?.cancelled == true }?.let { resetToEditingOnly(it.cancelFault) }
                 while (true) {
                     val request = requests.poll() ?: break
                     queued.decrementAndGet()
-                    if (request.cancelled) { complete(request, false); continue }
-                    if (request.generation !== engineView) { complete(request, false); continue }
+                    if (request.cancelled) { complete(request, false, dropped = true); continue }
+                    if (request.generation !== engineView) { complete(request, false, dropped = true); continue }
                     val command = request.command
-                    if (sink == null && command !is EngineCommand.SwapProgram && command !is EngineCommand.Release &&
-                        command !is EngineCommand.Stop && command !is EngineCommand.Panic) { complete(request, false); continue }
+                    if (sink == null && !command.needsNoDevice()) { complete(request, false); continue }
                     val slot = inFlight.indexOfFirst { it == null }
                     if (slot < 0 || activeEngine.controls.offer(request.wireCommand) != OfferResult.ACCEPTED) { complete(request, false); continue }
                     request.offered = true
@@ -253,7 +296,7 @@ open class StreamingEnginePort(
                         is EngineCommand.Stop, is EngineCommand.Panic -> stoppedElapsedFrames = (appliedFrame - sequenceStart).coerceAtLeast(0)
                         else -> Unit
                     }
-                    complete(request, accepted)
+                    complete(request, accepted, dropped = request.cancelled)
                     inFlight[slot] = null
                 }
 
@@ -307,7 +350,16 @@ open class StreamingEnginePort(
         if (Thread.currentThread() !== owner) owner.join(2_000)
         check(!owner.isAlive) { "Audio owner did not stop within its deadline" }
     }
+
+    private companion object {
+        /** A device that keeps dropping commands this often is left to the output's own fault reporting. */
+        const val DROPPED_ATTEMPTS = 3
+    }
 }
+
+/** Keeps its meaning without an output device: it changes the Program or silences voices. */
+private fun EngineCommand.needsNoDevice() = this is EngineCommand.SwapProgram || this is EngineCommand.Release ||
+    this is EngineCommand.Stop || this is EngineCommand.Panic
 
 private fun FloatArray.takeIsAllZero(count: Int): Boolean {
     for (i in 0 until count) if (this[i] != 0f) return false

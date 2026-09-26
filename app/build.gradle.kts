@@ -108,6 +108,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // おとひろい NEXT: the linked editor on the new core, as a second launcher entry in debug and
+    // Preview builds only. The release APK keeps the existing app alone.
+    sourceSets {
+        for (buildType in listOf("debug", "preview")) getByName(buildType) {
+            kotlin.srcDir("src/next/java")
+            res.srcDir("src/next/res")
+            manifest.srcFile("src/next/AndroidManifest.xml")
+        }
+        for (tests in listOf("testDebug", "testPreview")) getByName(tests) { kotlin.srcDir("src/testNext/java") }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -134,8 +145,10 @@ androidComponents {
 }
 
 dependencies {
-    add("previewImplementation", project(":jvm"))
-    add("previewImplementation", project(":ui"))
+    for (configuration in listOf("debugImplementation", "previewImplementation")) {
+        add(configuration, project(":jvm"))
+        add(configuration, project(":ui"))
+    }
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(libs.youtubedl.library)
