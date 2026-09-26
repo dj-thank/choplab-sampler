@@ -16,6 +16,9 @@ internal data class SystemAudioStreamHeader(val sampleRate: Int, val channels: I
 internal fun parseSystemAudioHeader(line: String): SystemAudioStreamHeader {
     val error = line.removePrefix("CHOPLAB-ERROR").trim()
     if (line.startsWith("CHOPLAB-ERROR")) {
+        if (error.substringBefore(' ') == "NO_DISPLAY") {
+            error("システムの音声を録音できません。Macの画面ロックを解除してデスクトップを表示し、もう一度録音を開始してください。外部ディスプレイを使っている場合は接続も確認してください")
+        }
         error(
             "システムの音声を録音できません。システム設定の「プライバシーとセキュリティ」で画面収録とシステムオーディオ録音を許可してください" +
                 if (error.isEmpty()) "" else "（$error）",

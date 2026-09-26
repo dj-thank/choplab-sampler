@@ -11,7 +11,8 @@ struct ChoplabSystemAudio {
             try await capture()
         } catch {
             let detail = error.localizedDescription.replacingOccurrences(of: "\n", with: " ")
-            FileHandle.standardOutput.write(Data("CHOPLAB-ERROR \(detail)\n".utf8))
+            let code = (error as? CaptureFailure).map { "\($0.code) " } ?? ""
+            FileHandle.standardOutput.write(Data("CHOPLAB-ERROR \(code)\(detail)\n".utf8))
             exit(1)
         }
     }
@@ -19,7 +20,7 @@ struct ChoplabSystemAudio {
     private static func capture() async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else {
-            throw CaptureFailure("表示中のディスプレイが見つかりません")
+            throw CaptureFailure("表示中のディスプレイが見つかりません", code: "NO_DISPLAY")
         }
         // Capture runs in a child helper. excludesCurrentProcessAudio alone only
         // excludes this helper, not the Java host that plays ChopLab's audio.
@@ -51,7 +52,8 @@ struct ChoplabSystemAudio {
 
 private struct CaptureFailure: LocalizedError {
     let message: String
-    init(_ message: String) { self.message = message }
+    let code: String
+    init(_ message: String, code: String) { self.message = message; self.code = code }
     var errorDescription: String? { message }
 }
 
