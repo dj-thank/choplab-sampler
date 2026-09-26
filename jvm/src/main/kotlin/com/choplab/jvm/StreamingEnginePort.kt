@@ -176,7 +176,6 @@ open class StreamingEnginePort(
         fun resetToEditingOnly(fault: DriverFault) {
             try { sink?.close() } catch (_: Exception) { }
             sink = null
-            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault)
             // Unknown/late queued commands cannot fire after cancellation. Rebuild from confirmed
             // Program only, with no voices; the document remains in Studio and edits stay usable.
             val offset = requireNotNull(engineView).offset + activeEngine.frame
@@ -184,6 +183,10 @@ open class StreamingEnginePort(
             engineView = EngineView(activeEngine, offset)
             previousLosses = 0
             sequenceStart = 0; stoppedElapsedFrames = 0
+            // Published after the rebuild: a caller reacting to EDITING_ONLY must already target the new
+            // engine, or its first edit is bound to the discarded one and refused. Published before the
+            // refusals below, so a caller told "false" already sees why.
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault)
             inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false) }; inFlight[index] = null }
         }
 
