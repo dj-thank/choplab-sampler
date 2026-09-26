@@ -6,6 +6,7 @@ import com.choplab.core.model.*
 import com.choplab.engine.PlayMode
 import com.choplab.engine.Tempo
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -58,6 +59,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private var serial = 0L
     private val held = mutableSetOf<Int>()
     private val taps = mutableMapOf<Int, Job>()
+    /** UI events in the order they were made; a Release can never overtake its Hold. */
+    private val queue = Channel<ContinuousEditorAction>(Channel.UNLIMITED)
+    /** Mode each PAD had before the loop toggle made it LOOP, restored when that loop ends. */
+    private val loopModes = mutableMapOf<Int, PlayMode>()
     private val inputs = combine(studio.document, studio.selection, studio.work,
         studio.transport.map { it.playing to it.outputAttached }.distinctUntilChanged()) { d, s, w, t -> EditorInputs(d, s, w, t.first, t.second) }
     val state: StateFlow<ContinuousEditorState> = combine(inputs, view, envelopes, ::project)
@@ -96,18 +101,26 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             ports.playingPads()?.let { pads -> view.update { it.copy(playingPads = pads) } }
             delay(200)
         } }
+        jobs.launch { for (action in queue) dispatch(action) }
     }
 
     fun readout(): ContinuousEditorReadout = ports.readout()
-    fun onAction(action: ContinuousEditorAction) { jobs.launch { dispatch(action) } }
+    fun onAction(action: ContinuousEditorAction) {
+        // Stop must not wait behind an import, decode or preparation that is ahead of it in the queue.
+        if (interrupts(action)) jobs.launch { interrupt(action) }
+        queue.trySend(action)
+    }
+
+    private fun interrupts(action: ContinuousEditorAction) = action == ContinuousEditorAction.StopOriginal ||
+        action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.StopSong || action == ContinuousEditorAction.PauseSong
+    private suspend fun interrupt(action: ContinuousEditorAction) {
+        if (action == ContinuousEditorAction.StopOriginal || action == ContinuousEditorAction.StopAll) ports.cancelOriginalPreparation()
+        if (action != ContinuousEditorAction.StopOriginal) studio.dispatch(Action.CancelWork)
+    }
 
     suspend fun dispatch(action: ContinuousEditorAction): Boolean {
-        if (action == ContinuousEditorAction.StopOriginal) ports.cancelOriginalPreparation()
-        if (action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.StopSong || action == ContinuousEditorAction.PauseSong) {
-            // Cancel preparation before waiting for a UI edit; Stop cannot queue behind decoding.
-            if (action == ContinuousEditorAction.StopAll) ports.cancelOriginalPreparation()
-            studio.dispatch(Action.CancelWork)
-        }
+        // Cancel preparation before waiting for a UI edit; Stop cannot queue behind decoding.
+        if (interrupts(action)) interrupt(action)
         return serialized.withLock {
         try {
             view.update { it.copy(status = null) }
@@ -115,7 +128,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             val accepted = when (action) {
                 is ContinuousEditorAction.Navigate -> { releaseHeld(); view.update { it.copy(stage = action.stage) }; true }
                 ContinuousEditorAction.ImportAudio -> ports.chooseAudio()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
-                ContinuousEditorAction.OpenProject -> ports.chooseOpen()?.let { releaseHeld(); stopOriginal(); send(Action.Open(it)) } ?: cancelled()
+                ContinuousEditorAction.OpenProject -> ports.chooseOpen()?.let { releaseHeld(); stopOriginal(); loopModes.clear(); send(Action.Open(it)) } ?: cancelled()
                 ContinuousEditorAction.SaveProject -> ports.chooseSave()?.let { send(Action.Save(it)) } ?: cancelled()
                 ContinuousEditorAction.ExportWav -> ports.chooseExport(songFrames(project))?.let {
                     send(Action.Export(it, PlaybackTarget.Arrangement()))
@@ -160,12 +173,23 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     val pad = project.pads[action.padId]
                     val playing = ports.playingPads() ?: view.value.playingPads
                     val turnOn = pad.mode != PlayMode.LOOP || pad.id !in playing
-                    val replacements = if (turnOn) project.pads.filter { it.assetHash != null && (it.id == pad.id || it.mode == PlayMode.LOOP) }
-                        .map { it.copy(mode = if (it.id == pad.id) PlayMode.LOOP else PlayMode.ONE_SHOT) }.frozen()
-                        else frozenListOf(pad.copy(mode = PlayMode.ONE_SHOT))
-                    if (!edit(Intent.ApplyKit(frozenListOf(), replacements))) false
-                    else (if (turnOn) send(Action.Trigger(pad.id)) else send(Action.Release(pad.id))).also { ok ->
-                        if (ok) view.update { it.copy(playingPads = if (turnOn) setOf(pad.id) else emptySet()) }
+                    // One loop sounds at a time. A mode this toggle changed returns exactly (GATE stays
+                    // GATE); a LOOP the document already had keeps its mode and is only released.
+                    val recorded = loopModes.filterKeys { project.pads[it].mode == PlayMode.LOOP }
+                    val remaining = recorded.toMutableMap()
+                    val replacements = mutableListOf<Pad>()
+                    recorded.forEach { (id, mode) -> if (id != pad.id) { replacements += project.pads[id].copy(mode = mode); remaining -= id } }
+                    if (turnOn) {
+                        if (pad.mode != PlayMode.LOOP) { remaining[pad.id] = pad.mode; replacements += pad.copy(mode = PlayMode.LOOP) }
+                    } else remaining.remove(pad.id)?.let { replacements += pad.copy(mode = it) }
+                    val documentLoops = playing.filter { it != pad.id && it !in recorded && project.pads[it].mode == PlayMode.LOOP }
+                    if (replacements.isNotEmpty() && !edit(Intent.ApplyKit(frozenListOf(), replacements.frozen()))) false
+                    else {
+                        loopModes.clear(); loopModes.putAll(remaining)
+                        documentLoops.forEach { send(Action.Release(it)) }
+                        (if (turnOn) send(Action.Trigger(pad.id)) else send(Action.Release(pad.id))).also { ok ->
+                            if (ok) view.update { it.copy(playingPads = if (turnOn) setOf(pad.id) else emptySet()) }
+                        }
                     }
                 }
                 is ContinuousEditorAction.SetPadPitch -> edit(Intent.SetPad(project.pads[action.padId].copy(pitchSemitones = action.semitones.toDouble())))
@@ -186,7 +210,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.ResetPanes -> { view.update { it.copy(paneFraction = .41f) }; true }
                 is ContinuousEditorAction.SelectCompactPane -> { releaseHeld(); view.update { it.copy(pane = action.pane) }; true }
                 is ContinuousEditorAction.SeekSong -> selectArrangement() && send(Action.Seek(action.timelineFrame))
-                ContinuousEditorAction.PlaySong -> selectArrangement() && send(Action.Resume)
+                ContinuousEditorAction.PlaySong -> selectArrangement() && run {
+                    send(Action.RefreshTransport)
+                    val transport = studio.transport.value
+                    // The engine parks at the song end, where Resume is accepted but plays nothing.
+                    val finished = !transport.sequencePaused && transport.sequenceFrame >= songFrames(project)
+                    (!finished || send(Action.Seek(0))) && send(Action.Resume)
+                }
                 ContinuousEditorAction.PauseSong -> send(Action.Pause)
                 ContinuousEditorAction.StopSong -> send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) } }
                 is ContinuousEditorAction.SetTempo -> edit(Intent.SetTempo(Tempo(action.bpm * 1000, project.tempo.swingPermille)))
@@ -224,7 +254,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         do { value = "$prefix-${++serial}" } while (p.clips.any { it.id == value } || p.tracks.any { it.id == value })
         return value
     }
-    suspend fun close() { serialized.withLock { releaseHeld(); stopOriginal() }; owner.cancel() }
+    suspend fun close() { queue.close(); serialized.withLock { releaseHeld(); stopOriginal() }; owner.cancel() }
     private fun requireGain(gain: Float) { require(gain.isFinite() && gain in 0f..1f) }
 
     private fun songFrames(p: Project): Long = p.clips.maxOfOrNull { ContinuousClipEdits.startFrame(p, it) + ContinuousClipEdits.durationFrames(p, it) }
@@ -275,8 +305,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             selectedPadId = input.selection.padId,
             tracks = p.tracks.mapIndexed { i, track -> ContinuousTrack(track.id, track.name,
                 listOf(0xFF89AD50, 0xFFC1843D, 0xFFB6A66D, 0xFFBF7A53)[i % 4], track.mute) },
+            // A zero-length clip saved by an earlier build is silent, but stays visible, selectable and deletable.
             clips = p.clips.map { c -> p.asset(c.assetHash).let { a -> ContinuousClip(c.id, c.trackId, a.name,
-                ContinuousClipEdits.startFrame(p, c), ContinuousClipEdits.durationFrames(p, c), c.range.start, c.range.end,
+                ContinuousClipEdits.startFrame(p, c), ContinuousClipEdits.durationFrames(p, c).coerceAtLeast(1), c.range.start, c.range.end,
                 a.frames, a.sampleRate, slicePeaks(p, a.hash, c.range, peaks), c.gain) } },
             selectedClipId = v.clip?.takeIf { id -> p.clips.any { it.id == id } }, selectedTrackId = v.track,
             timelineDurationFrames = songFrames(p), pixelsPerSecond = v.pixelsPerSecond, paneFraction = v.paneFraction,

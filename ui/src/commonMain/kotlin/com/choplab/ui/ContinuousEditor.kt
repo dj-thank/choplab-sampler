@@ -233,15 +233,20 @@ import kotlin.math.roundToLong
         CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
             { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.fillMaxWidth(), tag = "ce-source-monitor")
         Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
-        val start = original?.rangeStartFrame ?: 0
-        val end = original?.rangeEndFrame ?: 0
-        Text(stringResource(Res.string.ce_range, ceTime(start, original?.sampleRate ?: 48_000, true), ceTime(end, original?.sampleRate ?: 48_000, true)), fontSize = 12.sp)
         val frames = original?.frames ?: 1
-        RangeSlider((start.toFloat() / frames)..(end.toFloat() / frames), { range ->
+        fun framesOf(range: ClosedFloatingPointRange<Float>): Pair<Long, Long> {
             val a = (range.start * frames).roundToLong().coerceIn(0, frames - 1)
-            val b = (range.endInclusive * frames).roundToLong().coerceIn(a + 1, frames)
-            onAction(ContinuousEditorAction.SetSourceRange(a, b))
-        }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ce-source-range"), enabled = original != null && state.permits(ContinuousCapability.SOURCE_RANGE),
+            return a to (range.endInclusive * frames).roundToLong().coerceIn(a + 1, frames)
+        }
+        // A drag previews locally and commits one range edit (one Undo step) when released. The preview
+        // stays until the committed range arrives, or is dropped if the edit fails.
+        var pending by remember(original?.id, original?.rangeStartFrame, original?.rangeEndFrame) { mutableStateOf<ClosedFloatingPointRange<Float>?>(null) }
+        LaunchedEffect(state.status) { if (state.status == ContinuousStatus.FAILED) pending = null }
+        val (start, end) = pending?.let(::framesOf) ?: ((original?.rangeStartFrame ?: 0L) to (original?.rangeEndFrame ?: 0L))
+        Text(stringResource(Res.string.ce_range, ceTime(start, original?.sampleRate ?: 48_000, true), ceTime(end, original?.sampleRate ?: 48_000, true)), fontSize = 12.sp)
+        RangeSlider(pending ?: (start.toFloat() / frames)..(end.toFloat() / frames), { pending = it },
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ce-source-range"), enabled = original != null && state.permits(ContinuousCapability.SOURCE_RANGE),
+            onValueChangeFinished = { pending?.let(::framesOf)?.let { (a, b) -> onAction(ContinuousEditorAction.SetSourceRange(a, b)) } },
             colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CEActionButton(stringResource(Res.string.ce_save_cut), ContinuousEditorAction.AssignSourceRange(state.selectedPadId), state,

@@ -125,6 +125,25 @@ class ContinuousEditorTest {
         } finally { scene.close() }
     }
 
+    @Test fun sliderDragsCommitOneDocumentEditWhenReleased() = runBlocking<Unit> {
+        for ((stage, tag) in listOf(ContinuousStage.CHOP to "ce-source-range", ContinuousStage.BEAT to "ce-clip-gain")) {
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state(stage), actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                val bounds = requireNotNull(scene.tag(tag)) { tag }.boundsInRoot
+                // Source range starts full width (thumb at the left edge); clip gain 1.0 of 0..2 sits mid-track.
+                val thumb = if (tag == "ce-source-range") Offset(bounds.left + 12f, bounds.center.y) else bounds.center
+                scene.drag(thumb, Offset(80f, 0f))
+                val edits = actions.filter { it is ContinuousEditorAction.SetSourceRange || it is ContinuousEditorAction.SetClipGain }
+                // One gesture is one Undo step; intermediate positions are previews, not document commits.
+                assertEquals(1, edits.size, "$tag emitted $edits")
+            } finally { scene.close() }
+        }
+    }
+
     @Test fun draggingAPadPlacesOnlyOnExplicitDrop() = runBlocking<Unit> {
         val actions = mutableListOf<ContinuousEditorAction>()
         val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) { ContinuousEditor(ContinuousEditorFixture.state(), actions::add, ContinuousEditorFixture::readout) }

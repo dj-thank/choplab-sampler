@@ -17,14 +17,77 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(0)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
             val p = h.studio.document.value.project
-            assertEquals(PlayMode.ONE_SHOT, p.pads[0].mode)
+            // The replaced loop returns to the mode it had before looping; GATE is not flattened to ONE_SHOT.
+            assertEquals(PlayMode.GATE, p.pads[0].mode)
             assertEquals(PlayMode.LOOP, p.pads[1].mode)
             assertEquals(h.original.hash, p.source?.assetHash)
             val release = h.engine.commands.indexOfLast { it is EngineCommand.Release && it.padId == 0 }
             val trigger = h.engine.commands.indexOfLast { it is EngineCommand.Trigger && it.padId == 1 }
             assertTrue(release >= 0 && trigger > release)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
-            assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)
+            assertEquals(PlayMode.GATE, h.studio.document.value.project.pads[1].mode)
+        } finally { h.close() }
+    }
+
+    @Test fun loopToggleKeepsAPadThatWasAlreadyALoopInTheDocument() = runBlocking {
+        val h = Harness { p -> p.copy(pads = p.pads.map { if (it.id == 1) it.copy(mode = PlayMode.LOOP) else it }.frozen()) }
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(0)))
+            val p = h.studio.document.value.project
+            assertEquals(PlayMode.LOOP, p.pads[0].mode)
+            // Only one loop sounds, but the document's own LOOP setting on PAD 2 is not rewritten.
+            assertEquals(PlayMode.LOOP, p.pads[1].mode)
+            val release = h.engine.commands.indexOfLast { it is EngineCommand.Release && it.padId == 1 }
+            val trigger = h.engine.commands.indexOfLast { it is EngineCommand.Trigger && it.padId == 0 }
+            assertTrue(release >= 0 && trigger > release)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(0)))
+            assertEquals(PlayMode.GATE, h.studio.document.value.project.pads[0].mode)
+            assertEquals(PlayMode.LOOP, h.studio.document.value.project.pads[1].mode)
+        } finally { h.close() }
+    }
+
+    @Test fun playAfterTheSongRanToItsEndStartsAgainFromTheTop() = runBlocking {
+        val h = Harness()
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            // The engine parks at the song end; a plain Resume there is accepted but plays nothing.
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 48_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlaySong))
+            val seek = h.engine.commands.indexOfLast { it is EngineCommand.Seek && it.sequenceFrame == 0L }
+            val resume = h.engine.commands.indexOfLast { it is EngineCommand.Resume }
+            assertTrue(seek >= 0 && resume > seek)
+            h.engine.commands.clear()
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 12_000, sequencePaused = true)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlaySong))
+            assertTrue(h.engine.commands.none { it is EngineCommand.Seek })
+            assertTrue(h.engine.commands.any { it is EngineCommand.Resume })
+        } finally { h.close() }
+    }
+
+    @Test fun rapidPadEventsReachTheEngineInTheOrderTheyWereMade() = runBlocking {
+        val h = Harness()
+        try {
+            repeat(100) {
+                h.presenter.onAction(ContinuousEditorAction.HoldPad(0))
+                h.presenter.onAction(ContinuousEditorAction.ReleasePad(0))
+            }
+            fun padEvents() = h.engine.commands.filter { (it is EngineCommand.Trigger && it.padId == 0) || (it is EngineCommand.Release && it.padId == 0) }
+            withTimeout(10_000) { while (padEvents().size < 200) delay(5) }
+            // A Release overtaken by its Hold would leave a GATE PAD sounding.
+            padEvents().forEachIndexed { index, command -> assertEquals(index % 2 == 0, command is EngineCommand.Trigger, "PAD event $index out of order") }
+        } finally { h.close() }
+    }
+
+    @Test fun autosavedZeroLengthClipStillOpensAndCanBeDeleted() = runBlocking<Unit> {
+        val highRate = Asset("c".repeat(64), "wav", 100, 96_000, 2, 96_000, "High rate")
+        // Saved by an earlier build: one 96 kHz frame is shorter than one 48 kHz timeline frame.
+        val h = Harness { p -> p.copy(assets = (p.assets + highRate).frozen(), tracks = frozenListOf(Track("track-1", "A", TrackKind.BANK)),
+            clips = frozenListOf(Clip("clip-1", "track-1", highRate.hash, FrameRange(1, 2), timelineStartFrame = 0))) }
+        try {
+            assertEquals(1L, h.presenter.state.value.clips.single().timelineDurationFrames)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DeleteClip("clip-1")))
+            withTimeout(2000) { h.presenter.state.first { it.clips.isEmpty() } }
         } finally { h.close() }
     }
     @Test fun originalSurvivesPadSelectionAndStageChangesWithoutAutomaticPlacement() = runBlocking {
@@ -74,12 +137,12 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
-    private class Harness {
+    private class Harness(adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, 96_000, "Original")
         val chopped = Asset("b".repeat(64), "wav", 100, 48_000, 2, 48_000, "Chop")
-        val initial = Project(assets = frozenListOf(original, chopped), source = Source(original.hash, FrameRange(0, 96_000)),
-            pads = (0..127).map { if (it < 2) Pad(it, chopped.hash, FrameRange(0, 48_000), mode = PlayMode.GATE) else Pad(it) }.frozen())
+        val initial = adjust(Project(assets = frozenListOf(original, chopped), source = Source(original.hash, FrameRange(0, 96_000)),
+            pads = (0..127).map { if (it < 2) Pad(it, chopped.hash, FrameRange(0, 48_000), mode = PlayMode.GATE) else Pad(it) }.frozen()))
         val engine = FakeEngine()
         @Volatile var exportTarget: PlaybackTarget? = null
         val studio = Studio(scope, Services(object : AssetStore {
@@ -106,7 +169,8 @@ class ContinuousEditorPresenterTest {
         override suspend fun prepare(project: Project, patternId: String, revision: Long) = EngineProgram(revision = revision)
         override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long) = EngineProgram(revision = revision)
         override suspend fun apply(command: EngineCommand): Boolean { commands += command; return true }
-        override fun snapshot() = TransportState(outputAttached = true)
+        @Volatile var transport = TransportState(outputAttached = true)
+        override fun snapshot() = transport
     }
     private class FakePorts : ContinuousEditorPorts {
         var originalFrame = 0L

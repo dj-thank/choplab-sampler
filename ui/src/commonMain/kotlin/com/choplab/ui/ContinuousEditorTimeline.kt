@@ -176,8 +176,12 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             Text(if (clip == null) stringResource(Res.string.ce_no_selected_clip) else stringResource(Res.string.ce_selected_clip, clip.title), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
             if (clip != null) {
                 Text(stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true)), color = CEColor.Cream, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
-                CEValueSlider(stringResource(Res.string.ce_clip_gain), clip.gain, state, ContinuousCapability.CLIP_GAIN,
-                    { onAction(ContinuousEditorAction.SetClipGain(clip.id, it)) }, Modifier.fillMaxWidth(), dark = true, tag = "ce-clip-gain", range = 0f..2f)
+                // Keyed by clip, so a gain dragged on one clip is never shown on the next selection.
+                key(clip.id) {
+                    CEValueSlider(stringResource(Res.string.ce_clip_gain), clip.gain, state, ContinuousCapability.CLIP_GAIN,
+                        { onAction(ContinuousEditorAction.SetClipGain(clip.id, it)) }, Modifier.fillMaxWidth(), dark = true, tag = "ce-clip-gain", range = 0f..2f,
+                        commitOnRelease = true)
+                }
             }
         }
     }
@@ -270,11 +274,11 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             val boundedTimelineDelta = deltaFrames.coerceAtLeast(-clip.timelineStartFrame)
             val sourceDelta = (boundedTimelineDelta.toDouble() * sourceLength / clip.timelineDurationFrames).roundToLong()
             if (trimEdge < 0) {
-                val start = (clip.sourceStartFrame + sourceDelta).coerceIn(0, clip.sourceEndFrame - 1)
+                val start = (clip.sourceStartFrame + sourceDelta).coerceIn(ContinuousClipEdits.trimStartRange(clip))
                 val shift = ((start - clip.sourceStartFrame).toDouble() * clip.timelineDurationFrames / sourceLength).roundToLong()
                 latestAction(ContinuousEditorAction.TrimClip(clip.id, start, clip.sourceEndFrame, (clip.timelineStartFrame + shift).coerceAtLeast(0)))
             } else latestAction(ContinuousEditorAction.TrimClip(clip.id, clip.sourceStartFrame,
-                (clip.sourceEndFrame + sourceDelta).coerceIn(clip.sourceStartFrame + 1, clip.sourceTotalFrames), clip.timelineStartFrame))
+                (clip.sourceEndFrame + sourceDelta).coerceIn(ContinuousClipEdits.trimEndRange(clip)), clip.timelineStartFrame))
         }
         drag = Offset.Zero
     }
@@ -306,8 +310,11 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                     add(CustomAccessibilityAction(later) { latestAction(ContinuousEditorAction.MoveClip(clip.id, clip.trackId, clip.timelineStartFrame + CONTINUOUS_TIMELINE_RATE)); true })
                 }
                 if (state.permits(ContinuousCapability.TRIM_CLIP)) {
-                    add(CustomAccessibilityAction(trimStart) { latestAction(ContinuousEditorAction.TrimClip(clip.id, (clip.sourceStartFrame + 1).coerceAtMost(clip.sourceEndFrame - 1), clip.sourceEndFrame, clip.timelineStartFrame)); true })
-                    add(CustomAccessibilityAction(trimEnd) { latestAction(ContinuousEditorAction.TrimClip(clip.id, clip.sourceStartFrame, (clip.sourceEndFrame - 1).coerceAtLeast(clip.sourceStartFrame + 1), clip.timelineStartFrame)); true })
+                    // At the one-frame minimum these become no-ops instead of creating a silent clip.
+                    val latestStart = maxOf(clip.sourceStartFrame, ContinuousClipEdits.trimStartRange(clip).last)
+                    val earliestEnd = minOf(clip.sourceEndFrame, ContinuousClipEdits.trimEndRange(clip).first)
+                    add(CustomAccessibilityAction(trimStart) { latestAction(ContinuousEditorAction.TrimClip(clip.id, minOf(clip.sourceStartFrame + 1, latestStart), clip.sourceEndFrame, clip.timelineStartFrame)); true })
+                    add(CustomAccessibilityAction(trimEnd) { latestAction(ContinuousEditorAction.TrimClip(clip.id, clip.sourceStartFrame, maxOf(clip.sourceEndFrame - 1, earliestEnd), clip.timelineStartFrame)); true })
                 }
             }
         }.pointerInput(clip.id) { detectTapGestures(onPress = { pressX = it.x }, onTap = { latestAction(ContinuousEditorAction.SelectClip(clip.id)) }) }
