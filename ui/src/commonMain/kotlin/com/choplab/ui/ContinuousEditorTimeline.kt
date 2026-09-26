@@ -133,7 +133,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEAdjustment(stringResource(Res.string.ce_key), pad?.pitchSemitones ?: 0f, state, ContinuousCapability.PAD_PITCH,
                 { onAction(ContinuousEditorAction.SetPadPitch(state.selectedPadId, it)) }, true, Modifier.weight(1f))
             CEAdjustment(stringResource(Res.string.ce_tone), pad?.tone ?: 1f, state, ContinuousCapability.PAD_TONE,
-                { onAction(ContinuousEditorAction.SetPadTone(state.selectedPadId, it)) }, modifier = Modifier.weight(1f))
+                { onAction(ContinuousEditorAction.SetPadTone(state.selectedPadId, it)) }, modifier = Modifier.weight(1f), maximum = 1f)
             CEAdjustment(stringResource(Res.string.ce_gain), pad?.gain ?: 1f, state, ContinuousCapability.PAD_GAIN,
                 { onAction(ContinuousEditorAction.SetPadGain(state.selectedPadId, it)) }, modifier = Modifier.weight(1f))
         }

@@ -128,7 +128,7 @@ class ContinuousEditorPresenterTest {
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("dusty-jazz")))
             withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "dusty-jazz" } }
-            val tuned = h.studio.document.value.project.pads[16].copy(gain = .5f, pitchSemitones = -2.0, mode = PlayMode.GATE)
+            val tuned = h.studio.document.value.project.pads[16].copy(gain = .5f, pitchSemitones = -2.0, tone = .6f, mode = PlayMode.GATE)
             assertTrue(h.studio.dispatch(Action.Edit(Intent.SetPad(tuned))).accepted)
 
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("boom-bap")))
@@ -172,6 +172,39 @@ class ContinuousEditorPresenterTest {
             assertEquals(before.pads.subList(0, 16), h.studio.document.value.project.pads.subList(0, 16), "Other BANKs are untouched")
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
             assertEquals("b".repeat(64), h.studio.document.value.project.pads[17].assetHash, "Undo brings the user's sound back")
+        } finally { h.close() }
+    }
+
+    @Test fun toneDarkensTheSelectedPadAndKeepsItOffTheTimelineUntilReset() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(0)))
+            // Capabilities are judged once the edit's preparation has finished (LOADING withholds them all).
+            suspend fun settled(condition: (ContinuousEditorState) -> Boolean) =
+                withTimeout(2000) { h.presenter.state.first { condition(it) && it.status != ContinuousStatus.LOADING } }
+            val open = settled { it.selectedPadId == 0 }
+            assertTrue(open.permits(ContinuousCapability.PAD_TONE))
+            assertTrue(open.permits(ContinuousCapability.PLACE_PAD))
+            assertEquals(1f, open.pads[0].tone)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadTone(0, .45f)))
+            assertEquals(.45f, h.studio.document.value.project.pads[0].tone)
+            val dark = settled { it.pads[0].tone == .45f }
+            // A placed clip would play the source untouched, so a toned PAD is not placed until tone is reset.
+            assertFalse(dark.permits(ContinuousCapability.PLACE_PAD))
+            assertTrue(h.engine.commands.any { it is EngineCommand.Release && it.padId == 0 }, "Changing tone stops the old voice")
+
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadTone(0, 1.05f)), "Tone stays within its range")
+            assertEquals(.45f, h.studio.document.value.project.pads[0].tone)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadTone(0, 1f)))
+            assertTrue(settled { it.pads[0].tone == 1f }.permits(ContinuousCapability.PLACE_PAD))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(.45f, h.studio.document.value.project.pads[0].tone, "Each tone step is one Undo")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(5)))
+            val empty = settled { it.selectedPadId == 5 }
+            assertTrue(empty.permits(ContinuousCapability.TEMPO), "Settled, so the missing tone control is about the empty PAD")
+            assertFalse(empty.permits(ContinuousCapability.PAD_TONE), "An empty PAD has no tone")
         } finally { h.close() }
     }
 

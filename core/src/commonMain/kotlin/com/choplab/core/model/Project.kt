@@ -100,6 +100,8 @@ data class Pad(
     val loopCrossfadeFrames: Int = 48,
     val decayFrames: Int = 0,
     val sustainLevel: Float = 1f,
+    /** 1 leaves the sound untouched; lower values darken it (the earlier app's tone control). */
+    val tone: Float = 1f,
 ) {
     init {
         require(id in 0 until ProjectLimits.PAD_COUNT)
@@ -110,6 +112,7 @@ data class Pad(
         require(gain.isFinite() && gain in 0f..8f && pan.isFinite() && pan in -1f..1f)
         require(chokeGroup in 0..128 && attackFrames in 0..48_000 && releaseFrames in 1..48_000 && loopCrossfadeFrames in 0..24_000)
         require(decayFrames in 0..48_000 && sustainLevel.isFinite() && sustainLevel in 0f..1f)
+        require(tone.isFinite() && tone in 0f..1f)
     }
 }
 

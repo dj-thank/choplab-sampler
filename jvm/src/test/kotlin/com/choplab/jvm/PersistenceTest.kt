@@ -69,6 +69,23 @@ class PersistenceTest {
         assertFalse(ProjectJson.encode(project).toString(Charsets.UTF_8).contains("path", ignoreCase = true))
     }
 
+    @Test fun padToneIsWrittenOnlyWhenSetAndOlderDocumentsReadUntouched() {
+        val asset = Fixtures.asset(Fixtures.wav())
+        val plain = Fixtures.project(asset)
+        val plainJson = ProjectJson.encode(plain).toString(Charsets.UTF_8)
+        assertFalse("\"tone\"" in plainJson, "A document that never used tone keeps the earlier encoding")
+        assertEquals(plain, ProjectJson.decode(plainJson.toByteArray()))
+
+        val toned = plain.copy(pads = plain.pads.map { if (it.id == 0) it.copy(tone = .4f) else it }.frozen())
+        val tonedJson = ProjectJson.encode(toned).toString(Charsets.UTF_8)
+        assertEquals(1, Regex("\"tone\":").findAll(tonedJson).count())
+        assertEquals(toned, ProjectJson.decode(tonedJson.toByteArray()))
+        for (bad in listOf("1.5", "-0.1", "\"0.4\"", "null", "1e999")) {
+            assertFailsWith<IllegalArgumentException>(bad) { ProjectJson.decode(tonedJson.replace("\"tone\":0.4", "\"tone\":$bad").toByteArray()) }
+        }
+        assertFailsWith<IllegalArgumentException> { ProjectJson.decode(tonedJson.replace("\"tone\":0.4", "\"colour\":0.4").toByteArray()) }
+    }
+
     @Test fun humanTitlePunctuationSurvivesWithoutSerializingHostLocations() {
         val title = "Artist: Song / Verse\\Chorus"
         val location = com.choplab.core.Location("host-only-private-handle")

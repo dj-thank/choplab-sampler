@@ -288,7 +288,7 @@ import kotlin.math.roundToLong
 }
 
 @Composable internal fun CEAdjustment(label: String, value: Float, state: ContinuousEditorState, capability: ContinuousCapability,
-    onValue: (Float) -> Unit, semitones: Boolean = false, modifier: Modifier = Modifier) {
+    onValue: (Float) -> Unit, semitones: Boolean = false, modifier: Modifier = Modifier, maximum: Float = 2f) {
     val decrease = stringResource(Res.string.ce_decrease, label)
     val increase = stringResource(Res.string.ce_increase, label)
     Column(modifier.heightIn(min = 88.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Tan).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -298,7 +298,7 @@ import kotlin.math.roundToLong
                 Modifier.weight(1f, fill = false).widthIn(min = 56.dp), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
             CEButton("−", { onValue(if (semitones) (value - 1).coerceAtLeast(-24f) else (value - .05f).coerceAtLeast(0f)) },
                 enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = decrease })
-            CEButton("+", { onValue(if (semitones) (value + 1).coerceAtMost(24f) else (value + .05f).coerceAtMost(2f)) },
+            CEButton("+", { onValue(if (semitones) (value + 1).coerceAtMost(24f) else (value + .05f).coerceAtMost(maximum)) },
                 enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = increase })
         }
     }

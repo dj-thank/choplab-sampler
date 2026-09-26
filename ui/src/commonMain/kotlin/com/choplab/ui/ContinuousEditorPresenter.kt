@@ -204,6 +204,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 }
                 is ContinuousEditorAction.SetPadPitch -> edit(Intent.SetPad(project.pads[action.padId].copy(pitchSemitones = action.semitones.toDouble())))
                 is ContinuousEditorAction.SetPadGain -> edit(Intent.SetPad(project.pads[action.padId].copy(gain = action.gain)))
+                is ContinuousEditorAction.SetPadTone -> edit(Intent.SetPad(project.pads[action.padId].copy(tone = action.tone)))
                 is ContinuousEditorAction.PlacePad, is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.TrimClip,
                 is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.DeleteClip,
                 is ContinuousEditorAction.SetClipGain, is ContinuousEditorAction.SetTrackMuted -> {
@@ -237,7 +238,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 } ?: false
                 ContinuousEditorAction.DismissDrumKit -> { view.update { it.copy(kitChooser = false, kitQuestion = null) }; true }
                 // Keep these controls visible but unavailable until their real adapters are integrated.
-                is ContinuousEditorAction.SetOriginalPitch, is ContinuousEditorAction.SetPadTone,
+                is ContinuousEditorAction.SetOriginalPitch,
                 ContinuousEditorAction.BeginLiveChop,
                 ContinuousEditorAction.RecordVoice, ContinuousEditorAction.OpenScratch -> false
             }
@@ -326,8 +327,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousCapability.DUPLICATE_CLIP, ContinuousCapability.DELETE_CLIP, ContinuousCapability.TRACK_MUTE, ContinuousCapability.CLIP_GAIN)
             if (source != null) capabilities += setOf(ContinuousCapability.SOURCE_RANGE, ContinuousCapability.ASSIGN_SOURCE_RANGE, ContinuousCapability.AUTO_CHOP)
             if (selected.assetHash != null) {
-                capabilities += setOf(ContinuousCapability.PAD_PITCH, ContinuousCapability.PAD_GAIN)
-                if (selected.pitchSemitones == 0.0 && !selected.reverse) capabilities += ContinuousCapability.PLACE_PAD
+                capabilities += setOf(ContinuousCapability.PAD_PITCH, ContinuousCapability.PAD_TONE, ContinuousCapability.PAD_GAIN)
+                // A placed clip plays the source as it is; pitch, reverse and tone stay PAD-only until processed placement.
+                if (selected.pitchSemitones == 0.0 && !selected.reverse && selected.tone >= com.choplab.engine.Pad.TONE_BYPASS) {
+                    capabilities += ContinuousCapability.PLACE_PAD
+                }
             }
             if (p.clips.isNotEmpty()) capabilities += ContinuousCapability.EXPORT_WAV
             if (input.attached) {
@@ -346,7 +350,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 when { pad.assetHash == null -> ContinuousPadKind.EMPTY; kitSounds[pad.id] != null -> ContinuousPadKind.DRUM; else -> ContinuousPadKind.SAMPLE },
                 ContinuousPadMode.valueOf(pad.mode.name), slicePeaks(p, pad.assetHash, pad.range, peaks),
                 pad.range?.start ?: 0, pad.range?.end ?: 0, pad.assetHash?.let { p.asset(it).sampleRate } ?: 48_000,
-                pad.pitchSemitones.toFloat(), gain = pad.gain, looping = pad.mode == PlayMode.LOOP && pad.id in v.playingPads) },
+                pad.pitchSemitones.toFloat(), tone = pad.tone, gain = pad.gain, looping = pad.mode == PlayMode.LOOP && pad.id in v.playingPads) },
             selectedPadId = input.selection.padId,
             tracks = p.tracks.mapIndexed { i, track -> ContinuousTrack(track.id, track.name,
                 listOf(0xFF89AD50, 0xFFC1843D, 0xFFB6A66D, 0xFFBF7A53)[i % 4], track.mute) },
