@@ -105,17 +105,17 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 | 受入 | 観測結果 | 未完/必要条件 |
 |---|---|---|
-| 自己音声の除外 | 開発JDK/実ScreenCaptureKit、5秒の非対称周波数fixture。外部音振幅828.10、自分の音0.0953、比-78.78dB、277,440frame、helper exit0。生録音はメモリのみ | 同梱Javaの再確認は「表示中のディスプレイが見つかりません」で失敗。後続確認でMacの画面ロック状態をOSから観測。解除後に再試験し、旧成功で代用しない |
+| 自己音声の除外 | 開発JDK/実ScreenCaptureKitで-78.78dB。同梱Java候補 `4ff1942` でもロック解除後に再試験し、外部音振幅544.08、自分の音0.0373、比-83.27dB、364,800frame、helper exit0。5秒の非対称周波数fixture、生録音はメモリのみ | ロック中はNO_DISPLAYで失敗することも実測。人間の試聴・他Mac/routeの受入は別 |
 | 同梱codec/長尺 | HomebrewなしPATH、作業folder外で11素材+破損1件。FLAC/ALAC/AIFFは全PCM一致。MP3/AAC/Ogg/Opus/MP4/WebMは左右保持、590秒FLACは28,320,000frame。再現は `scripts/run_mac_acceptance.py` | raw AACのみgapless metadataがなく1,408frame余白を観測。暗黙に切り捨てない。全素材の音質保証ではない |
 | 同梱provider/分離 | 指定YouTube1素材の取得/保存/読込、48kHz stereo/12,276,298frame。0.5秒fixtureの実モデル分離11秒 | Spotify実接続は登録Client ID/ChopLab内認証の特定待ち。公式Spotifyのログインと別 |
-| 同梱録音/制作 | 実マイク48kHz mono/18,944frame（検証後削除）、出力48kHz stereo/4,800frame。schema7制作の全PCM/位置/14step再読込、WAV出力成功。隔離起動でPreview領域にautosave作成 | 同梱アプリのnative操作はmacOSが補助アクセスを拒否。設定画面を開いた後もMacはロック中。解除後の再試験で権限反映を判定する。人間の聴感/操作感は未判定 |
+| 同梱録音/制作 | 実マイク48kHz mono/18,944frame（検証後削除）、出力48kHz stereo/4,800frame。schema7制作の全PCM/位置/14step再読込、WAV出力成功。隔離起動でPreview領域にautosave作成 | ロック解除とAXIsProcessTrusted=trueを確認後も、osascriptの実UI操作は補助アクセス拒否(-25211)。System Eventsの再起動でも継続し、起動元アプリの再起動後の確認が必要。人間の聴感/操作感は未判定 |
 | package検査 | `0.18.0`/build30・専用bundle ID・マイク説明・helper/model/tools配置をreadback。ツール40ファイルはハッシュ付き固定名一覧。公開証明書と秘密鍵の区別、未知library/改変/別manifest/nestedを検査 | 他Mac/Intel、Apple Developer ID/公証、公開download readbackは未受入 |
 
 この候補のrepository/policyは303件成功。ローカル生成した全app ZIPのarchive検査も成功し、最終revision/bytes/必須CIはPR119で追跡する。受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能や未統合PR114の成功を、この現行hostの測定から推定しない。
 
 ### 表示先がない場合の録音案内
 
-担当root、起点main `bb2b66b`。helperの `NO_DISPLAY` を録音adapterで区別し、画面ロック解除・デスクトップ表示・再試行を案内する。すべての起動失敗を権限不足と扱って設定変更を繰り返させない。Swift実buildとMac上のhelperでロック時のcode/exit1を確認し、子processを使う回帰testで録音中にならず空ファイルも残さないことを検証。Rollbackはこの変更のrevert。録音成功の受入はロック解除後の実測まで未完のまま。
+担当root、[PR120](https://github.com/dj-thank/choplab-sampler/pull/120)、起点main `bb2b66b`。helperの `NO_DISPLAY` を録音adapterで区別し、画面ロック解除・デスクトップ表示・再試行を案内する。すべての起動失敗を権限不足と扱って設定変更を繰り返させない。Swift実buildとMac上のhelperでロック時のcode/exit1、解除後に同梱Javaで実録音成功を確認。子processを使う回帰testで録音中にならず空ファイルも残さないことを検証。Rollbackはこの変更のrevert。最新headの必須CI、生成物のhashとbyte数はPRで追跡する。
 
 ## 判断・失敗・次の一手の記録
 
