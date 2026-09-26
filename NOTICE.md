@@ -28,7 +28,7 @@ DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
 | FFmpeg / FFprobe | [FFmpeg](https://ffmpeg.org/legal.html)、[Windows build](https://www.gyan.dev/ffmpeg/builds/) | build構成によりGPL等が適用される。実際の固定buildに対応するlicense/sourceを提供 |
 | Node.js | [Node.js](https://github.com/nodejs/node) / MITおよび同梱部品の条件 | 固定versionのLICENSEをtoolと一緒に保持 |
 | Drum separation model | [StemSplitio/htdemucs-ft-drums-onnx](https://huggingface.co/StemSplitio/htdemucs-ft-drums-onnx) / model cardのMIT条件 | 固定commit・hash・model cardと元Demucsのattributionを保持 |
-| Windows Java runtime | [Eclipse Temurin](https://adoptium.net/)、[OpenJDK](https://openjdk.org/legal/) | GPL-2.0 with Classpath Exception等。runtime/legalの同梱表示を保持 |
+| Desktop Java runtime | [Eclipse Temurin](https://adoptium.net/)、[OpenJDK](https://openjdk.org/legal/) | GPL-2.0 with Classpath Exception等。runtime/legalの同梱表示を保持 |
 | Gradle Wrapper / build plugins | [Gradle](https://github.com/gradle/gradle)、[CycloneDX Gradle](https://github.com/CycloneDX/cyclonedx-gradle-plugin) | Wrapper・build用依存の各licenseを保持 |
 
 GPL部品を組み合わせた配布物には、その組合せに適用されるGPL条件と対応するsource/build手順が必要です。
@@ -47,3 +47,9 @@ NewPipeExtractor、Concentus、4stemモデル、AI SDK等は、実際に導入�
 AKAI、AKAI Professional、MPCは各権利者の商標です。
 ChopLabは独立した製品で、これらの権利者との提携・後援を示しません。
 第三者のロゴ、firmware、専有project形式、固有の外観は同梱しません。
+
+## Local macOS Preview tools
+
+Mac PreviewはHomebrewのFFmpeg/FFprobe、Nodeとそれらのdylibを私有build領域へ複製し、loader参照を同梱配置へ変更します。元のインストールは変更しません。実version、元bytes/配置変更後のhashはtool manifest、許可するnative名は `config/mac-media-tool-files.txt` が正本です。yt-dlp standaloneは2026.08.19、upstream assetのSHA-256を固定します。
+
+このローカルbundleは一般配布のlicense適合済みartifactではありません。FFmpegのGPL構成、Nodeの内包/共有library、yt-dlp standalone内の依存のlicense本文・対応source/build手順の提供を、公証/公開前に完了する必要があります。JDKのlegal文書は内容を保ち、bundle内の参照リンクを通常ファイルとして同梱します。

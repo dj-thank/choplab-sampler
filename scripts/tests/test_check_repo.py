@@ -58,3 +58,7 @@ class RepositoryCheckTest(unittest.TestCase):
         self.assertTrue(contains_personal_path(container_home + '/.gradle-other'))
         checker = Path(__file__).resolve().parents[1] / 'check_repo.py'
         self.assertFalse(contains_personal_path(checker.read_text(encoding='utf-8')))
+
+    def test_mac_jdk_layout_is_not_a_personal_home(self):
+        self.assertFalse(contains_personal_path('ChopLab Preview.app/Contents/runtime/Contents/Home/lib/security/cacerts'))
+        self.assertTrue(contains_personal_path('/home/' + 'private-person' + '/lib'))

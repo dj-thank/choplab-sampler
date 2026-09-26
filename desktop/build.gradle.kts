@@ -126,7 +126,7 @@ val prepareSeparatorModel = tasks.register<Exec>("prepareSeparatorModel") {
 
 val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
 require(windowsPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
-val windowsRuntimeToolchain = javaToolchains.launcherFor {
+val desktopRuntimeToolchain = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }
 
@@ -142,7 +142,7 @@ fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.
             check(packageRoot != buildRoot && packageRoot.startsWith(buildRoot)) {
                 "Windows app image destination must stay strictly below desktop/build."
             }
-            executable(windowsRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
+            executable(desktopRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
             val imageExecutable = destinationDir.resolve("$imageName/$imageName.exe").canonicalFile.path
             val running = ProcessHandle.allProcesses().use { handles ->
                 handles.anyMatch { it.info().command().orElse("").equals(imageExecutable, ignoreCase = true) }
@@ -194,6 +194,28 @@ val windowsPreviewPackageDirectory = providers.gradleProperty("windowsPreviewPac
 require(windowsPreviewPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
 require(windowsPreviewPackageDirectory.get() != windowsPackageDirectory.get()) { "Preview and production outputs must be separate" }
 registerWindowsImage("packageWindowsPreview", "ChopLab Preview", windowsPreviewPackageDirectory, true)
+
+val macMediaToolsDirectory = layout.buildDirectory.dir("mac-media-tools")
+val prepareMacMediaTools = tasks.register<Exec>("prepareMacMediaTools") {
+    group = "distribution"
+    description = "Prepare and hash the self-contained local Mac media tool bundle"
+    onlyIf { macHost }
+    workingDir(rootProject.projectDir)
+    commandLine("python3", "scripts/prepare_mac_media_tools.py", "--out", macMediaToolsDirectory.get().asFile.absolutePath)
+}
+listOf("packageMacPreview" to false, "packageMacSignedPreview" to true).forEach { (taskName, signed) ->
+    tasks.register<Exec>(taskName) {
+        group = "distribution"
+        description = if (signed) "Build a Developer ID signed Mac Preview (requires identity)" else "Build an explicitly local, ad-hoc Mac Preview"
+        dependsOn(tasks.installDist, prepareMacMediaTools)
+        onlyIf { macHost }
+        workingDir(rootProject.projectDir)
+        commandLine("python3", "scripts/package_mac_app.py", "--java-home",
+            desktopRuntimeToolchain.get().metadata.installationPath.asFile.absolutePath,
+            "--tools", macMediaToolsDirectory.get().asFile.absolutePath)
+        if (signed) args("--signed")
+    }
+}
 
 tasks.register<JavaExec>("sourceImport") {
     dependsOn(tasks.classes)
