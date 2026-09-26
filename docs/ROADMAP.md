@@ -14,7 +14,7 @@
 - 1Cローカル候補: 専用ID/署名の非debuggable Preview APK、別profileのWindows Previewを作成。APKのpackage/version/署名指紋、Windowsの隔離起動・AWT応答・全所有processの正常終了を確認。実機音声/マイク/Pixel/Humanは未確認。
 - engineは[PR112](https://github.com/dj-thank/choplab-sampler/pull/112)で3件のCI成功後にmainへ統合済み。core/JVMはschema10、frame固定配置、Undo、atomic save、3世代autosave、PCM cache、streaming WAV、独立原曲と共通output driverを追加。
 - core/JVMは[PR113](https://github.com/dj-thank/choplab-sampler/pull/113)でmain統合済み。Mac取込高速化/UXは[PR118](https://github.com/dj-thank/choplab-sampler/pull/118)のhead `749132d`で必須CI3件成功、merge `d254e3c`。Mac host対応は[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)の最新head `544f2c7`で必須CI3件成功、merge `29c80b2`。
-- 4工程UIを新しい編集・再生・保存へ接続。原曲をPAD選択で置換せず、曲全体と試聴音量を分ける。Windows専用Preview app-imageは隔離profile/無音adapterで起動・応答・正常終了を確認。レビュー指摘（96kHzの長さ0 clipでの起動不能、slider操作ごとのUndo、曲末からの再生、自動保存失敗時に閉じられない、tick丸め、loop切替によるPAD modeの上書き、操作順の入れ替わり、起動失敗時の解放、出力停止直後の編集拒否）を修正し回帰テストを追加。main（Mac host、[PR116](https://github.com/dj-thank/choplab-sampler/pull/116)/[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)）との統合後は、MacのCommand-Qも同じ自動保存付きの終了経路を通す（Mac実機では未確認）。engine58/UI23テスト、desktop全体268件（Mac実録音1件skip、うちNextBackend13件）、Android Preview Kotlin/依存DEX、core27/JVM33テストが成功。
+- [PR114](https://github.com/dj-thank/choplab-sampler/pull/114) はmerge `02ac506` でmainへ統合済み。4工程UIを新しい編集・再生・保存へ接続。原曲をPAD選択で置換せず、曲全体と試聴音量を分ける。Windows専用Preview app-imageは隔離profile/無音adapterで起動・応答・正常終了を確認。レビュー指摘（96kHzの長さ0 clipでの起動不能、slider操作ごとのUndo、曲末からの再生、自動保存失敗時に閉じられない、tick丸め、loop切替によるPAD modeの上書き、操作順の入れ替わり、起動失敗時の解放、出力停止直後の編集拒否）を修正し回帰テストを追加。main（Mac host、[PR116](https://github.com/dj-thank/choplab-sampler/pull/116)/[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)）との統合後は、MacのCommand-Qも同じ自動保存付きの終了経路を通す（Mac実機では未確認）。engine58/UI23テスト、desktop全体268件（Mac実録音1件skip、うちNextBackend13件）、Android Preview Kotlin/依存DEX、core27/JVM33テストが成功。
 - 次の一手: Macの機能別受入と取り込み速度/UXを確認する。Android新Activity/FilePortsへの接続、残るドラム/マイク/scratch/原曲pitch/加工PAD配置/online/長尺prefetchを移行する。既定の本番入口は保持。実機・実音・Human受入は未完。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
@@ -108,17 +108,25 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 |---|---|---|
 | 自己音声の除外 | 開発JDK/実ScreenCaptureKitで-78.78dB。同梱Java候補 `4ff1942` でもロック解除後に再試験し、外部音振幅544.08、自分の音0.0373、比-83.27dB、364,800frame、helper exit0。5秒の非対称周波数fixture、生録音はメモリのみ | ロック中はNO_DISPLAYで失敗することも実測。人間の試聴・他Mac/routeの受入は別 |
 | 同梱codec/長尺 | HomebrewなしPATH、作業folder外で11素材+破損1件。FLAC/ALAC/AIFFは全PCM一致。MP3/AAC/Ogg/Opus/MP4/WebMは左右保持、590秒FLACは28,320,000frame。再現は `scripts/run_mac_acceptance.py` | raw AACのみgapless metadataがなく1,408frame余白を観測。暗黙に切り捨てない。全素材の音質保証ではない |
-| 同梱provider/分離 | 指定YouTube1素材の取得/保存/読込、48kHz stereo/12,276,298frame。0.5秒fixtureの実モデル分離11秒 | Spotify実接続は登録Client ID/ChopLab内認証の特定待ち。公式Spotifyのログインと別 |
+| 同梱provider/分離 | 指定YouTube1素材の取得/保存/読込、48kHz stereo/12,276,298frame。0.5秒fixtureの実モデル分離11秒 | 登録済みの公開Client IDで認証画面へ到達。実accountの接続・API応答は同意画面の確認待ち。公式Spotifyのログインと別 |
 | 同梱録音/制作 | 実マイク48kHz mono/18,944frame（検証後削除）、出力48kHz stereo/4,800frame。schema7制作の全PCM/位置/14step再読込、WAV出力成功。隔離起動でPreview領域にautosave作成 | ロック解除とAXIsProcessTrusted=trueを確認後も、osascriptの実UI操作は補助アクセス拒否(-25211)。System Eventsの再起動でも継続し、起動元アプリの再起動後の確認が必要。人間の聴感/操作感は未判定 |
 | package検査 | `0.18.0`/build30・専用bundle ID・マイク説明・helper/model/tools配置をreadback。ツール40ファイルはハッシュ付き固定名一覧。公開証明書と秘密鍵の区別、未知library/改変/別manifest/nestedを検査 | 他Mac/Intel、Apple Developer ID/公証、公開download readbackは未受入 |
 
-この候補のrepository/policyは303件成功。ローカル生成した全app ZIPのarchive検査も成功し、最終revision/bytes/必須CIはPR119で追跡する。受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能や未統合PR114の成功を、この現行hostの測定から推定しない。
+この候補のrepository/policyは303件成功。ローカル生成した全app ZIPのarchive検査も成功し、最終revision/bytes/必須CIはPR119で追跡する。受入目標は音声品質・入力の安全策・元の4工程を保持したMac利用。実機権限・実account・人間の評価の未回答を成功へ変換しない。段階3〜11の計画機能やNEXT全体の受入を、この現行hostの測定から推定しない。PR114の統合後も本番入口は従来desktopを維持する。
 
 ### Mac受入で判明した録音案内と設定の補完
 
 担当root、[PR120](https://github.com/dj-thank/choplab-sampler/pull/120)、起点main `bb2b66b`。helperの `NO_DISPLAY` を録音adapterで区別し、画面ロック解除・デスクトップ表示・再試行を案内する。すべての起動失敗を権限不足と扱って設定変更を繰り返させない。Swift実buildとMac上のhelperでロック時のcode/exit1、解除後に同梱Javaで実録音成功を確認。子processを使う回帰testで録音中にならず空ファイルも残さないことを検証。Rollbackはこの変更のrevert。最新headの必須CI、生成物のhashとbyte数はPRで追跡する。
 
 同じ受入で、Mac packageだけがビルド時の公開Spotify Client IDを引き継がない差分を確認し、Windowsと同じ入力検証/JVM設定に揃えた。実jpackage呼出しへ渡す引数、未設定時、無効値でbuild前に止まる契約を検証。登録済みClient IDの引継ぎと、実accountの接続成功は区別する。
+
+### main統合後のMac readback
+
+`0037e4b`（PR114/120統合後、tracked clean）のMac検証はengine58/core27/JVM33/shared157/jvm-core199/desktop269（実録音1skip）/UI23、計765成功・1skip。mainの[CI run](https://github.com/dj-thank/choplab-sampler/actions/runs/36237223858) は必須3件成功。repository/policyは306件成功。同revisionの同梱アプリを全238ファイルのmanifestと照合し、隔離起動で作ったschema7 autosaveの全PCM/128PAD/14stepとWAV出力をreadbackした。
+
+同梱JavaのNEXT self-testもschema10の取込/chop/PAD/pattern/save/reopen/UndoRedo/stereo16bit・24bit出力230,400frameで成功。実Java Sound sinkは24,064frameを書込み、stop acknowledged・event loss 0・shutdown CLOSEDを確認した。これはnative画面での制作通し、人間の聴感、未移植機能の受入を意味しない。
+
+受領した公開Spotify Client IDをMac packageへ引き継いだ候補も作成し、起動設定と全ファイルhashを検査した。Client IDやtokenをsourceへ書き込まず、起動中のアプリと利用者dataは保持。候補のartifact hash・byte数とproviderの追加結果は受入PRへ記録する。全機能受入は継続中で、native画面の操作許可、Spotify同意後の実API、人間の聴感/操作感を未確認のまま残す。
 
 ## 判断・失敗・次の一手の記録
 
