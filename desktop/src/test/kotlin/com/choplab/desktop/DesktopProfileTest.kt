@@ -27,7 +27,19 @@ class DesktopProfileTest {
     @Test
     fun absentOrBlankLocalAppDataUsesIsolatedHomeFallback() {
         val expected = File("home/AppData/Local/ChopLab Preview")
-        assertEquals(expected, DesktopProfile.dataDirectory(null, "home", true))
-        assertEquals(expected, DesktopProfile.dataDirectory(" ", "home", true))
+        assertEquals(expected, DesktopProfile.dataDirectory(null, "home", true, "Windows 11"))
+        assertEquals(expected, DesktopProfile.dataDirectory(" ", "home", true, "Windows 11"))
+    }
+
+    @Test
+    fun macOsUsesApplicationSupportUnlessLegacyDataAlreadyExists() {
+        assertEquals(
+            File("home/Library/Application Support/ChopLab"),
+            DesktopProfile.dataDirectory(null, "home", false, "Mac OS X"),
+        )
+        val root = kotlin.io.path.createTempDirectory("choplab-profile").toFile()
+        val legacy = File(root, "AppData/Local/ChopLab").apply { mkdirs() }
+        assertEquals(legacy, DesktopProfile.dataDirectory(null, root.path, false, "Mac OS X"))
+        check(root.deleteRecursively())
     }
 }

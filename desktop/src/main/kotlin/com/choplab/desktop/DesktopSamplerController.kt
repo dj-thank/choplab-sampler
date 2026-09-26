@@ -498,7 +498,7 @@ class DesktopSamplerController(
         // if an output device also rejects the stop request.
         val cleanupFailure = runCatching { player.stopAll() }.exceptionOrNull()
         cleanupFailure?.let(error::addSuppressed)
-        val message = "ビートを開始できないため声の録音を停止しました。Windowsの出力デバイスを確認してください: " +
+        val message = "ビートを開始できないため声の録音を停止しました。出力デバイスを確認してください: " +
             (error.message ?: error.javaClass.simpleName)
         mutableState.update { state ->
             state.copy(
@@ -1979,7 +1979,7 @@ class DesktopSamplerController(
                 mutableState.update {
                     it.copy(
                         sourcePlaying = false,
-                        statusMessage = "音声を再生できません。Windowsの出力デバイスを確認してください",
+                        statusMessage = "音声を再生できません。出力デバイスを確認してください",
                     )
                 }
                 false

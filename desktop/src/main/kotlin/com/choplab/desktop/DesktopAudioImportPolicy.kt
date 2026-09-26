@@ -15,3 +15,22 @@ internal object DesktopAudioImportPolicy {
     fun accepts(file: File): Boolean =
         file.isFile && file.extension.lowercase() in extensions
 }
+
+internal data class AudioImportSelection(
+    val accepted: List<File>,
+    val rejected: List<File>,
+)
+
+/** A single-file Swing selection leaves [selectedFiles] empty on macOS. */
+internal fun chooserAudioFiles(selectedFiles: Array<File>?, selectedFile: File?): List<File> {
+    val many = selectedFiles?.toList().orEmpty()
+    return many.ifEmpty { listOfNotNull(selectedFile) }
+}
+
+internal fun selectAudioImports(files: List<File>): AudioImportSelection {
+    val existing = files.filter { it.isFile }
+    return AudioImportSelection(
+        accepted = existing.filter(DesktopAudioImportPolicy::accepts),
+        rejected = existing.filterNot(DesktopAudioImportPolicy::accepts),
+    )
+}

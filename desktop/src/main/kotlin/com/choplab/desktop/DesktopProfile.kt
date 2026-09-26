@@ -10,10 +10,17 @@ internal object DesktopProfile {
         localAppData: String? = System.getenv("LOCALAPPDATA"),
         userHome: String = System.getProperty("user.home"),
         preview: Boolean = this.preview,
+        osName: String = System.getProperty("os.name").orEmpty(),
     ): File {
-        val parent = localAppData?.takeIf(String::isNotBlank)?.let(::File)
-            ?: File(userHome, "AppData/Local")
-        return File(parent, directoryName(preview))
+        val name = directoryName(preview)
+        localAppData?.takeIf(String::isNotBlank)?.let { return File(it.trim(), name) }
+        if (osName.startsWith("Mac", ignoreCase = true)) {
+            val modern = File(userHome, "Library/Application Support/$name")
+            val legacy = File(userHome, "AppData/Local/$name")
+            if (!modern.exists() && legacy.exists()) return legacy
+            return modern
+        }
+        return File(userHome, "AppData/Local/$name")
     }
 
     fun recordingDirectory(

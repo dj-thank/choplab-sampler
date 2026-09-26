@@ -46,6 +46,11 @@ import java.awt.Desktop
 import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDropEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.io.File
@@ -101,15 +106,24 @@ private fun runDesktopApplication(args: Array<String>) = application {
         pendingSourceReplace=replaceProduction
         sourceHubVisible=true
     }
-    fun pickSourceFiles() {
-        openAudioSource(SourceSection.LIBRARY)
-        val chooser=importChooser
-        lastDocumentDirectory?.let { chooser.currentDirectory=File(it) }
-        if(chooser.showOpenDialog(null)==JFileChooser.APPROVE_OPTION) {
-            val files=chooser.selectedFiles.toList()
-            files.firstOrNull()?.parentFile?.let { lastDocumentDirectory=it.absolutePath }
-            sourceHub.importFiles(files)
+    var audioPickRequest by remember { mutableStateOf(0) }
+    var reopenLibraryAfterPick by remember { mutableStateOf(false) }
+    fun importAudioFiles(files: List<File>) {
+        val selection = selectAudioImports(files)
+        selection.accepted.firstOrNull()?.parentFile?.let { lastDocumentDirectory = it.absolutePath }
+        if (selection.accepted.isNotEmpty()) {
+            openAudioSource(SourceSection.LIBRARY)
+            sourceHub.importFiles(selection.accepted)
         }
+        if (selection.rejected.isNotEmpty()) {
+            controller.setStatus("未対応のファイルです: " + selection.rejected.joinToString("、") { it.name.take(80) })
+        }
+    }
+    fun requestAudioPick() {
+        // The source hub is a modal dialog. Hide it before the native panel, or the panel opens behind it.
+        reopenLibraryAfterPick = sourceHubVisible
+        sourceHubVisible = false
+        audioPickRequest += 1
     }
     val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
@@ -198,6 +212,28 @@ private fun runDesktopApplication(args: Array<String>) = application {
             // The shared deck needs at least this much room before rows start clipping.
             window.minimumSize = Dimension(MINIMUM_WINDOW_WIDTH_PX, MINIMUM_WINDOW_HEIGHT_PX)
         }
+        LaunchedEffect(audioPickRequest) {
+            if (audioPickRequest == 0) return@LaunchedEffect
+            val picked = if (isMacOsHost()) nativeAudioFiles(window) else swingAudioFiles(window)
+            if (reopenLibraryAfterPick) openAudioSource(SourceSection.LIBRARY)
+            importAudioFiles(picked)
+        }
+        DisposableEffect(window) {
+            val target = DropTarget(window, DnDConstants.ACTION_COPY, object : DropTargetAdapter() {
+                override fun drop(event: DropTargetDropEvent) {
+                    val completed = runCatching {
+                        event.acceptDrop(DnDConstants.ACTION_COPY)
+                        val dropped = event.transferable.takeIf { it.isDataFlavorSupported(DataFlavor.javaFileListFlavor) }
+                            ?.getTransferData(DataFlavor.javaFileListFlavor) as? List<*>
+                        importAudioFiles(dropped?.filterIsInstance<File>().orEmpty())
+                    }.isSuccess
+                    event.dropComplete(completed)
+                }
+            }, true)
+            onDispose {
+                if (window.dropTarget === target) window.dropTarget = null
+            }
+        }
         DisposableEffect(window, padKeyOwner) {
             val focusListener = object : WindowAdapter() {
                 override fun windowLostFocus(event: WindowEvent) {
@@ -272,7 +308,7 @@ private fun runDesktopApplication(args: Array<String>) = application {
             }
             Menu("連携") {
                 Item("音源を追加…", onClick = { openAudioSource(SourceSection.LIBRARY) })
-                Item("PCのファイルから追加…", onClick = ::pickSourceFiles)
+                Item("PCのファイルから追加…", onClick = ::requestAudioPick)
                 Separator()
                 Item("Spotifyで曲を検索して追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
                 Item("Spotifyのお気に入りから追加…", onClick = { openAudioSource(SourceSection.SPOTIFY) })
@@ -281,7 +317,7 @@ private fun runDesktopApplication(args: Array<String>) = application {
                 Item("YouTubeから追加…", onClick = { openAudioSource(SourceSection.YOUTUBE) })
             }
             Menu("診断") {
-                Item("Windows 音声エンドポイント", onClick = audioDiagnostics::run)
+                Item(desktopDiagnosticsMenuTitle(), onClick = audioDiagnostics::run)
             }
         }
         fun useLibrary(id:String) {
@@ -320,7 +356,7 @@ private fun runDesktopApplication(args: Array<String>) = application {
         if(sourceHubVisible) ChopLabTheme {
             AudioSourceHub(sourceState,externalDocumentActionsEnabled(state),
                 sourceHub::section,sourceHub::query,sourceHub::search,sourceHub::download,
-                onPickFiles=::pickSourceFiles,
+                onPickFiles=::requestAudioPick,
                 onUse={id ->
                     if(externalDocumentActionsEnabled(controller.state.value)) {
                         val item=sourceHub.state.value.library.firstOrNull{it.id==id}
@@ -364,7 +400,7 @@ private fun runDesktopApplication(args: Array<String>) = application {
         ) {
             ChopLabTheme {
                 SpotifyPanel(spotifyState,sourceState.library.size,::openAudioSource,
-                    spotify::showCurrentPlayback,spotify::pause,spotify::resume,::disconnectSpotify,::pickSourceFiles)
+                    spotify::showCurrentPlayback,spotify::pause,spotify::resume,::disconnectSpotify,::requestAudioPick)
             }
         }
     }
@@ -381,6 +417,21 @@ private var lastDocumentDirectory: String? = null
  * first open. Keep one instance for the process so later imports open instantly and remember
  * the previous folder.
  */
+private fun nativeAudioFiles(owner: Frame): List<File> {
+    val dialog = FileDialog(owner, "ChopLabに音源を追加", FileDialog.LOAD)
+    lastDocumentDirectory?.let { dialog.directory = it }
+    dialog.isMultipleMode = true
+    dialog.isVisible = true
+    return dialog.files?.toList().orEmpty()
+}
+
+private fun swingAudioFiles(owner: Frame): List<File> {
+    val chooser = importChooser
+    lastDocumentDirectory?.let { chooser.currentDirectory = File(it) }
+    if (chooser.showOpenDialog(owner) != JFileChooser.APPROVE_OPTION) return emptyList()
+    return chooserAudioFiles(chooser.selectedFiles, chooser.selectedFile)
+}
+
 private val importChooser: JFileChooser by lazy {
     JFileChooser().apply {
         dialogTitle = "ChopLabに音源を追加"

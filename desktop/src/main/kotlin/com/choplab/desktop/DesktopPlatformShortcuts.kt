@@ -6,6 +6,9 @@ import androidx.compose.ui.input.key.KeyShortcut
 internal fun isMacOsHost(osName: String = System.getProperty("os.name").orEmpty()): Boolean =
     osName.startsWith("Mac", ignoreCase = true)
 
+internal fun desktopDiagnosticsMenuTitle(macOs: Boolean = isMacOsHost()): String =
+    if (macOs) "音声デバイス" else "Windows 音声エンドポイント"
+
 internal enum class DesktopMenuCommand {
     OPEN_LIBRARY,
     OPEN_PROJECT,
