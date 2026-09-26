@@ -95,6 +95,8 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 ## 履歴の入口
 
+- 2026-09-26: PR117の統合前確認で、ScreenCaptureKitの自プロセス除外が子helperだけを対象にしていたため、親Java hostのPIDをapplication filterへ追加。Swift compile、`:desktop:test`、`:jvm-core:test`、policy 294件が成功。ChopLab再生音の実録音による除外確認は未確認。
+
 [保存点全体](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb) / [旧docs](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb/docs) / [旧plans](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb/plans) / [旧prompts](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb/prompts)。旧記録を別のcurrent ledgerとして再開しません。
 
 ADR1–5は元の決定を保持し、[ADR6](adr/ADR-0006-android-windows-focus.md) / [ADR7](adr/ADR-0007-concise-development-governance.md) が新しい対象と運用を定めます。[research](research) は調査日時付きの入力資料であり、現行の機能・性能・権限の証明ではありません。

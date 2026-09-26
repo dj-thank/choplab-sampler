@@ -21,7 +21,12 @@ struct ChoplabSystemAudio {
         guard let display = content.displays.first else {
             throw CaptureFailure("表示中のディスプレイが見つかりません")
         }
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        // Capture runs in a child helper. excludesCurrentProcessAudio alone only
+        // excludes this helper, not the Java host that plays ChopLab's audio.
+        let hostApplications = content.applications.filter { $0.processID == getppid() }
+        let filter = SCContentFilter(
+            display: display, excludingApplications: hostApplications, exceptingWindows: []
+        )
         let configuration = SCStreamConfiguration()
         configuration.width = 2
         configuration.height = 2
