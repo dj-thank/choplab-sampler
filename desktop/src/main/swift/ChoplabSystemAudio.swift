@@ -64,6 +64,14 @@ private final class AudioSink: NSObject, SCStreamOutput, SCStreamDelegate {
         output.write(Data("CHOPLAB-PCM \(sampleRate) \(channels)\n".utf8))
     }
 
+    /// A capture that stops by itself (revoked permission, display change) must not look like a
+    /// finished recording: ending the helper here makes ChopLab report the early stop.
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        let detail = error.localizedDescription.replacingOccurrences(of: "\n", with: " ")
+        FileHandle.standardError.write(Data("CHOPLAB-ERROR \(detail)\n".utf8))
+        exit(2)
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio, CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else { return }
         guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
@@ -86,19 +94,21 @@ private final class AudioSink: NSObject, SCStreamOutput, SCStreamDelegate {
     private func writePcm(_ buffer: AVAudioPCMBuffer) {
         let frameCount = Int(buffer.frameLength)
         let channels = Int(buffer.format.channelCount)
-        guard frameCount > 0, channels == 1 || channels == 2 else { return }
+        guard frameCount > 0, channels >= 1 else { return }
+        // The header promises two channels: mono is written to both sides, extra channels are dropped.
+        let right = channels > 1 ? 1 : 0
         var bytes = [UInt8]()
-        bytes.reserveCapacity(frameCount * channels * 2)
+        bytes.reserveCapacity(frameCount * 4)
         if let samples = buffer.floatChannelData {
             for frame in 0..<frameCount {
-                for channel in 0..<channels {
+                for channel in [0, right] {
                     var value = Int16(max(-1, min(1, samples[channel][frame])) * 32_767).littleEndian
                     withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
                 }
             }
         } else if let samples = buffer.int16ChannelData {
             for frame in 0..<frameCount {
-                for channel in 0..<channels {
+                for channel in [0, right] {
                     var value = samples[channel][frame].littleEndian
                     withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
                 }

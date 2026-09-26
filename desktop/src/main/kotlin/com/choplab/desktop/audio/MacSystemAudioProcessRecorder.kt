@@ -5,6 +5,10 @@ import com.choplab.sampler.audio.RecordingStopReason
 import com.choplab.sampler.audio.WavFileWriter
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class SystemAudioStreamHeader(val sampleRate: Int, val channels: Int)
@@ -38,139 +42,167 @@ internal fun locateMacSystemAudioHelper(
     workingDirectory.resolve("desktop/build/choplab-sck-audio"),
 ).firstOrNull { it.isFile && it.canExecute() }
 
-/** ScreenCaptureKit helper: header line on stdout, then PCM-16, until stdin closes. */
+/**
+ * ScreenCaptureKit helper: header line on stdout, then PCM-16, until stdin closes.
+ * [start] waits only briefly for the header, so a pending permission prompt never freezes the
+ * window; a helper that never starts, or stops before [stop], is reported by [stop] as a failure.
+ */
 internal class MacSystemAudioProcessRecorder(
     private val helper: File,
+    private val launch: (File) -> Process = { ProcessBuilder(it.absolutePath).start() },
+    private val quickStartMillis: Long = QUICK_START_MS,
+    private val headerTimeoutMillis: Long = HEADER_TIMEOUT_MS,
 ) : DesktopAudioRecorder {
-    private val running = AtomicBoolean(false)
-    @Volatile private var process: Process? = null
-    @Volatile private var worker: Thread? = null
-    @Volatile private var outputFile: File? = null
-    @Volatile private var failure: Throwable? = null
+    /** Everything one recording owns. A worker left over from a slow stop only touches its own session. */
+    private class Session(val process: Process, val file: File) {
+        val running = AtomicBoolean(true)
+        val header = CompletableFuture<SystemAudioStreamHeader>()
+        @Volatile var failure: Throwable? = null
+        @Volatile var worker: Thread? = null
+    }
+    private val lifecycleLock = Any()
+    @Volatile private var session: Session? = null
 
     override val isRecording: Boolean
-        get() = running.get()
+        get() = session?.running?.get() == true
 
-    override fun start(file: File): Result<Unit> = runCatching {
-        check(!running.get()) { "録音の停止処理中です" }
-        file.parentFile?.mkdirs()
-        val started = ProcessBuilder(helper.absolutePath).start()
-        process = started
-        val header = try {
-            readHeaderLine(started.inputStream)
-        } catch (error: Throwable) {
-            started.destroyForcibly()
-            throw error
+    override fun start(file: File): Result<Unit> {
+        synchronized(lifecycleLock) {
+            val previous = session
+            if (previous != null && (previous.running.get() || previous.worker?.isAlive == true)) {
+                return Result.failure(IllegalStateException("録音の停止処理中です"))
+            }
+            session = null
         }
-        drain(started.errorStream)
-        outputFile = file
-        failure = null
-        val recordingWorker = Thread({ record(started, header, file) }, "ChopLab-Mac-System-Audio").apply { isDaemon = true }
-        running.set(true)
-        worker = recordingWorker
-        recordingWorker.start()
-    }.onFailure {
-        running.set(false)
-        process?.destroyForcibly()
-        process = null
-        runCatching { file.delete() }
+        var started: Session? = null
+        return runCatching {
+            file.parentFile?.mkdirs()
+            val process = launch(helper)
+            val current = Session(process, file)
+            started = current
+            drain(process.errorStream)
+            val worker = Thread({ record(current) }, "ChopLab-Mac-System-Audio").apply { isDaemon = true }
+            current.worker = worker
+            synchronized(lifecycleLock) { session = current }
+            worker.start()
+            // A granted or refused helper answers within about a second. A permission prompt can take
+            // much longer: recording continues in the background and stop() reports the outcome.
+            try {
+                current.header.get(quickStartMillis, TimeUnit.MILLISECONDS)
+            } catch (_: TimeoutException) {
+            } catch (failure: ExecutionException) {
+                throw failure.cause ?: failure
+            }
+            Unit
+        }.onFailure {
+            started?.let { failed ->
+                failed.running.set(false)
+                failed.process.destroyForcibly()
+                failed.worker?.join(STOP_TIMEOUT_MS)
+                synchronized(lifecycleLock) { if (session === failed) session = null }
+            }
+            runCatching { file.delete() }
+        }
     }
 
     override fun stop(): Result<File> {
-        running.set(false)
-        runCatching { process?.outputStream?.close() }
-        val active = worker
-        if (active != null && active !== Thread.currentThread()) {
-            active.join(500)
-            if (active.isAlive) process?.destroyForcibly()
-            active.join(STOP_TIMEOUT_MS)
+        val current = session ?: return Result.failure(IllegalStateException("録音された音声がありません"))
+        current.running.set(false)
+        runCatching { current.process.outputStream.close() }
+        val worker = current.worker
+        if (worker != null && worker !== Thread.currentThread()) {
+            worker.join(500)
+            if (worker.isAlive) current.process.destroyForcibly()
+            worker.join(STOP_TIMEOUT_MS)
         }
-        val timedOut = active?.isAlive == true
-        val file = outputFile
-        val error = failure
-        process = null
-        worker = null
+        val error = current.failure
         return when {
-            timedOut -> Result.failure(IllegalStateException("録音の停止に時間がかかっています"))
+            worker?.isAlive == true -> Result.failure(IllegalStateException("録音の停止に時間がかかっています"))
             error != null -> Result.failure(error)
-            file != null && file.isFile && file.length() > WAV_HEADER_BYTES -> Result.success(file)
+            !current.header.isDone || current.header.isCompletedExceptionally -> Result.failure(IllegalStateException(NOT_STARTED))
+            current.file.isFile && current.file.length() > WAV_HEADER_BYTES -> Result.success(current.file)
             else -> Result.failure(IllegalStateException("録音された音声がありません"))
         }
     }
 
     override fun close() {
-        stop()
+        if (session != null) stop()
     }
 
-    private fun record(started: Process, header: SystemAudioStreamHeader, file: File) {
-        val frameBytes = header.channels * Short.SIZE_BYTES
-        val budget = RecordingBudget(sampleRate = header.sampleRate, channelCount = header.channels)
-        val pending = ByteArray(frameBytes)
-        var pendingBytes = 0
+    private fun record(current: Session) {
+        val input = current.process.inputStream
         try {
-            WavFileWriter(file, header.sampleRate, header.channels).use { writer ->
-                val buffer = ByteArray(header.sampleRate * frameBytes / 10)
-                while (running.get()) {
-                    val read = started.inputStream.read(buffer)
-                    if (read < 0) break
-                    var offset = 0
-                    while (offset < read && running.get()) {
-                        val needed = frameBytes - pendingBytes
-                        val copied = minOf(needed, read - offset)
-                        buffer.copyInto(pending, pendingBytes, offset, offset + copied)
-                        pendingBytes += copied
-                        offset += copied
-                        if (pendingBytes < frameBytes) continue
-                        val decision = budget.decide(frameBytes, file.usableSpace.coerceAtLeast(0L))
-                        if (decision.writableBytes > 0) {
-                            writer.writePcm16Bytes(pending, decision.writableBytes)
-                            budget.commit(decision.writableBytes)
-                        }
-                        pendingBytes = 0
-                        if (decision.stopAfterWrite == RecordingStopReason.DURATION_LIMIT) {
-                            running.set(false)
+            val header = readHeader(current)
+            current.header.complete(header)
+            val frameBytes = header.channels * Short.SIZE_BYTES
+            val budget = RecordingBudget(sampleRate = header.sampleRate, channelCount = header.channels)
+            WavFileWriter(current.file, header.sampleRate, header.channels).use { writer ->
+                // About 100 ms per write, like the Java Sound recorders. A frame split across two
+                // pipe reads is carried to the front of the buffer.
+                val buffer = ByteArray((header.sampleRate / 10).coerceAtLeast(1) * frameBytes)
+                var filled = 0
+                while (current.running.get()) {
+                    val read = input.read(buffer, filled, buffer.size - filled)
+                    if (read < 0) {
+                        // The helper exits before stdin closes only when capture failed.
+                        check(!current.running.get()) { STOPPED_EARLY }
+                        break
+                    }
+                    filled += read
+                    val complete = filled - filled % frameBytes
+                    if (complete == 0) continue
+                    val decision = budget.decide(complete, current.file.usableSpace.coerceAtLeast(0L))
+                    if (decision.writableBytes > 0) {
+                        writer.writePcm16Bytes(buffer, decision.writableBytes)
+                        budget.commit(decision.writableBytes)
+                    }
+                    buffer.copyInto(buffer, 0, complete, filled)
+                    filled -= complete
+                    when (decision.stopAfterWrite) {
+                        RecordingStopReason.DURATION_LIMIT -> {
+                            current.running.set(false)
                             break
                         }
-                        if (decision.stopAfterWrite == RecordingStopReason.LOW_DISK) {
-                            error("録音用の空き容量が不足しています")
-                        }
+                        RecordingStopReason.LOW_DISK -> error("録音用の空き容量が不足しています")
+                        null -> Unit
                     }
                 }
             }
         } catch (throwable: Throwable) {
-            if (running.get()) {
-                failure = throwable
-                runCatching { file.delete() }
+            current.header.completeExceptionally(throwable)
+            if (current.running.get()) {
+                current.failure = throwable
+                runCatching { current.file.delete() }
             }
         } finally {
-            running.set(false)
-            started.destroyForcibly()
+            current.running.set(false)
+            current.process.destroyForcibly()
         }
     }
 
-    private fun readHeaderLine(input: InputStream): SystemAudioStreamHeader {
-        val holder = java.util.concurrent.atomic.AtomicReference<Result<SystemAudioStreamHeader>>()
-        val reader = Thread {
-            holder.set(runCatching {
-                val line = ByteArray(240)
-                var size = 0
-                while (size < line.size) {
-                    val value = input.read()
-                    if (value < 0) break
-                    if (value == '\n'.code) return@runCatching parseSystemAudioHeader(String(line, 0, size, Charsets.UTF_8))
-                    line[size++] = value.toByte()
-                }
-                error("システムの音声録音を開始できませんでした。画面収録とシステムオーディオ録音の許可を確認してください")
-            })
+    /** Reads the one-line header on the worker. A helper silent past the deadline is ended. */
+    private fun readHeader(current: Session): SystemAudioStreamHeader {
+        val watchdog = Thread({
+            try {
+                Thread.sleep(headerTimeoutMillis)
+                if (!current.header.isDone) current.process.destroyForcibly()
+            } catch (_: InterruptedException) {
+            }
+        }, "ChopLab-Mac-System-Audio-Start").apply { isDaemon = true; start() }
+        try {
+            val input = current.process.inputStream
+            val line = ByteArray(240)
+            var size = 0
+            while (size < line.size) {
+                val value = input.read()
+                if (value < 0) break
+                if (value == '\n'.code) return parseSystemAudioHeader(String(line, 0, size, Charsets.UTF_8))
+                line[size++] = value.toByte()
+            }
+            error(NOT_STARTED)
+        } finally {
+            watchdog.interrupt()
         }
-        reader.isDaemon = true
-        reader.start()
-        reader.join(HEADER_TIMEOUT_MS)
-        if (reader.isAlive) {
-            error("システムの音声録音を開始できませんでした。画面収録とシステムオーディオ録音の許可を確認してください")
-        }
-        return holder.get()?.getOrThrow()
-            ?: error("システムの音声録音を開始できませんでした。画面収録とシステムオーディオ録音の許可を確認してください")
     }
 
     private fun drain(stream: InputStream) {
@@ -182,6 +214,9 @@ internal class MacSystemAudioProcessRecorder(
     private companion object {
         const val STOP_TIMEOUT_MS = 2_000L
         const val WAV_HEADER_BYTES = 44L
+        const val QUICK_START_MS = 1_500L
         const val HEADER_TIMEOUT_MS = 60_000L
+        const val NOT_STARTED = "システムの音声録音を開始できませんでした。画面収録とシステムオーディオ録音の許可を確認してください"
+        const val STOPPED_EARLY = "システムの音声録音が途中で止まりました。画面収録とシステムオーディオ録音の許可を確認して、もう一度録音してください"
     }
 }
