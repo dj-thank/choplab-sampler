@@ -38,9 +38,9 @@ class NextSession private constructor(
     fun reopenOutput() { backend.engine.reattach() }
     /** The editor is hidden: hand the output device back so nothing keeps rendering silence. */
     fun releaseOutput() { backend.engine.releaseOutput() }
-    /** Stops the song and the original. Unlike the Stop button it leaves an import, save or export running. */
+    /** Stops the song and the original. Unlike the Stop button it leaves an edit, import, save or export running. */
     suspend fun stopSound() {
-        backend.studio.dispatch(Action.Stop)
+        backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
     }
     /** Saves now; a failure stays visible through [EditorBackend.persistenceFailure]. */
