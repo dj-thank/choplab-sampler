@@ -7,8 +7,13 @@ import kotlinx.serialization.json.*
 
 object SourceRecipes {
     private val videoId = Regex("[A-Za-z0-9_-]{11}")
+    private val bareYoutubeHost = Regex("^(?:(?:www\\.|m\\.|music\\.)?youtube\\.com|youtu\\.be)/", RegexOption.IGNORE_CASE)
+    fun isUrlInput(input: String): Boolean = input.startsWith("https://", ignoreCase = true) ||
+        input.startsWith("http://", ignoreCase = true) || bareYoutubeHost.containsMatchIn(input)
+
     fun youtubeUrl(input: String): String {
-        val uri = URI(input.trim())
+        val trimmed = input.trim()
+        val uri = URI(if (bareYoutubeHost.containsMatchIn(trimmed)) "https://$trimmed" else trimmed)
         require(uri.scheme == "https" && uri.rawUserInfo == null && uri.port in listOf(-1, 443)) { "YouTubeのHTTPS URLを貼り付けてください" }
         val id = when (uri.host?.lowercase()) {
             "youtu.be" -> uri.path.trim('/').takeIf { '/' !in it }
