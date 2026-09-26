@@ -127,7 +127,12 @@ open class StreamingEnginePort(
 
     init {
         require(blockFrames in 64..2048 && acknowledgementMillis in 50..1_500)
-        owner = Thread(::runOwner, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
+        // Built by the caller, before the audio owner starts: the first engine prepares its interpolation tables, which
+        // takes seconds on a slow or interpreted runtime. An edit sent meanwhile would wait for an engine that did not
+        // exist yet and be refused, so the driver exists only once its engine does.
+        val first = EngineCore()
+        engineView = EngineView(first, 0)
+        owner = Thread({ runOwner(first) }, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
     }
     override suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram =
         compiler.compile(project, patternId, revision)
@@ -159,7 +164,6 @@ open class StreamingEnginePort(
             val last = lastClientOrder[client]
             // Only a retry of the command that was just dropped may reuse its order.
             if (command.orderId < last || (command.orderId == last && !retry)) return Outcome.REFUSED
-            while (engineView == null && !closed) delay(1)
             val current = engineView ?: return Outcome.REFUSED
             val pending = Pending(command, command.relativeTo(current.offset, ++nextWireOrder), current)
             if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); return Outcome.REFUSED }
@@ -229,9 +233,8 @@ open class StreamingEnginePort(
         }
     }
 
-    private fun runOwner() {
-        var activeEngine = EngineCore()
-        engineView = EngineView(activeEngine, 0)
+    private fun runOwner(first: EngineCore) {
+        var activeEngine = first
         val self = Thread.currentThread()
         var faults = 0L
         var sink: AudioSink? = null
