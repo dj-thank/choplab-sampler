@@ -85,6 +85,19 @@ class MacSystemAudioProcessRecorderTest {
         } finally { recorder.close(); file.delete() }
     }
 
+    @Test fun missingDisplayExplainsUnlockWithoutRequestingAnotherPermission() {
+        val recorder = MacSystemAudioProcessRecorder(helper, FakeSystemAudioHelper.launcher("no-display"))
+        val file = output()
+        try {
+            val started = recorder.start(file)
+            assertTrue(started.isFailure)
+            val message = started.exceptionOrNull()?.message.orEmpty()
+            assertTrue("画面ロックを解除" in message && "もう一度録音" in message, message)
+            assertTrue("許可" !in message && "NO_DISPLAY" !in message, message)
+            assertTrue(!recorder.isRecording && !file.exists())
+        } finally { recorder.close(); file.delete() }
+    }
+
     @Test fun loopbackEnabledAfterLaunchIsUsedWithoutRestart() {
         var enabled = false
         var starts = 0

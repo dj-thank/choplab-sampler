@@ -12,6 +12,10 @@ object FakeSystemAudioHelper {
     @JvmStatic fun main(args: Array<String>) {
         val mode = args.firstOrNull() ?: "normal"
         val out = System.out
+        if (mode == "no-display") {
+            out.write("CHOPLAB-ERROR NO_DISPLAY No visible display\n".toByteArray()); out.flush()
+            exitProcess(1)
+        }
         if (mode == "refused") {
             out.write("CHOPLAB-ERROR denied\n".toByteArray()); out.flush()
             exitProcess(1)
