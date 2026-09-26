@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.LockSupport
 
@@ -57,6 +58,7 @@ open class StreamingEnginePort(
     private val statusValue = MutableStateFlow(DriverStatus(DriverPhase.STARTING))
     val status: StateFlow<DriverStatus> = statusValue.asStateFlow()
     @Volatile private var closed = false
+    private val reattachRequested = AtomicBoolean(false)
     @Volatile private var requestedMonitorGain = 1f
     @Volatile private var engineView: EngineView? = null
     @Volatile private var confirmedProgram = EngineProgram.EMPTY
@@ -71,6 +73,19 @@ open class StreamingEnginePort(
     fun setMonitorGain(gain: Float) {
         require(gain.isFinite() && gain in 0f..1f)
         requestedMonitorGain = gain
+    }
+
+    /**
+     * After output was lost (route change, focus loss, device or acknowledgement fault), ask the audio owner
+     * to open a fresh sink. The document stays in Studio and the rebuilt engine keeps the confirmed Program;
+     * voices restart silent. Returns false while starting, attached or closed. The outcome arrives in
+     * [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is still unavailable.
+     */
+    fun reattach(): Boolean {
+        if (closed || statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
+        reattachRequested.set(true)
+        LockSupport.unpark(owner)
+        return true
     }
 
     init {
@@ -160,8 +175,10 @@ open class StreamingEnginePort(
     private fun runOwner() {
         var activeEngine = EngineCore()
         engineView = EngineView(activeEngine, 0)
-        var sink: AudioSink? = try { sinkFactory().also { statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) } }
-            catch (_: Exception) { statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT); null }
+        fun openSink(): AudioSink? = try {
+            sinkFactory().also { reattachRequested.set(false); statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
+        } catch (_: Exception) { statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT); null }
+        var sink: AudioSink? = openSink()
         val floats = FloatArray(blockFrames * 2)
         val bytes = ByteArray(blockFrames * 2 * 4)
         val quantizer = PcmQuantizer(0x43484f50, bits = 16, dither = true)
@@ -183,6 +200,8 @@ open class StreamingEnginePort(
             engineView = EngineView(activeEngine, offset)
             previousLosses = 0
             sequenceStart = 0; stoppedElapsedFrames = 0
+            // Only a request made after this failure is visible may reopen output.
+            reattachRequested.set(false)
             // Published after the rebuild: a caller reacting to EDITING_ONLY must already target the new
             // engine, or its first edit is bound to the discarded one and refused. Published before the
             // refusals below, so a caller told "false" already sees why.
@@ -192,6 +211,7 @@ open class StreamingEnginePort(
 
         try {
             while (!closed) {
+                if (sink == null && reattachRequested.getAndSet(false)) sink = openSink()
                 var work = false
                 inFlight.firstOrNull { it?.cancelled == true }?.let { resetToEditingOnly(it.cancelFault) }
                 while (true) {

@@ -9,6 +9,7 @@ import com.choplab.core.*
 import com.choplab.core.model.Asset
 import com.choplab.desktop.DesktopProfile
 import com.choplab.desktop.applyMacOsHostProperties
+import com.choplab.jvm.closeAfterAutosave
 import com.choplab.ui.*
 import kotlinx.coroutines.*
 import java.awt.Desktop
@@ -81,18 +82,6 @@ fun main() {
             }
         }
     } finally { runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
-}
-
-/**
- * A failing autosave (full or read-only disk) must never trap the window open. After a failed
- * final save the user decides; declining keeps the window and its unsaved work.
- */
-internal suspend fun closeAfterAutosave(flush: suspend () -> Unit, confirmWithoutAutosave: suspend () -> Boolean,
-                                        finish: suspend () -> Unit): Boolean {
-    val saved = try { flush(); true } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
-    if (!saved && !confirmWithoutAutosave()) return false
-    finish()
-    return true
 }
 
 private class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {

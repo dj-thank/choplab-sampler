@@ -28,18 +28,6 @@ class NextBackendTest {
         return EngineProgram(listOf(Pad(0, PcmAsset.fromInterleaved(samples), mode = PlayMode.LOOP, attackFrames = 0, releaseFrames = 96)), revision = revision)
     }
 
-    @Test fun failedFinalAutosaveAsksInsteadOfTrappingTheWindow() = runBlocking<Unit> {
-        var asked = 0
-        var finished = 0
-        val diskFull: suspend () -> Unit = { throw java.io.IOException("No space left on device") }
-        assertFalse(closeAfterAutosave(diskFull, { asked++; false }) { finished++ }, "Declining keeps the window and its work")
-        assertEquals(1, asked); assertEquals(0, finished)
-        assertTrue(closeAfterAutosave(diskFull, { asked++; true }) { finished++ }, "The user can still close")
-        assertEquals(2, asked); assertEquals(1, finished)
-        assertTrue(closeAfterAutosave({}, { error("A saved document closes without a question") }) { finished++ })
-        assertEquals(2, finished)
-    }
-
     @Test fun actualFilesStudioEngineSaveReopenUndoAndBothWavDepths() = runBlocking<Unit> {
         val receipt = NextSelfTest.run(temporary())
         assertTrue(receipt.exportFrames > 0 && receipt.renderedFrames > 0)
