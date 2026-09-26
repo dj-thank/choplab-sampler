@@ -24,15 +24,21 @@ class FileProjectPort(private val assets: FileAssetStore, private val resolve: (
     }
 }
 
-/** Bounded local WAV import. Other codecs remain the host decoder's explicit responsibility. */
-class WavImportPort(private val assets: FileAssetStore, private val resolve: (Location) -> Path) : ImportPort {
+/** Bounded local WAV import. Other codecs remain the host decoder's explicit responsibility.
+ * [displayName] lets a host keep the name the user saw when the bytes arrive through a scratch file.
+ */
+class WavImportPort(
+    private val assets: FileAssetStore,
+    private val resolve: (Location) -> Path,
+    private val displayName: (Location) -> String? = { null },
+) : ImportPort {
     override suspend fun import(location: Location): Asset = withContext(Dispatchers.IO) {
         val path = resolve(location)
         require(Files.isRegularFile(path) && Files.size(path) <= ProjectLimits.MAX_ASSET_BYTES)
         val bytes = Files.newInputStream(path).use { readBounded(it, ProjectLimits.MAX_ASSET_BYTES) }
         coroutineContext.ensureActive()
         val info = WavCodec.inspect(ByteArrayInputStream(bytes))
-        val name = path.fileName.toString().replace(':', '_').take(256)
+        val name = (displayName(location) ?: path.fileName.toString()).replace(':', '_').take(256)
         val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), info.sampleRate, info.channels, info.frames, name)
         val context = coroutineContext
         assets.publish(asset, ByteArrayInputStream(bytes)) { !context[kotlinx.coroutines.Job]!!.isActive }

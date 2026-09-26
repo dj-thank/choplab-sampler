@@ -58,7 +58,10 @@ open class StreamingEnginePort(
     private val statusValue = MutableStateFlow(DriverStatus(DriverPhase.STARTING))
     val status: StateFlow<DriverStatus> = statusValue.asStateFlow()
     @Volatile private var closed = false
-    private val reattachRequested = AtomicBoolean(false)
+    /** Host lifecycle: false while the editor is hidden and should hold no output device. */
+    @Volatile private var outputWanted = true
+    /** Set by a device failure; output stays closed until [reattach], so a broken device is never retried in a loop. */
+    private val faultLatched = AtomicBoolean(false)
     @Volatile private var requestedMonitorGain = 1f
     @Volatile private var engineView: EngineView? = null
     @Volatile private var confirmedProgram = EngineProgram.EMPTY
@@ -76,14 +79,29 @@ open class StreamingEnginePort(
     }
 
     /**
-     * After output was lost (route change, focus loss, device or acknowledgement fault), ask the audio owner
-     * to open a fresh sink. The document stays in Studio and the rebuilt engine keeps the confirmed Program;
-     * voices restart silent. Returns false while starting, attached or closed. The outcome arrives in
-     * [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is still unavailable.
+     * After output was lost (route change, focus loss, device or acknowledgement fault) or released by
+     * [releaseOutput], ask the audio owner to open a fresh sink. The document stays in Studio and the rebuilt
+     * engine keeps the confirmed Program; voices restart silent. Returns false while starting, attached or
+     * closed. The outcome arrives in [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is
+     * still unavailable.
      */
     fun reattach(): Boolean {
-        if (closed || statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
-        reattachRequested.set(true)
+        if (closed) return false
+        val releasing = !outputWanted
+        outputWanted = true
+        if (!releasing && statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
+        faultLatched.set(false)
+        LockSupport.unpark(owner)
+        return true
+    }
+
+    /**
+     * Host lifecycle: close the output device while the editor is hidden, so nothing keeps rendering silence.
+     * Voices stop and edits stay usable in EDITING_ONLY without a fault; [reattach] opens a new device.
+     */
+    fun releaseOutput(): Boolean {
+        if (closed) return false
+        outputWanted = false
         LockSupport.unpark(owner)
         return true
     }
@@ -176,8 +194,12 @@ open class StreamingEnginePort(
         var activeEngine = EngineCore()
         engineView = EngineView(activeEngine, 0)
         fun openSink(): AudioSink? = try {
-            sinkFactory().also { reattachRequested.set(false); statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
-        } catch (_: Exception) { statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT); null }
+            sinkFactory().also { statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
+        } catch (_: Exception) {
+            faultLatched.set(true)
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT)
+            null
+        }
         var sink: AudioSink? = openSink()
         val floats = FloatArray(blockFrames * 2)
         val bytes = ByteArray(blockFrames * 2 * 4)
@@ -200,8 +222,8 @@ open class StreamingEnginePort(
             engineView = EngineView(activeEngine, offset)
             previousLosses = 0
             sequenceStart = 0; stoppedElapsedFrames = 0
-            // Only a request made after this failure is visible may reopen output.
-            reattachRequested.set(false)
+            // A failure needs a fresh reattach request; a lifecycle release (NONE) reopens when wanted again.
+            if (fault != DriverFault.NONE) faultLatched.set(true)
             // Published after the rebuild: a caller reacting to EDITING_ONLY must already target the new
             // engine, or its first edit is bound to the discarded one and refused. Published before the
             // refusals below, so a caller told "false" already sees why.
@@ -211,7 +233,8 @@ open class StreamingEnginePort(
 
         try {
             while (!closed) {
-                if (sink == null && reattachRequested.getAndSet(false)) sink = openSink()
+                if (sink != null && !outputWanted) resetToEditingOnly(DriverFault.NONE)
+                if (sink == null && outputWanted && !faultLatched.get()) sink = openSink()
                 var work = false
                 inFlight.firstOrNull { it?.cancelled == true }?.let { resetToEditingOnly(it.cancelFault) }
                 while (true) {

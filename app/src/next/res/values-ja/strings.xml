@@ -1,0 +1,12 @@
+<resources>
+    <string name="next_app_name">おとひろい NEXT</string>
+    <string name="next_loading">編集画面を開いています…</string>
+    <string name="next_start_failed">編集画面を開けませんでした。保存済みの作業は残っています。アプリを再起動するか、空き容量を増やしてからもう一度お試しください。</string>
+    <string name="next_close_title">自動保存できませんでした</string>
+    <string name="next_close_message">このまま閉じると、最後に自動保存できた後の変更は失われます。閉じますか？</string>
+    <string name="next_close_confirm">閉じる</string>
+    <string name="next_close_cancel">編集を続ける</string>
+    <string name="next_too_long">%1$d分%2$02d秒より長い音声は、まだ読み込めません。短いファイルを選んでください。</string>
+    <string name="next_unreadable">このファイルは音声として読み込めません。</string>
+    <string name="next_file_base">おとひろい</string>
+</resources>

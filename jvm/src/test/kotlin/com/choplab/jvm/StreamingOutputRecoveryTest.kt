@@ -99,4 +99,46 @@ class StreamingOutputRecoveryTest {
             assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
         } finally { driver.close() }
     }
+
+    @Test fun releasedOutputHoldsNoDeviceUntilTheEditorReturns() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<Sink>()
+        val driver = StreamingEnginePort(compiler(), { Sink().also { sinks += it } })
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(driver.apply(EngineCommand.SwapProgram(0, 1, program())))
+            assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
+            waitUntil { sinks[0].energy > 1 }
+
+            assertTrue(driver.releaseOutput())
+            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(DriverFault.NONE, driver.status.value.fault, "Releasing for the background is not a fault")
+            assertTrue(sinks[0].closed)
+            assertEquals(0, driver.snapshot().activeVoices)
+            assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 3, program())), "Edits stay usable")
+            assertFalse(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 4, 0)))
+            delay(50)
+            assertEquals(1, sinks.size, "Nothing reopens while the editor is hidden")
+
+            assertTrue(driver.reattach())
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(2, sinks.size)
+            assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 5, 0)))
+            waitUntil { sinks[1].energy > 1 }
+        } finally { driver.close() }
+    }
+
+    @Test fun quickReturnAfterReleaseEndsAttached() = runBlocking<Unit> {
+        val sinks = CopyOnWriteArrayList<Sink>()
+        val driver = StreamingEnginePort(compiler(), { Sink().also { sinks += it } })
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            repeat(20) {
+                assertTrue(driver.releaseOutput())
+                assertTrue(driver.reattach())
+            }
+            delay(100)
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(1, sinks.count { !it.closed }, "Exactly one device stays open")
+        } finally { driver.close() }
+    }
 }
