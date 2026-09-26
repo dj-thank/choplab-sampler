@@ -28,24 +28,32 @@ class NextEditorDeviceTest {
 
     @Test
     fun editorStartsDrawsAndImportsAWavThroughTheDocumentPath() {
-        rule.waitUntil(30_000) { rule.onAllNodesWithTag("next-editor").fetchSemanticsNodes().isNotEmpty() }
         val model = ViewModelProvider(rule.activity)[NextViewModel::class.java]
-        val session = (model.state.value as NextViewModel.Startup.Ready).session
+        rule.waitUntil(30_000) { model.state.value != NextViewModel.Startup.Loading }
+        val startup = model.state.value
+        assertTrue("NEXT did not start: $startup", startup is NextViewModel.Startup.Ready)
+        val session = (startup as NextViewModel.Startup.Ready).session
+        rule.waitUntil(30_000) { rule.onAllNodesWithTag("next-editor").fetchSemanticsNodes().isNotEmpty() }
         val studio = session.backend.studio
         val before = studio.document.value
 
         val file = File(rule.activity.cacheDir, "next-device-test.wav").apply { writeBytes(stereoWav(4_800)) }
         val location = session.documents.opened(Uri.fromFile(file))
-        assertTrue(runBlocking { studio.dispatch(Action.Import(location)) }.accepted)
-        rule.waitUntil(30_000) { studio.work.value.jobId == null && studio.document.value.project.assets.size > before.project.assets.size }
-        assertEquals("next-device-test.wav", studio.document.value.project.assets.last().name)
+        val started = runBlocking { studio.dispatch(Action.Import(location)) }
+        assertTrue("Import was refused: $started", started.accepted)
+        rule.waitUntil(30_000) { studio.work.value.jobId == null && studio.document.value.project.source != before.project.source }
+        val project = studio.document.value.project
+        val source = requireNotNull(project.source) { "Import finished without a source; output ${session.backend.engine.status.value}" }
+        assertEquals("next-device-test.wav", project.asset(source.assetHash).name)
+        assertEquals(4_800L, project.asset(source.assetHash).frames)
 
         runBlocking { session.backend.flushAutosave() }
         val autosave = File(rule.activity.filesDir, "next-v10/autosave")
-        assertTrue(autosave.listFiles().orEmpty().any { it.name.startsWith("autosave.") })
+        assertTrue("No autosave in $autosave", autosave.listFiles().orEmpty().any { it.name.startsWith("autosave.") })
 
         // Leave the developer's NEXT document as it was.
-        assertTrue(runBlocking { studio.dispatch(Action.Undo) }.accepted)
+        val undone = runBlocking { studio.dispatch(Action.Undo) }
+        assertTrue("Undo was refused: $undone", undone.accepted)
         rule.waitUntil(10_000) { studio.document.value.project == before.project }
         file.delete()
     }
