@@ -2,6 +2,7 @@ package com.choplab.desktop
 
 import com.choplab.desktop.audio.DesktopSystemAudioRecorder
 import com.choplab.desktop.audio.MacSystemAudioProcessRecorder
+import com.choplab.desktop.audio.SystemAudioRoute
 import com.choplab.desktop.audio.parseSystemAudioHeader
 import org.junit.jupiter.api.Assumptions
 import com.choplab.desktop.provider.NamedAudioDevice
@@ -12,7 +13,6 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -54,15 +54,11 @@ class DesktopMacHostTest {
     fun systemAudioHeaderAndBackendFollowTheHost() {
         assertEquals(48_000, parseSystemAudioHeader("CHOPLAB-PCM 48000 2").sampleRate)
         assertFailsWith<IllegalStateException> { parseSystemAudioHeader("CHOPLAB-ERROR denied") }
-        val helper = File.createTempFile("choplab-helper", "").apply { setExecutable(true) }
-        assertIs<MacSystemAudioProcessRecorder>(
-            DesktopSystemAudioRecorder.defaultSystemAudioRecorder(
-                loopbackAvailable = false,
-                helper = helper,
-                macOs = true,
-            ),
-        )
-        helper.delete()
+        // A Mac records what is heard through the helper; BlackHole is silent unless output is routed to it.
+        assertEquals(SystemAudioRoute.SCREEN_CAPTURE, DesktopSystemAudioRecorder.chooseSystemAudioRoute(loopbackAvailable = true, helperAvailable = true, macOs = true))
+        assertEquals(SystemAudioRoute.LOOPBACK, DesktopSystemAudioRecorder.chooseSystemAudioRoute(loopbackAvailable = true, helperAvailable = false, macOs = true))
+        assertEquals(SystemAudioRoute.LOOPBACK, DesktopSystemAudioRecorder.chooseSystemAudioRoute(loopbackAvailable = true, helperAvailable = true, macOs = false))
+        assertEquals(SystemAudioRoute.MISSING, DesktopSystemAudioRecorder.chooseSystemAudioRoute(loopbackAvailable = false, helperAvailable = false, macOs = false))
     }
 
     @Test
