@@ -33,6 +33,31 @@ class AudioSourceImportTest {
             assertTrue(library.directory.listFiles().orEmpty().isEmpty())
         } finally {root.deleteRecursively()}
     }
+    @Test fun onlyMessagesWrittenForPeopleReachTheImportStatus() {
+        val root=Files.createTempDirectory("source-messages").toFile()
+        var failure: Exception = IllegalStateException("Check failed.")
+        val backend=object:YoutubeSourceBackend {
+            override fun search(query:String,jobId:String):List<YoutubeSource> = throw failure
+            override fun info(url:String,jobId:String):YoutubeSource=error("unused")
+            override fun download(source:YoutubeSource,folder:File,jobId:String,progress:(Float)->Unit):File=error("unused")
+            override fun cancel(jobId:String)=Unit
+        }
+        try {
+            AudioSourceController(testLibrary(File(root,"library")),backend).use { hub ->
+                fun searchMessage(): String? {
+                    hub.search()
+                    val deadline=System.currentTimeMillis()+5000
+                    while(hub.state.value.busy && System.currentTimeMillis()<deadline)Thread.sleep(10)
+                    return hub.state.value.message
+                }
+                hub.query("song")
+                // An internal check failure is not written for people and must not appear on screen.
+                assertEquals("取り込みに失敗しました。URL・接続状態・音源形式を確認してください", searchMessage())
+                failure=SourceImportUserError("取り込み用ツールがありません")
+                assertEquals("取り込み用ツールがありません", searchMessage())
+            }
+        } finally {root.deleteRecursively()}
+    }
     @Test fun cancellationAndQueryEditsCannotExposeThePreviousSearch() {
         val root=Files.createTempDirectory("source-cancel").toFile()
         val entered=java.util.concurrent.CountDownLatch(1);val release=java.util.concurrent.CountDownLatch(1)

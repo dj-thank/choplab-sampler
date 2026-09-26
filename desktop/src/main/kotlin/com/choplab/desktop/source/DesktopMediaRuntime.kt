@@ -24,7 +24,7 @@ object DesktopMediaRuntime {
             File("../work/media-tools"),
         )
         return locateDesktopMediaTools(explicit, defaultMediaSearchDirectories(path), windows)
-            ?: error("取り込み用ツールがありません。ffmpeg、ffprobe、yt-dlp、node を用意するか、ChopLabのアプリ一式を使用してください")
+            ?: throw SourceImportUserError("取り込み用ツールがありません。ffmpeg、ffprobe、yt-dlp、node を用意するか、ChopLabのアプリ一式を使用してください")
     }
 }
 
