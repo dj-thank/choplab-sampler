@@ -25,7 +25,7 @@ class NextCountInTest {
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2))))
             val before = f.backend.studio.document.value
-            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            f.recordVoice()
             val armed = f.armedCue()
             val cue = armed.recordingStartFrame
             assertTrue(cue > armed.frame, "Cue must be in the future: $armed")
@@ -79,7 +79,7 @@ class NextCountInTest {
                 assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
                 assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2))))
                 val before = f.backend.studio.document.value.project
-                assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+                f.recordVoice()
                 await { f.mic.frames > 1_000 }
                 if (loss) f.backend.engine.releaseOutput() else assertTrue(f.presenter.dispatch(ContinuousEditorAction.StopVoice))
                 f.voiceFinished()
@@ -108,7 +108,7 @@ class NextCountInTest {
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2))))
             val before = f.backend.studio.document.value.project
-            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            f.recordVoice()
             await { f.mic.frames > 1_000 }
             f.backend.engine.releaseOutput()
             withTimeout(10_000) { discarded.await() }
@@ -164,7 +164,7 @@ class NextCountInTest {
         try {
             f.ready()
             val before = f.backend.studio.document.value.project
-            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice)) // Count-in off.
+            f.recordVoice() // Count-in off.
             val cue = f.armedCue().recordingStartFrame
             await { f.backend.voice.recordedMillis >= 40 }
             f.backend.engine.releaseOutput()
@@ -223,7 +223,29 @@ class NextCountInTest {
         val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { sink }, microphone = { mic })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val ports = DesktopEditorPorts(backend) { null }
-        val presenter = ContinuousEditorPresenter(backend.studio, scope, wrap(ports))
+        @Volatile private var voiceStart: VoiceStart? = null
+        @Volatile private var cueObservation = "not called"
+        private val wrapped = wrap(ports)
+        private val observed = object : ContinuousEditorPorts by wrapped {
+            override val recordingCue = wrapped.recordingCue?.let { actual -> object : RecordingCuePort by actual {
+                override suspend fun startArmedVoice(maxSeconds: Int): VoiceStart =
+                    actual.startArmedVoice(maxSeconds).also { voiceStart = it }
+                override fun cueVoiceAt(engineFrame: Long): Boolean {
+                    val before = backend.engine.snapshot()
+                    return actual.cueVoiceAt(engineFrame).also {
+                        cueObservation = "frame=$engineFrame accepted=$it before=$before after=${backend.engine.snapshot()}"
+                    }
+                }
+            } }
+        }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, observed)
+        suspend fun recordVoice() {
+            // One production dispatch, no retry or substituted cue. A CI refusal must retain its stage evidence.
+            val accepted = presenter.dispatch(ContinuousEditorAction.RecordVoice)
+            assertTrue(accepted, "RecordVoice refused: status=${presenter.state.value.status} start=$voiceStart " +
+                "cue=$cueObservation driver=${backend.engine.status.value} receipt=${backend.engine.lastReceipt} " +
+                "transport=${backend.studio.transport.value} micFrames=${mic.frames} micCloses=${mic.closes}")
+        }
         suspend fun ready() { withTimeout(10_000) { presenter.state.first { it.permits(ContinuousCapability.RECORD_VOICE) } } }
         suspend fun idle() = await { backend.studio.work.value.jobId == null && backend.studio.work.value.preparationId == null }
         suspend fun armedCue(): TransportState {
