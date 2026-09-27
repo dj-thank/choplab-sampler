@@ -114,9 +114,13 @@ class StreamingOutputRecoveryTest {
         val available = AtomicBoolean(true)
         val sinks = CopyOnWriteArrayList<Sink>()
         val attempts = AtomicInteger()
+        val retryGate = java.util.concurrent.CountDownLatch(1)
+        val retryEntered = CompletableDeferred<Unit>()
         val driver = StreamingEnginePort(compiler(), {
-            attempts.incrementAndGet()
-            check(available.get()) { "No output device" }
+            val attempt = attempts.incrementAndGet()
+            val found = available.get()
+            if (attempt == 3) { retryEntered.complete(Unit); retryGate.await() }
+            check(found) { "No output device" }
             Sink().also { sinks += it }
         })
         try {
@@ -133,19 +137,26 @@ class StreamingOutputRecoveryTest {
             assertEquals(1L, driver.status.value.faults)
             // Trying again while it is still gone is the same trouble.
             assertTrue(driver.reattach())
-            waitUntil { attempts.get() == 3 }
-            delay(30)
+            withTimeout(15_000) { retryEntered.await() }
+            waitUntil { driver.diagnostics().openingDevice }
+            assertEquals(3, attempts.get())
+            assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT, faults = 1), driver.status.value)
+            // A failed retry retains that same status while it opens. Wait for adoption of its
+            // failure before making the device available and requesting the next distinct retry.
+            retryGate.countDown()
+            waitUntil { !driver.diagnostics().openingDevice }
             assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT, faults = 1), driver.status.value)
 
             available.set(true)
             assertTrue(driver.reattach())
             waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertEquals(4, attempts.get())
             assertEquals(1L, driver.status.value.faults)
             // The reopened device failing is a new trouble.
             sinks.last().fail.set(true)
             waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
             assertEquals(DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = 2), driver.status.value)
-        } finally { driver.close() }
+        } finally { retryGate.countDown(); driver.close() }
         assertEquals(DriverStatus(DriverPhase.CLOSED, faults = 2), driver.status.value)
     }
 
