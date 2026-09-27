@@ -106,12 +106,18 @@ internal object CEColor {
     LaunchedEffect(state.status) { if (state.status == ContinuousStatus.FAILED) pending = null }
     val shown = pending ?: value
     @Composable fun RowScope.SliderAndValue() {
+        val enabled = state.permits(capability)
+        val interaction = remember { MutableInteractionSource() }
+        val colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange,
+            inactiveTrackColor = CEColor.Tan, activeTickColor = CEColor.Tan, inactiveTickColor = CEColor.Tan)
         Slider(shown.coerceIn(range.start, range.endInclusive), { next -> if (commitOnRelease) pending = next else onValue(next) },
             Modifier.weight(1f).heightIn(min = 48.dp).testTag(tag).semantics { contentDescription = label },
-            enabled = state.permits(capability), valueRange = range,
+            enabled = enabled, valueRange = range, interactionSource = interaction,
             onValueChangeFinished = { if (commitOnRelease) pending?.let(onValue) },
-            colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange,
-                inactiveTrackColor = CEColor.Tan, activeTickColor = CEColor.Tan, inactiveTickColor = CEColor.Tan))
+            colors = colors,
+            // Material's default thumb is 44 dp tall; the actual input and semantics rectangle must reach 48 dp.
+            thumb = { SliderDefaults.Thumb(interaction, colors = colors, enabled = enabled,
+                thumbSize = androidx.compose.ui.unit.DpSize(4.dp, 48.dp)) })
         Text(stringResource(Res.string.ce_percent, (shown * 100).roundToInt()), color = foreground,
             fontSize = 12.sp, fontFamily = FontFamily.Monospace, softWrap = false)
     }
@@ -169,7 +175,7 @@ internal object CEColor {
 
 @Composable internal fun CEBanks(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val width = ((maxWidth - 18.dp) / 4).coerceAtLeast(96.dp)
+        val width = ((maxWidth - 18.dp) / 4).coerceAtLeast(96.dp * LocalDensity.current.fontScale.coerceAtLeast(1f))
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             state.banks.forEach { bank ->
                 val fallback = when (bank.id) {
@@ -192,7 +198,7 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
  * there when released; a touch that turns into a scroll records nothing.
  */
 @Composable internal fun CEPads(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    modifier: Modifier = Modifier, maximumSide: androidx.compose.ui.unit.Dp = 72.dp,
+    modifier: Modifier = Modifier, maximumSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity,
     onPadDrag: ((CEPaddedDrag?) -> Unit)? = null, onPadDrop: ((Int, Offset) -> Unit)? = null,
     capture: (() -> Long)? = null, hit: (() -> Long)? = null) {
     val font = LocalDensity.current.fontScale
@@ -200,8 +206,10 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
     val latestHit by rememberUpdatedState(hit)
     val cutLabel = stringResource(Res.string.ce_chop_pad_action)
     val playLabel = stringResource(Res.string.ce_hits_pad_action)
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val side = if (font > 1.5f) 96.dp else ((maxWidth - 18.dp) / 4).coerceAtMost(maximumSide)
+    BoxWithConstraints(modifier.fillMaxWidth().testTag("ce-pad-grid")) {
+        // Fill the instrument's width. Narrow windows scroll instead of making a PAD too small to play or read.
+        val minimumSide = if (font > 1.5f) 80.dp else 64.dp
+        val side = ((maxWidth - 18.dp) / 4).coerceIn(minimumSide, maximumSide.coerceAtLeast(minimumSide))
         Column(Modifier.align(Alignment.Center).horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             (0..3).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 (0..3).forEach { col ->
@@ -247,8 +255,9 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                         } else Modifier.combinedClickable(interactionSource = interaction, indication = null,
                             onClick = { onAction(ContinuousEditorAction.SelectPad(id)); if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) onAction(ContinuousEditorAction.TapPad(id)) },
                             onLongClick = if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) ({ if (!held) { held = true; onAction(ContinuousEditorAction.HoldPad(id)) } }) else null))
-                        .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null, hit != null) {
-                            if (capture == null && hit == null && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
+                        .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null, hit != null, onPadDrag != null) {
+                            // A compact pane has no visible drop target: its vertical gestures belong to scrolling.
+                            if (onPadDrag != null && onPadDrop != null && capture == null && hit == null && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
                                 var position = Offset.Zero
                                 detectDragGestures(onDragStart = { at ->
                                     position = rootOrigin + at
@@ -276,11 +285,11 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 }; true
                             }
                         }
-                        .padding(8.dp)) {
+                        .padding(if (font > 1.5f && side < 96.dp) 6.dp else 8.dp)) {
                         Text(cePadName(id), Modifier.align(Alignment.TopStart), color = if (filled) CEColor.Cream else CEColor.Tan,
-                            fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 16.sp, maxLines = 1, fontWeight = FontWeight.Bold)
                         Text(name, Modifier.align(Alignment.BottomStart), color = if (filled) CEColor.Cream else CEColor.Tan,
-                            fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            fontSize = 14.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             } }

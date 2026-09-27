@@ -20,6 +20,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -50,7 +51,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 }
 
 @Composable internal fun CEBeatWorkspace(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean) {
+    readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean,
+    maximumPadSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity) {
     var target by remember { mutableStateOf<CEPlacementTarget?>(null) }
     var draggedPad by remember { mutableStateOf<CEPaddedDrag?>(null) }
     val drop: (Int, Offset) -> Unit = { id, position ->
@@ -59,15 +61,18 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         }
         draggedPad = null
     }
-    if (compact) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    if (compact) Column(if (state.compactPane == ContinuousPane.PADS) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             // While a take or pass records, the PAD pane (where its stop button is) says so from the timeline pane too.
             CEButton(stringResource(if (state.recordingVoice || state.recordingHits) Res.string.ce_pads_recording else Res.string.ce_pads),
                 { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.PADS)) }, Modifier.weight(1f),
                 primary = state.compactPane == ContinuousPane.PADS, tag = "ce-pane-pads")
-            CEButton(stringResource(Res.string.ce_timeline), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.TIMELINE)) }, Modifier.weight(1f), primary = state.compactPane == ContinuousPane.TIMELINE)
+            CEButton(stringResource(Res.string.ce_timeline), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.TIMELINE)) }, Modifier.weight(1f),
+                primary = state.compactPane == ContinuousPane.TIMELINE, tag = "ce-pane-timeline")
         }
-        if (state.compactPane == ContinuousPane.PADS) CEPadsPanel(state, onAction, readout, Modifier.weight(1f), { draggedPad = it }, drop)
+        if (state.compactPane == ContinuousPane.PADS) CEPadsPanel(state, onAction, readout, Modifier.fillMaxWidth(), null, null,
+            compactDetails = true, maximumPadSide = maximumPadSide)
         else CETimelinePanel(state, onAction, readout, refreshKey, Modifier.weight(1f), { target = it })
     } else BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
@@ -105,14 +110,36 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 }
 
 @Composable private fun CEPadsPanel(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: (CEPaddedDrag?) -> Unit, onDrop: (Int, Offset) -> Unit) {
+    readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: ((CEPaddedDrag?) -> Unit)?, onDrop: ((Int, Offset) -> Unit)?,
+    compactDetails: Boolean = false, maximumPadSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity) {
+    var details by remember { mutableStateOf(false) }
     val pad = state.selectedPad
     val padName = pad?.name?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.ce_empty)
     // The fill panel's starting song position while it is open; another PAD closes it.
     var fillFrom by remember(state.selectedPadId) { mutableStateOf<Long?>(null) }
     fillFrom?.let { from -> if (pad != null && pad.kind != ContinuousPadKind.EMPTY) CEPadFillDialog(state, pad, from, onAction) { fillFrom = null } }
-    Column(modifier.clip(RoundedCornerShape(8.dp)).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))
-        .verticalScroll(rememberScrollState()).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    BoxWithConstraints(modifier.clip(RoundedCornerShape(8.dp)).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))) {
+    val density = LocalDensity.current
+    var headerHeight by remember { mutableIntStateOf(0) }
+    var footerHeight by remember { mutableIntStateOf(0) }
+    // The wide instrument reserves the measured controls, then shares the remaining height between four PAD rows.
+    // Compact uses its existing single scroll surface and keeps the caller's one-row height bound.
+    val fittedPadSide = if (compactDetails) maximumPadSide else with(density) {
+        val fixedSpacing = (16.dp + 12.dp + 12.dp + 18.dp).roundToPx() // panel padding, section gaps, grid inset, row gaps
+        ((constraints.maxHeight - headerHeight - footerHeight - fixedSpacing).coerceAtLeast(0) / 4).toDp()
+    }
+    Column((if (compactDetails) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
+        .then(if (compactDetails) Modifier else Modifier.verticalScroll(rememberScrollState())).padding(8.dp).testTag("ce-pads-pane"),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxWidth().onSizeChanged { headerHeight = it.height }.testTag("ce-pad-header"),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val detailLabel = stringResource(if (details) Res.string.ce_pad_details_hide else Res.string.ce_pad_details_show, cePadName(state.selectedPadId))
+            CEButton(detailLabel, { details = !details }, Modifier.weight(1f).semantics { contentDescription = "$detailLabel $padName" }, tag = "ce-pad-details")
+            if (compactDetails) CEActionButton(stringResource(Res.string.ce_undo), ContinuousEditorAction.Undo, state, ContinuousCapability.HISTORY, onAction,
+                additionallyEnabled = state.canUndo, tag = "ce-undo")
+        }
+        if (details) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${cePadName(state.selectedPadId)} / $padName", Modifier.weight(1f), color = CEColor.Cream, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -147,10 +174,14 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.2f)); Fill(Modifier.weight(1f)); Play(Modifier.weight(1.1f)) }
             }
         }
+        }
         CEBanks(state, onAction)
-        Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
-        CEPads(state, onAction, Modifier.padding(top = 12.dp), onPadDrag = onDrag, onPadDrop = onDrop,
+        if (details) Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
+        }
+        CEPads(state, onAction, Modifier.padding(top = 12.dp), maximumSide = fittedPadSide, onPadDrag = onDrag, onPadDrop = onDrop,
             hit = if (state.recordingHits) ({ readout().songFrame }) else null)
+        Column(Modifier.fillMaxWidth().onSizeChanged { footerHeight = it.height }.testTag("ce-pad-footer"),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun Adjustments() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -184,11 +215,13 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f)) }
             }
         }
+        }
         // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.
         if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
         if (state.recordingHits) Text(stringResource(Res.string.ce_hits_hint), Modifier.fillMaxWidth().testTag("ce-hits-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
+    }
     }
 }
 
@@ -207,7 +240,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         val inline = maxWidth >= 650.dp && LocalDensity.current.fontScale <= 1.3f
         Row(Modifier.fillMaxWidth().then(if (inline) Modifier else Modifier.horizontalScroll(rememberScrollState())), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(Res.string.ce_arrangement), if (inline) Modifier.weight(1f) else Modifier.widthIn(min = 220.dp), color = CEColor.Cream, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            CEActionButton(stringResource(Res.string.ce_undo), ContinuousEditorAction.Undo, state, ContinuousCapability.HISTORY, onAction, dark = true, additionallyEnabled = state.canUndo)
+            CEActionButton(stringResource(Res.string.ce_undo), ContinuousEditorAction.Undo, state, ContinuousCapability.HISTORY, onAction, dark = true, additionallyEnabled = state.canUndo, tag = "ce-undo")
             CEButton(stringResource(Res.string.ce_split), { clip?.let { onAction(ContinuousEditorAction.SplitClip(it.id, readout().songFrame)) } },
                 enabled = clip != null && state.permits(ContinuousCapability.SPLIT_CLIP), reason = CEReason(state, ContinuousCapability.SPLIT_CLIP), tag = "ce-split")
             CEActionButton(stringResource(Res.string.ce_duplicate), ContinuousEditorAction.DuplicateClip(clip?.id.orEmpty()), state, ContinuousCapability.DUPLICATE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-duplicate")

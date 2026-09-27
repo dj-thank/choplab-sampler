@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -47,17 +48,38 @@ import kotlin.math.roundToLong
             val compact = maxWidth < 900.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEHeader(state, onAction, compact)
-                if (state.stage == ContinuousStage.BEAT) CEOriginalDock(state, onAction, readout, refreshKey, compact)
-                Box(Modifier.weight(1f).fillMaxWidth().testTag("ce-stage-${state.stage.name}")) {
-                    when (state.stage) {
-                        ContinuousStage.CAPTURE -> CECapture(state, onAction, readout, refreshKey)
-                        ContinuousStage.CHOP -> CEChop(state, onAction, readout, refreshKey, compact)
-                        ContinuousStage.BEAT -> CEBeatWorkspace(state, onAction, readout, refreshKey, compact)
-                        ContinuousStage.SAVE -> CESave(state, onAction, compact, diagnostics)
+                if (compact && state.stage == ContinuousStage.BEAT) {
+                    // A short window scrolls the source and instrument together. Transport and all-stop stay outside.
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("ce-beat-viewport")) {
+                        val density = LocalDensity.current
+                        var sourceHeight by remember { mutableStateOf(128.dp) }
+                        val stageHeight = (maxHeight - sourceHeight - 64.dp).coerceAtLeast(480.dp)
+                        val maximumPadSide = (maxHeight - 16.dp).coerceAtLeast(64.dp)
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("ce-beat-scroll"),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CEOriginalDock(state, onAction, readout, refreshKey, compact = true,
+                                modifier = Modifier.onSizeChanged { sourceHeight = with(density) { it.height.toDp() } })
+                            Box(Modifier.fillMaxWidth().then(if (state.compactPane == ContinuousPane.TIMELINE) Modifier.height(stageHeight) else Modifier)
+                                .testTag("ce-stage-BEAT")) {
+                                CEBeatWorkspace(state, onAction, readout, refreshKey, compact = true,
+                                    maximumPadSide = maximumPadSide)
+                            }
+                            CEStatus(state.status)
+                        }
+                    }
+                } else {
+                    if (state.stage == ContinuousStage.BEAT) CEOriginalDock(state, onAction, readout, refreshKey, compact = false)
+                    Box(Modifier.weight(1f).fillMaxWidth().testTag("ce-stage-${state.stage.name}")) {
+                        when (state.stage) {
+                            ContinuousStage.CAPTURE -> CECapture(state, onAction, readout, refreshKey)
+                            ContinuousStage.CHOP -> CEChop(state, onAction, readout, refreshKey, compact)
+                            ContinuousStage.BEAT -> CEBeatWorkspace(state, onAction, readout, refreshKey, compact)
+                            ContinuousStage.SAVE -> CESave(state, onAction, compact, diagnostics)
+                        }
                     }
                 }
                 if (state.stage == ContinuousStage.BEAT || state.stage == ContinuousStage.SAVE) CESongTransport(state, onAction, readout, refreshKey)
-                CEStatus(state.status)
+                if (!compact || state.stage != ContinuousStage.BEAT) CEStatus(state.status)
             }
         }
         CEDrumKitDialogs(state, onAction)
@@ -397,10 +419,23 @@ import kotlin.math.roundToLong
     Column(Modifier.fillMaxWidth().heightIn(min = 70.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (compact) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Brand()
+                Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
                 CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, primary = true, tag = "ce-stop-all")
             }
-            Box(Modifier.horizontalScroll(rememberScrollState())) { Stages(Modifier.widthIn(min = 420.dp)) }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val density = LocalDensity.current
+                val width = maxWidth.coerceAtLeast(420.dp * density.fontScale.coerceAtLeast(1f))
+                val viewWidth = maxWidth
+                val scroll = rememberScrollState()
+                // Keep the selected stage visible when text grows, without narrowing or shrinking its label.
+                LaunchedEffect(state.stage, width, viewWidth) {
+                    val side = (width - 24.dp) / 4
+                    val start = (side + 8.dp) * state.stage.ordinal
+                    scroll.scrollTo(with(density) { (start - (viewWidth - side) / 2).toPx() }.roundToInt().coerceAtLeast(0))
+                }
+                Box(Modifier.horizontalScroll(scroll)) { Stages(Modifier.width(width)) }
+            }
         } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(160.dp)) { Brand() }
             Stages(Modifier.weight(1f))
@@ -411,15 +446,15 @@ import kotlin.math.roundToLong
 }
 
 @Composable private fun CEOriginalDock(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean) {
+    readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean, modifier: Modifier = Modifier) {
     val original = state.original
     val live = CELive(state.originalPlaying, refreshKey, readout)
     val title = original?.title ?: stringResource(Res.string.ce_no_source)
     val waveLabel = stringResource(Res.string.ce_original_wave, title)
-    Column(Modifier.fillMaxWidth().heightIn(min = 74.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Tan).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(8.dp)) {
+    Column(modifier.fillMaxWidth().heightIn(min = 74.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Tan).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(if (compact) 108.dp else 168.dp)) {
-                Text(stringResource(Res.string.ce_source_prefix, title), color = CEColor.Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(stringResource(Res.string.ce_source_prefix, title), color = CEColor.Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
                 CEOriginalTime(state, readout, refreshKey)
             }
             CEWaveform(original?.peaks.orEmpty(), Modifier.weight(1f).height(56.dp), waveLabel,
@@ -435,18 +470,13 @@ import kotlin.math.roundToLong
                 CEButton(stringResource(Res.string.ce_standard_width), { onAction(ContinuousEditorAction.ResetPanes) }, Modifier.widthIn(min = 78.dp), tag = "ce-reset-panes")
             }
         }
-        if (compact && LocalDensity.current.fontScale > 1.3f) Column(Modifier.fillMaxWidth()) {
+        if (compact) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("ce-original-controls"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             CEActionButton(stringResource(if (state.originalPlaying) Res.string.ce_stop else Res.string.ce_play_original),
                 if (state.originalPlaying) ContinuousEditorAction.StopOriginal else ContinuousEditorAction.PlayOriginal,
                 state, ContinuousCapability.ORIGINAL_PLAYBACK, onAction, tag = "ce-original-play")
             CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
-                { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.fillMaxWidth(), tag = "ce-source-monitor")
-        } else if (compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            CEActionButton(stringResource(if (state.originalPlaying) Res.string.ce_stop else Res.string.ce_play_original),
-                if (state.originalPlaying) ContinuousEditorAction.StopOriginal else ContinuousEditorAction.PlayOriginal,
-                state, ContinuousCapability.ORIGINAL_PLAYBACK, onAction, tag = "ce-original-play")
-            CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
-                { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.weight(1f), tag = "ce-source-monitor")
+                { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.width(260.dp), tag = "ce-source-monitor")
         }
     }
 }
@@ -721,7 +751,7 @@ import kotlin.math.roundToLong
         CEActionButton(stringResource(if (state.songPlaying) Res.string.ce_pause else Res.string.ce_play),
             if (state.songPlaying) ContinuousEditorAction.PauseSong else ContinuousEditorAction.PlaySong,
             state, ContinuousCapability.SONG_PLAYBACK, onAction, primary = true, tag = "ce-song-play")
-        CEActionButton(stringResource(Res.string.ce_stop), ContinuousEditorAction.StopSong, state, ContinuousCapability.SONG_PLAYBACK, onAction, dark = true)
+        CEActionButton(stringResource(Res.string.ce_stop), ContinuousEditorAction.StopSong, state, ContinuousCapability.SONG_PLAYBACK, onAction, dark = true, tag = "ce-song-stop")
         Text("${ceTime(live.songFrame)} / ${ceTime(state.timelineDurationFrames)}", color = CEColor.Cream, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
         Slider((live.songFrame.toFloat() / state.timelineDurationFrames).coerceIn(0f, 1f), { onAction(ContinuousEditorAction.SeekSong((it * state.timelineDurationFrames).roundToLong())) },
             (if (stretch) Modifier.weight(1f) else Modifier.width(220.dp)).heightIn(min = 48.dp).testTag("ce-song-seek"), enabled = state.permits(ContinuousCapability.SONG_SEEK),
@@ -780,7 +810,8 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
 }
 
 @Composable private fun CEStatus(status: ContinuousStatus?) {
-    val text = status?.let { stringResource(when (it) {
+    if (status == null) return
+    val text = stringResource(when (status) {
         ContinuousStatus.LOADING -> Res.string.ce_loading; ContinuousStatus.SAVING -> Res.string.ce_saving
         ContinuousStatus.SAVED -> Res.string.ce_saved; ContinuousStatus.EXPORTING -> Res.string.ce_exporting
         ContinuousStatus.EXPORTED -> Res.string.ce_exported; ContinuousStatus.CANCELLED -> Res.string.ce_cancelled
@@ -806,6 +837,6 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.MIC_UNAVAILABLE -> Res.string.ce_mic_unavailable; ContinuousStatus.RECORDING_BUSY -> Res.string.ce_recording_busy
         ContinuousStatus.RESCUED -> Res.string.ce_rescued; ContinuousStatus.RESCUED_PARTLY -> Res.string.ce_rescued_partly
         ContinuousStatus.RESCUED_TOO_LONG -> Res.string.ce_rescued_too_long; ContinuousStatus.RESCUED_NOTHING -> Res.string.ce_rescued_nothing
-    }) }.orEmpty()
+    })
     Text(text, Modifier.fillMaxWidth().heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = CEColor.Border)
 }
