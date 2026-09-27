@@ -67,7 +67,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 primary = state.compactPane == ContinuousPane.PADS, tag = "ce-pane-pads")
             CEButton(stringResource(Res.string.ce_timeline), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.TIMELINE)) }, Modifier.weight(1f), primary = state.compactPane == ContinuousPane.TIMELINE)
         }
-        if (state.compactPane == ContinuousPane.PADS) CEPadsPanel(state, onAction, readout, Modifier.weight(1f), { draggedPad = it }, drop)
+        if (state.compactPane == ContinuousPane.PADS) CEPadsPanel(state, onAction, readout, Modifier.weight(1f), { draggedPad = it }, drop, compactDetails = true)
         else CETimelinePanel(state, onAction, readout, refreshKey, Modifier.weight(1f), { target = it })
     } else BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
@@ -105,7 +105,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 }
 
 @Composable private fun CEPadsPanel(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: (CEPaddedDrag?) -> Unit, onDrop: (Int, Offset) -> Unit) {
+    readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: (CEPaddedDrag?) -> Unit, onDrop: (Int, Offset) -> Unit, compactDetails: Boolean = false) {
+    var details by remember { mutableStateOf(false) }
     val pad = state.selectedPad
     val padName = pad?.name?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.ce_empty)
     // The fill panel's starting song position while it is open; another PAD closes it.
@@ -113,6 +114,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     fillFrom?.let { from -> if (pad != null && pad.kind != ContinuousPadKind.EMPTY) CEPadFillDialog(state, pad, from, onAction) { fillFrom = null } }
     Column(modifier.clip(RoundedCornerShape(8.dp)).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))
         .verticalScroll(rememberScrollState()).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (compactDetails) CEButton(stringResource(if (details) Res.string.ce_pad_details_hide else Res.string.ce_pad_details_show, padName),
+            { details = !details }, Modifier.fillMaxWidth(), tag = "ce-pad-details")
+        if (!compactDetails || details) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${cePadName(state.selectedPadId)} / $padName", Modifier.weight(1f), color = CEColor.Cream, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -146,6 +150,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Audition(Modifier.weight(1f)); Loop(Modifier.weight(1.6f)) }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.2f)); Fill(Modifier.weight(1f)); Play(Modifier.weight(1.1f)) }
             }
+        }
         }
         CEBanks(state, onAction)
         Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)

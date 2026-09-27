@@ -6,6 +6,23 @@
 
 共有タスク「Choplab UIを改善」で選んだ案2の改訂版を維持する。8月版の4工程・大きなPAD・濃い波形面を土台に、右側の自由配置、原曲の連携、試聴音量、可変幅を組み込む。5画面カード案と9月21日の素材棚中心版は採用しない。詳しくは [DESIGN](DESIGN.md)。
 
+## Claudeクラウドへの引継ぎ（2026-09-28）
+
+利用者の指定により、以後の実装主体を既存のClaudeクラウドセッションへ移す。ローカルの追加実装はここで停止し、以下の保全branchを取得して続ける。これは完成宣言ではない。進捗の正本は引き続き本書、要件はPRODUCT/DESIGN/AUDIO/TESTING/RELEASEとADR。クラウドで実施できないMac/Android/Windows実機検証、provider認証、音質・操作感の人間受入は未確認として残す。
+
+- 録音修正: PR150 `claude/choplab-refactor-expansion-87nsb7` の `ee18b7c965f4368a623d536d8aae168ef29435ec`。押下中の曲末、GATE長、早いchoke、StopAll時刻とfade、取消LOOP、accessibility入力を修正済み。必須CI run `36329071282` は引継ぎ時点でWindows失敗、verify実行中、履歴/SBOM成功。最新headを再確認して原因修正・必要なCI・レビュー後に統合する。force pushしない。
+- 画面の途中変更: `codex/beat-playable-layout`、基準main `551d57fc`。compact headerとPAD詳細の折り畳みだけを試作。`ContinuousEditorTest` は23件中22成功、`theFillPanelChoosesSpacingAndLengthAndFillsFromTheSongPositionsBar` が392行でIllegalArgumentException。修正と実際の可視領域検証が必要で、利用可能性は未確認。以下の画面改善の完了条件を維持する。
+- Spotifyの途中変更: `codex/next-spotify-connection` の `d2a06e1`。`241bead` はtypedエラーと23件のsession試験、`d2a06e1` はja/en native metadata dialogのcompileまで。NEXTのaction/port/hostとpackage設定への接続、実OAuth/API、失敗表示・retry表示は未完。キー・tokenをコミットしない。PRODUCTのprovider利用条件を満たす具体的フローを確認する。
+- 録音候補のMac package検証は `c0d991a` に限定。合成GATE2打の4896/9696frames、float asset、書出しPCM一致、1Undo/Redo、保存再開、11codecと実分離modelの制作経路・native窓自然終了は成功。後続 `ee18b7c` の取消LOOP修正はpresenter試験成功、再package未実施。実機の聴感合格ではない。
+- インストール済みMac NEXTはmain `46300aac`、Android署名済Previewはmain `5d471c11`（0.18.0-preview/build30）。双方ともPR150未搭載。既存アプリ・利用者dataは保持。Android起動は確認したが実音声/マイク/遅延/TalkBackは未確認。
+- デザイン訂正はPR150の `bf71493` にある。取り下げた2枚目・3枚目（旧capture/beat案）は参照しない。正しいBEATは利用者が最後に送った画像：4工程、左に選択波形と大きな4×4 PAD、右に広い複数track配置、下に曲transport。scratchは承認済みSOURCE/HANDの2系統案。原曲共通監視・独立音量・可変divider・A–H×16の書面要件も維持する。画像自体をまだ受領していない引継ぎ先は推測で代替しない。
+
+残りの範囲をUIと録音だけに縮めない。下の段階0〜11の受入表を照合し、scratchの独立SOURCE/HAND、長尺prefetch（現resident上限349秒）、取込性能/品質とAndroid変換差、ライブラリ、BANK/PAD編集、step/pattern/overdub、vocal take/comp/punch/LRC、任意AIと安全な鍵管理、4stem/mixer/FX/export、保存復旧、Windows実運用SSOT、署名・配布サイズを必要な検証とともに進める。bounded PR単位で最新mainへ統合し、本書を更新する。LOCAL_PASS / DEVICE_PASS / PROVIDER_PASS / PUBLIC_PASS / HUMAN_GOを混同しない。
+
+## 選択中の画面改善
+
+rootがmain `551d57fc` を基準に `ContinuousEditor.kt` / `ContinuousEditorTimeline.kt` / ja/en resources と描画試験を担当する。狭い画面・大文字で実際にPADを見て押せる領域と、広い画面の大きな正方形PADを確保する。原曲・停止・音量・Undoの導線と4工程を保持する。録音PR150のCIは別途追跡し、統合後のUIで再検証する。rollbackは当該画面PRのrevert。完了条件は390×844/font1/1.3/2、短い横画面、広い画面での可視領域・操作・画像確認であり、semanticsノードの存在だけでは合格にしない。
+
 ## 現在地・選択中の作業
 
 - 基準: [PR101](https://github.com/dj-thank/choplab-sampler/pull/101) のmerge `2866683a5118681cf518ef47e29cac8baf882edb`、保存tag `archive/pre-rebuild-v0.18.0`。0.18.0/build30のAndroid/Windowsを出発点にする。後続の別ローカルeditor/schema8/9やDDJ-200を混ぜない。
