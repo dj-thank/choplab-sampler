@@ -53,6 +53,7 @@ class NextSession private constructor(
     suspend fun stopSound() {
         backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
+        presenter.finishRecording()
     }
     /** Saves now; a failure stays visible through [EditorBackend.persistenceFailure]. */
     suspend fun saveNow() { try { backend.flushAutosave() } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { } }
@@ -62,7 +63,8 @@ class NextSession private constructor(
 
     /** Closes the editor after the final autosave, or after the user accepted closing without it. */
     suspend fun close(confirmWithoutAutosave: suspend () -> Boolean, finish: suspend () -> Unit): Boolean =
-        closeAfterAutosave(backend::flushAutosave, { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
+        closeAfterAutosave({ check(presenter.finishRecording()); backend.flushAutosave() },
+            { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
 
     suspend fun shutdown() {
         withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close(); microphone.close() }
@@ -119,6 +121,7 @@ class NextSession private constructor(
             }
         override fun cueVoice() = voice.cue()
         override fun voiceFull() = voice.full
+        override fun voiceRecordedMillis() = voice.recordedMillis
         override fun voiceInterrupted() = voice.interrupted
         override suspend fun stopVoice(name: String) = voice.stop(name)
         override suspend fun discardVoice() = voice.discard()

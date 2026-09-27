@@ -14,6 +14,119 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun recordingCannotStartWhileAnEarlierDocumentChangeIsStillPreparing() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        val preparing = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        try {
+            h.engine.duringPrepare = { preparing.complete(Unit); release.await() }
+            val edit = async { h.studio.dispatch(Action.Edit(Intent.SetPad(h.initial.pads[0].copy(gain = .4f)))) }
+            withTimeout(5_000) { preparing.await() }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.ports.voiceStarts.isEmpty())
+            release.complete(Unit)
+            assertTrue(edit.await().accepted)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+        } finally { release.complete(Unit); h.close() }
+    }
+
+    @Test fun microphoneCollectsAnOriginalWithoutASongOrOutputAndOneUndoRestoresIt() = runBlocking<Unit> {
+        val h = Harness(voice = true) { Project() }
+        try {
+            h.engine.transport = TransportState(outputAttached = false)
+            h.studio.dispatch(Action.RefreshTransport)
+            assertTrue(h.until { it.permits(ContinuousCapability.RECORD_SOURCE) }.clips.isEmpty())
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            val recording = h.until { it.recordingSource }
+            assertFalse(recording.recordingVoice)
+            assertFalse(recording.permits(ContinuousCapability.IMPORT_AUDIO))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(0, h.ports.cues, "A source has no song cue or trimmed lead-in")
+            assertTrue(h.ports.voiceStarts.single() in 1..300)
+            h.ports.recordedMillis = 1234
+            assertEquals(1234, h.presenter.readout().recordingMillis)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopSourceRecording))
+            h.until { !it.recordingSource && it.status == ContinuousStatus.SOURCE_RECORDED }
+            val recorded = h.studio.document.value.project
+            assertEquals("MIC 1", recorded.assets.single().name)
+            assertEquals(FrameRange(0, 96_000), recorded.source?.range, "All captured frames become the original")
+            assertTrue(recorded.clips.isEmpty())
+            assertTrue(recorded.pads.all { it.assetHash == null })
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Redo))
+            assertEquals(recorded, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.AssignSourceRange(0)))
+            assertEquals(recorded.source?.assetHash, h.studio.document.value.project.pads[0].assetHash)
+        } finally { h.close() }
+    }
+
+    @Test fun sourceRecordingPreservesPadsAndSongAndCanBeDiscardedOrFinishedBeforeAutosave() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+            assertEquals(1, h.ports.discards)
+            assertEquals(before, h.studio.document.value.project)
+            assertTrue(h.ports.voiceNames.isEmpty(), "Discard never publishes a file")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.presenter.finishRecording())
+            val after = h.studio.document.value.project
+            assertNotEquals(before.source, after.source)
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.clips, after.clips)
+            assertTrue(after.assets.containsAll(before.assets))
+            assertTrue(h.presenter.finishRecording())
+            assertEquals(1, h.ports.voiceNames.size, "Final autosave's preparation is idempotent")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
+    @Test fun sourceLimitInputLossPermissionAndStorageFailureLeaveAnEditableDocument() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            for (permission in listOf(VoiceStart.DENIED, VoiceStart.UNAVAILABLE, VoiceStart.NO_ROOM)) {
+                h.ports.microphone = permission
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+                assertFalse(h.presenter.state.value.recordingSource)
+                assertTrue(h.ports.voiceNames.isEmpty())
+            }
+            h.ports.microphone = VoiceStart.STARTED
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            h.ports.full = true
+            h.until { !it.recordingSource && it.status == ContinuousStatus.SOURCE_RECORDING_LIMIT }
+            h.ports.full = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            h.ports.interrupted = true
+            h.until { !it.recordingSource && it.status == ContinuousStatus.SOURCE_RECORDING_INTERRUPTED }
+            h.ports.interrupted = false
+            val before = h.studio.document.value.project
+            h.ports.takeFrames = null
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopSourceRecording))
+            h.until { it.status == ContinuousStatus.VOICE_EMPTY }
+            assertEquals(before, h.studio.document.value.project)
+            h.ports.storeFails = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertFalse(h.presenter.finishRecording(), "The host must not report a successful final save")
+            h.until { !it.recordingSource && it.status == ContinuousStatus.VOICE_NOT_SAVED }
+            assertEquals(before, h.studio.document.value.project)
+            h.ports.storeFails = false
+            h.ports.takeFrames = 96_000
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
+            h.until { it.stage == ContinuousStage.CHOP && !it.recordingSource }
+            assertNotEquals(before.source, h.studio.document.value.project.source)
+        } finally { h.close() }
+    }
+
     @Test fun explicitLoopSwitchReplacesThePreviousLoopWithoutChangingTheOriginal() = runBlocking {
         val h = Harness()
         try {
@@ -919,7 +1032,25 @@ class ContinuousEditorPresenterTest {
     /** 48 kHz frames a screen pixel moves a platter at normal sensitivity, computed as the presenter does. */
     private val NORMAL_FRAMES_PER_PIXEL = 48_000 / (60.0 * 7.0)
 
+    @Test fun anImmediateOpenKeepsItsNoticeEvenBeforeThePresentersDispatcherRuns() = runBlocking<Unit> {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val gate = java.util.concurrent.CountDownLatch(1)
+        executor.submit { gate.await() }
+        val dispatcher = executor.asCoroutineDispatcher()
+        val h = Harness(rescue = Notice.Rescued(2, 0), presenterDispatcher = dispatcher)
+        try {
+            h.ports.openLocation = Location("old.choplab")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+            withTimeout(5_000) { while (h.studio.work.value.jobId != null || h.studio.work.value.preparationId != null) delay(5) }
+            // A mailbox turn after Open's completion ensures its notice was emitted before the dispatcher is released.
+            h.studio.dispatch(Action.RefreshTransport)
+            gate.countDown()
+            h.until { it.status == ContinuousStatus.RESCUED }
+        } finally { gate.countDown(); h.close(); dispatcher.close() }
+    }
+
     private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
+                          presenterDispatcher: CoroutineDispatcher = Dispatchers.Default,
                           rescue: Notice.Rescued? = null, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, originalFrames, "Original")
@@ -948,7 +1079,7 @@ class ContinuousEditorPresenterTest {
         val ports = FakePorts(kits, voice, render).also { it.engine = engine }
         /** Waits for [condition]; generous, since a loaded CI runner can take a while, and a wait that never ends fails. */
         suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(5000) { presenter.state.first(condition) }
-        val presenter = ContinuousEditorPresenter(studio, scope, ports)
+        val presenter = ContinuousEditorPresenter(studio, CoroutineScope(scope.coroutineContext + presenterDispatcher), ports)
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }
     }
     private class FakeEngine : EnginePort {
@@ -1055,6 +1186,7 @@ class ContinuousEditorPresenterTest {
         @Volatile var cues = 0
         @Volatile var discards = 0
         @Volatile var full = false
+        @Volatile var recordedMillis = 0L
         @Volatile var interrupted = false
         @Volatile var storeFails = false
         /** The take the next stop returns: this many frames, captured this far ahead of the cue; null records nothing. */
@@ -1068,6 +1200,7 @@ class ContinuousEditorPresenterTest {
         override suspend fun startVoice(maxSeconds: Int): VoiceStart { voiceStarts += maxSeconds; return microphone }
         override fun cueVoice() { cues++; commandsAtCue = engine?.commands?.toList().orEmpty() }
         override fun voiceFull() = full
+        override fun voiceRecordedMillis() = recordedMillis
         override fun voiceInterrupted() = interrupted
         override suspend fun stopVoice(name: String): VoiceTake? {
             voiceNames += name

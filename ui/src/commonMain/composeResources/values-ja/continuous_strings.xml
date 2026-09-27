@@ -28,6 +28,11 @@
     <string name="ce_capture_hint">波形で聴きたい場所を選び、曲を流しながらチョップへ進めます。</string>
     <string name="ce_other_import">別の方法で音を入れる</string>
     <string name="ce_mic_record">マイクで録音</string>
+    <string name="ce_source_recording">録音中：%1$s 秒。「録音を止める」で原曲に入ります。長さ・空き容量の上限に達すると自動で止まります。</string>
+    <string name="ce_source_record_discard">この録音を取り消す</string>
+    <string name="ce_source_recorded">録った音を原曲に入れました。チョップしてPADへ置けます。「元に戻す」で前の原曲に戻せます。</string>
+    <string name="ce_source_recording_limit">録音できる長さの上限に達したので止めて、そこまでの音を原曲に入れました。</string>
+    <string name="ce_source_recording_interrupted">マイクが使えなくなったので録音を止め、そこまでの音を原曲に入れました。</string>
     <string name="ce_device_record">端末音声を録音</string>
     <string name="ce_chop_start">チョップ開始</string>
     <string name="ce_chop_stop">チョップを止める</string>

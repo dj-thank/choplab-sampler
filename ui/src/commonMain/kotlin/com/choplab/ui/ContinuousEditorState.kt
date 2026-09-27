@@ -19,7 +19,7 @@ enum class ContinuousCapability {
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
     PLACE_PAD, MOVE_CLIP, TRIM_CLIP, SPLIT_CLIP, DUPLICATE_CLIP, DELETE_CLIP,
     TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
-    ADD_DRUM, RECORD_VOICE, SCRATCH, STOP_ALL,
+    ADD_DRUM, RECORD_VOICE, RECORD_SOURCE, SCRATCH, STOP_ALL,
 }
 enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
 enum class ContinuousStatus {
@@ -32,6 +32,7 @@ enum class ContinuousStatus {
     /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     MIC_DENIED, MIC_UNAVAILABLE,
+    SOURCE_RECORDED, SOURCE_RECORDING_LIMIT, SOURCE_RECORDING_INTERRUPTED,
     /** Refused because a take is being recorded. */
     RECORDING_BUSY,
     /**
@@ -139,6 +140,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val liveChopping: Boolean = false,
     /** A voice take is being recorded while the song plays. */
     val recordingVoice: Boolean = false,
+    /** The microphone is collecting a new original, independent of a song or output device. */
+    val recordingSource: Boolean = false,
     val originalMonitorGain: Float = 1f,
     val banks: List<ContinuousBank> = (0..7).map(::ContinuousBank),
     val selectedBank: Int = 0,
@@ -210,12 +213,17 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val songFrame: Long = 0,
     /** Where the scratch platter stands within what it scratches, 0 to 1. */
     val scratchFraction: Float = 0f,
+    /** Samples actually captured, not wall-clock time spent waiting for microphone permission. */
+    val recordingMillis: Long = 0,
 )
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
+    data object RecordSource : ContinuousEditorAction
+    data object StopSourceRecording : ContinuousEditorAction
+    data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction
     data object SaveProject : ContinuousEditorAction
     data object ExportWav : ContinuousEditorAction

@@ -17,6 +17,9 @@ import kotlin.test.*
 
 /** UI-independent, fake-output integration tests. Never opens a native audio device or window. */
 class NextBackendTest {
+    @Test fun microphoneSourceThroughActualPresenterChopExportAndRestart() = runBlocking<Unit> {
+        NextMicrophoneSelfTest.run(temporary())
+    }
     private fun temporary(): Path {
         val parent = Path.of(System.getProperty("choplab.next.testDir", "build/tmp/next-tests"))
         Files.createDirectories(parent)
