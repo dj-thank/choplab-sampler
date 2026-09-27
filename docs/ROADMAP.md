@@ -20,6 +20,13 @@
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
+## Mac NEXT端末音録音の接続（検証中）
+
+- owner: root。基準はPR136統合 `a5ec068`。対象は `desktop` のScreenCaptureKit helper/NextBackend、`jvm` のVoiceTakes、`ui` のSOURCE録音操作。従来のPCM16 helper出力は維持し、NEXTだけ48kHz stereo FLOAT32を選ぶ。
+- SOURCEの端末音録音から、左右を保持した原曲、1回のUndo、PAD/配置、24bit書出し、保存/再開へつなぐ。マイクへ暗黙に切り替えない。許可待ちの取消、画面ロック、入力断、時間/容量上限を別々に扱う。
+- Macローカル候補 `93c37fc` + 後続修正でUI/JVM/desktop試験・Android Previewコンパイル・Mac package・Python320件が成功。実ScreenCaptureKit→本番Presenterで257,280 stereo framesを録音し、Undo/Redo、PAD配置、24bit書出し、保存/再起動一致を確認。外部1703Hzの振幅876.329533に対し親Javaの997Hzは0.014385（-95.70dB）。合成音を使用し生音声は一時領域削除済み。これは人間の聴感受入ではない。
+- 完了条件: 追加の入力断回帰試験、必須CI、main統合、同revisionのMac packageインストール/起動readback。現時点は候補で、配布/Windows・Android端末音/Human受入は未完。rollbackは当該PRのrevertと前のapp-imageへの復帰。利用者の制作dataは保持する。
+
 ## 段階と受入
 
 「計画」は実装済みを意味しません。PR総数は固定せず、独立して検証できる単位へ分けます。

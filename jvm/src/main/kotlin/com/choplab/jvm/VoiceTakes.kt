@@ -90,7 +90,7 @@ class VoiceTakes(
         withContext(Dispatchers.IO + NonCancellable) { synchronized(lock) { closed = true; recorder.also { recorder = null } }?.discard() }
     }
 
-    /** Whole seconds of 48 kHz mono float the store's quota and the disk still take. */
+    /** Whole seconds of 48 kHz capture-channel float the store's quota and the disk still take. */
     private fun roomSeconds(): Long {
         val perSecond = 4L * 48_000 * captureChannels
         val store = assets.maxStoredBytes - assets.storedBytes() - 44

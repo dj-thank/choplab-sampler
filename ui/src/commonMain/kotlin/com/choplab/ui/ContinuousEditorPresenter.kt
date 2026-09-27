@@ -510,7 +510,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun drumBank(project: Project): List<Pad> = project.pads.subList(DrumKits.BANK * 16, DrumKits.BANK * 16 + 16).toList()
 
     private fun allowedWhileCollecting(action: ContinuousEditorAction) = when (action) {
-        ContinuousEditorAction.RecordSource, ContinuousEditorAction.StopSourceRecording,
+        ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.StopSourceRecording,
         ContinuousEditorAction.DiscardSourceRecording, ContinuousEditorAction.StopAll,
         is ContinuousEditorAction.Navigate, is ContinuousEditorAction.CopyDiagnostics -> true
         else -> false
@@ -518,7 +518,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
 
     /** Collects an original without playing a song. The same owned microphone is shared with voice takes. */
     private suspend fun startSource(project: Project, system: Boolean = false): Boolean {
-        if (view.value.recordingSource) return true
+        if (view.value.recordingSource) {
+            if (view.value.systemSource == system) return true
+            refusal = ContinuousStatus.RECORDING_BUSY; return false
+        }
         if (studio.work.value.jobId != null || studio.work.value.preparationId != null) return false
         if (if (system) ports.systemAudioCapture == null else !ports.voiceAvailable) {
             refusal = if (system) ContinuousStatus.SYSTEM_UNAVAILABLE else ContinuousStatus.MIC_UNAVAILABLE; return false

@@ -170,7 +170,7 @@ class ContinuousEditorPresenterTest {
             for (permission in listOf(VoiceStart.DENIED, VoiceStart.UNAVAILABLE, VoiceStart.NO_ROOM)) {
                 h.ports.microphone = permission
                 assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
-                assertFalse(h.presenter.state.value.recordingSource)
+                h.until { !it.recordingSource && it.status != null }
                 assertTrue(h.ports.voiceNames.isEmpty())
             }
             h.ports.microphone = VoiceStart.STARTED

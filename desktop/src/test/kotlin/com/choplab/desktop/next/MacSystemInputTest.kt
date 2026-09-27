@@ -33,6 +33,27 @@ class MacSystemInputTest {
         } finally { takes.close(); factory.close() }
     }
 
+    @Test fun earlyExitAndStalledInputKeepCompleteStereoFramesAndReleaseTheHelper() = runBlocking<Unit> {
+        for (mode in listOf("float-dies", "float")) {
+            val child = AtomicReference<Process>()
+            val factory = MacSystemInput({ File("synthetic") }, {
+                FakeSystemAudioHelper.launcher(mode)(it).also(child::set)
+            }, idleTimeoutMillis = 100)
+            val store = FileAssetStore(Files.createTempDirectory("system-interrupted-"))
+            val takes = VoiceTakes(store, Files.createTempDirectory("system-scratch-"),
+                captureChannels = 2, microphone = factory::open)
+            try {
+                assertEquals(VoiceTakes.Start.STARTED, takes.start(30))
+                withTimeout(5_000) { while (!takes.interrupted) delay(5) }
+                val asset = assertNotNull(takes.stop("SYSTEM interrupted")).asset
+                assertEquals(48_000L, asset.frames)
+                assertEquals(2, asset.channels)
+                assertFalse(takes.full)
+                withTimeout(2_000) { while (child.get().isAlive) delay(5) }
+            } finally { takes.close(); factory.close() }
+        }
+    }
+
     @Test fun permissionDisplayTimeoutAndCancellationAreDistinctAndKillOnlyTheOwnedHelper() = runBlocking<Unit> {
         for ((mode, reason) in listOf("refused" to MacSystemInput.Failure.DENIED, "no-display" to MacSystemInput.Failure.NO_DISPLAY,
                 "normal" to MacSystemInput.Failure.INVALID, "late" to MacSystemInput.Failure.TIMEOUT)) {
