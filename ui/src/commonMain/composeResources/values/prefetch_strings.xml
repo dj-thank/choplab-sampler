@@ -1,0 +1,14 @@
+<resources>
+    <string name="ce_pcm_short">Audio</string>
+    <string name="ce_pcm_title">Audio loading</string>
+    <string name="ce_pcm_ready">Ready to play</string>
+    <string name="ce_pcm_preparing">Audio is being loaded ahead of playback.</string>
+    <string name="ce_pcm_failed">Audio could not be loaded. Stop and reload to try again.</string>
+    <string name="ce_pcm_closed">Audio loading has stopped. Reload to try again.</string>
+    <string name="ce_pcm_missing_label">Frames without source audio</string>
+    <string name="ce_pcm_queue_label">Full audio request queue</string>
+    <string name="ce_pcm_missing">Frames without source audio: %1$s</string>
+    <string name="ce_pcm_queue">Requests that found the queue full: %1$s</string>
+    <string name="ce_pcm_reload">Reload audio</string>
+    <string name="ce_pcm_reload_help">Reload stops playback and prepares the sounds again. Your edits and Undo history stay intact. A WAV export with missing audio is never saved.</string>
+</resources>

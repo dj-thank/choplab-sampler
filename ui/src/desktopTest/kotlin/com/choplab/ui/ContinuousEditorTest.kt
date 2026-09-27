@@ -29,6 +29,59 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
+    @Test fun pcmMissReadoutPreservesTheInstrumentAndExposesReloadStopAndCloseAtLargeText() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
+                Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
+                Locale.setDefault(locale)
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val state = mutableStateOf(ContinuousEditorFixture.state().copy(capabilities = ContinuousCapability.entries.toSet()))
+                val reading = mutableStateOf(ContinuousPcmReadout(com.choplab.engine.PcmReadStatus.PREFETCHING, 192, 2))
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, actions::add, { ContinuousEditorFixture.readout().copy(pcm = reading.value) })
+                }
+                fun full(tag: String) {
+                    val node = requireNotNull(scene.tag(tag)) { tag }
+                    val bounds = node.boundsInWindow
+                    assertEquals(node.size.height.toFloat(), bounds.height, .5f, tag)
+                    assertEquals(node.size.width.toFloat(), bounds.width, .5f, tag)
+                    assertTrue(bounds.left >= 0 && bounds.right <= width && bounds.top >= 0 && bounds.bottom <= height, tag)
+                    assertTrue(bounds.width >= 48 && bounds.height >= 48, tag)
+                }
+                try {
+                    scene.settle()
+                    if (width == 1440) for (id in 0..15) full("ce-pad-$id")
+                    for (tag in listOf("ce-stop-all", "ce-song-stop", "ce-pcm-status")) full(tag)
+                    scene.click("ce-pcm-status")
+                    for (tag in listOf("ce-pcm-reload", "ce-pcm-stop", "ce-pcm-close")) full(tag)
+                    scene.capture("pcm-miss-${locale.language}-$width-font${(font * 100).toInt()}.png")
+                    scene.click("ce-pcm-stop")
+                    assertEquals(ContinuousEditorAction.StopAll, actions.last())
+                    scene.click("ce-pcm-close")
+                    scene.awaitDialogClosed("ce-pcm-dialog")
+                    assertNull(scene.tag("ce-pcm-status"), "Acknowledged past misses do not obscure the instrument")
+                    reading.value = ContinuousPcmReadout() // A reattached output has fresh counters.
+                    scene.settle()
+                    reading.value = ContinuousPcmReadout(com.choplab.engine.PcmReadStatus.FAILED, 1, 0)
+                    scene.settle()
+                    scene.click("ce-pcm-status")
+                    state.value = state.value.copy(capabilities = state.value.capabilities - ContinuousCapability.RELOAD_AUDIO)
+                    scene.settle()
+                    assertNotNull(requireNotNull(scene.tag("ce-pcm-reload")).config.getOrNull(SemanticsProperties.Disabled))
+                    scene.click("ce-pcm-reload")
+                    assertEquals(ContinuousEditorAction.StopAll, actions.last())
+                    state.value = state.value.copy(capabilities = state.value.capabilities + ContinuousCapability.RELOAD_AUDIO)
+                    scene.settle()
+                    scene.click("ce-pcm-reload")
+                    scene.awaitDialogClosed("ce-pcm-dialog")
+                    assertEquals(ContinuousEditorAction.ReloadAudio, actions.last())
+                    full("ce-stop-all"); full("ce-song-stop")
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun lyricProposalOpensFromVocalAndKeepsStopAndCloseReachableWithoutEnablingUnverifiedSending() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {

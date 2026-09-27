@@ -114,9 +114,10 @@ class ProgramCompiler(private val pcm: PcmPort) {
             return com.choplab.engine.Pad(pad.id, data, start, end, pad.mode, pad.pitchSemitones, pad.gain,
                 pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone)
         }
-        /** Actual bounded-cache estimate used by hosts; legacy residentFrames remains a duration diagnostic. */
+        /** Host admission reserves the live SOURCE/HAND too, once per hash. Legacy residentFrames is a duration diagnostic. */
         fun residentBudgetBytes(project: Project): Long =
-            (project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash }).distinct().sumOf { PcmResidency.bytes(project.asset(it)) }
+            (listOfNotNull(project.source?.assetHash) + project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash })
+                .distinct().sumOf { PcmResidency.bytes(project.asset(it)) }
         fun residentFrames(project: Project): Long =
             (project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash }).distinct().sumOf { normalizedFrames(project.asset(it)) }
         /** Absolute conversion, so rounding never accumulates across clips or tempo changes. */

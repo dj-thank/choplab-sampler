@@ -51,7 +51,7 @@ import kotlin.math.roundToLong
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
             val compact = maxWidth < 900.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CEHeader(state, onAction, compact)
+                CEHeader(state, onAction, compact, readout, refreshKey)
                 if (compact && state.stage == ContinuousStage.BEAT) {
                     // A short window scrolls the source and instrument together. Transport and all-stop stay outside.
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("ce-beat-viewport")) {
@@ -306,7 +306,8 @@ import kotlin.math.roundToLong
     }
 }
 
-@Composable private fun CEHeader(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean) {
+@Composable private fun CEHeader(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean,
+    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
     @Composable fun Brand() { Column {
         Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 22.sp)
         Text(stringResource(Res.string.ce_subbrand), color = CEColor.Tan, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
@@ -326,8 +327,12 @@ import kotlin.math.roundToLong
     Column(Modifier.fillMaxWidth().heightIn(min = 70.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (compact) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                Box(Modifier.weight(1f)) {
+                    CEPcmHealth(state, onAction, readout, refreshKey) {
+                        Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                    }
+                }
                 CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, primary = true, tag = "ce-stop-all")
             }
             BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -344,7 +349,7 @@ import kotlin.math.roundToLong
                 Box(Modifier.horizontalScroll(scroll)) { Stages(Modifier.width(width)) }
             }
         } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(160.dp)) { Brand() }
+            Box(Modifier.width(160.dp)) { CEPcmHealth(state, onAction, readout, refreshKey) { Brand() } }
             Stages(Modifier.weight(1f))
             Text("${stringResource(Res.string.ce_bpm)} ${state.bpm}", color = CEColor.Green, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, Modifier.widthIn(min = 100.dp), primary = true, tag = "ce-stop-all")
@@ -623,6 +628,9 @@ import kotlin.math.roundToLong
             else stringResource(Res.string.ce_diag_render_value, percent(d.renderP99), percent(d.renderMax), d.measuredBlocks.toString())),
         stringResource(Res.string.ce_diag_underruns) to (d.underruns?.let { stringResource(Res.string.ce_diag_times, it.toString()) } ?: unreported),
         stringResource(Res.string.ce_diag_losses) to stringResource(Res.string.ce_diag_times, d.outputLosses.toString()),
+        stringResource(Res.string.ce_pcm_title) to cePcmStatus(d.pcm.status),
+        stringResource(Res.string.ce_pcm_missing_label) to d.pcm.underrunFrames.toString(),
+        stringResource(Res.string.ce_pcm_queue_label) to d.pcm.droppedRequests.toString(),
         stringResource(Res.string.ce_diag_frames) to (if (d.drawnFrames == null || d.slowFrames == null) stringResource(Res.string.ce_diag_frames_unknown)
             else stringResource(Res.string.ce_diag_frames_value, d.drawnFrames.toString(), d.slowFrames.toString())),
     )

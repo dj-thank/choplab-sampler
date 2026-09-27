@@ -29,9 +29,6 @@ class AndroidAudioDecoding(context: Context, private val documents: AndroidDocum
     }
 }
 
-/** Compatibility label until host wording uses the rate-specific frame limit. PCM admission uses prefetch. */
-val maximumSourceSeconds: Int = (ProjectLimits.MAX_FRAMES / 48_000).toInt()
-
 /** What the platform says about a picked file before anything is copied or decoded. */
 enum class SourceCheck { ACCEPTED, TOO_LONG, UNREADABLE }
 

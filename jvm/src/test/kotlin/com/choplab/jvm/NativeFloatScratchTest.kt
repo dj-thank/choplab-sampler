@@ -6,6 +6,27 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class NativeFloatScratchTest {
+    @Test fun fullScratchQuotaRefusesBeforeCreatingAFileAndReleasesExactlyOnceForRetry() {
+        val root = Files.createTempDirectory("scratch-full-")
+        try {
+            val full = PcmScratchBudget.reserve(com.choplab.core.model.ProjectLimits.MAX_TOTAL_BYTES)
+            try {
+                assertFailsWith<IllegalArgumentException> { NativeFloatScratch(root, 48_000, 2) }
+                assertEquals(0L, Files.list(root).use { it.count() })
+            } finally { full.close(); full.close() }
+            NativeFloatScratch(root, 48_000, 2).use { writer ->
+                writer.write(ByteBuffer.allocate(8), NativePcmEncoding.FLOAT32) { false }
+                val source = writer.finish()
+                source.close(); source.close()
+            }
+            PcmScratchBudget.reserve(com.choplab.core.model.ProjectLimits.MAX_TOTAL_BYTES).close()
+            assertEquals(0L, Files.list(root).use { it.count() })
+            for ((rate, channels) in listOf(0 to 2, 192_001 to 2, 48_000 to 3)) {
+                assertFailsWith<IllegalArgumentException> { NativeFloatScratch(root, rate, channels) }
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
     @Test fun decoderFloatHeadroomAndNativeIntegerPrecisionKeepStereoAndReleaseScratchExactly() {
         val root = Files.createTempDirectory("native-float-")
         try {

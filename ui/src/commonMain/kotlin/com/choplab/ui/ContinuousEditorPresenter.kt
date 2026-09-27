@@ -441,6 +441,21 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     val kept = finishVoice() && finishHits(hitEnd, stopVoices = true) && finishSource()
                     stopped && kept
                 }
+                ContinuousEditorAction.ReloadAudio -> {
+                    if (studio.work.value.jobId != null || studio.work.value.preparationId != null || finishingTake) false
+                    else {
+                        val sourceFrame = ports.readout().originalFrame
+                        releaseHeld()
+                        val stopped = send(Action.Stop)
+                        letGoScratch()
+                        val originalStopped = !ports.originalAvailable || ports.resetOriginal()
+                        view.update { it.copy(originalPlaying = false, playingPads = emptySet(), liveChop = null) }
+                        // Preparing the same target replaces failed PCM without an edit, revision or Undo entry.
+                        stopped && originalStopped && send(Action.SelectPlaybackTarget(studio.selection.value.playbackTarget)) &&
+                            (project.source == null || !ports.originalAvailable ||
+                                ports.seekOriginal(sourceFrame.coerceIn(0, project.asset(project.source!!.assetHash).frames)))
+                    }
+                }
                 ContinuousEditorAction.PlayOriginal -> project.source?.let { source ->
                     ports.playOriginal(project.asset(source.assetHash)).also { ok -> if (ok) view.update { it.copy(originalPlaying = true) } }
                 } ?: false
@@ -918,7 +933,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      */
     private fun voiceSecondsLeft(project: Project, channels: Int = 1): Int {
         if (project.assets.size >= ProjectLimits.MAX_ASSETS) return 0
-        val resident = (ProgramCompiler.RESIDENT_FRAME_LIMIT - ProgramCompiler.residentFrames(project)) / CONTINUOUS_TIMELINE_RATE -
+        val resident = (ProgramCompiler.RESIDENT_FRAME_LIMIT - (ProgramCompiler.residentBudgetBytes(project) / 8)) / CONTINUOUS_TIMELINE_RATE -
             VOICE_BUDGET_MARGIN_SECONDS
         // A take is a 32-bit float WAV: 4 bytes per frame after a 44-byte header, mono at 48 kHz at most.
         val stored = (ProjectLimits.MAX_TOTAL_BYTES - project.assets.sumOf { it.byteCount } - 44) / (4L * CONTINUOUS_TIMELINE_RATE * channels)
@@ -1096,7 +1111,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      */
     private suspend fun renderTransformed(project: Project, padIds: Collection<Int>): Map<Int, Asset> {
         val rendered = mutableMapOf<Int, Asset>()
-        var resident = ProgramCompiler.residentFrames(project)
+        var resident = (ProgramCompiler.residentBudgetBytes(project) / 8)
         for (pad in padIds.distinct().map { project.pads[it] }.filter(ContinuousClipEdits::transformed)) {
             val source = project.asset(requireNotNull(pad.assetHash))
             val range = requireNotNull(pad.range)
@@ -1201,7 +1216,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             // A transformed PAD that cannot be rendered leaves out its own hits, not the whole pass.
             val rendered = renderTransformed(project, recording.played.filterNot { it.performed }.map { it.padId })
             val performances = mutableMapOf<ContinuousHit, Asset>()
-            var resident = ProgramCompiler.residentFrames(project) + rendered.values.sumOf { it.frames }
+            var resident = (ProgramCompiler.residentBudgetBytes(project) / 8) + rendered.values.sumOf { it.frames }
             for (hit in recording.played.filter { it.performed }.distinct()) {
                 val pad = project.pads[hit.padId]
                 val source = project.asset(requireNotNull(pad.assetHash))
@@ -1379,7 +1394,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private fun endsScratch(action: ContinuousEditorAction): Boolean = action == ContinuousEditorAction.CloseScratch ||
-        action == ContinuousEditorAction.ScratchLetGo || action == ContinuousEditorAction.StopAll ||
+        action == ContinuousEditorAction.ScratchLetGo || action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.ReloadAudio ||
         action == ContinuousEditorAction.StopOriginal || (action is ContinuousEditorAction.Navigate && action.stage != ContinuousStage.BEAT)
 
     private fun cancelScratchOpening() {
@@ -1629,6 +1644,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousCapability.SONG_MONITOR_GAIN)
             if (source != null && ports.originalAvailable) capabilities += ContinuousCapability.ORIGINAL_MONITOR_GAIN
         } else if (!busy && !recording) {
+            capabilities += ContinuousCapability.RELOAD_AUDIO
             capabilities += ContinuousCapability.LYRICS_EDIT
             if (ports.lyricFiles != null) capabilities += ContinuousCapability.LYRICS_FILES
             if (ports.lyricProposal != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.LYRIC_PROPOSAL
