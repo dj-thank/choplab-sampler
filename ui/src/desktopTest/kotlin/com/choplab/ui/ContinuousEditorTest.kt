@@ -73,6 +73,43 @@ class ContinuousEditorTest {
         } finally { scene.close() }
     }
 
+    @Test fun spotifyMetadataIsAnExplicitSourceActionAndExplainsUnavailableStates() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPAN, Locale.US)) {
+                Locale.setDefault(locale)
+                val fixture = ContinuousEditorFixture.state(ContinuousStage.CAPTURE)
+                val state = mutableStateOf(fixture.copy(capabilities = fixture.capabilities + ContinuousCapability.SPOTIFY_METADATA))
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, actions::add)
+                }
+                try {
+                    scene.settle()
+                    scene.nodes().filter { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+                        .mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+                    repeat(4) { scene.settle() }
+                    val button = requireNotNull(scene.tag("ce-spotify-metadata"))
+                    assertTrue(button.boundsInRoot.width >= 48 && button.boundsInRoot.height >= 48)
+                    assertEquals(button.size.height.toFloat(), button.boundsInRoot.height, .5f)
+                    scene.click("ce-spotify-metadata")
+                    assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.OpenSpotifyMetadata), actions)
+                    for (reason in listOf(ContinuousUnavailable.BUSY, ContinuousUnavailable.RECORDING, ContinuousUnavailable.NOT_CONNECTED)) {
+                        state.value = state.value.copy(capabilities = fixture.capabilities - ContinuousCapability.SPOTIFY_METADATA,
+                            unavailable = mapOf(ContinuousCapability.SPOTIFY_METADATA to reason))
+                        scene.settle()
+                        scene.click("ce-spotify-metadata")
+                        val disabled = requireNotNull(scene.tag("ce-spotify-metadata"))
+                        assertTrue(disabled.config.contains(SemanticsProperties.Disabled))
+                        assertFalse(disabled.config.getOrNull(SemanticsProperties.StateDescription).isNullOrBlank(), "$locale $reason")
+                        assertEquals(1, actions.size, "A disabled provider button emits no request: $locale $reason")
+                    }
+                    scene.capture("spotify-source-${locale.language}-font200.png")
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun sourceInputsShowRecordingAndReachableStopAndDiscardAtLargeText() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
