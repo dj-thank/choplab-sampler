@@ -174,6 +174,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.2f)); Fill(Modifier.weight(1f)); Play(Modifier.weight(1.1f)) }
             }
         }
+        CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
         }
         CEBanks(state, onAction)
         if (details) Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
