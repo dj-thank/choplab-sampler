@@ -37,7 +37,10 @@ object StreamingWavRenderer {
             if (cancelled()) throw CancellationException("WAV export cancelled")
             val plan = engine.prepareOfflineBlock(minOf(blockFrames.toLong(), 4096L, total - rendered).toInt())
             val count = plan.frames
-            prepared(plan.windows) { engine.render(buffer, frameCount = count) }
+            // A resident/silent block has nothing to fetch or pin. Avoid a runBlocking/context
+            // dispatch for every 10 ms of audio; the worker already owns this offline engine.
+            if (plan.windows.isEmpty()) engine.render(buffer, frameCount = count)
+            else prepared(plan.windows) { engine.render(buffer, frameCount = count) }
             check(engine.pcmUnderrunFrames == 0L) { "PCM missing during export" }
             val skipped = minOf(count.toLong(), (latency - rendered).coerceAtLeast(0)).toInt()
             if (count > skipped) writer.write(buffer, skipped, count - skipped)
