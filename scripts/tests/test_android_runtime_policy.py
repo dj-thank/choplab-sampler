@@ -98,7 +98,7 @@ class AndroidRuntimeAdmissionTest(unittest.TestCase):
         pins = load_pins()
         self.assertEqual(33, len(pins))
         self.assertEqual(33, len({pin.identity for pin in pins}))
-        self.assertEqual(335520529, sum(pin.size for pin in pins))
+        self.assertEqual(338673417, sum(pin.size for pin in pins))
 
 
 class AndroidResourceTableTest(unittest.TestCase):

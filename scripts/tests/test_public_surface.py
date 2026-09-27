@@ -744,12 +744,17 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         with zipfile.ZipFile(candidate, "w", zipfile.ZIP_STORED) as archive:
             archive.writestr("safe/runtime/lib/security/cacerts", jks(trusted_entry))
             archive.writestr("unsafe/runtime/lib/security/cacerts", jks(key_entry))
+            archive.writestr("ChopLab.app/Contents/runtime/Contents/Home/lib/security/cacerts", jks(trusted_entry))
+            archive.writestr("ChopLab Preview.app/Contents/runtime/Contents/Home/lib/security/cacerts", jks(key_entry))
             archive.writestr(
                 "invalid/runtime/lib/security/cacerts",
                 jks(invalid_certificate_entry),
             )
 
         findings = scan_zip(BytesIO(candidate.getvalue()), label="jdk-truststores.zip")
+
+        self.assertFalse(any("'ChopLab.app/" in item and "DER" in item for item in findings), findings)
+        self.assertTrue(any("ChopLab Preview.app/" in item and "private-key" in item for item in findings), findings)
 
         self.assertFalse(
             any("archive entry 'safe/runtime" in item and "DER" in item for item in findings),

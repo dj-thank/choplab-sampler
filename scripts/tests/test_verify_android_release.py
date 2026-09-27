@@ -92,6 +92,18 @@ class AndroidReleaseManifestPolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(VerificationError, "application ID"):
             verify_manifest(root, expected_version="0.16.2", expected_version_code=26)
 
+    def test_only_preview_may_export_the_next_launcher(self):
+        preview = BASE_MANIFEST.replace('package="com.choplab.sampler"', 'package="com.choplab.sampler.preview"').replace('com.choplab.sampler.DYNAMIC_', 'com.choplab.sampler.preview.DYNAMIC_').replace('android:name=".MainActivity"', 'android:name="com.choplab.sampler.MainActivity"')
+        next_launcher = '<activity android:name="com.choplab.sampler.next.NextActivity" android:exported="true" />\n        <service'
+        verify_manifest(parse_manifest(preview.replace("<service", next_launcher, 1)), expected_version="0.16.2", expected_version_code=26,
+                        expected_application_id="com.choplab.sampler.preview")
+        with self.assertRaisesRegex(VerificationError, "outside the allowlist: com.choplab.sampler.next.NextActivity"):
+            verify_manifest(parse_manifest(BASE_MANIFEST.replace("<service", next_launcher, 1)), expected_version="0.16.2", expected_version_code=26)
+        guarded = next_launcher.replace('android:exported="true"', 'android:exported="true" android:permission="android.permission.DUMP"')
+        with self.assertRaisesRegex(VerificationError, "must require no permission"):
+            verify_manifest(parse_manifest(preview.replace("<service", guarded, 1)), expected_version="0.16.2", expected_version_code=26,
+                            expected_application_id="com.choplab.sampler.preview")
+
     @staticmethod
     def pem_certificate(certificate: bytes) -> str:
         label = "CERTI" + "FICATE"

@@ -1,4 +1,6 @@
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.Sync
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -25,11 +27,46 @@ application {
     mainClass.set("com.choplab.desktop.DesktopAppKt")
 }
 
+tasks.register<JavaExec>("runLinkedPreview") {
+    group = "application"
+    description = "Open the preserved four-stage editor against the isolated Preview backend"
+    dependsOn("classes")
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.choplab.desktop.next.LinkedPreviewMainKt")
+    systemProperty("choplab.preview", "true")
+}
+
+val macHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+val macSystemAudioHelper = layout.buildDirectory.file("choplab-sck-audio")
+val compileMacSystemAudioHelper = tasks.register<Exec>("compileMacSystemAudioHelper") {
+    onlyIf { macHost }
+    val source = layout.projectDirectory.file("src/main/swift/ChoplabSystemAudio.swift")
+    inputs.file(source)
+    outputs.file(macSystemAudioHelper)
+    commandLine(
+        "swiftc", "-O", "-parse-as-library",
+        "-o", macSystemAudioHelper.get().asFile.absolutePath,
+        source.asFile.absolutePath,
+    )
+}
+if (macHost) {
+    tasks.named<JavaExec>("run") {
+        dependsOn(compileMacSystemAudioHelper)
+        systemProperty("choplab.systemAudioHelper", macSystemAudioHelper.get().asFile.absolutePath)
+    }
+    tasks.named<Sync>("installDist") {
+        dependsOn(compileMacSystemAudioHelper)
+        from(macSystemAudioHelper) { into("lib") }
+    }
+}
+
 val choplabVersion = providers.gradleProperty("choplabVersion").orElse("0.0.0")
 
 dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
+    implementation(project(":jvm"))
+    implementation(project(":ui"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
     implementation(libs.jna.core)
@@ -100,11 +137,11 @@ val prepareSeparatorModel = tasks.register<Exec>("prepareSeparatorModel") {
 
 val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
 require(windowsPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
-val windowsRuntimeToolchain = javaToolchains.launcherFor {
+val desktopRuntimeToolchain = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }
 
-fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean) {
+fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean, linked: Boolean = false) {
     tasks.register<Exec>(taskName) {
         dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
         onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
@@ -116,7 +153,7 @@ fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.
             check(packageRoot != buildRoot && packageRoot.startsWith(buildRoot)) {
                 "Windows app image destination must stay strictly below desktop/build."
             }
-            executable(windowsRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
+            executable(desktopRuntimeToolchain.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath)
             val imageExecutable = destinationDir.resolve("$imageName/$imageName.exe").canonicalFile.path
             val running = ProcessHandle.allProcesses().use { handles ->
                 handles.anyMatch { it.info().command().orElse("").equals(imageExecutable, ignoreCase = true) }
@@ -133,7 +170,7 @@ fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.
             "--name", imageName,
             "--input", inputDir.absolutePath,
             "--main-jar", tasks.jar.get().archiveFileName.get(),
-            "--main-class", application.mainClass.get(),
+            "--main-class", if (linked) "com.choplab.desktop.next.LinkedPreviewMainKt" else application.mainClass.get(),
             "--dest", destinationDir.absolutePath,
             "--vendor", "ChopLab", "--app-version", choplabVersion.get(),
             "--description", "Earth Song / おとひろい desktop sampler",
@@ -168,6 +205,39 @@ val windowsPreviewPackageDirectory = providers.gradleProperty("windowsPreviewPac
 require(windowsPreviewPackageDirectory.get().matches(Regex("[A-Za-z0-9_-]+"))) { "Use a directory name inside desktop/build" }
 require(windowsPreviewPackageDirectory.get() != windowsPackageDirectory.get()) { "Preview and production outputs must be separate" }
 registerWindowsImage("packageWindowsPreview", "ChopLab Preview", windowsPreviewPackageDirectory, true)
+registerWindowsImage("packageWindowsLinkedPreview", "ChopLab Preview", providers.provider { "windows-linked-preview-app-image" }, true, linked = true)
+
+val macMediaToolsDirectory = layout.buildDirectory.dir("mac-media-tools")
+val prepareMacMediaTools = tasks.register<Exec>("prepareMacMediaTools") {
+    group = "distribution"
+    description = "Prepare and hash the self-contained local Mac media tool bundle"
+    onlyIf { macHost }
+    workingDir(rootProject.projectDir)
+    commandLine("python3", "scripts/prepare_mac_media_tools.py", "--out", macMediaToolsDirectory.get().asFile.absolutePath)
+}
+listOf(Triple("packageMacPreview", false, false), Triple("packageMacSignedPreview", true, false),
+    Triple("packageMacLinkedPreview", false, true)).forEach { (taskName, signed, linked) ->
+    tasks.register<Exec>(taskName) {
+        group = "distribution"
+        description = when {
+            linked -> "Build the linked four-stage editor as an explicitly local, ad-hoc Mac app (おとひろい NEXT)"
+            signed -> "Build a Developer ID signed Mac Preview (requires identity)"
+            else -> "Build an explicitly local, ad-hoc Mac Preview"
+        }
+        dependsOn(tasks.installDist)
+        onlyIf { macHost }
+        workingDir(rootProject.projectDir)
+        commandLine("python3", "scripts/package_mac_app.py", "--java-home",
+            desktopRuntimeToolchain.get().metadata.installationPath.asFile.absolutePath)
+        // The linked editor opens WAV and records the microphone itself, so its app carries no media tools.
+        if (!linked) {
+            dependsOn(prepareMacMediaTools)
+            args("--tools", macMediaToolsDirectory.get().asFile.absolutePath)
+        }
+        if (signed) args("--signed")
+        if (linked) args("--linked")
+    }
+}
 
 tasks.register<JavaExec>("sourceImport") {
     dependsOn(tasks.classes)

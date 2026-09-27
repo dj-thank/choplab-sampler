@@ -175,6 +175,12 @@ PACKAGED_RUNTIME_MANIFESTS = {
 }
 PACKAGED_RUNTIME_MANIFEST_LIMIT = 64 * 1024
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+MAC_PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
+    (REPOSITORY_ROOT / "config/mac-media-tool-files.txt").read_text(encoding="utf-8").splitlines()
+)
+# The Mac app bundles this repository builds: production, Preview and the linked editor's
+# Preview (scripts/package_mac_app.py). Only these roots receive the Mac runtime layout policy.
+MAC_APP_ROOTS = frozenset({"choplab.app", "choplab preview.app", "choplab next.app"})
 SEPARATOR_MODEL_PIN = REPOSITORY_ROOT / "scripts" / "prepare_separator_model.py"
 SHA256_TEXT = re.compile(r"\A[0-9a-f]{64}\Z")
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
@@ -1138,7 +1144,32 @@ def is_app_main_executable_path(path: PurePosixPath) -> bool:
 
 def is_jdk_modules_path(path: PurePosixPath) -> bool:
     parts = tuple(part.lower() for part in path.parts)
-    return parts[-3:] == ("runtime", "lib", "modules")
+    return parts[-3:] == ("runtime", "lib", "modules") or (
+        len(parts) == 7 and parts[0] in MAC_APP_ROOTS
+        and parts[1:] == ("contents", "runtime", "contents", "home", "lib", "modules")
+    )
+
+
+def mac_packaged_runtime_parts(path: PurePosixPath) -> tuple[str, ...] | None:
+    parts = tuple(part.lower() for part in path.parts)
+    if len(parts) < 3 or parts[0] not in MAC_APP_ROOTS or parts[1:3] != ("contents", "app"):
+        return None
+    return parts[3:]
+
+
+def is_mac_skiko_runtime(path: PurePosixPath, container_path: PurePosixPath | None) -> bool:
+    mac = mac_packaged_runtime_parts(path)
+    return container_path is None and mac is not None and len(mac) == 1 and bool(
+        re.fullmatch(r"skiko-awt-runtime-macos-(?:arm64|x64)-[0-9.]+\.jar", mac[0])
+    )
+
+
+def is_jdk_cacerts_path(path: PurePosixPath) -> bool:
+    parts = tuple(part.lower() for part in path.parts)
+    return parts[-4:] == ("runtime", "lib", "security", "cacerts") or (
+        len(parts) == 8 and parts[0] in MAC_APP_ROOTS
+        and parts[1:] == ("contents", "runtime", "contents", "home", "lib", "security", "cacerts")
+    )
 
 
 def is_packaged_runtime_binary_path(
@@ -1154,6 +1185,13 @@ def is_packaged_runtime_binary_path(
     """
     if container_path is not None:
         return False
+    mac = mac_packaged_runtime_parts(path)
+    if mac is not None:
+        if len(mac) == 2 and mac[0] == "tools":
+            return path.name in MAC_PACKAGED_RUNTIME_TOOL_NAMES
+        if len(mac) == 2 and mac[0] == "models":
+            return mac[1] == "htdemucs_ft_drums_fp16weights.onnx"
+        return len(mac) == 1 and mac[0].startswith("onnxruntime-") and mac[0].endswith(".jar")
     parts = tuple(part.lower() for part in path.parts)
     if len(parts) != 3 or parts[0] not in {"choplab", "choplab preview"}:
         return False
@@ -1171,6 +1209,9 @@ def is_packaged_runtime_binary_path(
 def is_digest_verified_runtime_path(path: PurePosixPath) -> bool:
     """A packaged binary whose identity the app-image records a digest for."""
     parts = tuple(part.lower() for part in path.parts)
+    mac = mac_packaged_runtime_parts(path)
+    if mac is not None:
+        return len(mac) == 2 and mac[0] in {"tools", "models"}
     return len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] in PACKAGED_RUNTIME_MANIFESTS
 
 
@@ -1216,8 +1257,9 @@ def packaged_runtime_digest_findings(
     member_label: str,
 ) -> list[str]:
     """Check a packaged third-party binary against the digest the app-image records."""
-    scope = entry.parts[1].lower()
-    manifest_name = PACKAGED_RUNTIME_MANIFESTS[scope].replace("ChopLab/", entry.parts[0] + "/", 1)
+    mac = mac_packaged_runtime_parts(entry)
+    scope = mac[0] if mac is not None else entry.parts[1].lower()
+    manifest_name = str(entry.parent / "manifest.json") if mac is not None else PACKAGED_RUNTIME_MANIFESTS[scope].replace("ChopLab/", entry.parts[0] + "/", 1)
     if len(content) != declared_size:
         return [f"{member_label}: packaged runtime binary was read only in part"]
     raw = read_small_archive_member(archive, manifest_name, PACKAGED_RUNTIME_MANIFEST_LIMIT)
@@ -1233,8 +1275,10 @@ def packaged_runtime_digest_findings(
     if not isinstance(manifest, dict):
         return [f"{member_label}: {manifest_name} is not a JSON object"]
     if scope == "tools":
-        recorded = manifest.get("sha256")
+        recorded = manifest.get("files" if mac is not None else "sha256")
         expected = recorded.get(entry.name) if isinstance(recorded, dict) else None
+        if mac is not None:
+            expected = expected.get("sha256") if isinstance(expected, dict) else None
     else:
         expected = (
             manifest.get("sha256") if manifest.get("model") == entry.name else None
@@ -1759,6 +1803,77 @@ def pe_authenticode_certificate_ranges(
     return tuple(ranges)
 
 
+def mach_o_certificate_ranges(content: bytes) -> tuple[tuple[int, int], ...] | None:
+    """Locate complete CMS payloads in a bounded thin 64-bit Mach-O signature.
+
+    Only public CMS ranges are excluded from certificate detection; the caller
+    still scans the entire binary, including these ranges, for private keys.
+    """
+    if len(content) < 32 or content[:4] != b"\xcf\xfa\xed\xfe":
+        return None
+    count, size = struct.unpack_from("<II", content, 16)
+    end = 32 + size
+    if count > 4096 or size > 4 * 1024 * 1024 or end > len(content):
+        return None
+    cursor = 32
+    ranges = []
+    for _ in range(count):
+        if cursor + 8 > end:
+            return None
+        command, length = struct.unpack_from("<II", content, cursor)
+        if length < 8 or cursor + length > end:
+            return None
+        if command == 0x1D:  # LC_CODE_SIGNATURE
+            if length != 16:
+                return None
+            offset, signature_size = struct.unpack_from("<II", content, cursor + 8)
+            if offset < end or signature_size < 12 or offset + signature_size > len(content):
+                return None
+            magic, total, blobs = struct.unpack_from(">III", content, offset)
+            if magic != 0xFADE0CC0 or blobs > 128 or total > signature_size or total < 12 + 8 * blobs:
+                return None
+            claimed = []
+            for index in range(blobs):
+                slot, relative = struct.unpack_from(">II", content, offset + 12 + index * 8)
+                if relative < 12 + 8 * blobs or relative + 8 > total:
+                    return None
+                blob_magic, blob_size = struct.unpack_from(">II", content, offset + relative)
+                if blob_size < 8 or relative + blob_size > total:
+                    return None
+                if any(relative < last and relative + blob_size > first for first, last in claimed):
+                    return None
+                claimed.append((relative, relative + blob_size))
+                if slot == 0x10000:
+                    first, last = offset + relative + 8, offset + relative + blob_size
+                    if blob_magic != 0xFADE0B01 or not is_mac_cms_signed_data(content[first:last]):
+                        return None
+                    ranges.append((first, last))
+        cursor += length
+    if cursor != end or len(ranges) > 1:
+        return None
+    return tuple(sorted(ranges))
+
+
+def is_mac_cms_signed_data(content: bytes) -> bool:
+    if is_pkcs7_signed_data(content):
+        return True
+    # Apple's CMS signer uses BER indefinite outer lengths. Canonicalize only a
+    # small CMS blob, then apply the same complete SignedData structural checks.
+    # No certificates/keys are loaded from the host, and private-key scanning of
+    # the original entire Mach-O remains mandatory in the caller.
+    if len(content) > 64 * 1024 or not content.startswith(b"\x30\x80"):
+        return False
+    try:
+        result = subprocess.run(
+            ["openssl", "cms", "-cmsout", "-inform", "DER", "-outform", "DER"],
+            input=content, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=False, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and len(result.stdout) <= 64 * 1024 and is_pkcs7_signed_data(result.stdout)
+
+
 def der_signing_material_outside_ranges(
     content: bytes,
     excluded_ranges: tuple[tuple[int, int], ...],
@@ -1860,12 +1975,27 @@ def pkcs12_trusted_certificate_count(content: bytes) -> int | None:
         return None
 
 
+# Starting Java to compile and run the helper can take much longer than usual on a busy CI host.
+JAVA_TRUSTSTORE_TIMEOUT_SECONDS = 60
+JAVA_TRUSTSTORE_ATTEMPTS = 2
+# Stores Java already accepted, by content: one run often scans the same JDK in several archives.
+_JAVA_TRUSTED_STORES: set[tuple[bytes, int]] = set()
+
+
 def verify_pkcs12_trust_with_java(content: bytes, expected_count: int) -> bool:
-    """No password/key export: ask Java for the entry types after structural proof."""
+    """No password/key export: ask Java for the entry types after structural proof.
+
+    A check that times out or does not answer TRUSTED is tried once more, and every failed attempt is reported on
+    stderr, so a busy host can be told apart from a store that Java rejects.
+    """
     import shutil
 
+    key = (hashlib.sha256(content).digest(), expected_count)
+    if key in _JAVA_TRUSTED_STORES:
+        return True
     java = shutil.which("java")
     if java is None:
+        print("public surface: Java is not available for the JDK truststore check", file=sys.stderr)
         return False
     source = '''import java.nio.file.*;
 import java.security.*;
@@ -1894,19 +2024,33 @@ class ChopLabTruststoreCheck {
             helper.write_text(source, encoding="utf-8")
             public_store = root / "public-store"
             public_store.write_bytes(content)
-            result = subprocess.run(
-                [java, "-Xmx64m", "-XX:MaxMetaspaceSize=64m", str(helper), str(public_store), str(expected_count)],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=15,
-            )
-            return result.returncode == 0 and result.stdout == f"TRUSTED:{expected_count}".encode("ascii")
-    except (OSError, subprocess.TimeoutExpired):
+            for attempt in range(1, JAVA_TRUSTSTORE_ATTEMPTS + 1):
+                try:
+                    result = subprocess.run(
+                        [java, "-Xmx64m", "-XX:MaxMetaspaceSize=64m", str(helper), str(public_store), str(expected_count)],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                        timeout=JAVA_TRUSTSTORE_TIMEOUT_SECONDS,
+                    )
+                except subprocess.TimeoutExpired:
+                    print(f"public surface: JDK truststore check timed out after {JAVA_TRUSTSTORE_TIMEOUT_SECONDS} s "
+                          f"(attempt {attempt} of {JAVA_TRUSTSTORE_ATTEMPTS})", file=sys.stderr)
+                    continue
+                if result.returncode == 0 and result.stdout == f"TRUSTED:{expected_count}".encode("ascii"):
+                    _JAVA_TRUSTED_STORES.add(key)
+                    return True
+                last = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()[-1:]
+                print(f"public surface: JDK truststore check exited {result.returncode} without TRUSTED:{expected_count} "
+                      f"(attempt {attempt} of {JAVA_TRUSTSTORE_ATTEMPTS})" + (f": {last[0][:200]}" if last else ""),
+                      file=sys.stderr)
+            return False
+    except OSError as error:
+        print(f"public surface: JDK truststore check could not run: {error}", file=sys.stderr)
         return False
 
 
 def is_trusted_jdk_cacerts(path: PurePosixPath, content: bytes) -> bool:
     """Accept a structurally bounded JDK JKS only when every entry is a trusted cert."""
-    parts = tuple(part.lower() for part in path.parts)
-    if parts[-4:] != ("runtime", "lib", "security", "cacerts"):
+    if not is_jdk_cacerts_path(path):
         return False
     if not content.startswith(JKS_MAGIC):
         count = pkcs12_trusted_certificate_count(content)
@@ -3094,13 +3238,16 @@ def scan_zip(
                             f"{ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
                         )
                         continue
+                    # Mac Skiko's two architectures occupy ~18 MiB compressed. Still
+                    # fully scan its nested entries with the existing per-binary/total budgets.
+                    nested_member_limit = 32 * 1024 * 1024 if is_mac_skiko_runtime(entry, _container_path) else ZIP_NESTED_MEMBER_LIMIT
                     if (
-                        info.compress_size > ZIP_NESTED_MEMBER_LIMIT
-                        or info.file_size > ZIP_NESTED_MEMBER_LIMIT
+                        info.compress_size > nested_member_limit
+                        or info.file_size > nested_member_limit
                     ):
                         findings.append(
                             f"{archive_label}: archive entry {name!r}: nested archive "
-                            f"exceeds the {ZIP_NESTED_MEMBER_LIMIT}-byte member limit"
+                            f"exceeds the {nested_member_limit}-byte member limit"
                         )
                         continue
                     if (
@@ -3142,8 +3289,8 @@ def scan_zip(
                             nested_stream,
                             info,
                             payload_offset=local_payload_offset,
-                            output_limit=ZIP_NESTED_MEMBER_LIMIT,
-                            compressed_input_limit=ZIP_NESTED_MEMBER_LIMIT,
+                            output_limit=nested_member_limit,
+                            compressed_input_limit=nested_member_limit,
                             lzma_dictionary_limit=lzma_dictionary_limit,
                         )
                     except (
@@ -3576,12 +3723,8 @@ def scan_zip(
                     if entry_suffix in {".dll", ".exe"}
                     else None
                 )
-                jdk_cacerts_path = tuple(part.lower() for part in entry.parts)[-4:] == (
-                    "runtime",
-                    "lib",
-                    "security",
-                    "cacerts",
-                )
+                mac_certificate_ranges = mach_o_certificate_ranges(content) if entry_suffix == ".dylib" else None
+                jdk_cacerts_path = is_jdk_cacerts_path(entry)
                 trusted_jdk_cacerts = is_trusted_jdk_cacerts(entry, content)
                 if jdk_cacerts_path and content.startswith(JKS_MAGIC) and not trusted_jdk_cacerts:
                     findings.append(
@@ -3595,10 +3738,10 @@ def scan_zip(
                         "SignedData container"
                     )
                 public_certificate_container = validated_apk_signature or trusted_jdk_cacerts
-                if pe_certificate_ranges:
+                if pe_certificate_ranges or mac_certificate_ranges:
                     der_signature = der_signing_material_outside_ranges(
                         content,
-                        pe_certificate_ranges,
+                        pe_certificate_ranges or mac_certificate_ranges,
                     )
                 elif trusted_jdk_cacerts:
                     der_signature = der_private_key_material_signature(content)

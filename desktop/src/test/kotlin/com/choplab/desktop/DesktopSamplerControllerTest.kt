@@ -2452,7 +2452,7 @@ class DesktopSamplerControllerTest {
             awaitCondition { controller.state.value.recordingSession !is RecordingSession.Active }
             assertEquals(false, recorder.isRecording)
             assertEquals(null, controller.state.value.loopingPadIndex)
-            assertTrue(controller.state.value.statusMessage.contains("Windowsの出力デバイスを確認"))
+            assertTrue(controller.state.value.statusMessage.contains("出力デバイスを確認"))
             assertEquals(false, recorder.lastOutput?.exists())
         } finally {
             controller.close()

@@ -1,0 +1,293 @@
+package com.choplab.ui
+
+import androidx.compose.runtime.Immutable
+
+/** Presentation contract for the user-selected 2026-09-24 linked workspace, not a document model.
+ * Timeline/song frames are 48 kHz. Original/PAD/clip source frames retain their explicit source rate.
+ * Lists/sets are immutable snapshots supplied by the host. No paths, PCM or reducers are owned here.
+ */
+const val CONTINUOUS_TIMELINE_RATE = 48_000
+
+enum class ContinuousStage { CAPTURE, CHOP, BEAT, SAVE }
+enum class ContinuousPane { PADS, TIMELINE }
+enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
+enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
+enum class ContinuousCapability {
+    IMPORT_AUDIO, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
+    ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
+    SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
+    PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
+    PLACE_PAD, MOVE_CLIP, TRIM_CLIP, SPLIT_CLIP, DUPLICATE_CLIP, DELETE_CLIP,
+    TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
+    ADD_DRUM, RECORD_VOICE, SCRATCH, STOP_ALL,
+}
+enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
+enum class ContinuousStatus {
+    LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT, COPIED,
+    /**
+     * A voice take went to a BANK D PAD and onto the song; with BANK D full, onto the song only; to the PAD only when
+     * the song refused it; it stopped at its length limit, or because the microphone went away.
+     */
+    VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
+    /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
+    VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
+    MIC_DENIED, MIC_UNAVAILABLE,
+    /** Refused because a take is being recorded. */
+    RECORDING_BUSY,
+}
+
+@Immutable data class ContinuousSource(
+    val id: String,
+    val title: String,
+    val frames: Long,
+    val sampleRate: Int = 48_000,
+    val peaks: List<Float> = emptyList(),
+    val rangeStartFrame: Long = 0,
+    val rangeEndFrame: Long = frames,
+    val pitchSemitones: Float = 0f,
+) {
+    init { require(frames > 0 && sampleRate > 0 && rangeStartFrame >= 0 && rangeEndFrame > rangeStartFrame && rangeEndFrame <= frames) }
+}
+
+@Immutable data class ContinuousBank(val id: Int, val name: String = "") {
+    init { require(id in 0..7) }
+}
+
+@Immutable data class ContinuousPad(
+    val id: Int,
+    val name: String = "",
+    val kind: ContinuousPadKind = ContinuousPadKind.EMPTY,
+    val mode: ContinuousPadMode = ContinuousPadMode.ONE_SHOT,
+    val peaks: List<Float> = emptyList(),
+    val sourceStartFrame: Long = 0,
+    val sourceEndFrame: Long = 0,
+    val sourceRate: Int = 48_000,
+    val pitchSemitones: Float = 0f,
+    val tone: Float = 1f,
+    val gain: Float = 1f,
+    val looping: Boolean = false,
+) { init { require(id in 0..127 && sourceRate > 0) } }
+
+/** What a scratch moves: the selected PAD's sound, or the original within its range. */
+enum class ContinuousScratchTarget { PAD, ORIGINAL }
+/** How far a drag moves the sound, in screen pixels as in the earlier app: fine, normal or wide. */
+enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
+
+/**
+ * The open scratch panel: its target, whether each target can be scratched now, the sensitivity, the cut fader and
+ * whether a hand holds the platter. Where the platter stands is read live from [ContinuousEditorReadout.scratchFraction].
+ */
+@Immutable data class ContinuousScratch(
+    val target: ContinuousScratchTarget,
+    val padAvailable: Boolean = false,
+    val originalAvailable: Boolean = false,
+    val sensitivity: ContinuousScratchSensitivity = ContinuousScratchSensitivity.NORMAL,
+    val cut: Float = 1f,
+    val holding: Boolean = false,
+) { init { require(cut.isFinite() && cut in 0f..1f) } }
+
+/** A built-in drum kit the host can install; the name is the kit's own name in every language. */
+@Immutable data class ContinuousDrumKit(val id: String, val name: String)
+
+/** Asked before a kit replaces the user's own sounds on the drum BANK. */
+@Immutable data class ContinuousKitQuestion(val kitId: String, val replacedSounds: Int) {
+    init { require(replacedSounds in 1..16) }
+}
+
+@Immutable data class ContinuousTrack(
+    val id: String,
+    val name: String,
+    val color: Long = 0xFF89AD50,
+    val muted: Boolean = false,
+)
+
+@Immutable data class ContinuousClip(
+    val id: String,
+    val trackId: String,
+    val title: String,
+    /** Absolute 48 kHz frame position on the continuous arrangement. */
+    val timelineStartFrame: Long,
+    val timelineDurationFrames: Long,
+    /** Source bounds use sourceRate and stay independent of timeline placement. */
+    val sourceStartFrame: Long,
+    val sourceEndFrame: Long,
+    val sourceTotalFrames: Long,
+    val sourceRate: Int = 48_000,
+    val peaks: List<Float> = emptyList(),
+    val gain: Float = 1f,
+) {
+    init {
+        require(timelineStartFrame >= 0 && timelineDurationFrames > 0)
+        require(sourceRate > 0 && sourceStartFrame >= 0 && sourceEndFrame > sourceStartFrame && sourceEndFrame <= sourceTotalFrames)
+    }
+    val timelineEndFrame: Long get() = timelineStartFrame + timelineDurationFrames
+}
+
+@Immutable data class ContinuousEditorState(
+    val stage: ContinuousStage = ContinuousStage.CAPTURE,
+    val projectTitle: String = "",
+    /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
+    val original: ContinuousSource? = null,
+    val originalPlaying: Boolean = false,
+    /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
+    val liveChopping: Boolean = false,
+    /** A voice take is being recorded while the song plays. */
+    val recordingVoice: Boolean = false,
+    val originalMonitorGain: Float = 1f,
+    val banks: List<ContinuousBank> = (0..7).map(::ContinuousBank),
+    val selectedBank: Int = 0,
+    val pads: List<ContinuousPad> = emptyList(),
+    val selectedPadId: Int = 0,
+    val tracks: List<ContinuousTrack> = emptyList(),
+    val clips: List<ContinuousClip> = emptyList(),
+    val selectedClipId: String? = null,
+    val selectedTrackId: String? = null,
+    val timelineDurationFrames: Long = 24L * CONTINUOUS_TIMELINE_RATE,
+    /** View state only. It does not change clips or song duration. */
+    val pixelsPerSecond: Float = 24f,
+    val paneFraction: Float = .41f,
+    val compactPane: ContinuousPane = ContinuousPane.PADS,
+    val songPlaying: Boolean = false,
+    val songMonitorGain: Float = 1f,
+    val bpm: Int = 120,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    val capabilities: Set<ContinuousCapability> = emptySet(),
+    val unavailable: Map<ContinuousCapability, ContinuousUnavailable> = emptyMap(),
+    val status: ContinuousStatus? = null,
+    val drumKits: List<ContinuousDrumKit> = emptyList(),
+    /** The kit on the drum BANK when its PADs hold one kit's sounds. */
+    val installedDrumKit: String? = null,
+    val drumKitChooserOpen: Boolean = false,
+    val drumKitQuestion: ContinuousKitQuestion? = null,
+    /** The scratch panel while it is open. */
+    val scratch: ContinuousScratch? = null,
+) {
+    init {
+        require(selectedBank in 0..7 && selectedPadId in 0..127)
+        require(timelineDurationFrames > 0 && pixelsPerSecond.isFinite() && pixelsPerSecond in 4f..240f)
+        require(paneFraction.isFinite() && paneFraction in 0.2f..0.8f)
+    }
+    fun permits(capability: ContinuousCapability) = capability in capabilities
+    val selectedPad: ContinuousPad? get() = pads.firstOrNull { it.id == selectedPadId }
+    val selectedClip: ContinuousClip? get() = clips.firstOrNull { it.id == selectedClipId }
+}
+
+/**
+ * Output health for the diagnostics card: formats, times and counts only, never a device name or identifier. Null
+ * where the platform or the current state does not tell.
+ */
+@Immutable data class ContinuousDiagnostics(
+    val outputAttached: Boolean,
+    /** Samples go out as 32-bit float (true) or 16-bit (false) while attached. */
+    val floatOutput: Boolean? = null,
+    val sampleRate: Int = CONTINUOUS_TIMELINE_RATE,
+    val blockFrames: Int = 256,
+    val bufferFrames: Int? = null,
+    /** Frames written but not yet played: the output's delay as far as the platform tells. */
+    val pendingFrames: Long? = null,
+    val underruns: Int? = null,
+    /** Output lost or failing to open since the editor opened. */
+    val outputLosses: Long = 0,
+    val measuredBlocks: Int = 0,
+    /** Time to produce one block as a share of its duration: 99th percentile and maximum over [measuredBlocks]. */
+    val renderP99: Double? = null,
+    val renderMax: Double? = null,
+    /** Frames drawn since the editor opened, and those that took 1/30 s or longer. */
+    val drawnFrames: Long? = null,
+    val slowFrames: Long? = null,
+)
+
+/** Read only in source waveform/time or song timeline/transport subtrees, never whole-app ticks. */
+@Immutable data class ContinuousEditorReadout(
+    val originalFrame: Long = 0,
+    val songFrame: Long = 0,
+    /** Where the scratch platter stands within what it scratches, 0 to 1. */
+    val scratchFraction: Float = 0f,
+)
+
+/** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
+sealed interface ContinuousEditorAction {
+    data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
+    data object ImportAudio : ContinuousEditorAction
+    data object OpenProject : ContinuousEditorAction
+    data object SaveProject : ContinuousEditorAction
+    data object ExportWav : ContinuousEditorAction
+    data object Undo : ContinuousEditorAction
+    data object Redo : ContinuousEditorAction
+    data object StopAll : ContinuousEditorAction
+    data object PlayOriginal : ContinuousEditorAction
+    data object StopOriginal : ContinuousEditorAction
+    data class SeekOriginal(val sourceFrame: Long) : ContinuousEditorAction
+    /** Monitoring only; never alters PADs, arrangement, or exported audio. */
+    data class SetOriginalMonitorGain(val gain: Float) : ContinuousEditorAction
+    data class SetOriginalPitch(val semitones: Float) : ContinuousEditorAction
+    data class SetSourceRange(val startFrame: Long, val endFrame: Long) : ContinuousEditorAction
+    data object BeginLiveChop : ContinuousEditorAction
+    data object EndLiveChop : ContinuousEditorAction
+    /** [originalFrame] is the original's position sampled when the PAD was pressed, in the source's own frames. */
+    data class CapturePad(val padId: Int, val originalFrame: Long) : ContinuousEditorAction
+    data object AutoChop : ContinuousEditorAction
+    data class AssignSourceRange(val padId: Int) : ContinuousEditorAction
+    data class SelectBank(val bankId: Int) : ContinuousEditorAction
+    data class SelectPad(val padId: Int) : ContinuousEditorAction
+    data class TapPad(val padId: Int) : ContinuousEditorAction
+    data class HoldPad(val padId: Int) : ContinuousEditorAction
+    data class ReleasePad(val padId: Int) : ContinuousEditorAction
+    data class TogglePadLoop(val padId: Int) : ContinuousEditorAction
+    data class SetPadPitch(val padId: Int, val semitones: Float) : ContinuousEditorAction
+    data class SetPadTone(val padId: Int, val tone: Float) : ContinuousEditorAction
+    data class SetPadGain(val padId: Int, val gain: Float) : ContinuousEditorAction
+    /** Explicit user placement only: original source is never placed by merely changing stages. */
+    data class PlacePad(val padId: Int, val trackId: String?, val timelineFrame: Long) : ContinuousEditorAction
+    data class SelectClip(val clipId: String?) : ContinuousEditorAction
+    data class MoveClip(val clipId: String, val trackId: String, val timelineStartFrame: Long) : ContinuousEditorAction
+    data class TrimClip(val clipId: String, val sourceStartFrame: Long, val sourceEndFrame: Long,
+                        val timelineStartFrame: Long) : ContinuousEditorAction
+    data class SplitClip(val clipId: String, val timelineFrame: Long) : ContinuousEditorAction
+    data class DuplicateClip(val clipId: String) : ContinuousEditorAction
+    data class DeleteClip(val clipId: String) : ContinuousEditorAction
+    data class SetClipGain(val clipId: String, val gain: Float) : ContinuousEditorAction
+    data class SetTrackMuted(val trackId: String, val muted: Boolean) : ContinuousEditorAction
+    data class SetPixelsPerSecond(val value: Float) : ContinuousEditorAction
+    data object FitTimeline : ContinuousEditorAction
+    data class ResizePanes(val fraction: Float) : ContinuousEditorAction
+    data object ResetPanes : ContinuousEditorAction
+    data class SelectCompactPane(val pane: ContinuousPane) : ContinuousEditorAction
+    data class SeekSong(val timelineFrame: Long) : ContinuousEditorAction
+    data object PlaySong : ContinuousEditorAction
+    data object PauseSong : ContinuousEditorAction
+    data object StopSong : ContinuousEditorAction
+    /** Playback monitoring only, separate from track/clip/export gains. */
+    data class SetSongMonitorGain(val gain: Float) : ContinuousEditorAction
+    data class SetTempo(val bpm: Int) : ContinuousEditorAction
+    /** Opens the kit chooser; a kit fills the drum BANK only after [ChooseDrumKit]. */
+    data object AddDrum : ContinuousEditorAction
+    data class ChooseDrumKit(val kitId: String) : ContinuousEditorAction
+    /** Answers the question about replacing the user's own sounds; it applies only to the sounds it counted. */
+    data object ConfirmDrumKit : ContinuousEditorAction
+    data object DismissDrumKit : ContinuousEditorAction
+    /** Opens the microphone and plays the song; the take ends with [StopVoice] or when the song stops. */
+    data object RecordVoice : ContinuousEditorAction
+    data object StopVoice : ContinuousEditorAction
+    /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */
+    data class CopyDiagnostics(val text: String) : ContinuousEditorAction
+    /** Opens the scratch panel; the beat plays on underneath. */
+    data object OpenScratch : ContinuousEditorAction
+    data object CloseScratch : ContinuousEditorAction
+    data class SetScratchTarget(val target: ContinuousScratchTarget) : ContinuousEditorAction
+    data class SetScratchSensitivity(val sensitivity: ContinuousScratchSensitivity) : ContinuousEditorAction
+    /** The independent cut fader: 1 lets the scratch through, 0 silences it. Handled at once, like a drag. */
+    data class SetScratchCut(val gain: Float) : ContinuousEditorAction
+    /** A hand takes the platter: the sound stops under it and sounds again as it moves. */
+    data object ScratchHold : ContinuousEditorAction
+    /**
+     * The held platter moved by [distancePx] screen pixels (positive forward), as the earlier app counted them; handled
+     * at once, never queued behind other work.
+     */
+    data class ScratchDrag(val distancePx: Float) : ContinuousEditorAction
+    /** The hand lets go: what the scratch paused plays on once, and nothing else starts. */
+    data object ScratchLetGo : ContinuousEditorAction
+    /** One short scratch back or forward, for screen readers. */
+    data class ScratchNudge(val forward: Boolean) : ContinuousEditorAction
+}

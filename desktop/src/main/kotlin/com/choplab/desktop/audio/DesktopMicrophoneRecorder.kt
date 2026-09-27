@@ -6,17 +6,19 @@ import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
 
-/** Windows microphone capture through the default Java Sound input line. */
+/** Microphone capture through a supported Java Sound input line. */
 class DesktopMicrophoneRecorder : DesktopAudioRecorder {
     private val delegate = DesktopTargetLineRecorder(
         lineFactory = {
-            val format = AudioFormat(48_000f, 16, 1, true, false)
+            val format = DesktopMicrophoneRecorder.microphoneFormats().firstOrNull { candidate ->
+                AudioSystem.isLineSupported(DataLine.Info(TargetDataLine::class.java, candidate))
+            } ?: AudioFormat(48_000f, 16, 1, true, false)
             DesktopCaptureLine(
                 AudioSystem.getLine(DataLine.Info(TargetDataLine::class.java, format)) as TargetDataLine,
                 format,
             )
         },
-        threadName = "ChopLab-Windows-Microphone",
+        threadName = "ChopLab-Microphone",
     )
 
     override val isRecording: Boolean
@@ -25,4 +27,13 @@ class DesktopMicrophoneRecorder : DesktopAudioRecorder {
     override fun start(file: File): Result<Unit> = delegate.start(file)
     override fun stop(): Result<File> = delegate.stop()
     override fun close() = delegate.close()
+
+    internal companion object {
+        fun microphoneFormats(): List<AudioFormat> = listOf(
+            AudioFormat(48_000f, 16, 1, true, false),
+            AudioFormat(44_100f, 16, 1, true, false),
+            AudioFormat(48_000f, 16, 2, true, false),
+            AudioFormat(44_100f, 16, 2, true, false),
+        )
+    }
 }

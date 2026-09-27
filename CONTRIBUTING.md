@@ -1,10 +1,10 @@
 # ChopLabへの参加
 
-[AGENTS](AGENTS.md) と [ROADMAP](docs/ROADMAP.md) を読み、対象の機能と現在の担当を確認してください。AndroidとWindowsの共通の振る舞いを小さな変更で改善します。
+[AGENTS](AGENTS.md) と [ROADMAP](docs/ROADMAP.md) を読み、対象の機能と現在の担当を確認してください。Android・Windows・Macの共通の振る舞いを小さな変更で改善します。
 
 ## 開発環境
 
-0.18.0の基準は JDK 17、Android SDK Platform 37、Build Tools 36.0.0、同梱Gradle Wrapperです。実際に必要な版はcheckoutのGradle設定を使います。JDK21や依存更新は段階1Bの候補であり、この文書だけでは導入済みになりません。
+現行toolchainはJDK21、Java/Kotlin出力は17です。Android SDK Platform 37、Build Tools 36.0.0と同梱Gradle Wrapperを使います。実際の版はcheckoutのGradle設定を正本とします。Macの実行・取込ツールは [desktop手順](desktop/README.md) を参照してください。
 
 WindowsではPowerShell 7を優先します。SDKは既存環境を利用し、`local.properties`、SDKパス、APIキーをコミットしません。
 

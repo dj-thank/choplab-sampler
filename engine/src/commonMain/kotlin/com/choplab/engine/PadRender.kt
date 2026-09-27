@@ -1,0 +1,44 @@
+package com.choplab.engine
+
+/**
+ * Offline: a PAD's range as its voice reads it, with its pitch, reverse and tone, at unity gain and without envelope,
+ * pan or limiter. Interleaved stereo at the engine rate, for placing a transformed PAD on the song as plain audio.
+ */
+object PadRender {
+    /** The most frames one render may produce: what the engine can hold resident. */
+    const val MAX_FRAMES = (EngineFormat.MAX_RESIDENT_BYTES / 8).toInt()
+
+    /** How many frames [render] produces: as many as the voice reads before it leaves the range. */
+    fun frames(pad: Pad): Int {
+        var count = 0
+        var position = start(pad)
+        while (position >= pad.startFrame && position < pad.endFrame) {
+            require(++count <= MAX_FRAMES) { "Rendered PAD exceeds the resident budget" }
+            position += pad.step
+        }
+        return count
+    }
+
+    fun render(pad: Pad): FloatArray {
+        val frames = frames(pad)
+        val output = FloatArray(frames * 2)
+        val interpolator = PitchInterpolator()
+        var position = start(pad)
+        var toneLeft = 0.0
+        var toneRight = 0.0
+        for (frame in 0 until frames) {
+            var left = interpolator.read(pad.asset, position, pad.step, 0, pad.startFrame, pad.endFrame, false, pad.loopCrossfadeFrames)
+            var right = interpolator.read(pad.asset, position, pad.step, 1, pad.startFrame, pad.endFrame, false, pad.loopCrossfadeFrames)
+            if (pad.toneAlpha < 1.0) {
+                toneLeft += pad.toneAlpha * (left - toneLeft); left = toneLeft
+                toneRight += pad.toneAlpha * (right - toneRight); right = toneRight
+            }
+            output[frame * 2] = left.toFloat()
+            output[frame * 2 + 1] = right.toFloat()
+            position += pad.step
+        }
+        return output
+    }
+
+    private fun start(pad: Pad) = if (pad.reverse) pad.endFrame - 1.0 else pad.startFrame.toDouble()
+}

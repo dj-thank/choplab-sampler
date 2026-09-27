@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$AppImage,
-    [ValidateSet('ChopLab.exe', 'ChopLab Preview.exe')][string]$ExecutableName = 'ChopLab.exe'
+    [ValidateSet('ChopLab.exe', 'ChopLab Preview.exe')][string]$ExecutableName = 'ChopLab.exe',
+    [switch]$SilentAudio
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -119,6 +120,7 @@ try {
     $start.Environment['APPDATA'] = Join-Path $profileRoot 'Roaming'
     $start.Environment['USERPROFILE'] = $profileRoot
     $start.Environment['JAVA_TOOL_OPTIONS'] = "-Duser.home=`"$profileRoot`""
+    if ($SilentAudio) { $start.Environment['JAVA_TOOL_OPTIONS'] += ' -Dchoplab.silentSmoke=true' }
     $process = [Diagnostics.Process]::Start($start)
     $owned.Add([pscustomobject]@{ Process = $process; StartedAt = $process.StartTime.ToUniversalTime() })
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()

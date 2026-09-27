@@ -10,6 +10,7 @@ class DesktopSystemAudioRecorderTest {
         assertTrue(DesktopSystemAudioRecorder.looksLikeLoopback("Stereo Mix", "Realtek Audio"))
         assertTrue(DesktopSystemAudioRecorder.looksLikeLoopback("ステレオ ミキサー", "再生デバイス"))
         assertTrue(DesktopSystemAudioRecorder.looksLikeLoopback("Monitor Loopback", "USB interface"))
+        assertTrue(DesktopSystemAudioRecorder.looksLikeLoopback("BlackHole 2ch", "Virtual Audio"))
     }
 
     @Test
