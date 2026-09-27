@@ -53,6 +53,44 @@ class SeparatorStreamingTest {
     }
 
     @Test
+    fun floatSourceKeepsSubPcm16PrecisionHeadroomAndChannelIdentity() {
+        // The existing separation window tapers its first frame to zero; precision assertions use following frames.
+        val samples = floatArrayOf(0f, 0f, 0.000001f, -0.000002f, 1.25f, -1.5f, 0.1234567f, -0.7654321f)
+        val reader = SeparatorSourceReader(samples, 44_100, 2)
+        val window = FloatArray(8)
+        reader.read(0, 4, window, 4)
+        assertArrayEquals(floatArrayOf(samples[0], samples[2], samples[4], samples[6],
+            samples[1], samples[3], samples[5], samples[7]), window, 0f)
+        var count = 0
+        val passthrough = ChunkInference { chunk -> FloatArray(4 * chunk.size).also {
+            chunk.copyInto(it, SeparatorSpec.DRUM_STEM_INDEX * chunk.size)
+        } }
+        DrumSeparatorPipeline.separateStreaming(reader, passthrough, emit = { left, right, size ->
+            for (i in 0 until size) {
+                assertEquals(samples[(count + i) * 2], left[i], 0.0000002f)
+                assertEquals(samples[(count + i) * 2 + 1], right[i], 0.0000002f)
+            }
+            count += size
+        })
+        assertEquals(4, count)
+    }
+
+    @Test
+    fun floatSourceRejectsInvalidPcmAndDuplicatesMonoWithoutQuantization() {
+        for ((samples, rate, channels) in listOf(
+            Triple(floatArrayOf(Float.NaN), 44_100, 1), Triple(floatArrayOf(Float.POSITIVE_INFINITY), 44_100, 1),
+            Triple(floatArrayOf(1f), 44_100, 2), Triple(floatArrayOf(), 44_100, 1),
+            Triple(floatArrayOf(1f), 0, 1), Triple(floatArrayOf(1f), 44_100, 3))) {
+            try { SeparatorSourceReader(samples, rate, channels); fail("Invalid source accepted") }
+            catch (_: IllegalArgumentException) { }
+        }
+        val samples = floatArrayOf(0.000001f, -1.25f)
+        val window = FloatArray(4)
+        SeparatorSourceReader(samples, 44_100, 1).read(0, 2, window, 2)
+        assertArrayEquals(samples + samples, window, 0f)
+    }
+
+    @Test
     fun streamingSeparationMatchesTheWholeBufferPipelineBitForBit() {
         // Three chunks, including a short final chunk and a non-final chunk shorter than a segment.
         val audio = randomAudio(frames = SeparatorSpec.STRIDE_SAMPLES * 2 + 12_345, rate = 44_100, channels = 2, seed = 7)

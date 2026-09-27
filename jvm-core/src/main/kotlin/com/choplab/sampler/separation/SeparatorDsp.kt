@@ -162,35 +162,51 @@ object SeparatorDsp {
 }
 
 /**
- * Channel-major float stereo at [SeparatorSpec.SAMPLE_RATE], read from [audio] on demand.
+ * Channel-major float stereo at [SeparatorSpec.SAMPLE_RATE], read from PCM16 or float PCM on demand.
  * Values equal [SeparatorDsp.pcmToFloatStereo44100] without a whole-song float copy.
  */
-class SeparatorSourceReader(private val audio: PcmAudio) {
+class SeparatorSourceReader private constructor(
+    private val inputFrames: Int,
+    private val sampleRate: Int,
+    private val channels: Int,
+    private val sample: (Int) -> Float,
+) {
+    constructor(audio: PcmAudio) : this(audio.frameCount, audio.sampleRate, audio.channelCount,
+        { index -> audio.samples[index] / 32768f })
+
+    /** Worker-owned interleaved float PCM. Caller must not change samples while the reader is in use. */
+    constructor(samples: FloatArray, sampleRate: Int, channels: Int) : this(
+        checkedFloatFrames(samples, channels), sampleRate, channels, { index -> samples[index] })
+
+    companion object {
+        private fun checkedFloatFrames(samples: FloatArray, channels: Int): Int {
+            require(channels in 1..2 && samples.isNotEmpty() && samples.size % channels == 0)
+            require(samples.all { it.isFinite() }) { "Non-finite separation source" }
+            return samples.size / channels
+        }
+    }
     init {
-        require(audio.frameCount > 0) { "空の音源は分離できません" }
+        require(inputFrames > 0 && sampleRate in 8_000..192_000) { "Invalid separation source" }
     }
 
-    val frames: Int = SeparatorDsp.resampledLength(audio.frameCount, audio.sampleRate, SeparatorSpec.SAMPLE_RATE)
+    val frames: Int = SeparatorDsp.resampledLength(inputFrames, sampleRate, SeparatorSpec.SAMPLE_RATE)
 
     /** Fills `[L x segment][R x segment]` in [destination] with output frames [start, start + length). */
     fun read(start: Int, length: Int, destination: FloatArray, segment: Int) {
         require(start >= 0 && length >= 0 && length <= segment && start + length <= frames) { "Invalid source window" }
         require(destination.size >= 2 * segment) { "Chunk buffer size mismatch" }
-        val channels = audio.channelCount
-        val samples = audio.samples
         for (ch in 0..1) {
             val sourceChannel = if (ch == 0 || channels == 1) 0 else 1
             val offset = ch * segment
-            if (audio.sampleRate == SeparatorSpec.SAMPLE_RATE) {
+            if (sampleRate == SeparatorSpec.SAMPLE_RATE) {
                 for (i in 0 until length) {
-                    destination[offset + i] = samples[(start + i) * channels + sourceChannel] / 32768f
+                    destination[offset + i] = sample((start + i) * channels + sourceChannel)
                 }
             } else {
-                val inputFrames = audio.frameCount
                 for (i in 0 until length) {
                     destination[offset + i] = SeparatorDsp.resampledSampleAt(
-                        start + i, inputFrames, audio.sampleRate, SeparatorSpec.SAMPLE_RATE,
-                    ) { frame -> samples[frame * channels + sourceChannel] / 32768f }
+                        start + i, inputFrames, sampleRate, SeparatorSpec.SAMPLE_RATE,
+                    ) { frame -> sample(frame * channels + sourceChannel) }
                 }
             }
         }
