@@ -44,7 +44,10 @@ internal object NextSeparationDialog {
             val timer = Timer(100) { refresh() }
             fun finish(result: NextLibrary.Selection?) {
                 if (finished) return
-                finished = true; timer.stop(); job.close(); dialog.dispose()
+                finished = true; timer.stop(); job.close()
+                // Aqua's progress animator can outlive a disposed peer; uninstall it on the EDT.
+                progress.setUI(null)
+                dialog.dispose()
                 if (answer.isActive) answer.resume(result)
             }
             start.addActionListener { job.start(); refresh() }
