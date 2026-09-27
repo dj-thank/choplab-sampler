@@ -255,4 +255,24 @@ class ContinuousClipEditsTest {
         val pitched = p.copy(pads = p.pads.map { if (it.id == 0) it.copy(pitchSemitones = 12.0) else it }.frozen())
         assertFailsWith<IllegalArgumentException> { apply(pitched, ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 1)) }
     }
+
+    @Test fun anEditTheSongCouldNotPlayIsRefusedWhileASongAlreadyPastItCanBeThinnedOut() {
+        // A five-second sound every sixteenth at 120 BPM (6 000 frames apart) would sound 40 at once through four bars.
+        val long = Asset(hash, "wav", 100, 48_000, 2, 240_000, "Long")
+        val p = Project(assets = frozenListOf(long), pads = (0..127).map { if (it == 0) Pad(it, hash, FrameRange(0, 240_000)) else Pad(it) }.frozen())
+        assertFailsWith<ContinuousClipEdits.SongFull> { apply(p, ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.QUARTER, 4)) }
+        // Through one bar, 16 at once.
+        val one = apply(p, ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.QUARTER, 1))
+        assertEquals(16, one.clips.size)
+        assertTrue(ProgramCompiler.songFits(one))
+        // Nor past 30 minutes, nor past 1024 clips.
+        assertFailsWith<ContinuousClipEdits.SongFull> { apply(p, ContinuousEditorAction.PlacePad(0, null, ContinuousClipEdits.MAX_TIMELINE_FRAMES - 1)) }
+        val short = one.clips[0].copy(range = FrameRange(0, 100))
+        val full = one.copy(clips = (0 until 1024).map { short.copy(id = "full-$it", timelineStartFrame = it * 1_000L) }.frozen())
+        assertFailsWith<ContinuousClipEdits.SongFull> { apply(full, ContinuousEditorAction.DuplicateClip("full-0")) }
+        // A song an earlier build let past the limit stays editable, so it can be thinned out.
+        val over = one.copy(clips = (0 until 40).map { one.clips[0].copy(id = "over-$it", timelineStartFrame = it * 6_000L) }.frozen())
+        assertFalse(ProgramCompiler.songFits(over))
+        assertEquals(39, apply(over, ContinuousEditorAction.DeleteClip("over-0")).clips.size)
+    }
 }

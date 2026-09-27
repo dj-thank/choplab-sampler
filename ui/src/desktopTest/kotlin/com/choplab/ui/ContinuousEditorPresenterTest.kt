@@ -709,6 +709,22 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aFillTheSongCouldNotPlayIsRefusedSayingWhyAndChangesNothing() = runBlocking<Unit> {
+        val long = Asset("c".repeat(64), "wav", 100, 48_000, 2, 240_000, "Long")
+        val h = Harness(adjust = { p -> p.copy(assets = (p.assets + long).sortedBy { it.hash }.frozen(),
+            pads = p.pads.map { if (it.id == 2) Pad(2, long.hash, FrameRange(0, 240_000)) else it }.frozen()) })
+        try {
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            // A five-second sound every sixteenth through four bars would sound 40 at once; the song plays 32.
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.FillPad(2, null, 0, ContinuousGrid.QUARTER, 4)))
+            h.until { it.status == ContinuousStatus.SONG_FULL }
+            assertTrue(h.studio.document.value.project.clips.isEmpty())
+            // Through one bar, 16 at once, it fills.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FillPad(2, null, 0, ContinuousGrid.QUARTER, 1)))
+            h.until { it.clips.size == 16 }
+        } finally { h.close() }
+    }
+
     @Test fun aFillPlacesThePadThroughItsBarsInOneUndoRenderingATransformedPadOnce() = runBlocking<Unit> {
         val h = Harness(render = true)
         try {

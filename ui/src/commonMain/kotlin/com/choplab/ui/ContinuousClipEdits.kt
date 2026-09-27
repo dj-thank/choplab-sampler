@@ -7,6 +7,9 @@ import com.choplab.core.model.*
 /** Converts one finished UI gesture into one Studio/Undo edit. Never mutates a document. */
 object ContinuousClipEdits {
     const val MAX_TIMELINE_FRAMES = 48_000L * 60 * 30
+
+    /** An edit the song cannot take: playback holds 30 minutes, 1024 clips and 32 of them sounding at once. */
+    class SongFull : IllegalArgumentException("The song cannot take this edit")
     /** Frames × milli-BPM × PPQ over this is ticks. */
     private const val FRAME_TICK_SCALE = 48_000L * 60_000
     /** A 4/4 bar. */
@@ -187,15 +190,20 @@ object ContinuousClipEdits {
             }
             else -> error("Not an arrangement edit")
         }
-        require(tracks.size <= 16 && clips.size <= 1024)
+        require(tracks.size <= 16)
+        if (clips.size > 1024) throw SongFull()
         // A rendered PAD's sound joins the document with this edit: check its clip as if it had.
         val known = if (rendered == null || project.assets.any { it.hash == rendered.hash }) project
             else project.copy(assets = (project.assets + rendered).sortedBy { it.hash }.frozen())
         clips.forEach { clip ->
             require(clip.range.end <= known.asset(clip.assetHash).frames)
-            require(startFrame(known, clip) + durationFrames(known, clip) <= MAX_TIMELINE_FRAMES)
+            if (startFrame(known, clip) + durationFrames(known, clip) > MAX_TIMELINE_FRAMES) throw SongFull()
             if (clip.id in reshaped) require(durationFrames(known, clip) > 0) { "Clip is shorter than one timeline frame" }
         }
+        // An edit may not turn a song playback takes into one it cannot, such as more than 32 clips sounding at once.
+        // A song an earlier build let past that stays editable, so it can be thinned out.
+        if (!ProgramCompiler.songFits(known.copy(tracks = tracks.frozen(), clips = clips.frozen())) && ProgramCompiler.songFits(project))
+            throw SongFull()
         return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, listOfNotNull(rendered).frozen())
     }
 }

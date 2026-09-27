@@ -38,6 +38,8 @@ enum class ContinuousStatus {
     VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
     /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
+    /** A song edit refused, as the song could no longer play: too many clips at once, too many or too long. */
+    SONG_FULL,
     MIC_DENIED, MIC_UNAVAILABLE,
     SOURCE_RECORDED, SOURCE_RECORDING_LIMIT, SOURCE_RECORDING_INTERRUPTED,
     SYSTEM_DENIED, SYSTEM_NO_DISPLAY, SYSTEM_UNAVAILABLE, SYSTEM_TIMEOUT, SYSTEM_EMPTY,
