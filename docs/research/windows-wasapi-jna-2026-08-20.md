@@ -2,6 +2,14 @@
 
 Date: 2026-08-20 JST
 
+## Fresh readback — 2026-09-28 JST
+
+The observations below under “Observed local problem” describe the August host state. They are historical, not the current endpoint gate. On 2026-09-27 at 20:40:57 UTC, the isolated probe built from `e5cf7fd53a3449d5063d46324c41a307f21a794a` and JNA 5.19.1 successfully opened the current default render and capture endpoints on Windows. Both were active and reported 48 kHz stereo IEEE float, 32-bit containers, `WAVE_FORMAT_EXTENSIBLE`, channel mask 3, and device periods of 10,000 µs default / 3,000 µs minimum. All five transported JAR hashes were checked; the temporary transport was removed and the existing application, launchers and data were preserved.
+
+The former subtype constants had an incorrect GUID suffix and classified both standard formats as unknown. PCM is `{00000001-0000-0010-8000-00AA00389B71}` and IEEE float is `{00000003-0000-0010-8000-00AA00389B71}`. The correction is covered by independent native-byte fixtures for both formats, valid bits, lowercase GUIDs and unknown subtypes; seven format/probe tests passed. Primary definitions: [Microsoft audio GUIDs](https://github.com/microsoft/psi/blob/master/Sources/Audio/Microsoft.Psi.Audio.Windows/ComInterop/Guids.cs), [WAVEFORMATEXTENSIBLE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ksmedia/ns-ksmedia-waveformatextensible).
+
+This removes the endpoint/format prerequisite only. Event output, microphone/loopback streaming, audible results, round-trip latency and Human acceptance remain unverified. Current progress and the next implementation slice are indexed only in [ROADMAP](../ROADMAP.md).
+
 ## Observed local problem
 
 - The current Temurin JDK 17 process reports `AudioSystem.getMixerInfo().length == 0` on this Windows host.
@@ -30,4 +38,4 @@ Date: 2026-08-20 JST
 
 A successful endpoint probe proves Core Audio access and current mix-format discovery. It does not prove audible output, microphone contents, loopback PCM validity, latency, xruns, Bluetooth/route behavior, or Human audio quality.
 
-Current observation is a truthful unavailable result, not `DEVICE_PASS`: COM initialization and calls succeed, but both endpoint collections are empty. The app must preserve this distinction and must not fall back to recording an arbitrary microphone.
+The August observation was a truthful unavailable result, not `DEVICE_PASS`: COM initialization and calls succeeded, but both endpoint collections were empty. The app must preserve this distinction on unavailable routes and must not fall back to recording an arbitrary microphone. Use the fresh readback above for the current endpoint gate.
