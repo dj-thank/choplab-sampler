@@ -73,6 +73,34 @@ class EditorBackendTest {
         assertEquals(DriverPhase.CLOSED, backend.engine.status.value.phase)
     }
 
+    @Test fun aPerformedGatePublishesFloatAudioWithoutChangingTheOriginalOrDocument() = runBlocking<Unit> {
+        val dir = directory()
+        val input = dir.resolve("gate.wav").also { Files.write(it, Fixtures.wav(samples = ShortArray(4096) { (it * 37 % 2000 - 1000).toShort() })) }
+        val files = CountingFiles()
+        val backend = EditorBackend.create(dir.resolve("profile"), ::silentEngine, files::services)
+        try {
+            assertTrue(backend.studio.dispatch(Action.Import(files.register(input))).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && backend.studio.document.value.project.source != null }
+            val before = backend.studio.document.value.project
+            val source = before.asset(requireNotNull(before.source).assetHash)
+            val original = backend.assets.read(source)
+            val pad = com.choplab.core.model.Pad(0, source.hash, com.choplab.core.model.FrameRange(0, source.frames),
+                mode = com.choplab.engine.PlayMode.GATE, gain = .6f, pan = -.2f)
+            val result = backend.renderPerformance(pad, source, 480, 2_000)
+            assertEquals(576L, result.frames, "480 held frames plus the live 96-frame release")
+            assertEquals(com.choplab.core.model.AssetRole.RENDERED, result.role)
+            assertEquals(source.hash, result.derivedFrom)
+            assertEquals(48_000, result.sampleRate); assertEquals(2, result.channels)
+            val rendered = WavCodec.read(java.io.ByteArrayInputStream(backend.assets.read(result)))
+            assertEquals(32, rendered.info.bits)
+            assertTrue(rendered.info.floatingPoint)
+            assertTrue(backend.assets.containsVerified(result))
+            assertEquals(result, backend.renderPerformance(pad, source, 480, 2_000), "Identical performance reuses content-addressed bytes")
+            assertContentEquals(original, backend.assets.read(source))
+            assertEquals(before, backend.studio.document.value.project, "Publication alone never edits the song")
+        } finally { backend.shutdown() }
+    }
+
     @Test fun importsCompleteWhileTheOutputKeepsStallingAndReopening() = runBlocking<Unit> {
         // Like an emulator or a flaky route: every device fills up and stalls, and a recovery policy keeps reopening it.
         val stalling = { object : AudioSink {

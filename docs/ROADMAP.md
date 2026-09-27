@@ -4,7 +4,7 @@
 
 ## 最初に読む現状とSSOT（2026-09-28照合）
 
-9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。最後の指定に従い、追加実装の担当は既存のClaudeクラウドセッション。今回のrootは文書整備のみを担当し、未完成の画面・録音・Spotifyコードをこの文書更新へ混ぜない。
+9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、このrootがローカル実装・統合・Mac利用検証を再開する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
 
 ### 正本と参照順
 
@@ -36,7 +36,13 @@
 | 全制作機能 | ライブラリ等の移植は下の個別記録にあるが、段階0〜11全体の受入は未完 | BANK名/色/役割・PAD編集、空曲録音・metronome/count-in・loop overdub・step/pattern、vocal take/comp/punch/LRC、任意AI、4stem/mixer/FX/export、保存復旧、配布サイズを受入表に沿って完遂。UIと録音だけへ範囲を縮めない |
 | インストール済みと実運用 | 元セッションで確認したMac NEXT `46300aac`、Android署名済Preview `5d471c11` build30にはPR150未搭載。今回端末を再操作していない | 9月27日のレビューではWindows SSOT入口は `a5c6343`、通常起動は `0.17.2-53655c46e0a1` と不一致。WindowsはSSHでorigin/branch/dirty状態/実launcherとartifactを再照合。Mac/Androidも更新後のbytes・revisionで制作通しを確認。実音・マイク・遅延・TalkBack・Humanは独立して記録 |
 
-クラウドで変更を進め、実機確認が必要な箇所は対象revision・artifact・操作・期待結果を明記してローカルへ引き継ぐ。`LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO`は別判定。確認済みでないものは未確認のまま残す。各bounded PRで検証・CI・統合・本書のreadbackまで行う。rollbackは該当PRのrevertと以前のartifactへの復帰で、既存アプリ・制作data・dirty workは保持する。
+rootが変更と統合を進め、各担当は独立worktreeと限定したファイルを所有する。実機確認が必要な箇所は対象revision・artifact・操作・期待結果を明記してrootが検証する。`LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO`は別判定。確認済みでないものは未確認のまま残す。各bounded PRで検証・CI・統合・本書のreadbackまで行う。rollbackは該当PRのrevertと以前のartifactへの復帰で、既存アプリ・制作data・dirty workは保持する。
+
+## 選択中の実装・統合（2026-09-28）
+
+rootがmain `04cd1ed` と録音PR150 head `ee18b7c` の文書競合を解消して統合候補を作る。製品コードはPR150の修正を保持し、承認画像・SSOT索引はmainを保持する。曲末/GATE/LOOP/choke/全停止/取消/読み上げ入力の回帰、共有engine/core/JVM/UI/desktopとAndroid compile、Mac packageの録音→Undo/Redo→書出し→保存再開を検証して統合する。rollbackはPR150のrevertと前のMac appへの復帰。実聴・実入力遅延・TalkBackはこの合成検証から認定しない。
+
+画面担当は独立worktreeで、BEATの広い画面に応じた大きな正方形PAD、390×844/font1/1.3/2・短い横画面の可視領域と操作を修正する。原曲監視・4工程・停止・Undo・BANKと詳細操作を維持し、実Compose画像とgeometry/inputで確認する。左右2円盤scratch、Spotify、長尺、段階5〜11の未実装は別のbounded変更として続ける。
 
 ## UIの固定条件
 

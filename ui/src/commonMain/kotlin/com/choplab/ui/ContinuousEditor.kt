@@ -801,6 +801,8 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.VOICE_NO_ROOM -> Res.string.ce_voice_no_room; ContinuousStatus.MIC_DENIED -> Res.string.ce_mic_denied
         ContinuousStatus.PLACE_NO_ROOM -> Res.string.ce_place_no_room; ContinuousStatus.PLACE_FAILED -> Res.string.ce_place_failed
         ContinuousStatus.SONG_FULL -> Res.string.ce_song_full
+        ContinuousStatus.HITS_PLACED -> Res.string.ce_hits_placed; ContinuousStatus.HITS_PARTLY -> Res.string.ce_hits_partly
+        ContinuousStatus.HITS_EMPTY -> Res.string.ce_hits_empty; ContinuousStatus.HITS_UNCHANGED -> Res.string.ce_hits_unchanged
         ContinuousStatus.MIC_UNAVAILABLE -> Res.string.ce_mic_unavailable; ContinuousStatus.RECORDING_BUSY -> Res.string.ce_recording_busy
         ContinuousStatus.RESCUED -> Res.string.ce_rescued; ContinuousStatus.RESCUED_PARTLY -> Res.string.ce_rescued_partly
         ContinuousStatus.RESCUED_TOO_LONG -> Res.string.ce_rescued_too_long; ContinuousStatus.RESCUED_NOTHING -> Res.string.ce_rescued_nothing

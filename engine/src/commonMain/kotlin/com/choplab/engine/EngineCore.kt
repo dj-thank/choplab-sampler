@@ -473,7 +473,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 }
 
-private class Voice {
+internal class Voice {
     var pad: Pad? = null
     var position = 0.0
     var serial = 0L

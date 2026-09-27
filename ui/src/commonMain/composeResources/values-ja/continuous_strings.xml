@@ -260,6 +260,14 @@
     <string name="ce_diag_frames_unknown">この環境では数えません</string>
     <string name="ce_place_no_room">音の量が上限に近いので、音程・逆再生・音色を変えたPADは曲に置けません。</string>
     <string name="ce_place_failed">音程・逆再生・音色を変えたPADの音を作れませんでした。端末の空き容量を確かめてください。</string>
+    <string name="ce_record_hits">演奏を録る</string>
+    <string name="ce_stop_hits">録るのを止める</string>
+    <string name="ce_hits_hint">曲に合わせてPADをたたいてください。止めると、たたいた位置に、「拍に合わせる」で選んだ線でそろえて（「自由」ならたたいた位置のまま）、まとめて曲に入ります。「戻す」1回で取り消せます。</string>
+    <string name="ce_hits_pad_action">たたいて録る</string>
+    <string name="ce_hits_placed">演奏を曲に入れました。「戻す」1回で取り消せます。</string>
+    <string name="ce_hits_partly">演奏の一部だけを曲に入れました。曲に入りきらない分と、音を作れなかったPADの分は入れていません。「戻す」1回で取り消せます。</string>
+    <string name="ce_hits_empty">演奏が録れていないので、曲はそのままです。</string>
+    <string name="ce_hits_unchanged">演奏した音は、どれもすでに曲の同じ位置にあったので、曲はそのままです。</string>
     <string name="ce_song_full">曲に入りきらないので、何も変えていません。曲では、同時に鳴る音は32個まで、配置は1024個まで、長さは30分までです。小節を減らす・間隔を広げる・短い音にする、などを試してください。</string>
     <string name="ce_rescued">前のアプリの制作ファイルから、音声だけを取り出しました。最初の音声を原曲にし、ほかの音声はPADに順に入れました（PADの切り方や曲の並びは引き継ぎません）。元のファイルは変わりません。</string>
     <string name="ce_rescued_partly">前のアプリの制作ファイルから、音声だけを取り出して原曲とPADに入れました。音の量の上限で入りきらない音声は、この制作の中にだけ残しています（PADの切り方や曲の並びは引き継ぎません）。元のファイルは変わりません。</string>

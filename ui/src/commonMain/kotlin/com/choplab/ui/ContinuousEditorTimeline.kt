@@ -61,8 +61,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     }
     if (compact) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            // While a take records, the PAD pane (where its stop button is) says so from the timeline pane too.
-            CEButton(stringResource(if (state.recordingVoice) Res.string.ce_pads_recording else Res.string.ce_pads),
+            // While a take or pass records, the PAD pane (where its stop button is) says so from the timeline pane too.
+            CEButton(stringResource(if (state.recordingVoice || state.recordingHits) Res.string.ce_pads_recording else Res.string.ce_pads),
                 { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.PADS)) }, Modifier.weight(1f),
                 primary = state.compactPane == ContinuousPane.PADS, tag = "ce-pane-pads")
             CEButton(stringResource(Res.string.ce_timeline), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.TIMELINE)) }, Modifier.weight(1f), primary = state.compactPane == ContinuousPane.TIMELINE)
@@ -149,7 +149,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         }
         CEBanks(state, onAction)
         Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
-        CEPads(state, onAction, Modifier.padding(top = 12.dp), onPadDrag = onDrag, onPadDrop = onDrop)
+        CEPads(state, onAction, Modifier.padding(top = 12.dp), onPadDrag = onDrag, onPadDrop = onDrop,
+            hit = if (state.recordingHits) ({ readout().songFrame }) else null)
         BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun Adjustments() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -164,16 +165,29 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         if (maxWidth >= 510.dp && LocalDensity.current.fontScale <= 1.3f) Adjustments()
         else Box(Modifier.horizontalScroll(rememberScrollState())) { Box(Modifier.width(540.dp)) { Adjustments() } }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEActionButton(stringResource(if (state.installedDrumKit == null) Res.string.ce_add_drums else Res.string.ce_change_drums), ContinuousEditorAction.AddDrum,
-                state, ContinuousCapability.ADD_DRUM, onAction, Modifier.weight(1f), tag = "ce-add-drums")
-            if (state.recordingVoice) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
-                ContinuousCapability.STOP_ALL, onAction, Modifier.weight(1f), primary = true, tag = "ce-record-voice")
-            else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, Modifier.weight(1f), tag = "ce-record-voice")
-            CEActionButton(stringResource(Res.string.ce_scratch), ContinuousEditorAction.OpenScratch, state, ContinuousCapability.SCRATCH, onAction, Modifier.weight(1f), tag = "ce-scratch")
+        @Composable fun Drums(modifier: Modifier) = CEActionButton(stringResource(if (state.installedDrumKit == null) Res.string.ce_add_drums else Res.string.ce_change_drums),
+            ContinuousEditorAction.AddDrum, state, ContinuousCapability.ADD_DRUM, onAction, modifier, tag = "ce-add-drums")
+        @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
+                ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-voice")
+            else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
+        @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
+                ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-hits")
+            else CEActionButton(stringResource(Res.string.ce_record_hits), ContinuousEditorAction.RecordHits, state, ContinuousCapability.RECORD_HITS, onAction, modifier, tag = "ce-record-hits")
+        @Composable fun Scratch(modifier: Modifier) = CEActionButton(stringResource(Res.string.ce_scratch), ContinuousEditorAction.OpenScratch, state,
+            ContinuousCapability.SCRATCH, onAction, modifier, tag = "ce-scratch")
+        // Four in one row where they fit, otherwise two rows (phones, large text).
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth >= 480.dp && LocalDensity.current.fontScale <= 1.3f) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Drums(Modifier.weight(1f)); Hits(Modifier.weight(1f)); Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f))
+            } else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Drums(Modifier.weight(1f)); Hits(Modifier.weight(1f)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f)) }
+            }
         }
-        // Below the button that started the take, so nothing it pressed moves; screen readers hear it appear.
+        // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.
         if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
+            .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
+        if (state.recordingHits) Text(stringResource(Res.string.ce_hits_hint), Modifier.fillMaxWidth().testTag("ce-hits-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
     }
 }
