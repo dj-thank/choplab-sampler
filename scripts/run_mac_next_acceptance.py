@@ -86,6 +86,12 @@ def verify(app, java_home):
         if microphone_receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged microphone source production self-test did not pass')
         print(microphone_result.stdout.strip())
+        library_result = run(java, '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
+                             'com.choplab.desktop.next.NextLibrarySelfTest', directory / 'library', environment=environment)
+        library_receipt = json.loads(library_result.stdout.strip().splitlines()[-1])
+        if library_receipt['status'] != 'LOCAL_PASS':
+            raise RuntimeError('Packaged library source production self-test did not pass')
+        print(library_result.stdout.strip())
         source = next((directory / 'codecs/production').glob('next-self-test-*')) / 'profile'
         expected = snapshot(source)
         profile = directory / 'profile'

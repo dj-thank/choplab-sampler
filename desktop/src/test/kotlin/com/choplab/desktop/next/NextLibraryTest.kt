@@ -8,6 +8,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.*
 
 class NextLibraryTest {
+    @Test fun actualLibraryValidationThroughProductionAndArchiveReopen() = runBlocking<Unit> {
+        NextLibrarySelfTest.run(Files.createTempDirectory("next-library-self-test-"))
+    }
+
     private suspend fun idle(library: NextLibrary) = withTimeout(5_000) { while (library.state.value.busy) delay(10) }
 
     @Test fun addSelectBundleRoundtripKeepsOriginalBytesAndNamesAndDoesNotAutoSelect() = runBlocking<Unit> {
