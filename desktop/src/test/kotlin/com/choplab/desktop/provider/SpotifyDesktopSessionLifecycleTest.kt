@@ -114,6 +114,7 @@ class SpotifyDesktopSessionLifecycleTest {
             await { session.state.value.phase == SpotifyConnectionPhase.ERROR && !session.state.value.busy }
 
             assertTrue(session.state.value.message.contains("既定ブラウザー"))
+            assertEquals(SpotifyProblemKind.BROWSER_UNAVAILABLE, session.state.value.problem?.kind)
         } finally {
             session.close()
         }
@@ -130,6 +131,7 @@ class SpotifyDesktopSessionLifecycleTest {
 
             assertTrue(session.state.value.message.contains("127.0.0.1"))
             assertTrue(session.state.value.message.contains("ポート"))
+            assertEquals(SpotifyProblemKind.CALLBACK_PORT_UNAVAILABLE, session.state.value.problem?.kind)
         } finally {
             session.close()
         }
@@ -146,6 +148,7 @@ class SpotifyDesktopSessionLifecycleTest {
             await { session.state.value.phase == SpotifyConnectionPhase.ERROR && !session.state.value.busy }
 
             assertTrue(session.state.value.message.contains("ネットワーク"))
+            assertEquals(SpotifyProblemKind.NETWORK, session.state.value.problem?.kind)
         } finally {
             session.close()
         }
@@ -176,6 +179,7 @@ class SpotifyDesktopSessionLifecycleTest {
 
             assertTrue(session.state.value.canLogin)
             assertTrue(session.state.value.message.contains("Spotifyログインに失敗しました"))
+            assertEquals(SpotifyProblemKind.LOGIN_FAILED, session.state.value.problem?.kind)
         } finally {
             session.close()
         }
@@ -190,6 +194,7 @@ class SpotifyDesktopSessionLifecycleTest {
 
             assertTrue(session.state.value.canLogin)
             assertTrue(session.state.value.message.contains("拒否"))
+            assertEquals(SpotifyProblemKind.DENIED, session.state.value.problem?.kind)
             assertFalse(session.state.value.message.contains("Client ID、Redirect URI"))
         } finally {
             session.close()
@@ -367,6 +372,28 @@ class SpotifyDesktopSessionLifecycleTest {
             assertFalse(session.connected)
             assertTrue(session.state.value.canLogin)
             assertTrue(session.state.value.message.contains("もう一度ログイン"))
+            assertEquals(SpotifyProblemKind.AUTH_EXPIRED, session.state.value.problem?.kind)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun apiRecoveryInformationIsTypedAndClearedAfterASuccessfulRetry() {
+        val api = FakeApi(savedTracksResponse = SpotifyApiResponse(429, "untrusted response", 12L))
+        val session = session(api = api, callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback })
+        try {
+            connect(session)
+            session.showLibrary()
+            await { !session.state.value.busy && session.state.value.problem != null }
+            assertEquals(SpotifyProblem(SpotifyProblemKind.API_FAILED, 429, 12L), session.state.value.problem)
+            assertTrue(session.connected)
+            assertFalse(session.state.value.toString().contains("untrusted response"))
+            api.savedTracksResponse = SpotifyApiResponse(200, "{\"items\":[]}")
+            session.showLibrary()
+            await { !session.state.value.busy }
+            assertEquals(null, session.state.value.problem)
+            assertTrue(session.connected)
         } finally {
             session.close()
         }
