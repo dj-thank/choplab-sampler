@@ -1,12 +1,14 @@
 package com.choplab.ui
 
 import com.choplab.core.*
+import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
 import com.choplab.engine.PlayMode
+import com.choplab.ui.ai.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlin.math.pow
@@ -14,6 +16,107 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun lyricProposalEntryAndApplyRefusePreparationSourceVoiceAndPadRecording() = runBlocking<Unit> {
+        for (block in 0..3) {
+            val ai = FakeLyricPort()
+            val h = Harness(voice = true, lyricProposal = ai)
+            val release = CompletableDeferred<Unit>()
+            try {
+                h.until { it.permits(ContinuousCapability.LYRIC_PROPOSAL) }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+                val controller = requireNotNull(h.presenter.lyricProposal.value)
+                assertTrue(controller.generate(lyricRequest(), SessionApiKey("fake-key"), 0, 4, true))
+                withTimeout(5_000) { controller.state.first { it.phase == LyricProposalPhase.PREVIEW } }
+                val before = h.studio.document.value
+                h.ports.takeFrames = null
+                var preparing: Deferred<ActionResult>? = null
+                when (block) {
+                    0 -> {
+                        h.engine.duringPrepare = { release.await() }
+                        preparing = async { h.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())) }
+                        h.until { it.unavailable[ContinuousCapability.LYRIC_PROPOSAL] == ContinuousUnavailable.BUSY }
+                    }
+                    1 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+                    2 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+                    3 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+                }
+                h.until { !it.permits(ContinuousCapability.LYRIC_PROPOSAL) }
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+                assertEquals(1, ai.opened)
+                assertFalse(controller.applyPreview(), "An already open preview must also refuse block $block")
+                assertEquals(LyricAiProblem.APPLY_REJECTED, controller.state.value.failure?.problem)
+                assertEquals(before, h.studio.document.value)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseLyricProposal), "Close is allowed during block $block")
+                assertEquals(1, ai.closed)
+                release.complete(Unit); preparing?.await()
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+                assertEquals(before.project, h.studio.document.value.project)
+            } finally { release.complete(Unit); h.close() }
+        }
+    }
+
+    @Test fun lyricProposalDialogStageAndHostCloseDiscardLateRepliesAndCloseEachProviderOnce() = runBlocking<Unit> {
+        for (exit in 0..2) {
+            val reply = CompletableDeferred<LyricProviderResult>()
+            val ai = FakeLyricPort { withContext(NonCancellable) { reply.await() } }
+            val h = Harness(lyricProposal = ai)
+            try {
+                h.until { it.permits(ContinuousCapability.LYRIC_PROPOSAL) }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.Lyrics(LyricAction.Open)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+                h.until { !it.lyrics.open }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+                assertEquals(1, ai.opened, "Duplicate open owns only one provider")
+                val controller = requireNotNull(h.presenter.lyricProposal.value)
+                val before = h.studio.document.value
+                val key = SessionApiKey("fake-key")
+                assertTrue(controller.generate(lyricRequest(), key, 0, 4, true))
+                withTimeout(5_000) { while (ai.calls == 0) delay(5) }
+                when (exit) {
+                    0 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseLyricProposal))
+                    1 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+                    2 -> h.presenter.close()
+                }
+                assertNull(h.presenter.lyricProposal.value)
+                controller.close() // The panel disposes after the host already ended this session.
+                assertEquals(1, ai.closed)
+                assertFailsWith<IllegalStateException> { key.useValue { it } }
+                reply.complete(lyricSuccess()); delay(30)
+                assertEquals(LyricProposalPhase.CLOSED, controller.state.value.phase)
+                assertFalse(controller.applyPreview())
+                assertEquals(before, h.studio.document.value)
+                if (exit == 0) {
+                    assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+                    assertNotSame(controller, h.presenter.lyricProposal.value)
+                    assertEquals(2, ai.opened)
+                    assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseLyricProposal))
+                    assertEquals(2, ai.closed)
+                }
+            } finally { reply.complete(lyricSuccess()); h.close() }
+        }
+    }
+
+    private class FakeLyricPort(private val respond: suspend () -> LyricProviderResult = { lyricSuccess() }) : LyricProposalPort {
+        override val availability = LyricProviderAvailability.AVAILABLE
+        @Volatile var opened = 0
+        @Volatile var closed = 0
+        @Volatile var calls = 0
+        override fun createProvider(): LlmProvider {
+            opened++
+            return object : LlmProvider {
+                override suspend fun lyrics(request: LyricRequest, key: SessionApiKey): LyricProviderResult { calls++; return respond() }
+                override fun close() { closed++ }
+            }
+        }
+    }
+
+    private companion object {
+        fun lyricRequest() = LyricRequest("gemini-test", "風", "", LyricLanguage.JAPANESE, LyricStyle.SONG, "", "", "")
+        fun lyricSuccess() = LyricProviderResult.Success(LyricProposal("提案", LyricLanguage.JAPANESE,
+            frozenListOf(ProposalSection("A", LyricSectionKind.VERSE, 4,
+                frozenListOf(ProposalLine.create("風の音", "かぜのおと", LyricLanguage.JAPANESE))))), LyricUsage(2, 3, 5), "gemini-test")
+    }
+
     @Test fun reviewAHitPressedBeforeTheSongsEndSurvivesItsLaterRelease() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -1748,7 +1851,7 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
-    @Test fun theOriginalIsScratchedWithinItsRangeAndPlaysOnOnlyIfItWasPlaying() = runBlocking<Unit> {
+    @Test fun originalHandKeepsItsOwnPositionWhileSourceContinuesIndependently() = runBlocking<Unit> {
         val h = Harness { it.copy(source = it.source!!.copy(range = FrameRange(12_000, 90_000))) }
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginal))
@@ -1757,17 +1860,17 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
             h.ports.originalFrame = 40_000
             val plays = h.ports.plays
-            h.ports.playing = false
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
-            assertEquals(listOf(40_000L, 12_000L, 90_000L), h.ports.scratchStarts.single(), "Held where it was heard, within its range")
-            assertFalse(h.until { !it.originalPlaying }.originalPlaying, "Paused under the hand")
-            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)), "Not while held")
-            // Pulled far back: it stops at the range start.
-            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(-2_000f))
-            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 12_000.0) delay(5) }
-            assertTrue(h.ports.scratchMoves.all { it.first >= 12_000.0 })
-            // The engine plays on what the hand paused; the editor shows what it did and starts nothing itself.
             h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(listOf(12_000L, 12_000L, 90_000L), h.ports.scratchStarts.single(), "HAND begins at its own range, independently of SOURCE")
+            assertTrue(h.until { it.originalPlaying }.originalPlaying)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)), "Not while held")
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(2_000f))
+            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 89_999.0) delay(5) }
+            assertTrue(h.ports.scratchMoves.all { it.first >= 12_000.0 })
+            assertEquals(40_000L, h.ports.originalFrame)
+            assertTrue(h.ports.seeks.isEmpty())
+            assertEquals((89_999f - 12_000f) / 78_000f, h.presenter.readout().scratchFraction, .0001f)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
             assertEquals(1, h.ports.scratchEnds)
             assertTrue(h.until { it.originalPlaying }.originalPlaying)
@@ -1775,7 +1878,9 @@ class ContinuousEditorPresenterTest {
             // Held again while paused: letting go leaves it paused.
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopOriginal))
             h.ports.playing = false
+            h.ports.originalFrame = 50_000
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(89_999L, h.ports.scratchStarts.last().first(), "The next HAND hold does not follow a later SOURCE position")
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
             assertFalse(h.until { !it.originalPlaying }.originalPlaying)
             assertEquals(plays, h.ports.plays)
@@ -1803,7 +1908,7 @@ class ContinuousEditorPresenterTest {
             // The cut fader is not queued behind the hold either.
             h.presenter.onAction(ContinuousEditorAction.SetScratchCut(.5f))
             withTimeout(300) { h.presenter.state.first { it.scratch?.cut == .5f } }
-            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 10_000 + 50 * NORMAL_FRAMES_PER_PIXEL) delay(5) }
+            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 50 * NORMAL_FRAMES_PER_PIXEL) delay(5) }
             assertEquals(.5f, h.ports.scratchCuts.last(), "Closed halfway before the first move")
             h.presenter.onAction(ContinuousEditorAction.ScratchLetGo)
             withTimeout(2_000) { while (h.ports.scratchEnds != 1) delay(5) }
@@ -1856,6 +1961,71 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.SAVE)))
             assertTrue(h.engine.commands.last() is EngineCommand.ScratchEnd)
             assertNull(h.until { it.stage == ContinuousStage.SAVE }.scratch)
+        } finally { h.close() }
+    }
+
+    @Test fun handGainCutAndSourceVolumeAreIndependentAndDoNotEditTheProject() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetOriginalMonitorGain(.7f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetHandMonitorGain(.3f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchCut(.5f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(.3f, h.ports.handGain)
+            assertEquals(.5f, h.ports.scratchCuts.last())
+            assertEquals(.7f, h.ports.originalGain)
+            h.ports.handFrame = 24_000.5
+            h.ports.originalFrame = 90_000
+            assertEquals(24_000.5 / 96_000, h.presenter.readout().scratchFraction.toDouble(), .00001,
+                "The HAND marker uses its rendered native frame, not SOURCE or its last requested move")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(.15f, h.engine.commands.filterIsInstance<EngineCommand.ScratchCut>().last().gain, .0001f)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchCut(1f)))
+            withTimeout(2_000) { while (h.engine.commands.filterIsInstance<EngineCommand.ScratchCut>().last().gain != .3f) delay(5) }
+            assertEquals(before, h.studio.document.value, "Listening levels never create document history")
+        } finally { h.close() }
+    }
+
+    @Test fun handOwnershipEndsOnceOnOutputLossStageExitAndCancelledLoading() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            h.ports.scratchGate = CompletableDeferred()
+            h.presenter.onAction(ContinuousEditorAction.ScratchHold)
+            withTimeout(2_000) { while (h.ports.scratchEntered == 0) delay(5) }
+            h.presenter.onAction(ContinuousEditorAction.CloseScratch)
+            h.until { it.scratch == null }
+            assertTrue(h.ports.scratchStarts.isEmpty(), "No late HAND starts after closing a loading panel")
+            assertEquals(0, h.ports.scratchEnds)
+            assertEquals(0, h.ports.stops, "Closing HAND does not stop SOURCE")
+            h.ports.scratchGate = null
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.SAVE)))
+            assertEquals(1, h.ports.scratchEnds)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertEquals(1, h.ports.scratchEnds)
+            assertEquals(0, h.ports.stops)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            h.until { it.scratch?.holding == true }
+            h.engine.transport = h.engine.transport.copy(outputAttached = false)
+            h.until { it.scratch?.holding == false }
+            assertEquals(2, h.ports.scratchEnds)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertEquals(2, h.ports.scratchEnds)
         } finally { h.close() }
     }
 
@@ -1931,6 +2101,7 @@ class ContinuousEditorPresenterTest {
 
     private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
                           system: SystemAudioCapture? = null,
+                          lyricProposal: LyricProposalPort? = null,
                           presenterDispatcher: CoroutineDispatcher = Dispatchers.Default,
                           rescue: Notice.Rescued? = null, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -1957,7 +2128,7 @@ class ContinuousEditorPresenterTest {
                     return ExportReceipt(request.frames.toLong(), 48_000, 2, request.bits)
                 }
             }, engine), initial)
-        val ports = FakePorts(kits, voice, render).also { it.engine = engine; it.system = system }
+        val ports = FakePorts(kits, voice, render).also { it.engine = engine; it.system = system; it.lyricProposal = lyricProposal }
         /** Waits for [condition]; generous, since a loaded CI runner can take a while, and a wait that never ends fails. */
         suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(5000) { presenter.state.first(condition) }
         val presenter = ContinuousEditorPresenter(studio, CoroutineScope(scope.coroutineContext + presenterDispatcher), ports)
@@ -2003,6 +2174,7 @@ class ContinuousEditorPresenterTest {
         override fun snapshot() = transport
     }
     private class FakePorts(private val kits: Boolean = false, voice: Boolean = false, private val render: Boolean = false) : ContinuousEditorPorts {
+        override var lyricProposal: LyricProposalPort? = null
         override val padRenderAvailable get() = render
         val renders = java.util.concurrent.CopyOnWriteArrayList<Pad>()
         @Volatile var renderFails = false
@@ -2031,6 +2203,8 @@ class ContinuousEditorPresenterTest {
         @Volatile var duringReading: (() -> Unit)? = null
         var songGain = 1f
         var originalGain = 1f
+        @Volatile var handGain = 1f
+        @Volatile var handFrame = -1.0
         var exportFrames = 0L
         override val originalAvailable = true
         override val separationAvailable = true
@@ -2057,9 +2231,10 @@ class ContinuousEditorPresenterTest {
             return ExportRequest(Location("export"), frames.toInt())
         }
         override suspend fun peaks(asset: Asset) = listOf(.2f, .4f)
-        override fun readout() = ContinuousEditorReadout(originalFrame = originalFrame)
+        override fun readout() = ContinuousEditorReadout(originalFrame = originalFrame, handSourceFrame = handFrame)
         override suspend fun setSongMonitorGain(gain: Float): Boolean { songGain = gain; return true }
         override suspend fun setOriginalMonitorGain(gain: Float): Boolean { originalGain = gain; return true }
+        override suspend fun setHandMonitorGain(gain: Float): Boolean { handGain = gain; return true }
         override fun originalPlaying(): Boolean? {
             val value = playing
             duringReading?.let { duringReading = null; it() }
@@ -2073,14 +2248,19 @@ class ContinuousEditorPresenterTest {
         @Volatile var scratchEnds = 0
         /** How long taking the original takes, as loading it can. */
         @Volatile var scratchStartDelay = 0L
+        @Volatile var scratchEntered = 0
+        @Volatile var scratchGate: CompletableDeferred<Unit>? = null
+        override fun cancelOriginalPreparation() { scratchGate?.cancel() }
         override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long): Boolean {
+            scratchEntered++
+            scratchGate?.await()
             delay(scratchStartDelay)
-            scratchStarts += listOf(from, start, end); return true
+            scratchStarts += listOf(from, start, end); handFrame = from.toDouble(); return true
         }
-        override suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean { scratchMoves += position to durationFrames; return true }
+        override suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean { scratchMoves += position to durationFrames; handFrame = position; return true }
         override suspend fun scratchOriginalCut(gain: Float): Boolean { scratchCuts += gain; return true }
-        override suspend fun scratchOriginalEnd(): Boolean { scratchEnds++; return true }
-        override suspend fun stopOriginal(): Boolean { stops++; return true }
+        override suspend fun scratchOriginalEnd(): Boolean { scratchEnds++; handFrame = -1.0; return true }
+        override suspend fun stopOriginal(): Boolean { stops++; handFrame = -1.0; return true }
         override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
         @Volatile var clipboardWorks = true

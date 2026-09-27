@@ -4,6 +4,7 @@ package com.choplab.ui
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -12,15 +13,125 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.choplab.core.ProgramCompiler
+import com.choplab.core.DocumentState
+import com.choplab.core.ai.*
+import com.choplab.core.model.Project
 import com.choplab.engine.Tempo
+import com.choplab.ui.ai.*
 import java.io.File
 import java.util.Locale
 import kotlin.test.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
+
+    @Test fun lyricProposalOpensFromVocalAndKeepsStopAndCloseReachableWithoutEnablingUnverifiedSending() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
+                Triple(1440, 1024, 1f), Triple(390, 844, 2f), Triple(844, 390, 2f))) {
+                Locale.setDefault(locale)
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val state = mutableStateOf(ContinuousEditorFixture.state())
+                val active = mutableStateOf<LyricProposalController?>(null)
+                var closes = 0
+                val controller = LyricProposalController(MutableStateFlow(DocumentState(Project(), 0)), object : LlmProvider {
+                    override suspend fun lyrics(request: LyricRequest, key: SessionApiKey): LyricProviderResult = error("Unverified host cannot send")
+                    override fun close() { closes++ }
+                }, LyricProposalApply { _, _ -> error("No preview exists") }, this)
+                val send: (ContinuousEditorAction) -> Unit = { action ->
+                    actions += action
+                    when (action) {
+                        is ContinuousEditorAction.Lyrics -> state.value = state.value.copy(lyrics = state.value.lyrics.copy(open = action.action == LyricAction.Open))
+                        ContinuousEditorAction.OpenLyricProposal -> {
+                            state.value = state.value.copy(lyrics = state.value.lyrics.copy(open = false)); active.value = controller
+                        }
+                        ContinuousEditorAction.CloseLyricProposal -> { controller.close(); active.value = null }
+                        else -> Unit
+                    }
+                }
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, send, lyricProposal = active.value)
+                }
+                try {
+                    scene.settle()
+                    scene.click("ce-lyrics-open")
+                    scene.click("ce-lyrics-ai-open")
+                    withTimeout(5_000) { while (scene.tag("ce-lyrics-panel") != null || scene.semanticsOwners.size != 2) scene.settle() }
+                    assertSame(controller, active.value)
+                    assertNotNull(scene.tag("ai-lyrics-panel"))
+                    for (tag in listOf("ce-lyric-proposal-stop", "ce-lyric-proposal-close")) {
+                        val node = requireNotNull(scene.tag(tag))
+                        assertTrue(node.size.height >= 48)
+                        assertTrue(node.boundsInRoot.width >= node.size.width - 1 && node.boundsInRoot.height >= node.size.height - 1)
+                        assertTrue(node.boundsInRoot.left >= 0 && node.boundsInRoot.right <= width && node.boundsInRoot.top >= 0 && node.boundsInRoot.bottom <= height)
+                    }
+                    scene.click("ce-lyric-proposal-stop")
+                    assertEquals(ContinuousEditorAction.StopAll, actions.last())
+                    assertTrue(requireNotNull(scene.tag("ai-generate")).config.contains(SemanticsProperties.Disabled))
+                    scene.capture("lyric-proposal-${locale.language}-${width}x$height-font${(font * 100).toInt()}.png")
+                    scene.click("ce-lyric-proposal-close")
+                    scene.awaitDialogClosed("ce-lyric-proposal-dialog")
+                    assertNull(active.value)
+                    assertEquals(1, closes, "Button and panel disposal close their provider only once")
+                    assertEquals(LyricProposalPhase.CLOSED, controller.state.value.phase)
+                    scene.click("ce-lyrics-open")
+                    state.value = state.value.copy(capabilities = state.value.capabilities - ContinuousCapability.LYRIC_PROPOSAL)
+                    scene.settle()
+                    assertTrue(requireNotNull(scene.tag("ce-lyrics-ai-open")).config.contains(SemanticsProperties.Disabled))
+                } finally { scene.close(); controller.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun recordingGuideSettingsAndStopRemainReachableAndEarlyPadPressesAreNotRecorded() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) {
+                Locale.setDefault(locale)
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).copy(
+                    recordingGuide = RecordingGuideState(settingsEnabled = true)))
+                var countIn = 0
+                val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, actions::add, { ContinuousEditorReadout(songFrame = 0, countInBeatsRemaining = countIn) })
+                }
+                try {
+                    scene.settle()
+                    scene.click("ce-pad-details")
+                    for (bars in 0..2) {
+                        scene.click("ce-count-in-$bars")
+                        assertEquals(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(bars)), actions.last())
+                    }
+                    scene.click("ce-metronome")
+                    assertEquals(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.Metronome(true)), actions.last())
+                    scene.capture("recording-guide-${locale.language}-font200.png")
+                    countIn = 4
+                    state.value = state.value.copy(recordingVoice = true,
+                        recordingGuide = RecordingGuideState(countInBars = 1, beatsRemaining = 4, settingsEnabled = false))
+                    scene.settle()
+                    assertTrue(requireNotNull(scene.tag("ce-metronome")).config.contains(SemanticsProperties.Disabled))
+                    scene.click("ce-record-voice")
+                    assertEquals(ContinuousEditorAction.StopVoice, actions.last())
+                    assertEquals(LiveRegionMode.Polite, requireNotNull(scene.tag("ce-count-in-progress")).config[SemanticsProperties.LiveRegion])
+                    state.value = state.value.copy(recordingVoice = false, recordingHits = true)
+                    scene.settle()
+                    actions.clear()
+                    scene.click("ce-pad-0")
+                    assertFalse(actions.any { it is ContinuousEditorAction.BeginHit }, "Read the audio clock at pointer-down, not a stale display tick")
+                    countIn = 0
+                    actions.clear()
+                    scene.click("ce-pad-0")
+                    assertEquals(1, actions.count { it is ContinuousEditorAction.BeginHit })
+                    assertEquals(1, actions.count { it is ContinuousEditorAction.EndHit })
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
 
     @Test fun separationSelectionIsAnExplicitSourceAction() = runBlocking<Unit> {
         val actions = mutableListOf<ContinuousEditorAction>()
@@ -241,11 +352,13 @@ class ContinuousEditorTest {
     @Test fun playableRowsAndEditingControlsFitRealWindowsAndLargeText() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
+        // A slower transition exposes clicks sent while a dismissed dialog still owns the modal layer.
+        val motion = object : MotionDurationScale { override val scaleFactor = 2f }
         try {
             for ((width, height, font) in listOf(Triple(1440, 1024, 1f), Triple(1920, 1080, 1f),
                     Triple(390, 844, 1f), Triple(390, 844, 1.3f), Triple(390, 844, 2f), Triple(844, 390, 1f), Triple(844, 390, 2f))) {
                 val actions = mutableListOf<ContinuousEditorAction>()
-                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext + motion) {
                     ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.PADS, canUndo = true,
                         capabilities = ContinuousCapability.entries.toSet()), actions::add, ContinuousEditorFixture::readout)
                 }
@@ -298,10 +411,14 @@ class ContinuousEditorTest {
                     scene.click("ce-pad-details")
                     scene.click("ce-pad-fill")
                     assertNotNull(scene.tag("ce-pad-fill-panel"))
+                    val beforeFill = actions.size
                     scene.click("ce-pad-fill-apply")
+                    assertEquals(1, actions.size - beforeFill, "$name: one pointer applies Fill once")
                     assertIs<ContinuousEditorAction.FillPad>(actions.last())
+                    scene.awaitDialogClosed("ce-pad-fill-panel")
+                    val beforePlay = actions.size
                     scene.click("ce-pad-play")
-                    assertEquals(ContinuousEditorAction.OpenPadPlay, actions.last())
+                    assertEquals(listOf(ContinuousEditorAction.OpenPadPlay), actions.drop(beforePlay), "$name: one pointer opens PAD play")
                     for (tag in listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch")) {
                         scene.reach(tag)
                         val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
@@ -1298,6 +1415,21 @@ class ContinuousEditorTest {
             try {
                 scene.settle()
                 assertNotNull(scene.tag("ce-scratch-panel"))
+                val sourceFace = requireNotNull(scene.tag("ce-scratch-source-platter")).boundsInRoot
+                val handFace = requireNotNull(scene.tag("ce-scratch-platter")).boundsInRoot
+                assertTrue(sourceFace.width >= 260f && handFace.width >= 260f)
+                assertTrue(sourceFace.right < handFace.left, "SOURCE and HAND are separate, large left and right surfaces")
+                scene.capture("source-hand-desktop-initial.png")
+                scene.click("ce-scratch-source-play")
+                assertEquals(ContinuousEditorAction.PlayOriginal, actions.last())
+                scene.click("ce-scratch-source-stop")
+                assertEquals(ContinuousEditorAction.StopOriginal, actions.last())
+                scene.click("ce-scratch-source-start")
+                assertEquals(ContinuousEditorAction.SeekOriginal(0), actions.last())
+                scene.tag("ce-scratch-source-gain")!!.config[SemanticsActions.SetProgress].action!!.invoke(.2f)
+                assertEquals(ContinuousEditorAction.SetOriginalMonitorGain(.2f), actions.last())
+                scene.tag("ce-scratch-hand-gain")!!.config[SemanticsActions.SetProgress].action!!.invoke(.6f)
+                assertEquals(ContinuousEditorAction.SetHandMonitorGain(.6f), actions.last())
                 assertTrue(scene.texts().any { it.startsWith("選んだPAD") } && scene.texts().any { it.startsWith("原曲の範囲") })
                 scene.click("ce-scratch-target-original")
                 assertEquals(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL), actions.last())
@@ -1341,18 +1473,37 @@ class ContinuousEditorTest {
 
             // A phone at double text size reaches the platter, the fader and the close button by scrolling.
             val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
-                ContinuousEditor(state.value, {}, { ContinuousEditorReadout(scratchFraction = .6f) })
+                ContinuousEditor(state.value, { actions += it }, { ContinuousEditorReadout(scratchFraction = .6f) })
             }
             try {
                 phone.settle()
                 assertNotNull(phone.tag("ce-scratch-platter"))
+                phone.click("ce-scratch-source-stop")
+                assertEquals(ContinuousEditorAction.StopOriginal, actions.last())
                 phone.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
                 phone.settle()
                 val close = requireNotNull(phone.tag("ce-scratch-close")).boundsInRoot
                 assertTrue(close.height >= 48f && close.bottom <= 844f, "Close stays reachable: $close")
+                for (tag in listOf("ce-scratch-hand-stop", "ce-scratch-stop-all")) {
+                    val stop = requireNotNull(phone.tag(tag)).boundsInRoot
+                    assertTrue(stop.height >= 48f && stop.top >= 0f && stop.bottom <= 844f, "$tag stays visible while the panels scroll")
+                }
                 val cut = requireNotNull(phone.tag("ce-scratch-cut")).boundsInRoot
                 assertTrue(cut.width >= 150f, "The cut fader keeps a usable width at large text: $cut")
                 phone.capture("beat-scratch-phone-font200.png")
+                phone.reach("ce-scratch-platter")
+                actions.clear()
+                val point = requireNotNull(phone.tag("ce-scratch-platter")).boundsInRoot.center
+                phone.sendPointerEvent(PointerEventType.Press, point, type = PointerType.Mouse,
+                    buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                phone.settle()
+                state.value = state.value.copy(scratch = null)
+                phone.settle()
+                phone.sendPointerEvent(PointerEventType.Release, point, type = PointerType.Mouse,
+                    buttons = PointerButtons(), button = PointerButton.Primary)
+                phone.settle()
+                assertEquals(1, actions.count { it == ContinuousEditorAction.ScratchHold })
+                assertEquals(1, actions.count { it == ContinuousEditorAction.ScratchLetGo }, "Disposing a held panel releases it once")
             } finally { phone.close() }
         } finally { Locale.setDefault(previous) }
     }
@@ -1363,6 +1514,16 @@ class ContinuousEditorTest {
     }
     private fun ImageComposeScene.tag(value: String) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == value }
     private suspend fun ImageComposeScene.settle() { repeat(8) { render(System.nanoTime()).close(); delay(12) } }
+    private suspend fun ImageComposeScene.awaitDialogClosed(value: String) {
+        // Compose removes the dialog's semantics before its exit animation releases the input-blocking layer.
+        // Wait for the editor to be the only owner; a missing dialog tag alone is not readiness for a click.
+        repeat(80) {
+            render(System.nanoTime()).close()
+            delay(12)
+            if (tag(value) == null && semanticsOwners.size == 1) return
+        }
+        fail("$value did not release its modal layer: ${semanticsOwners.size} semantics owners remain")
+    }
     /** Scroll real ancestor containers until the target has its complete hit rectangle, then use pointer input. */
     private suspend fun ImageComposeScene.reach(value: String) {
         fun SemanticsNode.contains(tag: String): Boolean = config.getOrNull(SemanticsProperties.TestTag) == tag || children.any { it.contains(tag) }

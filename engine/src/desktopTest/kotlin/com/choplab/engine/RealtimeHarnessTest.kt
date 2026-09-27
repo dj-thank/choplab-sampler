@@ -12,6 +12,82 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RealtimeHarnessTest {
+    @Test fun clickSourceHandAndMaximumArrangementPadFadeMixAllocateZeroAndStopCompletely() {
+        val source = PcmAsset.fromMono(FloatArray(8_192) { (.001 * sin(2 * PI * it / 64)).toFloat() })
+        val pads = (0 until 30).map { Pad(it, source, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
+        val arrangement = Arrangement((0 until 32).map { ArrangementClip("clip-$it", source, 0, trackIndex = it % 16) })
+        val engine = EngineCore(EngineProgram(pads, arrangement = arrangement), EngineConfig(controlCapacity = 128, eventCapacity = 2))
+        var id = 0L
+        engine.controls.offer(EngineCommand.SetOriginalSource(0, id++, OriginalSource(source, loop = true)))
+        engine.controls.offer(EngineCommand.PlayOriginalSource(0, id++))
+        engine.controls.offer(EngineCommand.ScratchOriginalStart(0, id++, 1_000.0, 500, 7_500))
+        for (i in 0 until 30) engine.controls.offer(EngineCommand.Trigger(0, id++, i))
+        engine.controls.offer(EngineCommand.SetMetronome(0, id++, true))
+        engine.controls.offer(EngineCommand.StartSequence(0, id++))
+        engine.render(FloatArray(2))
+        repeat(16) { engine.controls.offer(EngineCommand.Trigger(engine.frame, id++, 0)) }
+        engine.render(FloatArray(2))
+        assertEquals(32, engine.activeVoiceCount) // 30 PAD + HAND + click, all within the existing 32 slots.
+        assertEquals(16, engine.fadeVoiceCount)
+        assertEquals(32, engine.activeClipCount)
+        assertTrue(engine.originalPlaying)
+        val output = FloatArray(192 * 2)
+        engine.render(output)
+        val perBlock = 22
+        fun command(frame: Long, order: Long, block: Int, index: Int): EngineCommand = when (index) {
+            0 -> EngineCommand.Seek(frame, order, 0) // Strike the click on every block as well as reading all 32 clips.
+            1 -> EngineCommand.SeekOriginalSource(frame, order, (block * 193L) % 8_192)
+            2 -> EngineCommand.SetOriginalPitch(frame, order, if (block % 2 == 0) 24f else 17f)
+            3 -> EngineCommand.ScratchOriginalPosition(frame, order, if (block % 2 == 0) 7_499.0 else 500.0, 192)
+            4 -> EngineCommand.SetHandMonitorGain(frame, order, if (block % 3 == 0) .5f else 1f)
+            5 -> EngineCommand.ScratchOriginalCut(frame, order, if (block % 5 == 0) 0f else 1f)
+            else -> EngineCommand.Trigger(frame, order, 0)
+        }
+        repeat(10_000) { block ->
+            repeat(perBlock) { engine.controls.offer(command(engine.frame, id++, block, it)) }
+            engine.render(output)
+        }
+        val blocks = 10_000
+        val base = engine.frame
+        val commands = Array(blocks * perBlock) { i -> command(base + i / perBlock * 192L, id++, i / perBlock, i % perBlock) }
+        val times = LongArray(blocks)
+        val bean = ManagementFactory.getThreadMXBean() as ThreadMXBean
+        assertTrue(bean.isThreadAllocatedMemorySupported)
+        bean.isThreadAllocatedMemoryEnabled = true
+        val thread = Thread.currentThread().id
+        repeat(100_000) { bean.getThreadAllocatedBytes(thread); System.nanoTime() }
+        var renderAllocated = 0L
+        var firstAllocatingBlock = -1
+        for (block in 0 until blocks) {
+            for (j in 0 until perBlock) engine.controls.offer(commands[block * perBlock + j])
+            val before = bean.getThreadAllocatedBytes(thread)
+            val start = System.nanoTime()
+            engine.render(output)
+            times[block] = System.nanoTime() - start
+            val delta = bean.getThreadAllocatedBytes(thread) - before
+            renderAllocated += delta
+            if (delta != 0L && firstAllocatingBlock < 0) firstAllocatingBlock = block
+        }
+        times.sort()
+        println("CLICK_SOURCE_HAND JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=$blocks " +
+            "arrangement=32 primary=30PAD+1HAND+1click fade=16 SOURCE=1 maxPcmReaders=80 sourcePitch=24/17st handSpeed=+/-8 " +
+            "renderAllocatedBytes=$renderAllocated firstAllocatingBlock=$firstAllocatingBlock p99ns=${times[9899]} maxNs=${times.last()} " +
+            "p99BlockFraction=${times[9899] / 4_000_000.0}; desktop synthetic only")
+        assertEquals(0L, renderAllocated)
+        assertEquals(0L, engine.rejectedVoices)
+        assertEquals(32, engine.activeVoiceCount)
+        assertEquals(32, engine.activeClipCount)
+        assertTrue(engine.originalPlaying)
+        engine.controls.offer(EngineCommand.StopAll(engine.frame, id))
+        val stopped = FloatArray(400 * 2)
+        engine.render(stopped)
+        assertEquals(0, engine.activeVoiceCount)
+        assertEquals(0, engine.fadeVoiceCount)
+        assertEquals(0, engine.activeClipCount)
+        assertEquals(-1.0, engine.handSourceFrame)
+        assertTrue(stopped.drop(EngineCore.STOP_TAIL_FRAMES * 2).all { it == 0f })
+    }
+
     @Test fun combinedArrangementPadsFadeAndSeekAllocateZeroAcrossTenThousandBlocks() {
         val source = PcmAsset.fromMono(FloatArray(4096) { (.001 * sin(2 * PI * it / 64)).toFloat() })
         val pads = (0 until 32).map { Pad(it, source, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
@@ -171,7 +247,7 @@ class RealtimeHarnessTest {
             renderAllocated += bean.getThreadAllocatedBytes(thread) - renderBefore
         }
         println("SCRATCH JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=1500 blocks=$blocks " +
-            "loopVoices=31 padScratch=1 originalScratch=1 renderAllocatedBytes=$renderAllocated; desktop synthetic only")
+            "primaryBudget=32 handReservesOne padScratch=1 renderAllocatedBytes=$renderAllocated; desktop synthetic only")
         assertEquals(0L, renderAllocated)
     }
 

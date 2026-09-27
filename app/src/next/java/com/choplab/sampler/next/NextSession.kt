@@ -10,8 +10,10 @@ import com.choplab.core.*
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.jvm.*
+import com.choplab.jvm.ai.GeminiLyricProvider
 import com.choplab.sampler.R
 import com.choplab.ui.*
+import com.choplab.ui.ai.LyricProposalPort
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -81,6 +83,9 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
+            override fun createProvider() = GeminiLyricProvider()
+        }
         override val lyricFiles: LyricFiles = object : LyricFiles {
             override suspend fun importLrc(): String? {
                 val uri = pickers.pick(PickerKind.IMPORT_LRC) ?: return null
@@ -110,6 +115,7 @@ class NextSession private constructor(
             return backend.audition.seek(asset, frame)
         }
         override suspend fun setOriginalMonitorGain(gain: Float) = backend.audition.originalGain(gain)
+        override suspend fun setHandMonitorGain(gain: Float) = backend.audition.handGain(gain)
         override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long) = backend.audition.scratchStart(asset, from, start, end)
         override suspend fun scratchOriginalTo(position: Double, durationFrames: Int) = backend.audition.scratchTo(position, durationFrames)
         override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
@@ -119,7 +125,8 @@ class NextSession private constructor(
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
             backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
-        override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
+        override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
+            handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining)
         override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
         override val drumKitsAvailable get() = true
         override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
@@ -138,6 +145,16 @@ class NextSession private constructor(
                 VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
             }
         override fun cueVoice() = voice.cue()
+        override val recordingCue: RecordingCuePort = object : RecordingCuePort {
+            override suspend fun startArmedVoice(maxSeconds: Int): VoiceStart = if (!microphone.request()) VoiceStart.DENIED
+                else when (voice.start(maxSeconds, waitForCue = true)) {
+                    VoiceTakes.Start.STARTED -> VoiceStart.STARTED
+                    VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
+                    VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+                }
+            override fun cueVoiceAt(engineFrame: Long): Boolean = backend.engine.estimatedOutputNanos(engineFrame)?.let(voice::cueAt) == true
+            override fun armingTimedOut() = voice.armingTimedOut
+        }
         override fun voiceFull() = voice.full
         override fun voiceRecordedMillis() = voice.recordedMillis
         override fun voiceInterrupted() = voice.interrupted

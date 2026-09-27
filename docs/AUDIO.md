@@ -8,7 +8,9 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 
 初期案は32voice＋16fade枠。scratch/preview/metronomeも予算に含め、満杯時のsteal/release規則を試験します。Stop/Panicはqueue満杯でも消失させず、鳴り続けやstale voiceを防ぎます。1.5ms lookaheadと-1dBFS sample ceilingはlimiter候補であり、遅延・tailを全経路で扱います。
 
-位置scratchは開始、時刻付き絶対source位置、CUT、終了を受けます。touch/mouse/将来jogをadapterで位置へ変換し、更新周期、補間、負速、端、idle silence、解放fadeと元transportの復帰を一つの実装で定義します。現在のengineは、鳴っているPADを鳴っている位置でつかみ、通常の8倍を超える移動は断らずに8倍で追って遅れて着き、動き始めと停止を2 msでfadeし（停止中も直前の帯域で読む）、止めたまま離しても鳴らさず、元transportへはつかんだ時に再生中だったものだけを一度だけ戻します（PADの元voiceと原曲の再生）。
+位置scratchは開始、時刻付き絶対source位置、CUT、終了を受けます。touch/mouse/将来jogをadapterで位置へ変換し、更新周期、補間、負速、端、idle silence、解放fadeを一つの実装で定義します。鳴っているPADをつかむ操作は、その位置から開始し、つかんだ時に再生中だったPAD voiceだけを一度だけ復帰させます。通常の8倍を超える移動は8倍で追って遅れて着き、動き始めと停止は2 msでfadeし、止めたまま離しても鳴らしません。
+
+原曲のSOURCEとHANDは同じ不変PCMを共有し、再生位置・音量・CUT・操作所有は独立します。HANDを動かしてもSOURCEは再生を続け、HAND終了はSOURCEのseek・pause・resumeを発行しません。SOURCEのseek/playもHANDを移動させません。HANDは移動中だけ発音し、終了・取消・画面移動・出力切断で一度だけ解放します。SOURCE停止・交換・全停止はHANDも解放し、残る96frameのscalar fadeは旧PCMを保持しません。HANDはprimary32枠の1枠を予約し、満杯時はtyped拒否、CUTと専用gainは別に扱います。配置32＋primary32＋fade16＋SOURCE1の最大81同時readerと128MiBの常駐予算を維持します。原曲監視とHANDは書出しへ混ぜず、PADの加工・配置は制作のmix経路を使います。
 
 ## 固定するfixtureと試験
 
@@ -33,6 +35,10 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 入力event時刻、要求frame、適用frame、出力遅延、往復実測、手動補正を分けます。OS timestampだけで指先から耳までの遅延を断定しません。固定60ms補正をroute別測定へ置換し、時計領域、長時間drift、route/format変更と補正失効を扱います。
 
 ボーカルの±5msは指定した有線/USB等のroute・rate・bufferで補正後の目標です。反復数・p95/最大・測定誤差を添え、Bluetoothや全端末への保証にしません。UNPROCESSED/VOICE_PERFORMANCEは対応確認とfallbackを実装。punch/compのcrossfadeは10msを初期案とし短区間でclampします。
+
+clickは共有engineのmonitorだけに出し、通常のWAV書出しgraphへ混ぜません。マイクが室内のmonitor音を拾うかどうかは実routeで別に確認します。count-inは0/1/2小節、四分音符と小節頭を同じ音声clockで鳴らし、開始cueまで曲のsequence frameを進めません。Stop/Pause/Seek/tempo変更・program交換・出力喪失でcueを取り消し、export engineはmonitor専用命令を拒否します。click用slotも既存32voice予算内に予約します。
+
+マイクを先にarmedにして、cueより前のsamplesは録音fileへ入れません。準備待ちの上限20秒と録音の最大5分を分けます。permission/command拒否・遅着・取消はscratchを破棄し、PADの開始前押下も制作へ記録しません。engine cueからhost出力時刻への変換はdriverの推定であり、入力遅延・往復補正や±5msの実測合格ではありません。
 
 ## ミックス・声・分離
 

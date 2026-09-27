@@ -174,12 +174,14 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.2f)); Fill(Modifier.weight(1f)); Play(Modifier.weight(1.1f)) }
             }
         }
+        CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
+        ContinuousRecordingGuidePanel(state.recordingGuide) { onAction(ContinuousEditorAction.RecordingGuide(it)) }
         }
         CEBanks(state, onAction)
         if (details) Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
         }
         CEPads(state, onAction, Modifier.padding(top = 12.dp), maximumSide = fittedPadSide, onPadDrag = onDrag, onPadDrop = onDrop,
-            hit = if (state.recordingHits) ({ readout().songFrame }) else null)
+            hit = if (state.recordingHits) ({ readout().let { if (it.countInBeatsRemaining > 0) null else it.songFrame } }) else null)
         Column(Modifier.fillMaxWidth().onSizeChanged { footerHeight = it.height }.testTag("ce-pad-footer"),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -198,7 +200,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         }
         @Composable fun Drums(modifier: Modifier) = CEActionButton(stringResource(if (state.installedDrumKit == null) Res.string.ce_add_drums else Res.string.ce_change_drums),
             ContinuousEditorAction.AddDrum, state, ContinuousCapability.ADD_DRUM, onAction, modifier, tag = "ce-add-drums")
-        @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
+        @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice || state.startingVoiceRecording) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-voice")
             else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
         @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
@@ -218,9 +220,12 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         CELyricsButton(state, onAction, Modifier.fillMaxWidth())
         }
         // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.
-        if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
+        if (state.recordingGuide.beatsRemaining > 0) Text(stringResource(Res.string.ce_count_in_remaining, state.recordingGuide.beatsRemaining),
+            Modifier.fillMaxWidth().testTag("ce-count-in-progress").semantics { liveRegion = LiveRegionMode.Polite },
+            fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
+        else if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
-        if (state.recordingHits) Text(stringResource(Res.string.ce_hits_hint), Modifier.fillMaxWidth().testTag("ce-hits-hint")
+        if (state.recordingHits && state.recordingGuide.beatsRemaining == 0) Text(stringResource(Res.string.ce_hits_hint), Modifier.fillMaxWidth().testTag("ce-hits-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
     }
     }

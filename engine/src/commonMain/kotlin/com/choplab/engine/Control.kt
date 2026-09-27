@@ -23,6 +23,12 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
     }
     class Pause(effectiveFrame: Long, orderId: Long) : EngineCommand(effectiveFrame, orderId)
     class Resume(effectiveFrame: Long, orderId: Long) : EngineCommand(effectiveFrame, orderId)
+    /** Monitor-only click preference, absent from the document and offline rendering. */
+    class SetMetronome(effectiveFrame: Long, orderId: Long, val enabled: Boolean) : EngineCommand(effectiveFrame, orderId)
+    /** ACK immediately; the engine resumes at the published frame after 0, 1 or 2 four-beat bars. */
+    class CountInAndResume(effectiveFrame: Long, orderId: Long, val bars: Int) : EngineCommand(effectiveFrame, orderId) {
+        init { require(bars in 0..2) }
+    }
     sealed class OriginalSourceCommand(effectiveFrame: Long, orderId: Long) : EngineCommand(effectiveFrame, orderId)
     class SetOriginalSource(effectiveFrame: Long, orderId: Long, val source: OriginalSource?) : OriginalSourceCommand(effectiveFrame, orderId)
     class PlayOriginalSource(effectiveFrame: Long, orderId: Long) : OriginalSourceCommand(effectiveFrame, orderId)
@@ -33,13 +39,16 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
     class SetOriginalMonitorGain(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
         init { require(gain.isFinite() && gain in 0f..2f) }
     }
+    sealed class OriginalHandCommand(effectiveFrame: Long, orderId: Long) : OriginalSourceCommand(effectiveFrame, orderId)
+    class SetHandMonitorGain(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalHandCommand(effectiveFrame, orderId) {
+        init { require(gain.isFinite() && gain in 0f..1f) }
+    }
     /**
      * Scratches the loaded original by hand between [startFrame] and [endFrame] (source frames, end exclusive), from
-     * [sourceFrame]: its playback pauses until the hand lets go, and it sounds only while the hand moves it, like a PAD
-     * scratch.
+     * [sourceFrame]. HAND has its own cursor, gain and CUT; SOURCE keeps its position and playback state.
      */
     class ScratchOriginalStart(effectiveFrame: Long, orderId: Long, val sourceFrame: Double, val startFrame: Int, val endFrame: Int) :
-        OriginalSourceCommand(effectiveFrame, orderId) {
+        OriginalHandCommand(effectiveFrame, orderId) {
         init { require(sourceFrame.isFinite() && startFrame >= 0 && endFrame > startFrame) }
     }
     /**
@@ -47,14 +56,14 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
      * than [EngineCore.MAX_SCRATCH_SPEED]: a faster hand arrives late.
      */
     class ScratchOriginalPosition(effectiveFrame: Long, orderId: Long, val sourceFrame: Double, val durationFrames: Int) :
-        OriginalSourceCommand(effectiveFrame, orderId) {
+        OriginalHandCommand(effectiveFrame, orderId) {
         init { require(sourceFrame.isFinite() && durationFrames in 1..48_000) }
     }
-    class ScratchOriginalCut(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
+    class ScratchOriginalCut(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalHandCommand(effectiveFrame, orderId) {
         init { require(gain.isFinite() && gain in 0f..1f) }
     }
-    /** Ends the original's scratch: playback it paused plays on once from there; otherwise it stays paused. */
-    class ScratchOriginalEnd(effectiveFrame: Long, orderId: Long) : OriginalSourceCommand(effectiveFrame, orderId)
+    /** Fades and releases HAND once. Never seeks, pauses or resumes SOURCE. */
+    class ScratchOriginalEnd(effectiveFrame: Long, orderId: Long) : OriginalHandCommand(effectiveFrame, orderId)
     /** Varispeed for listening to the original: pitch and tempo change together, like the earlier app's song key. */
     class SetOriginalPitch(effectiveFrame: Long, orderId: Long, val semitones: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
         init { require(semitones.isFinite() && semitones in -24f..24f) }
@@ -103,21 +112,26 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
     }
     private val song = Lane(capacity)
     private val original = Lane(capacity)
+    private val hand = Lane(capacity)
     @Volatile private var safety: EngineCommand? = null
     @Volatile private var acknowledgedSafety = -1L
     @Volatile private var sourceSafety: EngineCommand? = null
     @Volatile private var acknowledgedSourceSafety = -1L
+    @Volatile private var handSafety: EngineCommand.ScratchOriginalEnd? = null
+    @Volatile private var acknowledgedHandSafety = -1L
     @Volatile var overflowCount = 0L
         private set
     private var lastId = -1L
 
     fun offer(command: EngineCommand): OfferResult {
         val isOriginal = command is EngineCommand.OriginalSourceCommand
-        if ((isOriginal || command is EngineCommand.SetSongMonitorGain) && outputMode == EngineOutputMode.EXPORT) return OfferResult.MONITOR_DISABLED
+        val isHand = command is EngineCommand.OriginalHandCommand
+        if ((isOriginal || command is EngineCommand.SetSongMonitorGain || command is EngineCommand.SetMetronome ||
+                command is EngineCommand.CountInAndResume) && outputMode == EngineOutputMode.EXPORT) return OfferResult.MONITOR_DISABLED
         if (command.orderId <= lastId) return OfferResult.OUT_OF_ORDER
         val globalStop = command is EngineCommand.Panic || command is EngineCommand.StopAll
-        if ((globalStop && (song.full() || original.full() || command.effectiveFrame < maxOf(song.lastFrame, original.lastFrame))) ||
-            (command is EngineCommand.Stop && (song.full() || command.effectiveFrame < song.lastFrame))) {
+        if ((globalStop && (song.full() || original.full() || hand.full() || command.effectiveFrame < maxOf(song.lastFrame, original.lastFrame, hand.lastFrame))) ||
+            (command is EngineCommand.Stop && (song.full() || hand.full() || command.effectiveFrame < maxOf(song.lastFrame, hand.lastFrame)))) {
             val pending = safety
             val live = pending != null && pending.orderId > acknowledgedSafety
             val at = if (live) minOf(pending!!.effectiveFrame, command.effectiveFrame) else command.effectiveFrame
@@ -127,11 +141,12 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
                 else if (all) EngineCommand.StopAll(at, command.orderId) else EngineCommand.Stop(at, command.orderId)
             lastId = command.orderId
             song.lastFrame = command.effectiveFrame
+            hand.lastFrame = command.effectiveFrame
             if (all) original.lastFrame = command.effectiveFrame
             return OfferResult.ACCEPTED
         }
         if ((command is EngineCommand.PauseOriginalSource || (command is EngineCommand.SetOriginalSource && command.source == null)) &&
-            (command.effectiveFrame < original.lastFrame || original.full())) {
+            (command.effectiveFrame < maxOf(original.lastFrame, hand.lastFrame) || original.full() || hand.full())) {
             val pending = sourceSafety
             val live = pending != null && pending.orderId > acknowledgedSourceSafety
             val at = if (live) minOf(pending!!.effectiveFrame, command.effectiveFrame) else command.effectiveFrame
@@ -139,9 +154,18 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
             sourceSafety = if (clear) EngineCommand.SetOriginalSource(at, command.orderId, null) else EngineCommand.PauseOriginalSource(at, command.orderId)
             lastId = command.orderId
             original.lastFrame = command.effectiveFrame
+            hand.lastFrame = command.effectiveFrame
             return OfferResult.ACCEPTED
         }
-        val lane = if (isOriginal) original else song
+        if (command is EngineCommand.ScratchOriginalEnd && (command.effectiveFrame < hand.lastFrame || hand.full())) {
+            val pending = handSafety
+            val at = if (pending != null && pending.orderId > acknowledgedHandSafety) minOf(pending.effectiveFrame, command.effectiveFrame) else command.effectiveFrame
+            handSafety = EngineCommand.ScratchOriginalEnd(at, command.orderId)
+            lastId = command.orderId
+            hand.lastFrame = command.effectiveFrame
+            return OfferResult.ACCEPTED
+        }
+        val lane = if (isHand) hand else if (isOriginal) original else song
         if (command.effectiveFrame < lane.lastFrame) return OfferResult.OUT_OF_ORDER
         if (lane.full()) { overflowCount++; return OfferResult.FULL }
         val leases = when (command) {
@@ -154,16 +178,23 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
         lane.reservations[index] = leases
         lane.write++
         lane.lastFrame = command.effectiveFrame
+        if (globalStop || command is EngineCommand.Stop || command is EngineCommand.SwapProgram ||
+            command is EngineCommand.SetOriginalSource || command is EngineCommand.PauseOriginalSource) hand.lastFrame = command.effectiveFrame
         lastId = command.orderId
         return OfferResult.ACCEPTED
     }
     internal fun peekSong(): EngineCommand? = song.peek()
     internal fun peekOriginal(): EngineCommand? = original.peek()
+    internal fun peekHand(): EngineCommand? = hand.peek()
     internal fun peek(): EngineCommand? {
-        val a = song.peek() ?: return original.peek()
-        val b = original.peek() ?: return a
-        return if (a.effectiveFrame < b.effectiveFrame || (a.effectiveFrame == b.effectiveFrame && a.orderId < b.orderId)) a else b
+        var first = song.peek()
+        val source = original.peek()
+        if (source != null && (first == null || before(source, first))) first = source
+        val held = hand.peek()
+        if (held != null && (first == null || before(held, first))) first = held
+        return first
     }
+    private fun before(a: EngineCommand, b: EngineCommand) = a.effectiveFrame < b.effectiveFrame || (a.effectiveFrame == b.effectiveFrame && a.orderId < b.orderId)
     internal fun peekReservations(source: Boolean): IntArray? {
         val lane = if (source) original else song
         return lane.reservations[lane.read.toInt() and lane.mask]
@@ -176,6 +207,7 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
         lane.commands[index] = null
         lane.read++
     }
+    internal fun removeHand() { val index = hand.read.toInt() and hand.mask; hand.commands[index] = null; hand.read++ }
     internal fun pendingSafety(): EngineCommand? {
         val result = safety
         return if (result != null && result.orderId > acknowledgedSafety) result else null
@@ -186,6 +218,8 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
         return if (result != null && result.orderId > acknowledgedSourceSafety) result else null
     }
     internal fun acknowledgeSourceSafety(id: Long) { acknowledgedSourceSafety = id }
+    internal fun pendingHandSafety(): EngineCommand.ScratchOriginalEnd? = handSafety?.takeIf { it.orderId > acknowledgedHandSafety }
+    internal fun acknowledgeHandSafety(id: Long) { acknowledgedHandSafety = id }
 }
 enum class EngineEventType { APPLIED, LATE, INVALIDATED, VOICE_LIMIT, ASSET_MISS, PROGRAM_MEMORY_LIMIT, INVALID_COMMAND, ARRANGEMENT_OVERLOAD }
 
@@ -249,9 +283,17 @@ class EngineSnapshot {
     @Volatile var originalSourceFrame = 0L
     /** The scratched PAD's source frame, or -1 while no PAD is scratched. */
     @Volatile var scratchFrame = -1.0
+    @Volatile var handSourceFrame = -1.0
+    @Volatile var handMonitorGain = 1f
     @Volatile var originalMonitorGain = 1f
     @Volatile var songMonitorGain = 1f
     @Volatile var tickNumerator = 0L
+    @Volatile var metronomeEnabled = false
+    @Volatile var countInBeatsRemaining = 0
+    /** Absolute engine input frame of the current recording cue; -1 after cancellation. */
+    @Volatile var recordingStartFrame = -1L
+    @Volatile var recordingStartSequenceFrame = 0L
+    @Volatile var recordingStartedFrame = -1L
     @Volatile var peakLeft = 0f
     @Volatile var peakRight = 0f
     @Volatile var lateCommands = 0L
@@ -281,9 +323,16 @@ class LiveReadout internal constructor() {
         data.originalPlaying = engine.originalPlaying
         data.originalSourceFrame = engine.originalSourceFrame
         data.scratchFrame = engine.scratchFrame
+        data.handSourceFrame = engine.handSourceFrame
+        data.handMonitorGain = engine.handMonitorGain
         data.originalMonitorGain = engine.originalMonitorGain
         data.songMonitorGain = engine.songMonitorGain
         data.tickNumerator = engine.tickNumerator
+        data.metronomeEnabled = engine.metronomeEnabled
+        data.countInBeatsRemaining = engine.countInBeatsRemaining
+        data.recordingStartFrame = engine.recordingStartFrame
+        data.recordingStartSequenceFrame = engine.recordingStartSequenceFrame
+        data.recordingStartedFrame = engine.recordingStartedFrame
         data.peakLeft = peakLeft
         data.peakRight = peakRight
         data.lateCommands = engine.lateCommands
@@ -311,9 +360,16 @@ class LiveReadout internal constructor() {
                 target.originalPlaying = data.originalPlaying
                 target.originalSourceFrame = data.originalSourceFrame
                 target.scratchFrame = data.scratchFrame
+                target.handSourceFrame = data.handSourceFrame
+                target.handMonitorGain = data.handMonitorGain
                 target.originalMonitorGain = data.originalMonitorGain
                 target.songMonitorGain = data.songMonitorGain
                 target.tickNumerator = data.tickNumerator
+                target.metronomeEnabled = data.metronomeEnabled
+                target.countInBeatsRemaining = data.countInBeatsRemaining
+                target.recordingStartFrame = data.recordingStartFrame
+                target.recordingStartSequenceFrame = data.recordingStartSequenceFrame
+                target.recordingStartedFrame = data.recordingStartedFrame
                 target.peakLeft = data.peakLeft
                 target.peakRight = data.peakRight
                 target.lateCommands = data.lateCommands

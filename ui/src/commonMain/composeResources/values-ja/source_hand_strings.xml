@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ce_scratch_source_title">原曲を聴く</string>
+    <string name="ce_scratch_hand_title">選んだ音をこする</string>
+    <string name="ce_scratch_source_disc">SOURCE</string>
+    <string name="ce_scratch_hand_disc">HAND</string>
+    <string name="ce_scratch_source_start">頭へ</string>
+    <string name="ce_scratch_hand_gain">手元の音量</string>
+    <string name="ce_scratch_hand_stop">手元を止める</string>
+    <string name="ce_scratch_independent_hint">掴んで左右に動かします。原曲の再生と位置は独立しています。手元の音量とCUTは、こすっている音だけに働きます。</string>
+</resources>

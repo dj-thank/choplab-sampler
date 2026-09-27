@@ -182,8 +182,8 @@ internal object CEColor {
                     0 -> stringResource(Res.string.ce_bank_melody); 1 -> stringResource(Res.string.ce_bank_drums)
                     2 -> stringResource(Res.string.ce_bank_oneshot); 3 -> stringResource(Res.string.ce_bank_voice); else -> ""
                 }
-                CEButton("${'A' + bank.id} ${bank.name.ifBlank { fallback }}", { onAction(ContinuousEditorAction.SelectBank(bank.id)) },
-                    Modifier.width(width).semantics { selected = bank.id == state.selectedBank }, primary = bank.id == state.selectedBank, tag = "ce-bank-${bank.id}")
+                CEBankMetadataButton(bank.id, bank.name.ifBlank { fallback }, bank.color, bank.role, bank.id == state.selectedBank,
+                    { onAction(ContinuousEditorAction.SelectBank(bank.id)) }, Modifier.width(width))
             }
         }
     }
@@ -200,7 +200,7 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
 @Composable internal fun CEPads(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     modifier: Modifier = Modifier, maximumSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity,
     onPadDrag: ((CEPaddedDrag?) -> Unit)? = null, onPadDrop: ((Int, Offset) -> Unit)? = null,
-    capture: (() -> Long)? = null, hit: (() -> Long)? = null) {
+    capture: (() -> Long)? = null, hit: (() -> Long?)? = null) {
     val font = LocalDensity.current.fontScale
     val latestCapture by rememberUpdatedState(capture)
     val latestHit by rememberUpdatedState(hit)
@@ -226,7 +226,9 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                     DisposableEffect(id) { onDispose { release() } }
                     val mode = stringResource(when (pad.mode) { ContinuousPadMode.ONE_SHOT -> Res.string.ce_mode_one; ContinuousPadMode.GATE -> Res.string.ce_mode_gate; ContinuousPadMode.LOOP -> Res.string.ce_mode_loop })
                     val name = pad.name.ifBlank { stringResource(Res.string.ce_empty) }
-                    val description = stringResource(Res.string.ce_pad_semantics, ('A' + state.selectedBank).toString(), id % 16 + 1, name, mode)
+                    val bank = state.banks.firstOrNull { it.id == state.selectedBank }
+                    val bankDescription = bank?.let { bankMetadataDescription(it.id, it.name, it.role) }.orEmpty()
+                    val description = stringResource(Res.string.ce_pad_semantics, ('A' + state.selectedBank).toString(), id % 16 + 1, name, mode) + " · " + bankDescription
                     val selected = id == state.selectedPadId
                     val filled = pad.kind != ContinuousPadKind.EMPTY
                     Box(Modifier.size(side).clip(RoundedCornerShape(8.dp)).background(if (filled) CEColor.FilledPad else CEColor.Empty)

@@ -28,12 +28,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.ui.resources.*
+import com.choplab.ui.ai.LyricProposalController
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-/** User-selected four-stage workspace. This is intentionally not wired into a default host here. */
+/** User-selected four-stage workspace shared by the NEXT hosts. */
 @Composable fun ContinuousEditor(
     state: ContinuousEditorState,
     onAction: (ContinuousEditorAction) -> Unit,
@@ -42,6 +43,7 @@ import kotlin.math.roundToLong
     modifier: Modifier = Modifier,
     /** Output health for the SAVE stage's diagnostics card; without it the card is not shown. */
     diagnostics: (() -> ContinuousDiagnostics?)? = null,
+    lyricProposal: LyricProposalController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -86,108 +88,9 @@ import kotlin.math.roundToLong
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
         CELyricsPanel(state, onAction, readout, refreshKey)
-    }
-}
-
-/**
- * Scratch, opened from the BEAT stage while the song plays on: what is scratched (the selected PAD or the original's
- * range), how far a drag moves it, the platter the hand works, and an independent cut fader.
- */
-@Composable private fun CEScratchPanel(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
-    val sheet = state.scratch ?: return
-    AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.CloseScratch) }, modifier = Modifier.testTag("ce-scratch-panel"),
-        title = { Text(stringResource(Res.string.ce_scratch)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(Res.string.ce_scratch_hint), fontSize = 14.sp, lineHeight = 20.sp)
-                val pad = state.selectedPad
-                val padLabel = "${cePadName(state.selectedPadId)} ${pad?.name.orEmpty()}".trim()
-                val original = state.original
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CEButton(stringResource(Res.string.ce_scratch_pad, padLabel), { onAction(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)) },
-                        Modifier.weight(1f).semantics { selected = sheet.target == ContinuousScratchTarget.PAD },
-                        enabled = sheet.padAvailable && !sheet.holding, primary = sheet.target == ContinuousScratchTarget.PAD, tag = "ce-scratch-target-pad")
-                    CEButton(stringResource(Res.string.ce_scratch_original,
-                        original?.let { ceTime(it.rangeStartFrame, it.sampleRate) } ?: "–", original?.let { ceTime(it.rangeEndFrame, it.sampleRate) } ?: "–"),
-                        { onAction(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)) },
-                        Modifier.weight(1f).semantics { selected = sheet.target == ContinuousScratchTarget.ORIGINAL },
-                        enabled = sheet.originalAvailable && !sheet.holding, primary = sheet.target == ContinuousScratchTarget.ORIGINAL,
-                        tag = "ce-scratch-target-original")
-                }
-                Text(stringResource(Res.string.ce_scratch_sensitivity), fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (option in ContinuousScratchSensitivity.entries) {
-                        CEButton(stringResource(when (option) {
-                            ContinuousScratchSensitivity.FINE -> Res.string.ce_scratch_fine
-                            ContinuousScratchSensitivity.NORMAL -> Res.string.ce_scratch_normal
-                            ContinuousScratchSensitivity.WIDE -> Res.string.ce_scratch_wide
-                        }), { onAction(ContinuousEditorAction.SetScratchSensitivity(option)) },
-                            Modifier.weight(1f).semantics { selected = sheet.sensitivity == option }, primary = sheet.sensitivity == option,
-                            tag = "ce-scratch-${option.name.lowercase()}")
-                    }
-                }
-                val ready = if (sheet.target == ContinuousScratchTarget.PAD) sheet.padAvailable else sheet.originalAvailable
-                CEPlatter(sheet, ready, onAction, readout, refreshKey)
-                CEValueSlider(stringResource(Res.string.ce_scratch_cut), sheet.cut, state, ContinuousCapability.SCRATCH,
-                    { onAction(ContinuousEditorAction.SetScratchCut(it)) }, Modifier.fillMaxWidth(), tag = "ce-scratch-cut", stacked = true)
-            }
-        },
-        confirmButton = { CEButton(stringResource(Res.string.ce_close), { onAction(ContinuousEditorAction.CloseScratch) }, tag = "ce-scratch-close") })
-}
-
-/**
- * The platter: pressed, it holds the sound; dragged left or right, it scratches; released, it lets go. Its mark shows
- * where the sound stands, read live while held. Screen readers get "back" and "forward" as actions.
- */
-@Composable private fun CEPlatter(sheet: ContinuousScratch, ready: Boolean, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
-    val live by CELive(sheet.holding, refreshKey, readout)
-    val latestAction by rememberUpdatedState(onAction)
-    val label = stringResource(Res.string.ce_scratch_platter)
-    val status = stringResource(if (sheet.holding) Res.string.ce_scratch_holding else Res.string.ce_scratch_resting)
-    val back = stringResource(Res.string.ce_scratch_back)
-    val forward = stringResource(Res.string.ce_scratch_forward)
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(200.dp).clip(CircleShape).background(CEColor.Deep)
-            .border(4.dp, if (sheet.holding) CEColor.Orange else CEColor.Ink, CircleShape)
-            .testTag("ce-scratch-platter")
-            .pointerInput(ready) {
-                if (!ready) return@pointerInput
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    latestAction(ContinuousEditorAction.ScratchHold)
-                    var previous = down.position.x
-                    try {
-                        while (true) {
-                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) break
-                            // Every move belongs to the platter while it is held, so the panel never scrolls instead.
-                            change.consume()
-                            val moved = change.position.x - previous
-                            previous = change.position.x
-                            // Screen pixels, as the earlier app counted them.
-                            if (moved != 0f) latestAction(ContinuousEditorAction.ScratchDrag(moved))
-                        }
-                    } finally { latestAction(ContinuousEditorAction.ScratchLetGo) }
-                }
-            }
-            .semantics {
-                contentDescription = label; stateDescription = status
-                if (ready) customActions = listOf(
-                    CustomAccessibilityAction(back) { latestAction(ContinuousEditorAction.ScratchNudge(false)); true },
-                    CustomAccessibilityAction(forward) { latestAction(ContinuousEditorAction.ScratchNudge(true)); true })
-            }) {
-            val radius = size.minDimension / 2
-            for (ring in 1..6) drawCircle(if (ring % 2 == 0) CEColor.Border else CEColor.Empty, radius * (1f - ring * .11f),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f))
-            drawCircle(CEColor.Ink, radius * .28f)
-            drawCircle(if (ready) CEColor.Orange else CEColor.Border, radius * .06f)
-            val angle = live.scratchFraction * 2.0 * kotlin.math.PI - kotlin.math.PI / 2
-            drawLine(if (ready) CEColor.Orange else CEColor.Border, center,
-                Offset(center.x + (kotlin.math.cos(angle) * radius * .8).toFloat(), center.y + (kotlin.math.sin(angle) * radius * .8).toFloat()),
-                strokeWidth = 5f)
+        lyricProposal?.let { CELyricProposalDialog(it, onAction) }
+        CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
+            onAction(ContinuousEditorAction.StopAll)
         }
     }
 }
@@ -467,7 +370,8 @@ import kotlin.math.roundToLong
                     if (state.originalPlaying) ContinuousEditorAction.StopOriginal else ContinuousEditorAction.PlayOriginal,
                     state, ContinuousCapability.ORIGINAL_PLAYBACK, onAction, Modifier.widthIn(min = 100.dp), tag = "ce-original-play")
                 CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
-                    { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.width(190.dp), tag = "ce-source-monitor")
+                    { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.width(190.dp), tag = "ce-source-monitor",
+                    stacked = LocalDensity.current.fontScale > 1.3f)
                 CEButton(stringResource(Res.string.ce_standard_width), { onAction(ContinuousEditorAction.ResetPanes) }, Modifier.widthIn(min = 78.dp), tag = "ce-reset-panes")
             }
         }
@@ -838,6 +742,8 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.HITS_PLACED -> Res.string.ce_hits_placed; ContinuousStatus.HITS_PARTLY -> Res.string.ce_hits_partly
         ContinuousStatus.HITS_EMPTY -> Res.string.ce_hits_empty; ContinuousStatus.HITS_UNCHANGED -> Res.string.ce_hits_unchanged
         ContinuousStatus.MIC_UNAVAILABLE -> Res.string.ce_mic_unavailable; ContinuousStatus.RECORDING_BUSY -> Res.string.ce_recording_busy
+        ContinuousStatus.RECORDING_ARM_TIMEOUT -> Res.string.ce_recording_arm_timeout
+        ContinuousStatus.RECORDING_CUE_CANCELLED -> Res.string.ce_recording_cue_cancelled
         ContinuousStatus.RESCUED -> Res.string.ce_rescued; ContinuousStatus.RESCUED_PARTLY -> Res.string.ce_rescued_partly
         ContinuousStatus.RESCUED_TOO_LONG -> Res.string.ce_rescued_too_long; ContinuousStatus.RESCUED_NOTHING -> Res.string.ce_rescued_nothing
     })

@@ -17,7 +17,9 @@ import com.choplab.jvm.OriginalAudioImportPort
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
+import com.choplab.jvm.ai.GeminiLyricProvider
 import com.choplab.ui.*
+import com.choplab.ui.ai.LyricProposalPort
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -99,9 +101,10 @@ fun main() {
                 }
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
+                val lyricProposal by presenter.lyricProposal.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics)
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, lyricProposal = lyricProposal)
             }
         }
     } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -116,6 +119,9 @@ internal class DesktopEditorPorts(
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     override fun close() = spotify.close()
+    override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
+        override fun createProvider() = GeminiLyricProvider()
+    }
     override val lyricFiles: LyricFiles = DesktopLyricFiles { save ->
         choose(save, listOf("lrc"), if (japanese) { if (save) "歌詞を書き出す" else "歌詞を読み込む" }
             else { if (save) "Export lyrics" else "Import lyrics" })
@@ -135,6 +141,7 @@ internal class DesktopEditorPorts(
         return backend.audition.seek(asset, frame)
     }
     override suspend fun setOriginalMonitorGain(gain: Float) = backend.audition.originalGain(gain)
+    override suspend fun setHandMonitorGain(gain: Float) = backend.audition.handGain(gain)
     override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long) = backend.audition.scratchStart(asset, from, start, end)
     override suspend fun scratchOriginalTo(position: Double, durationFrames: Int) = backend.audition.scratchTo(position, durationFrames)
     override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
@@ -144,7 +151,8 @@ internal class DesktopEditorPorts(
     override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
         backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
-    override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
+    override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
+        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining)
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
     override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
@@ -163,6 +171,15 @@ internal class DesktopEditorPorts(
         VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
     }
     override fun cueVoice() = backend.voice.cue()
+    override val recordingCue: RecordingCuePort = object : RecordingCuePort {
+        override suspend fun startArmedVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds, waitForCue = true)) {
+            VoiceTakes.Start.STARTED -> VoiceStart.STARTED
+            VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
+            VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+        }
+        override fun cueVoiceAt(engineFrame: Long): Boolean = backend.engine.estimatedOutputNanos(engineFrame)?.let(backend.voice::cueAt) == true
+        override fun armingTimedOut() = backend.voice.armingTimedOut
+    }
     override fun voiceFull() = backend.voice.full
     override fun voiceRecordedMillis() = backend.voice.recordedMillis
     override fun voiceInterrupted() = backend.voice.interrupted

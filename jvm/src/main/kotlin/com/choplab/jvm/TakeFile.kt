@@ -36,12 +36,12 @@ class TakeFile(scratch: Path, private val sampleRate: Int, private val channels:
     }
 
     /** Appends [count] interleaved samples and drops what no longer fits; a sample that is not finite becomes silence. */
-    fun write(samples: FloatArray, count: Int) {
-        require(count in 0..samples.size && count % channels == 0)
+    fun write(samples: FloatArray, count: Int, offset: Int = 0) {
+        require(offset in 0..samples.size && count in 0..samples.size - offset && count % channels == 0 && offset % channels == 0)
         val kept = minOf((maxFrames - frames) * channels, count.toLong()).toInt()
         var at = 0
         for (index in 0 until kept) {
-            val sample = samples[index].let { if (it.isFinite()) it else 0f }
+            val sample = samples[offset + index].let { if (it.isFinite()) it else 0f }
             if (sample != 0f) heard = true
             val bits = sample.toRawBits()
             bytes[at] = bits.toByte(); bytes[at + 1] = (bits ushr 8).toByte()

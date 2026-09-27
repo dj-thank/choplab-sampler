@@ -115,10 +115,12 @@ class NextActivity : ComponentActivity() {
         LaunchedEffect(session) { session.messages.collect { Toast.makeText(this@NextActivity, it, Toast.LENGTH_LONG).show() } }
         val state by session.presenter.state.collectAsState()
         val refresh by session.presenter.refreshKey.collectAsState()
+        val lyricProposal by session.presenter.lyricProposal.collectAsState()
         val failed by session.backend.persistenceFailure.collectAsState()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("next-editor")) {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics)
+                session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics,
+                lyricProposal = lyricProposal)
         }
     }
 

@@ -1,0 +1,31 @@
+<resources>
+    <string name="bp_bank_edit">BANK の名前・色・役割</string>
+    <string name="bp_pad_edit">PAD の左右・ADSR</string>
+    <string name="bp_bank_title">BANK %1$s</string>
+    <string name="bp_bank_description">BANK %1$s、%2$s、役割: %3$s</string>
+    <string name="bp_pad_title">PAD %1$s</string>
+    <string name="bp_name">名前</string>
+    <string name="bp_color">色</string>
+    <string name="bp_role">役割</string>
+    <string name="bp_label_hint">1〜48文字</string>
+    <string name="bp_color_hint">6桁の16進数（例: #4477AA）</string>
+    <string name="bp_role_hint">自由なラベル（48文字以内）。音の送り先は変わりません。</string>
+    <string name="bp_pan">左右の位置（%）</string>
+    <string name="bp_pan_hint">−100 は左・0 は中央・100 は右</string>
+    <string name="bp_attack">立ち上がり / Attack（ms）</string>
+    <string name="bp_decay">減衰 / Decay（ms）</string>
+    <string name="bp_sustain">持続音量 / Sustain（%）</string>
+    <string name="bp_release">余韻 / Release（ms）</string>
+    <string name="bp_time_hint">0〜1,000 ms</string>
+    <string name="bp_sustain_hint">0〜100%</string>
+    <string name="bp_release_hint">0 より大きく、最大 1,000 ms（約 0.021 ms 単位）</string>
+    <string name="bp_sound_hint">適用するまで音は変わりません。適用時にこの PAD の発音を止めます。配置済みの音は変わりません。</string>
+    <string name="bp_cancel">取消</string>
+    <string name="bp_apply">適用</string>
+    <string name="bp_busy">処理が終わるまでお待ちください。</string>
+    <string name="bp_recording">録音を終えてから編集してください。</string>
+    <string name="bp_empty_pad">この PAD に音を割り当ててください。</string>
+    <string name="bp_stale">制作または選択が変わりました。閉じて開き直してください。</string>
+    <string name="bp_invalid">各項目の下に示した範囲を確認してください。</string>
+    <string name="bp_apply_failed">変更を適用できませんでした。制作は元のままです。</string>
+</resources>
