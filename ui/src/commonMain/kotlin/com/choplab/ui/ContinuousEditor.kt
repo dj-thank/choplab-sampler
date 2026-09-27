@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.ui.resources.*
+import com.choplab.ui.ai.VocalGuideController
 import com.choplab.ui.ai.LyricProposalController
 import com.choplab.ui.pattern.StepPatternController
 import kotlinx.coroutines.delay
@@ -46,12 +47,14 @@ import kotlin.math.roundToLong
     diagnostics: (() -> ContinuousDiagnostics?)? = null,
     lyricProposal: LyricProposalController? = null,
     stepPatterns: StepPatternController? = null,
+    vocalGuide: VocalGuideController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
             val compact = maxWidth < 900.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEHeader(state, onAction, compact, readout, refreshKey)
+                if (state.vocalPreview) Text(stringResource(Res.string.vocal_source_owned), Modifier.testTag("ce-vocal-preview-owner"))
                 if (compact && state.stage == ContinuousStage.BEAT) {
                     // A short window scrolls the source and instrument together. Transport and all-stop stay outside.
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("ce-beat-viewport")) {
@@ -92,6 +95,7 @@ import kotlin.math.roundToLong
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
+        vocalGuide?.let { CEVocalGuideDialog(it, onAction) }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)
         }

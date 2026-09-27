@@ -6,7 +6,7 @@ import com.choplab.core.model.*
 /** Called only on the preview's captured document, followed by Studio's expectedRevision guard. */
 fun FlowPlan.guideEdit(project: Project, prepared: List<PreparedVocalLine>, idPrefix: String): TtsResult<Intent.ApplyVocalGuide> {
     if (prepared.size != rows.size || prepared.map { it.line.id }.distinct().size != prepared.size) return ttsFailure(TtsProblem.INVALID_INPUT)
-    if (project.lyricStructure != structure || rows.any { row -> project.lyrics.none { it.id == row.line.id && it.text == row.line.text } })
+    if (rows.any { row -> project.lyrics.none { it.id == row.line.id && it.text == row.line.text } })
         return ttsFailure(TtsProblem.STALE_DOCUMENT)
     return try {
         requireId(idPrefix)

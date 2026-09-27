@@ -10,10 +10,11 @@ import com.choplab.core.*
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.jvm.*
-import com.choplab.jvm.ai.GeminiLyricProvider
+import com.choplab.jvm.ai.*
 import com.choplab.sampler.R
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.VocalGuidePort
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -43,6 +44,7 @@ class NextSession private constructor(
     val microphone = MicrophonePermission({ context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED })
     private val hasMicrophone = context.packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)
     private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
+    private val speechPreview = SourceVocalPreview(backend, scope)
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
     @Volatile var closedWithoutAutosave = false
         private set
@@ -53,6 +55,7 @@ class NextSession private constructor(
     fun releaseOutput() { backend.engine.releaseOutput() }
     /** Stops the song and the original. Unlike the Stop button it leaves an edit, import, save or export running. */
     suspend fun stopSound() {
+        speechPreview.stop()
         backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
         presenter.finishRecording()
@@ -83,6 +86,11 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
+            override val preview = speechPreview
+            override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort = VocalTtsService(
+                AndroidTtsProvider(context), TtsCache(File(context.cacheDir, "next-tts-cache").toPath()), backend.assets)
+        }
         override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
             override fun createProvider() = GeminiLyricProvider()
         }
