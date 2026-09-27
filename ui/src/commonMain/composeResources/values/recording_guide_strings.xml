@@ -1,0 +1,11 @@
+<resources>
+    <string name="ce_click_on">Metronome: on</string>
+    <string name="ce_click_off">Metronome: off</string>
+    <string name="ce_count_in">Count-in before recording</string>
+    <string name="ce_count_in_off">Off</string>
+    <string name="ce_count_in_bars">%1$d bar(s)</string>
+    <string name="ce_count_in_remaining">Count-in · %1$d beats to recording</string>
+    <string name="ce_click_monitor_only">Click is for listening; it is not included in the song or export.</string>
+    <string name="ce_recording_arm_timeout">Recording preparation timed out. Start again.</string>
+    <string name="ce_recording_cue_cancelled">Recording count-in was cancelled.</string>
+</resources>

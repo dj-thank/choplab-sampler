@@ -34,7 +34,10 @@ data class ExportReceipt(val frames: Long, val sampleRate: Int, val channels: In
  * A microphone take a host recorded and stored: its verified [asset], and the [leadFrames] of it (in the asset's own
  * frames) captured before the song started; negative when its first frame arrived only after the song had started.
  */
-data class VoiceTake(val asset: Asset, val leadFrames: Long) { init { require(leadFrames in -asset.frames..asset.frames) } }
+data class VoiceTake(val asset: Asset, val leadFrames: Long) {
+    // A late short take may start later than its own duration; never silently move it toward the cue.
+    init { require(leadFrames in -300L * asset.sampleRate..asset.frames) }
+}
 interface ExportPort {
     suspend fun export(project: Project, patternId: String, request: ExportRequest): ExportReceipt
     /** Legacy adapters remain usable for Pattern; arrangement support must be explicit. */
@@ -60,6 +63,11 @@ data class TransportState(
     val sequencePaused: Boolean = false,
     /** The scratched PAD's 48 kHz source frame, or -1 while no PAD is scratched. */
     val scratchFrame: Double = -1.0,
+    val metronomeEnabled: Boolean = false,
+    val countInBeatsRemaining: Int = 0,
+    /** Absolute render frame of the recording cue, or -1 when stopped/cancelled. */
+    val recordingStartFrame: Long = -1,
+    val recordingStartSequenceFrame: Long = 0,
 )
 interface EnginePort {
     suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram

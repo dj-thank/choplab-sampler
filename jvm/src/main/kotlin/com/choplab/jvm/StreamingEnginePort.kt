@@ -125,6 +125,7 @@ open class StreamingEnginePort(
     @Volatile private var renderedBlocks = 0L
     /** The device in use, for the diagnostics reader to ask about; the owner alone writes to and closes it. */
     @Volatile private var attachedSink: AudioSink? = null
+    @Volatile private var writtenFrame = -1L
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
     /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
     private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
@@ -240,7 +241,34 @@ open class StreamingEnginePort(
         current?.engine?.readout?.copyInto(snapshot)
         return TransportState(snapshot.frame + (current?.offset ?: 0), snapshot.sequencePlaying, snapshot.programRevision,
             snapshot.activeVoices, snapshot.eventOverflows, statusValue.value.phase == DriverPhase.ATTACHED,
-            sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused, scratchFrame = snapshot.scratchFrame)
+            sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused, scratchFrame = snapshot.scratchFrame,
+            metronomeEnabled = snapshot.metronomeEnabled, countInBeatsRemaining = snapshot.countInBeatsRemaining,
+            recordingStartFrame = if (snapshot.recordingStartFrame < 0) -1 else snapshot.recordingStartFrame + (current?.offset ?: 0),
+            recordingStartSequenceFrame = snapshot.recordingStartSequenceFrame)
+    }
+
+    /**
+     * Control-thread estimate of when an engine input frame reaches this output, including limiter/queued frames.
+     * This is a capture trimming reference, not route calibration: input latency and clock drift remain unmeasured.
+     * No device query, clock read, allocation or callback is added to EngineCore.render.
+     */
+    fun estimatedOutputNanos(engineFrame: Long): Long? {
+        require(engineFrame >= 0)
+        repeat(3) {
+            val generation = engineView
+            val device = attachedSink ?: return null
+            if (statusValue.value.phase != DriverPhase.ATTACHED) return null
+            val written = writtenFrame
+            if (written < 0) return null
+            val now = System.nanoTime()
+            val pending = try { device.pendingFrames().coerceIn(0L, 48_000L) } catch (_: Exception) { return null }
+            if (generation === engineView && device === attachedSink && written == writtenFrame) {
+                val remaining = engineFrame - written + pending + MasterLimiter.LOOKAHEAD_FRAMES
+                if (remaining !in -48_000L..720_000L) return null
+                return now + remaining * 1_000_000_000L / EngineFormat.SAMPLE_RATE
+            }
+        }
+        return null
     }
 
     fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
@@ -324,6 +352,7 @@ open class StreamingEnginePort(
                     // Block times describe this device only.
                     renderedBlocks = 0
                     attachedSink = opened
+                    writtenFrame = requireNotNull(engineView).offset + activeEngine.frame
                     statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults)
                 }
             }
@@ -341,6 +370,7 @@ open class StreamingEnginePort(
 
         fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) { request.dropped = dropped; request.answer.complete(accepted) }
         fun resetToEditingOnly(fault: DriverFault) {
+            writtenFrame = -1
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             sink = null
@@ -447,6 +477,7 @@ open class StreamingEnginePort(
                             LockSupport.parkNanos(1_000_000)
                         }
                     }
+                    if (offset == byteCount) writtenFrame = requireNotNull(engineView).offset + activeEngine.frame
                 } catch (_: Exception) { resetToEditingOnly(DriverFault.WRITE_FAILED) }
             }
         } catch (_: Exception) {
@@ -510,6 +541,8 @@ private fun EngineCommand.relativeTo(offset: Long, wireOrder: Long): EngineComma
         is EngineCommand.Seek -> EngineCommand.Seek(frame, orderId, sequenceFrame)
         is EngineCommand.Pause -> EngineCommand.Pause(frame, orderId)
         is EngineCommand.Resume -> EngineCommand.Resume(frame, orderId)
+        is EngineCommand.SetMetronome -> EngineCommand.SetMetronome(frame, orderId, enabled)
+        is EngineCommand.CountInAndResume -> EngineCommand.CountInAndResume(frame, orderId, bars)
         is EngineCommand.SetOriginalSource -> EngineCommand.SetOriginalSource(frame, orderId, source)
         is EngineCommand.PlayOriginalSource -> EngineCommand.PlayOriginalSource(frame, orderId)
         is EngineCommand.PauseOriginalSource -> EngineCommand.PauseOriginalSource(frame, orderId)

@@ -138,7 +138,9 @@ class DetachedEnginePort(private val compiler: ProgramCompiler) : EnginePort {
     override fun snapshot(): TransportState {
         engine.readout.copyInto(snapshot)
         return TransportState(snapshot.frame, snapshot.sequencePlaying, snapshot.programRevision, snapshot.activeVoices, snapshot.eventOverflows, outputAttached = false,
-            sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused)
+            sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused,
+            metronomeEnabled = snapshot.metronomeEnabled, countInBeatsRemaining = snapshot.countInBeatsRemaining,
+            recordingStartFrame = snapshot.recordingStartFrame, recordingStartSequenceFrame = snapshot.recordingStartSequenceFrame)
     }
 }
 
