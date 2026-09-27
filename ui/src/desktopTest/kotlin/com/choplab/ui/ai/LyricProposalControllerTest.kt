@@ -9,6 +9,24 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.*
 
 class LyricProposalControllerTest {
+    @Test fun closeDuringValidationCannotPublishRetainAKeyOrStartALateProviderJob() = runBlocking<Unit> {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val fixture = Fixture(clock = { entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS)); 0L })
+        val key = SessionApiKey("fake-key")
+        try {
+            val generating = async(Dispatchers.Default) { fixture.controller.generate(request(), key, 0, 4, true) }
+            withContext(Dispatchers.IO) { assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            fixture.controller.close()
+            release.countDown()
+            assertFalse(generating.await())
+            assertFailsWith<IllegalStateException> { key.useValue { it } }
+            assertEquals(0, fixture.provider.calls.get())
+            assertEquals(LyricProposalPhase.CLOSED, fixture.controller.state.value.phase)
+            assertEquals(0, fixture.edits)
+        } finally { release.countDown(); fixture.close() }
+    }
+
     @Test fun previewNeverEditsAndOnlyOneExplicitApplyCommitsTheCapturedRevision() = runBlocking<Unit> {
         val fixture = Fixture()
         try {

@@ -46,7 +46,8 @@ class LyricProposalController(
     private var basedOnRevision: Long? = null
     private var retryAt = 0L
     private var cooldown: Job? = null
-    @Volatile private var closed = false
+    private val closing = MutableStateFlow(false)
+    private val closed get() = closing.value
     @Volatile private var work: Job? = null
     @Volatile private var key: SessionApiKey? = null
 
@@ -84,6 +85,8 @@ class LyricProposalController(
         }
         work?.cancel(); key?.close()
         key = sessionKey
+        // Dialog/host close is synchronous and may win while this request is validating under the mutex.
+        if (closed) { sessionKey.close(); key = null; return@withLock false }
         val token = ++generation
         val snapshot = document.value
         basedOnRevision = snapshot.revision
@@ -162,10 +165,12 @@ class LyricProposalController(
 
     /** Host/dialog lifetime owns the provider. Close cannot trigger an edit or retain the proposal/credentials. */
     fun close() {
-        closed = true
+        if (!closing.compareAndSet(false, true)) return
         work?.cancel(); key?.close(); key = null
-        provider.close(); owner.cancel()
-        mutable.value = LyricProposalState(phase = LyricProposalPhase.CLOSED)
+        try { provider.close() } finally {
+            owner.cancel()
+            mutable.value = LyricProposalState(phase = LyricProposalPhase.CLOSED)
+        }
     }
     private fun publish(value: LyricProposalState) {
         mutable.update { if (closed) LyricProposalState(phase = LyricProposalPhase.CLOSED) else value }
