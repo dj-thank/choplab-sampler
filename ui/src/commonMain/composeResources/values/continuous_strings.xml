@@ -57,6 +57,8 @@
     <string name="ce_bank_voice">Voice</string>
     <string name="ce_empty">Empty</string>
     <string name="ce_pad_help">Tap to listen · drag into your song</string>
+    <string name="ce_pad_details_show">%1$s controls</string>
+    <string name="ce_pad_details_hide">Hide %1$s controls</string>
     <string name="ce_audition">Listen</string>
     <string name="ce_loop_pad">Loop this sound</string>
     <string name="ce_stop_loop">Stop this loop</string>

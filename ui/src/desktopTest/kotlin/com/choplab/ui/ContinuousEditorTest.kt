@@ -114,14 +114,18 @@ class ContinuousEditorTest {
                     scene.settle()
                     assertNotNull(scene.tag("ce-stage-${stage.name}"))
                     if (stage == ContinuousStage.BEAT) {
+                        val pad = requireNotNull(scene.tag("ce-pad-0")).boundsInRoot
+                        assertTrue(pad.width > 100f && pad.height == pad.width, "The instrument fills its width with square PADs: $pad")
+                        scene.capture("beat-desktop.png")
                         listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch").forEach { tag ->
+                            scene.reach(tag)
                             val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
-                            assertTrue(bounds.height >= 48 && bounds.bottom <= 910f, "Reference bottom actions must remain visible: $tag $bounds")
+                            assertTrue(bounds.height >= 48 && bounds.bottom <= 1024f, "Instrument actions scroll into view: $tag $bounds")
                         }
                         assertTrue(requireNotNull(scene.tag("ce-song-seek")).boundsInRoot.width > 600, "Wide song transport must use the available width")
                         assertTrue(requireNotNull(scene.tag("ce-clip-scratch-1")).boundsInRoot.height >= 93.9f, "All four reference tracks must fit without clipping the last clip")
                     }
-                    scene.capture("${stage.name.lowercase()}-desktop.png")
+                    scene.capture(if (stage == ContinuousStage.BEAT) "beat-desktop-controls.png" else "${stage.name.lowercase()}-desktop.png")
                 }
                 finally { scene.close() }
             }
@@ -133,6 +137,100 @@ class ContinuousEditorTest {
                 finally { scene.close() }
             }
         } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun playableRowsAndEditingControlsFitRealWindowsAndLargeText() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            for ((width, height, font) in listOf(Triple(1440, 1024, 1f), Triple(1920, 1080, 1f),
+                    Triple(390, 844, 1f), Triple(390, 844, 1.3f), Triple(390, 844, 2f), Triple(844, 390, 1f), Triple(844, 390, 2f))) {
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.PADS, canUndo = true,
+                        capabilities = ContinuousCapability.entries.toSet()), actions::add, ContinuousEditorFixture::readout)
+                }
+                try {
+                    scene.settle()
+                    val name = "playable-${width}x${height}-font${(font * 100).toInt()}"
+                    scene.capture("$name-initial.png")
+                    for (tag in listOf("ce-stop-all", "ce-song-stop", "ce-nav-BEAT")) {
+                        val node = requireNotNull(scene.tag(tag))
+                        val bounds = node.boundsInRoot
+                        assertTrue(bounds.width >= 48 && bounds.height >= 48 && bounds.bottom <= height, "$tag stays visible: $bounds")
+                    }
+                    // A phone starts with a whole row ready to play; short landscape scrolls to that row.
+                    if (height < 600) scene.reach("ce-pad-0")
+                    val first = requireNotNull(scene.tag("ce-pad-0"))
+                    val top = first.boundsInRoot.top
+                    for (id in 0..3) {
+                        val node = requireNotNull(scene.tag("ce-pad-$id"))
+                        val bounds = node.boundsInRoot
+                        assertTrue(bounds.width >= 64 && bounds.height >= 64 && bounds.top == top && bounds.bottom <= height,
+                            "A whole playable row is visible: PAD $id $bounds at $width×$height font $font")
+                        assertEquals(node.size.width.toFloat(), bounds.width, .5f, "PAD $id is not clipped sideways")
+                        assertEquals(node.size.height.toFloat(), bounds.height, .5f, "PAD $id is not clipped vertically")
+                        assertEquals(bounds.width, bounds.height, .5f, "PAD $id stays square")
+                    }
+                    if (width >= 900) {
+                        val grid = requireNotNull(scene.tag("ce-pad-grid")).size.width
+                        assertEquals(grid.toFloat(), first.size.width * 4f + 18f, 4f, "Wide PADs use the grid width")
+                    }
+                    scene.capture("$name-pads.png")
+                    scene.click("ce-pad-0")
+                    assertEquals(listOf(ContinuousEditorAction.SelectPad(0), ContinuousEditorAction.TapPad(0)), actions.takeLast(2))
+                    scene.click("ce-bank-7")
+                    assertEquals(ContinuousEditorAction.SelectBank(7), actions.last())
+                    scene.click("ce-bank-0")
+                    assertEquals(ContinuousEditorAction.SelectBank(0), actions.last())
+                    scene.click("ce-undo")
+                    assertEquals(ContinuousEditorAction.Undo, actions.last())
+                    // Compact PAD editing is deliberately opened before seeking its actions (the old WIP failure).
+                    if (width < 900) scene.click("ce-pad-details")
+                    scene.click("ce-pad-fill")
+                    assertNotNull(scene.tag("ce-pad-fill-panel"))
+                    scene.click("ce-pad-fill-apply")
+                    assertIs<ContinuousEditorAction.FillPad>(actions.last())
+                    scene.click("ce-pad-play")
+                    assertEquals(ContinuousEditorAction.OpenPadPlay, actions.last())
+                    for (tag in listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch")) {
+                        scene.reach(tag)
+                        val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
+                        assertTrue(bounds.height >= 48 && bounds.bottom <= height, "$tag is reachable: $bounds")
+                        scene.click(tag)
+                    }
+                    assertTrue(ContinuousEditorAction.RecordHits in actions && ContinuousEditorAction.RecordVoice in actions)
+                    scene.capture("$name-controls.png")
+                    scene.click("ce-stop-all")
+                    scene.click("ce-song-stop")
+                    assertEquals(listOf(ContinuousEditorAction.StopAll, ContinuousEditorAction.StopSong), actions.takeLast(2))
+                    scene.reach("ce-source-monitor")
+                    val monitor = requireNotNull(scene.tag("ce-source-monitor"))
+                    assertTrue(monitor.touchBoundsInRoot.width >= 48 && monitor.touchBoundsInRoot.height >= 48,
+                        "Original monitoring keeps its touch target: ${monitor.touchBoundsInRoot}")
+                    requireNotNull(monitor.config.getOrNull(SemanticsActions.SetProgress)?.action)(.4f)
+                    assertEquals(ContinuousEditorAction.SetOriginalMonitorGain(.4f), actions.last())
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun scrollingTheCompactPadGridNeverPlaysOrHoldsAPad() = runBlocking<Unit> {
+        for (mode in listOf(ContinuousPadMode.ONE_SHOT, ContinuousPadMode.GATE)) {
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val state = ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.PADS)
+            val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.copy(pads = state.pads.map { if (it.id == 0) it.copy(mode = mode) else it }), actions::add)
+            }
+            try {
+                scene.settle()
+                val before = requireNotNull(scene.tag("ce-pad-0")).positionInRoot.y
+                scene.swipe(requireNotNull(scene.tag("ce-pad-0")).boundsInRoot.center, Offset(0f, -100f))
+                assertTrue(requireNotNull(scene.tag("ce-pad-0")).positionInRoot.y < before - 20f, "Dragging a PAD scrolls the compact instrument")
+                assertTrue(actions.none { it is ContinuousEditorAction.TapPad || it is ContinuousEditorAction.HoldPad || it is ContinuousEditorAction.PlacePad },
+                    "Scroll cannot play, hold or place $mode: $actions")
+            } finally { scene.close() }
+        }
     }
 
     @Test fun originalIdentityAndMonitoringRemainSeparateAcrossStagesAndPadSelection() = runBlocking<Unit> {
@@ -430,6 +528,8 @@ class ContinuousEditorTest {
         }
         try {
             phone.settle()
+            phone.click("ce-pad-details")
+            phone.reach("ce-pad-fill")
             val opener = requireNotNull(phone.tag("ce-pad-fill"))
             requireNotNull(opener.config[SemanticsActions.OnClick].action)()
             phone.settle()
@@ -870,6 +970,7 @@ class ContinuousEditorTest {
                 ContinuousEditor(state.value, { actions += it }, { ContinuousEditorFixture.readout().copy(songFrame = songFrame) })
             }
             suspend fun press(tag: String, move: Offset = Offset.Zero) {
+                scene.reach(tag)
                 val center = requireNotNull(scene.tag(tag)) { tag }.boundsInRoot.center
                 songFrame = 100_000L
                 scene.sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
@@ -885,6 +986,7 @@ class ContinuousEditorTest {
             try {
                 scene.settle()
                 // Beside adding drums, in the one row of actions under the PADs.
+                scene.reach("ce-record-hits")
                 val drums = requireNotNull(scene.tag("ce-add-drums")).boundsInRoot
                 val record = requireNotNull(scene.tag("ce-record-hits")).boundsInRoot
                 assertEquals(drums.top, record.top, .5f)
@@ -1081,7 +1183,33 @@ class ContinuousEditorTest {
     }
     private fun ImageComposeScene.tag(value: String) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == value }
     private suspend fun ImageComposeScene.settle() { repeat(8) { render(System.nanoTime()).close(); delay(12) } }
+    /** Scroll real ancestor containers until the target has its complete hit rectangle, then use pointer input. */
+    private suspend fun ImageComposeScene.reach(value: String) {
+        fun SemanticsNode.contains(tag: String): Boolean = config.getOrNull(SemanticsProperties.TestTag) == tag || children.any { it.contains(tag) }
+        repeat(3) {
+            val ancestors = nodes().filter { it.contains(value) && it.config.getOrNull(SemanticsActions.ScrollBy)?.action != null }
+            for (ancestor in ancestors) {
+                val node = requireNotNull(tag(value)) { value }
+                val area = ancestor.boundsInRoot
+                if (area.width <= 0 || area.height <= 0) continue
+                val x = node.positionInRoot.x
+                val y = node.positionInRoot.y
+                val dx = if (ancestor.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange) != null &&
+                    (x < area.left || x + node.size.width > area.right)) x - area.left else 0f
+                val dy = if (ancestor.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null &&
+                    (y < area.top || y + node.size.height > area.bottom)) y - area.top else 0f
+                if (dx != 0f || dy != 0f) {
+                    requireNotNull(ancestor.config.getOrNull(SemanticsActions.ScrollBy)?.action)(dx, dy)
+                    settle()
+                }
+            }
+        }
+        val node = requireNotNull(tag(value)) { value }
+        assertTrue(node.boundsInRoot.width >= node.size.width - 1f && node.boundsInRoot.height >= node.size.height - 1f,
+            "$value must have its full hit rectangle after scrolling: ${node.boundsInRoot} / ${node.size}")
+    }
     private suspend fun ImageComposeScene.click(tag: String) {
+        reach(tag)
         val center = requireNotNull(tag(tag)) { tag }.boundsInRoot.center
         sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
         render(System.nanoTime()).close()
@@ -1095,6 +1223,15 @@ class ContinuousEditorTest {
             render(System.nanoTime()).close(); delay(15)
         }
         sendPointerEvent(PointerEventType.Release, start + distance, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+        settle()
+    }
+    private suspend fun ImageComposeScene.swipe(start: Offset, distance: Offset) {
+        sendPointerEvent(PointerEventType.Press, start, type = PointerType.Touch)
+        repeat(5) { index ->
+            sendPointerEvent(PointerEventType.Move, start + distance * ((index + 1) / 5f), type = PointerType.Touch)
+            render(System.nanoTime()).close(); delay(15)
+        }
+        sendPointerEvent(PointerEventType.Release, start + distance, type = PointerType.Touch)
         settle()
     }
     private fun ImageComposeScene.capture(name: String) { render(System.nanoTime()).use { image -> requireNotNull(image.encodeToData()).use { File(output, name).writeBytes(it.bytes) } } }

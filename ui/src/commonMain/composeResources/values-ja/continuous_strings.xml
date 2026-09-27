@@ -57,6 +57,8 @@
     <string name="ce_bank_voice">ボイス</string>
     <string name="ce_empty">空</string>
     <string name="ce_pad_help">PADで試聴 · ドラッグで曲へ</string>
+    <string name="ce_pad_details_show">%1$s の操作</string>
+    <string name="ce_pad_details_hide">%1$s の操作を閉じる</string>
     <string name="ce_audition">試聴</string>
     <string name="ce_loop_pad">この音をループ</string>
     <string name="ce_stop_loop">このループを止める</string>
