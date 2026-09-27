@@ -14,17 +14,19 @@ object EngineFormat {
     const val MAX_RESIDENT_BYTES = 128L * 1024 * 1024
 }
 
-/** Owns a defensive copy. Neither the caller nor a Program can mutate published PCM. */
-class PcmAsset private constructor(private val pcm: FloatArray) {
-    val frameCount: Int get() = pcm.size / 2
-    val residentBytes: Long get() = pcm.size.toLong() * 4
+/** Owns defensive resident samples or a bounded immutable-page cache. Published samples never mutate. */
+class PcmAsset private constructor(private val pcm: FloatArray?, val pages: PagedPcm? = null) {
+    val frameCount: Int get() = pcm?.size?.div(2) ?: pages!!.frameCount
+    val residentBytes: Long get() = pcm?.size?.toLong()?.times(4) ?: pages!!.capacityBytes
+    val cacheMisses: Long get() = pages?.misses ?: 0
     fun sample(frame: Int, channel: Int): Float {
         require(frame in 0 until frameCount && channel in 0..1)
-        return pcm[frame * 2 + channel]
+        return at(frame, channel)
     }
-    internal fun at(frame: Int, channel: Int): Float = pcm[frame * 2 + channel]
+    internal fun at(frame: Int, channel: Int): Float = pcm?.get(frame * 2 + channel) ?: pages!!.sample(frame, channel)
 
     companion object {
+        fun paged(pages: PagedPcm): PcmAsset = PcmAsset(null, pages)
         fun fromInterleaved(samples: FloatArray, maxBytes: Long = EngineFormat.MAX_RESIDENT_BYTES): PcmAsset {
             require(samples.isNotEmpty() && samples.size % 2 == 0)
             require(maxBytes in 8..EngineFormat.MAX_RESIDENT_BYTES && samples.size.toLong() * 4 <= maxBytes)

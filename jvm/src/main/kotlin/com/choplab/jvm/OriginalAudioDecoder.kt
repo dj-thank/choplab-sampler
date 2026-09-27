@@ -19,6 +19,9 @@ import java.security.MessageDigest
 interface OriginalAudioDecoder : Closeable {
     fun inspect(path: Path, hash: String, cancelled: () -> Boolean = { false }): WavInfo
     fun decode(path: Path, hash: String, cancelled: () -> Boolean = { false }): WavAudio
+    /** Hosts override this with a disk-backed decode for long material. Caller owns its lifetime. */
+    fun openPcm(path: Path, hash: String, cancelled: () -> Boolean = { false }): PcmFrameSource =
+        MemoryFrameSource(decode(path, hash, cancelled))
     override fun close() = Unit
 }
 
