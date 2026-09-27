@@ -32,11 +32,13 @@ interface MicInput : AutoCloseable {
 class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                     private val waitForCue: Boolean = false,
                     private val nanoTime: () -> Long = System::nanoTime,
-                    private val window: VoiceCaptureWindow? = null) {
+                    private val window: VoiceCaptureWindow? = null,
+                    reserved: PcmMemoryBudget.Reservation? = null) {
     init { require(window == null || (waitForCue && window.frames48k <= maxSeconds * 48_000L)) }
     private val rate = input.sampleRate
     private val channels = input.channels
-    private val take = TakeFile(scratch, rate, channels, maxSeconds.toLong() * rate)
+    private val take = TakeFile(scratch, rate, channels, maxSeconds.toLong() * rate,
+        reserved ?: kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(MEMORY_BYTES) })
     @Volatile private var firstFrameNanos = UNSET
     @Volatile private var cueNanos = UNSET
     private val openedNanos = nanoTime()
@@ -49,7 +51,10 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
         nanoTime() - openedNanos > armingSeconds * 1_000_000_000L)
     @Volatile private var running = true
     @Volatile private var ended = false
-    private val thread = Thread(::capture, "ChopLab-NEXT-voice").apply { isDaemon = true; priority = Thread.MAX_PRIORITY - 1; start() }
+    @Volatile private var abandoned = false
+    private val thread = try { Thread(::capture, "ChopLab-NEXT-voice").apply { isDaemon = true; priority = Thread.MAX_PRIORITY - 1; start() } }
+        catch (failure: Throwable) { try { input.close() } finally { take.discard() }; throw failure }
+    val terminated: Boolean get() = !thread.isAlive
 
     /** The take reached its length limit and records nothing more. */
     val full: Boolean get() = take.full
@@ -58,10 +63,10 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     val interrupted: Boolean get() = ended
 
     private fun capture() {
-        val buffer = FloatArray(2048)
         var captureFirstNanos = UNSET
         var capturedFrames = 0L
         try {
+            val buffer = FloatArray(2048)
             input.onCaptureThread()
             while (running && !take.full) {
                 val count = input.read(buffer)
@@ -103,6 +108,7 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
             ended = running
         } finally {
             try { input.close() } catch (_: Exception) { }
+            finally { if (abandoned) take.discard() }
         }
     }
 
@@ -122,7 +128,7 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
      * when the microphone delivered its first frame only after the song had started.
      */
     fun finish(store: FileAssetStore, name: String): VoiceTake? {
-        stop()
+        try { stop() } catch (failure: Throwable) { abandon(); throw failure }
         val asset = take.finish(store, name) ?: return null
         val first = firstFrameNanos
         val cue = cueNanos
@@ -132,7 +138,11 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     }
 
     /** Stops recording and drops the take. */
-    fun discard() { try { stop() } finally { take.discard() } }
+    fun discard() {
+        abandoned = true
+        try { stop() } finally { if (terminated) take.discard() }
+    }
+    private fun abandon() { abandoned = true; if (terminated) take.discard() }
 
     private fun stop() {
         running = false
@@ -144,6 +154,7 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     companion object {
         /** Two bars at 40 BPM use 12 seconds; the remaining time bounds command/arming delays. */
         const val MAX_ARMING_SECONDS = 20
+        const val MEMORY_BYTES = TakeFile.MEMORY_BYTES + 2048 * 4
         private const val UNSET = Long.MIN_VALUE
     }
 }

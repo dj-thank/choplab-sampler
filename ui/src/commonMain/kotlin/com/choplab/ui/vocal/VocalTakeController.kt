@@ -12,6 +12,12 @@ import kotlin.concurrent.Volatile
 
 enum class VocalAvailability { EDITABLE, BUSY, RECORDING }
 enum class VocalPhase { EDITING, RENDERING, APPLYING, CLOSED }
+/** One host-owned SOURCE preview, shared with the speech guide. */
+interface VocalTakePort {
+    val preview: com.choplab.core.ai.VocalPreviewPort
+    suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset
+}
+
 interface VocalTakePorts {
     suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset?
     /** Host serializes its final recording/busy check with the Studio expectedRevision dispatch. */
@@ -96,7 +102,12 @@ class VocalTakeController(
         return mutex.withLock {
             if (closed) return@withLock false
             val current = state.value
-            if (action == VocalAction.StopPreview) { ports.stopPreview(); publish(current.copy(previewing = false)); return@withLock true }
+            if (action == VocalAction.StopPreview) {
+                // Stop also fences an unfinished comp/take render, not only an already acquired SOURCE lane.
+                if (current.phase == VocalPhase.APPLYING) ports.stopPreview() else invalidate()
+                publish(current.copy(phase = if (current.phase == VocalPhase.RENDERING) VocalPhase.EDITING else current.phase, previewing = false))
+                return@withLock true
+            }
             if (action == VocalAction.Cancel) {
                 if (current.phase == VocalPhase.APPLYING) return@withLock false
                 invalidate(); publish(current.copy(draft = null, replaceClipIds = emptySet(), phase = VocalPhase.EDITING, problem = null, previewing = false)); return@withLock true

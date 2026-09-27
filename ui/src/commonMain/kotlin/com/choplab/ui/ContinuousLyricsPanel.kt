@@ -54,6 +54,8 @@ import org.jetbrains.compose.resources.stringResource
                     enabled = state.permits(ContinuousCapability.LYRIC_PROPOSAL), tag = "ce-lyrics-ai-open")
                 CEButton(stringResource(Res.string.vocal_guide_title), { onAction(ContinuousEditorAction.OpenVocalGuide) }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_GUIDE), tag = "ce-vocal-guide-open")
+                CEButton(stringResource(Res.string.vocal_take_title), { onAction(ContinuousEditorAction.OpenVocalTakes) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_TAKES), tag = "ce-vocal-takes-open")
                 if (lyrics.lines.isEmpty()) Text(stringResource(Res.string.ce_lyrics_empty))
                 else LazyColumn(Modifier.fillMaxWidth().height(160.dp).testTag("ce-lyrics-list")) {
                     items(lyrics.lines, key = { it.id }) { line ->

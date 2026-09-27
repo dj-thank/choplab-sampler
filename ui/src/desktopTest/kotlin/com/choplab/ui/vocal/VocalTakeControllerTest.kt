@@ -32,7 +32,7 @@ class VocalTakeControllerTest {
     }
 
     @Test fun closeCancelRevisionRecordingAndRenderFailureRejectLateAssets() = runBlocking<Unit> {
-        for (case in listOf("close", "cancel", "revision", "recording", "failure", "caller_cancel")) {
+        for (case in listOf("close", "cancel", "stop_preview", "revision", "recording", "failure", "caller_cancel")) {
             val reached = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             val fixture = Fixture { draft ->
@@ -48,6 +48,7 @@ class VocalTakeControllerTest {
                 when (case) {
                     "close" -> { fixture.controller.close(); fixture.controller.close() }
                     "cancel" -> fixture.controller.dispatch(VocalAction.Cancel)
+                    "stop_preview" -> fixture.controller.dispatch(VocalAction.StopPreview)
                     "revision" -> fixture.document.value = fixture.document.value.copy(revision = 1)
                     "recording" -> fixture.availability.value = VocalAvailability.RECORDING
                     "caller_cancel" -> applying.cancelAndJoin()

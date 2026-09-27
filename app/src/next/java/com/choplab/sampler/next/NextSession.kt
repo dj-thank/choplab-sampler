@@ -86,6 +86,11 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
+                backend.renderVocalComp(project, draft, name)
+        }
         override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
             override val preview = speechPreview
             override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort = VocalTtsService(

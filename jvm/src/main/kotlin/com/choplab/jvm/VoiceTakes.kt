@@ -24,6 +24,7 @@ class VoiceTakes(
     private val usableDiskBytes: (Path) -> Long = { it.toFile().usableSpace },
     private val captureChannels: Int = 1,
     private val nanoTime: () -> Long = System::nanoTime,
+    private val memory: PcmMemoryBudget = PcmMemoryBudget.shared,
     private val microphone: () -> MicInput?,
 ) {
     /** How starting a take went. */
@@ -31,6 +32,7 @@ class VoiceTakes(
 
     private val lock = Any()
     private var recorder: VoiceRecorder? = null
+    private var retiring: VoiceRecorder? = null
     private var closed = false
 
     init {
@@ -55,32 +57,40 @@ class VoiceTakes(
         require(window == null || (waitForCue && window.frames48k <= maxSeconds * 48_000L))
         synchronized(lock) {
             if (closed) return@withContext Start.NO_INPUT
+            if (retiring?.terminated == true) retiring = null
+            if (retiring != null) return@withContext Start.NO_INPUT
             check(recorder == null) { "A take is already recording" }
         }
         val seconds = minOf(maxSeconds.toLong(), roomSeconds()).toInt()
         if (seconds < 1 || (window != null && window.frames48k > seconds * 48_000L)) return@withContext Start.NO_ROOM
-        val input = try { microphone() } catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
-        val created = try {
+        val reserved = try { memory.reserve(VoiceRecorder.MEMORY_BYTES) } catch (_: PcmMemoryLimit) { return@withContext Start.NO_ROOM }
+        var transferred = false
+        try {
+            val input = try { microphone() } catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
+            val created = try {
+                currentCoroutineContext().ensureActive()
+                require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
+                VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window, reserved).also { owned = it; transferred = true }
+            } catch (failure: Exception) {
+                try { input.close() } catch (_: Exception) { }
+                throw failure
+            }
             currentCoroutineContext().ensureActive()
-            require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
-            VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window).also { owned = it }
-        } catch (failure: Exception) {
-            try { input.close() } catch (_: Exception) { }
-            throw failure
-        }
-        currentCoroutineContext().ensureActive()
-        val kept = synchronized(lock) { (!closed && recorder == null).also { if (it) recorder = created } }
-        published = kept
-        if (!kept) { owned = null; created.discard(); return@withContext Start.NO_INPUT }
-        Start.STARTED
+            val kept = synchronized(lock) { (!closed && recorder == null && retiring == null).also { if (it) recorder = created } }
+            published = kept
+            if (!kept) { owned = null; created.discard(); return@withContext Start.NO_INPUT }
+            Start.STARTED
+        } finally { if (!transferred) reserved.close() }
         } } catch (cancel: CancellationException) {
             // Permission/open can finish after cancellation. Release only the input this start still owns.
             withContext(Dispatchers.IO + NonCancellable) {
                 owned?.let { created ->
                     val release = synchronized(lock) {
-                        if (recorder === created) { recorder = null; true } else !published
+                        (if (recorder === created) { recorder = null; true } else !published)
+                            .also { if (it) retiring = created }
                     }
-                    if (release) created.discard()
+                    if (release) try { created.discard() }
+                    finally { synchronized(lock) { if (created.terminated && retiring === created) retiring = null } }
                 }
             }
             throw cancel
@@ -102,13 +112,18 @@ class VoiceTakes(
 
     /** Ends the take and stores it as [name]; null when none ran or nothing but silence was recorded. */
     suspend fun stop(name: String): VoiceTake? = withContext(Dispatchers.IO + NonCancellable) {
-        val current = synchronized(lock) { recorder.also { recorder = null } } ?: return@withContext null
-        current.finish(assets, name)
+        val current = synchronized(lock) { recorder.also { recorder = null; if (it != null) retiring = it } } ?: return@withContext null
+        try { current.finish(assets, name) }
+        finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
     }
 
     /** Ends the take and drops it. */
     suspend fun discard() {
-        withContext(Dispatchers.IO + NonCancellable) { synchronized(lock) { recorder.also { recorder = null } }?.discard() }
+        withContext(Dispatchers.IO + NonCancellable) {
+            val current = synchronized(lock) { recorder.also { recorder = null; if (it != null) retiring = it } } ?: return@withContext
+            try { current.discard() }
+            finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
+        }
     }
 
     /** No take starts after this; one still running is dropped. */

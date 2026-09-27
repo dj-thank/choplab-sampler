@@ -84,6 +84,11 @@ class EditorBackend private constructor(
         }
     }
 
+    private val vocalCompRenderer = VocalCompRenderer(assets, pcm, assets.directory.parent.resolve("vocal-comp"))
+    suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
+        try { vocalCompRenderer.render(project, draft, name) }
+        catch (_: PcmMemoryLimit) { throw com.choplab.core.vocal.VocalEditException(com.choplab.core.vocal.VocalProblem.LIMIT) }
+
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
     suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)
 
