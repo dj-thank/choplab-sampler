@@ -41,6 +41,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     }
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = shared.loadPeaks(asset, maximumBuckets)
     suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
+    suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
 
     /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
     suspend fun shutdown(flush: Boolean = true) { try { voice.close() } finally { shared.shutdown(flush) } }

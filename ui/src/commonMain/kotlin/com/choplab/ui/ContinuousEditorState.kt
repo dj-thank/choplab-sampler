@@ -30,7 +30,7 @@ enum class ContinuousStatus {
      */
     VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
     /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
-    VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM,
+    VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     MIC_DENIED, MIC_UNAVAILABLE,
     /** Refused because a take is being recorded. */
     RECORDING_BUSY,

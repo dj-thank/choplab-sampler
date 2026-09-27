@@ -29,11 +29,7 @@ class ProgramCompiler(private val pcm: PcmPort) {
             }
         val pads = project.pads.filter { it.assetHash != null }.map { pad ->
             val metadata = project.asset(requireNotNull(pad.assetHash))
-            val data = load(metadata)
-            val range = requireNotNull(pad.range)
-            val (start, end) = normalizedRange(range, metadata.sampleRate)
-            com.choplab.engine.Pad(pad.id, data, start, end, pad.mode, pad.pitchSemitones, pad.gain,
-                pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone)
+            enginePad(pad, metadata, load(metadata))
         }
         val arrangement = timeline?.let { plan ->
             val tracks = plan.audible.map { it.track.id }.distinct()
@@ -92,6 +88,12 @@ class ProgramCompiler(private val pcm: PcmPort) {
          * The 48 kHz frames of every sound a PAD or clip uses, counted once each: at least what [compile] keeps
          * resident, since muted clips count too. Compare with [RESIDENT_FRAME_LIMIT].
          */
+        /** The engine's PAD for [pad], its sound [data] loaded at 48 kHz from [metadata]. */
+        fun enginePad(pad: Pad, metadata: Asset, data: PcmAsset): com.choplab.engine.Pad {
+            val (start, end) = normalizedRange(requireNotNull(pad.range), metadata.sampleRate)
+            return com.choplab.engine.Pad(pad.id, data, start, end, pad.mode, pad.pitchSemitones, pad.gain,
+                pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone)
+        }
         fun residentFrames(project: Project): Long =
             (project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash }).distinct().sumOf { normalizedFrames(project.asset(it)) }
         /** Absolute conversion, so rounding never accumulates across clips or tempo changes. */

@@ -3,8 +3,11 @@ package com.choplab.jvm
 import com.choplab.core.*
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.Asset
+import com.choplab.core.model.AssetRole
+import com.choplab.core.model.Pad
 import com.choplab.core.model.Pattern
 import com.choplab.core.model.Project
+import com.choplab.engine.PadRender
 import com.choplab.engine.SequenceClock
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -68,6 +71,24 @@ class EditorBackend private constructor(
 
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
     suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)
+
+    /**
+     * Renders [pad] from [source] with its pitch, reverse and tone, as it sounds from its PAD, into a 48 kHz float WAV in
+     * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
+     */
+    suspend fun renderPad(pad: Pad, source: Asset): Asset {
+        val samples = withContext(Dispatchers.Default) { PadRender.render(ProgramCompiler.enginePad(pad, source, pcm.load(source))) }
+        val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()
+        val marks = buildList {
+            if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
+            if (pad.reverse) add("rev")
+            if (pad.tone < com.choplab.engine.Pad.TONE_BYPASS) add("tone ${kotlin.math.round(pad.tone * 100).toInt()}%")
+        }
+        val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), 48_000, 2, samples.size / 2L,
+            (listOf(source.name.take(200)) + marks).joinToString(" "), AssetRole.RENDERED, derivedFrom = source.hash)
+        withContext(Dispatchers.IO) { assets.publish(asset, java.io.ByteArrayInputStream(bytes)) }
+        return asset
+    }
 
     /** [flush] is false only after the user chose to close without the final autosave. */
     suspend fun shutdown(flush: Boolean = true) {

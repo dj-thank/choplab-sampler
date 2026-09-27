@@ -9,6 +9,7 @@ import com.choplab.engine.EngineProgram
 import com.choplab.engine.PlayMode
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlin.math.pow
 import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
@@ -653,6 +654,54 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aPadWithItsPitchChangedIsRenderedAndPlacedAsThatSound() = runBlocking<Unit> {
+        // A host that cannot render such a PAD keeps it off the song.
+        val plain = Harness()
+        try {
+            plain.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            assertTrue(plain.presenter.dispatch(ContinuousEditorAction.SetPadPitch(0, 12f)))
+            assertFalse(plain.until { !it.permits(ContinuousCapability.PLACE_PAD) }.permits(ContinuousCapability.PLACE_PAD))
+        } finally { plain.close() }
+        val h = Harness(render = true)
+        try {
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            // An untouched PAD is placed as its own sound.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.ports.renders.isEmpty())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadPitch(0, 12f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadGain(0, .6f)))
+            assertTrue(h.until { it.permits(ContinuousCapability.PLACE_PAD) }.permits(ContinuousCapability.PLACE_PAD))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 96_000)))
+            assertEquals(12.0, h.ports.renders.single().pitchSemitones)
+            val project = h.studio.document.value.project
+            val placed = project.clips.single { it.timelineStartFrame == 96_000L }
+            val rendered = project.asset(placed.assetHash)
+            assertEquals(AssetRole.RENDERED, rendered.role)
+            assertEquals(FrameRange(0, 24_000), placed.range, "The whole rendered sound, half as long an octave up")
+            assertEquals(.6f, placed.gain, "With the PAD's level")
+            // One Undo takes the clip and its rendered sound away.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            val undone = h.studio.document.value.project
+            assertTrue(undone.clips.none { it.timelineStartFrame == 96_000L } && undone.assets.none { it.role == AssetRole.RENDERED })
+            // A sound that cannot be made is not placed.
+            h.ports.renderFails = true
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 96_000)))
+            assertEquals(ContinuousStatus.PLACE_FAILED, h.until { it.status != null }.status)
+        } finally { h.close() }
+        // Nor one the engine has no room left for: a five-minute PAD an octave down would need ten.
+        val full = Harness(render = true) { p ->
+            val long = p.assets[1].copy(frames = 48_000L * 300, byteCount = 44 + 48_000L * 300 * 4)
+            p.copy(assets = frozenListOf(p.assets[0], long),
+                pads = p.pads.map { if (it.assetHash == long.hash) it.copy(range = FrameRange(0, long.frames), pitchSemitones = -12.0) else it }.frozen())
+        }
+        try {
+            full.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            assertFalse(full.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            assertEquals(ContinuousStatus.PLACE_NO_ROOM, full.until { it.status != null }.status)
+            assertTrue(full.ports.renders.isEmpty(), "Nothing is rendered")
+        } finally { full.close() }
+    }
+
     @Test fun aPadIsScratchedWhereTheHandMovesItAndContinuesFromThereNextTime() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -838,7 +887,8 @@ class ContinuousEditorPresenterTest {
     /** 48 kHz frames a screen pixel moves a platter at normal sensitivity, computed as the presenter does. */
     private val NORMAL_FRAMES_PER_PIXEL = 48_000 / (60.0 * 7.0)
 
-    private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, adjust: (Project) -> Project = { it }) {
+    private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
+                          adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, originalFrames, "Original")
         val chopped = Asset("b".repeat(64), "wav", 100, 48_000, 2, 48_000, "Chop")
@@ -861,7 +911,7 @@ class ContinuousEditorPresenterTest {
                     return ExportReceipt(request.frames.toLong(), 48_000, 2, request.bits)
                 }
             }, engine), initial)
-        val ports = FakePorts(kits, voice).also { it.engine = engine }
+        val ports = FakePorts(kits, voice, render).also { it.engine = engine }
         suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(2000) { presenter.state.first(condition) }
         val presenter = ContinuousEditorPresenter(studio, scope, ports)
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }
@@ -902,7 +952,17 @@ class ContinuousEditorPresenterTest {
         @Volatile var transport = TransportState(outputAttached = true)
         override fun snapshot() = transport
     }
-    private class FakePorts(private val kits: Boolean = false, voice: Boolean = false) : ContinuousEditorPorts {
+    private class FakePorts(private val kits: Boolean = false, voice: Boolean = false, private val render: Boolean = false) : ContinuousEditorPorts {
+        override val padRenderAvailable get() = render
+        val renders = java.util.concurrent.CopyOnWriteArrayList<Pad>()
+        @Volatile var renderFails = false
+        /** Renders as a host would name and size it: an octave up halves the sound. */
+        override suspend fun renderPad(pad: Pad, source: Asset): Asset? {
+            renders += pad
+            if (renderFails) return null
+            val frames = kotlin.math.ceil(requireNotNull(pad.range).length / 2.0.pow(pad.pitchSemitones / 12)).toLong()
+            return Asset("c".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "${source.name} +12", AssetRole.RENDERED, derivedFrom = source.hash)
+        }
         @Volatile var originalFrame = 0L
         @Volatile var stops = 0
         val seeks = java.util.concurrent.CopyOnWriteArrayList<Long>()

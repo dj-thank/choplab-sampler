@@ -32,7 +32,11 @@ object ContinuousClipEdits {
     fun trimEndRange(clip: ContinuousClip): LongRange =
         minOf(clip.sourceTotalFrames, clip.sourceStartFrame + minimumSourceFrames(clip.sourceRate))..clip.sourceTotalFrames
 
-    fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String): Intent.SetArrangement {
+    /** Pitch, reverse or tone change how a PAD sounds; the song plays placed sounds as they are, so such a PAD is rendered first. */
+    fun transformed(pad: Pad): Boolean = pad.pitchSemitones != 0.0 || pad.reverse || pad.tone < com.choplab.engine.Pad.TONE_BYPASS
+
+    /** [rendered] is the transformed PAD's sound, for a [ContinuousEditorAction.PlacePad] of such a PAD. */
+    fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Asset? = null): Intent.SetArrangement {
         var tracks: List<Track> = project.tracks
         var clips: List<Clip> = project.clips
         // Clips this gesture creates or reshapes must be audible. A zero-length clip saved by an
@@ -43,9 +47,10 @@ object ContinuousClipEdits {
         when (action) {
             is ContinuousEditorAction.PlacePad -> {
                 val pad = project.pads.getOrNull(action.padId) ?: error("Unknown PAD")
-                require(pad.pitchSemitones == 0.0 && !pad.reverse) { "Render the transformed PAD before placement" }
-                val hash = requireNotNull(pad.assetHash) { "Empty PAD" }
-                val range = requireNotNull(pad.range)
+                require(transformed(pad) == (rendered != null)) { "Render the transformed PAD before placement" }
+                val sound = requireNotNull(pad.assetHash) { "Empty PAD" }
+                val hash = rendered?.hash ?: sound
+                val range = if (rendered != null) FrameRange(0, rendered.frames) else requireNotNull(pad.range)
                 val track = action.trackId?.let { id -> requireNotNull(tracks.firstOrNull { it.id == id }) }
                     ?: tracks.firstOrNull { it.kind == TrackKind.BANK }
                     ?: Track(freshId("track"), project.banks[pad.id / 16].name, TrackKind.BANK).also { tracks = tracks + it }
@@ -94,11 +99,14 @@ object ContinuousClipEdits {
             else -> error("Not an arrangement edit")
         }
         require(tracks.size <= 16 && clips.size <= 1024)
+        // A rendered PAD's sound joins the document with this edit: check its clip as if it had.
+        val known = if (rendered == null || project.assets.any { it.hash == rendered.hash }) project
+            else project.copy(assets = (project.assets + rendered).sortedBy { it.hash }.frozen())
         clips.forEach { clip ->
-            require(clip.range.end <= project.asset(clip.assetHash).frames)
-            require(startFrame(project, clip) + durationFrames(project, clip) <= MAX_TIMELINE_FRAMES)
-            if (clip.id in reshaped) require(durationFrames(project, clip) > 0) { "Clip is shorter than one timeline frame" }
+            require(clip.range.end <= known.asset(clip.assetHash).frames)
+            require(startFrame(known, clip) + durationFrames(known, clip) <= MAX_TIMELINE_FRAMES)
+            if (clip.id in reshaped) require(durationFrames(known, clip) > 0) { "Clip is shorter than one timeline frame" }
         }
-        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes)
+        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, listOfNotNull(rendered).frozen())
     }
 }

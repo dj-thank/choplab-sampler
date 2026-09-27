@@ -195,4 +195,6 @@
     <string name="ce_diag_copy">Copy the numbers</string>
     <string name="ce_diag_no_output">— (no output)</string>
     <string name="ce_diag_frames_unknown">Not counted here</string>
+    <string name="ce_place_no_room">Too little room is left for sounds to place this PAD with its pitch, reverse or tone on the song.</string>
+    <string name="ce_place_failed">Could not prepare the sound of this PAD with its pitch, reverse or tone. Check the free storage.</string>
 </resources>

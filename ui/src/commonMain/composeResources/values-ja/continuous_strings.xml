@@ -195,4 +195,6 @@
     <string name="ce_diag_copy">数値をコピー</string>
     <string name="ce_diag_no_output">—（出力なし）</string>
     <string name="ce_diag_frames_unknown">この環境では数えません</string>
+    <string name="ce_place_no_room">音の量が上限に近いので、音程・逆再生・音色を変えたPADは曲に置けません。</string>
+    <string name="ce_place_failed">音程・逆再生・音色を変えたPADの音を作れませんでした。端末の空き容量を確かめてください。</string>
 </resources>

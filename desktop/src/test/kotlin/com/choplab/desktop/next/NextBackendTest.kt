@@ -3,6 +3,8 @@ package com.choplab.desktop.next
 import com.choplab.core.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.Asset
+import com.choplab.core.model.frozen
+import com.choplab.core.model.frozenListOf
 import com.choplab.engine.*
 import com.choplab.jvm.WavCodec
 import kotlinx.coroutines.*
@@ -283,6 +285,40 @@ class NextBackendTest {
         assertEquals(0, Files.list(profile.resolve("voice-scratch")).use { it.count() }, "No scratch file is left")
         val second = NextBackend.create(profile, sinkFactory = { error("No device") }, microphone = { null })
         try { assertEquals(saved.project, second.studio.document.value.project) } finally { second.shutdown() }
+    }
+
+    @Test fun aPitchedPadIsRenderedPlacedHeardInTheSongAndSaved() = runBlocking<Unit> {
+        val dir = temporary()
+        val backend = NextBackend.create(dir.resolve("profile"), sinkFactory = { error("No device") })
+        try {
+            val kick = backend.prepareDrumKit("boom-bap").first()
+            val pad = com.choplab.core.model.Pad(0, kick.hash, com.choplab.core.model.FrameRange(0, kick.frames), "KICK", pitchSemitones = 12.0, gain = .8f)
+            val rendered = backend.renderPad(pad, kick)
+            assertEquals(com.choplab.core.model.AssetRole.RENDERED, rendered.role)
+            assertEquals(kick.hash, rendered.derivedFrom)
+            assertEquals(48_000, rendered.sampleRate)
+            assertEquals(2, rendered.channels)
+            assertEquals((kick.frames + 1) / 2, rendered.frames, "An octave up halves its length")
+            assertEquals(rendered, backend.renderPad(pad, kick), "The same PAD renders to the same sound")
+            // Placed on the song as plain audio, with the PAD's level, next to the PAD's own sound.
+            val track = com.choplab.core.model.Track("drums", "B", com.choplab.core.model.TrackKind.BANK)
+            val clip = com.choplab.core.model.Clip("kick-up", track.id, rendered.hash, com.choplab.core.model.FrameRange(0, rendered.frames),
+                timelineStartFrame = 0, gain = pad.gain)
+            val start = backend.studio.document.value.project
+            assertTrue(backend.studio.dispatch(Action.Edit(Intent.ApplyKit(frozenListOf(kick), frozenListOf(pad)))).accepted)
+            assertTrue(backend.studio.dispatch(Action.Edit(Intent.SetArrangement((start.tracks + track).frozen(), frozenListOf(clip),
+                start.takes, frozenListOf(rendered)))).accepted)
+            val song = dir.resolve("song.wav")
+            assertTrue(backend.studio.dispatch(Action.Export(ExportRequest(backend.files.register(song), rendered.frames.toInt(), bits = 24),
+                PlaybackTarget.Arrangement())).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && Files.isRegularFile(song) }
+            val peak = Files.newInputStream(song).use { WavCodec.read(it) }.samples.maxOf { kotlin.math.abs(it) }
+            assertTrue(peak > .1f, "The rendered kick sounds in the song: peak $peak")
+            val archive = dir.resolve("rendered.choplab")
+            assertTrue(backend.saveProject(archive).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && Files.isRegularFile(archive) }
+            ZipFile(archive.toFile()).use { zip -> assertNotNull(zip.getEntry("assets/${rendered.hash}.wav"), "The rendered sound travels with the project") }
+        } finally { backend.shutdown() }
     }
 
     @Test fun originalAuditionKeepsItsCursorAcrossSongStopAndCannotChangeOfflineWav() = runBlocking<Unit> {

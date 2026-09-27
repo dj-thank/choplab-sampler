@@ -45,7 +45,9 @@ sealed interface Intent {
      * take this kit's sound in the same slot, so a placed beat keeps its rhythm. Other clips stay.
      */
     data class InstallKit(val assets: FrozenList<Asset>, val pads: FrozenList<Pad>) : Intent
-    data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>) : Intent
+    /** The song's tracks, clips and takes; [assets] are new sounds its clips bring in, such as a rendered PAD. */
+    data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>,
+                              val assets: FrozenList<Asset> = frozenListOf()) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
 }
 
@@ -166,10 +168,11 @@ object Reducer {
                         if (next == null || clip.range.end > next.frames) clip else clip.copy(assetHash = next.hash)
                     }.frozen())
             }
-            is Intent.SetArrangement -> before.copy(tracks = intent.tracks, clips = intent.clips, takes = intent.takes)
+            is Intent.SetArrangement -> before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
+                tracks = intent.tracks, clips = intent.clips, takes = intent.takes)
             is Intent.SetLyrics -> before.copy(lyrics = intent.lines)
         }
-        val after = withoutUnusedKitSounds(edited)
+        val after = withoutUnusedRenderedSounds(edited)
         val key = when (intent) {
             is Intent.SetTempo -> intent.gesture?.let { "tempo:$it" }
             is Intent.SetSourceRange -> intent.gesture?.let { "range:$it" }
@@ -232,18 +235,19 @@ object Reducer {
         return merged.values.sortedBy { it.hash }.frozen()
     }
     /**
-     * Built-in kit sounds stay in the document only while something uses them; choosing the kit again renders them
-     * again. Without this every kit tried would stay in each save and count against the asset limit.
+     * App-rendered sounds (built-in kit sounds, transformed PADs placed on the song) stay in the document only while
+     * something uses them; choosing the kit or placing the PAD again renders them again. Without this every kit or
+     * placement tried would stay in each save and count against the asset limit.
      */
-    private fun withoutUnusedKitSounds(project: Project): Project {
-        if (project.assets.none { DrumKits.identify(it) != null }) return project
+    private fun withoutUnusedRenderedSounds(project: Project): Project {
+        if (project.assets.none { it.role == AssetRole.RENDERED }) return project
         val used = HashSet<String>()
         project.source?.let { used += it.assetHash }
         project.pads.forEach { pad -> pad.assetHash?.let { used += it } }
         project.clips.forEach { used += it.assetHash }
         project.takes.forEach { used += it.assetHash }
         project.assets.forEach { asset -> asset.derivedFrom?.let { used += it } }
-        val kept = project.assets.filter { it.hash in used || DrumKits.identify(it) == null }
+        val kept = project.assets.filter { it.hash in used || it.role != AssetRole.RENDERED }
         return if (kept.size == project.assets.size) project else project.copy(assets = kept.frozen())
     }
 }
