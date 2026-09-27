@@ -20,6 +20,7 @@ data class LrcExport(val text: String, /** Standard LRC intentionally omits word
  * Enhanced <timestamps> start words; a final marker ends the last word and line. Without an explicit
  * end, the next distinct row/clear timestamp ends a line, or the caller's explicit finalEndTick does.
  * finalEndTick is a fallback for an open final row, not a cutoff for explicitly timed rows.
+ * When supplied, finalLineDurationTicks instead gives an open final row a duration relative to its start.
  * Repeated enhanced rows shift their word times relative to their first [timestamp].
  */
 object LrcCodec {
@@ -29,9 +30,11 @@ object LrcCodec {
     private val timestamp = Regex("([0-9]{1,6}):([0-9]{2})(?:\\.([0-9]{1,3}))?")
     private val metadataTag = Regex("([A-Za-z][A-Za-z0-9_-]{0,15}):(.*)")
 
-    fun parse(text: String, timing: LyricTiming, finalEndTick: Long, limits: LrcLimits = LrcLimits()): LyricResult<LrcImport> = attempt {
+    fun parse(text: String, timing: LyricTiming, finalEndTick: Long, limits: LrcLimits = LrcLimits(),
+              finalLineDurationTicks: Long? = null): LyricResult<LrcImport> = attempt {
         if (text.length > limits.maximumCharacters) fail(LyricProblem.TOO_LARGE)
         if (finalEndTick !in 1..ProjectLimits.MAX_TIMELINE_TICKS) fail(LyricProblem.TIME_OUT_OF_RANGE)
+        if (finalLineDurationTicks != null && finalLineDurationTicks !in 1..ProjectLimits.MAX_TIMELINE_TICKS) fail(LyricProblem.TIME_OUT_OF_RANGE)
         val rows = mutableListOf<RawRow>()
         val metadata = mutableListOf<LrcMetadata>()
         var offset: Long? = null
@@ -92,7 +95,8 @@ object LrcCodec {
         val lines = ordered.filter { it.text.isNotEmpty() }.mapIndexed { index, row ->
             val start = tick(row.start, row.inputLine)
             val end = row.end?.let { tick(it, row.inputLine) }
-                ?: boundaries.firstOrNull { it > row.start }?.let { tick(it, row.inputLine) } ?: finalEndTick
+                ?: boundaries.firstOrNull { it > row.start }?.let { tick(it, row.inputLine) }
+                ?: finalLineDurationTicks?.let { (start + it).coerceAtMost(ProjectLimits.MAX_TIMELINE_TICKS) } ?: finalEndTick
             if (end <= start) fail(LyricProblem.TIMING_COLLAPSE, row.inputLine)
             val words = row.words.map { word ->
                 val from = tick(word.start, row.inputLine)

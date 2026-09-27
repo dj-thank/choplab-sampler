@@ -5,6 +5,16 @@ import kotlin.math.abs
 import kotlin.test.*
 
 class LrcCodecTest {
+    @Test fun anOpenFinalRowCanUseFourBeatsWithoutTruncatingExplicitEnds() {
+        val timing = LyricTiming(120_000)
+        val result = assertIs<LyricResult.Success<LrcImport>>(LrcCodec.parse("[01:00.000]Last line", timing, 1,
+            finalLineDurationTicks = 3840)).value
+        assertEquals(115_200L, result.lines.single().startTick)
+        assertEquals(119_040L, result.lines.single().endTick)
+        val explicit = assertIs<LyricResult.Success<LrcImport>>(LrcCodec.parse("[01:00.000]Last line<01:10.000>", timing, 1,
+            finalLineDurationTicks = 3840)).value
+        assertEquals(134_400L, explicit.lines.single().endTick)
+    }
     private val timing = LyricTiming(120_000)
     private fun <T> value(result: LyricResult<T>): T = assertIs<LyricResult.Success<T>>(result).value
     private fun fails(code: LyricProblem, text: String, limits: LrcLimits = LrcLimits()) {

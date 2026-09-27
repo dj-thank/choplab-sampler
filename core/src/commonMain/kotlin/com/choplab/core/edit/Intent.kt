@@ -187,6 +187,8 @@ object Reducer {
 
     internal fun reduction(before: Project, after: Project, key: String? = null): Reduction {
         if (before == after) return Reduction(before, Mutation.NONE, frozenListOf())
+        // Tapping lyric timing during playback edits the document without interrupting its voices.
+        if (before.copy(lyrics = after.lyrics) == after) return Reduction(after, Mutation.PROJECT, frozenListOf(), key)
         val stopped = before.pads.indices.filter { before.pads[it] != after.pads[it] && before.pads[it].assetHash != null }.frozen()
         val effects = buildList {
             if (stopped.isNotEmpty()) add(Effect.StopPads(stopped))

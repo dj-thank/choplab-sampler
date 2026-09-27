@@ -14,7 +14,9 @@ data class SelectionState(val padId: Int = 0, val patternId: String = "pattern-1
 data class WorkState(val jobId: Long? = null, val operation: Operation? = null, val basedOnRevision: Long? = null, val preparationId: Long? = null)
 
 sealed interface Action {
-    data class Edit(val intent: Intent) : Action
+    data class Edit(val intent: Intent, val expectedRevision: Long? = null) : Action {
+        init { require(expectedRevision == null || expectedRevision >= 0) }
+    }
     data object Undo : Action
     data object Redo : Action
     data class SelectPad(val id: Int) : Action
@@ -140,7 +142,9 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
     }
 
     private suspend fun handle(action: Action, answer: CompletableDeferred<ActionResult>): ActionResult? = when (action) {
-        is Action.Edit -> { beforeEdit(); begin(session.plan(action.intent), answer) }
+        is Action.Edit -> if (action.expectedRevision != null && action.expectedRevision != session.revision)
+            ActionResult(false, Notice.StaleCompletion).also { notice(Notice.StaleCompletion) }
+            else { beforeEdit(); begin(session.plan(action.intent), answer) }
         Action.Undo -> { beforeEdit(); val plan = session.planUndo(); if (plan == null) rejected(Rejection.NO_HISTORY) else begin(plan, answer) }
         Action.Redo -> { beforeEdit(); val plan = session.planRedo(); if (plan == null) rejected(Rejection.NO_HISTORY) else begin(plan, answer) }
         is Action.SelectPad -> { require(action.id in 0..127); session.breakCoalescing(); _selection.value = _selection.value.copy(padId = action.id); ActionResult(true) }

@@ -207,7 +207,7 @@ class ContinuousEditorTest {
                         bounds
                     }
                     sides += requireNotNull(scene.tag("ce-pad-0")).size.width
-                    for (tag in listOf("ce-pad-details", "ce-bank-0", "ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch",
+                    for (tag in listOf("ce-pad-details", "ce-bank-0", "ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch", "ce-lyrics-open",
                             "ce-original-play", "ce-source-monitor", "ce-undo", "ce-stop-all", "ce-song-stop")) {
                         val node = requireNotNull(scene.tag(tag))
                         assertEquals(node.size.height.toFloat(), node.boundsInWindow.height, .5f, "$tag stays wholly visible")

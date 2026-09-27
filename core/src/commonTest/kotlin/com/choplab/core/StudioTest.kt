@@ -9,6 +9,37 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StudioTest {
+    @Test fun lyricsOnlyEditsUndoAndRedoLeaveAudioRevisionAloneUntilTheNextAudioEdit() = runTest {
+        val engine = Engine()
+        val initial = Project(assets = frozenListOf(asset), pads = (0..127).map {
+            if (it == 0) com.choplab.core.model.Pad(0, asset.hash, FrameRange(0, asset.frames)) else com.choplab.core.model.Pad(it)
+        }.frozen())
+        val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), initial,
+            preparationDispatcher = StandardTestDispatcher(testScheduler))
+        assertTrue(studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())).accepted)
+        val audioRevision = engine.snapshot().programRevision
+        engine.commands.clear()
+        repeat(3) { index ->
+            assertTrue(studio.dispatch(Action.Edit(Intent.SetLyrics(frozenListOf(LyricLine("line", "line $index", 0, 960))))).accepted)
+            assertNull(studio.work.value.jobId)
+            assertNull(studio.work.value.preparationId)
+        }
+        assertTrue(studio.dispatch(Action.Undo).accepted)
+        assertTrue(studio.dispatch(Action.Redo).accepted)
+        assertEquals(5L, studio.document.value.revision)
+        assertEquals(audioRevision, engine.snapshot().programRevision)
+        assertTrue(engine.commands.isEmpty(), "Lyric timing must not replace a playing audio graph")
+        val current = studio.document.value
+        val stale = studio.dispatch(Action.Edit(Intent.SetLyrics(frozenListOf()), expectedRevision = 0))
+        assertFalse(stale.accepted)
+        assertIs<Notice.StaleCompletion>(stale.notice)
+        assertEquals(current, studio.document.value, "A late confirmed import cannot overwrite the new document")
+        assertTrue(studio.dispatch(Action.Edit(Intent.SetPad(initial.pads[0].copy(gain = .5f)))).accepted)
+        assertEquals(6L, studio.document.value.revision)
+        assertEquals(6L, engine.snapshot().programRevision)
+        assertEquals("line 2", studio.document.value.project.lyrics.single().text)
+        studio.dispatch(Action.Close)
+    }
     private val asset = Asset("a".repeat(64), "wav", 100, 48_000, 2, 7, "sample.wav")
     private class MemoryAssets : AssetStore {
         override suspend fun containsVerified(asset: Asset) = true

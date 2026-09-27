@@ -81,6 +81,17 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val lyricFiles: LyricFiles = object : LyricFiles {
+            override suspend fun importLrc(): String? {
+                val uri = pickers.pick(PickerKind.IMPORT_LRC) ?: return null
+                return withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use(LrcTextIO::read) }
+            }
+            override suspend fun exportLrc(text: String): Boolean {
+                val uri = pickers.pick(PickerKind.EXPORT_LRC, suggestedName("lrc")) ?: return false
+                withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { LrcTextIO.write(it, text) } }
+                return true
+            }
+        }
         override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
         override fun originalPlaying() = backend.engine.originalPlayback().playing
         override fun playingPads() = backend.engine.playingPads()

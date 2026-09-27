@@ -5,8 +5,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** The four system document screens the editor asks for. */
-enum class PickerKind { AUDIO, PROJECT, SAVE_PROJECT, EXPORT_WAV }
+/** The system document screens the editor asks for. */
+enum class PickerKind { AUDIO, PROJECT, SAVE_PROJECT, EXPORT_WAV, IMPORT_LRC, EXPORT_LRC }
 
 /**
  * Lets suspend editor ports wait for a system document screen owned by whichever Activity is current.

@@ -85,6 +85,7 @@ import kotlin.math.roundToLong
         CEDrumKitDialogs(state, onAction)
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
+        CELyricsPanel(state, onAction, readout, refreshKey)
     }
 }
 

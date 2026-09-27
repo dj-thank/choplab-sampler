@@ -215,6 +215,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f)) }
             }
         }
+        CELyricsButton(state, onAction, Modifier.fillMaxWidth())
         }
         // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.
         if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
