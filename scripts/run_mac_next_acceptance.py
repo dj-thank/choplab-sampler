@@ -111,6 +111,16 @@ def verify(app, java_home):
         profile = directory / 'profile'
         target = profile / 'Library/Application Support/ChopLab Preview/next-v10'
         shutil.copytree(source, target)
+        run(java_home / 'bin/javac', '-cp', libs / '*', '-d', directory,
+            ROOT / 'scripts/acceptance/NextSeparationDialogCheck.java')
+        dialog_directory = directory / 'separation-dialog'
+        dialog_directory.mkdir()
+        dialog_result = run(java, '-cp', str(directory) + os.pathsep + str(libs / '*'),
+                            'NextSeparationDialogCheck', dialog_directory, dialog_directory / 'dialog.png',
+                            environment=environment, timeout=45)
+        if 'NATIVE_SEPARATION_DIALOG_PASS' not in dialog_result.stdout:
+            raise RuntimeError('Native separation chooser did not complete')
+        print(dialog_result.stdout.strip())
         run(java_home / 'bin/javac', '-d', directory, ROOT / 'scripts/acceptance/MacPreviewLifecycle.java')
         agent_manifest = directory / 'agent.mf'
         agent_manifest.write_text('Premain-Class: MacPreviewLifecycle\n\n')
