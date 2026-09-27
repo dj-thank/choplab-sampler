@@ -362,10 +362,15 @@ sealed interface ContinuousEditorAction {
      */
     data object RecordHits : ContinuousEditorAction
     data object StopHits : ContinuousEditorAction
-    /** PAD [padId] was pressed as the engine played song frame [songFrame], while recording what the PADs play. */
+    /**
+     * PAD [padId] was pressed as the engine played song frame [songFrame], while recording what the PADs play. Sent as
+     * the press begins, so a PAD still held when the pass ends is in it.
+     */
     data class CaptureHit(val padId: Int, val songFrame: Long) : ContinuousEditorAction
     data class BeginHit(val gesture: ContinuousHitGesture) : ContinuousEditorAction
     data class EndHit(val gesture: ContinuousHitGesture, val cancelled: Boolean, val songFrame: Long? = null) : ContinuousEditorAction
+    /** The press [CaptureHit] recorded turned out not to be one (a scroll, or a finger slid off the PAD): taken back. */
+    data class DropHit(val padId: Int, val songFrame: Long) : ContinuousEditorAction
     /** The presenter's one edit for a recorded pass: each PAD where it was heard, on the grid. Not sent by the UI. */
     data class PlaceHits(val hits: List<ContinuousHit>) : ContinuousEditorAction
     /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */

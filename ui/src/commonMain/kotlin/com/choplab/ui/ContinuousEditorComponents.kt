@@ -231,8 +231,9 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 if (tryAwaitRelease() && frame != null) latestAction(ContinuousEditorAction.CapturePad(id, frame))
                             })
                         } else if (hit != null) Modifier.pointerInput(id, filled, pad.mode) {
-                            // A one-shot plays out as a tap does; a PAD that sounds while held stops when let go.
-                            val whileHeld = pad.mode != ContinuousPadMode.ONE_SHOT
+                            // As a tap plays it: a one-shot plays out and a loop keeps looping; a PAD that sounds while
+                            // held stops when let go.
+                            val whileHeld = pad.mode == ContinuousPadMode.GATE
                             if (filled) detectTapGestures(onPress = {
                                 val gesture = latestHit?.invoke()?.let { ContinuousHitGesture(id, it) }
                                 if (gesture != null) latestAction(ContinuousEditorAction.BeginHit(gesture))

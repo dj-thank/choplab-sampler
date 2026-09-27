@@ -860,9 +860,9 @@ class ContinuousEditorTest {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
         try {
-            // PAD A04 sounds while held; the fixture's others are one-shots.
+            // PAD A04 sounds while held and A01 loops; the fixture's others are one-shots.
             val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).let { s ->
-                s.copy(pads = s.pads.map { if (it.id == 3) it.copy(mode = ContinuousPadMode.GATE) else it }) })
+                s.copy(pads = s.pads.map { when (it.id) { 3 -> it.copy(mode = ContinuousPadMode.GATE); 0 -> it.copy(mode = ContinuousPadMode.LOOP); else -> it } }) })
             val actions = mutableListOf<ContinuousEditorAction>()
             // The song moves on while a PAD is down: the press, not the release, is when it was played.
             var songFrame = 100_000L
@@ -911,6 +911,11 @@ class ContinuousEditorTest {
                 val gate = (actions.first() as ContinuousEditorAction.BeginHit).gesture
                 assertEquals(3, gate.padId); assertEquals(100_000L, gate.songFrame)
                 assertEquals(listOf(ContinuousEditorAction.BeginHit(gate), ContinuousEditorAction.HoldPad(3), ContinuousEditorAction.EndHit(gate, false, 112_000), ContinuousEditorAction.ReleasePad(3)), actions)
+                // A loop keeps sounding on pointer-up; only the pass/explicit stop releases its voice.
+                actions.clear()
+                press("ce-pad-0")
+                val loop = (actions.first() as ContinuousEditorAction.BeginHit).gesture
+                assertEquals(listOf(ContinuousEditorAction.BeginHit(loop), ContinuousEditorAction.TapPad(0), ContinuousEditorAction.EndHit(loop, false, 112_000)), actions)
                 // A touch that slides off the PAD sounded, but records nothing.
                 actions.clear()
                 press("ce-pad-2", Offset(0f, 160f))
