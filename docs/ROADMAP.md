@@ -144,7 +144,13 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 ### 新しい編集画面（NEXT）のMacアプリ — 2026-09-27
 
-オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。新しい編集画面はWAVだけを開きマイクはJava Soundで録るため、media tool・分離モデル・ScreenCaptureKit helperの起動設定・Spotifyは同梱しない（Homebrewの固定名一覧にも依存しない）。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、隔離profile・無音で30秒起動してデータ領域の作成を確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
+オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。ローカル音源はWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus、マイクはJava Soundを使う。FFmpeg/ffprobeとそのnative依存だけを同梱し、分離モデル・ScreenCaptureKit helperの起動設定・Spotifyは既存Preview側に残す。codec依存の固定一覧は `config/mac-audio-tool-files.txt`。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、同梱codecの合成fixtureと制作通し、隔離profile・無音のnative画面応答・通常終了と再開2回・編集内容と音源hashを確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
+
+### NEXTの圧縮原本取込 — 2026-09-27
+
+担当root、起点 `13bbfec`、対象 `jvm` の検証済み原本codec窓口とdesktop NEXTの取込・ファイルパネル・Mac codec梱包。元bytesをcontent hash付きで保持し、FLAC/ALACの24bit精度・source rate・左右を失わずfloatへdecode、共有PCM cache/resamplerへ渡す。成功したdecodeは64 MiBまで次の読込みへ引き渡し、同じ音源の取込直後の二重decodeを避ける。入力は256 MiB、decodeは現engineの常駐frame上限、子processは2分で制限し、取消・破損・過長入力では編集を確定しない。Macは標準ファイルパネル、名前は既存Previewと区別してNEXTとする。Rollbackはこの変更のrevert（圧縮原本を含む制作は旧版で上書きせず、対応するartifactとデータを保持する）。
+
+Macローカルで7 codec fixture、losslessのサンプル一致、44.1 kHz monoからの正確なframe数、原本bytesのarchive往復、取消/再試行・長さ/待ち時間上限、同梱アプリでの制作・正常終了・再起動2回が成功。JVM87件・desktop275件（実録音1skip）、UI55件、Android Preview compile、policy320件も成功。最終headのCIとartifact bytesはこの変更のPRへ記録する。349秒を超える長尺prefetch、複数素材ライブラリ、オンライン/端末音/分離のNEXT移行、Androidでの圧縮原本archive再開、Windows実端末codec、聴感・手操作は未完。旧Previewの機能は保持する。
 
 ## 判断・失敗・次の一手の記録
 

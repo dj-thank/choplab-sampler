@@ -65,6 +65,7 @@ def verify(app, java_home):
     environment = dict(os.environ)
     for key in ('JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS', 'LOCALAPPDATA'):
         environment.pop(key, None)
+    environment['PATH'] = '/usr/bin:/bin'
     with tempfile.TemporaryDirectory(prefix='choplab-next-acceptance-') as temporary:
         directory = Path(temporary)
         result = run(java, '-cp', libs / '*', 'com.choplab.desktop.next.NextSelfTest',
@@ -72,7 +73,14 @@ def verify(app, java_home):
         receipt = json.loads(result.stdout.strip().splitlines()[-1])
         if receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged production self-test did not pass')
-        source = next(directory.glob('next-self-test-*')) / 'profile'
+        codec_result = run(java, '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
+                           'com.choplab.desktop.next.NextCodecSelfTest', directory / 'codecs', libs / 'tools/ffmpeg',
+                           environment=environment, timeout=120)
+        codec_receipt = json.loads(codec_result.stdout.strip().splitlines()[-1])
+        if codec_receipt['status'] != 'LOCAL_PASS':
+            raise RuntimeError('Packaged original codec self-test did not pass')
+        print(codec_result.stdout.strip())
+        source = next((directory / 'codecs/production').glob('next-self-test-*')) / 'profile'
         expected = snapshot(source)
         profile = directory / 'profile'
         target = profile / 'Library/Application Support/ChopLab Preview/next-v10'
@@ -98,6 +106,7 @@ def verify(app, java_home):
                           'source': manifest['source'], 'packageFiles': len(manifest['files']),
                           'packageBytes': sum(item['bytes'] for item in manifest['files'].values()),
                           'exportFrames': receipt['exportFrames'], 'normalCloseReopenCycles': 2,
+                          'originalCodecFormats': codec_receipt['formats'],
                           'restoredProjectAndAudioMatch': True, 'nativeAudio': False, 'humanAcceptance': False}))
 
 

@@ -46,9 +46,9 @@ python3 scripts/run_mac_acceptance.py \
 
 ## Macの4工程NEXT
 
-`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Javaを含み、単体で起動できます。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
+`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Javaとローカル音源のデコーダーを含み、単体で起動できます。初回ビルドはHomebrewのffmpegとXcode CLIが必要です。codecの21個のnative依存は `config/mac-audio-tool-files.txt` で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
 
-現段階ではWAVの取込、チョップ、PAD、合成ドラム、曲への配置、声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。圧縮音源・オンライン取込・端末音の録音・ライブラリ・ドラム分離は既存Preview側に残っています。NEXTだけで全機能を受入済みとはしません。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
+現段階ではWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opusの取込、チョップ、PAD、合成ドラム、曲への配置、声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン取込・端末音の録音・ライブラリ・ドラム分離は既存Preview側に残っています。NEXTだけで全機能を受入済みとはしません。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
 
 ## データ・接続・検証
 
@@ -57,3 +57,5 @@ python3 scripts/run_mac_acceptance.py \
 Spotifyには公開Client IDを設定し、PKCEのOAuthで接続します。tokenをsource/log/projectへ保存しません。現行のお気に入り自動取込は曲情報をYouTube候補へ照合し、取得・decode・library保存の成功後に使える音声となります。選択式への刷新は段階3です。登録/redirect/mode/scopeは採用時の公式設定と実accountを照合し、UI表示だけでprovider成功としません。
 
 Windows配布物はWindowsで起動・応答・停止、native dialog、音声routeを試し、対象revisionと全app-image bytesを結果に結び付けます。詳しくは [TESTING](../docs/TESTING.md)、[RELEASE](../docs/RELEASE.md)、[PRIVACY](../PRIVACY.md) を参照してください。
+
+NEXTの圧縮音源は元のbytes・rate・左右を保って保存し、再生時はfloatへデコードして共有の48 kHz変換を使います。新engineの常駐上限（48 kHz stereoで約349秒）が適用されます。圧縮原本を含むschema10制作ファイルのAndroid NEXTでの再開は未対応です。Mac/Windows NEXT間は同じdecoder経路ですが、実Windows端末でのcodec受入は別途行います。

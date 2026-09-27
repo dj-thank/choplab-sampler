@@ -38,11 +38,10 @@ object NextSelfTest {
         println(runBlocking { run(Path.of(args[index + 1])).json() })
     }
 
-    suspend fun run(directory: Path): NextSelfTestReceipt {
+    suspend fun run(directory: Path, audioInput: Path? = null): NextSelfTestReceipt {
         Files.createDirectories(directory)
         val run = Files.createDirectory(directory.resolve("next-self-test-${UUID.randomUUID()}"))
-        val input = run.resolve("Demo.wav")
-        writeDemo(input)
+        val input = audioInput ?: run.resolve("Demo.wav").also(::writeDemo)
         val sink = CountingTestSink()
         val backend = NextBackend.create(run.resolve("profile"), sinkFactory = { sink })
         try {
