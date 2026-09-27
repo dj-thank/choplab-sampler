@@ -88,7 +88,12 @@ class NextSession private constructor(
             }
             override suspend fun exportLrc(text: String): Boolean {
                 val uri = pickers.pick(PickerKind.EXPORT_LRC, suggestedName("lrc")) ?: return false
-                withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).use { LrcTextIO.write(it, text) } }
+                withContext(Dispatchers.IO) {
+                    LrcTextIO.write(text) {
+                        ensureActive()
+                        requireNotNull(context.contentResolver.openOutputStream(uri, "wt"))
+                    }
+                }
                 return true
             }
         }
