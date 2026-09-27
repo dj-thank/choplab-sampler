@@ -179,6 +179,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 @Composable private fun CETimelinePanel(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     readout: () -> ContinuousEditorReadout, refreshKey: Long, modifier: Modifier, onTarget: (CEPlacementTarget) -> Unit) {
     val clip = state.selectedClip
+    // The repeat panel's starting song position while it is open.
+    var repeatFrom by remember { mutableStateOf<Long?>(null) }
+    repeatFrom?.let { from -> CERepeatDialog(state, from, onAction) { repeatFrom = null } }
     // A short pane (a phone, large text) scrolls and gives the tracks a fixed height, so every control stays in reach.
     BoxWithConstraints(modifier.clip(RoundedCornerShape(8.dp)).background(CEColor.Ink)) {
     val roomy = maxHeight >= 520.dp
@@ -192,6 +195,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEButton(stringResource(Res.string.ce_split), { clip?.let { onAction(ContinuousEditorAction.SplitClip(it.id, readout().songFrame)) } },
                 enabled = clip != null && state.permits(ContinuousCapability.SPLIT_CLIP), reason = CEReason(state, ContinuousCapability.SPLIT_CLIP), tag = "ce-split")
             CEActionButton(stringResource(Res.string.ce_duplicate), ContinuousEditorAction.DuplicateClip(clip?.id.orEmpty()), state, ContinuousCapability.DUPLICATE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-duplicate")
+            CEButton(stringResource(Res.string.ce_repeat), { repeatFrom = readout().songFrame }, enabled = state.permits(ContinuousCapability.DUPLICATE_CLIP),
+                reason = CEReason(state, ContinuousCapability.DUPLICATE_CLIP), tag = "ce-repeat")
             CEActionButton(stringResource(Res.string.ce_delete), ContinuousEditorAction.DeleteClip(clip?.id.orEmpty()), state, ContinuousCapability.DELETE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-delete")
         }
         }

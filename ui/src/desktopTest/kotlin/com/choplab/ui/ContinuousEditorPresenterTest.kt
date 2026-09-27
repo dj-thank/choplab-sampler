@@ -761,6 +761,25 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aRepeatCopiesItsBarsIntoTheEmptyBarsAfterInOneUndoAndIsRefusedOverOtherClips() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            // 120 BPM: four beats of the first bar, repeated four times, fill five bars.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 1)))
+            h.until { it.clips.size == 4 }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RepeatBars(0, 1, 4)))
+            assertEquals((0 until 20).map { it * 24_000L }, h.until { it.clips.size == 20 }.clips.map { it.timelineStartFrame }.sorted())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            h.until { it.clips.size == 4 }
+            // Over bars that already hold a clip it is refused, and nothing changes.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 100_000)))
+            h.until { it.clips.size == 5 }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RepeatBars(0, 1, 1)))
+            assertEquals(5, h.studio.document.value.project.clips.size)
+        } finally { h.close() }
+    }
+
     @Test fun aTakeGoesToTheFirstEmptyVoicePadAndOntoTheSongWhereItWasSung() = runBlocking<Unit> {
         val h = Harness(voice = true) { p -> p.copy(pads = p.pads.map { if (it.id == 48) Pad(48, p.assets[1].hash, FrameRange(0, 48_000)) else it }.frozen()) }
         try {

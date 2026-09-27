@@ -465,7 +465,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.PlacePad -> placePad(project, action.padId, action)
                 is ContinuousEditorAction.FillPad -> placePad(project, action.padId, action)
                 is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.NudgeClip, is ContinuousEditorAction.TrimClip,
-                is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.DeleteClip,
+                is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.RepeatBars,
+                is ContinuousEditorAction.DeleteClip,
                 is ContinuousEditorAction.SetClipGain, is ContinuousEditorAction.SetTrackMuted -> {
                     val intent = ContinuousClipEdits.intent(project, action, ::freshId, grid = view.value.grid)
                     edit(intent)

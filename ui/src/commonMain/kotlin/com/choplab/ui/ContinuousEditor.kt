@@ -175,6 +175,68 @@ import kotlin.math.roundToLong
  * and sound it was armed for.
  */
 /**
+ * Repeats the clips of a few bars from the bar holding [from], the song position when it was opened, into the empty bars
+ * right after them; applying is one Undo.
+ */
+@Composable internal fun CERepeatDialog(state: ContinuousEditorState, from: Long, onAction: (ContinuousEditorAction) -> Unit, close: () -> Unit) {
+    var bars by remember { mutableIntStateOf(4) }
+    var times by remember { mutableIntStateOf(1) }
+    val first = ContinuousClipEdits.barAt(from, state.milliBpm) + 1
+    val section = ContinuousClipEdits.barsFrames(from, state.milliBpm, bars)
+    // The same checks as the edit, so the panel says what applying does or why it cannot.
+    val copied = state.clips.filter { it.timelineStartFrame in section && ContinuousClipEdits.sounds(it) }
+    val count = copied.size
+    val outlasting = copied.any { it.timelineDurationFrames > section.last + 1 - section.first }
+    val after = ContinuousClipEdits.barsFrames(from, state.milliBpm, bars, 1).first..ContinuousClipEdits.barsFrames(from, state.milliBpm, bars, times).last
+    val occupied = state.clips.any { it.timelineStartFrame in after }
+    val (fromBar, toBar) = first + bars to first + bars.toLong() * (times + 1) - 1
+    val refused = count == 0 || outlasting || occupied
+    val plan = when {
+        count == 0 -> stringResource(Res.string.ce_repeat_empty)
+        occupied && fromBar == toBar -> stringResource(Res.string.ce_repeat_occupied_one, fromBar)
+        occupied -> stringResource(Res.string.ce_repeat_occupied, fromBar, toBar)
+        outlasting -> stringResource(Res.string.ce_repeat_outlasting)
+        fromBar == toBar -> stringResource(Res.string.ce_repeat_plan_one, count, fromBar)
+        else -> stringResource(Res.string.ce_repeat_plan, count, fromBar, toBar)
+    }
+    AlertDialog(onDismissRequest = close, modifier = Modifier.testTag("ce-repeat-panel"),
+        title = { Text(stringResource(Res.string.ce_repeat_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                @Composable fun Choice(label: String, chosen: Boolean, tag: String, modifier: Modifier, choose: () -> Unit) =
+                    CEButton(label, choose, modifier.semantics { selected = chosen }, primary = chosen, tag = tag)
+                @Composable fun Choices(values: List<Int>, chosen: Int, tag: String, label: @Composable (Int) -> String, choose: (Int) -> Unit) =
+                    // All four in one row where they fit, otherwise two rows (phones, large text).
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        if (maxWidth >= 360.dp && LocalDensity.current.fontScale <= 1.3f) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            values.forEach { value -> Choice(label(value), chosen == value, "$tag-$value", Modifier.weight(1f)) { choose(value) } }
+                        } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            values.chunked(2).forEach { pair -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                pair.forEach { value -> Choice(label(value), chosen == value, "$tag-$value", Modifier.weight(1f)) { choose(value) } }
+                            } }
+                        }
+                    }
+                Text(stringResource(Res.string.ce_pad_fill_from, first), Modifier.testTag("ce-repeat-from"), fontSize = 14.sp)
+                Text(stringResource(Res.string.ce_pad_fill_length), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Choices(listOf(1, 2, 4, 8), bars, "ce-repeat-bars", { if (it == 1) stringResource(Res.string.ce_fill_one_bar) else stringResource(Res.string.ce_fill_bars, it) }) { bars = it }
+                Text(stringResource(Res.string.ce_repeat_times), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Choices(listOf(1, 2, 4, 8), times, "ce-repeat-times", { stringResource(Res.string.ce_repeat_count, it) }) { times = it }
+                // What applying would do, or why it cannot, said before it is pressed.
+                Text(plan, Modifier.testTag("ce-repeat-plan").semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp,
+                    fontWeight = if (refused) FontWeight.Bold else FontWeight.Normal)
+                Text(stringResource(Res.string.ce_repeat_help), fontSize = 12.sp, lineHeight = 18.sp)
+            }
+        },
+        confirmButton = { CEButton(stringResource(Res.string.ce_repeat), {
+            onAction(ContinuousEditorAction.RepeatBars(from, bars, times)); close()
+        }, enabled = !refused && state.permits(ContinuousCapability.DUPLICATE_CLIP), primary = true,
+            // Refused for the bars, the button says why as the panel does.
+            reason = if (state.permits(ContinuousCapability.DUPLICATE_CLIP)) plan else CEReason(state, ContinuousCapability.DUPLICATE_CLIP),
+            tag = "ce-repeat-apply") },
+        dismissButton = { CEButton(stringResource(Res.string.ce_close), close) })
+}
+
+/**
  * Fills the song with the selected PAD every beat, half or quarter beat through a few bars from the bar holding [from],
  * the song position when it was opened; applying is one Undo.
  */
