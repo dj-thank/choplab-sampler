@@ -4,6 +4,7 @@ package com.choplab.ui
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -207,7 +208,7 @@ class ContinuousEditorTest {
                         bounds
                     }
                     sides += requireNotNull(scene.tag("ce-pad-0")).size.width
-                    for (tag in listOf("ce-pad-details", "ce-bank-0", "ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch",
+                    for (tag in listOf("ce-pad-details", "ce-bank-0", "ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch", "ce-lyrics-open",
                             "ce-original-play", "ce-source-monitor", "ce-undo", "ce-stop-all", "ce-song-stop")) {
                         val node = requireNotNull(scene.tag(tag))
                         assertEquals(node.size.height.toFloat(), node.boundsInWindow.height, .5f, "$tag stays wholly visible")
@@ -241,11 +242,13 @@ class ContinuousEditorTest {
     @Test fun playableRowsAndEditingControlsFitRealWindowsAndLargeText() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
+        // A slower transition exposes clicks sent while a dismissed dialog still owns the modal layer.
+        val motion = object : MotionDurationScale { override val scaleFactor = 2f }
         try {
             for ((width, height, font) in listOf(Triple(1440, 1024, 1f), Triple(1920, 1080, 1f),
                     Triple(390, 844, 1f), Triple(390, 844, 1.3f), Triple(390, 844, 2f), Triple(844, 390, 1f), Triple(844, 390, 2f))) {
                 val actions = mutableListOf<ContinuousEditorAction>()
-                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext + motion) {
                     ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.PADS, canUndo = true,
                         capabilities = ContinuousCapability.entries.toSet()), actions::add, ContinuousEditorFixture::readout)
                 }
@@ -298,10 +301,14 @@ class ContinuousEditorTest {
                     scene.click("ce-pad-details")
                     scene.click("ce-pad-fill")
                     assertNotNull(scene.tag("ce-pad-fill-panel"))
+                    val beforeFill = actions.size
                     scene.click("ce-pad-fill-apply")
+                    assertEquals(1, actions.size - beforeFill, "$name: one pointer applies Fill once")
                     assertIs<ContinuousEditorAction.FillPad>(actions.last())
+                    scene.awaitDialogClosed("ce-pad-fill-panel")
+                    val beforePlay = actions.size
                     scene.click("ce-pad-play")
-                    assertEquals(ContinuousEditorAction.OpenPadPlay, actions.last())
+                    assertEquals(listOf(ContinuousEditorAction.OpenPadPlay), actions.drop(beforePlay), "$name: one pointer opens PAD play")
                     for (tag in listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch")) {
                         scene.reach(tag)
                         val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
@@ -1363,6 +1370,16 @@ class ContinuousEditorTest {
     }
     private fun ImageComposeScene.tag(value: String) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == value }
     private suspend fun ImageComposeScene.settle() { repeat(8) { render(System.nanoTime()).close(); delay(12) } }
+    private suspend fun ImageComposeScene.awaitDialogClosed(value: String) {
+        // Compose removes the dialog's semantics before its exit animation releases the input-blocking layer.
+        // Wait for the editor to be the only owner; a missing dialog tag alone is not readiness for a click.
+        repeat(80) {
+            render(System.nanoTime()).close()
+            delay(12)
+            if (tag(value) == null && semanticsOwners.size == 1) return
+        }
+        fail("$value did not release its modal layer: ${semanticsOwners.size} semantics owners remain")
+    }
     /** Scroll real ancestor containers until the target has its complete hit rectangle, then use pointer input. */
     private suspend fun ImageComposeScene.reach(value: String) {
         fun SemanticsNode.contains(tag: String): Boolean = config.getOrNull(SemanticsProperties.TestTag) == tag || children.any { it.contains(tag) }

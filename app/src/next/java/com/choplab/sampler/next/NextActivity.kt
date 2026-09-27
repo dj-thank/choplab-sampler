@@ -50,6 +50,8 @@ class NextActivity : ComponentActivity() {
         answer(PickerKind.SAVE_PROJECT, it)
     }
     private val exportWav = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/x-wav")) { answer(PickerKind.EXPORT_WAV, it) }
+    private val importLrc = registerForActivityResult(ActivityResultContracts.OpenDocument()) { answer(PickerKind.IMPORT_LRC, it) }
+    private val exportLrc = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { answer(PickerKind.EXPORT_LRC, it) }
     private val allowMicrophone = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         (model.state.value as? NextViewModel.Startup.Ready)?.session?.microphone?.complete(granted)
     }
@@ -60,6 +62,8 @@ class NextActivity : ComponentActivity() {
             PickerKind.PROJECT -> openProject.launch(arrayOf("*/*"))
             PickerKind.SAVE_PROJECT -> saveProject.launch(name ?: "project.choplab")
             PickerKind.EXPORT_WAV -> exportWav.launch(name ?: "export.wav")
+            PickerKind.IMPORT_LRC -> importLrc.launch(arrayOf("*/*"))
+            PickerKind.EXPORT_LRC -> exportLrc.launch(name ?: "lyrics.lrc")
         }
     }
 

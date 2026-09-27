@@ -17,6 +17,7 @@ import kotlin.time.TimeSource
 
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
+    val lyricFiles: LyricFiles? get() = null
     val systemAudioCapture: SystemAudioCapture? get() = null
     val separationAvailable: Boolean get() = false
     suspend fun separateSource(source: Asset): Location? = null
@@ -220,9 +221,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     /** Where the platter stood when let go, so the next hold of the same silent PAD continues from there. */
     private var lastPadScratch: Pair<Int, Double>? = null
     @Volatile private var lastScratchFraction = 0f
+    private val lyricEditor = ContinuousLyricsController(studio, ports.lyricFiles) { intent, revision -> send(Action.Edit(intent, revision)) }
     private val inputs = combine(studio.document, studio.selection, studio.work,
         studio.transport.map { it.playing to it.outputAttached }.distinctUntilChanged()) { d, s, w, t -> EditorInputs(d, s, w, t.first, t.second) }
-    val state: StateFlow<ContinuousEditorState> = combine(inputs, view, envelopes, ::project)
+    val state: StateFlow<ContinuousEditorState> = combine(inputs, view, envelopes, lyricEditor.view) { input, editor, peaks, lyrics ->
+        project(input, editor, peaks).copy(lyrics = lyrics.copy(lines = input.document.project.lyrics))
+    }
         .stateIn(jobs, SharingStarted.Eagerly, project(EditorInputs(studio.document.value, studio.selection.value,
             studio.work.value, false, false), view.value, envelopes.value))
 
@@ -326,6 +330,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 (view.value.recordingSource && !allowedWhileCollecting(action))) {
                 refusal = ContinuousStatus.RECORDING_BUSY; false
             } else when (action) {
+                is ContinuousEditorAction.Lyrics -> if (action.action != LyricAction.Close &&
+                    (studio.work.value.jobId != null || studio.work.value.preparationId != null)) false else lyricEditor.dispatch(action.action)
                 is ContinuousEditorAction.Navigate -> {
                     releaseHeld()
                     if (action.stage != ContinuousStage.BEAT && view.value.scratch != null) { letGoScratch(); view.update { it.copy(scratch = null) } }
@@ -640,6 +646,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun drumBank(project: Project): List<Pad> = project.pads.subList(DrumKits.BANK * 16, DrumKits.BANK * 16 + 16).toList()
 
     private fun allowedWhileCollecting(action: ContinuousEditorAction) = when (action) {
+        is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.StopSourceRecording,
         ContinuousEditorAction.DiscardSourceRecording, ContinuousEditorAction.StopAll,
         is ContinuousEditorAction.Navigate, is ContinuousEditorAction.CopyDiagnostics -> true
@@ -753,6 +760,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private fun allowedWhileRecording(action: ContinuousEditorAction) = when (action) {
+        is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
         ContinuousEditorAction.RecordVoice, ContinuousEditorAction.StopVoice, ContinuousEditorAction.StopAll,
         ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit,
         is ContinuousEditorAction.BeginHit, is ContinuousEditorAction.EndHit, is ContinuousEditorAction.DropHit,
@@ -1370,6 +1378,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousCapability.SONG_MONITOR_GAIN)
             if (source != null && ports.originalAvailable) capabilities += ContinuousCapability.ORIGINAL_MONITOR_GAIN
         } else if (!busy && !recording) {
+            capabilities += ContinuousCapability.LYRICS_EDIT
+            if (ports.lyricFiles != null) capabilities += ContinuousCapability.LYRICS_FILES
             capabilities += setOf(ContinuousCapability.SAVE_PROJECT, ContinuousCapability.HISTORY, ContinuousCapability.TEMPO,
                 ContinuousCapability.MOVE_CLIP, ContinuousCapability.TRIM_CLIP, ContinuousCapability.SPLIT_CLIP,
                 ContinuousCapability.DUPLICATE_CLIP, ContinuousCapability.DELETE_CLIP, ContinuousCapability.TRACK_MUTE, ContinuousCapability.CLIP_GAIN)

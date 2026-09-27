@@ -116,6 +116,10 @@ internal class DesktopEditorPorts(
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     override fun close() = spotify.close()
+    override val lyricFiles: LyricFiles = DesktopLyricFiles { save ->
+        choose(save, listOf("lrc"), if (japanese) { if (save) "歌詞を書き出す" else "歌詞を読み込む" }
+            else { if (save) "Export lyrics" else "Import lyrics" })
+    }
     override val systemAudioCapture get() = backend.systemAudio
     private val japanese get() = Locale.getDefault().language == "ja"
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED

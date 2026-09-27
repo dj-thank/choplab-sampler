@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ce_lyrics">歌詞・同期</string>
+    <string name="ce_lyrics_timing_hint">時刻は現在の %1$s BPM の拍へ保存し、テンポ変更に追従します。スウィングは適用しません。</string>
+    <string name="ce_lyrics_play">再生</string>
+    <string name="ce_lyrics_pause">一時停止</string>
+    <string name="ce_lyrics_add">今の位置に行を追加</string>
+    <string name="ce_lyrics_empty">行を追加するか、LRC歌詞を読み込んでください。</string>
+    <string name="ce_lyrics_import">LRCを読み込む</string>
+    <string name="ce_lyrics_import_preview">%1$d 行を %2$s BPM の拍へ変換しました。適用すると現在の全歌詞を置き換えます。最後の行に終了時刻がなければ4拍にします。</string>
+    <string name="ce_lyrics_replace">確認した歌詞で置き換える</string>
+    <string name="ce_lyrics_cancel">取り込みを取り消す</string>
+    <string name="ce_lyrics_export_extended">単語時刻付きの拡張LRCを書き出す</string>
+    <string name="ce_lyrics_export_standard">通常LRCを書き出す（単語時刻を省略）</string>
+    <string name="ce_lyrics_now">歌う行</string>
+    <string name="ce_lyrics_next">次の行</string>
+    <string name="ce_lyrics_text">この行の歌詞</string>
+    <string name="ce_lyrics_apply_text">文章を反映（この行の単語時刻を解除）</string>
+    <string name="ce_lyrics_tap">この行の開始を今の位置に合わせる</string>
+    <string name="ce_lyrics_words">単語ごとの時刻</string>
+    <string name="ce_lyrics_delete">この行を削除</string>
+    <string name="ce_lyrics_delete_confirm">もう一度押して削除</string>
+    <string name="ce_lyrics_start_ms">開始（ミリ秒）</string>
+    <string name="ce_lyrics_end_ms">終了（ミリ秒）</string>
+    <string name="ce_lyrics_apply_time">時刻を反映</string>
+    <string name="ce_lyrics_ready">内容とテンポを確認して適用してください。</string>
+    <string name="ce_lyrics_applied">歌詞を反映しました。Undoで戻せます。</string>
+    <string name="ce_lyrics_exported">歌詞を書き出しました。</string>
+    <string name="ce_lyrics_omitted">通常LRCで書き出しました。単語時刻は省略しました。</string>
+    <string name="ce_lyrics_cancelled">取り消しました。</string>
+    <string name="ce_lyrics_read_failed">歌詞を読めませんでした。UTF-8のLRCファイルを選んでください。</string>
+    <string name="ce_lyrics_write_failed">書き出せませんでした。保存先と空き容量を確認して再試行してください。</string>
+    <string name="ce_lyrics_stale">制作内容が変わりました。読み込みまたは行の選択をやり直してください。</string>
+    <string name="ce_lyrics_edit_failed">歌詞を反映できませんでした。変更前の歌詞を保持しています。</string>
+    <string name="ce_lyrics_limit">歌詞の文字数・行数・単語数が上限を超えています。</string>
+    <string name="ce_lyrics_format">LRCの時刻やタグを読めませんでした。時刻のない行も確認してください。</string>
+    <string name="ce_lyrics_time_error">時刻の範囲や順序を確認してください。行や単語が重なる変更は適用していません。</string>
+    <string name="ce_lyrics_need_extended">この重なりや終了時刻は通常LRCに収まりません。拡張LRCで書き出してください。</string>
+    <string name="ce_lyrics_text_error">歌詞の文字や単語との対応を確認してください。LRCでは空行や [ ] &lt; &gt; を含む文章を書き出せません。</string>
+    <string name="ce_lyrics_line_error">入力の %1$d 行目: %2$s</string>
+</resources>

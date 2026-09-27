@@ -18,6 +18,7 @@ enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
 enum class ContinuousCapability {
+    LYRICS_EDIT, LYRICS_FILES,
     IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
@@ -151,6 +152,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 }
 
 @Immutable data class ContinuousEditorState(
+    val lyrics: ContinuousLyricsState = ContinuousLyricsState(),
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
     val projectTitle: String = "",
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
@@ -262,6 +264,7 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
+    data class Lyrics(val action: LyricAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
     data object ImportLibrary : ContinuousEditorAction

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ce_lyrics">Lyrics and timing</string>
+    <string name="ce_lyrics_timing_hint">Times are stored as beats at %1$s BPM and follow tempo changes. Swing does not affect lyric timing.</string>
+    <string name="ce_lyrics_play">Play</string>
+    <string name="ce_lyrics_pause">Pause</string>
+    <string name="ce_lyrics_add">Add line at current position</string>
+    <string name="ce_lyrics_empty">Add a line or import LRC lyrics.</string>
+    <string name="ce_lyrics_import">Import LRC</string>
+    <string name="ce_lyrics_import_preview">Converted %1$d lines to beats at %2$s BPM. Applying replaces all current lyrics. An open final line lasts four beats.</string>
+    <string name="ce_lyrics_replace">Replace with these lyrics</string>
+    <string name="ce_lyrics_cancel">Cancel import</string>
+    <string name="ce_lyrics_export_extended">Export extended LRC with word timing</string>
+    <string name="ce_lyrics_export_standard">Export standard LRC (omit word timing)</string>
+    <string name="ce_lyrics_now">Current lyrics</string>
+    <string name="ce_lyrics_next">Next lyrics</string>
+    <string name="ce_lyrics_text">Line text</string>
+    <string name="ce_lyrics_apply_text">Apply text (clear this line’s word timing)</string>
+    <string name="ce_lyrics_tap">Tap this line’s start now</string>
+    <string name="ce_lyrics_words">Word timing</string>
+    <string name="ce_lyrics_delete">Delete this line</string>
+    <string name="ce_lyrics_delete_confirm">Press again to delete</string>
+    <string name="ce_lyrics_start_ms">Start (milliseconds)</string>
+    <string name="ce_lyrics_end_ms">End (milliseconds)</string>
+    <string name="ce_lyrics_apply_time">Apply timing</string>
+    <string name="ce_lyrics_ready">Review the lyrics and tempo before applying.</string>
+    <string name="ce_lyrics_applied">Lyrics updated. Undo restores the previous lyrics.</string>
+    <string name="ce_lyrics_exported">Lyrics exported.</string>
+    <string name="ce_lyrics_omitted">Exported standard LRC without word timing.</string>
+    <string name="ce_lyrics_cancelled">Cancelled.</string>
+    <string name="ce_lyrics_read_failed">Could not read lyrics. Choose a UTF-8 LRC file.</string>
+    <string name="ce_lyrics_write_failed">Could not export. Check the destination and free space, then retry.</string>
+    <string name="ce_lyrics_stale">The project changed. Import again or select the line again.</string>
+    <string name="ce_lyrics_edit_failed">Could not apply lyrics. The previous lyrics are retained.</string>
+    <string name="ce_lyrics_limit">The lyrics exceed the text, line, or word limit.</string>
+    <string name="ce_lyrics_format">Invalid LRC timestamp or tag. Check for lines without timestamps.</string>
+    <string name="ce_lyrics_time_error">Check the time range and order. Invalid line or word timing was not applied.</string>
+    <string name="ce_lyrics_need_extended">Standard LRC cannot preserve these overlaps or end times. Export extended LRC.</string>
+    <string name="ce_lyrics_text_error">Check the lyric text and words. LRC cannot export empty lyrics or literal [ ] &lt; &gt; characters.</string>
+    <string name="ce_lyrics_line_error">Input line %1$d: %2$s</string>
+</resources>
