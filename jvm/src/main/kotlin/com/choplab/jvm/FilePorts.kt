@@ -55,35 +55,67 @@ class WavImportPort(
     override suspend fun import(location: Location): Asset = withContext(Dispatchers.IO) {
         val path = resolve(location)
         require(Files.isRegularFile(path) && Files.size(path) <= ProjectLimits.MAX_ASSET_BYTES)
-        val bytes = Files.newInputStream(path).use { readBounded(it, ProjectLimits.MAX_ASSET_BYTES) }
-        coroutineContext.ensureActive()
-        val info = WavCodec.inspect(ByteArrayInputStream(bytes))
-        val name = (displayName(location) ?: path.fileName.toString()).replace(':', '_').take(256)
-        val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), info.sampleRate, info.channels, info.frames, name)
         val context = coroutineContext
-        assets.publish(asset, ByteArrayInputStream(bytes)) { !context[kotlinx.coroutines.Job]!!.isActive }
-        asset
+        val cancelled = { !context[kotlinx.coroutines.Job]!!.isActive }
+        val pending = Files.createTempFile("choplab-wav-import-", ".pending")
+        try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            var bytes = 0L
+            Files.newInputStream(path).use { input -> Files.newOutputStream(pending).use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    context.ensureActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    require(count > 0)
+                    bytes += count
+                    require(bytes <= ProjectLimits.MAX_ASSET_BYTES)
+                    digest.update(buffer, 0, count); output.write(buffer, 0, count)
+                }
+            } }
+            val info = Files.newInputStream(pending).use { WavCodec.inspect(CancellableInput(it, context)) }
+            val name = (displayName(location) ?: path.fileName.toString()).replace(':', '_').take(256)
+            val asset = Asset(digest.digest().hex(), "wav", bytes, info.sampleRate, info.channels, info.frames, name)
+            assets.adopt(asset, pending, cancelled)
+            context.ensureActive()
+            return@withContext asset
+        } finally { Files.deleteIfExists(pending) }
     }
 }
 
 class WavPcmPort(private val assets: FileAssetStore, val cache: PcmAssetCache = PcmAssetCache(),
-                 private val decoder: OriginalAudioDecoder? = null) : PcmPort, Closeable {
-    override fun close() = cache.close()
-    override suspend fun load(asset: Asset): PcmAsset = cache.get(asset) { decode(asset) }
-    private suspend fun decode(asset: Asset): PcmAsset = withContext(Dispatchers.IO) {
-        val frames48 = (asset.frames * 48_000 + asset.sampleRate - 1) / asset.sampleRate
-        require(frames48 * 8 <= EngineFormat.MAX_RESIDENT_BYTES && asset.frames * 8 <= EngineFormat.MAX_RESIDENT_BYTES)
-        val context = coroutineContext
-        val cancelled = { context[kotlinx.coroutines.Job]?.isActive == false }
-        val audio = if (asset.extension == "wav") assets.openVerified(asset).use { WavCodec.read(CancellableInput(it, context)) }
-            else requireNotNull(decoder) { "A host decoder is required for this codec" }
-                .decode(assets.verifiedPath(asset, cancelled), asset.hash, cancelled)
-        require(audio.info.frames == asset.frames && audio.info.channels == asset.channels && audio.info.sampleRate == asset.sampleRate)
-        coroutineContext.ensureActive()
-        val stereo = if (audio.info.channels == 2) audio.samples else FloatArray(audio.samples.size * 2) { audio.samples[it / 2] }
-        val normalized = if (audio.info.sampleRate == 48_000) stereo else OfflineResampler.resample(stereo, audio.info.sampleRate)
-        coroutineContext.ensureActive()
-        PcmAsset.fromInterleaved(normalized)
+                 private val decoder: OriginalAudioDecoder? = null) : PrefetchPcmPort, Closeable {
+    private val prefetch = PcmPrefetchWorker()
+    override fun close() { cache.close(); prefetch.close() }
+    override fun residentBytes(asset: Asset): Long = PcmResidency.bytes(asset)
+    override suspend fun prefetch(pcm: PcmAsset, firstFrame: Int, endFrame: Int) = prefetch.prefetch(pcm, firstFrame, endFrame)
+    override suspend fun <T> prepared(windows: List<PcmWindow>, render: () -> T): T = prefetch.prepared(windows, render)
+    suspend fun readWindow(pcm: PcmAsset, firstFrame: Int, endFrame: Int): FloatArray = prefetch.read(pcm, firstFrame, endFrame)
+    override suspend fun load(asset: Asset): PcmAsset = cache.get(asset, prefetch::discard) { decode(asset) }
+    private suspend fun decode(asset: Asset): PcmAsset {
+        var unpublished: PcmAsset? = null
+        return try { withContext(Dispatchers.IO) {
+            val context = coroutineContext
+            val cancelled = { context[kotlinx.coroutines.Job]?.isActive == false }
+            if (!PcmResidency.resident(asset)) {
+                val path = assets.verifiedPath(asset, cancelled)
+                val source = if (asset.extension == "wav") WavFrameSource.open(path, cancelled)
+                    else requireNotNull(decoder) { "A host decoder is required for this codec" }.openPcm(path, asset.hash, cancelled)
+                return@withContext prefetch.open(asset, source).also { unpublished = it }
+            }
+            val audio = if (asset.extension == "wav") assets.openVerified(asset).use { WavCodec.read(CancellableInput(it, context)) }
+                else requireNotNull(decoder) { "A host decoder is required for this codec" }
+                    .decode(assets.verifiedPath(asset, cancelled), asset.hash, cancelled)
+            require(audio.info.frames == asset.frames && audio.info.channels == asset.channels && audio.info.sampleRate == asset.sampleRate)
+            coroutineContext.ensureActive()
+            val stereo = if (audio.info.channels == 2) audio.samples else FloatArray(audio.samples.size * 2) { audio.samples[it / 2] }
+            val normalized = if (audio.info.sampleRate == 48_000) stereo else OfflineResampler.resample(stereo, audio.info.sampleRate)
+            coroutineContext.ensureActive()
+            PcmAsset.fromInterleaved(normalized)
+        } } catch (failure: Throwable) {
+            unpublished?.let { prefetch.discard(it) }
+            throw failure
+        }
     }
 }
 
@@ -102,7 +134,8 @@ class WavExportPort(private val compiler: ProgramCompiler, private val resolve: 
             val context = coroutineContext
             atomicOutput(resolve(request.location), { !context[kotlinx.coroutines.Job]!!.isActive }) { output ->
                 StreamingWavRenderer.render(program, output, request.frames, request.tailFrames, request.bits, request.seed,
-                    cancelled = { !context[kotlinx.coroutines.Job]!!.isActive })
+                    cancelled = { !context[kotlinx.coroutines.Job]!!.isActive },
+                    prepared = { windows, render -> kotlinx.coroutines.runBlocking(context) { compiler.prepared(windows, render) } })
             }
         }
         ExportReceipt(request.frames.toLong() + request.tailFrames, 48_000, 2, request.bits)

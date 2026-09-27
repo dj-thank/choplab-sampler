@@ -27,8 +27,11 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
     private class Entry {
         @Volatile var page: Page? = null
         val requested = AtomicInt(0)
+        val pins = AtomicInt(0)
         @Volatile var retryAfter = 0L
     }
+    private val pageShift = pageFrames.countTrailingZeroBits()
+    private val pageMask = pageFrames - 1
     private val entries: Array<Entry>
     private val requests = PcmRequestRing(requestCapacity)
     private val slots: IntArray
@@ -36,24 +39,35 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
     @Volatile private var loaded = 0
     @Volatile private var failed = false
     @Volatile private var closed = false
+    private val pendingPages = AtomicInt(0)
     private val missCount = AtomicLong(0)
     private val droppedCount = AtomicLong(0)
     /** Includes one worker copy and one retired read page; pages never grow with playback time. */
     val capacityBytes: Long
     val pageCount: Int
     val misses: Long get() = missCount.load()
+    val droppedRequests: Long get() = droppedCount.load()
+    val status: PcmReadStatus get() = when {
+        closed -> PcmReadStatus.CLOSED
+        failed -> PcmReadStatus.FAILED
+        pendingPages.load() > 0 -> PcmReadStatus.PREFETCHING
+        else -> PcmReadStatus.READY
+    }
+    /** Worker lease for exact offline windows. Render never acquires a pin or waits for one. */
+    fun pin(page: Int) { require(page in entries.indices); entries[page].pins.fetchAndAdd(1) }
+    fun unpin(page: Int) { check(entries[page].pins.fetchAndAdd(-1) > 0) }
     init {
         require(frameCount > 0 && pageFrames in 256..65_536 && pageFrames.countOneBits() == 1)
         require(maximumPages in 4..4096 && workerBytes in 0..EngineFormat.MAX_RESIDENT_BYTES)
         pageCount = ((frameCount.toLong() + pageFrames - 1) / pageFrames).toInt()
         entries = Array(pageCount) { Entry() }
         slots = IntArray(minOf(pageCount, maximumPages)) { -1 }
-        capacityBytes = (slots.size.toLong() + 2) * pageFrames * 8 + workerBytes + pageCount * 64L
+        capacityBytes = capacityFor(frameCount, pageFrames, maximumPages, workerBytes, requestCapacity)
         require(capacityBytes <= EngineFormat.MAX_RESIDENT_BYTES)
     }
 
     /** Source frame, never a sample index. End-exclusive/outside requests are harmless. */
-    fun request(frame: Int): Boolean = frame in 0 until frameCount && requestPage(frame / pageFrames)
+    fun request(frame: Int): Boolean = frame in 0 until frameCount && requestPage(frame ushr pageShift)
 
     private fun requestPage(index: Int): Boolean {
         if (closed || failed || index !in entries.indices) return false
@@ -61,28 +75,36 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
         if (entry.page != null || entry.requested.load() != 0) return true
         if (requests.consumed < entry.retryAfter) return false
         if (!entry.requested.compareAndSet(0, 1)) return true
+        pendingPages.fetchAndAdd(1)
         if (requests.offer(index)) return true
+        pendingPages.fetchAndAdd(-1)
         entry.retryAfter = requests.consumed + 1
         entry.requested.store(0)
         droppedCount.fetchAndAdd(1)
         return false
     }
 
-    internal fun sample(frame: Int, channel: Int): Float {
-        val index = frame / pageFrames
+    internal fun sample(frame: Int, channel: Int, cursor: PcmReadCursor? = null): Float {
+        val index = frame ushr pageShift
+        if (cursor != null && cursor.cache === this && cursor.page == index) {
+            val cached = cursor.samples
+            if (cached != null) return cached[(frame and pageMask) * 2 + channel]
+        }
         val page = entries[index].page
         if (page == null || closed || failed) {
+            if (cursor != null) cursor.missing = true
             missCount.fetchAndAdd(1)
             requestPage(index)
             return 0f
         }
+        if (cursor != null) { cursor.cache = this; cursor.page = index; cursor.samples = page.samples }
         page.accessed = true
-        if (page.hinted.compareAndSet(0, 1)) {
+        if (page.hinted.load() == 0 && page.hinted.compareAndSet(0, 1)) {
             // Both directions matter: reverse PADs and HAND may move at negative speed.
             requestPage(index + 1); requestPage(index - 1)
             requestPage(index + 2); requestPage(index - 2)
         }
-        return page.samples[(frame % pageFrames) * 2 + channel]
+        return page.samples[(frame and pageMask) * 2 + channel]
     }
 
     /** One worker consumes page numbers, then calls [publish] or [fail]. No render-side callback. */
@@ -94,7 +116,7 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
         require(page in entries.indices)
         val count = minOf(pageFrames, frameCount - page * pageFrames)
         require(samples.size == count * 2 && samples.all { it.isFinite() })
-        if (closed || failed) { entries[page].requested.store(0); return false }
+        if (closed || failed) { finishRequest(page); return false }
         if (entries[page].page == null) {
             var chosen = -1
             for (attempt in 0 until slots.size * 2 + 1) {
@@ -102,6 +124,7 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
                 clock = (clock + 1) % slots.size
                 val previous = slots[slot]
                 if (previous < 0) { chosen = slot; loaded++; break }
+                if (entries[previous].pins.load() > 0) continue
                 val old = entries[previous].page
                 if (old == null || !old.accessed) {
                     entries[previous].page = null
@@ -110,25 +133,34 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
                 }
                 old.accessed = false
             }
-            check(chosen >= 0)
+            if (chosen < 0) { finishRequest(page); return false }
             slots[chosen] = page
             entries[page].page = Page(samples.copyOf())
         }
-        entries[page].requested.store(0)
+        finishRequest(page)
         return true
+    }
+
+    private fun finishRequest(page: Int) {
+        if (entries[page].requested.exchange(0) != 0) pendingPages.fetchAndAdd(-1)
     }
 
     /** Failure/cancellation never publishes a partial page. A new owner can retry with a fresh cache. */
     fun fail() { failed = true }
     fun close() { closed = true }
     fun statistics(): PcmPageStats = PcmPageStats(
-        when { closed -> PcmReadStatus.CLOSED; failed -> PcmReadStatus.FAILED
-            requests.pending > 0 -> PcmReadStatus.PREFETCHING; else -> PcmReadStatus.READY },
+        status,
         loaded.toLong() * pageFrames * 8, capacityBytes, misses, droppedCount.load(), requests.pending, loaded)
 
     companion object {
         const val PAGE_FRAMES = 4096
         const val DEFAULT_PAGES = 512
+        fun capacityFor(frames: Int, pageFrames: Int = PAGE_FRAMES, maximumPages: Int = DEFAULT_PAGES, workerBytes: Long = 0, requestCapacity: Int = 256): Long {
+            val pages = (frames.toLong() + pageFrames - 1) / pageFrames
+            val retained = minOf(pages, maximumPages.toLong())
+            // Conservative metadata charge (entry atomics/references, page headers, clock slots and ring).
+            return (retained + 2) * pageFrames * 8 + workerBytes + pages * 96 + retained * 64 + requestCapacity * 64
+        }
     }
 }
 

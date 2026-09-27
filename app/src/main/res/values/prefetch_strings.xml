@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="next_source_frame_limit">This audio is longer than the import limit.</string>
+</resources>

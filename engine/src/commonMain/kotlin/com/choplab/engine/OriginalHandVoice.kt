@@ -22,6 +22,9 @@ internal class OriginalHandVoice {
     private var fromLeft = 0.0
     private var fromRight = 0.0
     private var transitionAge = EngineCore.SCRATCH_MOTION_FRAMES
+    private val pcmCursor = PcmReadCursor()
+    var pcmMiss = false
+        private set
     var outputLeft = 0.0
         private set
     var outputRight = 0.0
@@ -64,6 +67,7 @@ internal class OriginalHandVoice {
     }
 
     fun render(interpolator: PitchInterpolator) {
+        pcmMiss = false
         val gain = monitorGain.next().toDouble()
         var left = 0.0
         var right = 0.0
@@ -73,8 +77,12 @@ internal class OriginalHandVoice {
             if (nowMoving != moving) { moving = nowMoving; motion.set(if (moving) 1f else 0f, EngineCore.SCRATCH_MOTION_FRAMES) }
             val gate = motion.next().toDouble() * cut.next()
             if (gate > 0.0) {
-                left = interpolator.read(data.asset, position, step, 0, start, end, false) * gate
-                right = interpolator.read(data.asset, position, step, 1, start, end, false) * gate
+                pcmCursor.reset()
+                left = interpolator.read(data.asset, position, step, 0, start, end, false, cursor = pcmCursor) * gate
+                right = interpolator.read(data.asset, position, step, 1, start, end, false, cursor = pcmCursor) * gate
+                pcmMiss = pcmCursor.missing
+                pcmCursor.clear()
+                if (pcmMiss) { left = 0.0; right = 0.0 }
             }
             if (moving) {
                 position += step

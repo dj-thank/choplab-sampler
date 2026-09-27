@@ -78,12 +78,3 @@ class WavFrameSource private constructor(private val path: Path, override val in
         }
     }
 }
-
-internal class MemoryFrameSource(private val audio: WavAudio) : PcmFrameSource {
-    override val info get() = audio.info
-    override fun read(firstFrame: Int, frameCount: Int, cancelled: () -> Boolean): FloatArray {
-        if (cancelled()) throw java.util.concurrent.CancellationException("PCM read cancelled")
-        require(firstFrame >= 0 && frameCount > 0 && firstFrame.toLong() + frameCount <= info.frames)
-        return audio.samples.copyOfRange(firstFrame * info.channels, (firstFrame + frameCount) * info.channels)
-    }
-}

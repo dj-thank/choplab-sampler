@@ -19,9 +19,9 @@ import java.security.MessageDigest
 interface OriginalAudioDecoder : Closeable {
     fun inspect(path: Path, hash: String, cancelled: () -> Boolean = { false }): WavInfo
     fun decode(path: Path, hash: String, cancelled: () -> Boolean = { false }): WavAudio
-    /** Hosts override this with a disk-backed decode for long material. Caller owns its lifetime. */
+    /** Hosts supply a bounded reader for long material. There is deliberately no whole-RAM fallback. */
     fun openPcm(path: Path, hash: String, cancelled: () -> Boolean = { false }): PcmFrameSource =
-        MemoryFrameSource(decode(path, hash, cancelled))
+        throw UnsupportedOperationException("This host has no bounded PCM reader")
     override fun close() = Unit
 }
 
@@ -30,11 +30,12 @@ class OriginalAudioImportPort(
     private val assets: FileAssetStore,
     private val resolve: (Location) -> Path,
     private val decoder: OriginalAudioDecoder,
+    private val displayName: (Location) -> String? = { null },
 ) : ImportPort {
-    private val wav = WavImportPort(assets, resolve)
+    private val wav = WavImportPort(assets, resolve, displayName)
     override suspend fun import(location: Location): Asset = withContext(Dispatchers.IO) {
         val source = resolve(location)
-        val extension = source.fileName.toString().substringAfterLast('.', "").lowercase()
+        val extension = audioExtension(source, displayName(location) ?: source.fileName.toString())
         if (extension == "wav") return@withContext wav.import(location)
         require(extension in EXTENSIONS) { "Unsupported audio format" }
         require(Files.isRegularFile(source) && Files.size(source) in 1..ProjectLimits.MAX_ASSET_BYTES)
@@ -61,7 +62,7 @@ class OriginalAudioImportPort(
             context.ensureActive()
             java.nio.channels.FileChannel.open(pending, java.nio.file.StandardOpenOption.WRITE).use { it.force(true) }
             val asset = Asset(digest, extension, count, info.sampleRate, info.channels, info.frames,
-                source.fileName.toString().replace(':', '_').take(256))
+                (displayName(location) ?: source.fileName.toString()).replace(':', '_').take(256))
             // adopt validates the hash and metadata again, counts the bytes once and removes the snapshot.
             assets.adopt(asset, pending, cancelled)
             context.ensureActive()
@@ -70,4 +71,26 @@ class OriginalAudioImportPort(
     }
 
     companion object { val EXTENSIONS: List<String> = Asset.EXTENSIONS }
+}
+
+/** Container signature for a stream picker without a useful filename; no file path enters the document. */
+internal fun audioExtension(path: Path, name: String): String {
+    val named = name.substringAfterLast('.', "").lowercase()
+    if (named in OriginalAudioImportPort.EXTENSIONS) return named
+    val header = ByteArray(16)
+    val count = Files.newInputStream(path).use { it.read(header) }
+    require(count >= 4) { "Unknown audio container" }
+    fun at(first: Int, length: Int) = if (count >= first + length) String(header, first, length, Charsets.US_ASCII) else ""
+    return when {
+        at(0, 4) == "RIFF" && at(8, 4) == "WAVE" -> "wav"
+        at(0, 4) == "fLaC" -> "flac"
+        at(0, 4) == "OggS" -> "ogg"
+        at(4, 4) == "ftyp" -> "m4a"
+        at(0, 4) == "FORM" -> "aiff"
+        header.take(4) == listOf(0x1a.toByte(), 0x45.toByte(), 0xdf.toByte(), 0xa3.toByte()) -> "webm"
+        at(0, 3) == "ID3" -> "mp3"
+        (header[0].toInt() and 255) == 255 && (header[1].toInt() and 0xf6) == 0xf0 -> "aac"
+        (header[0].toInt() and 255) == 255 && (header[1].toInt() and 0xe0) == 0xe0 -> "mp3"
+        else -> error("Unknown audio container")
+    }
 }

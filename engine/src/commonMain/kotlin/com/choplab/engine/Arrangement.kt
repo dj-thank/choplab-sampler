@@ -81,6 +81,9 @@ internal class ArrangementMixer {
     private var nextClip = 0
     var activeCount = 0
         private set
+    private val pcmCursor = PcmReadCursor()
+    var pcmMiss = false
+        private set
     var outputLeft = 0.0
         private set
     var outputRight = 0.0
@@ -104,6 +107,7 @@ internal class ArrangementMixer {
     }
 
     fun render(sequenceFrame: Long): Boolean {
+        pcmMiss = false
         outputLeft = 0.0
         outputRight = 0.0
         val value = arrangement ?: return true
@@ -124,8 +128,13 @@ internal class ArrangementMixer {
         for (index in 0 until activeCount) {
             val clip = value.clip(active[index])
             val sourceFrame = (clip.sourceStartFrame + sequenceFrame - clip.timelineStartFrame).toInt()
-            outputLeft += clip.asset.at(sourceFrame, 0) * clip.leftGain.toDouble()
-            outputRight += clip.asset.at(sourceFrame, 1) * clip.rightGain.toDouble()
+            pcmCursor.reset()
+            val left = clip.asset.at(sourceFrame, 0, pcmCursor)
+            val right = clip.asset.at(sourceFrame, 1, pcmCursor)
+            val missing = pcmCursor.missing
+            pcmCursor.clear()
+            if (missing) pcmMiss = true
+            else { outputLeft += left * clip.leftGain.toDouble(); outputRight += right * clip.rightGain.toDouble() }
         }
         return true
     }

@@ -18,6 +18,7 @@ object StreamingWavRenderer {
         seed: Int = 1,
         blockFrames: Int = 480,
         cancelled: () -> Boolean = { false },
+        prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()) { "Paged PCM needs worker preparation" }; render() },
     ): StreamingRenderStats {
         require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..480_000 && blockFrames in 1..65_536)
         val engine = EngineCore(program, EngineConfig(controlCapacity = 4, eventCapacity = 8, outputMode = EngineOutputMode.EXPORT))
@@ -31,8 +32,10 @@ object StreamingWavRenderer {
         var rendered = 0L
         while (rendered < total) {
             if (cancelled()) throw CancellationException("WAV export cancelled")
-            val count = minOf(blockFrames.toLong(), total - rendered).toInt()
-            engine.render(buffer, frameCount = count)
+            val plan = engine.prepareOfflineBlock(minOf(blockFrames.toLong(), 4096L, total - rendered).toInt())
+            val count = plan.frames
+            prepared(plan.windows) { engine.render(buffer, frameCount = count) }
+            check(engine.pcmUnderrunFrames == 0L) { "PCM missing during export" }
             val skipped = minOf(count.toLong(), (latency - rendered).coerceAtLeast(0)).toInt()
             if (count > skipped) writer.write(buffer, skipped, count - skipped)
             rendered += count

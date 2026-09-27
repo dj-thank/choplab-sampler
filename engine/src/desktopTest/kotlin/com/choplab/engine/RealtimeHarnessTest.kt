@@ -12,13 +12,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RealtimeHarnessTest {
-    @Test fun clickSourceHandAndMaximumArrangementPadFadeMixAllocateZeroAndStopCompletely() {
-        val source = PcmAsset.fromMono(FloatArray(8_192) { (.001 * sin(2 * PI * it / 64)).toFloat() })
-        val pads = (0 until 30).map { Pad(it, source, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
-        val arrangement = Arrangement((0 until 32).map { ArrangementClip("clip-$it", source, 0, trackIndex = it % 16) })
+    @Test fun clickSourceHandAndMaximumArrangementPadFadeMixAllocateZeroAndStopCompletely() = maximumMix(false)
+
+    @Test fun pagedLongSourceWithHandAndMaximumMixRetainsZeroAllocationAndItsVoiceBudget() = maximumMix(true)
+
+    private fun maximumMix(paged: Boolean) {
+        val source = if (!paged) PcmAsset.fromMono(FloatArray(8_192) { (.001 * sin(2 * PI * it / 64)).toFloat() })
+        else PcmAsset.paged(PagedPcm(19_200_000)).also { asset ->
+            repeat(2) { page -> asset.pages!!.publish(page, FloatArray(4096 * 2) {
+                (.001 * sin(2 * PI * (page * 4096 + it / 2) / 64)).toFloat()
+            }) }
+        }
+        val pads = (0 until 30).map { Pad(it, source, endFrame = 8_192, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
+        val arrangement = Arrangement((0 until 32).map { ArrangementClip("clip-$it", source, 0, sourceEndFrame = 8_192, trackIndex = it % 16) })
         val engine = EngineCore(EngineProgram(pads, arrangement = arrangement), EngineConfig(controlCapacity = 128, eventCapacity = 2))
         var id = 0L
-        engine.controls.offer(EngineCommand.SetOriginalSource(0, id++, OriginalSource(source, loop = true)))
+        engine.controls.offer(EngineCommand.SetOriginalSource(0, id++, OriginalSource(source, endFrame = 8_192, loop = true)))
         engine.controls.offer(EngineCommand.PlayOriginalSource(0, id++))
         engine.controls.offer(EngineCommand.ScratchOriginalStart(0, id++, 1_000.0, 500, 7_500))
         for (i in 0 until 30) engine.controls.offer(EngineCommand.Trigger(0, id++, i))
@@ -69,10 +78,12 @@ class RealtimeHarnessTest {
             if (delta != 0L && firstAllocatingBlock < 0) firstAllocatingBlock = block
         }
         times.sort()
-        println("CLICK_SOURCE_HAND JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=$blocks " +
+        println("CLICK_SOURCE_HAND paged=$paged JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=$blocks " +
             "arrangement=32 primary=30PAD+1HAND+1click fade=16 SOURCE=1 maxPcmReaders=80 sourcePitch=24/17st handSpeed=+/-8 " +
             "renderAllocatedBytes=$renderAllocated firstAllocatingBlock=$firstAllocatingBlock p99ns=${times[9899]} maxNs=${times.last()} " +
             "p99BlockFraction=${times[9899] / 4_000_000.0}; desktop synthetic only")
+        assertEquals(0L, engine.pcmUnderrunFrames)
+        assertTrue(engine.residentBytes <= EngineFormat.MAX_RESIDENT_BYTES)
         assertEquals(0L, renderAllocated)
         assertEquals(0L, engine.rejectedVoices)
         assertEquals(32, engine.activeVoiceCount)

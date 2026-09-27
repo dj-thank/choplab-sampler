@@ -56,6 +56,7 @@ data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
 /** HAND position is independent of SOURCE; -1 means no hand currently owns the region. */
 data class HandPlayback(val sourceFrame: Double, val gain: Float)
+data class PcmPlayback(val status: PcmReadStatus, val underrunFrames: Long, val droppedRequests: Long)
 /**
  * Output health for a diagnostics readout: formats, times and counts only, never a device name or identifier. Render
  * times cover producing and converting one block with the current device, as a share of that block's duration, over
@@ -310,6 +311,11 @@ open class StreamingEnginePort(
         val snapshot = snapshots.get()
         engineView?.engine?.readout?.copyInto(snapshot)
         return OriginalPlayback(snapshot.originalLoaded, snapshot.originalPlaying, snapshot.originalSourceFrame, snapshot.originalMonitorGain)
+    }
+    fun pcmPlayback(): PcmPlayback {
+        val snapshot = snapshots.get()
+        engineView?.engine?.readout?.copyInto(snapshot)
+        return PcmPlayback(snapshot.pcmReadStatus, snapshot.pcmUnderrunFrames, snapshot.pcmDroppedRequests)
     }
     fun handPlayback(): HandPlayback {
         val snapshot = snapshots.get()

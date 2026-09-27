@@ -41,6 +41,7 @@ class StreamFileServices(
     private val documents: HostDocuments,
     private val scratch: Path,
     private val decoder: HostDecoder? = null,
+    private val originalDecoder: OriginalAudioDecoder? = null,
 ) {
     init {
         Files.createDirectories(scratch)
@@ -52,6 +53,11 @@ class StreamFileServices(
         val importer = object : ImportPort {
             override suspend fun import(location: Location): Asset = withContext(Dispatchers.IO) {
                 inScratch { file ->
+                    if (originalDecoder != null) {
+                        copyBounded(documents.openInput(location), file, ProjectLimits.MAX_ASSET_BYTES, coroutineContext)
+                        return@inScratch OriginalAudioImportPort(assets, { file }, originalDecoder,
+                            displayName = { hostName(documents.displayName(location)) ?: "Audio" }).import(location)
+                    }
                     val wav = copyIfWav(documents.openInput(location), file, ProjectLimits.MAX_ASSET_BYTES, coroutineContext)
                     if (!wav) {
                         val host = decoder ?: throw IllegalArgumentException("This audio format needs a decoder")

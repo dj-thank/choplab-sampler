@@ -21,7 +21,7 @@ class ProgramCompiler(private val pcm: PcmPort) {
         var bytes = 0L
         // Audition PADs remain available in arrangement mode. Admit the union, never drop PADs.
         val required = (project.pads.mapNotNull { it.assetHash } + timeline?.audible.orEmpty().map { it.asset.hash }).distinct().map(project::asset)
-        require(required.sumOf { normalizedFrames(it) * 8 } <= EngineFormat.MAX_RESIDENT_BYTES) { "PAD and timeline PCM exceeds resident budget" }
+        require(required.sumOf { (pcm as? PrefetchPcmPort)?.residentBytes(it) ?: (normalizedFrames(it) * 8) } <= EngineFormat.MAX_RESIDENT_BYTES) { "PAD and timeline PCM exceeds resident budget" }
         suspend fun load(metadata: Asset): PcmAsset = resident[metadata.hash] ?: pcm.load(metadata).also {
                 val frames = normalizedFrames(metadata)
                 require(it.frameCount.toLong() == frames) { "PCM metadata mismatch" }
@@ -31,7 +31,11 @@ class ProgramCompiler(private val pcm: PcmPort) {
             }
         val pads = project.pads.filter { it.assetHash != null }.map { pad ->
             val metadata = project.asset(requireNotNull(pad.assetHash))
-            enginePad(pad, metadata, load(metadata))
+            enginePad(pad, metadata, load(metadata)).also { prepared ->
+                val start = if (pad.reverse) prepared.endFrame - 1 else prepared.startFrame
+                (pcm as? PrefetchPcmPort)?.prefetch(prepared.asset, maxOf(prepared.startFrame, start - 128),
+                    minOf(prepared.endFrame, start + 4096))
+            }
         }
         val arrangement = timeline?.let { plan ->
             val tracks = plan.audible.map { it.track.id }.distinct()
@@ -42,6 +46,13 @@ class ProgramCompiler(private val pcm: PcmPort) {
         return EngineProgram(pads, pattern?.let { com.choplab.engine.Pattern(it.lengthTicks, it.notes.map { note -> SequenceNote(note.tick, note.padId, note.velocity) }) },
             project.tempo, revision, arrangement)
     }
+
+    /** Offline owner calls this outside EngineCore.render; a miss must never enter a saved WAV. */
+    suspend fun <T> prepared(windows: List<com.choplab.engine.PcmWindow>, render: () -> T): T =
+        (pcm as? PrefetchPcmPort)?.prepared(windows, render) ?: run {
+            require(windows.none { it.asset.pages != null })
+            render()
+        }
 
     private data class PlannedClip(val id: String, val asset: Asset, val sourceStart: Int, val sourceEnd: Int, val start: Long, val track: Track,
                                    val gain: Float = track.gain, val pan: Float = track.pan) {
@@ -103,6 +114,9 @@ class ProgramCompiler(private val pcm: PcmPort) {
             return com.choplab.engine.Pad(pad.id, data, start, end, pad.mode, pad.pitchSemitones, pad.gain,
                 pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone)
         }
+        /** Actual bounded-cache estimate used by hosts; legacy residentFrames remains a duration diagnostic. */
+        fun residentBudgetBytes(project: Project): Long =
+            (project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash }).distinct().sumOf { PcmResidency.bytes(project.asset(it)) }
         fun residentFrames(project: Project): Long =
             (project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash }).distinct().sumOf { normalizedFrames(project.asset(it)) }
         /** Absolute conversion, so rounding never accumulates across clips or tempo changes. */

@@ -96,10 +96,57 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         private set
     val latencyFrames: Int get() = MasterLimiter.LOOKAHEAD_FRAMES
 
+    var pcmUnderrunFrames = 0L
+        private set
+    var pcmReadStatus = PcmReadStatus.READY
+        private set
+    var pcmDroppedRequests = 0L
+        private set
+
     init {
         require(initialProgram.residentBytes <= config.residentByteLimit)
         arrangementMixer.restore(initialProgram.arrangement, 0)
         readout.publish(this, 0f, 0f)
+    }
+
+    /**
+     * Export owner only, before render. Resolve this frame's commands/notes, then stop preparation at the
+     * next event. At most 48 voices and 32 clips need pages; no speculative full-asset or full-pattern load.
+     */
+    fun prepareOfflineBlock(maximumFrames: Int): OfflinePcmBlock {
+        require(config.outputMode == EngineOutputMode.EXPORT && maximumFrames in 1..4096)
+        consumeCommands()
+        scheduleNotes()
+        var count = maximumFrames.toLong()
+        controls.peek()?.let { count = minOf(count, (it.effectiveFrame - frame).coerceAtLeast(1)) }
+        if (sequencePlaying) {
+            program.pattern?.takeIf { it.noteCount > 0 && program.arrangement == null }?.let {
+                count = minOf(count, clock.framesUntil(sequenceCycle * it.lengthTicks + it.note(sequenceIndex).tick).coerceAtLeast(1))
+            }
+            program.arrangement?.let { arrangement ->
+                for (i in 0 until arrangement.clipCount) {
+                    val start = arrangement.clip(i).timelineStartFrame
+                    if (start > sequenceFrame) { count = minOf(count, start - sequenceFrame); break }
+                }
+            }
+        }
+        val length = count.toInt()
+        val windows = mutableListOf<PcmWindow>()
+        for (voice in voices) voice.pad?.let { pad ->
+            if (!voice.suspended && !(sequencePaused && voice.transportVoice))
+                windows.addAll(PcmWindow.pad(pad, voice.position, if (voice.scratch) voice.scratchStep else pad.step, length,
+                    pad.mode == PlayMode.LOOP && !voice.scratch))
+        }
+        if (sequencePlaying) program.arrangement?.let { arrangement ->
+            for (i in 0 until arrangement.clipCount) {
+                val clip = arrangement.clip(i)
+                if (clip.timelineStartFrame <= sequenceFrame && clip.timelineEndFrame > sequenceFrame && clip.asset.pages != null) {
+                    val from = (clip.sourceStartFrame + sequenceFrame - clip.timelineStartFrame).toInt()
+                    windows.add(PcmWindow(clip.asset, from, minOf(clip.sourceEndFrame, from + length)))
+                }
+            }
+        }
+        return OfflinePcmBlock(length, windows)
     }
 
     /** Writes (does not add to) the supplied buffer; offsets and counts are frames. */
@@ -113,10 +160,12 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             scheduleNotes()
             var left = 0.0
             var right = 0.0
+            var pcmMiss = false
             if (sequencePlaying && program.arrangement != null) {
                 if (arrangementMixer.render(sequenceFrame)) {
                     left += arrangementMixer.outputLeft
                     right += arrangementMixer.outputRight
+                    pcmMiss = pcmMiss || arrangementMixer.pcmMiss
                 } else failArrangementOverload()
             }
             for (i in voices.indices) {
@@ -125,6 +174,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     voice.render(interpolator)
                     left += voice.outputLeft
                     right += voice.outputRight
+                    pcmMiss = pcmMiss || voice.pcmMiss
                 }
             }
             if (config.outputMode == EngineOutputMode.MONITOR) {
@@ -134,14 +184,17 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 originalVoice.render(interpolator)
                 left += originalVoice.outputLeft
                 right += originalVoice.outputRight
+                pcmMiss = pcmMiss || originalVoice.pcmMiss
                 handVoice.render(interpolator)
                 left += handVoice.outputLeft
                 right += handVoice.outputRight
+                pcmMiss = pcmMiss || handVoice.pcmMiss
                 if (!handVoice.active) handReservation = -1
                 val click = clickVoice.next()
                 left += click
                 right += click
             }
+            if (pcmMiss) pcmUnderrunFrames++
             limiter.process(left * config.masterGain, right * config.masterGain)
             val index = (offsetFrames + f) * 2
             output[index] = limiter.outputLeft
@@ -586,6 +639,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private fun retainedBytes(candidate: EngineProgram): Long {
         var count = 0
         var bytes = 0L
+        var status = PcmReadStatus.READY
+        var dropped = 0L
         for (i in 0 until candidate.assetCount + voices.size + 1) {
             val asset = if (i < candidate.assetCount) candidate.asset(i)
                 else if (i < candidate.assetCount + voices.size) voices[i - candidate.assetCount].pad?.asset
@@ -593,9 +648,16 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             if (asset != null) {
                 var exists = false
                 for (j in 0 until count) if (assetScratch[j] === asset) { exists = true; break }
-                if (!exists) { assetScratch[count++] = asset; bytes += asset.residentBytes }
+                if (!exists) {
+                    assetScratch[count++] = asset; bytes += asset.residentBytes
+                    asset.pages?.let { pages ->
+                        if (pages.status.ordinal > status.ordinal) status = pages.status
+                        dropped += pages.droppedRequests
+                    }
+                }
             }
         }
+        pcmReadStatus = status; pcmDroppedRequests = dropped
         for (i in 0 until count) assetScratch[i] = null
         return bytes
     }
@@ -658,6 +720,9 @@ internal class Voice {
     /** One-pole low-pass state for the PAD's tone; untouched while the tone is bypassed. */
     private var toneLeft = 0.0
     private var toneRight = 0.0
+    private val pcmCursor = PcmReadCursor()
+    var pcmMiss = false
+        private set
     var outputLeft = 0.0
         private set
     var outputRight = 0.0
@@ -705,7 +770,7 @@ internal class Voice {
         if (scratch) motion.set(if (moving) 1f else 0f, EngineCore.SCRATCH_MOTION_FRAMES)
     }
     fun render(interpolator: PitchInterpolator) {
-        outputLeft = 0.0; outputRight = 0.0
+        outputLeft = 0.0; outputRight = 0.0; pcmMiss = false
         val pad = pad ?: return
         val loop = pad.mode == PlayMode.LOOP && !scratch
         val speed = if (scratch) scratchStep else pad.step
@@ -729,8 +794,12 @@ internal class Voice {
         if (!scratch || held > 0.0) {
             envelope *= gate * velocity * held
             // Held still, a scratch reads its resting frame with the last movement's band, so the fade out cannot click.
-            var left = interpolator.read(pad.asset, position, speed, 0, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames)
-            var right = interpolator.read(pad.asset, position, speed, 1, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames)
+            pcmCursor.reset()
+            var left = interpolator.read(pad.asset, position, speed, 0, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames, pcmCursor)
+            var right = interpolator.read(pad.asset, position, speed, 1, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames, pcmCursor)
+            pcmMiss = pcmCursor.missing
+            pcmCursor.clear()
+            if (pcmMiss) { left = 0.0; right = 0.0 }
             if (pad.toneAlpha < 1.0) {
                 toneLeft += pad.toneAlpha * (left - toneLeft); left = toneLeft
                 toneRight += pad.toneAlpha * (right - toneRight); right = toneRight

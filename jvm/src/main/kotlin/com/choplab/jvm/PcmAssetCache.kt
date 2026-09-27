@@ -40,14 +40,17 @@ class PcmAssetCache(
     private var retained = 0L
     init { require(maxBytes in 8..EngineFormat.MAX_RESIDENT_BYTES && maximumPending in 1..ProjectLimits.MAX_ASSETS) }
 
-    suspend fun get(asset: Asset, decode: suspend () -> PcmAsset): PcmAsset {
+    suspend fun get(asset: Asset, discard: suspend (PcmAsset) -> Unit = {}, decode: suspend () -> PcmAsset): PcmAsset {
         val identity = Identity(asset.hash, asset.extension, asset.byteCount, asset.sampleRate, asset.channels, asset.frames, asset.role != AssetRole.ORIGINAL)
         val frames = (asset.frames * 48_000 + asset.sampleRate - 1) / asset.sampleRate
-        require(frames * 8 <= EngineFormat.MAX_RESIDENT_BYTES)
+        require(frames in 1..Int.MAX_VALUE.toLong())
         var hit: PcmAsset? = null
         val flight = guard.withLock {
             check(scope.isActive) { "PCM cache is closed" }
-            entries.remove(identity)?.let { entries[identity] = it; hit = it }
+            entries.remove(identity)?.let {
+                if (it.pages?.status in listOf(com.choplab.engine.PcmReadStatus.FAILED, com.choplab.engine.PcmReadStatus.CLOSED)) retained -= it.residentBytes
+                else { entries[identity] = it; hit = it }
+            }
             if (hit != null) return@withLock null
             (flights[identity]?.takeIf { !it.result.isCancelled && it.job.isActive } ?: run {
                 flights.entries.removeAll { it.value.result.isCompleted || !it.value.job.isActive }
@@ -55,12 +58,15 @@ class PcmAssetCache(
                 Flight().also { created ->
                     flights[identity] = created
                     created.job = scope.launch(start = CoroutineStart.LAZY) {
+                        var unpublished: PcmAsset? = null
                         try {
                             val pcm = decodeSlot.withPermit {
                                 coroutineContext.ensureActive()
                                 decode().also {
+                                    unpublished = it
                                     coroutineContext.ensureActive()
-                                    require(it.frameCount.toLong() == frames && it.residentBytes == frames * 8) { "PCM metadata mismatch" }
+                                    require(it.frameCount.toLong() == frames && it.residentBytes <= EngineFormat.MAX_RESIDENT_BYTES &&
+                                        (it.pages != null || it.residentBytes == frames * 8)) { "PCM metadata mismatch" }
                                 }
                             }
                             guard.withLock {
@@ -73,8 +79,11 @@ class PcmAssetCache(
                                     entries[identity] = pcm; retained += pcm.residentBytes
                                 }
                                 created.result.complete(pcm)
+                                unpublished = null
                             }
                         } catch (failure: Throwable) {
+                            try { withContext(NonCancellable) { unpublished?.let { discard(it) } } }
+                            catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
                             created.result.completeExceptionally(failure)
                             if (failure is Error) throw failure
                         } finally {

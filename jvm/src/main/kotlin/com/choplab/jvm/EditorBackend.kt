@@ -64,10 +64,20 @@ class EditorBackend private constructor(
         require(maximumBuckets in 16..2048)
         val audio = pcm.load(asset)
         val bucketSize = ((audio.frameCount + maximumBuckets - 1) / maximumBuckets).coerceAtLeast(1)
-        val cache = WaveformCache()
-        val peaks = cache.build(WaveformCache.Key(asset.hash, bucketSize), audio)
-        List(peaks.buckets) { bucket -> maxOf(abs(peaks.minimum(bucket, 0)), abs(peaks.maximum(bucket, 0)),
-            abs(peaks.minimum(bucket, 1)), abs(peaks.maximum(bucket, 1))) }
+        val peaks = FloatArray((audio.frameCount + bucketSize - 1) / bucketSize)
+        var first = 0
+        while (first < audio.frameCount) {
+            currentCoroutineContext().ensureActive()
+            val end = minOf(audio.frameCount, first + com.choplab.engine.PagedPcm.PAGE_FRAMES)
+            val window = pcm.readWindow(audio, first, end)
+            for (frame in first until end) {
+                val sample = (frame - first) * 2
+                val bucket = frame / bucketSize
+                peaks[bucket] = maxOf(peaks[bucket], abs(window[sample]), abs(window[sample + 1]))
+            }
+            first = end
+        }
+        peaks.toList()
     }
 
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
@@ -78,7 +88,12 @@ class EditorBackend private constructor(
      * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
      */
     suspend fun renderPad(pad: Pad, source: Asset): Asset {
-        val samples = withContext(Dispatchers.Default) { PadRender.render(ProgramCompiler.enginePad(pad, source, pcm.load(source))) }
+        val samples = withContext(Dispatchers.Default) {
+            val context = currentCoroutineContext()
+            PadRender.render(ProgramCompiler.enginePad(pad, source, pcm.load(source))) { windows, render ->
+                runBlocking(context) { pcm.prepared(windows, render) }
+            }
+        }
         val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()
         val marks = buildList {
             if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
@@ -96,8 +111,11 @@ class EditorBackend private constructor(
         require(limitFrames in 1..PadRender.MAX_FRAMES)
         require(releaseAt == null || releaseAt in 0..limitFrames)
         val samples = withContext(Dispatchers.Default) {
+            val context = currentCoroutineContext()
             com.choplab.engine.PadPerformanceRender.render(
-                ProgramCompiler.enginePad(pad, source, pcm.load(source)), releaseAt, limitFrames, stopAt)
+                ProgramCompiler.enginePad(pad, source, pcm.load(source)), releaseAt, limitFrames, stopAt) { windows, render ->
+                runBlocking(context) { pcm.prepared(windows, render) }
+            }
         }
         currentCoroutineContext().ensureActive()
         val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()

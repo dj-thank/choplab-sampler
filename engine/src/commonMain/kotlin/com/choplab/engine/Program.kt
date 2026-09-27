@@ -14,6 +14,16 @@ object EngineFormat {
     const val MAX_RESIDENT_BYTES = 128L * 1024 * 1024
 }
 
+/** Per reader, preallocated: another engine sharing the asset cannot create a false miss. */
+internal class PcmReadCursor {
+    var missing = false
+    var cache: PagedPcm? = null
+    var page = -1
+    var samples: FloatArray? = null
+    fun reset() { missing = false; clear() }
+    fun clear() { cache = null; page = -1; samples = null }
+}
+
 /** Owns defensive resident samples or a bounded immutable-page cache. Published samples never mutate. */
 class PcmAsset private constructor(private val pcm: FloatArray?, val pages: PagedPcm? = null) {
     val frameCount: Int get() = pcm?.size?.div(2) ?: pages!!.frameCount
@@ -23,7 +33,7 @@ class PcmAsset private constructor(private val pcm: FloatArray?, val pages: Page
         require(frame in 0 until frameCount && channel in 0..1)
         return at(frame, channel)
     }
-    internal fun at(frame: Int, channel: Int): Float = pcm?.get(frame * 2 + channel) ?: pages!!.sample(frame, channel)
+    internal fun at(frame: Int, channel: Int, cursor: PcmReadCursor? = null): Float = pcm?.get(frame * 2 + channel) ?: pages!!.sample(frame, channel, cursor)
 
     companion object {
         fun paged(pages: PagedPcm): PcmAsset = PcmAsset(null, pages)

@@ -5,7 +5,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import com.choplab.core.Location
-import com.choplab.engine.EngineFormat
+import com.choplab.core.model.ProjectLimits
 import com.choplab.jvm.HostDecoder
 import com.choplab.jvm.WavCodec
 import com.choplab.sampler.audio.AudioDecoder
@@ -29,8 +29,8 @@ class AndroidAudioDecoding(context: Context, private val documents: AndroidDocum
     }
 }
 
-/** Longest source the new engine keeps resident once converted to 48 kHz stereo float. */
-val maximumSourceSeconds: Int = (EngineFormat.MAX_RESIDENT_BYTES / 8 / EngineFormat.SAMPLE_RATE).toInt()
+/** Compatibility label until host wording uses the rate-specific frame limit. PCM admission uses prefetch. */
+val maximumSourceSeconds: Int = (ProjectLimits.MAX_FRAMES / 48_000).toInt()
 
 /** What the platform says about a picked file before anything is copied or decoded. */
 enum class SourceCheck { ACCEPTED, TOO_LONG, UNREADABLE }
@@ -42,7 +42,9 @@ fun checkSource(context: Context, uri: Uri): SourceCheck {
         val format = (0 until extractor.trackCount).map(extractor::getTrackFormat)
             .firstOrNull { it.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true } ?: return SourceCheck.UNREADABLE
         val micros = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
-        if (micros > maximumSourceSeconds * 1_000_000L) SourceCheck.TOO_LONG else SourceCheck.ACCEPTED
+        val rate = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 48_000
+        if (rate !in 8_000..192_000) SourceCheck.UNREADABLE
+        else if (micros > ProjectLimits.MAX_FRAMES * 1_000_000L / rate) SourceCheck.TOO_LONG else SourceCheck.ACCEPTED
     } catch (_: Exception) {
         SourceCheck.UNREADABLE
     } finally {
