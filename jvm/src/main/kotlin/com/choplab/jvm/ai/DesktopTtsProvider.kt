@@ -116,21 +116,21 @@ class DesktopTtsProvider(
     private fun language(locale: String) = when (locale.substringBefore('-').lowercase()) { "ja" -> LyricLanguage.JAPANESE; "en" -> LyricLanguage.ENGLISH; else -> null }
 
     private suspend fun windows(directory: Path, operation: String, request: TtsRequest?): SpeechProcessResult {
-        val script = directory.resolve("speech.ps1")
-        Files.writeString(script, WINDOWS_SCRIPT, Charsets.UTF_8)
         val input = directory.resolve("request.json")
         Files.write(input, ProjectJson.encodeElement(obj("operation" to str(operation), "text" to str(request?.spokenText ?: ""),
             "voice" to str(request?.voice?.id ?: ""), "rate" to num(request?.settings?.ratePermille?.let { (log2(it / 1000.0) * 10).roundToInt().coerceIn(-10, 10) } ?: 0),
             "volume" to num((request?.settings?.volumePermille ?: 1000) / 10))))
-        return runner.run(listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-File", script.toString(), "-RequestFile", input.toString(),
-            "-OutputFile", directory.resolve("speech.wav").toString()), directory)
+        // A fixed command works with the default no-script-file policy. No policy override, user text, voice or
+        // path is interpolated into PowerShell code; all data comes from fixed names in the private process cwd.
+        return runner.run(listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_SCRIPT), directory)
     }
     override fun close() { if (closed.compareAndSet(false, true)) runner.close() }
 
     private companion object {
         val WINDOWS_SCRIPT = """
-            param([string]${'$'}RequestFile, [string]${'$'}OutputFile)
             ${'$'}ErrorActionPreference = 'Stop'
+            ${'$'}RequestFile = [System.IO.Path]::Combine([Environment]::CurrentDirectory, 'request.json')
+            ${'$'}OutputFile = [System.IO.Path]::Combine([Environment]::CurrentDirectory, 'speech.wav')
             [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(${'$'}false)
             Add-Type -AssemblyName System.Speech
             ${'$'}request = [System.IO.File]::ReadAllText(${'$'}RequestFile, [System.Text.Encoding]::UTF8) | ConvertFrom-Json

@@ -20,10 +20,12 @@ class VocalTtsServiceTest {
         var malformed = false
         var frames = 44_100
         var voiceList = "Local Ja ja_JP # voice\nLocal En en_US # voice"
+        var denyScriptFile = false
         var gate: CompletableDeferred<Unit>? = null
         val commands = mutableListOf<List<String>>()
         override suspend fun run(arguments: List<String>, directory: Path): SpeechProcessResult {
             commands += arguments
+            if (denyScriptFile && "-File" in arguments) return SpeechProcessResult(1, "UnauthorizedAccess".toByteArray())
             if (arguments.contains("?")) return SpeechProcessResult(0, voiceList.toByteArray())
             if ("powershell.exe" == arguments.first() && Files.readString(directory.resolve("request.json")).contains("\"voices\""))
                 return SpeechProcessResult(0, "[{\"name\":\"Local Ja\",\"locale\":\"ja-JP\"}]".toByteArray())
@@ -157,14 +159,16 @@ class VocalTtsServiceTest {
     }
 
     @Test fun windowsAdapterUsesPrivateJsonPlainTextAndActualWavMetadata() = runBlocking<Unit> {
-        val directory = Files.createTempDirectory("tts-windows-"); val native = NativeRunner()
+        val directory = Files.createTempDirectory("tts-windows-"); val native = NativeRunner().apply { denyScriptFile = true }
         val provider = provider(directory, native, DesktopSpeechPlatform.WINDOWS)
         try {
             val voice = assertIs<TtsResult.Success<FrozenList<TtsVoice>>>(provider.voices()).value.single()
             val audio = assertIs<TtsResult.Success<TtsAudio>>(provider.synthesize(TtsRequest("川", "かわ", voice))).value
             assertEquals(22_050, audio.sampleRate, "Decode the container, never assume the requested format was returned")
             assertEquals(1, audio.channels)
-            assertTrue(native.commands.all { "-NoProfile" in it && "-File" in it && it.none { arg -> "かわ" in arg } })
+            assertTrue(native.commands.all { "-NoProfile" in it && "-Command" in it && "-File" !in it &&
+                "-ExecutionPolicy" !in it && it.none { arg -> "かわ" in arg || "Bypass" in arg || directory.toString() in arg } })
+            assertEquals(1, native.commands.map { it.last() }.distinct().size, "Enumeration and synthesis run identical fixed code")
             assertEquals(0L, Files.list(directory).use { it.count() })
         } finally { provider.close(); directory.toFile().deleteRecursively() }
     }
