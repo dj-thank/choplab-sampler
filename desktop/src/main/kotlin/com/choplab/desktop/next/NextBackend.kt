@@ -71,6 +71,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = shared.loadPeaks(asset, maximumBuckets)
     suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
+    suspend fun renderPerformance(pad: com.choplab.core.model.Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset =
+        shared.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
 
     /** Caller owns and closes the job; the captured source is verified again on its worker. */
     internal fun separation(source: Asset, library: Path, title: String): NextSeparation = NextSeparation(
