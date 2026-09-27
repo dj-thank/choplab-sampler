@@ -33,7 +33,7 @@ class ContinuousEditorTest {
         val previous = Locale.getDefault()
         try {
             for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
-                Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
+                Triple(1440, 1024, 1f), Triple(390, 844, 2f), Triple(320, 844, 2f))) {
                 Locale.setDefault(locale)
                 val actions = mutableListOf<ContinuousEditorAction>()
                 val state = mutableStateOf(ContinuousEditorFixture.state().copy(capabilities = ContinuousCapability.entries.toSet()))
@@ -51,8 +51,17 @@ class ContinuousEditorTest {
                 }
                 try {
                     scene.settle()
+                    val songStop = requireNotNull(scene.tag("ce-song-stop"))
+                    println("PCM_CONTROLS locale=${locale.language} width=$width font=$font stop=${songStop.boundsInWindow} size=${songStop.size}")
+                    scene.capture("pcm-miss-instrument-${locale.language}-$width-font${(font * 100).toInt()}.png")
                     if (width == 1440) for (id in 0..15) full("ce-pad-$id")
                     for (tag in listOf("ce-stop-all", "ce-song-stop", "ce-pcm-status")) full(tag)
+                    scene.click("ce-song-stop")
+                    assertEquals(ContinuousEditorAction.StopSong, actions.last())
+                    scene.click("ce-stop-all")
+                    assertEquals(ContinuousEditorAction.StopAll, actions.last())
+                    scene.reach("ce-song-monitor")
+                    full("ce-song-stop")
                     scene.click("ce-pcm-status")
                     for (tag in listOf("ce-pcm-reload", "ce-pcm-stop", "ce-pcm-close")) full(tag)
                     scene.capture("pcm-miss-${locale.language}-$width-font${(font * 100).toInt()}.png")
