@@ -877,7 +877,7 @@ class ContinuousEditorPresenterTest {
             assertEquals(before, h.studio.document.value.project, "Nothing is on the song until the pass ends")
 
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
-            val stopped = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED }
+            val stopped = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED && it.clips.size == 4 }
             assertTrue(h.engine.commands.last { it is EngineCommand.Pause || it is EngineCommand.Resume } is EngineCommand.Pause, "Stopping pauses the song")
             assertEquals(listOf(0L, 48_000L, 72_000L, 144_000L), stopped.clips.map { it.timelineStartFrame }.sorted())
             assertTrue(h.studio.document.value.project.clips.all { it.timelineStartFrame == null }, "On the beat")
