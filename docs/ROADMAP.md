@@ -20,12 +20,14 @@
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
-## Mac NEXT端末音録音の接続（検証中）
+## Mac NEXT端末音録音の接続（PR138統合済み）
 
 - owner: root。基準はPR136統合 `a5ec068`。対象は `desktop` のScreenCaptureKit helper/NextBackend、`jvm` のVoiceTakes、`ui` のSOURCE録音操作。従来のPCM16 helper出力は維持し、NEXTだけ48kHz stereo FLOAT32を選ぶ。
 - SOURCEの端末音録音から、左右を保持した原曲、1回のUndo、PAD/配置、24bit書出し、保存/再開へつなぐ。マイクへ暗黙に切り替えない。許可待ちの取消、画面ロック、入力断、時間/容量上限を別々に扱う。
 - Macローカル候補 `93c37fc` + 後続修正でUI/JVM/desktop試験・Android Previewコンパイル・Mac package・Python320件が成功。実ScreenCaptureKit→本番Presenterで257,280 stereo framesを録音し、Undo/Redo、PAD配置、24bit書出し、保存/再起動一致を確認。外部1703Hzの振幅876.329533に対し親Javaの997Hzは0.014385（-95.70dB）。合成音を使用し生音声は一時領域削除済み。これは人間の聴感受入ではない。
-- 完了条件: 追加の入力断回帰試験、必須CI、main統合、同revisionのMac packageインストール/起動readback。現時点は候補で、配布/Windows・Android端末音/Human受入は未完。rollbackは当該PRのrevertと前のapp-imageへの復帰。利用者の制作dataは保持する。
+- PR138/139の必須CIは全成功。main `b7d8f801fc01637b6c07a3b269bd9efb15e304d7` は結合試験 `05f9d1a` とtree一致。engine77/core42/UI67/desktop280件（実録音1skip）、Android Preview compileが成功。同mainのMac app-image（217ファイル・208,481,209 bytes）で7codec/制作/署名/全hash/正常終了再開2回を確認し、このMacのNEXTを更新。インストール先でも実端末音258,240 stereo frames→UndoRedo/PAD/配置/24bit書出し/保存再開、親音除外-90.71dBが成功。PAD切り位置4,800–24,000frameの出力は19,200frameと後続無音で一致。録音profileのコピーで実launcherを2回正常終了/再開し内容と音源hashを確認。生音声は一時領域削除済み。main CI `36315193548` / Mac `36315193585` は追確認中。公開配布・Windows/Android端末音・Human受入は未完。rollbackは当該PRのrevertと前app-imageへの復帰。利用者dataと旧app-imageを保持した。
+
+次の選択範囲: rootがmain `b7d8f80` を基準に、既存の音源ライブラリをNEXTの原曲へ取り込む経路を移行する。対象はdesktopのsource adapter/ports、共有uiの取込操作と対応試験。元bytes・既存profileを保持し、選んだ1素材だけを原曲へ反映、取消で編集内容を変えず、保存/再開で同一音源を復元することを完了条件とする。online/provider同意は別の経路として追跡し、ライブラリ移植だけで全機能完了とはしない。rollbackは当該変更のrevertと旧入口の継続使用。
 
 ## 段階と受入
 
@@ -102,7 +104,7 @@ NEXT再構築の実音・実マイク・provider・Human GOは未受入です。
 - このMacのNEXT Java Sound adapterで48kHz/stereo/PCM16を14,400frame出力し、実マイクから48kHzで12,288frameの非ゼロ音声を読み取った。マイクのraw音声は保存しない。これは機器adapterの観測であり、画面上での歌の重ね録り・声と曲のずれ・人の聴感受入とは別。
 - 既存Previewの同梱ScreenCaptureKit helperで48kHz/2ch・301,440frameを取得。合成確認音の親Java音振幅6.18/外部音692.25、自己音抑制-40.98dB、正常終了を確認（`SYSTEM_CAPTURE_PARENT_EXCLUSION_PASS`）。raw録音は保存せず、NEXTの端末音録音UIの実装済み扱いにはしない。
 
-残り: NEXTは常駐音声上限に制限され、online・端末音録音・ライブラリ/分離等が既存Preview側に残る。圧縮原本と原曲用マイク録音の後続結果は下記で追跡する。元の全機能要件を満たした扱いにせず、このMacで使う入口と実装を揃える。Spotifyの実同意/API、native file dialogの手操作、声と曲の遅延、人の聴感/操作感も未完。公開Client ID設定は引き継ぎ、値やtokenはsourceへ記録しない。
+残り: NEXTは常駐音声上限に制限され、online・ライブラリ/分離等が既存Preview側に残る。Mac端末音録音はPR138でNEXTへ接続済み。圧縮原本と原曲用マイク録音の後続結果は下記で追跡する。元の全機能要件を満たした扱いにせず、このMacで使う入口と実装を揃える。Spotifyの実同意/API、native file dialogの手操作、声と曲の遅延、人の聴感/操作感も未完。公開Client ID設定は引き継ぎ、値やtokenはsourceへ記録しない。
 
 ## Mac全機能対応とWindows正本の照合 — 2026-09-26
 
@@ -151,7 +153,7 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 ### 新しい編集画面（NEXT）のMacアプリ — 2026-09-27
 
-オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。ローカル音源はWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus、マイクはJava Soundを使う。FFmpeg/ffprobeとそのnative依存だけを同梱し、分離モデル・Spotifyは既存Preview側に残す。ScreenCaptureKit helperのNEXT接続は上記の端末音録音候補で追加する。codec依存の固定一覧は `config/mac-audio-tool-files.txt`。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、同梱codecの合成fixtureと制作通し、隔離profile・無音のnative画面応答・通常終了と再開2回・編集内容と音源hashを確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
+オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。ローカル音源はWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus、マイクはJava Soundを使う。FFmpeg/ffprobeとそのnative依存だけを同梱し、分離モデル・Spotifyは既存Preview側に残す。ScreenCaptureKit helperのNEXT接続はPR138で追加済み。codec依存の固定一覧は `config/mac-audio-tool-files.txt`。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、同梱codecの合成fixtureと制作通し、隔離profile・無音のnative画面応答・通常終了と再開2回・編集内容と音源hashを確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
 
 ### NEXTの圧縮原本取込 — 2026-09-27
 
