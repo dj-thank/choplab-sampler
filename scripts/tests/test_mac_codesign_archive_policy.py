@@ -2,6 +2,9 @@
 import struct
 import shutil
 import unittest
+import subprocess
+import time
+from unittest.mock import patch
 from scripts.check_public_surface import mach_o_certificate_ranges, der_signing_material_outside_ranges
 
 
@@ -29,7 +32,25 @@ class MacCodeSignArchivePolicyTest(unittest.TestCase):
         der = cms()
         self.assertLess(der[1], 128)
         ber = b'\x30\x80' + der[2:] + b'\x00\x00'
-        self.assertIsNotNone(mach_o_certificate_ranges(macho(ber)))
+        # Keep the real process and five-second bound. If a runner fails, retain
+        # its actual outcome rather than collapsing timeout/exit/DER into None.
+        original_run = subprocess.run
+        observations = []
+        def observed_run(*args, **kwargs):
+            started = time.monotonic()
+            try:
+                result = original_run(*args, **kwargs)
+                observations.append({"returncode": result.returncode,
+                                     "output_bytes": len(result.stdout or b"")})
+                return result
+            except (OSError, subprocess.TimeoutExpired) as error:
+                observations.append({"exception": type(error).__name__})
+                raise
+            finally:
+                observations.append({"elapsed_seconds": time.monotonic() - started})
+        with patch("scripts.check_public_surface.subprocess.run", side_effect=observed_run):
+            ranges = mach_o_certificate_ranges(macho(ber))
+        self.assertIsNotNone(ranges, f"OpenSSL={shutil.which('openssl')}; actual invocation={observations}")
         self.assertIsNone(mach_o_certificate_ranges(macho(ber[:-1])))
 
     def test_only_complete_cms_range_is_recognized(self):
