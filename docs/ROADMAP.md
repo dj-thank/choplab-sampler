@@ -151,7 +151,7 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 ### 新しい編集画面（NEXT）のMacアプリ — 2026-09-27
 
-オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。ローカル音源はWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus、マイクはJava Soundを使う。FFmpeg/ffprobeとそのnative依存だけを同梱し、分離モデル・ScreenCaptureKit helperの起動設定・Spotifyは既存Preview側に残す。codec依存の固定一覧は `config/mac-audio-tool-files.txt`。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、同梱codecの合成fixtureと制作通し、隔離profile・無音のnative画面応答・通常終了と再開2回・編集内容と音源hashを確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
+オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。ローカル音源はWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus、マイクはJava Soundを使う。FFmpeg/ffprobeとそのnative依存だけを同梱し、分離モデル・Spotifyは既存Preview側に残す。ScreenCaptureKit helperのNEXT接続は上記の端末音録音候補で追加する。codec依存の固定一覧は `config/mac-audio-tool-files.txt`。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、同梱codecの合成fixtureと制作通し、隔離profile・無音のnative画面応答・通常終了と再開2回・編集内容と音源hashを確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
 
 ### NEXTの圧縮原本取込 — 2026-09-27
 

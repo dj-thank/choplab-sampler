@@ -20,12 +20,12 @@ import kotlinx.coroutines.runBlocking
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
-    @Test fun sourceMicrophoneShowsRecordingAndReachableStopAndDiscardAtLargeText() = runBlocking<Unit> {
+    @Test fun sourceInputsShowRecordingAndReachableStopAndDiscardAtLargeText() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
         try {
-            for ((width, height, font) in listOf(Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
-                val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.CAPTURE).copy(recordingSource = true, capabilities = setOf(ContinuousCapability.STOP_ALL)))
+            for (system in listOf(false, true)) for ((width, height, font) in listOf(Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
+                val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.CAPTURE).copy(recordingSource = true, recordingSystemAudio = system, capabilities = setOf(ContinuousCapability.STOP_ALL)))
                 val actions = mutableListOf<ContinuousEditorAction>()
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     ContinuousEditor(state.value, actions::add, { ContinuousEditorReadout(recordingMillis = 12_345) })
@@ -34,15 +34,16 @@ class ContinuousEditorTest {
                     scene.settle()
                     scene.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
                     scene.settle()
-                    val stop = requireNotNull(scene.tag("ce-source-record-stop"))
+                    val stopTag = if (system) "ce-system-record-stop" else "ce-source-record-stop"
+                    val stop = requireNotNull(scene.tag(stopTag))
                     val discard = requireNotNull(scene.tag("ce-source-record-discard"))
                     assertTrue(stop.boundsInRoot.height >= 48f && stop.boundsInRoot.top >= 0 && stop.boundsInRoot.bottom <= height)
                     assertTrue(discard.boundsInRoot.height >= 48f && discard.boundsInRoot.bottom <= height)
                     assertTrue(requireNotNull(scene.tag("ce-source-recording")).config[SemanticsProperties.Text].joinToString().contains("12"))
-                    scene.click("ce-source-record-stop")
+                    scene.click(stopTag)
                     scene.click("ce-source-record-discard")
                     assertEquals(listOf(ContinuousEditorAction.StopSourceRecording, ContinuousEditorAction.DiscardSourceRecording), actions)
-                    scene.capture("source-recording-${width}-font${(font * 100).toInt()}.png")
+                    scene.capture("source-recording-${system}-${width}-font${(font * 100).toInt()}.png")
                 } finally { scene.close() }
             }
         } finally { Locale.setDefault(previous) }
