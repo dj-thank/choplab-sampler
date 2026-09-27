@@ -175,7 +175,24 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
                 var suffix=2
                 while(!usedNames.add(name)) { name="$safeTitle (${suffix++}).${file.extension}" }
                 zip.putNextEntry(ZipEntry(name))
-                file.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
+                val digest = MessageDigest.getInstance("SHA-256")
+                var copied = 0L
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        copied += count
+                        require(copied <= item.bytes && copied <= MAX_FILE_BYTES) { "音源が変更されています" }
+                        digest.update(buffer, 0, count)
+                        zip.write(buffer, 0, count)
+                    }
+                }
+                require(copied == item.bytes && digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == item.id) {
+                    "音源が変更されています"
+                }
+                zip.closeEntry()
             }
         }
     }

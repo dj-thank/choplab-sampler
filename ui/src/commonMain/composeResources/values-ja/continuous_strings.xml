@@ -245,7 +245,7 @@
     <string name="ce_library_selecting">元音源を確認中…</string>
     <string name="ce_library_selected">音源を開きます</string>
     <string name="ce_library_loading">ライブラリを確認中…</string>
-    <string name="ce_library_importing">確認・保存中…</string>
+    <string name="ce_library_importing">%1$d/%2$dファイルを確認・保存中…</string>
     <string name="ce_library_added">%1$d件を追加しました</string>
     <string name="ce_library_partial">%1$d件追加・%2$d件失敗。失敗したファイルを再確認してください。</string>
     <string name="ce_library_failed">処理できませんでした。形式・空き容量・アクセス権を確認してください。</string>
@@ -257,4 +257,5 @@
     <string name="ce_library_save_title">音源セットを保存</string>
     <string name="ce_library_overwrite">同じ名前のファイルを置き換えますか？</string>
     <string name="ce_library_filter">検索</string>
+    <string name="ce_library_bundle_limit">音源セットは32音源・合計1GiBまでです。</string>
 </resources>

@@ -245,7 +245,7 @@
     <string name="ce_library_selecting">Verifying original bytes…</string>
     <string name="ce_library_selected">Opening audio</string>
     <string name="ce_library_loading">Reading library…</string>
-    <string name="ce_library_importing">Validating and saving…</string>
+    <string name="ce_library_importing">Validating and saving file %1$d/%2$d…</string>
     <string name="ce_library_added">Added %1$d items</string>
     <string name="ce_library_partial">Added %1$d; %2$d failed. Check those files and retry.</string>
     <string name="ce_library_failed">Could not finish. Check format, free space and file access.</string>
@@ -257,4 +257,5 @@
     <string name="ce_library_save_title">Save audio bundle</string>
     <string name="ce_library_overwrite">Replace the existing file?</string>
     <string name="ce_library_filter">Filter</string>
+    <string name="ce_library_bundle_limit">Audio bundles allow up to 32 items and 1 GiB total.</string>
 </resources>

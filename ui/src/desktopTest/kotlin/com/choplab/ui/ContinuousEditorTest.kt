@@ -20,6 +20,23 @@ import kotlinx.coroutines.runBlocking
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
+    @Test fun librarySelectionIsAnExplicitSourceAction() = runBlocking<Unit> {
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val fixture = ContinuousEditorFixture.state(ContinuousStage.CAPTURE)
+        val scene = ImageComposeScene(width = 1440, height = 1024, coroutineContext = coroutineContext) {
+            ContinuousEditor(fixture.copy(capabilities = fixture.capabilities + ContinuousCapability.IMPORT_LIBRARY), actions::add)
+        }
+        try {
+            scene.settle()
+            scene.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+            scene.settle()
+            val button = requireNotNull(scene.tag("ce-library"))
+            assertTrue(button.boundsInRoot.height >= 48f && button.boundsInRoot.bottom <= 1024)
+            scene.click("ce-library")
+            assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.ImportLibrary), actions)
+        } finally { scene.close() }
+    }
+
     @Test fun sourceInputsShowRecordingAndReachableStopAndDiscardAtLargeText() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)

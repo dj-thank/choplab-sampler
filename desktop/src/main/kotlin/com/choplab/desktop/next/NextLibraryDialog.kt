@@ -23,6 +23,7 @@ import kotlin.coroutines.resume
 internal object NextLibraryDialog {
     suspend fun choose(parent: Window?, directory: Path): NextLibrary.Selection? {
         val labels = mapOf(
+            "bundle_limit" to getString(Res.string.ce_library_bundle_limit),
             "title" to getString(Res.string.ce_library_title),
             "items" to getString(Res.string.ce_library_items),
             "filter_hint" to getString(Res.string.ce_library_filter_hint),
@@ -96,11 +97,12 @@ internal object NextLibraryDialog {
                 use.isEnabled = !state.busy && list.selectedValue != null
                 cancel.isEnabled = state.busy
                 status.text = when (state.status) {
+                    NextLibrary.Status.BUNDLE_LIMIT -> label("bundle_limit")
                     NextLibrary.Status.READY -> label("ready")
                     NextLibrary.Status.SELECTING -> label("selecting")
                     NextLibrary.Status.SELECTED -> label("selected")
                     NextLibrary.Status.LOADING -> label("loading")
-                    NextLibrary.Status.IMPORTING -> label("importing")
+                    NextLibrary.Status.IMPORTING -> label("importing", state.position, state.total)
                     NextLibrary.Status.ADDED -> label("added", state.completed)
                     NextLibrary.Status.PARTLY_ADDED -> label("partial", state.completed, state.failed)
                     NextLibrary.Status.FAILED -> label("failed")

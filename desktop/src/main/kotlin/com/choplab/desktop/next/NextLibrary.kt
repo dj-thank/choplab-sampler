@@ -14,10 +14,10 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** One library job, independent from the editor document. Only an explicit selection opens an original. */
 internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : AutoCloseable {
-    enum class Status { READY, LOADING, IMPORTING, ADDED, PARTLY_ADDED, FAILED, CANCELLED, EXPORTING, EXPORTED, SELECTING, SELECTED }
+    enum class Status { READY, LOADING, IMPORTING, ADDED, PARTLY_ADDED, FAILED, CANCELLED, EXPORTING, EXPORTED, SELECTING, SELECTED, BUNDLE_LIMIT }
     data class Selection(val path: Path, val title: String, val hash: String)
     data class State(val items: List<AudioLibraryItem> = emptyList(), val status: Status = Status.LOADING,
-        val busy: Boolean = true, val selection: Selection? = null, val completed: Int = 0, val total: Int = 0, val failed: Int = 0)
+        val busy: Boolean = false, val selection: Selection? = null, val completed: Int = 0, val total: Int = 0, val position: Int = 0, val failed: Int = 0)
     private val library by lazy { LocalAudioLibrary(directory.toFile(), validate) }
     private val mutable = MutableStateFlow(State())
     val state = mutable.asStateFlow()
@@ -48,9 +48,9 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
     }
 
     @Synchronized private fun start(status: Status, action: (Long) -> Unit): Boolean {
-        if (closed || future?.isDone == false) return false
+        if (closed || mutable.value.busy) return false
         val lease = generation.incrementAndGet()
-        mutable.update { it.copy(status = status, busy = true, selection = null, completed = 0, total = 0, failed = 0) }
+        mutable.update { it.copy(status = status, busy = true, selection = null, completed = 0, total = 0, position = 0, failed = 0) }
         future = executor.submit {
             try { action(lease) }
             catch (_: Exception) { publish(lease) { it.copy(status = Status.FAILED) } }
@@ -72,8 +72,9 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
         return start(Status.IMPORTING) { lease ->
             publish(lease) { it.copy(total = paths.size) }
             var added = 0; var failed = 0
-            for (path in paths) {
+            for ((index, path) in paths.withIndex()) {
                 current(lease)
+                publish(lease) { it.copy(position = index + 1) }
                 try {
                     if (path.fileName.toString().substringAfterLast('.').lowercase() in setOf("zip", "choplib"))
                         added += library.importBundle(path.toFile()).size
@@ -87,17 +88,24 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
     }
     /** Replace only after the entire bundle is written; cancellation leaves an existing destination untouched. */
     fun export(target: Path): Boolean = start(Status.EXPORTING) { lease ->
+        val items = library.list()
+        if (items.size > 32 || items.sumOf { it.bytes } > 1024L * 1024 * 1024) {
+            publish(lease) { it.copy(status = Status.BUNDLE_LIMIT) }
+            return@start
+        }
         val absolute = target.toAbsolutePath()
         val temporary = Files.createTempFile(absolute.parent, ".choplab-library-", ".pending")
         try {
             library.exportBundle(temporary.toFile())
-            current(lease)
-            Files.move(temporary, absolute, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            publish(lease) { it.copy(status = Status.EXPORTED) }
+            synchronized(this) {
+                current(lease)
+                Files.move(temporary, absolute, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                publish(lease) { it.copy(status = Status.EXPORTED, busy = false) }
+            }
         } finally { Files.deleteIfExists(temporary) }
     }
     @Synchronized fun cancel() {
-        if (closed) return
+        if (closed || !mutable.value.busy) return
         generation.incrementAndGet(); future?.cancel(true)
         mutable.update { it.copy(status = Status.CANCELLED, busy = true, selection = null) }
         val lease = generation.get()
