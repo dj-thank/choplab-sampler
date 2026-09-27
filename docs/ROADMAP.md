@@ -20,6 +20,12 @@
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
+## Android実端末へのNEXT Preview導入
+
+2026-09-27、root所有で接続されたPixel 9a（API 37）へ署名済み `com.choplab.sampler.preview` 0.18.0-preview/code30を追加した。APKはmain `5d471c118c02f5a73481d2ff0af03cc5d4a9318d` の成功CI `36324167075` から取得し、281,916,442 bytes、SHA-256 `228dafca89a46cf8ad38b1306ebc3c9ff1a8fbe6fe9c353eb228fb428db542de`。署名・非debuggable・manifest/権限・16KiB alignmentを再検査。現main `46300aac` との差はMac終了修正/検証/docsのみでAndroid機能ソースは同一。同mainのローカル `:app:testPreviewUnitTest :app:lintPreview :app:assemblePreview` も成功した。端末へ入れたのはCI継続鍵の署名済みAPKで、ローカル未署名APKではない。
+
+ADBの対象を1台に限定してinstall成功、NEXT Activityの起動とprocess存続を確認。NEXTからOSの音源選択画面が開いていることも確認し、利用者の選択を中断していない。既存 `com.choplab.sampler` のversion/update identityは前後一致、uninstall/data clearなし。これはinstall/起動範囲の実端末証拠であり、実音・マイク・遅延・TalkBack・制作通し・Human受入は未完。端末識別子はrepositoryへ記録しない。
+
 ## Mac NEXT端末音録音の接続（PR138統合済み）
 
 - owner: root。基準はPR136統合 `a5ec068`。対象は `desktop` のScreenCaptureKit helper/NextBackend、`jvm` のVoiceTakes、`ui` のSOURCE録音操作。従来のPCM16 helper出力は維持し、NEXTだけ48kHz stereo FLOAT32を選ぶ。
