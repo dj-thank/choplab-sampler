@@ -31,6 +31,7 @@ kotlin {
         commonTest.dependencies { implementation(libs.kotlin.test) }
         getByName("desktopTest") {
             dependencies {
+                implementation(project(":jvm"))
                 implementation(libs.kotlin.test)
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.core)

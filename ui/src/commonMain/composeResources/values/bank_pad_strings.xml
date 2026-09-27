@@ -1,0 +1,31 @@
+<resources>
+    <string name="bp_bank_edit">BANK name, color &amp; role</string>
+    <string name="bp_pad_edit">PAD pan &amp; envelope</string>
+    <string name="bp_bank_title">BANK %1$s</string>
+    <string name="bp_bank_description">BANK %1$s, %2$s, role: %3$s</string>
+    <string name="bp_pad_title">PAD %1$s</string>
+    <string name="bp_name">Name</string>
+    <string name="bp_color">Color</string>
+    <string name="bp_role">Role</string>
+    <string name="bp_label_hint">1–48 characters</string>
+    <string name="bp_color_hint">Six hexadecimal digits, for example #4477AA</string>
+    <string name="bp_role_hint">A label of your choice, up to 48 characters. It does not change routing.</string>
+    <string name="bp_pan">Pan (%)</string>
+    <string name="bp_pan_hint">−100 = left · 0 = center · 100 = right</string>
+    <string name="bp_attack">Attack (ms)</string>
+    <string name="bp_decay">Decay (ms)</string>
+    <string name="bp_sustain">Sustain (%)</string>
+    <string name="bp_release">Release (ms)</string>
+    <string name="bp_time_hint">0–1,000 ms</string>
+    <string name="bp_sustain_hint">0–100%</string>
+    <string name="bp_release_hint">Above 0 to 1,000 ms, in approximately 0.021 ms steps</string>
+    <string name="bp_sound_hint">Changes take effect only on Apply. Applying stops this PAD. Placed clips keep their sound.</string>
+    <string name="bp_cancel">Cancel</string>
+    <string name="bp_apply">Apply</string>
+    <string name="bp_busy">Wait for the current operation to finish.</string>
+    <string name="bp_recording">Finish recording before editing.</string>
+    <string name="bp_empty_pad">Assign a sound to this PAD first.</string>
+    <string name="bp_stale">The project or selection changed. Close this panel and open it again.</string>
+    <string name="bp_invalid">Check the values marked below each field.</string>
+    <string name="bp_apply_failed">The change could not be applied. Your project was kept.</string>
+</resources>

@@ -86,6 +86,9 @@ import kotlin.math.roundToLong
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
         CELyricsPanel(state, onAction, readout, refreshKey)
+        CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
+            onAction(ContinuousEditorAction.StopAll)
+        }
     }
 }
 
