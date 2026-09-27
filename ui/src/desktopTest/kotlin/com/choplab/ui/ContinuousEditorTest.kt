@@ -276,6 +276,59 @@ class ContinuousEditorTest {
         } finally { scene.close(); Locale.setDefault(previous) }
     }
 
+    @Test fun theFillPanelChoosesSpacingAndLengthAndFillsFromTheSongPositionsBar() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(ContinuousEditorFixture.state(), actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            scene.settle()
+            // Beside placing once, in the one row of PAD actions the reference layout keeps.
+            val audition = requireNotNull(scene.tag("ce-pad-audition")).boundsInRoot
+            val place = requireNotNull(scene.tag("ce-place-pad")).boundsInRoot
+            val fill = requireNotNull(scene.tag("ce-pad-fill")).boundsInRoot
+            assertEquals(audition.top, fill.top, .5f)
+            assertTrue(fill.height >= 48f && fill.left > place.left)
+            scene.click("ce-pad-fill")
+            fun text(tag: String) = requireNotNull(scene.tag(tag)) { tag }.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text }
+            fun chosen(tag: String) = requireNotNull(scene.tag(tag)) { tag }.config.getOrNull(SemanticsProperties.Selected)
+            // The fixture's song position 0:08 at 92 BPM (a bar is 2.61 s) is in the fourth bar.
+            assertEquals("4小節目から", text("ce-pad-fill-from"))
+            assertEquals(listOf(true, false, false), listOf("ce-fill-beat", "ce-fill-half", "ce-fill-quarter").map(::chosen))
+            assertEquals(listOf(false, false, true, false), listOf(1, 2, 4, 8).map { chosen("ce-fill-bars-$it") })
+            (listOf("ce-fill-beat", "ce-fill-half", "ce-fill-quarter") + listOf(1, 2, 4, 8).map { "ce-fill-bars-$it" }).forEach { tag ->
+                assertTrue(requireNotNull(scene.tag(tag)).boundsInRoot.height >= 48f, tag)
+            }
+            scene.click("ce-fill-quarter")
+            scene.click("ce-fill-bars-2")
+            assertEquals(listOf(false, false, true), listOf("ce-fill-beat", "ce-fill-half", "ce-fill-quarter").map(::chosen))
+            assertEquals(true, chosen("ce-fill-bars-2"))
+            assertTrue(actions.none { it is ContinuousEditorAction.FillPad }, "Choosing places nothing")
+            scene.capture("pad-fill-desktop.png")
+            scene.click("ce-pad-fill-apply")
+            assertEquals(ContinuousEditorAction.FillPad(2, "melody", ContinuousEditorFixture.readout().songFrame, ContinuousGrid.QUARTER, 2), actions.last())
+            assertNull(scene.tag("ce-pad-fill-panel"), "Filling closes the panel")
+        } finally { scene.close() }
+        // On a phone with large text every choice is reachable.
+        val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+            ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.PADS), actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            phone.settle()
+            val opener = requireNotNull(phone.tag("ce-pad-fill"))
+            requireNotNull(opener.config[SemanticsActions.OnClick].action)()
+            phone.settle()
+            for (tag in listOf("ce-fill-beat", "ce-fill-quarter", "ce-fill-bars-1", "ce-fill-bars-8", "ce-pad-fill-apply")) {
+                val node = requireNotNull(phone.tag(tag)) { tag }
+                node.config.getOrNull(SemanticsActions.ScrollToIndex)
+                assertTrue(node.size.height >= 48, "$tag keeps a 48 dp target")
+            }
+            phone.capture("pad-fill-phone-font200.png")
+        } finally { phone.close(); Locale.setDefault(previous) }
+    }
+
     @Test fun sliderDragsCommitOneDocumentEditWhenReleased() = runBlocking<Unit> {
         for ((stage, tag) in listOf(ContinuousStage.CHOP to "ce-source-range", ContinuousStage.BEAT to "ce-clip-gain")) {
             val actions = mutableListOf<ContinuousEditorAction>()

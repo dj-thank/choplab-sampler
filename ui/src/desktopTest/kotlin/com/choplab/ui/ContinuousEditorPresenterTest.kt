@@ -709,6 +709,27 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aFillPlacesThePadThroughItsBarsInOneUndoRenderingATransformedPadOnce() = runBlocking<Unit> {
+        val h = Harness(render = true)
+        try {
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            // 120 BPM: song position 100 000 is in the second bar, from 96 000; a quarter beat is 6 000 frames.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FillPad(0, null, 100_000, ContinuousGrid.QUARTER, 1)))
+            assertEquals((0 until 16).map { 96_000L + it * 6_000 }, h.until { it.clips.size == 16 }.clips.map { it.timelineStartFrame }.sorted())
+            assertTrue(h.ports.renders.isEmpty())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            h.until { it.clips.isEmpty() }
+            // A PAD an octave up is rendered once for all its places.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadPitch(0, 12f)))
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 1)))
+            assertEquals(4, h.until { it.clips.size == 4 }.clips.size)
+            assertEquals(1, h.ports.renders.size)
+            val project = h.studio.document.value.project
+            assertEquals(AssetRole.RENDERED, project.asset(project.clips.map { it.assetHash }.distinct().single()).role)
+        } finally { h.close() }
+    }
+
     @Test fun aTakeGoesToTheFirstEmptyVoicePadAndOntoTheSongWhereItWasSung() = runBlocking<Unit> {
         val h = Harness(voice = true) { p -> p.copy(pads = p.pads.map { if (it.id == 48) Pad(48, p.assets[1].hash, FrameRange(0, 48_000)) else it }.frozen()) }
         try {

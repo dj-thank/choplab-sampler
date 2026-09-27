@@ -285,6 +285,11 @@ sealed interface ContinuousEditorAction {
     data class ClearPad(val padId: Int) : ContinuousEditorAction
     /** Explicit user placement only: original source is never placed by merely changing stages. */
     data class PlacePad(val padId: Int, val trackId: String?, val timelineFrame: Long) : ContinuousEditorAction
+    /**
+     * Places the PAD every [spacing] (a beat, half or quarter beat) through [bars] bars from the bar holding
+     * [timelineFrame], on the beat, in place of the same sound on that track there. One Undo.
+     */
+    data class FillPad(val padId: Int, val trackId: String?, val timelineFrame: Long, val spacing: ContinuousGrid, val bars: Int) : ContinuousEditorAction
     data class SelectClip(val clipId: String?) : ContinuousEditorAction
     data class MoveClip(val clipId: String, val trackId: String, val timelineStartFrame: Long) : ContinuousEditorAction
     /** Moves the clip to the next grid line later (or earlier); on a free grid, by one second. */

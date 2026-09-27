@@ -459,7 +459,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         if (cleared) view.update { it.copy(padPlay = false, playingPads = it.playingPads - pad.id) }
                     }
                 } ?: false
-                is ContinuousEditorAction.PlacePad -> placePad(project, action)
+                is ContinuousEditorAction.PlacePad -> placePad(project, action.padId, action)
+                is ContinuousEditorAction.FillPad -> placePad(project, action.padId, action)
                 is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.NudgeClip, is ContinuousEditorAction.TrimClip,
                 is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.DeleteClip,
                 is ContinuousEditorAction.SetClipGain, is ContinuousEditorAction.SetTrackMuted -> {
@@ -783,8 +784,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     /** A transformed PAD is rendered first and placed as that sound, if the engine has room for it. */
-    private suspend fun placePad(project: Project, action: ContinuousEditorAction.PlacePad): Boolean {
-        val pad = project.pads.getOrNull(action.padId) ?: return false
+    /** Places PAD [padId] on the song once or, filling, many times: a transformed PAD is rendered first, once. */
+    private suspend fun placePad(project: Project, padId: Int, action: ContinuousEditorAction): Boolean {
+        val pad = project.pads.getOrNull(padId) ?: return false
         val source = project.asset(pad.assetHash ?: return false)
         val rendered = if (!ContinuousClipEdits.transformed(pad)) null else {
             val range = requireNotNull(pad.range)

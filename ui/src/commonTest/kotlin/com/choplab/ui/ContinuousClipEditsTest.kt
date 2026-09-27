@@ -212,5 +212,47 @@ class ContinuousClipEditsTest {
         val window = ceGridLines(120_000, ContinuousGrid.BEAT, 24f, 6f, 1_200f, 1_250f)
         assertTrue(window.first().first in 1_188f..1_200f && window.size <= 6)
     }
-}
 
+    @Test fun aFillPlacesThePadOnEveryLineThroughItsBarsInPlaceOfItsOwnSoundOnThatTrack() {
+        // 120 BPM: a bar is 96 000 frames, 3 840 ticks. Song position 100 000 is in the second bar.
+        val p = fixture().let { p -> p.copy(pads = p.pads.map { when (it.id) {
+            0 -> it.copy(range = FrameRange(0, 2_400))
+            1 -> Pad(1, hash, FrameRange(2_400, 4_800))
+            else -> it
+        } }.frozen()) }
+        val filled = apply(p, ContinuousEditorAction.FillPad(0, null, 100_000, ContinuousGrid.HALF, 2))
+        assertEquals((0 until 16).map { 3_840L + it * 480 }, filled.clips.map { it.startTick })
+        assertTrue(filled.clips.all { it.timelineStartFrame == null && it.range == FrameRange(0, 2_400) && it.gain == .7f }, "On the beat, as the PAD")
+        // Another fill of those bars replaces the PAD's own sound there. Its sound before them, another PAD's sound and the
+        // same sound on another track all stay.
+        val before = apply(filled, ContinuousEditorAction.PlacePad(0, null, 0), ContinuousGrid.BEAT)
+        val other = apply(before, ContinuousEditorAction.PlacePad(1, null, 96_000), ContinuousGrid.BEAT)
+        val elsewhere = Track("track-other", "Other", TrackKind.BANK)
+        val twoTracks = other.copy(tracks = (other.tracks + elsewhere).frozen())
+        val layered = apply(twoTracks, ContinuousEditorAction.PlacePad(0, elsewhere.id, 96_000), ContinuousGrid.BEAT)
+        val refilled = apply(layered, ContinuousEditorAction.FillPad(0, null, 96_000, ContinuousGrid.BEAT, 2))
+        val mine = refilled.clips.filter { it.range == FrameRange(0, 2_400) && it.trackId != elsewhere.id }
+        assertEquals(listOf(0L) + (0 until 8).map { 3_840L + it * 960 }, mine.map { it.startTick }.sorted())
+        assertEquals(1, refilled.clips.count { it.range == FrameRange(2_400, 4_800) }, "Another PAD's sound stays")
+        assertEquals(1, refilled.clips.count { it.trackId == elsewhere.id }, "So does the sound on another track")
+    }
+
+    @Test fun aFillStartsAtTheBarPlaybackReachesAndTakesOnlyItsChoices() {
+        // At 97 BPM the second bar falls between frames: from the frame playback starts it, it is the second bar.
+        val p = fixture().copy(tempo = Tempo(97_000))
+        val second = ProgramCompiler.tickToFrame(3_840, 97_000)
+        assertEquals(1L, ContinuousClipEdits.barAt(second, 97_000))
+        assertEquals(0L, ContinuousClipEdits.barAt(second - 1, 97_000))
+        assertEquals(3_840L, apply(p, ContinuousEditorAction.FillPad(0, null, second, ContinuousGrid.BEAT, 1)).clips.first().startTick)
+        assertEquals(0L, apply(p, ContinuousEditorAction.FillPad(0, null, second - 1, ContinuousGrid.BEAT, 1)).clips.first().startTick)
+        assertEquals(32, apply(p, ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 8)).clips.size)
+        for (refused in listOf(ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.FREE, 1),
+                ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 0), ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 9),
+                ContinuousEditorAction.FillPad(5, null, 0, ContinuousGrid.BEAT, 1))) {
+            assertFailsWith<IllegalArgumentException>("$refused") { apply(p, refused) }
+        }
+        // A transformed PAD is rendered first, as for a single placement.
+        val pitched = p.copy(pads = p.pads.map { if (it.id == 0) it.copy(pitchSemitones = 12.0) else it }.frozen())
+        assertFailsWith<IllegalArgumentException> { apply(pitched, ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 1)) }
+    }
+}

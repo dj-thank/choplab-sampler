@@ -9,6 +9,8 @@ object ContinuousClipEdits {
     const val MAX_TIMELINE_FRAMES = 48_000L * 60 * 30
     /** Frames × milli-BPM × PPQ over this is ticks. */
     private const val FRAME_TICK_SCALE = 48_000L * 60_000
+    /** A 4/4 bar. */
+    private const val BAR_TICKS = 4L * ProjectLimits.PPQ
 
     /** Same floor mapping as playback/export, so the drawn start is the audible start. */
     fun startFrame(project: Project, clip: Clip): Long = clip.timelineStartFrame
@@ -53,11 +55,20 @@ object ContinuousClipEdits {
         require(grid != ContinuousGrid.FREE)
         val step = grid.ticks.toLong()
         val at = frame.coerceIn(0, MAX_TIMELINE_FRAMES)
+        val line = lineAtOrBefore(at, milliBpm, step)
+        val target = if (forward) line + 1 else if (ProgramCompiler.tickToFrame(line * step, milliBpm) < at) line else line - 1
+        return if (target < 0) null else target * step
+    }
+
+    /** The bar holding [frame], counted from 0. */
+    fun barAt(frame: Long, milliBpm: Int): Long = lineAtOrBefore(frame.coerceIn(0, MAX_TIMELINE_FRAMES), milliBpm, BAR_TICKS)
+
+    /** The last line of [step] ticks that sounds at or before [at]. */
+    private fun lineAtOrBefore(at: Long, milliBpm: Int, step: Long): Long {
         // A line sounds at the floor of its exact frame, as playback maps ticks, so the exact division can be one short.
         var line = at * milliBpm * ProjectLimits.PPQ / (FRAME_TICK_SCALE * step)
         while (ProgramCompiler.tickToFrame((line + 1) * step, milliBpm) <= at) line++
-        val target = if (forward) line + 1 else if (ProgramCompiler.tickToFrame(line * step, milliBpm) < at) line else line - 1
-        return if (target < 0) null else target * step
+        return line
     }
 
     /** [clip] starting at [frame]: on a grid at its nearest line, where it keeps that beat as the tempo changes. */
@@ -81,20 +92,40 @@ object ContinuousClipEdits {
         val reshaped = mutableSetOf<String>()
         fun selected(id: String) = requireNotNull(clips.firstOrNull { it.id == id }) { "Clip no longer exists" }
         fun replace(clip: Clip) { clips = clips.map { if (it.id == clip.id) clip else it } }
+        /** The PAD's sound as placed ([rendered] for a transformed PAD) and the track it goes on. */
+        fun placing(padId: Int, trackId: String?): Triple<Pad, Clip, Track> {
+            val pad = project.pads.getOrNull(padId) ?: error("Unknown PAD")
+            require(transformed(pad) == (rendered != null)) { "Render the transformed PAD before placement" }
+            val sound = requireNotNull(pad.assetHash) { "Empty PAD" }
+            val hash = rendered?.hash ?: sound
+            val range = if (rendered != null) FrameRange(0, rendered.frames) else requireNotNull(pad.range)
+            val track = trackId?.let { id -> requireNotNull(tracks.firstOrNull { it.id == id }) }
+                ?: tracks.firstOrNull { it.kind == TrackKind.BANK }
+                ?: Track(freshId("track"), project.banks[pad.id / 16].name, TrackKind.BANK).also { tracks = tracks + it }
+            return Triple(pad, Clip("pad-${pad.id}", track.id, hash, range, gain = pad.gain, pan = pad.pan), track)
+        }
         when (action) {
             is ContinuousEditorAction.PlacePad -> {
-                val pad = project.pads.getOrNull(action.padId) ?: error("Unknown PAD")
-                require(transformed(pad) == (rendered != null)) { "Render the transformed PAD before placement" }
-                val sound = requireNotNull(pad.assetHash) { "Empty PAD" }
-                val hash = rendered?.hash ?: sound
-                val range = if (rendered != null) FrameRange(0, rendered.frames) else requireNotNull(pad.range)
-                val track = action.trackId?.let { id -> requireNotNull(tracks.firstOrNull { it.id == id }) }
-                    ?: tracks.firstOrNull { it.kind == TrackKind.BANK }
-                    ?: Track(freshId("track"), project.banks[pad.id / 16].name, TrackKind.BANK).also { tracks = tracks + it }
-                val placed = startingAt(Clip(freshId("clip"), track.id, hash, range, gain = pad.gain, pan = pad.pan),
-                    action.timelineFrame, tempo, grid)
+                val (_, sound, _) = placing(action.padId, action.trackId)
+                val placed = startingAt(sound.copy(id = freshId("clip")), action.timelineFrame, tempo, grid)
                 clips = clips + placed
                 reshaped += placed.id
+            }
+            is ContinuousEditorAction.FillPad -> {
+                require(action.spacing != ContinuousGrid.FREE && action.bars in 1..8)
+                val (_, sound, track) = placing(action.padId, action.trackId)
+                val first = barAt(action.timelineFrame, tempo) * BAR_TICKS
+                val end = first + action.bars * BAR_TICKS
+                val from = ProgramCompiler.tickToFrame(first, tempo)
+                val to = ProgramCompiler.tickToFrame(end, tempo)
+                // The same sound already on that track in those bars makes way; other sounds and tracks stay.
+                clips = clips.filterNot { it.trackId == track.id && it.assetHash == sound.assetHash && it.range == sound.range &&
+                    startFrame(project, it) in from until to }
+                val placed = (first until end step action.spacing.ticks.toLong()).map { tick ->
+                    sound.copy(id = freshId("clip"), startTick = tick, timelineStartFrame = null)
+                }
+                clips = clips + placed
+                reshaped += placed.map { it.id }
             }
             is ContinuousEditorAction.MoveClip -> {
                 require(tracks.any { it.id == action.trackId })
