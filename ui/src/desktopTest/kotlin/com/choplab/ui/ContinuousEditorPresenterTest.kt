@@ -14,6 +14,53 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun reviewAHitPressedBeforeTheSongsEndSurvivesItsLaterRelease() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.ports.outputDelay = 0
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) && it.grid == ContinuousGrid.FREE }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            // CEPads takes this timestamp on pointer down, but emits CaptureHit only on release.
+            val pressedAt = 43_200L
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = pressedAt)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 48_000, playing = false, sequencePaused = false)
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_EMPTY }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, pressedAt)))
+            assertEquals(listOf(0L, pressedAt), h.studio.document.value.project.clips.map {
+                ContinuousClipEdits.startFrame(h.studio.document.value.project, it)
+            }.sorted(), "A PAD heard before the end must be retained when the finger is lifted after the end")
+        } finally { h.close() }
+    }
+
+    @Test fun reviewAGatePerformanceRetainsTheDurationThatWasPlayed() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.ports.outputDelay = 0
+            assertEquals(PlayMode.GATE, h.initial.pads[0].mode)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) && it.grid == ContinuousGrid.FREE }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            val pressedAt = 12_000L
+            val playedFrames = 4_800L
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = pressedAt)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = pressedAt + playedFrames)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, pressedAt)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            val p = h.studio.document.value.project
+            val recorded = p.clips.single { ContinuousClipEdits.startFrame(p, it) == pressedAt }
+            assertEquals(playedFrames, recorded.range.length, "A 100 ms GATE performance must not become the whole 1 s sample")
+        } finally { h.close() }
+    }
+
     @Test fun separationCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
         val h = Harness(voice = true)
         try {
