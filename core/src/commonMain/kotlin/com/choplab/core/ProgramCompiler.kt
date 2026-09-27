@@ -6,7 +6,9 @@ import com.choplab.engine.ArrangementClip
 import com.choplab.engine.EngineFormat
 import com.choplab.engine.EngineProgram
 import com.choplab.engine.PcmAsset
+import com.choplab.engine.SequenceClock
 import com.choplab.engine.SequenceNote
+import com.choplab.engine.Tempo
 
 /** Runs on the control/worker side. Each asset is loaded at most once, shared by all of its PADs. */
 class ProgramCompiler(private val pcm: PcmPort) {
@@ -62,7 +64,7 @@ class ProgramCompiler(private val pcm: PcmPort) {
                 project.clips.forEach { clip ->
                     val asset = project.asset(clip.assetHash)
                     val (sourceStart, sourceEnd) = normalizedRange(clip.range, asset.sampleRate, exactAdjacency = true)
-                    val start = clip.timelineStartFrame ?: tickToFrame(clip.startTick, project.tempo.milliBpm)
+                    val start = clip.timelineStartFrame ?: clipTickToFrame(clip.startTick, project.tempo)
                     val track = requireNotNull(tracks[clip.trackId])
                     add(PlannedClip("clip-${clip.id}", asset, sourceStart, sourceEnd, start, track, track.gain * clip.gain, (track.pan + clip.pan).coerceIn(-1f, 1f)))
                 }
@@ -107,6 +109,14 @@ class ProgramCompiler(private val pcm: PcmPort) {
         fun tickToFrame(tick: Long, milliBpm: Int): Long {
             require(tick in 0..ProjectLimits.MAX_TIMELINE_TICKS && milliBpm in 40_000..240_000)
             return tick * (48_000L * 60_000) / (milliBpm.toLong() * ProjectLimits.PPQ)
+        }
+        /**
+         * Where a clip anchored to [tick] starts: [tickToFrame] with the tempo's swing, which delays odd sixteenths
+         * as the pattern sequencer does. Straight (500) it is exactly [tickToFrame].
+         */
+        fun clipTickToFrame(tick: Long, tempo: Tempo): Long {
+            require(tick in 0..ProjectLimits.MAX_TIMELINE_TICKS)
+            return SequenceClock.targetNumerator(tick, tempo.swingPermille) / tempo.milliBpm
         }
         /** Both clip boundaries use this same ceil mapping, preserving adjacent mixed-rate cuts. */
         fun sourceFrameTo48k(frame: Long, sampleRate: Int): Long {

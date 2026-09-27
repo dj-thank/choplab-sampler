@@ -3,6 +3,11 @@ package com.choplab.ui
 import com.choplab.core.ProgramCompiler
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
+import com.choplab.engine.SequenceClock
+import com.choplab.engine.Tempo
+
+/** The song's tempo and swing the editor shows, as the grid and the clips on it follow them. */
+internal val ContinuousEditorState.tempo: Tempo get() = Tempo(milliBpm, swingPermille)
 
 /** Converts one finished UI gesture into one Studio/Undo edit. Never mutates a document. */
 object ContinuousClipEdits {
@@ -10,14 +15,13 @@ object ContinuousClipEdits {
 
     /** An edit the song cannot take: playback holds 30 minutes, 1024 clips and 32 of them sounding at once. */
     class SongFull : IllegalArgumentException("The song cannot take this edit")
-    /** Frames × milli-BPM × PPQ over this is ticks. */
-    private const val FRAME_TICK_SCALE = 48_000L * 60_000
+
     /** A 4/4 bar. */
     private const val BAR_TICKS = 4L * ProjectLimits.PPQ
 
-    /** Same floor mapping as playback/export, so the drawn start is the audible start. */
+    /** Same floor mapping as playback/export, swing included, so the drawn start is the audible start. */
     fun startFrame(project: Project, clip: Clip): Long = clip.timelineStartFrame
-        ?: ProgramCompiler.tickToFrame(clip.startTick, project.tempo.milliBpm)
+        ?: ProgramCompiler.clipTickToFrame(clip.startTick, project.tempo)
 
     /** Exact 48 kHz length used by playback/export. It is 0 for a sub-frame range above 48 kHz. */
     fun durationFrames(project: Project, clip: Clip): Long {
@@ -40,52 +44,64 @@ object ContinuousClipEdits {
         minOf(clip.sourceTotalFrames, clip.sourceStartFrame + minimumSourceFrames(clip.sourceRate))..clip.sourceTotalFrames
 
     /**
-     * The [grid] line nearest [frame] at [milliBpm], in ticks: where something let go at [frame] starts, keeping its beat
-     * when the tempo changes. Null on a free grid.
+     * The [grid] line nearest [frame] at [tempo], in ticks: where something let go at [frame] starts, keeping its beat
+     * when the tempo changes. Swing moves the off sixteenths' lines as it moves what sounds on them. Null on a free grid.
      */
-    fun snapTick(frame: Long, milliBpm: Int, grid: ContinuousGrid): Long? {
+    fun snapTick(frame: Long, tempo: Tempo, grid: ContinuousGrid): Long? {
         if (grid == ContinuousGrid.FREE) return null
         val step = grid.ticks.toLong()
-        val scale = FRAME_TICK_SCALE * step
-        return (frame.coerceIn(0, MAX_TIMELINE_FRAMES) * milliBpm * ProjectLimits.PPQ + scale / 2) / scale * step
+        // The exact time in the sequencer's frame × milli-BPM units, so a tie does not depend on how frames round.
+        val at = frame.coerceIn(0, MAX_TIMELINE_FRAMES) * tempo.milliBpm
+        var line = at / (SequenceClock.UNITS_PER_TICK * step)
+        // Swing only delays a line, by less than a sixteenth, so the last line at or before is this or the one before.
+        if (exactTime(line * step, tempo) > at) line--
+        return (if (at - exactTime(line * step, tempo) < exactTime((line + 1) * step, tempo) - at) line else line + 1) * step
     }
+
+    private fun exactTime(tick: Long, tempo: Tempo): Long = SequenceClock.targetNumerator(tick, tempo.swingPermille)
+
+    /** Where something let go at [frame] starts on [grid], as placing or moving puts it; shown while it is dragged. */
+    fun landingFrame(frame: Long, tempo: Tempo, grid: ContinuousGrid): Long =
+        snapTick(frame, tempo, grid)?.let { ProgramCompiler.clipTickToFrame(it, tempo) } ?: frame
 
     /**
      * The [grid] line after the one at or before [frame] ([forward]), or the one before [frame] otherwise, in ticks;
      * null before the first line.
      */
-    fun adjacentTick(frame: Long, milliBpm: Int, grid: ContinuousGrid, forward: Boolean): Long? {
+    fun adjacentTick(frame: Long, tempo: Tempo, grid: ContinuousGrid, forward: Boolean): Long? {
         require(grid != ContinuousGrid.FREE)
         val step = grid.ticks.toLong()
         val at = frame.coerceIn(0, MAX_TIMELINE_FRAMES)
-        val line = lineAtOrBefore(at, milliBpm, step)
-        val target = if (forward) line + 1 else if (ProgramCompiler.tickToFrame(line * step, milliBpm) < at) line else line - 1
+        val line = lineAtOrBefore(at, tempo, step)
+        val target = if (forward) line + 1 else if (ProgramCompiler.clipTickToFrame(line * step, tempo) < at) line else line - 1
         return if (target < 0) null else target * step
     }
 
     /** The bar holding [frame], counted from 0. */
-    fun barAt(frame: Long, milliBpm: Int): Long = lineAtOrBefore(frame.coerceIn(0, MAX_TIMELINE_FRAMES), milliBpm, BAR_TICKS)
+    fun barAt(frame: Long, tempo: Tempo): Long = lineAtOrBefore(frame.coerceIn(0, MAX_TIMELINE_FRAMES), tempo, BAR_TICKS)
 
     /**
      * The frames of the [section]th run of [bars] bars counted from the bar holding [frame] (section 0 is the run it
      * starts), as playback maps their ticks.
      */
-    fun barsFrames(frame: Long, milliBpm: Int, bars: Int, section: Int = 0): LongRange {
-        val first = (barAt(frame, milliBpm) + section.toLong() * bars) * BAR_TICKS
-        return ProgramCompiler.tickToFrame(first, milliBpm) until ProgramCompiler.tickToFrame(first + bars * BAR_TICKS, milliBpm)
+    fun barsFrames(frame: Long, tempo: Tempo, bars: Int, section: Int = 0): LongRange {
+        val first = (barAt(frame, tempo) + section.toLong() * bars) * BAR_TICKS
+        return ProgramCompiler.clipTickToFrame(first, tempo) until ProgramCompiler.clipTickToFrame(first + bars * BAR_TICKS, tempo)
     }
 
     /** The last line of [step] ticks that sounds at or before [at]. */
-    private fun lineAtOrBefore(at: Long, milliBpm: Int, step: Long): Long {
-        // A line sounds at the floor of its exact frame, as playback maps ticks, so the exact division can be one short.
-        var line = at * milliBpm * ProjectLimits.PPQ / (FRAME_TICK_SCALE * step)
-        while (ProgramCompiler.tickToFrame((line + 1) * step, milliBpm) <= at) line++
+    private fun lineAtOrBefore(at: Long, tempo: Tempo, step: Long): Long {
+        // A line sounds at the floor of its exact frame, as playback maps ticks, so the straight division can be one
+        // short; swing delays a line, so it can also be one past.
+        var line = at * tempo.milliBpm / (SequenceClock.UNITS_PER_TICK * step)
+        while (ProgramCompiler.clipTickToFrame((line + 1) * step, tempo) <= at) line++
+        while (line > 0 && ProgramCompiler.clipTickToFrame(line * step, tempo) > at) line--
         return line
     }
 
     /** [clip] starting at [frame]: on a grid at its nearest line, where it keeps that beat as the tempo changes. */
-    private fun startingAt(clip: Clip, frame: Long, milliBpm: Int, grid: ContinuousGrid): Clip =
-        snapTick(frame, milliBpm, grid)?.let { clip.copy(startTick = it, timelineStartFrame = null) } ?: clip.copy(timelineStartFrame = frame)
+    private fun startingAt(clip: Clip, frame: Long, tempo: Tempo, grid: ContinuousGrid): Clip =
+        snapTick(frame, tempo, grid)?.let { clip.copy(startTick = it, timelineStartFrame = null) } ?: clip.copy(timelineStartFrame = frame)
 
     /** Whether [clip] sounds at all: one saved by an earlier build can be shorter than a timeline frame. */
     fun sounds(clip: ContinuousClip): Boolean =
@@ -100,7 +116,7 @@ object ContinuousClipEdits {
      */
     fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Asset? = null,
                grid: ContinuousGrid = ContinuousGrid.FREE): Intent.SetArrangement {
-        val tempo = project.tempo.milliBpm
+        val tempo = project.tempo
         var tracks: List<Track> = project.tracks
         var clips: List<Clip> = project.clips
         // Clips this gesture creates or reshapes must be audible. A zero-length clip saved by an
@@ -132,8 +148,8 @@ object ContinuousClipEdits {
                 val (_, sound, track) = placing(action.padId, action.trackId)
                 val first = barAt(action.timelineFrame, tempo) * BAR_TICKS
                 val end = first + action.bars * BAR_TICKS
-                val from = ProgramCompiler.tickToFrame(first, tempo)
-                val to = ProgramCompiler.tickToFrame(end, tempo)
+                val from = ProgramCompiler.clipTickToFrame(first, tempo)
+                val to = ProgramCompiler.clipTickToFrame(end, tempo)
                 // The same sound already on that track in those bars makes way; other sounds and tracks stay.
                 clips = clips.filterNot { it.trackId == track.id && it.assetHash == sound.assetHash && it.range == sound.range &&
                     startFrame(project, it) in from until to }

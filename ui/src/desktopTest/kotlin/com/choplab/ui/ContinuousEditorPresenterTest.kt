@@ -755,6 +755,32 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun theSwingIsSetWithTheTempoMovingOffSixteenthsPlacedOnTheBeatInOneUndo() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertEquals(500, h.until { it.permits(ContinuousCapability.PLACE_PAD) }.swingPermille)
+            // 120 BPM: sixteenths through the first bar, 6 000 frames apart.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.QUARTER, 1)))
+            h.until { it.clips.size == 16 }
+            // At 60% each eighth's second sixteenth comes 7 200 frames in; the eighths stay.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(120, 600)))
+            val swung = h.until { it.swingPermille == 600 }
+            assertEquals((0 until 16).map { it / 2 * 12_000L + if (it % 2 == 1) 7_200 else 0 }, swung.clips.map { it.timelineStartFrame }.sorted())
+            // A tempo alone keeps the swing.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(60)))
+            assertEquals(600, h.until { it.milliBpm == 60_000 }.swingPermille)
+            // Each is one Undo.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            h.until { it.milliBpm == 120_000 && it.swingPermille == 600 }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals((0 until 16).map { it * 6_000L }, h.until { it.swingPermille == 500 }.clips.map { it.timelineStartFrame }.sorted())
+            // Past 50-75%, nothing changes.
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetTempo(120, 760)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetTempo(120, 490)))
+            assertEquals(500, h.studio.document.value.project.tempo.swingPermille)
+        } finally { h.close() }
+    }
+
     @Test fun aFillPlacesThePadThroughItsBarsInOneUndoRenderingATransformedPadOnce() = runBlocking<Unit> {
         val h = Harness(render = true)
         try {

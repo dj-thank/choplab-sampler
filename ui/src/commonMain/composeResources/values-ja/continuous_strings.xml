@@ -204,6 +204,9 @@
     <string name="ce_tap_tempo">タップ</string>
     <string name="ce_tap_tempo_hint">または、曲に合わせて4回以上たたくと、BPMが入ります。</string>
     <string name="ce_bpm">BPM</string>
+    <string name="ce_tempo_swing">%1$d BPM・スウィング%2$d%</string>
+    <string name="ce_swing_value">スウィング %1$d%</string>
+    <string name="ce_swing_hint">拍に合わせて置いた音のうち、間の細かい音（16分の裏）を少しうしろにずらして、ハネたリズムにします。50%でまっすぐ、66%で3連に近いハネです。BPMといっしょに適用します。</string>
     <string name="ce_close">閉じる</string>
     <string name="ce_change_drums">ドラムを変える</string>
     <string name="ce_kit_title">ドラムキットを選ぶ</string>

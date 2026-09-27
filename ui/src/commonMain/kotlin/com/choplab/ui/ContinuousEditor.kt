@@ -181,13 +181,13 @@ import kotlin.math.roundToLong
 @Composable internal fun CERepeatDialog(state: ContinuousEditorState, from: Long, onAction: (ContinuousEditorAction) -> Unit, close: () -> Unit) {
     var bars by remember { mutableIntStateOf(4) }
     var times by remember { mutableIntStateOf(1) }
-    val first = ContinuousClipEdits.barAt(from, state.milliBpm) + 1
-    val section = ContinuousClipEdits.barsFrames(from, state.milliBpm, bars)
+    val first = ContinuousClipEdits.barAt(from, state.tempo) + 1
+    val section = ContinuousClipEdits.barsFrames(from, state.tempo, bars)
     // The same checks as the edit, so the panel says what applying does or why it cannot.
     val copied = state.clips.filter { it.timelineStartFrame in section && ContinuousClipEdits.sounds(it) }
     val count = copied.size
     val outlasting = copied.any { it.timelineDurationFrames > section.last + 1 - section.first }
-    val after = ContinuousClipEdits.barsFrames(from, state.milliBpm, bars, 1).first..ContinuousClipEdits.barsFrames(from, state.milliBpm, bars, times).last
+    val after = ContinuousClipEdits.barsFrames(from, state.tempo, bars, 1).first..ContinuousClipEdits.barsFrames(from, state.tempo, bars, times).last
     val occupied = state.clips.any { it.timelineStartFrame in after }
     val (fromBar, toBar) = first + bars to first + bars.toLong() * (times + 1) - 1
     val refused = count == 0 || outlasting || occupied
@@ -250,7 +250,7 @@ import kotlin.math.roundToLong
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 @Composable fun Choice(label: String, chosen: Boolean, tag: String, modifier: Modifier, choose: () -> Unit) =
                     CEButton(label, choose, modifier.semantics { selected = chosen }, primary = chosen, tag = tag)
-                Text(stringResource(Res.string.ce_pad_fill_from, ContinuousClipEdits.barAt(from, state.milliBpm) + 1),
+                Text(stringResource(Res.string.ce_pad_fill_from, ContinuousClipEdits.barAt(from, state.tempo) + 1),
                     Modifier.testTag("ce-pad-fill-from"), fontSize = 14.sp)
                 Text(stringResource(Res.string.ce_pad_fill_spacing), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -729,13 +729,20 @@ import kotlin.math.roundToLong
     }
 }
 
+/** Swing choices in permille: straight, then the drum machines' classic steps; 660 is close to triplets. */
+private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
+
 @Composable private fun CETempo(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
     var open by remember { mutableStateOf(false) }
     var value by remember(state.bpm) { mutableStateOf(state.bpm.toString()) }
+    var swing by remember(state.swingPermille) { mutableStateOf(state.swingPermille) }
     // Tapped along with the song, the taps' tempo fills in the value; applying it is still the user's choice.
     var taps by remember { mutableStateOf(emptyList<Long>()) }
     val clock = remember { kotlin.time.TimeSource.Monotonic.markNow() }
-    CEButton("${state.bpm} ${stringResource(Res.string.ce_bpm)}", { value = state.bpm.toString(); taps = emptyList(); open = true },
+    // A swung song says so beside its tempo, as it changes how every beat placed on the grid sounds.
+    CEButton(if (state.swingPermille == 500) "${state.bpm} ${stringResource(Res.string.ce_bpm)}"
+        else stringResource(Res.string.ce_tempo_swing, state.bpm, state.swingPermille / 10),
+        { value = state.bpm.toString(); swing = state.swingPermille; taps = emptyList(); open = true },
         enabled = state.permits(ContinuousCapability.TEMPO), dark = true, reason = CEReason(state, ContinuousCapability.TEMPO), tag = "ce-tempo")
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(stringResource(Res.string.ce_bpm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -746,8 +753,25 @@ import kotlin.math.roundToLong
                 taps = ceTap(taps, clock.elapsedNow().inWholeMilliseconds)
                 ceTapBpm(taps)?.let { value = it.toString() }
             }, Modifier.fillMaxWidth().heightIn(min = 64.dp), tag = "ce-tap-tempo")
+            // The swing is chosen here and applied with the tempo: straight, or the drum machines' classic steps.
+            Text(stringResource(Res.string.ce_swing_value, swing / 10), Modifier.padding(top = 8.dp).testTag("ce-swing-value"),
+                fontWeight = FontWeight.SemiBold)
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val perRow = if (maxWidth >= 420.dp && LocalDensity.current.fontScale <= 1.3f) CE_SWINGS.size else 3
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    CE_SWINGS.chunked(perRow).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        row.forEach { choice ->
+                            val spoken = stringResource(Res.string.ce_swing_value, choice / 10)
+                            CEButton(stringResource(Res.string.ce_percent, choice / 10), { swing = choice },
+                                Modifier.weight(1f).semantics { selected = swing == choice; contentDescription = spoken },
+                                primary = swing == choice, tag = "ce-swing-$choice")
+                        }
+                    } }
+                }
+            }
+            Text(stringResource(Res.string.ce_swing_hint), fontSize = 14.sp)
         } },
-        confirmButton = { CEButton(stringResource(Res.string.ce_apply), { value.toIntOrNull()?.let { onAction(ContinuousEditorAction.SetTempo(it)); open = false } }, enabled = (value.toIntOrNull() ?: -1) in 40..240, tag = "ce-tempo-apply") },
+        confirmButton = { CEButton(stringResource(Res.string.ce_apply), { value.toIntOrNull()?.let { onAction(ContinuousEditorAction.SetTempo(it, swing)); open = false } }, enabled = (value.toIntOrNull() ?: -1) in 40..240, tag = "ce-tempo-apply") },
         dismissButton = { CEButton(stringResource(Res.string.ce_close), { open = false }) })
 }
 
