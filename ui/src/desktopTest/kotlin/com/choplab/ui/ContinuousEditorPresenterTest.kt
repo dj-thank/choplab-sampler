@@ -240,6 +240,40 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun spotifyMetadataCannotChangeProductionAndStaysClosedDuringRecordingOrWork() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        val gate = CompletableDeferred<Unit>()
+        try {
+            h.until { it.permits(ContinuousCapability.SPOTIFY_METADATA) }
+            val before = h.studio.document.value
+            h.engine.commands.clear()
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenSpotifyMetadata))
+            assertEquals(1, h.ports.spotifyViews)
+            assertEquals(before, h.studio.document.value)
+            assertTrue(h.engine.commands.isEmpty(), "Browsing metadata does not stop or change the sound")
+
+            h.engine.duringPrepare = { gate.await() }
+            val editing = async { h.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())) }
+            h.until { it.unavailable[ContinuousCapability.SPOTIFY_METADATA] == ContinuousUnavailable.BUSY }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenSpotifyMetadata))
+            assertEquals(1, h.ports.spotifyViews)
+            gate.complete(Unit)
+            assertTrue(editing.await().accepted)
+            h.until { it.permits(ContinuousCapability.SPOTIFY_METADATA) }
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            h.until { it.recordingSource && !it.permits(ContinuousCapability.SPOTIFY_METADATA) }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenSpotifyMetadata))
+            assertEquals(1, h.ports.spotifyViews)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+            assertEquals(before.project, h.studio.document.value.project)
+            h.ports.spotifyAvailable = false
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenSpotifyMetadata))
+            h.until { !it.permits(ContinuousCapability.SPOTIFY_METADATA) }
+            assertEquals(1, h.ports.spotifyViews)
+        } finally { gate.complete(Unit); h.close() }
+    }
+
     @Test fun libraryCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
         val h = Harness(voice = true)
         try {
@@ -1894,6 +1928,10 @@ class ContinuousEditorPresenterTest {
         var library: Location? = null
         var libraryPicks = 0
         override suspend fun chooseLibrary(): Location? { libraryPicks++; return library }
+        var spotifyAvailable = true
+        var spotifyViews = 0
+        override val spotifyMetadataAvailable get() = spotifyAvailable
+        override suspend fun openSpotifyMetadata() { spotifyViews++ }
         override suspend fun chooseAudio(): Location? = null
         @Volatile var openLocation: Location? = null
         override suspend fun chooseOpen(): Location? = openLocation

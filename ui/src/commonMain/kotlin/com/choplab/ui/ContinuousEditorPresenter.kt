@@ -24,6 +24,9 @@ interface ContinuousEditorPorts {
     suspend fun chooseOnline(): Location? = null
     val libraryAvailable: Boolean get() = false
     suspend fun chooseLibrary(): Location? = null
+    /** Opens a metadata-only provider view. It cannot return or import an audio location. */
+    val spotifyMetadataAvailable: Boolean get() = false
+    suspend fun openSpotifyMetadata() {}
     suspend fun chooseAudio(): Location?
     suspend fun chooseOpen(): Location?
     suspend fun chooseSave(): Location?
@@ -338,6 +341,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 } ?: false
                 ContinuousEditorAction.ImportOnline -> ports.chooseOnline()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.ImportLibrary -> ports.chooseLibrary()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
+                ContinuousEditorAction.OpenSpotifyMetadata -> {
+                    if (!ports.spotifyMetadataAvailable || studio.work.value.jobId != null || studio.work.value.preparationId != null) false
+                    else { ports.openSpotifyMetadata(); true }
+                }
                 ContinuousEditorAction.ImportAudio -> ports.chooseAudio()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.RecordSource -> startSource(project)
                 ContinuousEditorAction.RecordSystemSource -> startSource(project, system = true)
@@ -1303,6 +1310,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (ports.separationAvailable && source != null && !busy && !recording) capabilities += ContinuousCapability.SEPARATE_SOURCE
         if (ports.onlineAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_ONLINE
         if (ports.libraryAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_LIBRARY
+        if (ports.spotifyMetadataAvailable && !busy && !recording) capabilities += ContinuousCapability.SPOTIFY_METADATA
         if (v.voice != null || v.hits != null) {
             // Playing along, pausing or stopping, and listening levels; the take or pass ends with the song.
             if (input.attached) capabilities += setOf(ContinuousCapability.PAD_AUDITION, ContinuousCapability.SONG_PLAYBACK,
