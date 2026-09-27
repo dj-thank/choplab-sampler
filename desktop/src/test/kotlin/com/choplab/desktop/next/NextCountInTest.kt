@@ -22,12 +22,13 @@ class NextCountInTest {
         val saved: Project
         try {
             f.ready()
-            f.presenter.dispatch(ContinuousEditorAction.SetTempo(240))
-            f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2)))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2))))
             val before = f.backend.studio.document.value
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
-            val cue = f.backend.engine.snapshot().recordingStartFrame
-            assertTrue(cue > f.backend.engine.snapshot().frame)
+            val armed = f.armedCue()
+            val cue = armed.recordingStartFrame
+            assertTrue(cue > armed.frame, "Cue must be in the future: $armed")
             await { f.sink.nonzero > 100 }
             assertEquals(0, f.backend.engine.snapshot().sequenceFrame)
             assertEquals(0, f.backend.voice.recordedMillis)
@@ -75,13 +76,13 @@ class NextCountInTest {
             val f = Fixture()
             try {
                 f.ready()
-                f.presenter.dispatch(ContinuousEditorAction.SetTempo(240))
-                f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2)))
+                assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
+                assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2))))
                 val before = f.backend.studio.document.value.project
                 assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
                 await { f.mic.frames > 1_000 }
                 if (loss) f.backend.engine.releaseOutput() else assertTrue(f.presenter.dispatch(ContinuousEditorAction.StopVoice))
-                await { !f.presenter.state.value.recordingVoice && f.mic.closes == 1 }
+                f.voiceFinished()
                 assertEquals(before, f.backend.studio.document.value.project)
                 assertEquals(0, f.backend.engine.snapshot().countInBeatsRemaining)
                 assertFalse(f.backend.engine.snapshot().playing)
@@ -90,6 +91,40 @@ class NextCountInTest {
             } finally { f.close() }
             assertEquals(1, f.mic.closes)
         }
+    }
+
+    @Test fun closingTheInputDoesNotMeanTheAsynchronousRecordingClockCleanupHasFinished() = runBlocking<Unit> {
+        val discarded = CompletableDeferred<Unit>()
+        val finishDiscard = CompletableDeferred<Unit>()
+        val f = Fixture { actual -> object : ContinuousEditorPorts by actual {
+            override suspend fun discardVoice() {
+                actual.discardVoice()
+                discarded.complete(Unit)
+                finishDiscard.await()
+            }
+        } }
+        try {
+            f.ready()
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(2))))
+            val before = f.backend.studio.document.value.project
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            await { f.mic.frames > 1_000 }
+            f.backend.engine.releaseOutput()
+            withTimeout(10_000) { discarded.await() }
+            await { !f.presenter.state.value.recordingVoice && f.mic.closes == 1 }
+            assertTrue((f.backend.studio.selection.value.playbackTarget as PlaybackTarget.Arrangement).minimumFrames > 0,
+                "Closing the microphone precedes removal of the temporary recording clock")
+            assertEquals(before, f.backend.studio.document.value.project)
+            val completed = async(start = CoroutineStart.UNDISPATCHED) { f.voiceFinished() }
+            assertFalse(completed.isCompleted)
+            finishDiscard.complete(Unit)
+            completed.await()
+            assertEquals(PlaybackTarget.Arrangement(), f.backend.studio.selection.value.playbackTarget)
+            assertEquals(before, f.backend.studio.document.value.project)
+            assertEquals(0, Files.list(f.directory.resolve("profile/voice-scratch")).use { it.count() })
+        } finally { finishDiscard.complete(Unit); f.close() }
+        assertEquals(1, f.mic.closes)
     }
 
     @Test fun permissionWaitCannotStartTheClockAndStopOwnsALateSuccessfulInputExactlyOnce() = runBlocking<Unit> {
@@ -107,7 +142,7 @@ class NextCountInTest {
         } }
         try {
             f.ready()
-            f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(1)))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(1))))
             val before = f.backend.studio.document.value.project
             val starting = async { f.presenter.dispatch(ContinuousEditorAction.RecordVoice) }
             entered.await()
@@ -130,10 +165,11 @@ class NextCountInTest {
             f.ready()
             val before = f.backend.studio.document.value.project
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice)) // Count-in off.
-            val cue = f.backend.engine.snapshot().recordingStartFrame
+            val cue = f.armedCue().recordingStartFrame
             await { f.backend.voice.recordedMillis >= 40 }
             f.backend.engine.releaseOutput()
             await { f.presenter.state.value.status == ContinuousStatus.VOICE_SAVED && f.mic.closes == 1 }
+            f.voiceFinished()
             assertEquals(cue, f.backend.engine.snapshot().recordingStartedFrame)
             assertEquals(1, f.backend.studio.document.value.project.clips.size)
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.Undo))
@@ -153,9 +189,9 @@ class NextCountInTest {
             assertTrue(f.backend.studio.dispatch(Action.Edit(Intent.AssignRange(source.hash, FrameRange(0, source.frames), 0))).accepted)
             val pad = f.backend.studio.document.value.project.pads[0]
             assertTrue(f.backend.studio.dispatch(Action.Edit(Intent.SetPad(pad.copy(mode = PlayMode.GATE)))).accepted)
-            f.presenter.dispatch(ContinuousEditorAction.SetTempo(240))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.SetTempo(240)))
             f.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE))
-            f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(1)))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(1))))
             val before = f.backend.studio.document.value.project
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordHits))
             val early = ContinuousHitGesture(0, 0)
@@ -190,6 +226,17 @@ class NextCountInTest {
         val presenter = ContinuousEditorPresenter(backend.studio, scope, wrap(ports))
         suspend fun ready() { withTimeout(10_000) { presenter.state.first { it.permits(ContinuousCapability.RECORD_VOICE) } } }
         suspend fun idle() = await { backend.studio.work.value.jobId == null && backend.studio.work.value.preparationId == null }
+        suspend fun armedCue(): TransportState {
+            // Render publishes an asynchronous readout; the first copy may still be the old snapshot.
+            var snapshot = backend.engine.snapshot()
+            await { snapshot = backend.engine.snapshot(); snapshot.recordingStartFrame >= 0 }
+            return snapshot
+        }
+        suspend fun voiceFinished() = await {
+            !presenter.state.value.recordingVoice && mic.closes == 1 &&
+                backend.studio.selection.value.playbackTarget == PlaybackTarget.Arrangement() &&
+                backend.studio.work.value.jobId == null && backend.studio.work.value.preparationId == null
+        }
         suspend fun close() { presenter.close(); backend.shutdown(); ports.close(); scope.cancel() }
     }
     private class ConstantMic : MicInput {
@@ -197,9 +244,10 @@ class NextCountInTest {
         @Volatile var frames = 0L
         @Volatile var closes = 0
         @Volatile private var stopped = false
+        private val clock = FrameClock()
         override fun read(buffer: FloatArray): Int {
             if (stopped) return -1
-            LockSupport.parkNanos(10_000_000)
+            clock.awaitFrames(480)
             buffer.fill(.2f, 0, 480); frames += 480
             return 480
         }
@@ -209,6 +257,7 @@ class NextCountInTest {
     private class CountingSink : AudioSink {
         override val encoding = SinkEncoding.FLOAT32
         @Volatile var nonzero = 0L
+        private val clock = FrameClock()
         override fun pendingFrames() = 0L
         override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
             for (i in offset until offset + length step 4) {
@@ -216,10 +265,28 @@ class NextCountInTest {
                     ((bytes[i + 2].toInt() and 255) shl 16) or (bytes[i + 3].toInt() shl 24)
                 if (Float.fromBits(bits) != 0f) nonzero++
             }
-            LockSupport.parkNanos(length / 8 * 1_000_000_000L / 48_000)
+            clock.awaitFrames(length / 8)
             return length
         }
         override fun close() {}
+    }
+    /** Both devices keep 48 kHz even when their different buffer sizes wake on coarse OS timers. */
+    private class FrameClock {
+        private var startedAt = 0L
+        private var frames = 0L
+        fun awaitFrames(count: Int) {
+            if (frames == 0L) startedAt = System.nanoTime()
+            frames += count
+            val deadline = startedAt + frames * 1_000_000_000L / 48_000
+            while (true) {
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) return
+                // Reproduce coarse timer wakes on every platform. Accumulating relative sleeps here
+                // would give the 480-frame input and 256-frame output different, drifting rates.
+                val quantum = 15_625_000L
+                LockSupport.parkNanos(((remaining + quantum - 1) / quantum) * quantum)
+            }
+        }
     }
     private companion object {
         suspend fun await(condition: () -> Boolean) = withTimeout(10_000) { while (!condition()) delay(5) }
