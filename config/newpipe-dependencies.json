@@ -1,0 +1,232 @@
+{
+  "schema": 1,
+  "upstream": "https://github.com/TeamNewPipe/NewPipeExtractor",
+  "revision": "f9e6bb808f82bf3e4dc1f2a29a16fd376931c8ef",
+  "artifact_channel": "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/v0.26.5/",
+  "provenance": "Upstream v0.26.5 release/commit and official README JitPack channel were checked before recording these HTTPS artifact hashes. Hash matching alone is not provenance.",
+  "distribution_status": "LOCAL validation only. Combined-work license, complete corresponding source/build scripts, notices and release delivery must be completed before public distribution. Source JARs alone are not complete Corresponding Source.",
+  "artifacts": [
+    {
+      "coordinate": "com.github.TeamNewPipe:NewPipeExtractor:v0.26.5",
+      "scope": "extractor-runtime",
+      "license": "GPL-3.0-or-later",
+      "license_url": "https://raw.githubusercontent.com/TeamNewPipe/NewPipeExtractor/v0.26.5/LICENSE",
+      "binary": {
+        "file": "NewPipeExtractor-v0.26.5.jar",
+        "url": "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/v0.26.5/NewPipeExtractor-v0.26.5.jar",
+        "bytes": 802094,
+        "sha256": "923bf0a60938d570ad176ed7b08fa9fec7d0772d7a386ca89a2dd3b9212979c7"
+      },
+      "metadata": [
+        {
+          "file": "NewPipeExtractor-v0.26.5.pom",
+          "url": "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/v0.26.5/NewPipeExtractor-v0.26.5.pom",
+          "bytes": 2400,
+          "sha256": "481318ff094defdc73586ac3f3502cc97dc2c57240011fcd96d83659d45e510c"
+        },
+        {
+          "file": "NewPipeExtractor-v0.26.5.module",
+          "url": "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/v0.26.5/NewPipeExtractor-v0.26.5.module",
+          "bytes": 4168,
+          "sha256": "229ee44415608906b6f3485b5b38bb2f98300a53e2217980b24fa93db8292d9c"
+        }
+      ],
+      "source_jar": {
+        "file": "NewPipeExtractor-v0.26.5-sources.jar",
+        "url": "https://jitpack.io/com/github/TeamNewPipe/NewPipeExtractor/v0.26.5/NewPipeExtractor-v0.26.5-sources.jar",
+        "bytes": 512084,
+        "sha256": "693c1e23cfaae77af3693af2441261ab89d55a89b11a35d36ecdec03dbb4e7c8"
+      }
+    },
+    {
+      "coordinate": "com.github.TeamNewPipe:nanojson:e9d656ddb49a412a5a0a5d5ef20ca7ef09549996",
+      "scope": "extractor-runtime",
+      "license": "Apache-2.0",
+      "license_url": "https://raw.githubusercontent.com/TeamNewPipe/nanojson/e9d656ddb49a412a5a0a5d5ef20ca7ef09549996/src/main/java/com/grack/nanojson/JsonParser.java",
+      "binary": {
+        "file": "nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996.jar",
+        "url": "https://jitpack.io/com/github/TeamNewPipe/nanojson/e9d656ddb49a412a5a0a5d5ef20ca7ef09549996/nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996.jar",
+        "bytes": 31210,
+        "sha256": "d495881a322b3c72e5d43284afd7d7021520028ca8b7c6ba861e3fd8d90614d5"
+      },
+      "metadata": [
+        {
+          "file": "nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996.pom",
+          "url": "https://jitpack.io/com/github/TeamNewPipe/nanojson/e9d656ddb49a412a5a0a5d5ef20ca7ef09549996/nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996.pom",
+          "bytes": 6995,
+          "sha256": "310e6d4dc5dadc3d095d588e8edd2c063ebcdde8e4d5469b82f9f1fa32b647b1"
+        }
+      ],
+      "source_jar": {
+        "file": "nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996-sources.jar",
+        "url": "https://jitpack.io/com/github/TeamNewPipe/nanojson/e9d656ddb49a412a5a0a5d5ef20ca7ef09549996/nanojson-e9d656ddb49a412a5a0a5d5ef20ca7ef09549996-sources.jar",
+        "bytes": 29880,
+        "sha256": "a4ac5f0d7163220039527b45cc846df44e66a3293ac10af85a2d35b204a8e82d"
+      }
+    },
+    {
+      "coordinate": "org.jsoup:jsoup:1.22.2",
+      "scope": "extractor-runtime",
+      "license": "MIT",
+      "license_url": "https://jsoup.org/license",
+      "binary": {
+        "file": "jsoup-1.22.2.jar",
+        "url": "https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.22.2/jsoup-1.22.2.jar",
+        "bytes": 512826,
+        "sha256": "596785996d3c6df16f544c232d10a9a1d88783b2a4740cf5251cb616f2be704d"
+      },
+      "metadata": [
+        {
+          "file": "jsoup-1.22.2.pom",
+          "url": "https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.22.2/jsoup-1.22.2.pom",
+          "bytes": 20787,
+          "sha256": "54fab990a0ef56297088c252213fa83394fafcefa516059044c09e3a8e05e552"
+        }
+      ],
+      "source_jar": {
+        "file": "jsoup-1.22.2-sources.jar",
+        "url": "https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.22.2/jsoup-1.22.2-sources.jar",
+        "bytes": 271783,
+        "sha256": "3aed3e38ec1e0373eb6755213b01d197802f858850bce20e63d99c93e08818bc"
+      }
+    },
+    {
+      "coordinate": "com.google.code.findbugs:jsr305:3.0.2",
+      "scope": "extractor-runtime",
+      "license": "Apache-2.0",
+      "license_url": "https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom",
+      "binary": {
+        "file": "jsr305-3.0.2.jar",
+        "url": "https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar",
+        "bytes": 19936,
+        "sha256": "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+      },
+      "metadata": [
+        {
+          "file": "jsr305-3.0.2.pom",
+          "url": "https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom",
+          "bytes": 4286,
+          "sha256": "19889dbdf1b254b2601a5ee645b8147a974644882297684c798afe5d63d78dfe"
+        }
+      ],
+      "source_jar": {
+        "file": "jsr305-3.0.2-sources.jar",
+        "url": "https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2-sources.jar",
+        "bytes": 18102,
+        "sha256": "1c9e85e272d0708c6a591dc74828c71603053b48cc75ae83cce56912a2aa063b"
+      }
+    },
+    {
+      "coordinate": "com.google.protobuf:protobuf-javalite:4.35.1",
+      "scope": "extractor-runtime",
+      "license": "BSD-3-Clause",
+      "license_url": "https://raw.githubusercontent.com/protocolbuffers/protobuf/v35.1/LICENSE",
+      "binary": {
+        "file": "protobuf-javalite-4.35.1.jar",
+        "url": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-javalite/4.35.1/protobuf-javalite-4.35.1.jar",
+        "bytes": 1044075,
+        "sha256": "45d3769189888e491ab7d58125f2014c2a86fb8104c7aa3878c723943fce7a14"
+      },
+      "metadata": [
+        {
+          "file": "protobuf-javalite-4.35.1.pom",
+          "url": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-javalite/4.35.1/protobuf-javalite-4.35.1.pom",
+          "bytes": 1631,
+          "sha256": "471f7771080c384e6b3c2b4bd5855c178d2d65272ab6cbb3d2d11191d15f44b2"
+        }
+      ],
+      "source_jar": {
+        "file": "protobuf-javalite-4.35.1-sources.jar",
+        "url": "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-javalite/4.35.1/protobuf-javalite-4.35.1-sources.jar",
+        "bytes": 461109,
+        "sha256": "de71721d787177c241461f8c4b36ae16394bffeb1e7dcbc0a85e76a5d943b124"
+      }
+    },
+    {
+      "coordinate": "org.mozilla:rhino:1.8.1",
+      "scope": "extractor-runtime",
+      "license": "MPL-2.0",
+      "license_url": "https://raw.githubusercontent.com/mozilla/rhino/Rhino1_8_1_Release/LICENSE.txt",
+      "binary": {
+        "file": "rhino-1.8.1.jar",
+        "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino/1.8.1/rhino-1.8.1.jar",
+        "bytes": 1271206,
+        "sha256": "98a06d42bdd69da15bf9c2a7812b4cfe648ca9e64fe8baaeb502a32b0ed2c8ac"
+      },
+      "metadata": [
+        {
+          "file": "rhino-1.8.1.module",
+          "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino/1.8.1/rhino-1.8.1.module",
+          "bytes": 1864,
+          "sha256": "ab04c0b4d652816e240a2d5428f5929c10739b4fb266b84fa7cc86c87cac53c1"
+        },
+        {
+          "file": "rhino-1.8.1.pom",
+          "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino/1.8.1/rhino-1.8.1.pom",
+          "bytes": 1695,
+          "sha256": "d2004c8eabce80829d8bbf570a2bde71a849868d2974085e9eb558b68b458a62"
+        }
+      ],
+      "source_jar": {
+        "file": "rhino-1.8.1-sources.jar",
+        "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino/1.8.1/rhino-1.8.1-sources.jar",
+        "bytes": 912671,
+        "sha256": "2303a0e5aa222faae0b95865c25442da89ec14c0fc81ac1608f2a6095e3d2459"
+      }
+    },
+    {
+      "coordinate": "org.mozilla:rhino-engine:1.8.1",
+      "scope": "extractor-runtime",
+      "license": "MPL-2.0",
+      "license_url": "https://raw.githubusercontent.com/mozilla/rhino/Rhino1_8_1_Release/LICENSE.txt",
+      "binary": {
+        "file": "rhino-engine-1.8.1.jar",
+        "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino-engine/1.8.1/rhino-engine-1.8.1.jar",
+        "bytes": 14256,
+        "sha256": "ff38ad60aa32a23942f60242a433a2583a5407841745510754a43e0e61dd95cf"
+      },
+      "metadata": [
+        {
+          "file": "rhino-engine-1.8.1.module",
+          "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino-engine/1.8.1/rhino-engine-1.8.1.module",
+          "bytes": 2078,
+          "sha256": "1f21dffb2d241e31bf42d5c59de6a8cecb800edd907b059abb2b3c17c634d535"
+        },
+        {
+          "file": "rhino-engine-1.8.1.pom",
+          "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino-engine/1.8.1/rhino-engine-1.8.1.pom",
+          "bytes": 1871,
+          "sha256": "cfcff2fe480d489010906b8ec9f7b584b6a4903ec9b135832dd14e952afce380"
+        }
+      ],
+      "source_jar": {
+        "file": "rhino-engine-1.8.1-sources.jar",
+        "url": "https://repo.maven.apache.org/maven2/org/mozilla/rhino-engine/1.8.1/rhino-engine-1.8.1-sources.jar",
+        "bytes": 9007,
+        "sha256": "c3316bdfd713c92d2688ea921b5cc7568a5a879ecd395847559407862fce5089"
+      }
+    },
+    {
+      "coordinate": "com.android.tools:desugar_jdk_libs_nio:2.1.5",
+      "scope": "android-desugar",
+      "license": "GPL-2.0-with-classpath-exception",
+      "license_url": "https://github.com/google/desugar_jdk_libs/blob/master/LICENSE",
+      "binary": {
+        "file": "desugar_jdk_libs_nio-2.1.5.jar",
+        "url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_nio/2.1.5/desugar_jdk_libs_nio-2.1.5.jar",
+        "bytes": 6113073,
+        "sha256": "d8044befae095781b9a80bf1faa92edc30382d75d437476784c1bf991598a976"
+      },
+      "metadata": [
+        {
+          "file": "desugar_jdk_libs_nio-2.1.5.pom",
+          "url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_nio/2.1.5/desugar_jdk_libs_nio-2.1.5.pom",
+          "bytes": 1265,
+          "sha256": "1ba5db067a494d09f5c4a94f4cb4d58fc6fd33e0a55417e0e46d3b288328f3bc"
+        }
+      ],
+      "corresponding_source_status": "Exact 2.1.5 source/build mapping must be resolved before distribution; the POM license URL identifies the upstream license, not a source delivery receipt."
+    }
+  ],
+  "android_rules_source": "https://github.com/TeamNewPipe/NewPipe/blob/7e5df38aad4b2c035332b3f71aee3064d4fdaae4/app/proguard-rules.pro"
+}

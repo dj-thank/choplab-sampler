@@ -5,7 +5,8 @@ data class AudioLibraryItem(val id: String, val title: String, val origin: Strin
 data class SourceTrack(val title: String, val artist: String, val spotifyUrl: String, val durationSeconds: Double = 0.0) {
     val query: String get() = "$artist $title".trim()
 }
-data class YoutubeSource(val id: String, val title: String, val author: String, val durationSeconds: Double = 0.0) {
+data class YoutubeSource(val id: String, val title: String, val author: String, val durationSeconds: Double = 0.0,
+                         val metadata: YoutubeMetadata? = null, val selectedFormat: String? = null) {
     val url: String get() = "https://www.youtube.com/watch?v=$id"
 }
 enum class SourceSection { LIBRARY, YOUTUBE, SPOTIFY }
