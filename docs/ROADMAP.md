@@ -1,12 +1,48 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-09-27。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-09-28。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+
+## 最初に読む現状とSSOT（2026-09-28照合）
+
+9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。最後の指定に従い、追加実装の担当は既存のClaudeクラウドセッション。今回のrootは文書整備のみを担当し、未完成の画面・録音・Spotifyコードをこの文書更新へ混ぜない。
+
+### 正本と参照順
+
+| 判断すること | 正本 |
+|---|---|
+| 現在地、担当、失敗、次の一手、段階0〜11の受入 | 本書。下の履歴は記載revision時点の証拠であり、古い「次の一手」を再開しない |
+| 必須機能、対象OS、取込と保存の意味 | [PRODUCT](PRODUCT.md)、Mac追加は[ADR8](adr/ADR-0008-mac-function-parity.md) |
+| 4工程、PAD、曲配置、原曲監視、2円盤scratch、承認画像 | [DESIGN](DESIGN.md) |
+| module・文書・job所有・保存schema | [ARCHITECTURE](ARCHITECTURE.md) |
+| PCM、時刻、録音、音質と性能の判定 | [AUDIO](AUDIO.md) |
+| 任意AI、鍵管理と送信境界 | [AI](AI.md) |
+| 検証と証拠の区別、配布・署名 | [TESTING](TESTING.md)、[RELEASE](RELEASE.md) |
+| 実行手順・toolchain | [CONTRIBUTING](../CONTRIBUTING.md)、[desktop手順](../desktop/README.md)、checkoutのGradle設定 |
+| 開発運用と継続的な決定 | [AGENTS](../AGENTS.md)、[ADR7](adr/ADR-0007-concise-development-governance.md)、[ADR一覧](adr/) |
+
+開始時・大きな判断時・完了時にこの順で関係する契約を確認する。mainの文書が共有の正本、未統合branch/PRは候補、インストール済みartifactは別revisionとして扱う。新しいユーザー訂正は該当契約と本書へ反映し、古いセッション要約やZIPを新しい正本にしない。会話全文・認証情報・個人パス・端末識別子は公開しない。参照画像はDESIGNからGitHubだけで読める。
+
+### 現在の修正対象と再開点
+
+以下はmain `551d57fcaadb427df8b3845da9a05ab67d2c6c7e`、公開branch、PRの最新状態を9月28日に照合した結果。開始時にheadを再確認する。
+
+| 対象 | 確認した状態 | 次担当が満たす完了条件 |
+|---|---|---|
+| 演奏録音 [PR150](https://github.com/dj-thank/choplab-sampler/pull/150) | OPEN、head `ee18b7c965f4368a623d536d8aae168ef29435ec`。[run 36329071282](https://github.com/dj-thank/choplab-sampler/actions/runs/36329071282) はverify・Windows EXE・履歴/SBOMの3件成功。引継ぎ時のWindows失敗/verify実行中は現在状態ではない | 曲末/GATE/choke/StopAll/fade/取消LOOP/accessibilityの修正をレビューし、統合後の画面とpackageで録音→1Undo/Redo→保存再開→書出しを確認。CI成功を実聴合格へ読み替えない |
+| PAD可視領域 [PR153](https://github.com/dj-thank/choplab-sampler/pull/153) | DRAFT、head `c5048e2`。compact header/詳細折畳みの途中変更。元セッションの23試験中1失敗（ContinuousEditorTestのfill panel、392行IllegalArgumentException） | 失敗を修正し390×844/font1/1.3/2、短い横画面、広い画面の実描画と操作を確認。PAD・停止・原曲・音量・Undoが使えること。引継ぎ文だけを理由にWIPを完成扱いでmergeしない |
+| Spotify NEXT [保全branch](https://github.com/dj-thank/choplab-sampler/tree/codex/next-spotify-connection) | head `d2a06e1e2f279382da27874383f47de7877d70be`。typedエラー/session試験とnative metadata dialogまで。NEXT action/port/host/package接続、実OAuth/APIは未完 | metadataと音源を区別し、接続・取消・失敗・再試行・鍵管理と実providerを確認。PRODUCTの具体的な利用条件を満たす |
+| デザインの取り違え | 最後のBEAT画像とSOURCE/HAND画像をDESIGNへ保存。旧2枚目・3枚目は撤回済み | 大きな4×4 PAD＋右の配置、4工程、共通原曲監視、独立音量、可変divider、A–H×16を維持。scratchはSOURCE/HANDの独立経路まで実装・検証 |
+| 取込・長尺・OS差 | 約349秒のresident上限、AndroidのMediaCodec→16bit WAV経路が残る。ライブチョップの固定60ms補正もroute別実測への移行対象。過去の約44%高速化は限定した合成FLAC条件 | prefetch/RAM境界、原本bytes・精度・左右、取消/再試行、実利用時の待ち時間を確認。Macの成功をAndroid/Windowsの成功にしない |
+| 全制作機能 | ライブラリ等の移植は下の個別記録にあるが、段階0〜11全体の受入は未完 | BANK名/色/役割・PAD編集、空曲録音・metronome/count-in・loop overdub・step/pattern、vocal take/comp/punch/LRC、任意AI、4stem/mixer/FX/export、保存復旧、配布サイズを受入表に沿って完遂。UIと録音だけへ範囲を縮めない |
+| インストール済みと実運用 | 元セッションで確認したMac NEXT `46300aac`、Android署名済Preview `5d471c11` build30にはPR150未搭載。今回端末を再操作していない | 9月27日のレビューではWindows SSOT入口は `a5c6343`、通常起動は `0.17.2-53655c46e0a1` と不一致。WindowsはSSHでorigin/branch/dirty状態/実launcherとartifactを再照合。Mac/Androidも更新後のbytes・revisionで制作通しを確認。実音・マイク・遅延・TalkBack・Humanは独立して記録 |
+
+クラウドで変更を進め、実機確認が必要な箇所は対象revision・artifact・操作・期待結果を明記してローカルへ引き継ぐ。`LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO`は別判定。確認済みでないものは未確認のまま残す。各bounded PRで検証・CI・統合・本書のreadbackまで行う。rollbackは該当PRのrevertと以前のartifactへの復帰で、既存アプリ・制作data・dirty workは保持する。
 
 ## UIの固定条件
 
 共有タスク「Choplab UIを改善」で選んだ案2の改訂版を維持する。8月版の4工程・大きなPAD・濃い波形面を土台に、右側の自由配置、原曲の連携、試聴音量、可変幅を組み込む。5画面カード案と9月21日の素材棚中心版は採用しない。詳しくは [DESIGN](DESIGN.md)。
 
-## 現在地・選択中の作業
+## 統合済み基盤と経緯（現在の再開点は冒頭）
 
 - 基準: [PR101](https://github.com/dj-thank/choplab-sampler/pull/101) のmerge `2866683a5118681cf518ef47e29cac8baf882edb`、保存tag `archive/pre-rebuild-v0.18.0`。0.18.0/build30のAndroid/Windowsを出発点にする。後続の別ローカルeditor/schema8/9やDDJ-200を混ぜない。
 - sourceの現状: 本番は `app / desktop / shared / jvm-core`、4工程、schema7 writer / schemas1–7 reader。独立した `engine / core / jvm` とschema10は導入済みで、4工程UI/本番hostへの全面接続は未完。AI・4stem等は下表で受入が完了するまでは計画。
@@ -26,7 +62,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 ADBの対象を1台に限定してinstall成功、NEXT Activityの起動とprocess存続を確認。NEXTからOSの音源選択画面が開いていることも確認し、利用者の選択を中断していない。既存 `com.choplab.sampler` のversion/update identityは前後一致、uninstall/data clearなし。これはinstall/起動範囲の実端末証拠であり、実音・マイク・遅延・TalkBack・制作通し・Human受入は未完。端末識別子はrepositoryへ記録しない。
 
-## Mac NEXT端末音録音の接続（PR138統合済み）
+## Mac NEXT端末音録音の接続（PR138統合済み・以下は当時の経緯）
 
 - owner: root。基準はPR136統合 `a5ec068`。対象は `desktop` のScreenCaptureKit helper/NextBackend、`jvm` のVoiceTakes、`ui` のSOURCE録音操作。従来のPCM16 helper出力は維持し、NEXTだけ48kHz stereo FLOAT32を選ぶ。
 - SOURCEの端末音録音から、左右を保持した原曲、1回のUndo、PAD/配置、24bit書出し、保存/再開へつなぐ。マイクへ暗黙に切り替えない。許可待ちの取消、画面ロック、入力断、時間/容量上限を別々に扱う。
@@ -129,7 +165,7 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 
 各PRで「revision / 実行commandとCI link / artifact bytes / 実際に確認したOS・route・scope / 未確認 / 次の一手」を最小限残します。全体check名だけで対象module全通過とせず、必要taskを列挙します。数値の目標、source上の構造、過去のreceipt、新しい測定を区別します。
 
-NEXT再構築の実音・実マイク・provider・Human GOは未受入です。現行desktopのMac実マイク・YouTube・システム音の測定は下記で個別に記録し、NEXTへ昇格しません。音質A/B、デザイン案、NEXTの両OS制作通し、TalkBack/操作感などの確認用成果は実装に合わせて提示します。人間への確認は最大5項目にし、未回答を承認や合格へ変換しません。既存の包括的実装/統合許可は保持します。
+NEXT全体の実機・provider・Human GOは未完です。Mac NEXTの実マイク・システム音・実YouTubeの限定した観測は後続の個別記録を参照し、旧desktopだけの成功をNEXTへ転用しません。今回の文書照合は新しい実機・provider測定ではありません。音質A/B、デザイン案、NEXTの両OS制作通し、TalkBack/操作感などの確認用成果は実装に合わせて提示します。人間への確認は最大5項目にし、未回答を承認や合格へ変換しません。既存の包括的実装/統合許可は保持します。
 
 ## Macローカル利用の統合受入 — 2026-09-27
 

@@ -29,6 +29,8 @@ WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF、MP4・WebM内�
 
 ## 開発と文書
 
+開発の再開・クラウドへの引継ぎは、まず [ROADMAPの現状・SSOT・修正対象](docs/ROADMAP.md#最初に読む現状とssot2026-09-28照合) を参照してください。元セッションの意図と最新の訂正を反映し、[承認済み画面](docs/DESIGN.md#承認済み画像設計参照) も保存しています。
+
 - [参加・ローカル起動](CONTRIBUTING.md) / [変更ルール](AGENTS.md)
 - [PRODUCT](docs/PRODUCT.md) — できることと再構築の要件
 - [ARCHITECTURE](docs/ARCHITECTURE.md) / [AUDIO](docs/AUDIO.md) — モジュール、保存、音の契約
