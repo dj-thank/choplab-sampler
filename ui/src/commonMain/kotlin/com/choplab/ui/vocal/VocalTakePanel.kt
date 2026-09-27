@@ -74,7 +74,7 @@ fun VocalTakePanel(controller: VocalTakeController, onClose: () -> Unit, modifie
                     state.problem?.let { Text(stringResource(problemText(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("vocal-problem")) }
                     if (state.problem == VocalProblem.STALE) OutlinedButton({ action(VocalAction.Reload) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("vocal-reload")) { Text(stringResource(Res.string.vocal_reload)) }
-                    if (state.applied) Text(stringResource(Res.string.vocal_applied), Modifier.testTag("vocal-applied"))
+                    if (state.applied) Text(stringResource(Res.string.vocal_take_applied), Modifier.testTag("vocal-applied"))
                 }
             }
             if (state.phase == VocalPhase.RENDERING || state.phase == VocalPhase.APPLYING) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -87,7 +87,7 @@ fun VocalTakePanel(controller: VocalTakeController, onClose: () -> Unit, modifie
                 OutlinedButton({ action(VocalAction.PreviewComp(compName)) }, enabled = state.editable && state.draft != null,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("vocal-preview-comp")) { Text(stringResource(Res.string.vocal_comp_preview)) }
                 Button({ action(VocalAction.Apply(compName)) }, enabled = state.editable && state.draft != null,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("vocal-apply")) { Text(stringResource(Res.string.vocal_apply)) }
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("vocal-apply")) { Text(stringResource(Res.string.vocal_take_apply)) }
             }
             OutlinedButton({ controller.close(); onClose() }, enabled = state.phase != VocalPhase.APPLYING,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("vocal-close")) { Text(stringResource(Res.string.vocal_close)) }
@@ -115,12 +115,12 @@ private fun problemText(problem: VocalProblem) = when (problem) {
     VocalProblem.NO_TAKES -> Res.string.vocal_take_empty
     VocalProblem.NO_TIMED_LINES -> Res.string.vocal_no_lines
     VocalProblem.TAKE_TOO_SHORT -> Res.string.vocal_take_short
-    VocalProblem.LIMIT -> Res.string.vocal_limit
+    VocalProblem.LIMIT -> Res.string.vocal_take_limit
     VocalProblem.RECORDING -> Res.string.vocal_recording
-    VocalProblem.BUSY -> Res.string.vocal_busy
-    VocalProblem.STALE -> Res.string.vocal_stale
+    VocalProblem.BUSY -> Res.string.vocal_take_busy
+    VocalProblem.STALE -> Res.string.vocal_take_stale
     VocalProblem.CLOSED -> Res.string.vocal_closed
     VocalProblem.INVALID_INPUT -> Res.string.vocal_invalid
     VocalProblem.RENDER_FAILED -> Res.string.vocal_render_failed
-    VocalProblem.APPLY_FAILED -> Res.string.vocal_apply_failed
+    VocalProblem.APPLY_FAILED -> Res.string.vocal_take_apply_failed
 }
