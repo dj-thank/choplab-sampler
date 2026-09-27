@@ -13,7 +13,7 @@
 
 Windows app-imageはprivate Java runtimeを含む一式であり、EXE単体ではありません。署名installer・更新は段階11。既存版とPreviewは設定/autosave/library/cache/lockを分け、署名変更を含む正式切替前に音声救出と復元を確認します。利用者の既存app/dataを削除して問題を回避しません。
 
-Mac NEXT preview（`:desktop:packageMacLinkedPreview`、workflow `mac-preview.yml`、artifact `choplab-mac-next-preview`）は、新しい4工程の編集画面だけを試すための、ローカルad-hoc署名・未公証のApple Silicon用CI artifact（7日保存）です。media tool・分離モデル・system audio helperを同梱せず、WAVだけを開きます。専用bundle ID `com.choplab.sampler.preview.next`、データはPreview領域の `next-v10`。GitHub Releaseの公開物ではなく、Developer ID署名・公証・PUBLIC_PASSの成功にも数えません。
+Mac NEXT preview（`:desktop:packageMacLinkedPreview`、workflow `mac-preview.yml`、artifact `choplab-mac-next-preview`）は、新しい4工程の編集画面だけを試すための、ローカルad-hoc署名・未公証のApple Silicon用CI artifact（7日保存）です。固定済みmedia tool・ドラム分離モデル・ScreenCaptureKit helperを同梱し、複数codecの音源取込、オンライン取込、ドラム分離、端末音録音へ接続しています。各routeの検証範囲はROADMAPに記録し、同梱だけでprovider・録音許可・聴感受入の成功とは扱いません。Spotifyの接続は未移植です。専用bundle ID `com.choplab.sampler.preview.next`、データはPreview領域の `next-v10`。GitHub Releaseの公開物ではなく、Developer ID署名・公証・PUBLIC_PASSの成功にも数えません。
 
 ## 鍵と設定の区分
 

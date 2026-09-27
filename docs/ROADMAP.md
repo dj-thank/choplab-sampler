@@ -20,6 +20,12 @@
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
+## Android実端末へのNEXT Preview導入
+
+2026-09-27、root所有で接続されたPixel 9a（API 37）へ署名済み `com.choplab.sampler.preview` 0.18.0-preview/code30を追加した。APKはmain `5d471c118c02f5a73481d2ff0af03cc5d4a9318d` の成功CI `36324167075` から取得し、281,916,442 bytes、SHA-256 `228dafca89a46cf8ad38b1306ebc3c9ff1a8fbe6fe9c353eb228fb428db542de`。署名・非debuggable・manifest/権限・16KiB alignmentを再検査。現main `46300aac` との差はMac終了修正/検証/docsのみでAndroid機能ソースは同一。同mainのローカル `:app:testPreviewUnitTest :app:lintPreview :app:assemblePreview` も成功した。端末へ入れたのはCI継続鍵の署名済みAPKで、ローカル未署名APKではない。
+
+ADBの対象を1台に限定してinstall成功、NEXT Activityの起動とprocess存続を確認。NEXTからOSの音源選択画面が開いていることも確認し、利用者の選択を中断していない。既存 `com.choplab.sampler` のversion/update identityは前後一致、uninstall/data clearなし。これはinstall/起動範囲の実端末証拠であり、実音・マイク・遅延・TalkBack・制作通し・Human受入は未完。端末識別子はrepositoryへ記録しない。
+
 ## Mac NEXT端末音録音の接続（PR138統合済み）
 
 - owner: root。基準はPR136統合 `a5ec068`。対象は `desktop` のScreenCaptureKit helper/NextBackend、`jvm` のVoiceTakes、`ui` のSOURCE録音操作。従来のPCM16 helper出力は維持し、NEXTだけ48kHz stereo FLOAT32を選ぶ。
@@ -47,7 +53,7 @@ PR147統合後のmain `7c013479` のtreeは結合試験版と一致。clean Mac 
 
 PR148/149統合後のmain `5d471c118c02f5a73481d2ff0af03cc5d4a9318d` を、このMacのChopLab NEXTへ更新済み（238ファイル・521,620,237 bytes、全hash/署名一致、旧app-imageと利用者dataを保持）。同梱11codec・実モデル分離→明示取込→Undo/Redo→PAD配置→24bit書出し→元音/分離音のarchive一致・保存再開が成功。インストール先でも実モデル制作と実launcherの通常終了再開2回・元音hash一致、120 BPM/60%の16音の書出しで裏16分のみ1,200frame遅れることと保存再開を確認。聴感・実入力遅延の合格ではない。
 
-root所有の追加修正は `desktop/.../next/NextSeparationDialog.kt` と `scripts/acceptance/NextSeparationDialogCheck.java` / `scripts/run_mac_next_acceptance.py`。Mac native分離窓の操作は成功したが、閉じた後の検証JVMが終了しない事象を再現した。消えた全windowと残存 `AquaProgressBarUI$Animator` の20ms timerを確認。終了時に進捗バーのUI delegateをEDTで解放し、合成音の明示開始/明示確定/閉じる取消に加えて自然なJVM終了をMac配布物の回帰試験へ追加する。完了条件は修正候補の自然終了・CI・main更新後の再確認、rollbackは追加PRのrevert。追加修正の候補で分離worker試験2件・policy320件、同梱11codec・実モデル制作・native分離窓・通常終了再開2回が成功。分離窓の独立起動3回も自然終了し、診断で残存timerがないことを確認。main `5d471c11` のMac CIは成功、全体CI・追加修正のCIとインストール更新は追跡中。
+root所有の追加修正は `desktop/.../next/NextSeparationDialog.kt` と `scripts/acceptance/NextSeparationDialogCheck.java` / `scripts/run_mac_next_acceptance.py`。Mac native分離窓の操作は成功したが、閉じた後の検証JVMが終了しない事象を再現した。消えた全windowと残存 `AquaProgressBarUI$Animator` の20ms timerを確認。終了時に進捗バーのUI delegateをEDTで解放し、合成音の明示開始/明示確定/閉じる取消に加えて自然なJVM終了をMac配布物の回帰試験へ追加する。完了条件は修正候補の自然終了・CI・main更新後の再確認、rollbackは追加PRのrevert。追加修正の候補で分離worker試験2件・policy320件、同梱11codec・実モデル制作・native分離窓・通常終了再開2回が成功。分離窓の独立起動3回も自然終了し、診断で残存timerがないことを確認。PR151のhead `4bbe8fad` は全必須CIとMac CIが成功し、main `46300aac65dadfa17883a1584518a292a855f329` へ統合済み。同mainのverification `36325861095` とMac `36325861105` も成功。このMacのNEXTを同mainの238ファイル・521,620,504 bytesへ更新し、全hash/署名・11codec・実モデル制作・通常終了再開2回を確認。インストール先でも実モデル分離→制作→保存再開と、日本語native分離窓の明示開始/確定/取消・自然なJVM終了が成功した。旧Preview・前のNEXT app-imageと利用者dataは保持。これはLOCAL_PASSであり、分離音質・Human受入・公開配布は未完。
 
 ## NEXTの音源ライブラリ（PR143統合・Mac更新済み）
 
