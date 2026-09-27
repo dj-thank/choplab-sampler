@@ -49,6 +49,7 @@ import kotlin.math.roundToLong
     stepPatterns: StepPatternController? = null,
     vocalGuide: VocalGuideController? = null,
     vocalTakes: com.choplab.ui.vocal.VocalTakeController? = null,
+    vocalPunch: com.choplab.ui.vocal.VocalPunchController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -97,6 +98,7 @@ import kotlin.math.roundToLong
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
         vocalTakes?.let { CEVocalTakeDialog(it, onAction) }
+        vocalPunch?.let { CEVocalPunchDialog(it, onAction) }
         vocalGuide?.let { CEVocalGuideDialog(it, onAction) }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)

@@ -26,17 +26,26 @@ internal class AndroidMicInput private constructor(private val record: AudioReco
     private val released = AtomicBoolean()
     override val sampleRate: Int = SAMPLE_RATE
     override val bufferFrames: Int = record.bufferSizeInFrames
+    private var routedInput = record.routedDevice?.id
+    @Volatile private var routingRevision = 0L
+    override val routeRevision: Long get() = routingRevision
+    private fun observeRoute() {
+        val current = record.routedDevice?.id
+        if (current != routedInput) { routedInput = current; routingRevision++ }
+    }
 
     /** Audio priority for the recording thread, as the earlier app's recorder had. */
     override fun onCaptureThread() = Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
 
     override fun read(buffer: FloatArray): Int {
         if (released.get()) return -1
+        observeRoute()
         val shorts = this.shorts
         val count = if (floats) record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
             else record.read(requireNotNull(shorts), 0, minOf(buffer.size, shorts.size), AudioRecord.READ_BLOCKING).also { read ->
                 for (index in 0 until read) buffer[index] = shorts[index] / 32_768f
             }
+        observeRoute()
         // A negative count is an error or a lost input (another app took the microphone): the take ends there.
         return if (count < 0) -1 else count
     }

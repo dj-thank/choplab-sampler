@@ -1,6 +1,7 @@
 package com.choplab.jvm
 
 import com.choplab.core.VoiceTake
+import com.choplab.core.vocal.VocalCapturedSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CancellationException
@@ -49,12 +50,13 @@ class VoiceTakes(
      * Opens the microphone for at most [maxSeconds], fewer when the asset store or the disk has room for less: a take
      * is written once, as a 32-bit WAV, and then moved into the store.
      */
-    suspend fun start(maxSeconds: Int, waitForCue: Boolean = false, window: VoiceCaptureWindow? = null): Start {
+    suspend fun start(maxSeconds: Int, waitForCue: Boolean = false, window: VoiceCaptureWindow? = null, passes: Int = 1): Start {
         var owned: VoiceRecorder? = null
         var published = false
         return try { withContext(Dispatchers.IO) {
         require(maxSeconds in 1..300)
-        require(window == null || (waitForCue && window.frames48k <= maxSeconds * 48_000L))
+        require(passes in 1..8 && (passes == 1 || window != null))
+        require(window == null || (waitForCue && window.frames48k * passes <= maxSeconds * 48_000L))
         synchronized(lock) {
             if (closed) return@withContext Start.NO_INPUT
             if (retiring?.terminated == true) retiring = null
@@ -62,7 +64,7 @@ class VoiceTakes(
             check(recorder == null) { "A take is already recording" }
         }
         val seconds = minOf(maxSeconds.toLong(), roomSeconds()).toInt()
-        if (seconds < 1 || (window != null && window.frames48k > seconds * 48_000L)) return@withContext Start.NO_ROOM
+        if (seconds < 1 || (window != null && window.frames48k * passes > seconds * 48_000L)) return@withContext Start.NO_ROOM
         val reserved = try { memory.reserve(VoiceRecorder.MEMORY_BYTES) } catch (_: PcmMemoryLimit) { return@withContext Start.NO_ROOM }
         var transferred = false
         try {
@@ -73,7 +75,7 @@ class VoiceTakes(
             val created = try {
                 currentCoroutineContext().ensureActive()
                 require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
-                VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window, reserved).also { owned = it; transferred = true }
+                VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window, reserved, passes).also { owned = it; transferred = true }
             } catch (failure: Exception) {
                 try { input.close() } catch (_: Exception) { }
                 throw failure
@@ -104,6 +106,10 @@ class VoiceTakes(
     fun cue() { synchronized(lock) { recorder }?.cue() }
     fun cueAt(atNanos: Long): Boolean = synchronized(lock) { recorder }?.cueAt(atNanos) == true
     val armingTimedOut: Boolean get() = synchronized(lock) { recorder }?.armingTimedOut == true
+    val completedPasses: Int get() = synchronized(lock) { recorder }?.completedPasses ?: 0
+    val inputRouteRevision: Long? get() = synchronized(lock) { recorder }?.inputRouteRevision
+    val inputRate: Int? get() = synchronized(lock) { recorder }?.inputRate
+    val inputBufferFrames: Int? get() = synchronized(lock) { recorder }?.inputBufferFrames
     val windowComplete: Boolean get() = synchronized(lock) { recorder }?.windowComplete == true
 
     /** The running take reached its limit. */
@@ -118,6 +124,15 @@ class VoiceTakes(
         val current = synchronized(lock) { recorder.also { recorder = null; if (it != null) retiring = it } } ?: return@withContext null
         try { current.finish(assets, name) }
         finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
+    }
+
+    /** Ends one multi-pass input session; all candidate ranges refer to the same immutable original WAV. */
+    suspend fun stopPunch(name: String): VocalCapturedSession? = withContext(Dispatchers.IO + NonCancellable) {
+        val current = synchronized(lock) { recorder.also { recorder = null; if (it != null) retiring = it } } ?: return@withContext null
+        try {
+            val take = current.finish(assets, name) ?: return@withContext null
+            current.capturedPasses.takeIf { it.isNotEmpty() }?.let { VocalCapturedSession(take.asset, it) }
+        } finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
     }
 
     /** Ends the take and drops it. */

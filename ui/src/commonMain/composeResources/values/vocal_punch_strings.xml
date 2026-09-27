@@ -1,0 +1,35 @@
+<resources>
+    <string name="punch_title">Punch &amp; loop recording</string>
+    <string name="punch_commit_help">Record saves all candidates in one Undo. Existing placements stay unchanged. Preview and apply choices separately in Takes.</string>
+    <string name="punch_start">Start (seconds)</string>
+    <string name="punch_end">End (seconds, exclusive)</string>
+    <string name="punch_preroll">Pre-roll: %1$d bars</string>
+    <string name="punch_countin">First count-in: %1$d bars</string>
+    <string name="punch_passes">Passes: %1$d</string>
+    <string name="punch_loop_help">Each pass returns to pre-roll. Up to 8 passes and 5 minutes of captured audio, with up to 5 ms of handles at each end.</string>
+    <string name="punch_manual">Manual adjustment this time (ms; positive moves earlier)</string>
+    <string name="punch_unmeasured">Timing uses input arrival and estimated output queues. Round-trip error and drift are unmeasured; ±5 ms is not certified. Manual adjustment applies only to this recording.</string>
+    <string name="punch_route">Input %1$d Hz / %2$s frames; output %3$d Hz / %4$s frames. Clock: host monotonic</string>
+    <string name="punch_invalidated">Route conditions changed; correction is invalid. Candidates are retained without that correction.</string>
+    <string name="punch_manual_active">Manual adjustment; not measured</string>
+    <string name="punch_estimated">Estimated timing; round trip unmeasured</string>
+    <string name="punch_progress">Recording pass %1$d / %2$d</string>
+    <string name="punch_saved">Saved %1$d candidates</string>
+    <string name="punch_choices">Preview and choose takes</string>
+    <string name="punch_record">Record and save candidates</string>
+    <string name="punch_stop">Stop and save candidates</string>
+    <string name="punch_close">Close</string>
+    <string name="punch_permission">Microphone permission was denied.</string>
+    <string name="punch_no_input">No microphone could be opened.</string>
+    <string name="punch_no_output">Connect an audio output before recording.</string>
+    <string name="punch_no_room">Not enough memory or storage for this recording.</string>
+    <string name="punch_stale">The project changed; the old recording result was not applied.</string>
+    <string name="punch_interrupted">Input or output was interrupted. Captured candidates are retained.</string>
+    <string name="punch_empty">No audio was captured in the selected interval.</string>
+    <string name="punch_save_failed">Candidates could not be saved into the project.</string>
+    <string name="punch_cancelled">Cancelled before audio was captured.</string>
+    <string name="punch_busy">Wait for the other recording or operation to finish.</string>
+    <string name="punch_cue">The recording cue could not be confirmed.</string>
+    <string name="punch_invalid">Check the interval, pass count and adjustment. Total capture is limited to 5 minutes.</string>
+    <string name="punch_splice">Use selected take in punch interval</string>
+</resources>

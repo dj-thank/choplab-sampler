@@ -213,6 +213,44 @@ class VocalPunchRecordingTest {
         assertEquals(0, Files.list(scratch).use { it.count() })
     }
 
+    @Test fun loopPassesKeepOneInputAndOneOriginalWithExactSeparateRangesAtEveryPartition() = runBlocking<Unit> {
+        for (rate in listOf(8_000, 44_100, 48_000)) for (block in listOf(1, 17, 257, 1024)) {
+            val directory = Files.createTempDirectory("punch-loops-")
+            val clock = AtomicLong(1_000_000_000)
+            val memory = PcmMemoryBudget(1L shl 20)
+            val store = FileAssetStore(directory.resolve("assets"))
+            val mic = ClockedInput(clock, rate)
+            var opens = 0
+            val voice = VoiceTakes(store, directory.resolve("scratch"), captureChannels = 2, nanoTime = clock::get, memory = memory) { opens++; mic }
+            try {
+                val duration = 1157L
+                assertEquals(VoiceTakes.Start.STARTED, voice.start(1, true, VoiceCaptureWindow(duration), passes = 2))
+                val firstCue = 31_000_001L
+                assertTrue(voice.cueAt(1_000_000_000 + firstCue))
+                val firstEnd = endFrame(firstCue, duration, rate).toInt()
+                mic.feed(1_000_000_000, 0, firstEnd, block)
+                withinSeconds(5) { voice.completedPasses == 1 }
+                assertEquals(0, mic.closes); assertFalse(voice.windowComplete)
+                val secondCue = 200_000_001L
+                assertTrue(voice.cueAt(1_000_000_000 + secondCue))
+                assertFalse(voice.cueAt(1_000_000_000 + secondCue + 1))
+                val secondEnd = endFrame(secondCue, duration, rate).toInt()
+                mic.feed(1_000_000_000, firstEnd, secondEnd + 20, block)
+                withinSeconds(5) { voice.windowComplete && mic.closes == 1 }
+                val result = assertNotNull(voice.stopPunch("Both passes"))
+                assertEquals(2, result.passes.size); assertEquals(1, opens); assertEquals(1, mic.closes)
+                val firstStart = ceilRatio(firstCue.toBigInteger() * rate.toBigInteger(), 1_000_000_000L.toBigInteger()).toInt()
+                val secondStart = ceilRatio(secondCue.toBigInteger() * rate.toBigInteger(), 1_000_000_000L.toBigInteger()).toInt()
+                val expected = samples(firstStart, firstEnd) + samples(secondStart, secondEnd)
+                val audio = WavCodec.read(store.read(result.asset).inputStream())
+                assertContentEquals(expected, audio.samples, "rate=$rate block=$block: no pre-roll/count-in/extra end sample")
+                assertEquals(FrameRange(0, (firstEnd-firstStart).toLong()), result.passes[0].range)
+                assertEquals(FrameRange(result.passes[0].range.end, result.asset.frames), result.passes[1].range)
+                assertEquals(0L, memory.statistics().usedBytes)
+            } finally { voice.close(); directory.toFile().deleteRecursively() }
+        }
+    }
+
     private class ClockedInput(private val clock: AtomicLong, override val sampleRate: Int) : MicInput {
         override val channels = 2
         private data class Buffer(val samples: FloatArray, val endNanos: Long)
