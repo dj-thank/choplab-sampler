@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `daedfae1c6af01ca62a282f44454a11eb378b735`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `108cae0cd2ac17b2f4358c9101890e53fdc4c085`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
@@ -32,7 +32,7 @@
 | PAD可視領域 [PR159](https://github.com/dj-thank/choplab-sampler/pull/159) | main `d667c1f`へ統合済み。head `322e68f`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36338417514)成功。1440×1024/1920×1080は実測した上下操作欄を除いた高さと幅から正方形PADを算出し、初期表示で16個すべて押下成功。390×844/font1/1.3/2・短い横画面・ja/enも実描画と入力成功。root UI120件/Android Preview compile成功、最新mainとの画面/Presenter99件成功 | PAD・固定停止・原曲・音量・Undo・BANKを維持。詳細は開閉式。GATEの画面/ペーン/BANK変更は1回だけ解放。実音・実機TalkBack・Humanは未確認。保全DRAFT [PR153](https://github.com/dj-thank/choplab-sampler/pull/153) は旧WIPとして扱う |
 | Spotify NEXT [PR158](https://github.com/dj-thank/choplab-sampler/pull/158) | main `0b42444`へ統合済み。head `c2ed7bb`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36338440869)と[Mac配布CI](https://github.com/dj-thank/choplab-sampler/actions/runs/36338440892)成功。SOURCE入口→専用metadata session/window→終了破棄、ja/en、取消/遅着/429/空結果/ページ再試行、public Client ID設定を接続。desktop302件・focused45件・package設定6件成功、最新mainとのPresenter71件/desktop10件成功 | tokenをsessionメモリに限定し、旧prefs/再生scope/YouTube自動照合を継承しない。実OAuth/API、public Client ID・redirect登録・開発allowlist・利用者同意と一般配布条件の確認は未完。provider合格をローカル試験で代用しない |
 | 歌詞/LRC [PR160](https://github.com/dj-thank/choplab-sampler/pull/160) | main `daedfae`へ統合済み。head `5a457bf`の必須CI3件成功。行/word時刻・tap・current/next、確認後の1Undo適用、native chooser/Android SAF、UTF-8上限とactor revision guardを接続 | 歌詞編集中の演奏継続・書出し/archive/再開は本番経路で成功。実SAF・聴感・take/comp/punch・route校正は未確認。Mac installed `0b42444`には未搭載 |
-| SOURCE/HAND | Astra Maxの独立音声経路・左右円盤・独立音量/CUTをrootの `codex/source-hand-integration`へ移植。以前の本番合成候補と全機能sourceが一致し、engine17/JVM5/UI103/desktop12件・Android compileの成功証拠を再利用。HAND込み1万blockは割当0、p99 0.678ms（192frame/48kHz、Mac合成） | queue満杯/遅着/取消/切断、SOURCE継続、出力bytes・制作不変更を確認。必須CI後に統合し、Mac packageへ入れる。長尺prefetch・実音・物理入力遅延・TalkBack/Humanは未確認 |
+| SOURCE/HAND [PR163](https://github.com/dj-thank/choplab-sampler/pull/163) | main `108cae0`へ統合済み。head `4cfe93f`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36342078261)成功。独立音声経路・左右円盤・独立音量/CUTを接続し、engine17/JVM5/UI103/desktop12件・Android compileの成功証拠とsource一致を確認。HAND込み1万blockは割当0、p99 0.678ms（192frame/48kHz、Mac合成） | queue満杯/遅着/取消/切断、SOURCE継続、出力bytes・制作不変更を確認。Mac installed `0b42444`には未搭載。長尺prefetch・実音・物理入力遅延・TalkBack/Humanは未確認 |
 | デザインの取り違え | 最後のBEAT画像とSOURCE/HAND画像をDESIGNへ保存。旧2枚目・3枚目は撤回済み | 大きな4×4 PAD＋右の配置、4工程、共通原曲監視、独立音量、可変divider、A–H×16を維持。scratchはSOURCE/HANDの独立経路まで実装・検証 |
 | 取込・長尺・OS差 | 約349秒のresident上限、AndroidのMediaCodec→16bit WAV経路が残る。ライブチョップの固定60ms補正もroute別実測への移行対象。過去の約44%高速化は限定した合成FLAC条件 | prefetch/RAM境界、原本bytes・精度・左右、取消/再試行、実利用時の待ち時間を確認。Macの成功をAndroid/Windowsの成功にしない |
 | 全制作機能 | ライブラリ等の移植は下の個別記録にあるが、段階0〜11全体の受入は未完 | BANK名/色/役割・PAD編集、空曲録音・metronome/count-in・loop overdub・step/pattern、vocal take/comp/punch/LRC、任意AI、4stem/mixer/FX/export、保存復旧、配布サイズを受入表に沿って完遂。UIと録音だけへ範囲を縮めない |
@@ -140,7 +140,7 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 10 練習coach | 計画 | local timing/pitch指標、take履歴、苦手行反復、日本語説明。reference有無・rap・低信頼を区別し、未実装ASRや根拠のない正解率を作らない |
 | 11 仕上げ・1.0 | 計画 | WASAPI event出力/入力/loopback、format/device/COM失敗とfallback。installer/更新/初回guide、起動/RAM/電池、TalkBack/keyboard、署名と配布readback、対象routeの実音とHuman受入 |
 
-BANK/PAD編集候補はAstra Max担当がcontroller6/panel3/archive1件、rootと担当が本番接続3件・録音後の編集復帰1件・広い画面の初期全16PAD入力1件を確認した。日英・1440pxと390px文字2倍で実textfield、取消/適用/Undo/停止、元音bytesを保つ保存/新store再開が成功。invalid/stale/selection変更/録音/処理中/音声拒否で未確定内容を制作へ入れない。機能sourceは前の検証候補と一致するためその証拠を再利用し、必須CIは本PR headで実施する。実音・TalkBack/Humanは未確認。rollbackはBANK/PAD編集PRのrevert。
+BANK/PAD編集候補はAstra Max担当がcontroller6/panel3/archive1件、rootと担当が本番接続3件・録音後の編集復帰1件・広い画面の初期全16PAD入力1件を確認した。日英・1440pxと390px文字2倍で実textfield、取消/適用/Undo/停止、元音bytesを保つ保存/新store再開が成功。invalid/stale/selection変更/録音/処理中/音声拒否で未確定内容を制作へ入れない。[PR164](https://github.com/dj-thank/choplab-sampler/pull/164)の初回[CI 36342252758](https://github.com/dj-thank/choplab-sampler/actions/runs/36342252758)はLinuxとWindowsの実ポインタ試験で失敗。draftとfieldsが消えても終了中のmodalが入力を遮る境界を仮想frame時刻で再現した。試験修正 `2bba987`はmodal ownerが実解放されるまでrenderして待ち、解除後の1クリックがOpenPadを1回だけ呼ぶことも検証する。panel4/本番接続3件が成功し、製品UI/controllerは変更していない。最新mainとの製品sourceは前の合成検証候補と一致するためその証拠を再利用し、新headの必須CIを実施する。実音・TalkBack/Humanは未確認。rollbackはBANK/PAD編集PRのrevert。
 
 ## 要求を落とさない対応表
 
