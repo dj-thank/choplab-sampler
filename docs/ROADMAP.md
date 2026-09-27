@@ -29,6 +29,8 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 次の選択範囲: rootがmain `e48a30ab` を基準に、NEXTのオンライン音源選択と既存の取得adapterを接続する。対象はdesktop source adapter/ports・Mac同梱tool設定・共有uiのtyped取込操作。候補確認→明示選択→元音を保持したlibrary保存→原曲の制作・保存/再開を完了条件とし、取消/遅い結果/取得失敗では制作を変えない。provider実同意・実応答は別に検証する。rollbackは当該PRのrevertと旧Preview入口の継続使用。
 
+オンライン取込のローカル実装候補: `6894e008` で、元の圧縮audioを取得するadapter選択肢と、候補確認/明示取得/取消を所有するworkerを追加。既存PreviewのWAV取得は維持する。URL入力だけではdownloadせず、選んだ候補の情報を再確認してからlibraryへ原本保存する。取消後の遅い結果を採用せず、前jobの解放前は再試行を開始しない。合成backendでURL候補/明示選択/元bytes・title/取消/遅着/再試行と原本取得引数の3試験が成功。画面・ports・同梱tool・本番制作通し・実providerは未接続/未確認であり、使用可能機能とは表示しない。PR144（配置プリセット）は全必須CI成功後にmain `7566698a` へ統合。ローカル結合でUI86件・online worker3件・Android Preview compile成功、desktop/390px文字2倍の配置窓画像も確認。インストール済みMacは引き続き `e48a30ab`。
+
 ## NEXTの音源ライブラリ（PR143統合・Mac更新済み）
 
 SOURCEから既存Previewの同じ `audio-library` を選ぶnative dialogを追加。検索・明示選択・複数追加・`.choplib`/ZIP取込・bundle書出しをworkerで行い、取消で遅い結果を選択しない。保存済み素材は保持する。選択前と本番import時のhashを照合し、タイトルと元bytesをschema10へ保持する。書出しは一時fileで完成後にatomic replaceし、入力破損や取消では既存bundleを置換しない。ja/en resourcesを使用し、既存4工程UIは保持する。
