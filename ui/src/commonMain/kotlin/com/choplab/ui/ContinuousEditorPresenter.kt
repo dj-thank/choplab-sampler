@@ -134,6 +134,7 @@ private data class EditorView(
     val clip: String? = null,
     val track: String? = null,
     val pixelsPerSecond: Float = 24f,
+    val grid: ContinuousGrid = ContinuousGrid.BEAT,
     val paneFraction: Float = .41f,
     val pane: ContinuousPane = ContinuousPane.PADS,
     val originalPlaying: Boolean = false,
@@ -459,16 +460,17 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     }
                 } ?: false
                 is ContinuousEditorAction.PlacePad -> placePad(project, action)
-                is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.TrimClip,
+                is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.NudgeClip, is ContinuousEditorAction.TrimClip,
                 is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.DeleteClip,
                 is ContinuousEditorAction.SetClipGain, is ContinuousEditorAction.SetTrackMuted -> {
-                    val intent = ContinuousClipEdits.intent(project, action, ::freshId)
+                    val intent = ContinuousClipEdits.intent(project, action, ::freshId, grid = view.value.grid)
                     edit(intent)
                 }
                 is ContinuousEditorAction.SelectClip -> {
                     require(action.clipId == null || project.clips.any { it.id == action.clipId })
                     view.update { it.copy(clip = action.clipId, track = project.clips.firstOrNull { c -> c.id == action.clipId }?.trackId) }; true
                 }
+                is ContinuousEditorAction.SetGrid -> { view.update { it.copy(grid = action.grid) }; true }
                 is ContinuousEditorAction.SetPixelsPerSecond -> { require(action.value.isFinite()); view.update { it.copy(pixelsPerSecond = action.value.coerceIn(4f, 240f)) }; true }
                 ContinuousEditorAction.FitTimeline -> { view.update { it.copy(pixelsPerSecond = (720f / (songFrames(project) / 48_000f)).coerceIn(4f, 240f)) }; true }
                 is ContinuousEditorAction.ResizePanes -> { require(action.fraction.isFinite()); view.update { it.copy(paneFraction = action.fraction.coerceIn(.2f, .8f)) }; true }
@@ -641,7 +643,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         is ContinuousEditorAction.SelectBank, is ContinuousEditorAction.SelectPad, is ContinuousEditorAction.SelectClip,
         is ContinuousEditorAction.TapPad, is ContinuousEditorAction.HoldPad, is ContinuousEditorAction.ReleasePad,
         is ContinuousEditorAction.SetSongMonitorGain, is ContinuousEditorAction.SetOriginalMonitorGain,
-        is ContinuousEditorAction.SetPixelsPerSecond, ContinuousEditorAction.FitTimeline, is ContinuousEditorAction.ResizePanes,
+        is ContinuousEditorAction.SetPixelsPerSecond, is ContinuousEditorAction.SetGrid, ContinuousEditorAction.FitTimeline, is ContinuousEditorAction.ResizePanes,
         ContinuousEditorAction.ResetPanes, is ContinuousEditorAction.SelectCompactPane, is ContinuousEditorAction.CopyDiagnostics,
         ContinuousEditorAction.DismissDrumKit, ContinuousEditorAction.ClosePadPlay -> true
         else -> false
@@ -794,7 +796,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             val asset = try { ports.renderPad(pad, source) } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { null }
             asset ?: run { refusal = ContinuousStatus.PLACE_FAILED; return false }
         }
-        return edit(ContinuousClipEdits.intent(project, action, ::freshId, rendered))
+        return edit(ContinuousClipEdits.intent(project, action, ::freshId, rendered, view.value.grid))
     }
 
     /** Opens the scratch panel on the selected PAD when it holds a sound, otherwise on the original. */
@@ -1094,6 +1096,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             selectedClipId = v.clip?.takeIf { id -> p.clips.any { it.id == id } }, selectedTrackId = v.track,
             timelineDurationFrames = songFrames(p), pixelsPerSecond = v.pixelsPerSecond, paneFraction = v.paneFraction,
             compactPane = v.pane, songPlaying = input.playing, songMonitorGain = v.songGain, bpm = p.tempo.milliBpm / 1000,
+            milliBpm = p.tempo.milliBpm, grid = v.grid,
             canUndo = input.document.canUndo, canRedo = input.document.canRedo, capabilities = capabilities,
             unavailable = ContinuousCapability.entries.filterNot { it in capabilities }.associateWith { capability ->
                 val voice = capability == ContinuousCapability.RECORD_VOICE && ports.voiceAvailable

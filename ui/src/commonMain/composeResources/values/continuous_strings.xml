@@ -116,6 +116,11 @@
     <string name="ce_duplicate">Duplicate</string>
     <string name="ce_delete">Delete</string>
     <string name="ce_fit">Fit song</string>
+    <string name="ce_grid">Snap to</string>
+    <string name="ce_grid_beat">Beat</string>
+    <string name="ce_grid_half">1/2 beat</string>
+    <string name="ce_grid_quarter">1/4 beat</string>
+    <string name="ce_bars">Bar</string>
     <string name="ce_free">Free</string>
     <string name="ce_zoom_out">Zoom out</string>
     <string name="ce_zoom_in">Zoom in</string>

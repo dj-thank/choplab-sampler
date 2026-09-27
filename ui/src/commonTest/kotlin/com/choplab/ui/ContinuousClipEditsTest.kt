@@ -2,6 +2,7 @@ package com.choplab.ui
 
 import com.choplab.core.ProgramCompiler
 import com.choplab.core.edit.EditSession
+import com.choplab.core.edit.Mutation
 import com.choplab.core.edit.Reducer
 import com.choplab.core.model.*
 import com.choplab.engine.Tempo
@@ -16,7 +17,9 @@ class ContinuousClipEditsTest {
     }
     private var id = 0
     private fun fresh(prefix: String) = "$prefix-${++id}"
-    private fun apply(p: Project, action: ContinuousEditorAction) = Reducer.reduce(p, ContinuousClipEdits.intent(p, action, ::fresh)).project
+    private fun apply(p: Project, action: ContinuousEditorAction, grid: ContinuousGrid = ContinuousGrid.FREE) =
+        Reducer.reduce(p, ContinuousClipEdits.intent(p, action, ::fresh, grid = grid)).project
+    private fun Project.start(clip: Clip = clips.last()) = ContinuousClipEdits.startFrame(this, clip)
 
     @Test fun placementSnapshotsPadAndKeepsOriginalWithOneUndo() {
         val original = fixture()
@@ -110,4 +113,104 @@ class ContinuousClipEditsTest {
         assertEquals(start, left.timelineStartFrame)
         assertEquals(start + ContinuousClipEdits.durationFrames(split, left), right.timelineStartFrame)
     }
+
+    @Test fun onTheGridAPlacedPadStartsOnTheNearestLineAndKeepsItsBeatWhenTheTempoChanges() {
+        // 120 BPM: a beat is 24 000 frames. 29 000 frames is just past the second beat.
+        val p = fixture()
+        for ((grid, frame) in listOf(ContinuousGrid.BEAT to 24_000L, ContinuousGrid.HALF to 24_000L, ContinuousGrid.QUARTER to 30_000L)) {
+            val placed = apply(p, ContinuousEditorAction.PlacePad(0, null, 29_000), grid)
+            assertNull(placed.clips.single().timelineStartFrame, "$grid anchors to the beat")
+            assertEquals(frame, placed.start(), "$grid")
+        }
+        val free = apply(p, ContinuousEditorAction.PlacePad(0, null, 29_000))
+        assertEquals(29_000L, free.clips.single().timelineStartFrame, "Free is exactly where it was let go")
+        // Halving the tempo: the clip on the grid stays on its beat, the free one where it was.
+        val onBeat = apply(p, ContinuousEditorAction.PlacePad(0, null, 29_000), ContinuousGrid.BEAT)
+        assertEquals(48_000L, onBeat.copy(tempo = Tempo(60_000)).start())
+        assertEquals(29_000L, free.copy(tempo = Tempo(60_000)).start())
+        // At 97 BPM a line falls between frames: it starts where playback floors it, the same frame the grid draws.
+        val odd = apply(p.copy(tempo = Tempo(97_000)), ContinuousEditorAction.PlacePad(0, null, 60_000), ContinuousGrid.BEAT)
+        assertEquals(ProgramCompiler.tickToFrame(2 * 960, 97_000), odd.start())
+    }
+
+    @Test fun onTheGridAMoveSnapsButOneOnlyToAnotherTrackStaysPut() {
+        val free = apply(fixture(), ContinuousEditorAction.PlacePad(0, null, 29_000))
+        val clip = free.clips.single()
+        val moved = apply(free, ContinuousEditorAction.MoveClip(clip.id, clip.trackId, 77_000), ContinuousGrid.BEAT)
+        assertEquals(72_000L, moved.start())
+        assertNull(moved.clips.single().timelineStartFrame)
+        val other = Track("track-other", "Other", TrackKind.BANK)
+        val twoTracks = free.copy(tracks = (free.tracks + other).frozen())
+        val across = apply(twoTracks, ContinuousEditorAction.MoveClip(clip.id, other.id, 29_000), ContinuousGrid.BEAT)
+        assertEquals(clip.copy(trackId = other.id), across.clips.single(), "Off the grid it stays, exactly where it was")
+    }
+
+    @Test fun aNudgeGoesToTheNextOrPreviousLineAndOnAFreeGridBySeconds() {
+        // Placed on a quarter beat, then nudged on the beat grid: to the beats either side of it.
+        val p = apply(fixture(), ContinuousEditorAction.PlacePad(0, null, 6_000), ContinuousGrid.QUARTER)
+        val clip = p.clips.single()
+        assertEquals(6_000L, p.start())
+        val later = apply(p, ContinuousEditorAction.NudgeClip(clip.id, forward = true), ContinuousGrid.BEAT)
+        assertEquals(24_000L, later.start())
+        assertEquals(48_000L, apply(later, ContinuousEditorAction.NudgeClip(clip.id, forward = true), ContinuousGrid.BEAT).start())
+        val earlier = apply(later, ContinuousEditorAction.NudgeClip(clip.id, forward = false), ContinuousGrid.BEAT)
+        assertEquals(0L, earlier.start())
+        assertEquals(0L, apply(p, ContinuousEditorAction.NudgeClip(clip.id, forward = false), ContinuousGrid.BEAT).start())
+        // At the first line there is none earlier: nothing changes, so nothing is added to Undo.
+        val first = ContinuousClipEdits.intent(earlier, ContinuousEditorAction.NudgeClip(clip.id, forward = false), ::fresh, grid = ContinuousGrid.BEAT)
+        assertEquals(Mutation.NONE, Reducer.reduce(earlier, first).mutation)
+        // Free: a second each way, never before the start.
+        val free = apply(fixture(), ContinuousEditorAction.PlacePad(0, null, 30_000))
+        assertEquals(78_000L, apply(free, ContinuousEditorAction.NudgeClip(free.clips.single().id, forward = true)).start())
+        assertEquals(0L, apply(free, ContinuousEditorAction.NudgeClip(free.clips.single().id, forward = false)).start())
+        val start = apply(free, ContinuousEditorAction.MoveClip(free.clips.single().id, free.clips.single().trackId, 0))
+        val none = ContinuousClipEdits.intent(start, ContinuousEditorAction.NudgeClip(start.clips.single().id, forward = false), ::fresh)
+        assertEquals(Mutation.NONE, Reducer.reduce(start, none).mutation)
+        // At 97 BPM the lines fall between frames; a nudge still lands on the next one, not back on its own.
+        val odd = apply(fixture().copy(tempo = Tempo(97_000)), ContinuousEditorAction.PlacePad(0, null, 0), ContinuousGrid.BEAT)
+        val step1 = apply(odd, ContinuousEditorAction.NudgeClip(odd.clips.single().id, forward = true), ContinuousGrid.BEAT)
+        val step2 = apply(step1, ContinuousEditorAction.NudgeClip(odd.clips.single().id, forward = true), ContinuousGrid.BEAT)
+        assertEquals(listOf(960L, 1_920L), listOf(step1.clips.single().startTick, step2.clips.single().startTick))
+        assertEquals(960L, apply(step2, ContinuousEditorAction.NudgeClip(odd.clips.single().id, forward = false), ContinuousGrid.BEAT).clips.single().startTick)
+    }
+
+    @Test fun onTheGridADuplicateRepeatsAShortHitOnTheNextLineAndALoopEndToEnd() {
+        // A short hit (a tenth of a beat) repeats on the next beat.
+        val hit = fixture().let { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(range = FrameRange(0, 2_400)) else it }.frozen()) }
+        val placed = apply(hit, ContinuousEditorAction.PlacePad(0, null, 24_000), ContinuousGrid.BEAT)
+        val twice = apply(placed, ContinuousEditorAction.DuplicateClip(placed.clips.single().id), ContinuousGrid.BEAT)
+        assertEquals(48_000L, twice.start())
+        assertNull(twice.clips.last().timelineStartFrame)
+        assertEquals(72_000L, apply(twice, ContinuousEditorAction.DuplicateClip(twice.clips.last().id), ContinuousGrid.BEAT).start())
+        // A bar-long loop follows end to end.
+        val bar = fixture().let { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(range = FrameRange(0, 96_000)) else it }.frozen()) }
+        val loop = apply(bar, ContinuousEditorAction.PlacePad(0, null, 0), ContinuousGrid.BEAT)
+        assertEquals(96_000L, apply(loop, ContinuousEditorAction.DuplicateClip(loop.clips.single().id), ContinuousGrid.BEAT).start())
+    }
+
+    @Test fun trimmingTheEndKeepsAClipOnItsBeatAndTrimmingTheStartIsExact() {
+        val p = apply(fixture(), ContinuousEditorAction.PlacePad(0, null, 24_000), ContinuousGrid.BEAT)
+        val clip = p.clips.single()
+        val end = apply(p, ContinuousEditorAction.TrimClip(clip.id, 0, 50_000, 24_000), ContinuousGrid.BEAT).clips.single()
+        assertEquals(clip.copy(range = FrameRange(0, 50_000)), end, "Still on its beat")
+        val start = apply(p, ContinuousEditorAction.TrimClip(clip.id, 1_000, 96_000, 25_000), ContinuousGrid.BEAT).clips.single()
+        assertEquals(25_000L, start.timelineStartFrame, "Trims are exact, even on the grid")
+        assertEquals(FrameRange(1_000, 96_000), start.range)
+    }
+
+    @Test fun gridLinesAreBarsBeatsAndFinerLinesWhereThereIsRoom() {
+        // 120 BPM at 24 px a second: a beat is 12 px, a bar 48 px.
+        val quarter = ceGridLines(120_000, ContinuousGrid.QUARTER, 24f, 6f, 0f, 50f)
+        assertEquals(listOf(0f to 2, 12f to 1, 24f to 1, 36f to 1, 48f to 2), quarter.take(5), "Quarter lines 3 px apart are left out")
+        val half = ceGridLines(120_000, ContinuousGrid.HALF, 24f, 6f, 0f, 13f)
+        assertEquals(listOf(0f to 2, 6f to 0, 12f to 1), half.take(3))
+        assertEquals(ceGridLines(120_000, ContinuousGrid.BEAT, 24f, 6f, 0f, 50f), ceGridLines(120_000, ContinuousGrid.FREE, 24f, 6f, 0f, 50f))
+        // Zoomed far out (240 BPM at 4 px a second, a bar 4 px): every other bar.
+        val far = ceGridLines(240_000, ContinuousGrid.QUARTER, 4f, 6f, 0f, 17f)
+        assertEquals(listOf(0f to 2, 8f to 2, 16f to 2), far.take(3))
+        // Only what is in view: a window far along starts near it.
+        val window = ceGridLines(120_000, ContinuousGrid.BEAT, 24f, 6f, 1_200f, 1_250f)
+        assertTrue(window.first().first in 1_188f..1_200f && window.size <= 6)
+    }
 }
+

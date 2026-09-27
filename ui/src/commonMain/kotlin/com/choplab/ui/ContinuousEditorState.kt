@@ -12,6 +12,11 @@ enum class ContinuousStage { CAPTURE, CHOP, BEAT, SAVE }
 enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
 enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
+/**
+ * Where the song timeline puts what is placed or moved: on the nearest beat, half beat or quarter beat at the song's
+ * tempo ([ticks] at 960 a beat), where the clip then keeps its beat when the tempo changes; or just where it is let go.
+ */
+enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
 enum class ContinuousCapability {
     IMPORT_AUDIO, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
@@ -167,6 +172,10 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val songPlaying: Boolean = false,
     val songMonitorGain: Float = 1f,
     val bpm: Int = 120,
+    /** The song's exact tempo, which the grid follows; [bpm] is it rounded down for display. */
+    val milliBpm: Int = bpm * 1000,
+    /** View state only: what placing and moving clips snap to. */
+    val grid: ContinuousGrid = ContinuousGrid.BEAT,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val capabilities: Set<ContinuousCapability> = emptySet(),
@@ -186,6 +195,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
         require(selectedBank in 0..7 && selectedPadId in 0..127)
         require(timelineDurationFrames > 0 && pixelsPerSecond.isFinite() && pixelsPerSecond in 4f..240f)
         require(paneFraction.isFinite() && paneFraction in 0.2f..0.8f)
+        require(milliBpm in 40_000..240_000)
     }
     fun permits(capability: ContinuousCapability) = capability in capabilities
     val selectedPad: ContinuousPad? get() = pads.firstOrNull { it.id == selectedPadId }
@@ -277,6 +287,8 @@ sealed interface ContinuousEditorAction {
     data class PlacePad(val padId: Int, val trackId: String?, val timelineFrame: Long) : ContinuousEditorAction
     data class SelectClip(val clipId: String?) : ContinuousEditorAction
     data class MoveClip(val clipId: String, val trackId: String, val timelineStartFrame: Long) : ContinuousEditorAction
+    /** Moves the clip to the next grid line later (or earlier); on a free grid, by one second. */
+    data class NudgeClip(val clipId: String, val forward: Boolean) : ContinuousEditorAction
     data class TrimClip(val clipId: String, val sourceStartFrame: Long, val sourceEndFrame: Long,
                         val timelineStartFrame: Long) : ContinuousEditorAction
     data class SplitClip(val clipId: String, val timelineFrame: Long) : ContinuousEditorAction
@@ -284,6 +296,8 @@ sealed interface ContinuousEditorAction {
     data class DeleteClip(val clipId: String) : ContinuousEditorAction
     data class SetClipGain(val clipId: String, val gain: Float) : ContinuousEditorAction
     data class SetTrackMuted(val trackId: String, val muted: Boolean) : ContinuousEditorAction
+    /** What placing and moving clips snap to; the document keeps no grid. */
+    data class SetGrid(val grid: ContinuousGrid) : ContinuousEditorAction
     data class SetPixelsPerSecond(val value: Float) : ContinuousEditorAction
     data object FitTimeline : ContinuousEditorAction
     data class ResizePanes(val fraction: Float) : ContinuousEditorAction
