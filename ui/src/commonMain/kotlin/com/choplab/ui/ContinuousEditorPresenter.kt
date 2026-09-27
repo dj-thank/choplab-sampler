@@ -358,11 +358,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.Redo -> { endLiveChop(); send(Action.Redo) }
                 ContinuousEditorAction.StopAll -> {
                     // Everything stops first, a scratch with it, so letting go afterwards plays nothing on.
+                    val hitEnd = snapshotHitEnd()
                     releaseHeld(); val stopped = send(Action.Stop)
                     if (ports.originalAvailable) ports.stopOriginal()
                     letGoScratch()
                     view.update { it.copy(originalPlaying = false, playingPads = emptySet(), liveChop = null) }
-                    val kept = finishVoice() && finishHits() && finishSource()
+                    val kept = finishVoice() && finishHits(hitEnd) && finishSource()
                     stopped && kept
                 }
                 ContinuousEditorAction.PlayOriginal -> project.source?.let { source ->
@@ -516,7 +517,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     (!songEnded(project) || send(Action.Seek(0))) && send(Action.Resume)
                 }
                 ContinuousEditorAction.PauseSong -> send(Action.Pause).also { finishVoice(); finishHits() }
-                ContinuousEditorAction.StopSong -> send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) }; finishVoice(); finishHits() }
+                ContinuousEditorAction.StopSong -> {
+                    val hitEnd = snapshotHitEnd()
+                    send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) }; finishVoice(); finishHits(hitEnd) }
+                }
                 is ContinuousEditorAction.SetTempo -> edit(Intent.SetTempo(Tempo(action.bpm * 1000, action.swingPermille ?: project.tempo.swingPermille)))
                 ContinuousEditorAction.AddDrum -> ports.drumKitsAvailable.also { if (it) view.update { v -> v.copy(kitChooser = true, kitQuestion = null) } }
                 is ContinuousEditorAction.ChooseDrumKit -> ports.drumKitsAvailable && chooseKit(DrumKits.kit(action.kitId).id, project)
@@ -918,10 +922,16 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      * on the grid, as placing it would. The caller stops or pauses the song. Reports the outcome in the status line
      * itself, also when the song's end ends the pass.
      */
-    private suspend fun finishHits(): Boolean {
+    private suspend fun snapshotHitEnd(): Long? {
+        if (view.value.hits == null) return null
+        send(Action.RefreshTransport)
+        return studio.transport.value.sequenceFrame
+    }
+
+    private suspend fun finishHits(capturedEnd: Long? = null): Boolean {
         val active = view.value.hits ?: return true
         // The pass owns presses already heard: a later pointer release cannot erase them at the song boundary.
-        val endFrame = studio.transport.value.sequenceFrame.coerceAtMost(active.songEnd)
+        val endFrame = (capturedEnd ?: studio.transport.value.sequenceFrame).coerceAtMost(active.songEnd)
         val pending = active.pending.map { (gesture, hit) ->
             hit.copy(releaseAfterFrames = (endFrame - gesture.songFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt())
         }

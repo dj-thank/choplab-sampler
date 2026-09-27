@@ -39,6 +39,36 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun stoppingTheSongKeepsTheHeldDurationBeforeTheTransportResets() = runBlocking<Unit> {
+        for (stop in listOf(ContinuousEditorAction.StopSong, ContinuousEditorAction.StopAll)) {
+        val h = Harness()
+        try {
+            h.ports.outputDelay = 0
+            h.engine.resetPositionOnStop = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val gesture = ContinuousHitGesture(0, 12_000)
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 12_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(gesture)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 16_800)
+            assertTrue(h.presenter.dispatch(stop))
+            assertEquals(0L, h.engine.transport.sequenceFrame)
+            val project = h.studio.document.value.project
+            val clip = project.clips.single { ContinuousClipEdits.startFrame(project, it) == 12_000L }
+            assertEquals(4_896L, clip.range.length)
+            assertEquals(1f, clip.gain); assertEquals(0f, clip.pan)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(gesture, false, 16_800)))
+            assertEquals(project, h.studio.document.value.project, "Late release does not add another edit")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project)
+        } finally { h.close() }
+        }
+    }
+
     @Test fun reviewAGatePerformanceRetainsTheDurationThatWasPlayed() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -1665,7 +1695,7 @@ class ContinuousEditorPresenterTest {
             transport = when (command) {
                 is EngineCommand.Resume -> transport.copy(playing = true, sequencePaused = false)
                 is EngineCommand.Pause -> transport.copy(playing = false, sequencePaused = true)
-                is EngineCommand.Stop -> transport.copy(playing = false, sequencePaused = false, scratchFrame = -1.0)
+                is EngineCommand.Stop -> transport.copy(playing = false, sequencePaused = false, scratchFrame = -1.0, sequenceFrame = if (resetPositionOnStop) 0 else transport.sequenceFrame)
                 is EngineCommand.Seek -> transport.copy(sequenceFrame = command.sequenceFrame)
                 is EngineCommand.ScratchStart -> transport.copy(scratchFrame = if (playhead >= 0) playhead else command.sourceFrame)
                 is EngineCommand.ScratchEnd -> transport.copy(scratchFrame = -1.0)
@@ -1673,6 +1703,7 @@ class ContinuousEditorPresenterTest {
             }
             return true
         }
+        @Volatile var resetPositionOnStop = false
         @Volatile var transport = TransportState(outputAttached = true)
         override fun snapshot() = transport
     }
