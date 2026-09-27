@@ -12,6 +12,8 @@ import kotlin.math.roundToLong
 interface MicInput : AutoCloseable {
     val sampleRate: Int
     val channels: Int get() = 1
+    /** Actual platform capture buffer, unknown until the native input has opened. */
+    val bufferFrames: Int? get() = null
     /** Runs first on the recording thread, for a platform that gives audio threads their own priority. */
     fun onCaptureThread() {}
     /** Blocks until samples arrive; returns how many were read, or a negative number once the input is gone. */

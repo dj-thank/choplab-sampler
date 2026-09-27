@@ -25,7 +25,7 @@ class VoiceTakes(
     private val captureChannels: Int = 1,
     private val nanoTime: () -> Long = System::nanoTime,
     private val memory: PcmMemoryBudget = PcmMemoryBudget.shared,
-    private val microphone: () -> MicInput?,
+    private val microphone: suspend () -> MicInput?,
 ) {
     /** How starting a take went. */
     enum class Start { STARTED, NO_ROOM, NO_INPUT }
@@ -66,7 +66,10 @@ class VoiceTakes(
         val reserved = try { memory.reserve(VoiceRecorder.MEMORY_BYTES) } catch (_: PcmMemoryLimit) { return@withContext Start.NO_ROOM }
         var transferred = false
         try {
-            val input = try { microphone() } catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
+            val input = try { microphone() }
+                catch (cancel: CancellationException) { throw cancel }
+                catch (_: PcmMemoryLimit) { return@withContext Start.NO_ROOM }
+                catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
             val created = try {
                 currentCoroutineContext().ensureActive()
                 require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)

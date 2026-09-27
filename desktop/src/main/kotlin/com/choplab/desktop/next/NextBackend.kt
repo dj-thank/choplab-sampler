@@ -96,7 +96,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     override fun close() = runBlocking { shutdown() }
 
     companion object {
-        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: () -> MicInput? = JavaSoundMicInput::open): NextBackend {
+        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: suspend () -> MicInput? = { JavaSoundMicInput.open() }): NextBackend {
             val files = NextFileLocations()
             val decoder = DesktopOriginalAudioDecoder()
             val shared = EditorBackend.create(directory,

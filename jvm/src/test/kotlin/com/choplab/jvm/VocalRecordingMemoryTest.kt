@@ -81,4 +81,25 @@ class VocalRecordingMemoryTest {
         assertContentEquals(byteArrayOf(1), Files.readAllBytes(scratch))
         directory.toFile().deleteRecursively()
     }
+    @Test fun aSuspendingInputOpenerReturnsTypedBudgetRefusalAndCancelsWithoutOpeningCapture() = runBlocking<Unit> {
+        val directory = Files.createTempDirectory("record-open-memory-")
+        val memory = PcmMemoryBudget(VoiceRecorder.MEMORY_BYTES)
+        val store = FileAssetStore(directory.resolve("assets"))
+        val tooLarge = VoiceTakes(store, directory.resolve("scratch"), memory = memory) { memory.reserve(8); error("Not admitted") }
+        try {
+            assertEquals(VoiceTakes.Start.NO_ROOM, tooLarge.start(1))
+            assertEquals(0L, memory.statistics().usedBytes)
+        } finally { tooLarge.close() }
+        val opening = CompletableDeferred<Unit>()
+        val waiting = VoiceTakes(store, directory.resolve("scratch"), memory = memory) { opening.complete(Unit); awaitCancellation() }
+        try {
+            val start = async { waiting.start(1) }
+            opening.await()
+            assertEquals(VoiceRecorder.MEMORY_BYTES, memory.statistics().usedBytes)
+            start.cancelAndJoin()
+            assertEquals(0L, memory.statistics().usedBytes)
+            assertEquals(0L, store.storedBytes())
+        } finally { waiting.close(); directory.toFile().deleteRecursively() }
+    }
+
 }
