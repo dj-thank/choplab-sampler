@@ -28,7 +28,7 @@ object DesktopMediaRuntime {
     }
 }
 
-class DesktopYoutubeBackend : YoutubeSourceBackend {
+class DesktopYoutubeBackend(private val originalAudio: Boolean = false) : YoutubeSourceBackend {
     private val processes=ConcurrentHashMap<String,Process>()
     internal fun run(executable: File, arguments: List<String>, id: String, progress: (Float)->Unit = {}): String {
         require(executable.isFile)
@@ -75,9 +75,18 @@ class DesktopYoutubeBackend : YoutubeSourceBackend {
     override fun info(url:String,jobId:String)=SourceRecipes.parseInfo(yt(SourceRecipes.infoArguments(url),jobId))
     override fun download(source:YoutubeSource,folder:File,jobId:String,progress:(Float)->Unit):File {
         progress(0f)
-        yt(listOf("--newline","--progress-template","download:CHOPLAB:%(progress._percent_str)s")+
-            SourceRecipes.downloadArguments(source.url,File(folder,"audio.%(ext)s").absolutePath),jobId,progress)
-        return File(folder,"audio.wav").also { check(it.isFile && it.length()>44);progress(100f) }
+        val template = File(folder,"audio.%(ext)s").absolutePath
+        val arguments = if (originalAudio) SourceRecipes.originalDownloadArguments(source.url, template)
+            else SourceRecipes.downloadArguments(source.url, template)
+        yt(listOf("--newline","--progress-template","download:CHOPLAB:%(progress._percent_str)s") + arguments,jobId,progress)
+        val file = if (originalAudio) requireNotNull(folder.listFiles()).filter {
+            it.nameWithoutExtension == "audio" && it.extension.lowercase() in com.choplab.core.model.Asset.EXTENSIONS &&
+                java.nio.file.Files.isRegularFile(it.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)
+        }.single() else File(folder,"audio.wav")
+        return file.also {
+            check(it.isFile && if (originalAudio) it.length() in 1..LocalAudioLibrary.MAX_FILE_BYTES else it.length() > 44)
+            progress(100f)
+        }
     }
 }
 

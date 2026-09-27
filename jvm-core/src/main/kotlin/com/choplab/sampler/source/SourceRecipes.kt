@@ -37,6 +37,10 @@ object SourceRecipes {
     fun downloadArguments(url: String, template: String): List<String> = commonArguments() + listOf(
         "--no-mtime", "--max-filesize", "256M", "-f", "bestaudio/best", "-x", "--audio-format", "wav", "-o", template, youtubeUrl(url))
 
+    /** Retain the selected audio stream's bytes; NEXT decodes it without an intermediate PCM16 conversion. */
+    fun originalDownloadArguments(url: String, template: String): List<String> = commonArguments() + listOf(
+        "--no-mtime", "--max-filesize", "256M", "-f", "bestaudio", "-o", template, youtubeUrl(url))
+
     private fun objectFrom(body: String): JsonObject {
         require(body.length <= 2_000_000) { "応答が大きすぎます" }
         return Json.parseToJsonElement(body).jsonObject
