@@ -9,4 +9,5 @@
     <string name="next_too_long">This audio is longer than %1$d min %2$02d s. Choose a shorter file.</string>
     <string name="next_unreadable">This file cannot be read as audio.</string>
     <string name="next_file_base">EarthSong</string>
+    <string name="next_diagnostics_label">Earth Song sound diagnostics</string>
 </resources>

@@ -3,9 +3,11 @@ package com.choplab.sampler.next
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRouting
+import android.media.AudioTimestamp
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import com.choplab.engine.EngineFormat
 import com.choplab.jvm.AudioSink
 import com.choplab.jvm.SinkEncoding
 import java.nio.ByteBuffer
@@ -20,6 +22,10 @@ class AndroidAudioSink private constructor(
     override val encoding: SinkEncoding,
 ) : AudioSink {
     private val scratch = ByteBuffer.allocateDirect(2048 * 8).order(ByteOrder.LITTLE_ENDIAN)
+    /** Guarded by itself: only diagnostics readers use it, never the audio owner. */
+    private val stamp = AudioTimestamp()
+    /** Frames handed to the track: the owner writes, a diagnostics reader reads. */
+    @Volatile private var framesWritten = 0L
     @Volatile private var closed = false
     @Volatile private var routeChanged = false
     private var routeId: Int? = track.routedDevice?.id
@@ -43,7 +49,16 @@ class AndroidAudioSink private constructor(
         scratch.flip()
         val written = track.write(scratch, count, AudioTrack.WRITE_NON_BLOCKING)
         check(written >= 0 && written % frameBytes == 0) { "AudioTrack write failed" }
+        framesWritten += written / frameBytes
         return written
+    }
+
+    override fun bufferFrames(): Int = track.bufferSizeInFrames
+    override fun underruns(): Int = track.underrunCount
+    /** From the track's presentation timestamp: the frame at the speaker, moved on to now. */
+    override fun pendingFrames(): Long = synchronized(stamp) {
+        if (!track.getTimestamp(stamp)) return -1
+        pendingFrames(framesWritten, stamp.framePosition, System.nanoTime() - stamp.nanoTime, SAMPLE_RATE)
     }
 
     override fun close() {
@@ -54,20 +69,22 @@ class AndroidAudioSink private constructor(
     }
 
     companion object {
+        private const val SAMPLE_RATE = EngineFormat.SAMPLE_RATE
+
         fun open(): AudioSink {
             var failure: Exception? = null
             for (encoding in listOf(SinkEncoding.FLOAT32, SinkEncoding.PCM16)) {
                 var candidate: AudioTrack? = null
                 try {
                     val formatCode = if (encoding == SinkEncoding.FLOAT32) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
-                    val minimum = AudioTrack.getMinBufferSize(48_000, AudioFormat.CHANNEL_OUT_STEREO, formatCode)
+                    val minimum = AudioTrack.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, formatCode)
                     check(minimum > 0)
                     val frameBytes = encoding.bytesPerSample * 2
                     val requested = maxOf(minimum, 1024 * frameBytes)
                     candidate = AudioTrack.Builder()
                         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                        .setAudioFormat(AudioFormat.Builder().setSampleRate(48_000)
+                        .setAudioFormat(AudioFormat.Builder().setSampleRate(SAMPLE_RATE)
                             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).setEncoding(formatCode).build())
                         .setTransferMode(AudioTrack.MODE_STREAM)
                         .setBufferSizeInBytes((requested + frameBytes - 1) / frameBytes * frameBytes)
@@ -84,4 +101,14 @@ class AndroidAudioSink private constructor(
             throw IllegalStateException("No compatible Android output", failure)
         }
     }
+}
+
+/**
+ * Frames written but not yet heard, from a presentation timestamp taken [sinceNanos] ago. AudioTrack reports only the
+ * low 32 bits of the presented frame, so the difference is taken in 32 bits: it stays right after the position wraps
+ * (about every 25 hours at 48 kHz), because the frames in flight are far fewer than 2^31.
+ */
+internal fun pendingFrames(framesWritten: Long, presentedLow32: Long, sinceNanos: Long, sampleRate: Int): Long {
+    val inFlight = (framesWritten - presentedLow32).toInt().toLong()
+    return (inFlight - sinceNanos * sampleRate / 1_000_000_000).coerceAtLeast(0)
 }

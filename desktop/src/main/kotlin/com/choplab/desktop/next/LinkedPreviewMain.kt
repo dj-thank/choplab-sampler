@@ -14,7 +14,9 @@ import com.choplab.jvm.closeAfterAutosave
 import com.choplab.ui.*
 import kotlinx.coroutines.*
 import java.awt.Desktop
+import java.awt.Toolkit
 import java.awt.Window as AwtWindow
+import java.awt.datatransfer.StringSelection
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.nio.file.Files
@@ -91,7 +93,7 @@ fun main() {
                 val refresh by presenter.refreshKey.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh)
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics)
             }
         }
     } finally { recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -117,6 +119,20 @@ private class DesktopEditorPorts(private val backend: NextBackend, private val p
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
     override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
+    /** Java Sound draws no frame metrics here, so screen stutter stays unknown. */
+    override fun diagnostics(): ContinuousDiagnostics = backend.engine.health().let { health ->
+        ContinuousDiagnostics(outputAttached = health.attached, floatOutput = health.encoding?.let { it == SinkEncoding.FLOAT32 },
+            sampleRate = health.sampleRate, blockFrames = health.blockFrames, bufferFrames = health.bufferFrames,
+            pendingFrames = health.pendingFrames, underruns = health.underruns, outputLosses = health.outputLosses,
+            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax)
+    }
+    override suspend fun copyText(text: String): Boolean = suspendCancellableCoroutine { answer ->
+        SwingUtilities.invokeLater {
+            val copied = try { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null); true }
+                catch (_: Exception) { false }
+            if (answer.isActive) answer.resume(copied)
+        }
+    }
     override suspend fun chooseAudio() = choose(false, "wav", if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, "choplab", if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
     override suspend fun chooseSave() = choose(true, "choplab", if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)

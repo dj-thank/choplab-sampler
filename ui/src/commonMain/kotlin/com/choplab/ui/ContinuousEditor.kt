@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.ui.resources.*
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -34,6 +35,8 @@ import kotlin.math.roundToLong
     readout: () -> ContinuousEditorReadout = { ContinuousEditorReadout() },
     refreshKey: Long = 0,
     modifier: Modifier = Modifier,
+    /** Output health for the SAVE stage's diagnostics card; without it the card is not shown. */
+    diagnostics: (() -> ContinuousDiagnostics?)? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -46,7 +49,7 @@ import kotlin.math.roundToLong
                         ContinuousStage.CAPTURE -> CECapture(state, onAction, readout, refreshKey)
                         ContinuousStage.CHOP -> CEChop(state, onAction, readout, refreshKey, compact)
                         ContinuousStage.BEAT -> CEBeatWorkspace(state, onAction, readout, refreshKey, compact)
-                        ContinuousStage.SAVE -> CESave(state, onAction, compact)
+                        ContinuousStage.SAVE -> CESave(state, onAction, compact, diagnostics)
                     }
                 }
                 if (state.stage == ContinuousStage.BEAT || state.stage == ContinuousStage.SAVE) CESongTransport(state, onAction, readout, refreshKey)
@@ -315,7 +318,8 @@ import kotlin.math.roundToLong
     }
 }
 
-@Composable private fun CESave(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean) {
+@Composable private fun CESave(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean,
+    diagnostics: (() -> ContinuousDiagnostics?)?) {
     @Composable fun SaveCard(audio: Boolean, modifier: Modifier) {
         val foreground = if (audio) CEColor.Cream else CEColor.Ink
         Column(modifier.clip(RoundedCornerShape(8.dp)).background(if (audio) CEColor.Ink else CEColor.Tan)
@@ -337,6 +341,56 @@ import kotlin.math.roundToLong
         if (compact) { SaveCard(false, Modifier.fillMaxWidth()); SaveCard(true, Modifier.fillMaxWidth()) }
         else Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) { SaveCard(false, Modifier.weight(1f)); SaveCard(true, Modifier.weight(1f)) }
         CEActionButton(stringResource(Res.string.ce_reopen), ContinuousEditorAction.OpenProject, state, ContinuousCapability.OPEN_PROJECT, onAction, Modifier.fillMaxWidth(), tag = "ce-reopen")
+        diagnostics?.let { CEDiagnostics(it, onAction, compact) }
+    }
+}
+
+/**
+ * Output health, read again every second while shown: formats, times and counts only, never a device identifier. The
+ * read waits for a frame, so it pauses while the app is in the background and its frame clock is stopped.
+ */
+@Composable private fun CEDiagnostics(read: () -> ContinuousDiagnostics?, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean) {
+    val latestRead by rememberUpdatedState(read)
+    var current by remember { mutableStateOf(read()) }
+    LaunchedEffect(Unit) { while (true) { delay(1_000); withFrameNanos { }; current = latestRead() } }
+    val d = current ?: return
+    fun milliseconds(frames: Long) = ((frames * 10_000.0 / d.sampleRate).roundToLong() / 10.0).toString()
+    fun percent(share: Double) = (share * 100).roundToInt().toString()
+    // A device report is missing either because there is no output or because this output does not tell.
+    val unreported = stringResource(if (d.outputAttached) Res.string.ce_diag_unknown else Res.string.ce_diag_no_output)
+    val kilohertz = (d.sampleRate / 1000.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() }
+    val rows = listOf(
+        stringResource(Res.string.ce_diag_output) to stringResource(if (d.outputAttached) Res.string.ce_diag_attached else Res.string.ce_diag_detached),
+        stringResource(Res.string.ce_diag_format) to (d.floatOutput?.let { stringResource(if (it) Res.string.ce_diag_float else Res.string.ce_diag_pcm16, kilohertz) } ?: unreported),
+        stringResource(Res.string.ce_diag_block) to stringResource(Res.string.ce_diag_frames_ms, d.blockFrames.toString(), milliseconds(d.blockFrames.toLong())),
+        stringResource(Res.string.ce_diag_buffer) to (d.bufferFrames?.let { stringResource(Res.string.ce_diag_frames_ms, it.toString(), milliseconds(it.toLong())) } ?: unreported),
+        stringResource(Res.string.ce_diag_delay) to (d.pendingFrames?.let { stringResource(Res.string.ce_diag_ms, milliseconds(it)) } ?: unreported),
+        stringResource(Res.string.ce_diag_render) to (if (d.renderP99 == null || d.renderMax == null) stringResource(Res.string.ce_diag_not_measured)
+            else stringResource(Res.string.ce_diag_render_value, percent(d.renderP99), percent(d.renderMax), d.measuredBlocks.toString())),
+        stringResource(Res.string.ce_diag_underruns) to (d.underruns?.let { stringResource(Res.string.ce_diag_times, it.toString()) } ?: unreported),
+        stringResource(Res.string.ce_diag_losses) to stringResource(Res.string.ce_diag_times, d.outputLosses.toString()),
+        stringResource(Res.string.ce_diag_frames) to (if (d.drawnFrames == null || d.slowFrames == null) stringResource(Res.string.ce_diag_frames_unknown)
+            else stringResource(Res.string.ce_diag_frames_value, d.drawnFrames.toString(), d.slowFrames.toString())),
+    )
+    val title = stringResource(Res.string.ce_diag_title)
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CEColor.Tan).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp))
+        .padding(16.dp).testTag("ce-diagnostics"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(Res.string.ce_diag_hint), fontSize = 13.sp)
+        rows.forEach { (label, value) ->
+            // One screen reader stop per row, label and value together.
+            val row = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { }
+            // A narrow screen puts each value under its label instead of squeezing two columns.
+            if (compact) Column(row) {
+                Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(value, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            } else Row(row, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(label, Modifier.weight(.45f), fontSize = 13.sp)
+                Text(value, Modifier.weight(.55f), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            }
+        }
+        val text = (listOf(title) + rows.map { (label, value) -> "$label: $value" }).joinToString("\n")
+        CEButton(stringResource(Res.string.ce_diag_copy), { onAction(ContinuousEditorAction.CopyDiagnostics(text)) }, Modifier.fillMaxWidth(), tag = "ce-diag-copy")
     }
 }
 
@@ -382,6 +436,7 @@ import kotlin.math.roundToLong
         ContinuousStatus.SAVED -> Res.string.ce_saved; ContinuousStatus.EXPORTING -> Res.string.ce_exporting
         ContinuousStatus.EXPORTED -> Res.string.ce_exported; ContinuousStatus.CANCELLED -> Res.string.ce_cancelled
         ContinuousStatus.FAILED -> Res.string.ce_failed; ContinuousStatus.NO_OUTPUT -> Res.string.ce_no_output
+        ContinuousStatus.COPIED -> Res.string.ce_copied
     }) }.orEmpty()
     Text(text, Modifier.fillMaxWidth().heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = CEColor.Border)
 }

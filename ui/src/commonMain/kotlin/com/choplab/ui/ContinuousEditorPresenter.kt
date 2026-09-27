@@ -36,6 +36,10 @@ interface ContinuousEditorPorts {
     val drumKitsAvailable: Boolean get() = false
     /** A built-in kit's 16 sounds in slot order, stored and verified; null when this host has none. */
     suspend fun drumKit(kitId: String): List<Asset>? = null
+    /** Output health for the diagnostics card; null when this host measures nothing. */
+    fun diagnostics(): ContinuousDiagnostics? = null
+    /** Puts text on the system clipboard. */
+    suspend fun copyText(text: String): Boolean = false
 }
 
 /**
@@ -132,6 +136,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     fun readout(): ContinuousEditorReadout = ports.readout()
+    fun diagnostics(): ContinuousDiagnostics? = ports.diagnostics()
     fun onAction(action: ContinuousEditorAction) {
         // Stop must not wait behind an import, decode or preparation that is ahead of it in the queue.
         if (interrupts(action)) jobs.launch { interrupt(action) }
@@ -290,6 +295,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     if (drumBank(project) == question.bank) installKit(question.kitId) else chooseKit(question.kitId, project)
                 } ?: false
                 ContinuousEditorAction.DismissDrumKit -> { view.update { it.copy(kitChooser = false, kitQuestion = null) }; true }
+                is ContinuousEditorAction.CopyDiagnostics ->
+                    ports.copyText(action.text).also { copied -> if (copied) view.update { it.copy(status = ContinuousStatus.COPIED) } }
                 // Keep these controls visible but unavailable until their real adapters are integrated.
                 ContinuousEditorAction.RecordVoice, ContinuousEditorAction.OpenScratch -> false
             }
