@@ -821,6 +821,174 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aPassRecordsThePadsWhereTheyWereHeardAndPutsThemOnTheSongInOneUndo() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            val attached = h.until { it.permits(ContinuousCapability.PAD_AUDITION) }
+            assertEquals(ContinuousUnavailable.NO_SONG, attached.unavailable[ContinuousCapability.RECORD_HITS], "Nothing to play along with yet")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            // A song to play along with: PAD 1 on the first and the seventh beat, to 192 000.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 144_000)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) && it.clips.size == 2 }
+            val before = h.studio.document.value.project
+            // The song stands paused on its second beat, and plays on from there.
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 24_000, sequencePaused = true)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val recording = h.until { it.recordingHits }
+            assertTrue(h.engine.commands.last() is EngineCommand.Resume)
+            assertTrue(h.engine.commands.none { it is EngineCommand.Seek })
+            // Playing along and stopping stay available; changing the document, or a voice take at once, does not.
+            assertTrue(recording.permits(ContinuousCapability.PAD_AUDITION) && recording.permits(ContinuousCapability.STOP_ALL))
+            assertFalse(recording.permits(ContinuousCapability.RECORD_HITS) || recording.permits(ContinuousCapability.HISTORY))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            // The output plays 1 920 frames behind the engine. Pressed at engine frame 61 000, PAD 0 was heard at 59 080:
+            // nearest the third beat (48 000), not the fourth. At 61 500 the same beat again, once is enough; at 73 000
+            // (heard 71 080) the fourth.
+            for (frame in listOf(61_000L, 61_500L, 73_000L)) {
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, frame)))
+            }
+            // Before the pass began (24 000), or once the song has ended (192 000): not played to the song.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 23_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 192_000)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(5, 60_000)), "An empty PAD plays nothing")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.PlaceHits(listOf(ContinuousHit(0, 0)))), "Only a pass places")
+            assertEquals(before, h.studio.document.value.project, "Nothing is on the song until the pass ends")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            val stopped = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED }
+            assertTrue(h.engine.commands.last { it is EngineCommand.Pause || it is EngineCommand.Resume } is EngineCommand.Pause, "Stopping pauses the song")
+            assertEquals(listOf(0L, 48_000L, 72_000L, 144_000L), stopped.clips.map { it.timelineStartFrame }.sorted())
+            assertTrue(h.studio.document.value.project.clips.all { it.timelineStartFrame == null }, "On the beat")
+            assertTrue(stopped.permits(ContinuousCapability.RECORD_HITS), "Another pass can follow")
+            val once = h.studio.document.value.project
+
+            // Played again where the same sounds already are, the song is as it was, with no Undo of its own.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 61_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_UNCHANGED }
+            assertEquals(once, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project, "The first pass is one Undo")
+
+            // A pause ends a pass too, before it returns: heard at 96 000, the fifth beat.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 97_920)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PauseSong))
+            assertEquals(listOf(0L, 3_840L, 5_760L), h.studio.document.value.project.clips.map { it.startTick }.sorted())
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            // So does leaving the stage whose button started it.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 97_920)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            // A pass with nothing played leaves the song as it was.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopSong))
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_EMPTY }
+            assertEquals(before, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
+    @Test fun aPassTheSongCannotWhollyTakePlacesWhatFitsFromItsStart() = runBlocking<Unit> {
+        val long = Asset("c".repeat(64), "wav", 100, 48_000, 2, 240_000, "Long")
+        val h = Harness(adjust = { p -> p.copy(assets = (p.assets + long).sortedBy { it.hash }.frozen(),
+            pads = p.pads.map { if (it.id == 2) Pad(2, long.hash, FrameRange(0, 240_000)) else it }.frozen()) })
+        try {
+            h.until { it.permits(ContinuousCapability.PAD_AUDITION) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 480_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.clips.size == 2 && it.grid == ContinuousGrid.FREE }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            // The five-second PAD heard every 6 000 frames, 40 times: the song plays 32 sounds at once, so the first 32 go on.
+            for (k in 0 until 40) assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(2, 1_920L + k * 6_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PARTLY }
+            assertEquals((0 until 32).map { it * 6_000L }, h.studio.document.value.project.clips.filter { it.assetHash == long.hash }.map { it.timelineStartFrame })
+        } finally { h.close() }
+    }
+
+    @Test fun aStopWhileThePassIsAddedNeverLosesIt() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 25_920)))
+            val before = h.engine.prepares
+            h.engine.duringPrepare = { h.presenter.onAction(ContinuousEditorAction.StopAll); delay(100) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertEquals(listOf(0L, 24_000L), h.studio.document.value.project.clips.map { ContinuousClipEdits.startFrame(h.studio.document.value.project, it) }.sorted())
+            assertEquals(before + 1, h.engine.prepares, "Prepared once, never cancelled")
+            // Closing the editor with a pass running keeps what was played.
+            h.presenter.onAction(ContinuousEditorAction.SelectPad(0))
+            h.until { it.selectedPadId == 0 }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 49_920)))
+            h.presenter.close()
+            assertEquals(listOf(0L, 24_000L, 48_000L), h.studio.document.value.project.clips.map { ContinuousClipEdits.startFrame(h.studio.document.value.project, it) }.sorted())
+        } finally { h.close() }
+    }
+
+    @Test fun aPassEndedByTheSongReportsWhatGoesWrongInsteadOfThrowing() = runBlocking<Unit> {
+        // A document from elsewhere with more tracks than the editor edits: its song can play, but no edit of it goes on.
+        val h = Harness { p -> p.copy(tracks = (1..17).map { Track("t$it", "T$it", TrackKind.BANK) }.frozen(),
+            clips = frozenListOf(Clip("song", "t1", p.pads[1].assetHash!!, FrameRange(0, 48_000), timelineStartFrame = 0))) }
+        try {
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 25_920)))
+            h.engine.transport = h.engine.transport.copy(playing = false, sequencePaused = false)
+            h.until { !it.recordingHits && it.status == ContinuousStatus.FAILED }
+            // The poll goes on: another pass still ends with the song.
+            h.engine.transport = h.engine.transport.copy(playing = true)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            h.engine.transport = h.engine.transport.copy(playing = false, sequencePaused = false)
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_EMPTY }
+        } finally { h.close() }
+    }
+
+    @Test fun theSongsEndEndsAPassAndATransformedPadIsRenderedOnceForAllItsHits() = runBlocking<Unit> {
+        val h = Harness(render = true) { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(pitchSemitones = 12.0) else it }.frozen()) }
+        try {
+            h.until { it.permits(ContinuousCapability.PAD_AUDITION) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            for (frame in listOf(1_920L, 25_920L)) assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, frame)))
+            assertTrue(h.ports.renders.isEmpty(), "Rendered when the pass ends, not while playing")
+            // The song reaches its end: the engine stops playing it, and the pass ends with it.
+            h.engine.transport = h.engine.transport.copy(playing = false, sequencePaused = false)
+            val ended = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED }
+            // Stop pressed a moment late, and a PAD let go as the pass ended, leave its message in place.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            delay(100)
+            assertEquals(ContinuousStatus.HITS_PLACED, h.presenter.state.value.status)
+            assertEquals(1, h.ports.renders.size, "Rendered once for both hits")
+            val octave = h.studio.document.value.project.assets.single { it.role == AssetRole.RENDERED }
+            assertEquals(2, h.studio.document.value.project.clips.count { it.assetHash == octave.hash })
+            assertEquals(listOf(0L, 0L, 24_000L), ended.clips.map { it.timelineStartFrame }.sorted())
+        } finally { h.close() }
+    }
+
     @Test fun aTakeGoesToTheFirstEmptyVoicePadAndOntoTheSongWhereItWasSung() = runBlocking<Unit> {
         val h = Harness(voice = true) { p -> p.copy(pads = p.pads.map { if (it.id == 48) Pad(48, p.assets[1].hash, FrameRange(0, 48_000)) else it }.frozen()) }
         try {

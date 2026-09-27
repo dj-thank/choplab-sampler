@@ -27,6 +27,8 @@ enum class ContinuousCapability {
     PLACE_PAD, MOVE_CLIP, TRIM_CLIP, SPLIT_CLIP, DUPLICATE_CLIP, DELETE_CLIP,
     TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
     ADD_DRUM, RECORD_VOICE, RECORD_SOURCE, RECORD_SYSTEM_SOURCE, SCRATCH, STOP_ALL,
+    /** Recording what the PADs play into the song while it plays. */
+    RECORD_HITS,
 }
 enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
 enum class ContinuousStatus {
@@ -51,6 +53,11 @@ enum class ContinuousStatus {
      * audio in it at all.
      */
     RESCUED, RESCUED_PARTLY, RESCUED_TOO_LONG, RESCUED_NOTHING,
+    /**
+     * What the PADs played went onto the song as one Undo; only part of it, as the song could not take the rest or a
+     * PAD's sound could not be prepared; nothing was played; or all of it was already there, so the song is as it was.
+     */
+    HITS_PLACED, HITS_PARTLY, HITS_EMPTY, HITS_UNCHANGED,
 }
 
 @Immutable data class ContinuousSource(
@@ -153,6 +160,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val liveChopping: Boolean = false,
     /** A voice take is being recorded while the song plays. */
     val recordingVoice: Boolean = false,
+    /** What the PADs play is being recorded into the song while it plays. */
+    val recordingHits: Boolean = false,
     /** The microphone is collecting a new original, independent of a song or output device. */
     val recordingSource: Boolean = false,
     val recordingSystemAudio: Boolean = false,
@@ -235,6 +244,9 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 )
 
 /** Read only in source waveform/time or song timeline/transport subtrees, never whole-app ticks. */
+/** A PAD played where song frame [timelineFrame] (48 kHz) was heard. */
+@Immutable data class ContinuousHit(val padId: Int, val timelineFrame: Long)
+
 @Immutable data class ContinuousEditorReadout(
     val originalFrame: Long = 0,
     val songFrame: Long = 0,
@@ -339,6 +351,16 @@ sealed interface ContinuousEditorAction {
     /** Opens the microphone and plays the song; the take ends with [StopVoice] or when the song stops. */
     data object RecordVoice : ContinuousEditorAction
     data object StopVoice : ContinuousEditorAction
+    /**
+     * Plays the song on from where it stands (from the top once it has ended) and records what the PADs play into it;
+     * [StopHits], pausing or stopping the song, or its end puts what was played onto the song as one Undo.
+     */
+    data object RecordHits : ContinuousEditorAction
+    data object StopHits : ContinuousEditorAction
+    /** PAD [padId] was pressed as the engine played song frame [songFrame], while recording what the PADs play. */
+    data class CaptureHit(val padId: Int, val songFrame: Long) : ContinuousEditorAction
+    /** The presenter's one edit for a recorded pass: each PAD where it was heard, on the grid. Not sent by the UI. */
+    data class PlaceHits(val hits: List<ContinuousHit>) : ContinuousEditorAction
     /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */
     data class CopyDiagnostics(val text: String) : ContinuousEditorAction
     /** Opens the scratch panel; the beat plays on underneath. */

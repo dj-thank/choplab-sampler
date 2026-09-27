@@ -260,6 +260,14 @@
     <string name="ce_diag_frames_unknown">Not counted here</string>
     <string name="ce_place_no_room">Too little room is left for sounds to place this PAD with its pitch, reverse or tone on the song.</string>
     <string name="ce_place_failed">Could not prepare the sound of this PAD with its pitch, reverse or tone. Check the free storage.</string>
+    <string name="ce_record_hits">Record PADs</string>
+    <string name="ce_stop_hits">Stop recording</string>
+    <string name="ce_hits_hint">Play the PADs along with the song. When you stop, what you played goes onto the song where you played it, lined up with the lines chosen in Snap to (on Free, just where you played it). One Undo takes it back.</string>
+    <string name="ce_hits_pad_action">Play and record</string>
+    <string name="ce_hits_placed">What you played is on the song. One Undo takes it back.</string>
+    <string name="ce_hits_partly">Only part of what you played went onto the song: what the song could not take, or what PADs whose sound could not be prepared played, was left out. One Undo takes it back.</string>
+    <string name="ce_hits_empty">Nothing was played, so the song is as it was.</string>
+    <string name="ce_hits_unchanged">Everything you played was already on the song at those places, so the song is as it was.</string>
     <string name="ce_song_full">The song cannot take this, so nothing changed. It plays up to 32 sounds at once, 1024 clips and 30 minutes. Try fewer bars, wider spacing or a shorter sound.</string>
     <string name="ce_rescued">Rescued the audio from a project file of the earlier app. The first sound is the original, and the others are on the PADs in order (its PAD cuts and arrangement are not carried over). The file itself is unchanged.</string>
     <string name="ce_rescued_partly">Rescued the audio from a project file of the earlier app into the original and the PADs. Sounds beyond the sound limit are kept in this project only (its PAD cuts and arrangement are not carried over). The file itself is unchanged.</string>

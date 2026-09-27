@@ -111,10 +111,10 @@ object ContinuousClipEdits {
     fun transformed(pad: Pad): Boolean = pad.pitchSemitones != 0.0 || pad.reverse || pad.tone < com.choplab.engine.Pad.TONE_BYPASS
 
     /**
-     * [rendered] is the transformed PAD's sound, for a [ContinuousEditorAction.PlacePad] of such a PAD. Placing, moving,
-     * nudging and duplicating go by [grid]; trims and splits stay exactly where they are asked.
+     * [rendered] holds each transformed PAD's sound, by PAD, for placing such a PAD. Placing, moving, nudging and
+     * duplicating go by [grid]; trims and splits stay exactly where they are asked.
      */
-    fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Asset? = null,
+    fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Map<Int, Asset> = emptyMap(),
                grid: ContinuousGrid = ContinuousGrid.FREE): Intent.SetArrangement {
         val tempo = project.tempo
         var tracks: List<Track> = project.tracks
@@ -127,10 +127,11 @@ object ContinuousClipEdits {
         /** The PAD's sound as placed ([rendered] for a transformed PAD) and the track it goes on. */
         fun placing(padId: Int, trackId: String?): Triple<Pad, Clip, Track> {
             val pad = project.pads.getOrNull(padId) ?: error("Unknown PAD")
-            require(transformed(pad) == (rendered != null)) { "Render the transformed PAD before placement" }
+            val made = rendered[padId]
+            require(transformed(pad) == (made != null)) { "Render the transformed PAD before placement" }
             val sound = requireNotNull(pad.assetHash) { "Empty PAD" }
-            val hash = rendered?.hash ?: sound
-            val range = if (rendered != null) FrameRange(0, rendered.frames) else requireNotNull(pad.range)
+            val hash = made?.hash ?: sound
+            val range = if (made != null) FrameRange(0, made.frames) else requireNotNull(pad.range)
             val track = trackId?.let { id -> requireNotNull(tracks.firstOrNull { it.id == id }) }
                 ?: tracks.firstOrNull { it.kind == TrackKind.BANK }
                 ?: Track(freshId("track"), project.banks[pad.id / 16].name, TrackKind.BANK).also { tracks = tracks + it }
@@ -158,6 +159,19 @@ object ContinuousClipEdits {
                 }
                 clips = clips + placed
                 reshaped += placed.map { it.id }
+            }
+            is ContinuousEditorAction.PlaceHits -> {
+                require(action.hits.size in 1..1024)
+                action.hits.forEach { hit ->
+                    val (_, sound, _) = placing(hit.padId, null)
+                    val placed = startingAt(sound.copy(id = freshId("clip")), hit.timelineFrame, tempo, grid)
+                    // Two hits on one line, or one where that sound already starts, would sound twice there: one is enough.
+                    if (clips.none { it.trackId == placed.trackId && it.assetHash == placed.assetHash && it.range == placed.range &&
+                            startFrame(project, it) == startFrame(project, placed) }) {
+                        clips = clips + placed
+                        reshaped += placed.id
+                    }
+                }
             }
             is ContinuousEditorAction.MoveClip -> {
                 require(tracks.any { it.id == action.trackId })
@@ -243,9 +257,9 @@ object ContinuousClipEdits {
         }
         require(tracks.size <= 16)
         if (clips.size > 1024) throw SongFull()
-        // A rendered PAD's sound joins the document with this edit: check its clip as if it had.
-        val known = if (rendered == null || project.assets.any { it.hash == rendered.hash }) project
-            else project.copy(assets = (project.assets + rendered).sortedBy { it.hash }.frozen())
+        // A rendered PAD's sound joins the document with this edit: check its clips as if it had.
+        val added = rendered.values.distinctBy { it.hash }.filter { made -> project.assets.none { it.hash == made.hash } }
+        val known = if (added.isEmpty()) project else project.copy(assets = (project.assets + added).sortedBy { it.hash }.frozen())
         clips.forEach { clip ->
             require(clip.range.end <= known.asset(clip.assetHash).frames)
             if (startFrame(known, clip) + durationFrames(known, clip) > MAX_TIMELINE_FRAMES) throw SongFull()
@@ -255,6 +269,6 @@ object ContinuousClipEdits {
         // A song an earlier build let past that stays editable, so it can be thinned out.
         if (!ProgramCompiler.songFits(known.copy(tracks = tracks.frozen(), clips = clips.frozen())) && ProgramCompiler.songFits(project))
             throw SongFull()
-        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, listOfNotNull(rendered).frozen())
+        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, rendered.values.distinctBy { it.hash }.frozen())
     }
 }

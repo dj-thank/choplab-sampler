@@ -97,7 +97,7 @@ class ContinuousEditorTest {
                     scene.settle()
                     assertNotNull(scene.tag("ce-stage-${stage.name}"))
                     if (stage == ContinuousStage.BEAT) {
-                        listOf("ce-add-drums", "ce-record-voice", "ce-scratch").forEach { tag ->
+                        listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch").forEach { tag ->
                             val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
                             assertTrue(bounds.height >= 48 && bounds.bottom <= 910f, "Reference bottom actions must remain visible: $tag $bounds")
                         }
@@ -836,6 +836,91 @@ class ContinuousEditorTest {
                 ContinuousEditor(ContinuousEditorFixture.state(ContinuousStage.SAVE), {}, ContinuousEditorFixture::readout)
             }
             try { hosts.settle(); assertNull(hosts.tag("ce-diagnostics"), "A host that measures nothing shows no card") } finally { hosts.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun recordingThePadsTimesEachPressAsItGoesDownAndTheButtonStopsThePass() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            // PAD A04 sounds while held; the fixture's others are one-shots.
+            val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).let { s ->
+                s.copy(pads = s.pads.map { if (it.id == 3) it.copy(mode = ContinuousPadMode.GATE) else it }) })
+            val actions = mutableListOf<ContinuousEditorAction>()
+            // The song moves on while a PAD is down: the press, not the release, is when it was played.
+            var songFrame = 100_000L
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { actions += it }, { ContinuousEditorFixture.readout().copy(songFrame = songFrame) })
+            }
+            suspend fun press(tag: String, move: Offset = Offset.Zero) {
+                val center = requireNotNull(scene.tag(tag)) { tag }.boundsInRoot.center
+                songFrame = 100_000L
+                scene.sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                scene.render(System.nanoTime()).close()
+                songFrame = 112_000L
+                if (move != Offset.Zero) {
+                    scene.sendPointerEvent(PointerEventType.Move, center + move, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true))
+                    scene.render(System.nanoTime()).close()
+                }
+                scene.sendPointerEvent(PointerEventType.Release, center + move, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+                scene.settle()
+            }
+            try {
+                scene.settle()
+                // Beside adding drums, in the one row of actions under the PADs.
+                val drums = requireNotNull(scene.tag("ce-add-drums")).boundsInRoot
+                val record = requireNotNull(scene.tag("ce-record-hits")).boundsInRoot
+                assertEquals(drums.top, record.top, .5f)
+                assertTrue(record.height >= 48f && record.left > drums.left)
+                assertNull(scene.tag("ce-hits-hint"))
+                scene.click("ce-record-hits")
+                assertEquals(ContinuousEditorAction.RecordHits, actions.last())
+                // While recording, a PAD sounds as it goes down and is timed there; the same button stops the pass.
+                state.value = state.value.copy(recordingHits = true, capabilities = setOf(ContinuousCapability.STOP_ALL,
+                    ContinuousCapability.SONG_PLAYBACK, ContinuousCapability.PAD_AUDITION),
+                    unavailable = ContinuousCapability.entries.associateWith { ContinuousUnavailable.RECORDING })
+                scene.settle()
+                val hint = requireNotNull(scene.tag("ce-hits-hint"))
+                assertEquals(LiveRegionMode.Polite, hint.config.getOrNull(SemanticsProperties.LiveRegion), "Screen readers hear that recording began")
+                // A one-shot plays out as a tap does, even when let go at once.
+                actions.clear()
+                press("ce-pad-2")
+                assertEquals(listOf(ContinuousEditorAction.TapPad(2), ContinuousEditorAction.CaptureHit(2, 100_000)), actions)
+                // A PAD that sounds while held stops when let go.
+                actions.clear()
+                press("ce-pad-3")
+                assertEquals(listOf(ContinuousEditorAction.HoldPad(3), ContinuousEditorAction.ReleasePad(3), ContinuousEditorAction.CaptureHit(3, 100_000)), actions)
+                // A touch that slides off the PAD sounded, but records nothing.
+                actions.clear()
+                press("ce-pad-2", Offset(0f, 160f))
+                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.TapPad(2)), actions)
+                actions.clear()
+                press("ce-pad-9")
+                assertEquals(emptyList(), actions, "An empty PAD plays and records nothing")
+                // A screen reader plays and records a PAD as it is activated.
+                val play = requireNotNull(requireNotNull(scene.tag("ce-pad-1")).config.getOrNull(SemanticsActions.OnClick))
+                assertEquals("たたいて録る", play.label)
+                requireNotNull(play.action).invoke()
+                assertEquals(listOf(ContinuousEditorAction.TapPad(1), ContinuousEditorAction.CaptureHit(1, 112_000)), actions)
+                scene.capture("beat-recording-hits-desktop.png")
+                scene.click("ce-record-hits")
+                assertEquals(ContinuousEditorAction.StopHits, actions.last())
+            } finally { scene.close() }
+            // On a phone at double text size the four actions take two rows, each a 48 dp target, the hint below them,
+            // and the PAD pane's button says it is recording.
+            val phone = ImageComposeScene(width = 390, height = 2200, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state().copy(recordingHits = true), {}, ContinuousEditorFixture::readout)
+            }
+            try {
+                phone.settle()
+                val tags = listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch")
+                tags.forEach { tag -> assertTrue(requireNotNull(phone.tag(tag)) { tag }.size.height >= 48, tag) }
+                assertEquals(2, tags.map { requireNotNull(phone.tag(it)).positionInRoot.y }.distinct().size)
+                assertTrue(requireNotNull(phone.tag("ce-hits-hint")).positionInRoot.y > requireNotNull(phone.tag("ce-scratch")).positionInRoot.y)
+                fun ImageComposeScene.texts() = nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+                assertTrue(phone.texts().any { it == "PAD（録音中）" })
+                phone.capture("beat-recording-hits-phone-font200.png")
+            } finally { phone.close() }
         } finally { Locale.setDefault(previous) }
     }
 

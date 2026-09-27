@@ -246,6 +246,39 @@ class ContinuousClipEditsTest {
         assertEquals(5, ceGridLines(straight, ContinuousGrid.QUARTER, 96f, 7f, 0f, 48f).size)
     }
 
+    @Test fun playedHitsGoOntoTheGridOnceEachAsPlacingPutsThem() {
+        // 120 BPM: a beat is 24 000 frames. PAD 1 plays another part of PAD 0's sound.
+        val p = fixture().let { p -> p.copy(pads = p.pads.map { when (it.id) {
+            0 -> it.copy(range = FrameRange(0, 2_400))
+            1 -> Pad(1, hash, FrameRange(2_400, 4_800))
+            else -> it
+        } }.frozen()) }
+        val hits = listOf(ContinuousHit(0, 23_000), ContinuousHit(1, 25_000), ContinuousHit(0, 25_500), ContinuousHit(0, 47_000))
+        val played = apply(p, ContinuousEditorAction.PlaceHits(hits), ContinuousGrid.BEAT)
+        // PAD 0 at 23 000 and 25 500 both go to the second beat: once. PAD 1 there too, as another sound.
+        assertEquals(listOf(FrameRange(0, 2_400) to 960L, FrameRange(2_400, 4_800) to 960L, FrameRange(0, 2_400) to 1_920L),
+            played.clips.map { it.range to it.startTick })
+        assertTrue(played.clips.all { it.timelineStartFrame == null && it.trackId == played.tracks.single().id }, "On the beat, on one track")
+        assertEquals(listOf(p.pads[0].gain, p.pads[1].gain, p.pads[0].gain), played.clips.map { it.gain }, "As loud as each PAD")
+        // Where the same sound already starts, a hit adds nothing.
+        assertEquals(played.clips, apply(played, ContinuousEditorAction.PlaceHits(listOf(ContinuousHit(0, 24_100))), ContinuousGrid.BEAT).clips)
+        // Free, each goes where it was heard.
+        val free = apply(p, ContinuousEditorAction.PlaceHits(listOf(ContinuousHit(0, 23_000), ContinuousHit(0, 23_000), ContinuousHit(0, 25_500))))
+        assertEquals(listOf(23_000L, 25_500L), free.clips.map { it.timelineStartFrame })
+        // Nothing played, or an empty PAD, is refused; a transformed PAD goes on as its rendered sound.
+        assertFailsWith<IllegalArgumentException> { apply(p, ContinuousEditorAction.PlaceHits(emptyList())) }
+        assertFailsWith<IllegalArgumentException> { apply(p, ContinuousEditorAction.PlaceHits(listOf(ContinuousHit(5, 0)))) }
+        val pitched = p.copy(pads = p.pads.map { if (it.id == 0) it.copy(pitchSemitones = 12.0) else it }.frozen())
+        assertFailsWith<IllegalArgumentException> { apply(pitched, ContinuousEditorAction.PlaceHits(listOf(ContinuousHit(0, 0)))) }
+        val made = Asset("c".repeat(64), "wav", 9_644, 48_000, 2, 1_200, "Octave", AssetRole.RENDERED, derivedFrom = hash)
+        val both = listOf(ContinuousHit(0, 0), ContinuousHit(1, 24_000), ContinuousHit(0, 48_000))
+        val rendered = Reducer.reduce(pitched, ContinuousClipEdits.intent(pitched, ContinuousEditorAction.PlaceHits(both), ::fresh,
+            mapOf(0 to made), ContinuousGrid.BEAT)).project
+        assertEquals(listOf(made.hash, hash, made.hash), rendered.clips.map { it.assetHash })
+        assertEquals(FrameRange(0, 1_200), rendered.clips.first().range)
+        assertTrue(rendered.assets.any { it.hash == made.hash })
+    }
+
     @Test fun aFillPlacesThePadOnEveryLineThroughItsBarsInPlaceOfItsOwnSoundOnThatTrack() {
         // 120 BPM: a bar is 96 000 frames, 3 840 ticks. Song position 100 000 is in the second bar.
         val p = fixture().let { p -> p.copy(pads = p.pads.map { when (it.id) {

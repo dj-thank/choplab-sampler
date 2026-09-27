@@ -188,14 +188,18 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
 /**
  * Square 4x4 grid. Long-hold is explicitly owned; tap and cancelled scroll stay distinct. With [capture] (a live chop
  * pass), a PAD reads the original's position as it goes down and cuts there when released; a cancelled touch cuts nothing.
+ * With [hit] (recording what the PADs play), a PAD sounds and reads the song's position as it goes down, and is recorded
+ * there when released; a touch that turns into a scroll records nothing.
  */
 @Composable internal fun CEPads(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     modifier: Modifier = Modifier, maximumSide: androidx.compose.ui.unit.Dp = 72.dp,
     onPadDrag: ((CEPaddedDrag?) -> Unit)? = null, onPadDrop: ((Int, Offset) -> Unit)? = null,
-    capture: (() -> Long)? = null) {
+    capture: (() -> Long)? = null, hit: (() -> Long)? = null) {
     val font = LocalDensity.current.fontScale
     val latestCapture by rememberUpdatedState(capture)
+    val latestHit by rememberUpdatedState(hit)
     val cutLabel = stringResource(Res.string.ce_chop_pad_action)
+    val playLabel = stringResource(Res.string.ce_hits_pad_action)
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val side = if (font > 1.5f) 96.dp else ((maxWidth - 18.dp) / 4).coerceAtMost(maximumSide)
         Column(Modifier.align(Alignment.Center).horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -226,11 +230,21 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 val frame = latestCapture?.invoke()
                                 if (tryAwaitRelease() && frame != null) latestAction(ContinuousEditorAction.CapturePad(id, frame))
                             })
+                        } else if (hit != null) Modifier.pointerInput(id, filled, pad.mode) {
+                            // A one-shot plays out as a tap does; a PAD that sounds while held stops when let go.
+                            val whileHeld = pad.mode != ContinuousPadMode.ONE_SHOT
+                            if (filled) detectTapGestures(onPress = {
+                                val frame = latestHit?.invoke()
+                                latestAction(if (whileHeld) ContinuousEditorAction.HoldPad(id) else ContinuousEditorAction.TapPad(id))
+                                var released = false
+                                try { released = tryAwaitRelease() } finally { if (whileHeld) latestAction(ContinuousEditorAction.ReleasePad(id)) }
+                                if (released && frame != null) latestAction(ContinuousEditorAction.CaptureHit(id, frame))
+                            })
                         } else Modifier.combinedClickable(interactionSource = interaction, indication = null,
                             onClick = { onAction(ContinuousEditorAction.SelectPad(id)); if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) onAction(ContinuousEditorAction.TapPad(id)) },
                             onLongClick = if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) ({ if (!held) { held = true; onAction(ContinuousEditorAction.HoldPad(id)) } }) else null))
-                        .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null) {
-                            if (capture == null && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
+                        .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null, hit != null) {
+                            if (capture == null && hit == null && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
                                 var position = Offset.Zero
                                 detectDragGestures(onDragStart = { at ->
                                     position = rootOrigin + at
@@ -249,6 +263,12 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                             // A screen reader user cuts at the moment the PAD is activated.
                             if (capture != null) onClick(cutLabel) {
                                 latestCapture?.invoke()?.let { latestAction(ContinuousEditorAction.CapturePad(id, it)) }; true
+                            }
+                            // A screen reader user plays and records the PAD at the moment it is activated.
+                            if (hit != null && filled) onClick(playLabel) {
+                                latestHit?.invoke()?.let { frame ->
+                                    latestAction(ContinuousEditorAction.TapPad(id)); latestAction(ContinuousEditorAction.CaptureHit(id, frame))
+                                }; true
                             }
                         }
                         .padding(8.dp)) {
