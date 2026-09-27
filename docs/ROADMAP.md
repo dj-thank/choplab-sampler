@@ -35,6 +35,10 @@ SOURCEから既存Previewの同じ `audio-library` を選ぶnative dialogを追�
 
 Macの実native dialogで日本語・検索・明示選択・閉じる取消・元bytes一致を確認。既存libraryのAIFF/AIF/MP4/WebMもNEXTの元音保持decoderへ接続し、同梱codecの11 fixtureで48kHz stereo/finite値・lossless24bit一致、archive/再起動が成功。これは候補 `163fcec` + 後続修正の結果。追加の本番library self-testでも、24bit WAVの検証/元bytesとタイトル/1Undo/配置/書出し/archive/再起動が成功。UI69・JVM91・jvm-core199件とlibrary4件、Android Preview compile、policy320件が成功。最終headの必須CI・mainインストールreadbackを追跡する。既存Previewと共有するのは音源libraryだけで、制作/autosaveはNEXT専用のまま。online/provider、分離、長尺は引き続き未移植。
 
+## Windows CIの録音試験待機の修正
+
+rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsFramesSplitAcrossReadsIntactUntilStop` の4,800frame超のassertが失敗した。400ms固定待ちを保存済みbyte数に対する上限5秒の待機へ変更し、frame数・全左右sample・順序・正常停止のassertは維持する。遅い許可応答の試験も音声byteの到着を待つ。header後750ms遅延の合成helperで再現条件を固定し、旧待機では失敗、新待機で成功を確認する。失敗時のXML/HTMLをCI artifactへ残す。PR140初回Windows CIでは録音試験は成功し、monitor mute試験が別途失敗。保存したXMLで、無音到着後のactiveVoices即時assertと特定した。engine readoutは3回までのseqlock読取に失敗すると前tickを保持する契約なので、実byteゼロを確認した出力frameより新しく、声数>0かつprogram revision=1の公開tickを上限15秒で待つ。当該失敗logだけでは、読取が古かったのか実際に声が失われたのかは断定しない。ミュートの実byteゼロと解除後の非ゼロの検査は維持する。音声処理や実機性能の合格基準は変えない。rollbackはこの試験/CI変更のrevert。元mainのAndroid検証とMac packageは成功、Windows再検証は当該PRで追跡する。
+
 ## 段階と受入
 
 「計画」は実装済みを意味しません。PR総数は固定せず、独立して検証できる単位へ分けます。
