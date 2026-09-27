@@ -52,7 +52,7 @@ WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF/AIF・MP4・WebM�
 
 helperはmacOS14.0を明示してbuildし、最終アプリの最低OSは同梱helper・ツール・Java runtime・JAR内native依存の実バイナリから判定して、Info.plistと配布manifestへ記録します。このMacで用意したcodecにはmacOS27.0を要求するものがあるため、そのbundleはmacOS27.0以降用です。Apple Silicon以外や古いOSは別のbytesでの検証が必要です。
 
-起動窓はOSの作業領域に収まります。文字を大きくした場合はPAD/詳細面をスクロールでき、曲と全停止は固定です。原曲の音量は大文字時にラベルを上へ配置して操作幅を保ちます。実ウィンドウの受入ではouter/content/work areaを測り、その内容sizeで16PADと主要操作の可視領域・実入力を別途確認します。PNGだけを実端末入力や音質の受入にはしません。
+窓の可視領域はOSの作業領域と文字サイズで確認します。文字を大きくした場合はPAD/詳細面をスクロールでき、曲と全停止は固定です。原曲の音量は大文字時にラベルを上へ配置して操作幅を保ちます。実ウィンドウの受入ではouter/content/work areaを測り、その内容sizeで16PADと主要操作の可視領域・実入力を別途確認します。PNGだけを実端末入力や音質の受入にはしません。
 
 梱包後の受入は `scripts/run_mac_next_acceptance.py` を使います。インストール済みアプリでは、インストール時に保存したmanifestを `--manifest` で指定します。標準のbuild出力では省略できます。全ファイル・hash・署名を照合してから隔離profileで制作通しと通常終了・再開を確認します。
 
