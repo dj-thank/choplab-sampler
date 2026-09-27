@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import os
 from pathlib import Path
 import plistlib
@@ -104,7 +106,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
 
             with patch.object(PACKAGE, 'ROOT', root), patch.object(PACKAGE, 'run', side_effect=run), \
                     patch.object(PACKAGE.subprocess, 'check_output', return_value=''), \
-                    patch.dict(os.environ, {}, clear=True):
+                    patch.dict(os.environ, {}, clear=True), contextlib.redirect_stdout(io.StringIO()):
                 PACKAGE.build(root / 'jdk', None, linked=True)
             codesign = [c[1:] for c in commands if c[0] == 'codesign']
             launcher = str(root / 'desktop/build')
@@ -112,7 +114,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
             signed_app = [i for i, c in enumerate(codesign) if c[:3] == ['--force', '--sign', '-'] and c[3].endswith('ChopLab NEXT.app')]
             self.assertEqual(1, len(removed))
             self.assertTrue(codesign[removed[0]][1].startswith(launcher))
-            self.assertTrue(codesign[removed[0]][1].endswith('ChopLab NEXT.app/Contents/MacOS/ChopLab NEXT'))
+            self.assertEqual(('ChopLab NEXT.app', 'Contents', 'MacOS', 'ChopLab NEXT'), Path(codesign[removed[0]][1]).parts[-4:])
             self.assertEqual(1, len(signed_app))
             self.assertLess(removed[0], signed_app[0])
             self.assertTrue((root / 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app/Contents/Info.plist').is_file())
