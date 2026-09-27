@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `8cf229479b2bdaeca23e069ed7bdedaeea88c94c`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
@@ -52,7 +52,7 @@ Windows必須CIのPR177/PR178で、既存NextScratchEditorTestは無音HANDド�
 
 Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)はhead `cb61ae5`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36353011462)成功後、main `275cab5`へ統合済み。先行CIのHTTP接続解放とHAND出力、count-in開始の断続的な失敗に対し、製品の接続完了gateと実ack/clock待機、状態診断を追加した。診断合成 `795ddfc7`では録音6件と実Windows JVMのfake入出力10回×2ケースが成功。今回の必須CIも成功したが、過去の断続失敗の単一原因は断定しない。実Google API/課金・provider受入は未実施。[PR169](https://github.com/dj-thank/choplab-sampler/pull/169)のVOCAL入口は必須CI3件成功後main `8cf2294`へ統合。次は構造化歌詞を新mainと再検証し、依存順に統合する。
 
-旧[PR170](https://github.com/dj-thank/choplab-sampler/pull/170)の最新main合成後、初回Windows CIは `StreamingOutputRecoveryTest.lossesAreCountedOncePerTroubleNotPerFailedRetry` でtimeout。失敗したopenerが終わる前に次のreattachを呼ぶ制御再現を行い、限定修正 `ffe3d578`はfault count・15秒上限・製品driverを維持したまま実openingDevice完了を待つ。同型の別test `missingDeviceCanBeRetriedUntilItAppears` も修正 `2f5ec933`を祖先へ反映した。rootでRecovery全9件成功。旧PR170は後続commitの誤追加で統合せず閉じ、保存/Flowの限定変更を[PR177](https://github.com/dj-thank/choplab-sampler/pull/177)へ移した。PR177最新headの必須CI成功までは未完。
+旧[PR170](https://github.com/dj-thank/choplab-sampler/pull/170)の最新main合成後、初回Windows CIは `StreamingOutputRecoveryTest.lossesAreCountedOncePerTroubleNotPerFailedRetry` でtimeout。失敗したopenerが終わる前に次のreattachを呼ぶ制御再現を行い、限定修正 `ffe3d578`はfault count・15秒上限・製品driverを維持したまま実openingDevice完了を待つ。同型の別test `missingDeviceCanBeRetriedUntilItAppears` も修正 `2f5ec933`を祖先へ反映した。rootでRecovery全9件成功。旧PR170は後続commitの誤追加で統合せず閉じ、保存/Flowの限定変更を[PR177](https://github.com/dj-thank/choplab-sampler/pull/177)へ移した。PR177最新headの必須CI成功までは未完。旧PR171/172/173/176のGitHub上のMERGED表示は旧候補branchへの取り込みであり、mainの統合証拠ではない。対応する限定PR178/179/180/181を依存順に再検証する。
 
 rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
 
