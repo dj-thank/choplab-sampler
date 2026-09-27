@@ -48,7 +48,8 @@ clickは共有engineのmonitorだけに出し、通常のWAV書出しgraphへ混
 
 - WSOLAはstretch、YIN/PSOLAは単音voiceのpitch補正候補。子音・無声・低信頼・低音・急変・倍半分誤検出を評価し、不成立なら原音を保つ。非破壊A/B、キー/スケール、retune/vibratoを明示する。
 - FXはgain/pan/mute/solo、EQ/filter/comp/delay/reverb send/masterを共有graphで処理。latency compensation、tail、loop折返し、solo/muteの意味を固定。post-fader/pre-master等stem出力点を表示し、非線形master後の和が一致するとは約束しない。
-- 4パート分離はdrums/bass/other/vocalsの順とshapeを実modelで検証。44.1kHz・7.8秒単位のstreaming、4出力のtransaction確定、取消/容量不足/空きRAM/ORT設定を両OSで試す。fp16 weightsだけでruntime RAM半減とは言わない。
+- 4パート分離は固定した単一HT-Demucsのdrums/bass/other/vocalsを使う（[NOTICE](../NOTICE.md)）。44.1kHz・7.8秒/343,980frameと1/4重複の逐次OLA、実tensor `[1,4,2,343980]` とfinite値を検証する。4 WAVの全header/hash/合計quotaを先確認し、同じAssetStore lock下でpublish、失敗時は今回新規hashだけ戻す。元bytes・既存同hashを保持。文書は後段の明示SetArrangement/expectedRevisionで1Undoにし、準備だけでは変更しない。crashで未参照immutable資産が残り得るが、部分文書を確定しない。
+- 4stemのORTはCPU1thread/NO_OPT/arena・memory pattern・prepacking無効。入出力/OLA/copyは共有128MiB PCMへ予約し、model activation/RSSは別のlive RAM preflightでtotal3.5GiB/available1.5GiBとlowMemory/unknown拒否を確認する。Macは即時freeだけでは再利用可能メモリを除外するため、source付きのfresh available estimateとpressureを別に確認し、閾値を下げない。fp16 weightsだけでRAM半減を主張しない。実workerの数値とHuman音質、Android/Windows実model受入を分ける。
 - AndroidはAudioTrack、Windowsはまず連続Java Sound、段階11でWASAPI event駆動の出力/入力/loopbackを試す。endpoint probe成功は実音やloopback成功の証拠ではない。
 
 既存のchannel/PCM oracleは [ADR3](adr/ADR-0003-audio-parity-primitives.md) と [ADR4](adr/ADR-0004-pattern-master-parity-gate.md)、Windows調査は [WASAPI research](research/windows-wasapi-jna-2026-08-20.md) に残します。
