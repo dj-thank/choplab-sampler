@@ -48,6 +48,8 @@ rootが変更と統合を進め、各担当は独立worktreeと限定したフ�
 
 ## 選択中の実装・統合（2026-09-28）
 
+Windows必須CIの[PR177](https://github.com/dj-thank/choplab-sampler/pull/177)と[PR178](https://github.com/dj-thank/choplab-sampler/pull/178)は、互いに同じ既存 `NextScratchEditorTest` の無音HANDドラッグ中に失敗。保存されたXMLは音量0後の12回操作で毎回readout前進を待つ箇所を示す。テストだけの修正候補は各操作のhost受理と操作全体の位置前進・無音を確認し、engineでmute中の移動/原曲独立を別途検査する。Macの限定2クラス成功、Windows再CIと必須3件は未確認。音量0で動けることを弱めて合格にしない。rollbackはこの試験修正だけをrevertする。
+
 Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)はhead `cb61ae5`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36353011462)成功後、main `275cab5`へ統合済み。先行CIのHTTP接続解放とHAND出力、count-in開始の断続的な失敗に対し、製品の接続完了gateと実ack/clock待機、状態診断を追加した。診断合成 `795ddfc7`では録音6件と実Windows JVMのfake入出力10回×2ケースが成功。今回の必須CIも成功したが、過去の断続失敗の単一原因は断定しない。実Google API/課金・provider受入は未実施。次は[PR169](https://github.com/dj-thank/choplab-sampler/pull/169)のVOCAL入口を最新mainと再検証し、依存順に統合する。
 
 rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
