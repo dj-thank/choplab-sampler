@@ -170,8 +170,9 @@ import kotlin.math.roundToLong
 }
 
 /**
- * How the selected PAD plays, as the earlier app's PLAY page: reverse, once or while held, choke group, and clearing
- * it. Clearing asks for a second press, and that press counts only for the PAD and sound it was armed for.
+ * The selected PAD's settings, as the earlier app's TRIM and PLAY pages: where it starts and ends, reverse, once or
+ * while held, choke group, and clearing it. Clearing asks for a second press, and that press counts only for the PAD
+ * and sound it was armed for.
  */
 @Composable private fun CEPadPlayDialog(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
     val pad = state.selectedPad?.takeIf { state.padPlayOpen } ?: return
@@ -183,6 +184,32 @@ import kotlin.math.roundToLong
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 @Composable fun Choice(label: String, chosen: Boolean, tag: String, modifier: Modifier, choose: () -> Unit) =
                     CEButton(label, choose, modifier.semantics { selected = chosen }, primary = chosen, tag = tag)
+                Text(stringResource(Res.string.ce_pad_trim), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                for (end in listOf(false, true)) {
+                    val boundary = stringResource(if (end) Res.string.ce_pad_trim_end else Res.string.ce_pad_trim_start)
+                    val frame = if (end) pad.sourceEndFrame else pad.sourceStartFrame
+                    Text("$boundary  ${ceTimeMillis(frame, pad.sourceRate)}", Modifier.testTag("ce-trim-${if (end) "end" else "start"}-time"), fontSize = 14.sp)
+                    @Composable fun Nudge(milliseconds: Int, modifier: Modifier) {
+                        val description = stringResource(if (milliseconds < 0) Res.string.ce_pad_trim_earlier else Res.string.ce_pad_trim_later,
+                            boundary, kotlin.math.abs(milliseconds))
+                        CEButton(if (milliseconds < 0) "−${-milliseconds}ms" else "+${milliseconds}ms",
+                            { onAction(ContinuousEditorAction.NudgePadBoundary(id, end, milliseconds)) },
+                            modifier.semantics { contentDescription = description },
+                            tag = "ce-trim-${if (end) "end" else "start"}-${if (milliseconds < 0) "earlier" else "later"}-${kotlin.math.abs(milliseconds)}")
+                    }
+                    // Earlier and later in one row where they fit, otherwise one row each (phones, large text).
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        if (maxWidth >= 360.dp && LocalDensity.current.fontScale <= 1.3f) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            for (milliseconds in listOf(-10, -1, 1, 10)) Nudge(milliseconds, Modifier.weight(1f))
+                        } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Nudge(-10, Modifier.weight(1f)); Nudge(-1, Modifier.weight(1f)) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Nudge(1, Modifier.weight(1f)); Nudge(10, Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                Text(stringResource(Res.string.ce_pad_trim_help), fontSize = 12.sp, lineHeight = 18.sp, color = CEColor.Border)
+                CEActionButton(stringResource(Res.string.ce_audition), ContinuousEditorAction.TapPad(id), state, ContinuousCapability.PAD_AUDITION,
+                    onAction, Modifier.fillMaxWidth(), tag = "ce-trim-audition")
                 Text(stringResource(Res.string.ce_reverse), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Choice(stringResource(Res.string.ce_off), !pad.reverse, "ce-reverse-off", Modifier.weight(1f)) {

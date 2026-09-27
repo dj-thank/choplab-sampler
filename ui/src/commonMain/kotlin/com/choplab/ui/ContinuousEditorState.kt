@@ -17,7 +17,7 @@ enum class ContinuousCapability {
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
-    /** How the selected PAD plays (reverse, once or while held, choke group) and clearing it. */
+    /** The selected PAD's settings: where it starts and ends, how it plays (reverse, once or while held, choke), clearing it. */
     PAD_PLAY,
     PLACE_PAD, MOVE_CLIP, TRIM_CLIP, SPLIT_CLIP, DUPLICATE_CLIP, DELETE_CLIP,
     TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
@@ -176,7 +176,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val drumKitQuestion: ContinuousKitQuestion? = null,
     /** The scratch panel while it is open. */
     val scratch: ContinuousScratch? = null,
-    /** The selected PAD's play settings panel is open. */
+    /** The selected PAD's settings panel is open. */
     val padPlayOpen: Boolean = false,
 ) {
     init {
@@ -261,6 +261,8 @@ sealed interface ContinuousEditorAction {
     data class SetPadGain(val padId: Int, val gain: Float) : ContinuousEditorAction
     data object OpenPadPlay : ContinuousEditorAction
     data object ClosePadPlay : ContinuousEditorAction
+    /** Moves where the PAD starts (or, with [end], ends) by [milliseconds], earlier when negative. */
+    data class NudgePadBoundary(val padId: Int, val end: Boolean, val milliseconds: Int) : ContinuousEditorAction
     data class SetPadReverse(val padId: Int, val reverse: Boolean) : ContinuousEditorAction
     /** Once or while held; looping stays the loop button's, so LOOP is not one of these. */
     data class SetPadMode(val padId: Int, val mode: ContinuousPadMode) : ContinuousEditorAction

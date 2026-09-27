@@ -54,8 +54,14 @@
     <string name="ce_audition">Listen</string>
     <string name="ce_loop_pad">Loop this sound</string>
     <string name="ce_stop_loop">Stop this loop</string>
-    <string name="ce_pad_play">How it plays</string>
-    <string name="ce_pad_play_title">How %1$s plays</string>
+    <string name="ce_pad_play">PAD settings</string>
+    <string name="ce_pad_play_title">%1$s settings</string>
+    <string name="ce_pad_trim">Start and end</string>
+    <string name="ce_pad_trim_start">Start</string>
+    <string name="ce_pad_trim_end">End</string>
+    <string name="ce_pad_trim_earlier">Move the %1$s %2$d ms earlier</string>
+    <string name="ce_pad_trim_later">Move the %1$s %2$d ms later</string>
+    <string name="ce_pad_trim_help">Moves in a row are undone together with one Undo.</string>
     <string name="ce_reverse">Reverse</string>
     <string name="ce_off">Off</string>
     <string name="ce_on">On</string>

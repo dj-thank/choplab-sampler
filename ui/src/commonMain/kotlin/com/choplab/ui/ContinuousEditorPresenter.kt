@@ -415,6 +415,19 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     if (ok) view.update { it.copy(padPlay = true) }
                 }
                 ContinuousEditorAction.ClosePadPlay -> { view.update { it.copy(padPlay = false) }; true }
+                // Within its sound and never past the other boundary. Nudges of one boundary in a row are one Undo
+                // step, as the earlier app's trim dials were; at a limit a nudge changes nothing and is not a failure.
+                is ContinuousEditorAction.NudgePadBoundary -> {
+                    require(action.milliseconds != 0 && action.milliseconds in -1000..1000)
+                    project.pads[action.padId].takeIf { it.assetHash != null }?.let { pad ->
+                        val frames = project.asset(requireNotNull(pad.assetHash)).let { it.frames to it.sampleRate }
+                        val range = requireNotNull(pad.range)
+                        val delta = action.milliseconds.toLong() * frames.second / 1000
+                        val moved = if (action.end) FrameRange(range.start, (range.end + delta).coerceIn(range.start + 1, frames.first))
+                            else FrameRange((range.start + delta).coerceIn(0, range.end - 1), range.end)
+                        moved == range || edit(Intent.SetPad(pad.copy(range = moved), if (action.end) "trim-end" else "trim-start"))
+                    } ?: false
+                }
                 // A changed PAD stops sounding (Studio stops it), as with its other settings; only a PAD with a sound changes.
                 is ContinuousEditorAction.SetPadReverse -> project.pads[action.padId].takeIf { it.assetHash != null }
                     ?.let { edit(Intent.SetPad(it.copy(reverse = action.reverse))) } ?: false
