@@ -994,7 +994,8 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.ports.renders.isEmpty(), "Rendered when the pass ends, not while playing")
             // The song reaches its end: the engine stops playing it, and the pass ends with it.
             h.engine.transport = h.engine.transport.copy(playing = false, sequencePaused = false)
-            val ended = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED }
+            // Status and document projections arrive on separate flows: wait for both, not an older clip snapshot.
+            val ended = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED && it.clips.size == 3 }
             // Stop pressed a moment late, and a PAD let go as the pass ended, leave its message in place.
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))

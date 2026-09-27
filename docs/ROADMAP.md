@@ -24,7 +24,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 rootがPR150 head `b019c5a6` と分離終了修正PR151の結合を確認。core44/UI106/desktop292件（実録音1skip）、Android UI compile、録音中の分離禁止の追加試験がMacで成功。同梱Mac候補 `568b6f81` で合成endpointと指定時刻の2打鍵→1Undo/Redo→24bit書出し→保存再開も成功。実打鍵の遅延/聴感の証明ではない。
 
-Windows CI `36325034289` の `theSongsEndEndsAPassAndATransformedPadIsRenderedOnceForAllItsHits` がAssertionErrorで失敗。Macの単独10回では再現せず、成功へ読み替えない。失敗時のUI XMLが保存対象外で詳細を取得できなかったため、root所有の `.github/workflows/ci.yml` と `ui/build.gradle.kts` を修正し、UI試験XML/HTMLと例外全文を残す。テスト本体・期待値・待ち時間は変更しない。完了条件は新しいCIの実結果から原因を特定し、修正が必要なら回帰確認後に統合すること。rollbackは診断追加commitのrevert。
+Windows CI `36325034289` の `theSongsEndEndsAPassAndATransformedPadIsRenderedOnceForAllItsHits` がAssertionErrorで失敗。Macの単独10回では再現せず、成功へ読み替えない。失敗時のUI XMLが保存対象外で詳細を取得できなかったため、root所有の `.github/workflows/ci.yml` と `ui/build.gradle.kts` を修正し、UI試験XML/HTMLと例外全文を残す。後続のMac連続試験11回目で、完了statusだけ先に届き、テストが更新前の配置1件を保持していた事象を再現した（期待3件、実documentには2打鍵追加済み）。録音停止・完了status・配置3件がそろった投影を待つよう試験を修正。配置位置/個数・1回だけのrender・停止後status保持の期待値を維持し、固定sleepやtimeout延長は加えない。修正後の同一試験100回は成功。最新CIと統合を追跡する。rollbackは診断/試験修正commitのrevert。
 
 ## Mac NEXT端末音録音の接続（PR138統合済み）
 
