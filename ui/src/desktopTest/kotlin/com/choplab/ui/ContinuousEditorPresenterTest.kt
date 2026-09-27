@@ -5,6 +5,7 @@ import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
+import com.choplab.core.pattern.PatternProblem
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
 import com.choplab.engine.PlayMode
@@ -80,12 +81,20 @@ class ContinuousEditorPresenterTest {
                 val kept = h.studio.document.value
                 release.complete(Unit)
                 assertNotEquals(true, withTimeout(5_000) { rendering.await() }.getOrNull())
-                assertEquals(kept, h.studio.document.value, "A late rendered asset cannot enter the project after exit $exit")
-                assertTrue(kept.project.clips.isEmpty())
                 if (exit in listOf(0, 1, 3)) {
                     assertNull(h.presenter.stepPatterns.value)
                     assertEquals(PatternPhase.CLOSED, controller.state.value.phase)
-                } else assertEquals(PatternPhase.EDITING, controller.state.value.phase)
+                } else {
+                    // Awaiting the cancelled renderer does not join the document observer: it cancels
+                    // work before publishing the stale draft. StopAll itself awaits its Cancel action.
+                    if (exit == 4) withTimeout(5_000) {
+                        controller.state.first { it.phase == PatternPhase.EDITING && it.problem == PatternProblem.STALE_DOCUMENT }
+                    }
+                    assertSame(controller, h.presenter.stepPatterns.value)
+                    assertEquals(PatternPhase.EDITING, controller.state.value.phase)
+                }
+                assertEquals(kept, h.studio.document.value, "A late rendered asset cannot enter the project after exit $exit")
+                assertTrue(kept.project.clips.isEmpty())
             } finally { release.complete(Unit); h.close() }
         }
     }
