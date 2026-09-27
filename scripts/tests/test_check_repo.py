@@ -61,4 +61,5 @@ class RepositoryCheckTest(unittest.TestCase):
 
     def test_mac_jdk_layout_is_not_a_personal_home(self):
         self.assertFalse(contains_personal_path('ChopLab Preview.app/Contents/runtime/Contents/Home/lib/security/cacerts'))
+        self.assertFalse(contains_personal_path('ChopLab NEXT.app/Contents/runtime/Contents/Home/lib/security/cacerts'))
         self.assertTrue(contains_personal_path('/home/' + 'private-person' + '/lib'))

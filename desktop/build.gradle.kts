@@ -215,17 +215,27 @@ val prepareMacMediaTools = tasks.register<Exec>("prepareMacMediaTools") {
     workingDir(rootProject.projectDir)
     commandLine("python3", "scripts/prepare_mac_media_tools.py", "--out", macMediaToolsDirectory.get().asFile.absolutePath)
 }
-listOf("packageMacPreview" to false, "packageMacSignedPreview" to true).forEach { (taskName, signed) ->
+listOf(Triple("packageMacPreview", false, false), Triple("packageMacSignedPreview", true, false),
+    Triple("packageMacLinkedPreview", false, true)).forEach { (taskName, signed, linked) ->
     tasks.register<Exec>(taskName) {
         group = "distribution"
-        description = if (signed) "Build a Developer ID signed Mac Preview (requires identity)" else "Build an explicitly local, ad-hoc Mac Preview"
-        dependsOn(tasks.installDist, prepareMacMediaTools)
+        description = when {
+            linked -> "Build the linked four-stage editor as an explicitly local, ad-hoc Mac app (おとひろい NEXT)"
+            signed -> "Build a Developer ID signed Mac Preview (requires identity)"
+            else -> "Build an explicitly local, ad-hoc Mac Preview"
+        }
+        dependsOn(tasks.installDist)
         onlyIf { macHost }
         workingDir(rootProject.projectDir)
         commandLine("python3", "scripts/package_mac_app.py", "--java-home",
-            desktopRuntimeToolchain.get().metadata.installationPath.asFile.absolutePath,
-            "--tools", macMediaToolsDirectory.get().asFile.absolutePath)
+            desktopRuntimeToolchain.get().metadata.installationPath.asFile.absolutePath)
+        // The linked editor opens WAV and records the microphone itself, so its app carries no media tools.
+        if (!linked) {
+            dependsOn(prepareMacMediaTools)
+            args("--tools", macMediaToolsDirectory.get().asFile.absolutePath)
+        }
         if (signed) args("--signed")
+        if (linked) args("--linked")
     }
 }
 

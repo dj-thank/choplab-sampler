@@ -1,0 +1,83 @@
+name: ChopLab Mac NEXT preview
+
+# The linked four-stage editor as a local, ad-hoc signed Mac app for the owner to try. Every merge to main
+# builds one; a pull request builds one only when it changes this packaging.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/mac-preview.yml'
+      - 'scripts/package_mac_app.py'
+      - 'scripts/check_public_surface.py'
+      - 'desktop/build.gradle.kts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  CHOPLAB_SPOTIFY_CLIENT_ID: ${{ vars.CHOPLAB_SPOTIFY_CLIENT_ID }}
+
+jobs:
+  mac-next-preview:
+    name: Package Mac NEXT preview
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Package the linked editor as a local ad-hoc Mac app
+        run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview
+
+      - name: Start the app once with an isolated profile and no audio
+        timeout-minutes: 5
+        run: |
+          app="desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app"
+          profile="$(mktemp -d)"
+          log="$RUNNER_TEMP/next-startup.log"
+          JAVA_TOOL_OPTIONS="-Duser.home=$profile -Dchoplab.silentSmoke=true" "$app/Contents/MacOS/ChopLab NEXT" >"$log" 2>&1 &
+          pid=$!
+          sleep 30
+          alive=0
+          if kill -0 "$pid" 2>/dev/null; then alive=1; kill "$pid"; fi
+          for _ in $(seq 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+          kill -9 "$pid" 2>/dev/null || true
+          wait "$pid" || true
+          cat "$log"
+          if [ "$alive" -ne 1 ]; then echo "::error::The app exited during startup"; exit 1; fi
+          if grep -q "Exception in thread" "$log"; then echo "::error::The app reported an uncaught exception"; exit 1; fi
+          # The editor creates its data folder under the isolated profile only after its backend started.
+          test -d "$profile/Library/Application Support/ChopLab Preview/next-v10"
+
+      - name: Archive and check the app
+        run: |
+          mkdir -p dist
+          ditto -c -k --norsrc --noextattr --noacl --keepParent "desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app" dist/ChopLab-mac-next-preview.zip
+          python3 scripts/check_public_surface.py --archive dist/ChopLab-mac-next-preview.zip
+          (cd dist && shasum -a 256 ChopLab-mac-next-preview.zip > ChopLab-mac-next-preview.zip.sha256)
+
+      - name: Upload the Mac app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-mac-next-preview
+          if-no-files-found: error
+          path: |
+            dist/ChopLab-mac-next-preview.zip
+            dist/ChopLab-mac-next-preview.zip.sha256
+          retention-days: 7

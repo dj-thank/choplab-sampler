@@ -129,6 +129,10 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 受領した公開Spotify Client IDをMac packageへ引き継いだ候補も作成し、起動設定と全ファイルhashを検査した。Client IDやtokenをsourceへ書き込まず、起動中のアプリと利用者dataは保持。候補のartifact hash・byte数とproviderの追加結果は受入PRへ記録する。全機能受入は継続中で、native画面の操作許可、Spotify同意後の実API、人間の聴感/操作感を未確認のまま残す。
 
+### 新しい編集画面（NEXT）のMacアプリ — 2026-09-27
+
+オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。新しい編集画面はWAVだけを開きマイクはJava Soundで録るため、media tool・分離モデル・ScreenCaptureKit helperの起動設定・Spotifyは同梱しない（Homebrewの固定名一覧にも依存しない）。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、隔離profile・無音で30秒起動してデータ領域の作成を確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
+
 ## 判断・失敗・次の一手の記録
 
 | 日付 | 判断または未解決事項 | 次の一手 |
