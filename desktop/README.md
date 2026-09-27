@@ -44,6 +44,12 @@ python3 scripts/run_mac_acceptance.py \
 
 `--system-audio` は短い確認音を鳴らし、他process音の取得と自分の音の除外を測ります。無関係な再生を止め、画面収録/システム音声の許可がある表示sessionで実行します。raw録音はメモリだけ、codec fixtureは一時領域に作成し最後に削除します。聴感を自動認定しません。
 
+## Macの4工程NEXT
+
+`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Javaを含み、単体で起動できます。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
+
+現段階ではWAVの取込、チョップ、PAD、合成ドラム、曲への配置、声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。圧縮音源・オンライン取込・端末音の録音・ライブラリ・ドラム分離は既存Preview側に残っています。NEXTだけで全機能を受入済みとはしません。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
+
 ## データ・接続・検証
 
 制作autosaveとlibraryはapp専用領域にあり、実行ファイルの更新と分けます。既存install scriptはversion/hashに結び付いたapp-imageを保持し、利用者の制作を上書きしません。Previewの専用設定/autosave/library/cache/lock分離は段階1Cで検証します。

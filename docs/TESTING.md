@@ -30,6 +30,14 @@ checkoutのJDK/SDKを設定してrepository rootから実行します。Windows�
 
 Macでは同じJVM/desktop suiteに加え、`:desktop:compileMacSystemAudioHelper`、`:desktop:desktopUiQualityTest`、`:desktop:desktopLongPressUiTest` を実行します。実ファイル・providerの取込は私有の隔離ライブラリで確認し、取得時間とdecode/再読込を分けて測ります。合成音源の比較ではフレーム・rate・左右・サンプル一致も確認します。
 
+Mac NEXTの梱包後は次を実行します。manifestの全ファイル・署名、同梱Javaでの取込/chop/PAD/pattern/保存/再開/UndoRedo/16・24bit書出し、実launcherの画面応答と通常終了・再起動2回、自動保存の編集内容と全音源hash一致を確認します。合成素材・一時profile・無音出力を使い、利用者データは読み書きしません。実音・実マイク・ファイル窓口の手操作・聴感は別の確認です。
+
+```sh
+python3 scripts/run_mac_next_acceptance.py \
+  --app 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app' \
+  --java-home "$JAVA_HOME"
+```
+
 ## 必須の振る舞い
 
 - editing: 純reducer、plan/effect/commit/cancel、revision、Undo/Redo、busy/no-op、対象を固定した確認、stale job拒否。
