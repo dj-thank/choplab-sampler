@@ -24,7 +24,7 @@ def build(java_home, tools, signed=False, linked=False):
     spotify_client = os.environ.get('CHOPLAB_SPOTIFY_CLIENT_ID', '')
     if spotify_client and not re.fullmatch(r'[A-Za-z0-9]{16,128}', spotify_client):
         raise RuntimeError('CHOPLAB_SPOTIFY_CLIENT_ID must contain 16 to 128 letters or digits')
-    # NEXT carries local codecs; online providers, the separator model and capture helper remain in Preview.
+    # NEXT carries codecs, YouTube tools and capture; Spotify configuration and separation models remain in Preview.
     spotify_options = ['--java-options', '-Dchoplab.spotifyClientId=' + spotify_client] if spotify_client and not linked else []
     identity = os.environ.get('CHOPLAB_MAC_SIGNING_IDENTITY', '')
     if signed:
