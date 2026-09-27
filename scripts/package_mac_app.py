@@ -24,8 +24,7 @@ def build(java_home, tools, signed=False, linked=False):
     spotify_client = os.environ.get('CHOPLAB_SPOTIFY_CLIENT_ID', '')
     if spotify_client and not re.fullmatch(r'[A-Za-z0-9]{16,128}', spotify_client):
         raise RuntimeError('CHOPLAB_SPOTIFY_CLIENT_ID must contain 16 to 128 letters or digits')
-    # The linked editor opens WAV and records the microphone itself: no media tools, separator model,
-    # system audio helper or Spotify sign-in, so its app carries none of them.
+    # NEXT carries local codecs; online providers, the separator model and capture helper remain in Preview.
     spotify_options = ['--java-options', '-Dchoplab.spotifyClientId=' + spotify_client] if spotify_client and not linked else []
     identity = os.environ.get('CHOPLAB_MAC_SIGNING_IDENTITY', '')
     if signed:
@@ -34,10 +33,10 @@ def build(java_home, tools, signed=False, linked=False):
         identities = subprocess.check_output(['security', 'find-identity', '-v', '-p', 'codesigning'], text=True)
         if f'"{identity}"' not in identities:
             raise RuntimeError('The requested valid signing identity is not available in the keychain')
+    for name in (('ffmpeg', 'ffprobe', 'manifest.json') if linked else ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json')):
+        if tools is None or not (tools / name).is_file():
+            raise RuntimeError(f'Prepare the complete Mac tools bundle first: missing {name}')
     if not linked:
-        for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
-            if tools is None or not (tools / name).is_file():
-                raise RuntimeError(f'Prepare the complete Mac tools bundle first: missing {name}')
         run('python3', ROOT / 'scripts/prepare_separator_model.py', '--out', ROOT / 'work/separator-models')
     version = re.search(r'^choplabVersion=(.+)$', (ROOT / 'gradle.properties').read_text(), re.M).group(1)
     build_number = re.search(r'^choplabBuildNumber=(\d+)$', (ROOT / 'gradle.properties').read_text(), re.M).group(1)
@@ -63,14 +62,14 @@ def build(java_home, tools, signed=False, linked=False):
             '--mac-package-identifier', identifier, '--mac-package-name', display_name,
             '--mac-app-category', 'music', '--java-options', '-Dchoplab.preview=true',
             '--java-options', '-Dfile.encoding=UTF-8', '--java-options', '-XX:-UsePerfData',
-            *([] if linked else ['--java-options', '-Dchoplab.mediaTools=$APPDIR/tools',
-                                 '--java-options', '-Dchoplab.separatorModels=$APPDIR/models',
+            '--java-options', '-Dchoplab.mediaTools=$APPDIR/tools',
+            *([] if linked else ['--java-options', '-Dchoplab.separatorModels=$APPDIR/models',
                                  '--java-options', '-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio']),
             *spotify_options)
         app = stage / 'image' / f'{image_name}.app'
         application = app / 'Contents/app'
+        shutil.copytree(tools, application / 'tools')
         if not linked:
-            shutil.copytree(tools, application / 'tools')
             shutil.copytree(ROOT / 'work/separator-models', application / 'models')
         for name in ('LICENSE', 'NOTICE.md'):
             shutil.copy2(ROOT / name, application / name)
@@ -155,10 +154,8 @@ def build(java_home, tools, signed=False, linked=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home', type=Path, required=True)
-    parser.add_argument('--tools', type=Path, help='The prepared Mac media tool bundle; not used with --linked')
+    parser.add_argument('--tools', type=Path, required=True, help='Prepared Mac codec bundle for --linked, complete media tools otherwise')
     parser.add_argument('--signed', action='store_true')
     parser.add_argument('--linked', action='store_true', help='Package the linked four-stage editor instead of the existing Preview')
     args = parser.parse_args()
-    if args.tools is None and not args.linked:
-        parser.error('--tools is required unless --linked is given')
     build(args.java_home.resolve(), args.tools.resolve() if args.tools else None, args.signed, args.linked)

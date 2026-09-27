@@ -52,4 +52,6 @@ ChopLabは独立した製品で、これらの権利者との提携・後援を�
 
 Mac PreviewはHomebrewのFFmpeg/FFprobe、Nodeとそれらのdylibを私有build領域へ複製し、loader参照を同梱配置へ変更します。元のインストールは変更しません。実version、元bytes/配置変更後のhashはtool manifest、許可するnative名は `config/mac-media-tool-files.txt` が正本です。yt-dlp standaloneは2026.08.19、upstream assetのSHA-256を固定します。
 
+Mac NEXTは同じFFmpeg/FFprobeのうちローカル音源に必要な2つの実行ファイルとdylibだけを同梱します。native名の部分集合は `config/mac-audio-tool-files.txt` で固定し、同じlicense/source条件を適用します。Node・yt-dlp・分離モデルはこのcodec bundleには含めません。
+
 このローカルbundleは一般配布のlicense適合済みartifactではありません。FFmpegのGPL構成、Nodeの内包/共有library、yt-dlp standalone内の依存のlicense本文・対応source/build手順の提供を、公証/公開前に完了する必要があります。JDKのlegal文書は内容を保ち、bundle内の参照リンクを通常ファイルとして同梱します。

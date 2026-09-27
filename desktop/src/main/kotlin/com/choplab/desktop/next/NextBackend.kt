@@ -50,10 +50,11 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     companion object {
         fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: () -> MicInput? = JavaSoundMicInput::open): NextBackend {
             val files = NextFileLocations()
+            val decoder = DesktopOriginalAudioDecoder()
             val shared = EditorBackend.create(directory,
                 engine = { compiler -> if (sinkFactory == null) JavaSoundEnginePort(compiler) else JavaSoundEnginePort(compiler, sinkFactory) },
-                files = { assets, compiler -> HostFileServices(WavImportPort(assets, files::resolve),
-                    FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) })
+                files = { assets, compiler -> HostFileServices(OriginalAudioImportPort(assets, files::resolve, decoder),
+                    FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) }, decoder = decoder)
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), microphone = microphone) }
                 catch (failure: Exception) { runBlocking { shared.shutdown(flush = false) }; throw failure }
             return NextBackend(shared, files, voice)

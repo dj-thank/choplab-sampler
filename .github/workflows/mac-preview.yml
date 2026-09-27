@@ -9,6 +9,8 @@ on:
     paths:
       - '.github/workflows/mac-preview.yml'
       - 'scripts/package_mac_app.py'
+      - 'scripts/prepare_mac_media_tools.py'
+      - 'config/mac-audio-tool-files.txt'
       - 'scripts/run_mac_next_acceptance.py'
       - 'scripts/acceptance/MacPreviewLifecycle.java'
       - 'scripts/check_public_surface.py'
@@ -43,6 +45,11 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Prepare the local audio build dependency
+        run: |
+          brew update
+          brew install ffmpeg
 
       - name: Package the linked editor as a local ad-hoc Mac app
         run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview

@@ -24,12 +24,10 @@ class MacPackageConfigurationTest(unittest.TestCase):
             root = Path(temporary)
             (root / 'desktop/build').mkdir(parents=True)
             (root / 'gradle.properties').write_text('choplabVersion=0.18.0\nchoplabBuildNumber=30\n')
-            tools = None
-            if not linked:
-                tools = root / 'tools'
-                tools.mkdir()
-                for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
-                    (tools / name).touch()
+            tools = root / 'tools'
+            tools.mkdir()
+            for name in ('ffmpeg', 'ffprobe', 'manifest.json') + (() if linked else ('yt-dlp', 'node')):
+                (tools / name).touch()
             commands = []
 
             def run(*args, **kwargs):
@@ -64,16 +62,17 @@ class MacPackageConfigurationTest(unittest.TestCase):
                     PACKAGE.build(Path('unused-jdk'), Path('unused-tools'))
                 run.assert_not_called()
 
-    def test_linked_editor_is_a_separate_app_without_media_tools(self):
+    def test_linked_editor_has_local_codecs_but_no_online_tools_or_model(self):
         commands = self.package_commands('0123456789abcdef0123456789abcdef', linked=True)
-        # Only jpackage runs: no separator model download and no tool bundle.
+        # Only jpackage runs: local codecs need no model download.
         self.assertEqual(1, len(commands))
         args = commands[0]
         self.assertEqual('com.choplab.desktop.next.LinkedPreviewMainKt', args[args.index('--main-class') + 1])
         self.assertEqual('ChopLab NEXT', args[args.index('--name') + 1])
         self.assertEqual('com.choplab.sampler.preview.next', args[args.index('--mac-package-identifier') + 1])
         self.assertIn('-Dchoplab.preview=true', args)
-        for option in ('-Dchoplab.mediaTools=', '-Dchoplab.separatorModels=', '-Dchoplab.systemAudioHelper=', '-Dchoplab.spotifyClientId='):
+        self.assertIn('-Dchoplab.mediaTools=$APPDIR/tools', args)
+        for option in ('-Dchoplab.separatorModels=', '-Dchoplab.systemAudioHelper=', '-Dchoplab.spotifyClientId='):
             self.assertFalse(any(a.startswith(option) for a in args), option)
 
     def test_linked_editor_is_never_built_as_a_signed_release(self):
@@ -89,6 +88,10 @@ class MacPackageConfigurationTest(unittest.TestCase):
             (root / 'gradle.properties').write_text('choplabVersion=0.18.0\nchoplabBuildNumber=30\n')
             for name in ('LICENSE', 'NOTICE.md'):
                 (root / name).write_text(name)
+            tools = root / 'tools'
+            tools.mkdir()
+            for name in ('ffmpeg', 'ffprobe', 'manifest.json'):
+                (tools / name).touch()
             commands = []
 
             def run(*args, **kwargs):
@@ -107,7 +110,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
             with patch.object(PACKAGE, 'ROOT', root), patch.object(PACKAGE, 'run', side_effect=run), \
                     patch.object(PACKAGE.subprocess, 'check_output', return_value=''), \
                     patch.dict(os.environ, {}, clear=True), contextlib.redirect_stdout(io.StringIO()):
-                PACKAGE.build(root / 'jdk', None, linked=True)
+                PACKAGE.build(root / 'jdk', tools, linked=True)
             codesign = [c[1:] for c in commands if c[0] == 'codesign']
             launcher = str(root / 'desktop/build')
             removed = [i for i, c in enumerate(codesign) if c[0] == '--remove-signature']

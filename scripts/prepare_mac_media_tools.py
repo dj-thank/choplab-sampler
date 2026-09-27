@@ -44,7 +44,10 @@ def locate(name):
     raise RuntimeError(f'{name} is required; install it before preparing the Mac bundle')
 
 
-def prepare(out):
+def prepare(out, audio_only=False):
+    policy = "config/mac-audio-tool-files.txt" if audio_only else "config/mac-media-tool-files.txt"
+    allowed = frozenset((Path(__file__).resolve().parents[1] / policy).read_text().splitlines())
+    commands = [("ffmpeg", "-version"), ("ffprobe", "-version")] + ([] if audio_only else [("node", "--version")])
     if platform.system() != 'Darwin':
         raise RuntimeError('Mac tools must be prepared on macOS')
     out.mkdir(parents=True, exist_ok=True)
@@ -55,9 +58,9 @@ def prepare(out):
             data = json.loads(manifest.read_text())
             files = data.get('files', {})
             if (data.get('platform') == 'macos-' + platform.machine()
-                    and data.get('versions', {}).get('yt-dlp') == YTDLP_VERSION
+                    and (audio_only or data.get('versions', {}).get('yt-dlp') == YTDLP_VERSION)
                     and set(files) == {p.name for p in out.iterdir()} - {'manifest.json'}
-                    and set(files) == ALLOWED_FILES
+                    and set(files) == allowed
                     and all((out / name).is_file() and sha(out / name) == item['sha256']
                             for name, item in files.items())):
                 print('Existing Mac tool bundle verified')
@@ -105,7 +108,7 @@ def prepare(out):
         return name
 
     versions = {}
-    for name, flag in [('ffmpeg', '-version'), ('ffprobe', '-version'), ('node', '--version')]:
+    for name, flag in commands:
         source = locate(name)
         versions[name] = run(source, flag).splitlines()[0]
         add(source)
@@ -122,20 +125,21 @@ def prepare(out):
         if unresolved:
             raise RuntimeError(f'Nonportable dependency left in {name}')
         copied[name]['sha256'] = sha(destination)
-    target = out / 'yt-dlp'
-    with urllib.request.urlopen(YTDLP_URL, timeout=90) as response, target.open('wb') as stream:
-        shutil.copyfileobj(response, stream)
-    if sha(target) != YTDLP_SHA256:
-        target.unlink()
-        raise RuntimeError('yt-dlp checksum mismatch')
-    target.chmod(0o755)
-    versions['yt-dlp'] = run(target, '--version')
-    copied['yt-dlp'] = {'sha256': YTDLP_SHA256, 'source': YTDLP_URL}
-    if set(copied) != ALLOWED_FILES:
-        raise RuntimeError('Native dependency set changed; review config/mac-media-tool-files.txt and license/source obligations')
+    if not audio_only:
+        target = out / 'yt-dlp'
+        with urllib.request.urlopen(YTDLP_URL, timeout=90) as response, target.open('wb') as stream:
+            shutil.copyfileobj(response, stream)
+        if sha(target) != YTDLP_SHA256:
+            target.unlink()
+            raise RuntimeError('yt-dlp checksum mismatch')
+        target.chmod(0o755)
+        versions['yt-dlp'] = run(target, '--version')
+        copied['yt-dlp'] = {'sha256': YTDLP_SHA256, 'source': YTDLP_URL}
+    if set(copied) != allowed:
+        raise RuntimeError(f'Native dependency set changed; review {policy} and license/source obligations')
     # Execute with no Homebrew PATH; loader references must be self-contained.
     environment = dict(os.environ, PATH='/usr/bin:/bin')
-    for name, flag in [('ffmpeg', '-version'), ('ffprobe', '-version'), ('node', '--version'), ('yt-dlp', '--version')]:
+    for name, flag in commands + ([] if audio_only else [('yt-dlp', '--version')]):
         subprocess.run([str(out / name), flag], env=environment, check=True, stdout=subprocess.DEVNULL)
     (out / 'manifest.json').write_text(json.dumps({
         'platform': 'macos-' + platform.machine(), 'versions': versions,
@@ -148,4 +152,6 @@ def prepare(out):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
-    prepare(parser.parse_args().out.resolve())
+    parser.add_argument("--audio-only", action="store_true", help="Only local audio codecs and their approved dependencies")
+    args = parser.parse_args()
+    prepare(args.out.resolve(), args.audio_only)

@@ -13,7 +13,8 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /** Content-addressed asset publication. Existing corrupt bytes are preserved for diagnosis. No GC. */
-class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.MAX_TOTAL_BYTES) : AssetStore {
+class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.MAX_TOTAL_BYTES,
+                     private val decoder: OriginalAudioDecoder? = null) : AssetStore {
     val directory: Path
     private val lock: Any
     init {
@@ -23,7 +24,10 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
         this.directory = directory.toRealPath()
         lock = StoreLocks.forPath(this.directory)
     }
-    override suspend fun containsVerified(asset: Asset): Boolean = withContext(Dispatchers.IO) { synchronized(lock) { verified(asset) } }
+    override suspend fun containsVerified(asset: Asset): Boolean = withContext(Dispatchers.IO) {
+        val context = coroutineContext
+        synchronized(lock) { verified(asset) { context[kotlinx.coroutines.Job]?.isActive == false } }
+    }
     override suspend fun write(asset: Asset, bytes: ByteArray) = withContext(Dispatchers.IO) { publish(asset, ByteArrayInputStream(bytes)); Unit }
     override suspend fun read(asset: Asset): ByteArray = withContext(Dispatchers.IO) { synchronized(lock) {
         require(verified(asset)) { "Asset unavailable or corrupt" }
@@ -53,7 +57,7 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
                 require(count == asset.byteCount && digest.digest().hex() == asset.hash) { "Asset hash or size mismatch" }
                 output.fd.sync()
             }
-            validateAudio(asset, pending)
+            validateAudio(asset, pending, cancelled)
             require(!cancelled()) { "Asset publication cancelled" }
             Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
         } finally { Files.deleteIfExists(pending) }
@@ -66,7 +70,7 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
      * Stores [file], a finished audio file nobody else writes, as [asset]: checked as [publish] checks its input, then
      * moved into place, or copied where it lives on another file system. [file] is gone afterwards in every case.
      */
-    fun adopt(asset: Asset, file: Path) = synchronized(lock) {
+    fun adopt(asset: Asset, file: Path, cancelled: () -> Boolean = { false }) = synchronized(lock) {
         try {
             val target = path(asset)
             if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
@@ -76,7 +80,8 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
             require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
             require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.size(file) == asset.byteCount) { "Asset size mismatch" }
             require(Files.newInputStream(file).use { digest(it, asset.byteCount) } == asset.hash) { "Asset hash mismatch" }
-            validateAudio(asset, file)
+            validateAudio(asset, file, cancelled)
+            require(!cancelled()) { "Asset publication cancelled" }
             val pending = directory.resolve(".pending-${UUID.randomUUID()}")
             try {
                 try { Files.move(file, pending, StandardCopyOption.ATOMIC_MOVE) }
@@ -88,12 +93,12 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
             } finally { Files.deleteIfExists(pending) }
         } finally { Files.deleteIfExists(file) }
     }
-    fun verified(asset: Asset): Boolean = synchronized(lock) {
+    fun verified(asset: Asset, cancelled: () -> Boolean = { false }): Boolean = synchronized(lock) {
         val target = path(asset)
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || Files.size(target) != asset.byteCount) return@synchronized false
         try {
             val actual = Files.newInputStream(target).use { digest(it, asset.byteCount) }
-            if (actual != asset.hash) false else { validateAudio(asset, target); true }
+            if (actual != asset.hash) false else { validateAudio(asset, target, cancelled); true }
         } catch (_: IOException) { false } catch (_: IllegalArgumentException) { false }
     }
     fun openVerified(asset: Asset): InputStream = synchronized(lock) {
@@ -101,8 +106,19 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
         Files.newInputStream(path(asset))
     }
     private fun path(asset: Asset): Path = directory.resolve("${asset.hash}.${asset.extension}").also { require(it.parent == directory) }
-    private fun validateAudio(asset: Asset, path: Path) {
-        require(asset.extension == "wav") { "A verified host decoder is required for this codec" }
+    /** Worker-only decoder input; each handoff rechecks content identity, size and audio metadata. */
+    fun verifiedPath(asset: Asset, cancelled: () -> Boolean = { false }): Path = synchronized(lock) {
+        require(verified(asset, cancelled)) { "Asset unavailable or corrupt" }
+        path(asset)
+    }
+    private fun validateAudio(asset: Asset, path: Path, cancelled: () -> Boolean = { false }) {
+        if (asset.extension != "wav") {
+            require(asset.role == com.choplab.core.model.AssetRole.ORIGINAL)
+            val info = requireNotNull(decoder) { "A verified host decoder is required for this codec" }
+                .inspect(path, asset.hash, cancelled)
+            require(info.frames == asset.frames && info.sampleRate == asset.sampleRate && info.channels == asset.channels) { "Audio metadata mismatch" }
+            return
+        }
         Files.newInputStream(path).use { input ->
             val info = WavCodec.inspect(input)
             require(info.frames == asset.frames && info.sampleRate == asset.sampleRate && info.channels == asset.channels) { "WAV metadata mismatch" }

@@ -46,15 +46,18 @@ class WavImportPort(
     }
 }
 
-class WavPcmPort(private val assets: FileAssetStore, val cache: PcmAssetCache = PcmAssetCache()) : PcmPort, Closeable {
+class WavPcmPort(private val assets: FileAssetStore, val cache: PcmAssetCache = PcmAssetCache(),
+                 private val decoder: OriginalAudioDecoder? = null) : PcmPort, Closeable {
     override fun close() = cache.close()
     override suspend fun load(asset: Asset): PcmAsset = cache.get(asset) { decode(asset) }
     private suspend fun decode(asset: Asset): PcmAsset = withContext(Dispatchers.IO) {
-        require(asset.extension == "wav") { "A host decoder is required for this codec" }
         val frames48 = (asset.frames * 48_000 + asset.sampleRate - 1) / asset.sampleRate
         require(frames48 * 8 <= EngineFormat.MAX_RESIDENT_BYTES && asset.frames * 8 <= EngineFormat.MAX_RESIDENT_BYTES)
         val context = coroutineContext
-        val audio = assets.openVerified(asset).use { WavCodec.read(CancellableInput(it, context)) }
+        val cancelled = { context[kotlinx.coroutines.Job]?.isActive == false }
+        val audio = if (asset.extension == "wav") assets.openVerified(asset).use { WavCodec.read(CancellableInput(it, context)) }
+            else requireNotNull(decoder) { "A host decoder is required for this codec" }
+                .decode(assets.verifiedPath(asset, cancelled), asset.hash, cancelled)
         require(audio.info.frames == asset.frames && audio.info.channels == asset.channels && audio.info.sampleRate == asset.sampleRate)
         coroutineContext.ensureActive()
         val stereo = if (audio.info.channels == 2) audio.samples else FloatArray(audio.samples.size * 2) { audio.samples[it / 2] }

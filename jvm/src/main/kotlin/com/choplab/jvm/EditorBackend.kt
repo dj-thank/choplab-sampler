@@ -33,6 +33,7 @@ class EditorBackend private constructor(
     private val scope: CoroutineScope,
     val audition: SourceAuditionController,
     private val autosave: AutosaveStore,
+    private val decoder: OriginalAudioDecoder?,
 ) {
     private val persistenceFailed = MutableStateFlow(false)
     val persistenceFailure: StateFlow<Boolean> = persistenceFailed.asStateFlow()
@@ -96,7 +97,7 @@ class EditorBackend private constructor(
         finally {
             audition.close()
             try { withContext(Dispatchers.IO) { engine.close() } }
-            finally { pcm.close(); scope.cancel() }
+            finally { pcm.close(); decoder?.close(); scope.cancel() }
         }
     }
 
@@ -109,15 +110,16 @@ class EditorBackend private constructor(
             directory: Path,
             engine: (ProgramCompiler) -> StreamingEnginePort,
             files: (FileAssetStore, ProgramCompiler) -> HostFileServices,
+            decoder: OriginalAudioDecoder? = null,
         ): EditorBackend {
             Files.createDirectories(directory)
             require(!Files.isSymbolicLink(directory)) { "Profile directory must not be a symbolic link" }
-            val assets = FileAssetStore(directory.toRealPath().resolve("assets"))
+            val assets = FileAssetStore(directory.toRealPath().resolve("assets"), decoder = decoder)
             val autosave = AutosaveStore(directory.toRealPath().resolve("autosave"), assets)
             val recovered = autosave.recover()
             val hadSavedDocument = (0..2).any { Files.exists(autosave.directory.resolve("autosave.$it.json")) }
             check(recovered != null || !hadSavedDocument) { "Autosave recovery failed; existing files were preserved" }
-            val pcm = WavPcmPort(assets)
+            val pcm = WavPcmPort(assets, decoder = decoder)
             var output: StreamingEnginePort? = null
             var scope: CoroutineScope? = null
             try {
@@ -127,10 +129,10 @@ class EditorBackend private constructor(
                 val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
                 val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output),
                     recovered?.project ?: Project(), recovered?.revision ?: 0)
-                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), autosave)
+                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), autosave, decoder)
             } catch (failure: Throwable) {
                 scope?.cancel()
-                try { output?.close() } finally { pcm.close() }
+                try { output?.close() } finally { pcm.close(); decoder?.close() }
                 throw failure
             }
         }
