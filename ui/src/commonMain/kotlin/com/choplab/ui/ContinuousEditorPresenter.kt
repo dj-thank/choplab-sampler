@@ -212,7 +212,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     else -> null
                 }
                 is Notice.Failed, is Notice.Rejected -> ContinuousStatus.FAILED
-                is Notice.Cancelled -> ContinuousStatus.CANCELLED
+                // A cancelled edit is answered to the dispatch that sent it, which says so or adds a take again;
+                // its notice arrives later and must not replace a newer message.
+                is Notice.Cancelled -> if (notice.operation == Operation.EDIT) it.status else ContinuousStatus.CANCELLED
                 else -> it.status
             }) }
         } }
@@ -764,7 +766,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         send(Action.RefreshTransport)
         if (studio.transport.value.playing) send(Action.Pause)
     }
-    private suspend fun send(action: Action): Boolean = studio.dispatch(action).accepted
+    private suspend fun send(action: Action): Boolean = studio.dispatch(action).let { result ->
+        if (!result.accepted && result.notice is Notice.Cancelled) refusal = ContinuousStatus.CANCELLED
+        result.accepted
+    }
     private fun cancelled(): Boolean { view.update { it.copy(status = ContinuousStatus.CANCELLED) }; return false }
     private suspend fun edit(intent: Intent): Boolean = send(Action.Edit(intent))
     private suspend fun releaseHeld() {

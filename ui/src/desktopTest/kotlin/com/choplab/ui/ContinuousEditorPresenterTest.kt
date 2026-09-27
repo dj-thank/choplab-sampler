@@ -615,6 +615,20 @@ class ContinuousEditorPresenterTest {
             assertNull(h.engine.duringPrepare)
             assertEquals("VOICE 2", h.studio.document.value.project.pads[49].name)
             h.until { it.status == ContinuousStatus.VOICE_SAVED }
+            // The cancelled attempt's own notice comes later and does not replace the message.
+            delay(200)
+            assertEquals(ContinuousStatus.VOICE_SAVED, h.presenter.state.value.status)
+        } finally { h.close() }
+    }
+
+    @Test fun anEditCancelledWhileItIsPreparedSaysSo() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            h.engine.duringPrepare = { h.studio.dispatch(Action.CancelWork) }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadGain(0, .5f)))
+            assertEquals(ContinuousStatus.CANCELLED, h.until { it.status == ContinuousStatus.CANCELLED }.status)
+            assertEquals(1f, h.studio.document.value.project.pads[0].gain, "The edit was not made")
         } finally { h.close() }
     }
 
