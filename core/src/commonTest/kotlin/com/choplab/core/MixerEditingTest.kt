@@ -33,6 +33,21 @@ class MixerEditingTest {
         return session.commit(plan)
     }
 
+    @Test fun firstBankRouteAndTrackAreAtomicAndNeverHijackAnExistingIdentity() {
+        val initial = Project(tracks = frozenListOf(track))
+        val session = EditSession(initial)
+        assertFailsWith<IllegalArgumentException> { session.plan(Intent.SetBankMix(0, track)) }
+        assertFailsWith<IllegalArgumentException> { session.plan(Intent.SetBankMix(8, track.copy(id = "new"))) }
+        val routed = track.copy(id = "new-bank")
+        val after = commit(session, session.plan(Intent.SetBankMix(0, routed)))
+        assertEquals(routed.id, after.banks[0].trackId); assertEquals(frozenListOf(track, routed), after.tracks)
+        assertEquals(1, session.undoCount)
+        assertFailsWith<IllegalArgumentException> { session.plan(Intent.SetBankMix(0, track)) }
+        assertFailsWith<IllegalArgumentException> { session.plan(Intent.SetBankMix(0, routed.copy(name = "Different"))) }
+        commit(session, requireNotNull(session.planUndo())); assertEquals(initial, session.project)
+        commit(session, requireNotNull(session.planRedo())); assertEquals(after, session.project)
+    }
+
     @Test fun appliedMixIsOneUndoAndCancellationFailedEffectsAndStalePlansKeepOldMusic() {
         val initial = project()
         val session = EditSession(initial)

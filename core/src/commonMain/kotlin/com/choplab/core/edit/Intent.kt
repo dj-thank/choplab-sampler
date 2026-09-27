@@ -10,6 +10,8 @@ sealed interface Intent {
     data class SetTempo(val tempo: Tempo, val gesture: String? = null) : Intent
     data class SetBank(val bank: Bank) : Intent
     data class SetTrackMix(val track: Track) : Intent
+    /** First BANK mix creates its explicit route and track together; later edits retain that identity. */
+    data class SetBankMix(val bankId: Int, val track: Track) : Intent
     data class SetMasterMix(val settings: com.choplab.engine.MixSettings) : Intent
     data class ImportAsset(val asset: Asset) : Intent
     data class SetSourceRange(val range: FrameRange, val gesture: String? = null) : Intent
@@ -77,6 +79,21 @@ object Reducer {
                 val current = requireNotNull(before.tracks.firstOrNull { it.id == intent.track.id })
                 require(current.kind == intent.track.kind && current.name == intent.track.name) { "Mixing cannot change track identity" }
                 before.copy(tracks = before.tracks.map { if (it.id == current.id) intent.track else it }.frozen())
+            }
+            is Intent.SetBankMix -> {
+                require(intent.bankId in before.banks.indices)
+                val bank = before.banks[intent.bankId]
+                require(intent.track.kind == TrackKind.BANK)
+                val tracks = if (bank.trackId == null) {
+                    require(before.tracks.none { it.id == intent.track.id }) { "A new BANK route cannot replace another track" }
+                    before.tracks + intent.track
+                } else {
+                    val current = before.tracks.first { it.id == bank.trackId }
+                    require(current.id == intent.track.id && current.name == intent.track.name) { "Mixing cannot change BANK identity" }
+                    before.tracks.map { if (it.id == current.id) intent.track else it }
+                }
+                before.copy(banks = before.banks.map { if (it.id == bank.id) it.copy(trackId = intent.track.id) else it }.frozen(),
+                    tracks = tracks.frozen())
             }
             is Intent.SetMasterMix -> before.copy(mix = intent.settings)
             is Intent.ImportAsset -> before.copy(
