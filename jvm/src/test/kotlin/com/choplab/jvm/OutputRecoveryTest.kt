@@ -18,18 +18,23 @@ class OutputRecoveryTest {
     })
     private suspend fun waitUntil(condition: () -> Boolean) = withTimeout(15_000) { while (!condition()) delay(5) }
 
-    /** Paces like a device; a switch makes it fail like an unplugged route, another keeps new ones from opening. */
+    /**
+     * Paces like a device; a switch makes it fail like an unplugged route, another keeps new ones from opening. A route
+     * change fails only the lines opened before it, as a line reopened on the new route plays.
+     */
     private class Device {
         val available = AtomicBoolean(true)
         val failing = AtomicBoolean(false)
+        val route = AtomicInteger()
         val opened = AtomicInteger()
         fun open(): AudioSink {
             check(available.get()) { "No output device" }
             opened.incrementAndGet()
+            val openedOn = route.get()
             return object : AudioSink {
                 override val encoding = SinkEncoding.FLOAT32
                 override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
-                    check(!failing.get()) { "Route changed" }
+                    check(!failing.get() && openedOn == route.get()) { "Route changed" }
                     LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000L / 48_000)
                     return length
                 }
@@ -46,11 +51,13 @@ class OutputRecoveryTest {
         try {
             waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
             recovery.start()
-            device.failing.set(true)
-            waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
-            device.failing.set(false)
-            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
-            assertEquals(2, device.opened.get())
+            // A switch the test flips back could still fail the first reopening on a slow machine; a route change
+            // fails only the line that was open.
+            device.route.incrementAndGet()
+            waitUntil { device.opened.get() == 2 && driver.status.value.phase == DriverPhase.ATTACHED }
+            delay(100)
+            assertEquals(2, device.opened.get(), "Brought back once, and it stays")
+            assertEquals(DriverPhase.ATTACHED, driver.status.value.phase)
         } finally { recovery.stop(); scope.cancel(); driver.close() }
     }
 

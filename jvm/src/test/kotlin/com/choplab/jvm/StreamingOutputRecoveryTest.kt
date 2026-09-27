@@ -95,7 +95,8 @@ class StreamingOutputRecoveryTest {
             assertTrue(driver.reattach())
             waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
             assertEquals(3, attempts.get())
-            assertEquals(1L, driver.snapshot().programRevision)
+            // The readout shows the carried-over program once the new line renders its first block.
+            waitUntil { driver.snapshot().programRevision == 1L }
             assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
         } finally { driver.close() }
     }
