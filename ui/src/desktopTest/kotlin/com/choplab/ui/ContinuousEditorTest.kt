@@ -363,6 +363,91 @@ class ContinuousEditorTest {
         } finally { phone.close(); Locale.setDefault(previous) }
     }
 
+    @Test fun theRepeatPanelSaysWhatItWouldDoAndRepeatsOnlyIntoEmptyBars() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        val actions = mutableListOf<ContinuousEditorAction>()
+        try {
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state(), actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                assertTrue(requireNotNull(scene.tag("ce-repeat")).boundsInRoot.height >= 48f)
+                scene.click("ce-repeat")
+                fun text(tag: String) = requireNotNull(scene.tag(tag)) { tag }.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text }
+                fun enabled() = requireNotNull(scene.tag("ce-repeat-apply")).config.getOrNull(SemanticsProperties.Disabled) == null
+                // Song position 0:08.3 at 92 BPM (a bar is 2.61 s) is in the fourth bar. Bars 4-7 hold six clips, and
+                // bars 8-11 already two (a drum and a voice at 0:20): four bars once would layer over them.
+                assertEquals("4小節目から", text("ce-repeat-from"))
+                assertEquals("8〜11小節目には、もう配置があります。先に空けるか、長さか回数を変えてください。", text("ce-repeat-plan"))
+                assertFalse(enabled())
+                // The button says why too, for TalkBack.
+                assertEquals(text("ce-repeat-plan"), requireNotNull(scene.tag("ce-repeat-apply")).config.getOrNull(SemanticsProperties.StateDescription))
+                (listOf(1, 2, 4, 8).map { "ce-repeat-bars-$it" } + listOf(1, 2, 4, 8).map { "ce-repeat-times-$it" }).forEach { tag ->
+                    assertTrue(requireNotNull(scene.tag(tag)).boundsInRoot.height >= 48f, tag)
+                }
+                // Eight bars once: bars 4-11 hold eight clips and bars 12-19 are empty.
+                scene.click("ce-repeat-bars-8")
+                assertEquals(true, requireNotNull(scene.tag("ce-repeat-bars-8")).config.getOrNull(SemanticsProperties.Selected))
+                assertEquals("この範囲の配置8個を、12〜19小節目にくり返します。", text("ce-repeat-plan"))
+                // One bar once goes into one bar, the fifth, which already holds clips.
+                scene.click("ce-repeat-bars-1")
+                assertEquals("5小節目には、もう配置があります。先に空けるか、長さか回数を変えてください。", text("ce-repeat-plan"))
+                scene.click("ce-repeat-bars-8")
+                assertTrue(enabled())
+                assertTrue(actions.none { it is ContinuousEditorAction.RepeatBars }, "Choosing repeats nothing")
+                scene.capture("repeat-bars-desktop.png")
+                scene.click("ce-repeat-apply")
+                assertEquals(ContinuousEditorAction.RepeatBars(ContinuousEditorFixture.readout().songFrame, 8, 1), actions.last())
+                assertNull(scene.tag("ce-repeat-panel"), "Repeating closes the panel")
+            } finally { scene.close() }
+            // Bars with nothing in them, or only a silent clip an earlier build saved, have nothing to repeat.
+            fun seconds(value: Double) = (value * CONTINUOUS_TIMELINE_RATE).toLong()
+            val silent = ContinuousClip("silent", "drums", "B01", seconds(8.0), 1, 1, 2, 192_000, sourceRate = 96_000)
+            val empty = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state().copy(clips = listOf(silent), selectedClipId = null), actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                empty.settle()
+                empty.click("ce-repeat")
+                assertEquals("この範囲には配置がありません。", requireNotNull(empty.tag("ce-repeat-plan")).config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text })
+                assertNotNull(requireNotNull(empty.tag("ce-repeat-apply")).config.getOrNull(SemanticsProperties.Disabled))
+            } finally { empty.close() }
+            // A four-second sound in the fourth bar (a bar is 2.61 s) would play over its own repeat every bar, not every two.
+            val long = ContinuousClip("long", "drums", "B01", seconds(8.0), seconds(4.0), 0, seconds(4.0), seconds(6.0))
+            val outlasting = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state().copy(clips = listOf(long), selectedClipId = null), actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                outlasting.settle()
+                outlasting.click("ce-repeat")
+                fun text() = requireNotNull(outlasting.tag("ce-repeat-plan")).config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text }
+                outlasting.click("ce-repeat-bars-1")
+                assertEquals("この範囲に、選んだ長さより長く続く音があるので、くり返すと音が重なります。長さを長くしてください。", text())
+                val apply = requireNotNull(outlasting.tag("ce-repeat-apply"))
+                assertNotNull(apply.config.getOrNull(SemanticsProperties.Disabled))
+                assertEquals(text(), apply.config.getOrNull(SemanticsProperties.StateDescription))
+                outlasting.click("ce-repeat-bars-2")
+                assertEquals("この範囲の配置1個を、6〜7小節目にくり返します。", text())
+                assertNull(requireNotNull(outlasting.tag("ce-repeat-apply")).config.getOrNull(SemanticsProperties.Disabled))
+            } finally { outlasting.close() }
+            // On a phone with large text every choice keeps a 48 dp target.
+            val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE), actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                phone.settle()
+                requireNotNull(requireNotNull(phone.tag("ce-repeat")).config[SemanticsActions.OnClick].action)()
+                phone.settle()
+                (listOf(1, 2, 4, 8).map { "ce-repeat-bars-$it" } + listOf(1, 2, 4, 8).map { "ce-repeat-times-$it" } + "ce-repeat-apply").forEach { tag ->
+                    assertTrue(requireNotNull(phone.tag(tag)) { tag }.size.height >= 48, tag)
+                }
+                phone.capture("repeat-bars-phone-font200.png")
+            } finally { phone.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun sliderDragsCommitOneDocumentEditWhenReleased() = runBlocking<Unit> {
         for ((stage, tag) in listOf(ContinuousStage.CHOP to "ce-source-range", ContinuousStage.BEAT to "ce-clip-gain")) {
             val actions = mutableListOf<ContinuousEditorAction>()

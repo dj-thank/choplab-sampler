@@ -275,4 +275,55 @@ class ContinuousClipEditsTest {
         assertFalse(ProgramCompiler.songFits(over))
         assertEquals(39, apply(over, ContinuousEditorAction.DeleteClip("over-0")).clips.size)
     }
+
+    @Test fun aRepeatCopiesItsBarsIntoTheEmptyBarsAfterThemOnTheBeatOrByTheBarsFrames() {
+        // 120 BPM: a bar is 96 000 frames. Bar 1 holds a hit on its second beat and one placed freely; bar 3 one more.
+        val hit = fixture().let { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(range = FrameRange(0, 2_400)) else it }.frozen()) }
+        val onBeat = apply(hit, ContinuousEditorAction.PlacePad(0, null, 24_000), ContinuousGrid.BEAT)
+        val free = apply(onBeat, ContinuousEditorAction.PlacePad(0, null, 50_000))
+        val p = apply(free, ContinuousEditorAction.PlacePad(0, null, 200_000), ContinuousGrid.BEAT)
+        assertEquals(listOf(24_000L, 50_000L, 192_000L), p.clips.map { p.start(it) })
+        // From the song position's bar: bar 3's hit repeats into bar 4, on the beat.
+        val third = apply(p, ContinuousEditorAction.RepeatBars(200_000, 1, 1)).clips.drop(3).single()
+        assertEquals(11_520L to null, third.startTick to third.timelineStartFrame)
+        // Twice would need bars 2 and 3 empty; bar 3 is not.
+        assertFailsWith<IllegalArgumentException> { apply(p, ContinuousEditorAction.RepeatBars(10_000, 1, 2)) }
+        val once = apply(p, ContinuousEditorAction.RepeatBars(10_000, 1, 1))
+        val copies = once.clips.drop(3)
+        assertEquals(listOf(120_000L, 146_000L), copies.map { once.start(it) })
+        assertEquals(listOf(4_800L, null), copies.map { if (it.timelineStartFrame == null) it.startTick else null }, "The beat's copy keeps to the beat")
+        fun sound(clip: Clip) = listOf(clip.trackId, clip.assetHash, clip.range, clip.gain, clip.pan)
+        assertEquals(p.clips.take(2).map(::sound), copies.map(::sound), "The same sounds, tracks and levels")
+        // Bars with nothing to repeat, and choices the panel does not offer, are refused.
+        for (refused in listOf(ContinuousEditorAction.RepeatBars(400_000, 1, 1), ContinuousEditorAction.RepeatBars(0, 3, 1),
+                ContinuousEditorAction.RepeatBars(0, 1, 0))) {
+            assertFailsWith<IllegalArgumentException>("$refused") { apply(once, refused) }
+        }
+        // A freely placed clip moves by the bars' frames as playback maps them: at 97 BPM a bar is 118 762 frames.
+        val odd = apply(fixture().copy(tempo = Tempo(97_000)), ContinuousEditorAction.PlacePad(0, null, 1_000))
+        // Three times is not among the panel's choices, even into empty bars.
+        assertFailsWith<IllegalArgumentException> { apply(odd, ContinuousEditorAction.RepeatBars(0, 1, 3)) }
+        val repeated = apply(odd, ContinuousEditorAction.RepeatBars(0, 1, 2))
+        assertEquals(listOf(1_000L, 1_000L + ProgramCompiler.tickToFrame(3_840, 97_000), 1_000L + ProgramCompiler.tickToFrame(7_680, 97_000)),
+            repeated.clips.map { repeated.start(it) })
+    }
+
+    @Test fun aRepeatKeepsItsCopiesInTheirBarsAndNeverPlaysASoundOverItsOwnRepeat() {
+        // At 97 BPM bars 2-5 run 475 052 frames from 118 762, and bars 6-9 one frame fewer, to 1 068 864.
+        val odd = fixture().copy(tempo = Tempo(97_000))
+        val last = apply(odd, ContinuousEditorAction.PlacePad(0, null, 593_813))
+        val copy = apply(last, ContinuousEditorAction.RepeatBars(118_762, 4, 1)).clips.last()
+        assertEquals(1_068_864L, copy.timelineStartFrame, "The last frame of bars 6-9, not bar 10's first")
+        // 240 BPM: a bar is 48 000 frames and the two-second sound lasts two. Repeated every bar it would play over itself.
+        val long = apply(fixture().copy(tempo = Tempo(240_000)), ContinuousEditorAction.PlacePad(0, null, 0))
+        assertFailsWith<IllegalArgumentException> { apply(long, ContinuousEditorAction.RepeatBars(0, 1, 1)) }
+        assertEquals(listOf(0L, 96_000L), apply(long, ContinuousEditorAction.RepeatBars(0, 2, 1)).let { p -> p.clips.map { p.start(it) } })
+        // A silent clip an earlier build saved is not repeated, and alone it is nothing to repeat.
+        val placed = apply(fixture(96_000), ContinuousEditorAction.PlacePad(0, null, 0))
+        val silent = placed.copy(clips = placed.clips.map { it.copy(range = FrameRange(1, 2)) }.frozen())
+        assertFailsWith<IllegalArgumentException> { apply(silent, ContinuousEditorAction.RepeatBars(0, 2, 1)) }
+        val both = apply(silent, ContinuousEditorAction.PlacePad(0, null, 1_000))
+        assertEquals(3, apply(both, ContinuousEditorAction.RepeatBars(0, 2, 1)).clips.size)
+    }
 }
+

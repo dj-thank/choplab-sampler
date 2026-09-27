@@ -302,6 +302,11 @@ sealed interface ContinuousEditorAction {
                         val timelineStartFrame: Long) : ContinuousEditorAction
     data class SplitClip(val clipId: String, val timelineFrame: Long) : ContinuousEditorAction
     data class DuplicateClip(val clipId: String) : ContinuousEditorAction
+    /**
+     * Repeats every clip starting in the [bars] bars from the bar holding [timelineFrame] [times] more times right after
+     * them, when those bars are empty. One Undo.
+     */
+    data class RepeatBars(val timelineFrame: Long, val bars: Int, val times: Int) : ContinuousEditorAction
     data class DeleteClip(val clipId: String) : ContinuousEditorAction
     data class SetClipGain(val clipId: String, val gain: Float) : ContinuousEditorAction
     data class SetTrackMuted(val trackId: String, val muted: Boolean) : ContinuousEditorAction

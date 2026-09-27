@@ -66,6 +66,15 @@ object ContinuousClipEdits {
     /** The bar holding [frame], counted from 0. */
     fun barAt(frame: Long, milliBpm: Int): Long = lineAtOrBefore(frame.coerceIn(0, MAX_TIMELINE_FRAMES), milliBpm, BAR_TICKS)
 
+    /**
+     * The frames of the [section]th run of [bars] bars counted from the bar holding [frame] (section 0 is the run it
+     * starts), as playback maps their ticks.
+     */
+    fun barsFrames(frame: Long, milliBpm: Int, bars: Int, section: Int = 0): LongRange {
+        val first = (barAt(frame, milliBpm) + section.toLong() * bars) * BAR_TICKS
+        return ProgramCompiler.tickToFrame(first, milliBpm) until ProgramCompiler.tickToFrame(first + bars * BAR_TICKS, milliBpm)
+    }
+
     /** The last line of [step] ticks that sounds at or before [at]. */
     private fun lineAtOrBefore(at: Long, milliBpm: Int, step: Long): Long {
         // A line sounds at the floor of its exact frame, as playback maps ticks, so the exact division can be one short.
@@ -77,6 +86,10 @@ object ContinuousClipEdits {
     /** [clip] starting at [frame]: on a grid at its nearest line, where it keeps that beat as the tempo changes. */
     private fun startingAt(clip: Clip, frame: Long, milliBpm: Int, grid: ContinuousGrid): Clip =
         snapTick(frame, milliBpm, grid)?.let { clip.copy(startTick = it, timelineStartFrame = null) } ?: clip.copy(timelineStartFrame = frame)
+
+    /** Whether [clip] sounds at all: one saved by an earlier build can be shorter than a timeline frame. */
+    fun sounds(clip: ContinuousClip): Boolean =
+        ProgramCompiler.sourceFrameTo48k(clip.sourceEndFrame, clip.sourceRate) > ProgramCompiler.sourceFrameTo48k(clip.sourceStartFrame, clip.sourceRate)
 
     /** Pitch, reverse or tone change how a PAD sounds; the song plays placed sounds as they are, so such a PAD is rendered first. */
     fun transformed(pad: Pad): Boolean = pad.pitchSemitones != 0.0 || pad.reverse || pad.tone < com.choplab.engine.Pad.TONE_BYPASS
@@ -181,6 +194,28 @@ object ContinuousClipEdits {
                         requireNotNull(adjacentTick(start, tempo, grid, forward = true))))
                 clips = clips + copy
                 reshaped += copy.id
+            }
+            is ContinuousEditorAction.RepeatBars -> {
+                require(action.bars in setOf(1, 2, 4, 8) && action.times in setOf(1, 2, 4, 8))
+                val section = barsFrames(action.timelineFrame, tempo, action.bars)
+                // A silent clip saved by an earlier build is not repeated: what a gesture creates must sound.
+                val copied = clips.filter { startFrame(project, it) in section && durationFrames(project, it) > 0 }
+                require(copied.isNotEmpty()) { "Nothing to repeat" }
+                // A clip longer than the bars would play over its own repeat.
+                require(copied.none { durationFrames(project, it) > section.last + 1 - section.first }) { "A clip outlasts the bars" }
+                val after = barsFrames(action.timelineFrame, tempo, action.bars, 1).first..barsFrames(action.timelineFrame, tempo, action.bars, action.times).last
+                // Repeats fill empty bars only: layered over other clips they would double what is there.
+                require(clips.none { startFrame(project, it) in after }) { "The bars after are not empty" }
+                clips = clips + (1..action.times).flatMap { time ->
+                    val bars = barsFrames(action.timelineFrame, tempo, action.bars, time)
+                    copied.map { clip ->
+                        // On the beat a copy keeps to the beat. A clip placed freely keeps its place from the bars' start,
+                        // within its copy of them: bars can be a frame shorter than the ones copied.
+                        val at = clip.timelineStartFrame
+                        if (at == null) clip.copy(id = freshId("clip"), startTick = clip.startTick + time.toLong() * action.bars * BAR_TICKS)
+                        else clip.copy(id = freshId("clip"), timelineStartFrame = minOf(at - section.first + bars.first, bars.last))
+                    }
+                }
             }
             is ContinuousEditorAction.DeleteClip -> { selected(action.clipId); clips = clips.filterNot { it.id == action.clipId } }
             is ContinuousEditorAction.SetClipGain -> replace(selected(action.clipId).copy(gain = action.gain))
