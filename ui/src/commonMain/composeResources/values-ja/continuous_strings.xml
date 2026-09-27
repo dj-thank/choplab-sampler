@@ -54,8 +54,14 @@
     <string name="ce_audition">試聴</string>
     <string name="ce_loop_pad">この音をループ</string>
     <string name="ce_stop_loop">このループを止める</string>
-    <string name="ce_pad_play">鳴らし方</string>
-    <string name="ce_pad_play_title">%1$s の鳴らし方</string>
+    <string name="ce_pad_play">PADの設定</string>
+    <string name="ce_pad_play_title">%1$s の設定</string>
+    <string name="ce_pad_trim">切り位置</string>
+    <string name="ce_pad_trim_start">はじめ</string>
+    <string name="ce_pad_trim_end">おわり</string>
+    <string name="ce_pad_trim_earlier">%1$sを%2$dミリ秒前へ</string>
+    <string name="ce_pad_trim_later">%1$sを%2$dミリ秒後ろへ</string>
+    <string name="ce_pad_trim_help">続けて動かした分は、1回の「戻す」でまとめて戻ります。</string>
     <string name="ce_reverse">逆再生</string>
     <string name="ce_off">オフ</string>
     <string name="ce_on">オン</string>

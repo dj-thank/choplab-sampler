@@ -296,6 +296,20 @@ class ContinuousEditorTest {
                 for (tag in listOf("ce-reverse-off", "ce-reverse-on", "ce-mode-once", "ce-mode-held", "ce-choke-0", "ce-choke-4", "ce-clear-pad")) {
                     assertTrue(requireNotNull(scene.tag(tag)) { tag }.boundsInRoot.height >= 48, "$tag is a full-size button")
                 }
+                // Where it starts and ends, a millisecond or ten at a time, shown to the millisecond.
+                fun text(tag: String) = requireNotNull(scene.tag(tag)) { tag }.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text }
+                assertEquals("はじめ  0:00.000", text("ce-trim-start-time"))
+                assertEquals("おわり  0:06.000", text("ce-trim-end-time"))
+                for (tag in listOf("ce-trim-start-earlier-10", "ce-trim-start-later-1", "ce-trim-end-earlier-1", "ce-trim-end-later-10", "ce-trim-audition")) {
+                    assertTrue(requireNotNull(scene.tag(tag)) { tag }.boundsInRoot.height >= 48, "$tag is a full-size button")
+                }
+                assertEquals("はじめを10ミリ秒前へ", requireNotNull(scene.tag("ce-trim-start-earlier-10")).config.getOrNull(SemanticsProperties.ContentDescription)?.single())
+                scene.click("ce-trim-start-later-10")
+                assertEquals(ContinuousEditorAction.NudgePadBoundary(2, end = false, milliseconds = 10), actions.last())
+                scene.click("ce-trim-end-earlier-1")
+                assertEquals(ContinuousEditorAction.NudgePadBoundary(2, end = true, milliseconds = -1), actions.last())
+                scene.click("ce-trim-audition")
+                assertEquals(ContinuousEditorAction.TapPad(2), actions.last())
                 scene.click("ce-reverse-on")
                 assertEquals(ContinuousEditorAction.SetPadReverse(2, true), actions.last())
                 scene.click("ce-mode-held")
@@ -331,7 +345,10 @@ class ContinuousEditorTest {
             try {
                 phone.settle()
                 assertNotNull(phone.tag("ce-pad-play-panel"))
-                for (tag in listOf("ce-reverse-on", "ce-mode-held", "ce-choke-4")) assertTrue(requireNotNull(phone.tag(tag)) { tag }.boundsInRoot.height >= 48)
+                // The panel scrolls on a phone: every button keeps its full size, also those below the first screen.
+                for (tag in listOf("ce-trim-start-earlier-10", "ce-trim-end-later-10", "ce-trim-audition", "ce-reverse-on", "ce-mode-held", "ce-choke-4", "ce-clear-pad")) {
+                    assertTrue(requireNotNull(phone.tag(tag)) { tag }.size.height >= 48, "$tag is a full-size button")
+                }
                 phone.capture("pad-play-phone-font200.png")
             } finally { phone.close() }
         } finally { Locale.setDefault(previous) }

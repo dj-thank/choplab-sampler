@@ -264,6 +264,11 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
 }
 
 internal fun cePadName(id: Int) = "${'A' + id / 16}${(id % 16 + 1).toString().padStart(2, '0')}"
+/** Minutes, seconds and milliseconds, for trims a millisecond at a time. */
+internal fun ceTimeMillis(frame: Long, rate: Int): String {
+    val millis = frame.coerceAtLeast(0) * 1000 / rate.coerceAtLeast(1)
+    return "${millis / 60_000}:${(millis / 1000 % 60).toString().padStart(2, '0')}.${(millis % 1000).toString().padStart(3, '0')}"
+}
 internal fun ceTime(frame: Long, rate: Int = CONTINUOUS_TIMELINE_RATE, precise: Boolean = false): String {
     val centiseconds = frame.coerceAtLeast(0) * 100 / rate.coerceAtLeast(1)
     val seconds = centiseconds / 100

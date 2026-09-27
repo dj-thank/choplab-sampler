@@ -163,6 +163,45 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aPadsStartAndEndMoveByMillisecondsWithinItsSoundOneUndoPerRun() = runBlocking {
+        val slow = Asset("d".repeat(64), "wav", 100, 44_100, 2, 44_100, "44.1 kHz")
+        val h = Harness { p -> p.copy(assets = (p.assets + slow).frozen(),
+            pads = p.pads.map { if (it.id == 3) Pad(3, slow.hash, FrameRange(0, 44_100)) else it }.frozen()) }
+        try {
+            fun range() = requireNotNull(h.studio.document.value.project.pads[0].range)
+            // At 48 kHz a millisecond is 48 frames.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = 10)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = 10)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = -1)))
+            assertEquals(FrameRange(912, 48_000), range())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = true, milliseconds = -1)))
+            assertEquals(FrameRange(912, 47_952), range())
+            // One Undo per run of nudges of one boundary, as the earlier app's trim dials.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(FrameRange(912, 48_000), range())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(FrameRange(0, 48_000), range())
+            assertFalse(h.studio.document.value.canUndo)
+            // Within its sound: at a limit a nudge changes nothing and is not refused.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = -10)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = true, milliseconds = 10)))
+            assertEquals(FrameRange(0, 48_000), range())
+            assertFalse(h.studio.document.value.canUndo, "Nothing changed, so nothing to undo")
+            // Never past the other boundary.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = 1000)))
+            assertEquals(FrameRange(47_999, 48_000), range())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = true, milliseconds = -1000)))
+            assertEquals(FrameRange(47_999, 48_000), range())
+            // A millisecond is counted at the sound's own rate: 44 frames at 44.1 kHz.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(3, end = true, milliseconds = -1)))
+            assertEquals(FrameRange(0, 44_056), requireNotNull(h.studio.document.value.project.pads[3].range))
+            // Only a PAD with a sound, by a nonzero step of at most a second.
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(5, end = false, milliseconds = 1)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = 0)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.NudgePadBoundary(0, end = false, milliseconds = 1001)))
+        } finally { h.close() }
+    }
+
     @Test fun aPadsPlaySettingsChangeItOneUndoEachAndClearingEmptiesIt() = runBlocking {
         val h = Harness()
         try {
