@@ -329,8 +329,18 @@ import kotlin.math.roundToLong
             HorizontalDivider(color = CEColor.Border.copy(alpha = .4f))
             Text(stringResource(Res.string.ce_other_import), color = CEColor.Border, fontSize = 14.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CEButton(stringResource(Res.string.ce_mic_record), {}, Modifier.weight(1f), enabled = false, reason = stringResource(Res.string.ce_unavailable))
+                if (state.recordingSource) CEButton(stringResource(Res.string.ce_stop_voice),
+                    { onAction(ContinuousEditorAction.StopSourceRecording) }, Modifier.weight(1f), primary = true, tag = "ce-source-record-stop")
+                else CEActionButton(stringResource(Res.string.ce_mic_record), ContinuousEditorAction.RecordSource,
+                    state, ContinuousCapability.RECORD_SOURCE, onAction, Modifier.weight(1f), tag = "ce-source-record")
                 CEButton(stringResource(Res.string.ce_device_record), {}, Modifier.weight(1f), enabled = false, reason = stringResource(Res.string.ce_unavailable))
+            }
+            if (state.recordingSource) {
+                val capture by CELive(true, refreshKey, readout)
+                Text(stringResource(Res.string.ce_source_recording, (capture.recordingMillis / 1_000).toString()),
+                    fontSize = 14.sp, modifier = Modifier.testTag("ce-source-recording"))
+                CEButton(stringResource(Res.string.ce_source_record_discard),
+                    { onAction(ContinuousEditorAction.DiscardSourceRecording) }, Modifier.fillMaxWidth(), tag = "ce-source-record-discard")
             }
         }
     }
@@ -545,6 +555,9 @@ import kotlin.math.roundToLong
         ContinuousStatus.EXPORTED -> Res.string.ce_exported; ContinuousStatus.CANCELLED -> Res.string.ce_cancelled
         ContinuousStatus.FAILED -> Res.string.ce_failed; ContinuousStatus.NO_OUTPUT -> Res.string.ce_no_output
         ContinuousStatus.COPIED -> Res.string.ce_copied
+        ContinuousStatus.SOURCE_RECORDED -> Res.string.ce_source_recorded
+        ContinuousStatus.SOURCE_RECORDING_LIMIT -> Res.string.ce_source_recording_limit
+        ContinuousStatus.SOURCE_RECORDING_INTERRUPTED -> Res.string.ce_source_recording_interrupted
         ContinuousStatus.VOICE_SAVED -> Res.string.ce_voice_saved; ContinuousStatus.VOICE_SAVED_SONG_ONLY -> Res.string.ce_voice_saved_song_only
         ContinuousStatus.VOICE_SAVED_PAD_ONLY -> Res.string.ce_voice_saved_pad_only; ContinuousStatus.VOICE_INTERRUPTED -> Res.string.ce_voice_interrupted
         ContinuousStatus.VOICE_TOO_SHORT -> Res.string.ce_voice_too_short; ContinuousStatus.VOICE_NOT_SAVED -> Res.string.ce_voice_not_saved

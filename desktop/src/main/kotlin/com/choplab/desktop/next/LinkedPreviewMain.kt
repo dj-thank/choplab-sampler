@@ -60,7 +60,7 @@ fun main() {
                     closing = true
                     scope.launch {
                         val closed = try {
-                            closeAfterAutosave(backend::flushAutosave,
+                            closeAfterAutosave({ check(presenter.finishRecording()); backend.flushAutosave() },
                                 { ports.confirmCloseWithoutAutosave().also { if (it) closedWithoutAutosave.set(true) } }) {
                                 presenter.close(); exitApplication()
                             }
@@ -105,7 +105,7 @@ fun main() {
     } finally { recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
 }
 
-private class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {
+internal class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {
     private val japanese get() = Locale.getDefault().language == "ja"
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
     override fun originalPlaying() = backend.engine.originalPlayback().playing
@@ -147,6 +147,7 @@ private class DesktopEditorPorts(private val backend: NextBackend, private val p
     }
     override fun cueVoice() = backend.voice.cue()
     override fun voiceFull() = backend.voice.full
+    override fun voiceRecordedMillis() = backend.voice.recordedMillis
     override fun voiceInterrupted() = backend.voice.interrupted
     override suspend fun stopVoice(name: String) = backend.voice.stop(name)
     override suspend fun discardVoice() = backend.voice.discard()
