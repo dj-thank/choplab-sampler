@@ -133,12 +133,14 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
 | 4 ビート | 着手（BPM入力・tap・swing接続済み、空曲voice/PAD録音候補 `b86eeac` は共有clock・1Undo・24bit書出し・保存再開の本番窓口試験成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
 | 5 ボーカル・歌詞 | LRC基盤はPR156でmain統合済み、編集/同期/ファイル接続はroot `codex/lyrics-editor-integration`候補でLOCAL_PASS。段階全体は未完 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
-| 6 作詞・TTS | 計画 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
+| 6 作詞・TTS | Google提案基盤候補 `95a1ad7`はcore/provider/controller/panel/本番保存経路19件とAndroid compileが成功。本番VOCAL入口とFlowPlanner/端末TTSはAstra Maxが接続中、段階全体は未完 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
 | 7 ミックス・FX | 計画 | source/bank/stem/vocal/guide/click track、gain/pan/mute/solo/meter、EQ/filter/comp/delay/reverb/master。latency/tail/loop。24bit/16bitディザ、stems/LRC/長さ、同一mix graph |
 | 8 ピッチ補正 | 計画 | YIN/PSOLA等を単音voiceで比較。key/scale/retune/vibrato、無声/低信頼bypass、非破壊A/B。測定と人間の試聴が採用条件 |
 | 9 4パート分離 | 計画 | drums/bass/other/vocalsを1推論から逐次出力、acapella/ボーカル抜き。commit/hash固定DL、shape/order、空きRAM/ORT/長尺peak/cancel、4資産transactionを両OSで確認 |
 | 10 練習coach | 計画 | local timing/pitch指標、take履歴、苦手行反復、日本語説明。reference有無・rap・低信頼を区別し、未実装ASRや根拠のない正解率を作らない |
 | 11 仕上げ・1.0 | 計画 | WASAPI event出力/入力/loopback、format/device/COM失敗とfallback。installer/更新/初回guide、起動/RAM/電池、TalkBack/keyboard、署名と配布readback、対象routeの実音とHuman受入 |
+
+Google提案基盤は `LlmProvider` と薄いHTTP adapter、送信内容と同意、厳密schema/かな再計算、usage実値と料金不明、429待ち/明示再試行、取消/遅着/revision/終了を実装した。通常hostは用途・利用条件の実確認までUNVERIFIEDで送信を無効にする。HTTP adapter→controller→Studio expectedRevision→1Undo→LRC/archive/autosave再開の本番経路2件を含む19件が成功し、終了が入力検証と競合しても鍵やjobを残さない回帰も確認した。現在は本文を手動start tick/行長で配置し、title/sectionは提案のmetadataとして表示する。構造の永続化・FlowPlanner・TTS・安全な鍵保存は後続実装で、実Google API/課金・provider/public受入は未確認。本番VOCAL入口の候補 `fe07111`は別のhost接続変更として統合する。rollbackは本PRのrevert、元の制作と音声bytesを保持する。
 
 ## 要求を落とさない対応表
 
