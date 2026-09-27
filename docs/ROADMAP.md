@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `108cae0cd2ac17b2f4358c9101890e53fdc4c085`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `97e575d2da12e02a8695f7187f8cddd9a021c9a8`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
@@ -35,7 +35,9 @@
 | SOURCE/HAND [PR163](https://github.com/dj-thank/choplab-sampler/pull/163) | main `108cae0`へ統合済み。head `4cfe93f`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36342078261)成功。独立音声経路・左右円盤・独立音量/CUTを接続し、engine17/JVM5/UI103/desktop12件・Android compileの成功証拠とsource一致を確認。HAND込み1万blockは割当0、p99 0.678ms（192frame/48kHz、Mac合成） | queue満杯/遅着/取消/切断、SOURCE継続、出力bytes・制作不変更を確認。Mac installed `0b42444`には未搭載。長尺prefetch・実音・物理入力遅延・TalkBack/Humanは未確認 |
 | デザインの取り違え | 最後のBEAT画像とSOURCE/HAND画像をDESIGNへ保存。旧2枚目・3枚目は撤回済み | 大きな4×4 PAD＋右の配置、4工程、共通原曲監視、独立音量、可変divider、A–H×16を維持。scratchはSOURCE/HANDの独立経路まで実装・検証 |
 | 取込・長尺・OS差 | 約349秒のresident上限、AndroidのMediaCodec→16bit WAV経路が残る。ライブチョップの固定60ms補正もroute別実測への移行対象。過去の約44%高速化は限定した合成FLAC条件 | prefetch/RAM境界、原本bytes・精度・左右、取消/再試行、実利用時の待ち時間を確認。Macの成功をAndroid/Windowsの成功にしない |
-| 全制作機能 | ライブラリ等の移植は下の個別記録にあるが、段階0〜11全体の受入は未完 | BANK名/色/役割・PAD編集、空曲録音・metronome/count-in・loop overdub・step/pattern、vocal take/comp/punch/LRC、任意AI、4stem/mixer/FX/export、保存復旧、配布サイズを受入表に沿って完遂。UIと録音だけへ範囲を縮めない |
+| BANK/PAD [PR164](https://github.com/dj-thank/choplab-sampler/pull/164) | main `97e575d`へ統合済み。head `a6aa946`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36343657193)成功。通常BEAT→取消/明示適用/1Undo→原音を保持するarchive保存/再開を接続。modal終了待機の試験修正後panel4/本番3件成功 | 名前/色/役割、PADpan/ADSR、範囲/invalid/stale/録音/処理中/音声拒否を確認。Mac installed `0b42444`へ未搭載、実音・TalkBack/Humanは未確認 |
+| count-in/クリック | 本番接続候補 `788c2ec`は検証候補 `473dd6c`と機能source一致。engine96/core62/JVM109とHAND+click込み1万blockの割当0・p99 8.60%（Mac合成）の既存証拠を再利用。rootの現在baseでもPresenter73・本番録音5/空曲1・画面2件・Android compileが成功 | 0/1/2小節、monitor-only click、cue前PAD/マイク除外、permission/Stop/切断/遅着/取消、1Undo/24bit/archive再開を確認。新headの必須CI後に統合。実マイク・聴感・route往復補正/Humanは未確認 |
+| 全制作機能 | ライブラリ等の移植は下の個別記録にあるが、段階0〜11全体の受入は未完 | BANK/PADや空曲録音の統合証拠と、metronome/count-in・loop overdub・step/pattern、vocal take/comp/punch/LRC、任意AI、4stem/mixer/FX/export、保存復旧、配布サイズの未完を受入表に沿って完遂。UIと録音だけへ範囲を縮めない |
 | インストール済みと実運用 | Mac NEXTはmain `0b42444`へ更新済み（238ファイル・521,838,468 bytes、全hash/署名一致、最低OS27.0、local ad-hoc）。旧app/manifestを保全し制作dataは変更していない。Android署名済Preview `5d471c11` build30は未更新。9月28日Windows SSH readbackでrebuild `a5c6343`、foundation `69b7ae6`、UI `ee3cc30`はいずれも同じorigin・tracked clean。通常起動は `0.17.2-53655c46e0a1`、EXE SHA-256 `80eb19b96454d408c2b75ea62043249cf34ea5ec1744def1c1f4399608fe54c5`と再確認 | 私有ポインタと起動先をGitHub mainの証拠にしない。旧Spotify専用shortcutは実行先なし。Macのインストール先で11codec・実ドラムモデル・24bit制作/保存再開・native窓の通常終了再開2回を確認。原曲/HAND・歌詞・BANKの新候補はまだ未搭載。Windows/Androidの実操作・音・マイク・遅延・TalkBack・Humanは別gate。既存data/branch/launcherを保持 |
 
 rootが変更と統合を進め、各担当は独立worktreeと限定したファイルを所有する。実機確認が必要な箇所は対象revision・artifact・操作・期待結果を明記してrootが検証する。`LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO`は別判定。確認済みでないものは未確認のまま残す。各bounded PRで検証・CI・統合・本書のreadbackまで行う。rollbackは該当PRのrevertと以前のartifactへの復帰で、既存アプリ・制作data・dirty workは保持する。
@@ -131,7 +133,7 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 2B-1 NEXTの制作通し | 接続中（Windows Linked Preview、Android NEXT入口） | Previewだけに実hostを配線。取込→chop→PAD→step→再生→保存/再開→書出し/Undoを両OSで通す。Java Sound/AudioTrack driverと診断、Pixel CPU/underrunを測る |
 | 2B-2 移植・切替 | 移行中（合成ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置・旧制作ファイルの音声救出・PADの鳴らし方と切り位置・拍に合わせた配置・配置プリセット接続済み） | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
-| 4 ビート | 着手（BPM入力/tap/swing、空曲録音はPR157で統合済み。BANK名/色/役割・PAD名/pan/ADSRの画面接続候補 `42c0862`は通常BEAT→取消/適用/Undo→本番archive保存/再開が成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
+| 4 ビート | 着手（BPM入力/tap/swing、空曲録音PR157、BANK名/色/役割・PAD名/pan/ADSRはPR164で統合済み。metronome/count-in本番接続候補 `788c2ec`はLOCAL_PASS、step本番候補 `656bbd6`は日英desktop/compact文字2倍の実入力→複数pattern/repeat→1Undo/24bit/archive再開が成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
 | 5 ボーカル・歌詞 | LRC基盤PR156と編集/同期/ファイル接続PR160をmain `daedfae`へ統合済み。段階全体は未完 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
 | 6 作詞・TTS | 計画 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
 | 7 ミックス・FX | 計画 | source/bank/stem/vocal/guide/click track、gain/pan/mute/solo/meter、EQ/filter/comp/delay/reverb/master。latency/tail/loop。24bit/16bitディザ、stems/LRC/長さ、同一mix graph |
