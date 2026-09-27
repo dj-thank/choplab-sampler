@@ -32,37 +32,35 @@ class ScratchTest {
         return type
     }
 
-    @Test fun theOriginalFollowsTheHandIsSilentAtRestAndStaysInItsRange() {
+    @Test fun theHandIsSilentAtRestAndStaysInItsRange() {
         val engine = monitor(sine())
-        engine.controls.offer(EngineCommand.PlayOriginalSource(0, 1))
         engine.render(FloatArray(400 * 2))
-        assertTrue(engine.originalPlaying)
-        // The hand takes the record: playback pauses and nothing sounds until it moves.
+        // HAND begins independently while SOURCE stays paused.
         engine.controls.offer(EngineCommand.ScratchOriginalStart(400, 2, 1_000.0, 500, 3_000))
         val held = FloatArray(1_000 * 2)
         engine.render(held)
         assertFalse(engine.originalPlaying)
-        assertEquals(1_000L, engine.originalSourceFrame)
+        assertEquals(1_000.0, engine.handSourceFrame)
         assertTrue(held.drop(200 * 2).all { it == 0f }, "Silent at rest once the old playback faded")
         // Moving it forward 1 000 frames over 1 000 output frames plays it at normal speed.
         engine.controls.offer(EngineCommand.ScratchOriginalPosition(1_400, 3, 2_000.0, 1_000))
         val moved = FloatArray(1_200 * 2)
         engine.render(moved)
-        assertEquals(2_000L, engine.originalSourceFrame)
+        assertEquals(2_000.0, engine.handSourceFrame)
         assertTrue(moved.slice(200 * 2 until 800 * 2).any { abs(it) > .3f }, "Heard while it moves")
         // Stopped at 2 400, faded over 96 frames, past the limiter's 72-frame look-ahead.
         assertTrue(moved.drop(1_180 * 2).all { it == 0f }, "Silent again once it stops")
         // The range holds it: a target far past its end is taken as its end, reached on time at about normal speed.
         engine.controls.offer(EngineCommand.ScratchOriginalPosition(2_600, 4, 20_000.0, 1_000))
         engine.render(FloatArray(500 * 2))
-        assertTrue(engine.originalSourceFrame in 2_490L..2_510L, "Halfway to the range end: ${engine.originalSourceFrame}")
+        assertTrue(engine.handSourceFrame in 2_490.0..2_510.0, "Halfway to the range end: ${engine.handSourceFrame}")
         engine.render(FloatArray(700 * 2))
-        val atEnd = engine.originalSourceFrame
-        assertTrue(atEnd in 2_998L..2_999L, "Held at the range's last frame: $atEnd")
+        val atEnd = engine.handSourceFrame
+        assertTrue(atEnd in 2_998.0..2_999.0, "Held at the range's last frame: $atEnd")
         // A fling faster than eight times normal speed moves at that limit and arrives late.
         engine.controls.offer(EngineCommand.ScratchOriginalPosition(3_800, 5, 500.0, 100))
         engine.render(FloatArray(200 * 2))
-        assertTrue(abs(engine.originalSourceFrame - (atEnd - 800)) <= 1, "Eight times 100 frames back: ${engine.originalSourceFrame}")
+        assertTrue(abs(engine.handSourceFrame - (atEnd - 800)) <= 1, "Eight times 100 frames back: ${engine.handSourceFrame}")
         assertEquals(EngineEventType.APPLIED, engine.eventFor(5))
         // Closing the cut silences a moving scratch.
         engine.controls.offer(EngineCommand.ScratchOriginalCut(4_000, 6, 0f))
@@ -70,25 +68,12 @@ class ScratchTest {
         val cut = FloatArray(1_000 * 2)
         engine.render(cut)
         assertTrue(cut.drop(200 * 2).all { it == 0f })
-        // Letting go plays on what the hand paused, once, from where it left it.
-        val left = engine.originalSourceFrame
+        // Letting go releases HAND without changing or starting SOURCE.
         engine.controls.offer(EngineCommand.ScratchOriginalEnd(5_000, 8))
         engine.render(FloatArray(100 * 2))
-        assertTrue(engine.originalPlaying)
-        assertEquals(left + 100, engine.originalSourceFrame)
-        // Taken while paused, it stays paused when let go.
-        engine.controls.offer(EngineCommand.PauseOriginalSource(5_100, 9))
-        engine.controls.offer(EngineCommand.ScratchOriginalStart(5_100, 10, 1_000.0, 500, 3_000))
-        engine.controls.offer(EngineCommand.ScratchOriginalEnd(5_200, 11))
-        engine.render(FloatArray(200 * 2))
-        assertFalse(engine.originalPlaying, "Taken while paused, it stays paused")
-        // An interruption that pauses it during the scratch is not undone by letting go.
-        engine.controls.offer(EngineCommand.PlayOriginalSource(5_300, 12))
-        engine.controls.offer(EngineCommand.ScratchOriginalStart(5_300, 13, 1_000.0, 500, 3_000))
-        engine.controls.offer(EngineCommand.PauseOriginalSource(5_350, 14))
-        engine.controls.offer(EngineCommand.ScratchOriginalEnd(5_400, 15))
-        engine.render(FloatArray(200 * 2))
-        assertFalse(engine.originalPlaying, "Paused during the scratch, it stays paused")
+        assertEquals(-1.0, engine.handSourceFrame)
+        assertFalse(engine.originalPlaying)
+        assertEquals(0L, engine.originalSourceFrame)
     }
 
     @Test fun aScratchStartsAndStopsWithoutClicks() {
@@ -188,23 +173,26 @@ class ScratchTest {
         assertEquals(5_000.0, silent.scratchFrame)
     }
 
-    @Test fun aNewSourceOrPlaybackEndsTheScratch() {
+    @Test fun sourcePlaybackIsIndependentAndANewSourceEndsTheHand() {
         val asset = sine()
         val engine = monitor(asset)
         engine.controls.offer(EngineCommand.ScratchOriginalStart(0, 1, 100.0, 0, 8_192))
         engine.controls.offer(EngineCommand.PlayOriginalSource(10, 2))
         engine.render(FloatArray(110 * 2))
         assertTrue(engine.originalPlaying)
-        assertEquals(200L, engine.originalSourceFrame, "Plain playback again, from where the hand left it")
+        assertEquals(100L, engine.originalSourceFrame, "SOURCE starts at its own cursor")
+        assertEquals(100.0, engine.handSourceFrame, "HAND keeps its own cursor")
         engine.controls.offer(EngineCommand.ScratchOriginalStart(110, 3, 500.0, 0, 8_192))
         engine.controls.offer(EngineCommand.SetOriginalSource(120, 4, OriginalSource(asset, 1_000)))
         engine.controls.offer(EngineCommand.ScratchOriginalPosition(130, 5, 1_050.0, 100))
         engine.render(FloatArray(100 * 2))
-        assertEquals(1_000L, engine.originalSourceFrame, "The new source is not scratched")
+        assertEquals(1_090L, engine.originalSourceFrame, "The replacement SOURCE keeps playing normally")
+        assertEquals(-1.0, engine.handSourceFrame)
         assertEquals(EngineEventType.INVALID_COMMAND, engine.eventFor(5), "A move after the new source is refused")
         engine.controls.offer(EngineCommand.ScratchOriginalEnd(230, 6))
         engine.render(FloatArray(100 * 2))
-        assertFalse(engine.originalPlaying, "Letting go after the new source starts nothing")
+        assertTrue(engine.originalPlaying, "Letting go does not pause the replacement SOURCE")
+        assertEquals(1_190L, engine.originalSourceFrame)
         // Without a source there is nothing to scratch.
         val empty = EngineCore(EngineProgram(listOf(Pad(0, asset))))
         empty.controls.offer(EngineCommand.ScratchOriginalStart(0, 0, 0.0, 0, 100))

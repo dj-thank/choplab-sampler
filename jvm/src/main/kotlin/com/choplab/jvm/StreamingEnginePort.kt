@@ -54,6 +54,8 @@ data class DriverPlayback(val fraction: Float = 0f, val elapsedSeconds: Int = 0,
 /** What the audio owner last reported: how often it looped, what waits for it, and whether a device is still opening. */
 data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int, val openingDevice: Boolean, val engineFrame: Long)
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
+/** HAND position is independent of SOURCE; -1 means no hand currently owns the region. */
+data class HandPlayback(val sourceFrame: Double, val gain: Float)
 /**
  * Output health for a diagnostics readout: formats, times and counts only, never a device name or identifier. Render
  * times cover producing and converting one block with the current device, as a share of that block's duration, over
@@ -277,6 +279,11 @@ open class StreamingEnginePort(
         val snapshot = snapshots.get()
         engineView?.engine?.readout?.copyInto(snapshot)
         return OriginalPlayback(snapshot.originalLoaded, snapshot.originalPlaying, snapshot.originalSourceFrame, snapshot.originalMonitorGain)
+    }
+    fun handPlayback(): HandPlayback {
+        val snapshot = snapshots.get()
+        engineView?.engine?.readout?.copyInto(snapshot)
+        return HandPlayback(snapshot.handSourceFrame, snapshot.handMonitorGain)
     }
     /** UI/control-side allocation only; masks are coherently published by render. */
     fun playingPads(): Set<Int> {
@@ -508,6 +515,7 @@ private fun EngineCommand.relativeTo(offset: Long, wireOrder: Long): EngineComma
         is EngineCommand.PauseOriginalSource -> EngineCommand.PauseOriginalSource(frame, orderId)
         is EngineCommand.SeekOriginalSource -> EngineCommand.SeekOriginalSource(frame, orderId, sourceFrame)
         is EngineCommand.SetOriginalMonitorGain -> EngineCommand.SetOriginalMonitorGain(frame, orderId, gain)
+        is EngineCommand.SetHandMonitorGain -> EngineCommand.SetHandMonitorGain(frame, orderId, gain)
         is EngineCommand.SetOriginalPitch -> EngineCommand.SetOriginalPitch(frame, orderId, semitones)
         is EngineCommand.SetSongMonitorGain -> EngineCommand.SetSongMonitorGain(frame, orderId, gain)
         is EngineCommand.SetTempo -> EngineCommand.SetTempo(frame, orderId, tempo)

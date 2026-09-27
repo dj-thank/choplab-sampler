@@ -19,6 +19,9 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private val limiter = MasterLimiter()
     private val arrangementMixer = ArrangementMixer()
     private val originalVoice = OriginalSourceVoice()
+    private val handVoice = OriginalHandVoice()
+    /** One of the existing primary slots; never a new unbounded pool. The separate SOURCE slot is unchanged. */
+    private var handReservation = -1
     private val songGain = ParameterSmoother(1f)
     private val voices = Array(PRIMARY_VOICES + FADE_VOICES) { Voice() }
     private val assetScratch: Array<PcmAsset?> = arrayOfNulls(
@@ -28,6 +31,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private var fenceId = -1L
     private var songFenceId = -1L
     private var sourceFenceId = -1L
+    private var handFenceId = -1L
     private var triggerSerial = 0L
     private var sequenceCycle = 0L
     private var sequenceIndex = 0
@@ -52,11 +56,13 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     val originalSourceFrame: Long get() = originalVoice.position.toLong()
     /** The scratched PAD's source frame, or -1 while no PAD is scratched. */
     val scratchFrame: Double get() = if (scratchIndex >= 0) voices[scratchIndex].position else -1.0
+    val handSourceFrame: Double get() = if (handVoice.holding) handVoice.position else -1.0
+    val handMonitorGain: Float get() = handVoice.monitorGain.value
     val originalMonitorGain: Float get() = originalVoice.monitorGain.value
     val songMonitorGain: Float get() = songGain.value
     val tickNumerator: Long get() = clock.tickNumerator
     val programRevision: Long get() = program.revision
-    val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES)
+    val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES) + if (handReservation >= 0) 1 else 0
     val fadeVoiceCount: Int get() = countVoices(PRIMARY_VOICES, voices.size)
     internal fun playingPadMask(upper: Boolean): Long {
         var mask = 0L
@@ -108,6 +114,10 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 originalVoice.render(interpolator)
                 left += originalVoice.outputLeft
                 right += originalVoice.outputRight
+                handVoice.render(interpolator)
+                left += handVoice.outputLeft
+                right += handVoice.outputRight
+                if (!handVoice.active) handReservation = -1
             }
             limiter.process(left * config.masterGain, right * config.masterGain)
             val index = (offsetFrames + f) * 2
@@ -149,6 +159,12 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             } else events.emit(EngineEventType.INVALIDATED, sourceSafety.orderId, sourceSafety.effectiveFrame, frame)
             controls.acknowledgeSourceSafety(sourceSafety.orderId)
         }
+        val handSafety = controls.pendingHandSafety()
+        if (handSafety != null && handSafety.effectiveFrame <= frame) {
+            if (handSafety.orderId > maxOf(fenceId, sourceFenceId, handFenceId)) apply(handSafety, null)
+            else events.emit(EngineEventType.INVALIDATED, handSafety.orderId, handSafety.effectiveFrame, frame)
+            controls.acknowledgeHandSafety(handSafety.orderId)
+        }
         while (true) {
             val songHead = controls.peekSong()
             if (songHead != null && songHead.orderId <= maxOf(fenceId, songFenceId)) {
@@ -162,11 +178,18 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 events.emit(EngineEventType.INVALIDATED, originalHead.orderId, originalHead.effectiveFrame, frame)
                 continue
             }
+            val handHead = controls.peekHand()
+            if (handHead != null && handHead.orderId <= maxOf(fenceId, sourceFenceId, handFenceId)) {
+                controls.removeHand()
+                events.emit(EngineEventType.INVALIDATED, handHead.orderId, handHead.effectiveFrame, frame)
+                continue
+            }
             val command = controls.peek() ?: break
             if (command.effectiveFrame > frame) break
             val source = command is EngineCommand.OriginalSourceCommand
-            val reservations = controls.peekReservations(source)
-            controls.remove(source)
+            val hand = command is EngineCommand.OriginalHandCommand
+            val reservations = if (hand) null else controls.peekReservations(source)
+            if (hand) controls.removeHand() else controls.remove(source)
             apply(command, reservations)
         }
     }
@@ -178,7 +201,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             is EngineCommand.Release -> for (voice in voices) {
                 if (voice.pad?.id == command.padId && !voice.scratch) voice.release()
             }
-            is EngineCommand.Stop -> { stop(false); songFenceId = maxOf(songFenceId, command.orderId) }
+            is EngineCommand.Stop -> { stop(false); songFenceId = maxOf(songFenceId, command.orderId); handFenceId = maxOf(handFenceId, command.orderId) }
             is EngineCommand.Panic -> { stop(true); fenceId = maxOf(fenceId, command.orderId) }
             is EngineCommand.StopAll -> {
                 stop(false)
@@ -191,6 +214,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     accepted = false
                     events.emit(EngineEventType.PROGRAM_MEMORY_LIMIT, command.orderId, command.effectiveFrame, frame)
                 } else {
+                    handVoice.end()
+                    handFenceId = maxOf(handFenceId, command.orderId)
                     val arrangementChanged = program.arrangement != null || command.program.arrangement != null
                     program = command.program
                     programSlots = reservations!!
@@ -244,6 +269,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 sequencePlaying = arrangement == null || sequenceFrame < arrangement.durationFrames
             }
             is EngineCommand.SetOriginalSource -> {
+                handVoice.end()
+                handFenceId = maxOf(handFenceId, command.orderId)
                 originalVoice.set(command.source, if (command.source == null) -1 else reservations!![0])
                 if (command.source == null) sourceFenceId = maxOf(sourceFenceId, command.orderId)
             }
@@ -252,6 +279,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 if (!accepted) events.emit(EngineEventType.ASSET_MISS, command.orderId, command.effectiveFrame, frame)
             }
             is EngineCommand.PauseOriginalSource -> {
+                handVoice.end()
                 originalVoice.pause()
                 sourceFenceId = maxOf(sourceFenceId, command.orderId)
             }
@@ -260,16 +288,30 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
             }
             is EngineCommand.SetOriginalMonitorGain -> originalVoice.monitorGain.set(command.gain, 96)
+            is EngineCommand.SetHandMonitorGain -> handVoice.monitorGain.set(command.gain, 96)
             is EngineCommand.ScratchOriginalStart -> {
-                accepted = originalVoice.startScratch(command.sourceFrame, command.startFrame, command.endFrame)
-                if (!accepted) events.emit(EngineEventType.ASSET_MISS, command.orderId, command.effectiveFrame, frame)
+                val source = originalVoice.source
+                if (source == null || maxOf(command.startFrame, source.startFrame) >= minOf(command.endFrame, source.endFrame)) {
+                    accepted = false
+                    events.emit(EngineEventType.ASSET_MISS, command.orderId, command.effectiveFrame, frame)
+                } else {
+                    val slot = if (handReservation >= 0) handReservation else acquireVoice()
+                    accepted = slot >= 0
+                    if (accepted) {
+                        handReservation = slot
+                        handVoice.start(source, command.sourceFrame, command.startFrame, command.endFrame)
+                    } else {
+                        rejectedVoices++
+                        events.emit(EngineEventType.VOICE_LIMIT, command.orderId, command.effectiveFrame, frame)
+                    }
+                }
             }
             is EngineCommand.ScratchOriginalPosition -> {
-                accepted = originalVoice.scratchTo(command.sourceFrame, command.durationFrames)
+                accepted = handVoice.move(command.sourceFrame, command.durationFrames)
                 if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
             }
-            is EngineCommand.ScratchOriginalCut -> if (originalVoice.scratching) originalVoice.cut.set(command.gain, 96)
-            is EngineCommand.ScratchOriginalEnd -> originalVoice.endScratch()
+            is EngineCommand.ScratchOriginalCut -> if (handVoice.holding) handVoice.cut.set(command.gain, 96)
+            is EngineCommand.ScratchOriginalEnd -> { handVoice.end(); handFenceId = maxOf(handFenceId, command.orderId) }
             is EngineCommand.SetOriginalPitch -> originalVoice.pitch(command.semitones)
             is EngineCommand.SetSongMonitorGain -> songGain.set(command.gain, 96)
             is EngineCommand.SetTempo -> clock.setTempo(command.tempo)
@@ -321,13 +363,14 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     private fun acquireVoice(): Int {
-        for (i in 0 until PRIMARY_VOICES) if (voices[i].pad == null) return i
+        for (i in 0 until PRIMARY_VOICES) if (i != handReservation && voices[i].pad == null) return i
         var fade = -1
         for (i in PRIMARY_VOICES until voices.size) if (voices[i].pad == null) { fade = i; break }
         if (fade < 0) return -1 // Preserve all existing tails; overload rejects the newest trigger.
         var oldest = -1
         for (i in 0 until PRIMARY_VOICES) {
-            if (!voices[i].scratch && !voices[i].suspended && (oldest < 0 || voices[i].serial < voices[oldest].serial)) oldest = i
+            if (i != handReservation && voices[i].pad != null && !voices[i].scratch && !voices[i].suspended &&
+                (oldest < 0 || voices[i].serial < voices[oldest].serial)) oldest = i
         }
         if (oldest < 0) return -1
         voices[fade].copyFrom(voices[oldest])
@@ -380,6 +423,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     private fun stop(panic: Boolean) {
+        handVoice.end(panic)
+        if (panic) handReservation = -1
         sequencePlaying = false
         sequencePaused = false
         sequenceFrame = 0

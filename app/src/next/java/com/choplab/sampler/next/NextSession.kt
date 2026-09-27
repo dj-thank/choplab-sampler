@@ -105,6 +105,7 @@ class NextSession private constructor(
             return backend.audition.seek(asset, frame)
         }
         override suspend fun setOriginalMonitorGain(gain: Float) = backend.audition.originalGain(gain)
+        override suspend fun setHandMonitorGain(gain: Float) = backend.audition.handGain(gain)
         override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long) = backend.audition.scratchStart(asset, from, start, end)
         override suspend fun scratchOriginalTo(position: Double, durationFrames: Int) = backend.audition.scratchTo(position, durationFrames)
         override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
@@ -114,7 +115,8 @@ class NextSession private constructor(
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
             backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
-        override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
+        override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
+            handSourceFrame = backend.audition.nativeHandFrame())
         override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
         override val drumKitsAvailable get() = true
         override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)

@@ -112,7 +112,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val sensitivity: ContinuousScratchSensitivity = ContinuousScratchSensitivity.NORMAL,
     val cut: Float = 1f,
     val holding: Boolean = false,
-) { init { require(cut.isFinite() && cut in 0f..1f) } }
+    val handMonitorGain: Float = 1f,
+) { init { require(cut.isFinite() && cut in 0f..1f && handMonitorGain.isFinite() && handMonitorGain in 0f..1f) } }
 
 /** A built-in drum kit the host can install; the name is the kit's own name in every language. */
 @Immutable data class ContinuousDrumKit(val id: String, val name: String)
@@ -262,6 +263,8 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     val scratchFraction: Float = 0f,
     /** Samples actually captured, not wall-clock time spent waiting for microphone permission. */
     val recordingMillis: Long = 0,
+    /** Independent original HAND position in native source frames; -1 while inactive. */
+    val handSourceFrame: Double = -1.0,
 )
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
@@ -389,6 +392,7 @@ sealed interface ContinuousEditorAction {
     data class SetScratchSensitivity(val sensitivity: ContinuousScratchSensitivity) : ContinuousEditorAction
     /** The independent cut fader: 1 lets the scratch through, 0 silences it. Handled at once, like a drag. */
     data class SetScratchCut(val gain: Float) : ContinuousEditorAction
+    data class SetHandMonitorGain(val gain: Float) : ContinuousEditorAction
     /** A hand takes the platter: the sound stops under it and sounds again as it moves. */
     data object ScratchHold : ContinuousEditorAction
     /**

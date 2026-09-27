@@ -1748,7 +1748,7 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
-    @Test fun theOriginalIsScratchedWithinItsRangeAndPlaysOnOnlyIfItWasPlaying() = runBlocking<Unit> {
+    @Test fun originalHandKeepsItsOwnPositionWhileSourceContinuesIndependently() = runBlocking<Unit> {
         val h = Harness { it.copy(source = it.source!!.copy(range = FrameRange(12_000, 90_000))) }
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginal))
@@ -1757,17 +1757,17 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
             h.ports.originalFrame = 40_000
             val plays = h.ports.plays
-            h.ports.playing = false
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
-            assertEquals(listOf(40_000L, 12_000L, 90_000L), h.ports.scratchStarts.single(), "Held where it was heard, within its range")
-            assertFalse(h.until { !it.originalPlaying }.originalPlaying, "Paused under the hand")
-            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)), "Not while held")
-            // Pulled far back: it stops at the range start.
-            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(-2_000f))
-            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 12_000.0) delay(5) }
-            assertTrue(h.ports.scratchMoves.all { it.first >= 12_000.0 })
-            // The engine plays on what the hand paused; the editor shows what it did and starts nothing itself.
             h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(listOf(12_000L, 12_000L, 90_000L), h.ports.scratchStarts.single(), "HAND begins at its own range, independently of SOURCE")
+            assertTrue(h.until { it.originalPlaying }.originalPlaying)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)), "Not while held")
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(2_000f))
+            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 89_999.0) delay(5) }
+            assertTrue(h.ports.scratchMoves.all { it.first >= 12_000.0 })
+            assertEquals(40_000L, h.ports.originalFrame)
+            assertTrue(h.ports.seeks.isEmpty())
+            assertEquals((89_999f - 12_000f) / 78_000f, h.presenter.readout().scratchFraction, .0001f)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
             assertEquals(1, h.ports.scratchEnds)
             assertTrue(h.until { it.originalPlaying }.originalPlaying)
@@ -1775,7 +1775,9 @@ class ContinuousEditorPresenterTest {
             // Held again while paused: letting go leaves it paused.
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopOriginal))
             h.ports.playing = false
+            h.ports.originalFrame = 50_000
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(89_999L, h.ports.scratchStarts.last().first(), "The next HAND hold does not follow a later SOURCE position")
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
             assertFalse(h.until { !it.originalPlaying }.originalPlaying)
             assertEquals(plays, h.ports.plays)
@@ -1803,7 +1805,7 @@ class ContinuousEditorPresenterTest {
             // The cut fader is not queued behind the hold either.
             h.presenter.onAction(ContinuousEditorAction.SetScratchCut(.5f))
             withTimeout(300) { h.presenter.state.first { it.scratch?.cut == .5f } }
-            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 10_000 + 50 * NORMAL_FRAMES_PER_PIXEL) delay(5) }
+            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 50 * NORMAL_FRAMES_PER_PIXEL) delay(5) }
             assertEquals(.5f, h.ports.scratchCuts.last(), "Closed halfway before the first move")
             h.presenter.onAction(ContinuousEditorAction.ScratchLetGo)
             withTimeout(2_000) { while (h.ports.scratchEnds != 1) delay(5) }
@@ -1856,6 +1858,71 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.SAVE)))
             assertTrue(h.engine.commands.last() is EngineCommand.ScratchEnd)
             assertNull(h.until { it.stage == ContinuousStage.SAVE }.scratch)
+        } finally { h.close() }
+    }
+
+    @Test fun handGainCutAndSourceVolumeAreIndependentAndDoNotEditTheProject() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetOriginalMonitorGain(.7f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetHandMonitorGain(.3f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchCut(.5f)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(.3f, h.ports.handGain)
+            assertEquals(.5f, h.ports.scratchCuts.last())
+            assertEquals(.7f, h.ports.originalGain)
+            h.ports.handFrame = 24_000.5
+            h.ports.originalFrame = 90_000
+            assertEquals(24_000.5 / 96_000, h.presenter.readout().scratchFraction.toDouble(), .00001,
+                "The HAND marker uses its rendered native frame, not SOURCE or its last requested move")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(.15f, h.engine.commands.filterIsInstance<EngineCommand.ScratchCut>().last().gain, .0001f)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchCut(1f)))
+            withTimeout(2_000) { while (h.engine.commands.filterIsInstance<EngineCommand.ScratchCut>().last().gain != .3f) delay(5) }
+            assertEquals(before, h.studio.document.value, "Listening levels never create document history")
+        } finally { h.close() }
+    }
+
+    @Test fun handOwnershipEndsOnceOnOutputLossStageExitAndCancelledLoading() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            h.ports.scratchGate = CompletableDeferred()
+            h.presenter.onAction(ContinuousEditorAction.ScratchHold)
+            withTimeout(2_000) { while (h.ports.scratchEntered == 0) delay(5) }
+            h.presenter.onAction(ContinuousEditorAction.CloseScratch)
+            h.until { it.scratch == null }
+            assertTrue(h.ports.scratchStarts.isEmpty(), "No late HAND starts after closing a loading panel")
+            assertEquals(0, h.ports.scratchEnds)
+            assertEquals(0, h.ports.stops, "Closing HAND does not stop SOURCE")
+            h.ports.scratchGate = null
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.SAVE)))
+            assertEquals(1, h.ports.scratchEnds)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertEquals(1, h.ports.scratchEnds)
+            assertEquals(0, h.ports.stops)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            h.until { it.scratch?.holding == true }
+            h.engine.transport = h.engine.transport.copy(outputAttached = false)
+            h.until { it.scratch?.holding == false }
+            assertEquals(2, h.ports.scratchEnds)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertEquals(2, h.ports.scratchEnds)
         } finally { h.close() }
     }
 
@@ -2031,6 +2098,8 @@ class ContinuousEditorPresenterTest {
         @Volatile var duringReading: (() -> Unit)? = null
         var songGain = 1f
         var originalGain = 1f
+        @Volatile var handGain = 1f
+        @Volatile var handFrame = -1.0
         var exportFrames = 0L
         override val originalAvailable = true
         override val separationAvailable = true
@@ -2057,9 +2126,10 @@ class ContinuousEditorPresenterTest {
             return ExportRequest(Location("export"), frames.toInt())
         }
         override suspend fun peaks(asset: Asset) = listOf(.2f, .4f)
-        override fun readout() = ContinuousEditorReadout(originalFrame = originalFrame)
+        override fun readout() = ContinuousEditorReadout(originalFrame = originalFrame, handSourceFrame = handFrame)
         override suspend fun setSongMonitorGain(gain: Float): Boolean { songGain = gain; return true }
         override suspend fun setOriginalMonitorGain(gain: Float): Boolean { originalGain = gain; return true }
+        override suspend fun setHandMonitorGain(gain: Float): Boolean { handGain = gain; return true }
         override fun originalPlaying(): Boolean? {
             val value = playing
             duringReading?.let { duringReading = null; it() }
@@ -2073,14 +2143,19 @@ class ContinuousEditorPresenterTest {
         @Volatile var scratchEnds = 0
         /** How long taking the original takes, as loading it can. */
         @Volatile var scratchStartDelay = 0L
+        @Volatile var scratchEntered = 0
+        @Volatile var scratchGate: CompletableDeferred<Unit>? = null
+        override fun cancelOriginalPreparation() { scratchGate?.cancel() }
         override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long): Boolean {
+            scratchEntered++
+            scratchGate?.await()
             delay(scratchStartDelay)
-            scratchStarts += listOf(from, start, end); return true
+            scratchStarts += listOf(from, start, end); handFrame = from.toDouble(); return true
         }
-        override suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean { scratchMoves += position to durationFrames; return true }
+        override suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean { scratchMoves += position to durationFrames; handFrame = position; return true }
         override suspend fun scratchOriginalCut(gain: Float): Boolean { scratchCuts += gain; return true }
-        override suspend fun scratchOriginalEnd(): Boolean { scratchEnds++; return true }
-        override suspend fun stopOriginal(): Boolean { stops++; return true }
+        override suspend fun scratchOriginalEnd(): Boolean { scratchEnds++; handFrame = -1.0; return true }
+        override suspend fun stopOriginal(): Boolean { stops++; handFrame = -1.0; return true }
         override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
         @Volatile var clipboardWorks = true
