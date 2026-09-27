@@ -66,5 +66,5 @@ class OriginalAudioImportPort(
         } finally { Files.deleteIfExists(pending) }
     }
 
-    companion object { val EXTENSIONS = listOf("wav", "flac", "mp3", "m4a", "aac", "ogg", "opus") }
+    companion object { val EXTENSIONS = listOf("wav", "flac", "mp3", "m4a", "aac", "ogg", "opus", "aiff", "aif", "mp4", "webm") }
 }

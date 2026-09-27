@@ -25,7 +25,9 @@ object NextCodecSelfTest {
         val fixtures = listOf(Triple("precision.flac", "flac", listOf("-sample_fmt", "s32")),
             Triple("precision.mp3", "libmp3lame", emptyList()), Triple("precision.m4a", "aac", emptyList()),
             Triple("precision.aac", "aac", emptyList()), Triple("precision.ogg", "vorbis", listOf("-strict", "-2")),
-            Triple("precision.opus", "libopus", emptyList()), Triple("lossless.m4a", "alac", emptyList()))
+            Triple("precision.opus", "libopus", emptyList()), Triple("lossless.m4a", "alac", emptyList()),
+            Triple("precision.aiff", "pcm_s24be", emptyList()), Triple("precision.aif", "pcm_s24be", emptyList()),
+            Triple("precision.mp4", "aac", emptyList()), Triple("precision.webm", "libopus", emptyList()))
         for ((name, codec, extra) in fixtures) {
             val path = directory.resolve(name); encode(path, codec, extra)
             DesktopOriginalAudioDecoder().use { decoder ->
@@ -35,7 +37,7 @@ object NextCodecSelfTest {
                 val audio = decoder.decode(path, hash)
                 check(info.sampleRate == 48_000 && info.channels == 2 && info.frames >= 96_000 && info.frames < 100_000)
                 check(audio.samples.all(Float::isFinite) && audio.samples.any { it != 0f })
-                if (codec == "flac" || codec == "alac") check(audio.samples.contentEquals(samples)) { "Lossless precision/channel identity changed" }
+                if (codec == "flac" || codec == "alac" || codec == "pcm_s24be") check(audio.samples.contentEquals(samples)) { "Lossless precision/channel identity changed" }
                 println("CODEC_PASS $name frames=${info.frames} milliseconds=${(System.nanoTime() - started) / 1_000_000}")
             }
         }
@@ -76,6 +78,6 @@ object NextCodecSelfTest {
             check(checks >= 4)
             check(decoder.inspect(flac, sha256(Files.readAllBytes(flac))).frames == 96_000L) // retry after cancellation
         }
-        println("""{"status":"LOCAL_PASS","scope":"packaged-original-codecs","formats":7,"lossless24BitExact":true,"originalArchiveExact":true,"freshReopen":true,"cancelRetry":true,"nativeAudio":false}""")
+        println("""{"status":"LOCAL_PASS","scope":"packaged-original-codecs","formats":11,"lossless24BitExact":true,"originalArchiveExact":true,"freshReopen":true,"cancelRetry":true,"nativeAudio":false}""")
     }
 }

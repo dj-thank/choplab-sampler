@@ -13,7 +13,7 @@ enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
 enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
 enum class ContinuousCapability {
-    IMPORT_AUDIO, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
+    IMPORT_AUDIO, IMPORT_LIBRARY, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
@@ -231,6 +231,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 sealed interface ContinuousEditorAction {
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
+    data object ImportLibrary : ContinuousEditorAction
     data object RecordSource : ContinuousEditorAction
     data object RecordSystemSource : ContinuousEditorAction
     data object StopSourceRecording : ContinuousEditorAction

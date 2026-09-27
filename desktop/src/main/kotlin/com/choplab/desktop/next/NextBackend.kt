@@ -14,6 +14,14 @@ import java.util.concurrent.ConcurrentHashMap
 /** Host-private mapping. Neither absolute paths nor opaque handles enter a Project. */
 class NextFileLocations {
     private val values = ConcurrentHashMap<String, Path>()
+    private val titles = ConcurrentHashMap<String, String>()
+    private val hashes = ConcurrentHashMap<String, String>()
+    fun expectedHash(location: Location): String? = hashes[location.handle]
+    fun title(location: Location): String? = titles[location.handle]
+    fun registerNamed(path: Path, title: String, expectedHash: String? = null): Location = register(path).also {
+        titles[it.handle] = title.filter { ch -> ch.code >= 32 }.take(240).ifBlank { "Audio" }
+        expectedHash?.let { hash -> hashes[it.handle] = hash }
+    }
     fun register(path: Path): Location = Location(UUID.randomUUID().toString()).also {
         values[it.handle] = path.toAbsolutePath().normalize()
     }
@@ -56,7 +64,15 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
             val decoder = DesktopOriginalAudioDecoder()
             val shared = EditorBackend.create(directory,
                 engine = { compiler -> if (sinkFactory == null) JavaSoundEnginePort(compiler) else JavaSoundEnginePort(compiler, sinkFactory) },
-                files = { assets, compiler -> HostFileServices(OriginalAudioImportPort(assets, files::resolve, decoder),
+                files = { assets, compiler ->
+                    val original = OriginalAudioImportPort(assets, files::resolve, decoder)
+                    val named = object : ImportPort {
+                        override suspend fun import(location: Location): Asset = original.import(location).let { asset ->
+                            require(files.expectedHash(location)?.let { it == asset.hash } != false) { "Library audio changed after selection" }
+                            files.title(location)?.let { asset.copy(name = it) } ?: asset
+                        }
+                    }
+                    HostFileServices(named,
                     FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) }, decoder = decoder)
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), microphone = microphone) }
                 catch (failure: Exception) { runBlocking { shared.shutdown(flush = false) }; throw failure }
