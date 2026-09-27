@@ -44,6 +44,18 @@ class StreamFileServicesTest {
 
     private val loop = Fixtures.wav(samples = ShortArray(4096) { (it * 37 % 2000 - 1000).toShort() })
 
+    @Test fun anEarlierAppsProjectOpensThroughScratchNamedAfterThePickedFile() = runBlocking<Unit> {
+        val setup = Setup()
+        setup.documents.inputs["old"] = legacyProjectFile("loop.wav" to loop)
+        setup.documents.names["old"] = "Download/My Old Beat.choplab"
+        val opened = setup.services.projects.openDocument(Location("old"))
+        assertEquals(Notice.Rescued(audio = 1, unplaced = 0), opened.rescued)
+        assertEquals("My Old Beat", opened.project.title)
+        assertTrue(opened.project.assets.all(setup.assets::verified))
+        assertTrue(setup.documents.outputs.isEmpty(), "Opening writes nothing back to the picked document")
+        assertTrue(setup.scratch.isEmptyDirectory())
+    }
+
     @Test fun wavImportKeepsTheNameTheUserSawAndLeavesNoScratch() = runBlocking<Unit> {
         val setup = Setup()
         setup.documents.inputs["a"] = loop

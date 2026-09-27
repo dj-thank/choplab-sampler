@@ -552,6 +552,8 @@ import kotlin.math.roundToLong
         ContinuousStatus.VOICE_NO_ROOM -> Res.string.ce_voice_no_room; ContinuousStatus.MIC_DENIED -> Res.string.ce_mic_denied
         ContinuousStatus.PLACE_NO_ROOM -> Res.string.ce_place_no_room; ContinuousStatus.PLACE_FAILED -> Res.string.ce_place_failed
         ContinuousStatus.MIC_UNAVAILABLE -> Res.string.ce_mic_unavailable; ContinuousStatus.RECORDING_BUSY -> Res.string.ce_recording_busy
+        ContinuousStatus.RESCUED -> Res.string.ce_rescued; ContinuousStatus.RESCUED_PARTLY -> Res.string.ce_rescued_partly
+        ContinuousStatus.RESCUED_TOO_LONG -> Res.string.ce_rescued_too_long; ContinuousStatus.RESCUED_NOTHING -> Res.string.ce_rescued_nothing
     }) }.orEmpty()
     Text(text, Modifier.fillMaxWidth().heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = CEColor.Border)
 }

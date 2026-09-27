@@ -77,6 +77,8 @@ class WavAndLegacyTest {
             val restored = store.openVerified(rescued.asset).use { WavCodec.read(it) }
             assertContentEquals(samples.map { it.toFloat() / 32768f }.toFloatArray(), restored.samples)
             val project = result.newProject("rescued", "Recovered")
+            // The one rescued sound, whole, is the original; the old PADs' cuts are not inferred.
+            assertEquals(Source(rescued.asset.hash, FrameRange(0, 4)), project.source)
             assertTrue(project.pads.all { it.assetHash == null })
             assertTrue(project.patterns.single().notes.isEmpty())
             assertEquals(inputHash, sha256(archive))

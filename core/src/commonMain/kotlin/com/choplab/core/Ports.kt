@@ -18,9 +18,13 @@ interface ImportPort {
     /** Returns only after original bytes and their metadata are validated and published in AssetStore. */
     suspend fun import(location: Location): Asset
 }
+/** What opening a file gave: its saved document, or a new document built from the audio [rescued] from an earlier app's file. */
+data class OpenedProject(val project: Project, val rescued: Notice.Rescued? = null)
 interface ProjectPort {
     suspend fun save(project: Project, revision: Long, location: Location)
     suspend fun open(location: Location): Project
+    /** Opens [location]; a port that also reads the earlier app's project files says what it rescued from one. */
+    suspend fun openDocument(location: Location): OpenedProject = OpenedProject(open(location))
 }
 data class ExportRequest(val location: Location, val frames: Int, val tailFrames: Int = 0, val bits: Int = 24, val seed: Int = 1) {
     init { require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..480_000 && bits in setOf(16, 24)) }

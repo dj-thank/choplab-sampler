@@ -11,16 +11,36 @@ import java.io.*
 import java.nio.file.*
 import java.util.UUID
 
-/** Host supplies opaque-handle resolution; paths never cross the document boundary. */
-class FileProjectPort(private val assets: FileAssetStore, private val resolve: (Location) -> Path, private val codec: ArchiveCodec = ArchiveCodec()) : ProjectPort {
+/**
+ * Host supplies opaque-handle resolution; paths never cross the document boundary. [displayName] lets a host name a
+ * rescued document after the file the user picked when the bytes arrive through a scratch file.
+ */
+class FileProjectPort(
+    private val assets: FileAssetStore,
+    private val resolve: (Location) -> Path,
+    private val codec: ArchiveCodec = ArchiveCodec(),
+    private val displayName: (Location) -> String? = { null },
+) : ProjectPort {
     override suspend fun save(project: Project, revision: Long, location: Location) = withContext(Dispatchers.IO) {
         require(revision >= 0)
         val context = coroutineContext
         atomicOutput(resolve(location), { !context[kotlinx.coroutines.Job]!!.isActive }) { output -> codec.write(project, assets, output) }
     }
-    override suspend fun open(location: Location): Project = withContext(Dispatchers.IO) {
+    override suspend fun open(location: Location): Project = openDocument(location).project
+    /** A project file of the earlier app (schemas 1–7) opens as a new document holding only its audio; the file stays as it is. */
+    override suspend fun openDocument(location: Location): OpenedProject = withContext(Dispatchers.IO) {
         val context = coroutineContext
-        Files.newInputStream(resolve(location)).use { codec.read(it, assets) { !context[kotlinx.coroutines.Job]!!.isActive } }
+        val cancelled = { !context[kotlinx.coroutines.Job]!!.isActive }
+        val path = resolve(location)
+        if (!Files.newInputStream(path).use(LegacySalvage::recognizes))
+            return@withContext OpenedProject(Files.newInputStream(path).use { codec.read(it, assets, cancelled) })
+        val rescued = Files.newInputStream(path).use { LegacySalvage().read(it, assets, cancelled) }
+        context.ensureActive()
+        val title = (displayName(location) ?: path.fileName?.toString())?.let(::hostName)
+            ?.let { if (it.endsWith(".choplab", ignoreCase = true)) it.dropLast(".choplab".length).trim() else it }
+            ?.takeIf { it.isNotEmpty() } ?: "Rescued audio"
+        val project = rescued.newProject("rescued-" + (rescued.audio.firstOrNull()?.asset?.hash?.take(16) ?: "empty"), title)
+        OpenedProject(project, rescued.notice(project))
     }
 }
 

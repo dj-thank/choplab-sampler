@@ -903,11 +903,24 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun anEarlierAppsProjectFileSaysWhatWasRescuedFromIt() = runBlocking {
+        for ((rescued, status) in listOf(Notice.Rescued(2, 0) to ContinuousStatus.RESCUED, Notice.Rescued(3, 1) to ContinuousStatus.RESCUED_PARTLY,
+                Notice.Rescued(2, 2) to ContinuousStatus.RESCUED_TOO_LONG, Notice.Rescued(0, 0) to ContinuousStatus.RESCUED_NOTHING)) {
+            val h = Harness(rescue = rescued)
+            try {
+                h.ports.openLocation = Location("old.choplab")
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+                h.until { it.status == status }
+                assertNull(h.studio.document.value.savedRevision, "A rescued document is new until it is saved")
+            } finally { h.close() }
+        }
+    }
+
     /** 48 kHz frames a screen pixel moves a platter at normal sensitivity, computed as the presenter does. */
     private val NORMAL_FRAMES_PER_PIXEL = 48_000 / (60.0 * 7.0)
 
     private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
-                          adjust: (Project) -> Project = { it }) {
+                          rescue: Notice.Rescued? = null, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, originalFrames, "Original")
         val chopped = Asset("b".repeat(64), "wav", 100, 48_000, 2, 48_000, "Chop")
@@ -923,6 +936,8 @@ class ContinuousEditorPresenterTest {
             object : ProjectPort {
                 override suspend fun save(project: Project, revision: Long, location: Location) = Unit
                 override suspend fun open(location: Location) = initial
+                /** With [rescue], every file opens as the earlier app's project file it was rescued from. */
+                override suspend fun openDocument(location: Location) = OpenedProject(initial, rescue)
             }, object : ExportPort {
                 override suspend fun export(project: Project, patternId: String, request: ExportRequest): ExportReceipt = error("Must select arrangement explicitly")
                 override suspend fun export(project: Project, target: PlaybackTarget, request: ExportRequest): ExportReceipt {
@@ -995,7 +1010,8 @@ class ContinuousEditorPresenterTest {
         var exportFrames = 0L
         override val originalAvailable = true
         override suspend fun chooseAudio(): Location? = null
-        override suspend fun chooseOpen(): Location? = null
+        @Volatile var openLocation: Location? = null
+        override suspend fun chooseOpen(): Location? = openLocation
         override suspend fun chooseSave() = Location("save")
         override suspend fun chooseExport(frames: Long): ExportRequest {
             exportFrames = frames

@@ -1,5 +1,6 @@
 package com.choplab.jvm
 
+import com.choplab.core.ProgramCompiler
 import com.choplab.core.model.*
 import java.io.*
 import java.nio.ByteBuffer
@@ -9,15 +10,48 @@ import java.util.zip.ZipInputStream
 
 data class SalvagedAsset(val originalId: Long, val sourceEntry: String, val sourceHash: String, val asset: Asset)
 data class SalvageResult(val schema: Int, val audio: FrozenList<SalvagedAsset>) {
-    /** A new document with rescued audio only. Old PADs, edits and arrangement are not inferred. */
+    /**
+     * A new document with rescued audio only. The first sound the engine can load becomes the original. Each other
+     * sound, whole, goes on the next PAD in order while the engine could still keep all of them loaded together with the
+     * original, so chopping the original onto PADs later still fits. The rest stay in the document only. Old PADs,
+     * edits and arrangement are not inferred.
+     */
     fun newProject(id: String, title: String): Project {
-        val unique = audio.map { it.asset }.distinctBy { it.hash }.frozen()
-        return Project(id = id, title = title, assets = unique, source = unique.firstOrNull()?.let { Source(it.hash, FrameRange(0, it.frames)) })
+        val unique = audio.map { it.asset }.distinctBy { it.hash }
+        fun frames48(asset: Asset) = ProgramCompiler.sourceFrameTo48k(asset.frames, asset.sampleRate)
+        val loadable = unique.filter { maxOf(it.frames, frames48(it)) <= ProgramCompiler.RESIDENT_FRAME_LIMIT }
+        val original = loadable.firstOrNull()
+        var resident = original?.let(::frames48) ?: 0L
+        val placed = loadable.drop(1).filter { asset ->
+            (resident + frames48(asset) <= ProgramCompiler.RESIDENT_FRAME_LIMIT).also { fits -> if (fits) resident += frames48(asset) }
+        }.take(ProjectLimits.PAD_COUNT)
+        val pads = (0 until ProjectLimits.PAD_COUNT).map { id ->
+            placed.getOrNull(id)?.let { Pad(id, it.hash, FrameRange(0, it.frames), padName(it.name, id)) } ?: Pad(id)
+        }
+        return Project(id = id, title = title, assets = unique.frozen(), pads = pads.frozen(),
+            source = original?.let { Source(it.hash, FrameRange(0, it.frames)) })
+    }
+
+    /** What [project], made by [newProject], says it rescued: every sound, and those neither the original nor on a PAD. */
+    fun notice(project: Project): com.choplab.core.Notice.Rescued {
+        val used = project.pads.mapNotNull { it.assetHash }.toSet() + listOfNotNull(project.source?.assetHash)
+        return com.choplab.core.Notice.Rescued(project.assets.size, project.assets.count { it.hash !in used })
+    }
+
+    private fun padName(name: String, id: Int): String {
+        val short = if (name.length <= 80) name else name.take(if (name[79].isHighSurrogate()) 79 else 80)
+        return short.takeIf { it.isNotBlank() } ?: "PAD ${id + 1}"
     }
 }
 
 /** Read-only source salvage for the real project.txt layouts 1–7. Schemas 8/9 are rejected. */
 class LegacySalvage(private val limits: ArchiveLimits = ArchiveLimits()) {
+    companion object {
+        /** Whether [input] starts like a project file of the earlier app: a ZIP whose first entry is project.txt. */
+        fun recognizes(input: InputStream): Boolean = try {
+            ZipInputStream(BoundedInput(NonClosingInput(input), 256L * 1024)).use { it.nextEntry?.name == "project.txt" }
+        } catch (_: IOException) { false } catch (_: IllegalArgumentException) { false }
+    }
     private data class Metadata(val index: Int, val id: Long, val rate: Int, val frames: Long, val channels: Int, val name: String, val entry: String)
     fun read(input: InputStream, destination: FileAssetStore, cancelled: () -> Boolean = { false }): SalvageResult {
         ZipInputStream(BoundedInput(NonClosingInput(input), limits.maxArchiveBytes)).use { zip ->

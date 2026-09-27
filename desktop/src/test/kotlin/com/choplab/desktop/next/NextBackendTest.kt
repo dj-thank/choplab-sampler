@@ -209,6 +209,43 @@ class NextBackendTest {
         } finally { driver.close() }
     }
 
+    @Test fun anEarlierAppsProjectFileOpensWithItsAudioLoadedAndSurvivesARestart() = runBlocking<Unit> {
+        val dir = temporary()
+        // The earlier app kept 16-bit PCM WAV and a project.txt manifest (schema 7).
+        fun pcm(frames: Int) = java.io.ByteArrayOutputStream().also { output ->
+            WavCodec.writePcm(output, FloatArray(frames * 2) { (kotlin.math.sin(it / 20.0) * .3).toFloat() }, bits = 16, dither = false)
+        }.toByteArray()
+        val legacy = dir.resolve("old beat.choplab")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(legacy)).use { zip ->
+            fun name(value: String) = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray())
+            zip.putNextEntry(java.util.zip.ZipEntry("project.txt"))
+            zip.write(("CHOPLAB_PROJECT\t7\naudioCount\t2\naudio\t0\t42\t48000\t48000\t2\t${name("drums.wav")}\taudio/0.wav\n" +
+                "audio\t1\t43\t48000\t24000\t2\t${name("voice.wav")}\taudio/1.wav\n").toByteArray())
+            zip.closeEntry()
+            zip.putNextEntry(java.util.zip.ZipEntry("audio/0.wav")); zip.write(pcm(48_000)); zip.closeEntry()
+            zip.putNextEntry(java.util.zip.ZipEntry("audio/1.wav")); zip.write(pcm(24_000)); zip.closeEntry()
+        }
+        val before = Files.readAllBytes(legacy)
+        val profile = dir.resolve("profile")
+        val first = NextBackend.create(profile, sinkFactory = { error("No device") })
+        val rescued: com.choplab.core.model.Project
+        try {
+            assertTrue(first.openProject(legacy).accepted)
+            // Opening commits only after the engine program was built from the rescued audio, loaded from the store.
+            waitUntil { first.studio.work.value.jobId == null && first.studio.document.value.project.source != null }
+            rescued = first.studio.document.value.project
+            assertEquals("old beat", rescued.title)
+            assertEquals("drums.wav", rescued.asset(requireNotNull(rescued.source).assetHash).name)
+            assertEquals("voice.wav", rescued.pads[0].name)
+            assertEquals(24_000L, rescued.asset(requireNotNull(rescued.pads[0].assetHash)).frames)
+            assertNull(first.studio.document.value.savedRevision)
+            first.flushAutosave()
+        } finally { first.shutdown() }
+        assertContentEquals(before, Files.readAllBytes(legacy), "The earlier app's file is left as it was")
+        val second = NextBackend.create(profile, sinkFactory = { error("No device") })
+        try { assertEquals(rescued, second.studio.document.value.project) } finally { second.shutdown() }
+    }
+
     @Test fun autosaveRestoresTheActualDocumentAndRevisionWithoutAddingStarterMusic() = runBlocking<Unit> {
         val dir = temporary()
         val input = dir.resolve("Original.wav")

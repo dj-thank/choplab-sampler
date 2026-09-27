@@ -34,6 +34,12 @@ enum class ContinuousStatus {
     MIC_DENIED, MIC_UNAVAILABLE,
     /** Refused because a take is being recorded. */
     RECORDING_BUSY,
+    /**
+     * A project file of the earlier app opened as a new document with its audio only: the first sound as the original
+     * and the others on PADs; some beyond the sound limit, kept in the document only; all of them beyond it; or no
+     * audio in it at all.
+     */
+    RESCUED, RESCUED_PARTLY, RESCUED_TOO_LONG, RESCUED_NOTHING,
 }
 
 @Immutable data class ContinuousSource(

@@ -16,7 +16,7 @@
 - core/JVMは[PR113](https://github.com/dj-thank/choplab-sampler/pull/113)でmain統合済み。Mac取込高速化/UXは[PR118](https://github.com/dj-thank/choplab-sampler/pull/118)のhead `749132d`で必須CI3件成功、merge `d254e3c`。Mac host対応は[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)の最新head `544f2c7`で必須CI3件成功、merge `29c80b2`。
 - [PR114](https://github.com/dj-thank/choplab-sampler/pull/114) はmerge `02ac506` でmainへ統合済み。4工程UIを新しい編集・再生・保存へ接続。原曲をPAD選択で置換せず、曲全体と試聴音量を分ける。Windows専用Preview app-imageは隔離profile/無音adapterで起動・応答・正常終了を確認。レビュー指摘（96kHzの長さ0 clipでの起動不能、slider操作ごとのUndo、曲末からの再生、自動保存失敗時に閉じられない、tick丸め、loop切替によるPAD modeの上書き、操作順の入れ替わり、起動失敗時の解放、出力停止直後の編集拒否）を修正し回帰テストを追加。main（Mac host、[PR116](https://github.com/dj-thank/choplab-sampler/pull/116)/[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)）との統合後は、MacのCommand-Qも同じ自動保存付きの終了経路を通す（Mac実機では未確認）。engine58/UI23テスト、desktop全体268件（Mac実録音1件skip、うちNextBackend13件）、Android Preview Kotlin/依存DEX、core27/JVM33テストが成功。
 - Android NEXT: [PR124](https://github.com/dj-thank/choplab-sampler/pull/124) のhead `c27f005` で必須CI3件成功（同じcommitで2回）、merge `f69ecd6` でmainへ統合済み。debug/Previewだけに2つ目の入口「おとひろい NEXT」/「Earth Song NEXT」を追加し、同じ4工程の編集画面を共通の `EditorBackend`、AudioTrack出力、SAFのファイル窓口（取込・制作の開く/保存・WAV書出し）へ接続。WAV以外は既存のMediaCodec decoderで16bit WAVにしてから取り込む。新エンジンが常駐できる349秒を超える音源は取込前に案内して止める。曲/原曲の再生中だけ音声フォーカスを取り、フォーカス喪失・イヤホン抜けで停止（自動再開しない）。画面を離れたら停止・出力解放・自動保存し、戻ったら出力を開き直す。経路変更で外れた出力は表示中に数回つなぎ直す。戻る操作は最終自動保存に失敗したら確認する。release APKには入れない
-- 次の一手: Macの機能別受入と取り込み速度/UXを確認する。Android NEXTの実機（Pixel）での制作通し・音・遅延・CPU/underrunを測る。残るonline/長尺prefetchを移行する（ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置は接続済み）。既定の本番入口は保持。実機・実音・Human受入は未完。
+- 次の一手: Macの機能別受入と取り込み速度/UXを確認する。Android NEXTの実機（Pixel）での制作通し・音・遅延・CPU/underrunを測る。残るonline/長尺prefetchを移行する（ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置・旧制作ファイルの音声救出は接続済み）。既定の本番入口は保持。実機・実音・Human受入は未完。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
@@ -32,7 +32,7 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 | 1C CI・Preview | main統合済み / PR110 | push重複除去、既存required check名、source/history/artifact検査、署名/identity。Previewのpackage/authority/OAuth/data/鍵を分離。ja/en名、旧版併存、Windows実package起動 |
 | 2A engine・core・design | 独立engine導入・後続接続待ち | 1素材→1PAD→step→render→WAV spikeを先に測定。DSP/finite memory成功後にschema10/edit/saveへ拡張。fake portの制作通し、指定された4工程UIの比較/PNG、新旧音A/B。旧app回帰なし |
 | 2B-1 NEXTの制作通し | 接続中（Windows Linked Preview、Android NEXT入口） | Previewだけに実hostを配線。取込→chop→PAD→step→再生→保存/再開→書出し/Undoを両OSで通す。Java Sound/AudioTrack driverと診断、Pixel CPU/underrunを測る |
-| 2B-2 移植・切替 | 移行中（合成ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置接続済み） | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
+| 2B-2 移植・切替 | 移行中（合成ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置・旧制作ファイルの音声救出接続済み） | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
 | 4 ビート | 計画 | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
 | 5 ボーカル・歌詞 | 計画 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
