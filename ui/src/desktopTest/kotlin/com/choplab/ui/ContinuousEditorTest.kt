@@ -13,15 +13,80 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.choplab.core.ProgramCompiler
+import com.choplab.core.DocumentState
+import com.choplab.core.ai.*
+import com.choplab.core.model.Project
 import com.choplab.engine.Tempo
+import com.choplab.ui.ai.*
 import java.io.File
 import java.util.Locale
 import kotlin.test.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
+
+    @Test fun lyricProposalOpensFromVocalAndKeepsStopAndCloseReachableWithoutEnablingUnverifiedSending() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
+                Triple(1440, 1024, 1f), Triple(390, 844, 2f), Triple(844, 390, 2f))) {
+                Locale.setDefault(locale)
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val state = mutableStateOf(ContinuousEditorFixture.state())
+                val active = mutableStateOf<LyricProposalController?>(null)
+                var closes = 0
+                val controller = LyricProposalController(MutableStateFlow(DocumentState(Project(), 0)), object : LlmProvider {
+                    override suspend fun lyrics(request: LyricRequest, key: SessionApiKey): LyricProviderResult = error("Unverified host cannot send")
+                    override fun close() { closes++ }
+                }, LyricProposalApply { _, _ -> error("No preview exists") }, this)
+                val send: (ContinuousEditorAction) -> Unit = { action ->
+                    actions += action
+                    when (action) {
+                        is ContinuousEditorAction.Lyrics -> state.value = state.value.copy(lyrics = state.value.lyrics.copy(open = action.action == LyricAction.Open))
+                        ContinuousEditorAction.OpenLyricProposal -> {
+                            state.value = state.value.copy(lyrics = state.value.lyrics.copy(open = false)); active.value = controller
+                        }
+                        ContinuousEditorAction.CloseLyricProposal -> { controller.close(); active.value = null }
+                        else -> Unit
+                    }
+                }
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, send, lyricProposal = active.value)
+                }
+                try {
+                    scene.settle()
+                    scene.click("ce-lyrics-open")
+                    scene.click("ce-lyrics-ai-open")
+                    withTimeout(5_000) { while (scene.tag("ce-lyrics-panel") != null || scene.semanticsOwners.size != 2) scene.settle() }
+                    assertSame(controller, active.value)
+                    assertNotNull(scene.tag("ai-lyrics-panel"))
+                    for (tag in listOf("ce-lyric-proposal-stop", "ce-lyric-proposal-close")) {
+                        val node = requireNotNull(scene.tag(tag))
+                        assertTrue(node.size.height >= 48)
+                        assertTrue(node.boundsInRoot.width >= node.size.width - 1 && node.boundsInRoot.height >= node.size.height - 1)
+                        assertTrue(node.boundsInRoot.left >= 0 && node.boundsInRoot.right <= width && node.boundsInRoot.top >= 0 && node.boundsInRoot.bottom <= height)
+                    }
+                    scene.click("ce-lyric-proposal-stop")
+                    assertEquals(ContinuousEditorAction.StopAll, actions.last())
+                    assertTrue(requireNotNull(scene.tag("ai-generate")).config.contains(SemanticsProperties.Disabled))
+                    scene.capture("lyric-proposal-${locale.language}-${width}x$height-font${(font * 100).toInt()}.png")
+                    scene.click("ce-lyric-proposal-close")
+                    scene.awaitDialogClosed("ce-lyric-proposal-dialog")
+                    assertNull(active.value)
+                    assertEquals(1, closes, "Button and panel disposal close their provider only once")
+                    assertEquals(LyricProposalPhase.CLOSED, controller.state.value.phase)
+                    scene.click("ce-lyrics-open")
+                    state.value = state.value.copy(capabilities = state.value.capabilities - ContinuousCapability.LYRIC_PROPOSAL)
+                    scene.settle()
+                    assertTrue(requireNotNull(scene.tag("ce-lyrics-ai-open")).config.contains(SemanticsProperties.Disabled))
+                } finally { scene.close(); controller.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
 
     @Test fun recordingGuideSettingsAndStopRemainReachableAndEarlyPadPressesAreNotRecorded() = runBlocking<Unit> {
         val previous = Locale.getDefault()
