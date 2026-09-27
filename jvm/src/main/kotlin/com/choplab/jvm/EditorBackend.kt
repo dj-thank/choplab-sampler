@@ -91,6 +91,25 @@ class EditorBackend private constructor(
         return asset
     }
 
+    /** A complete performed voice. Gain/pan/envelope are baked; placement must use unity gain and center pan. */
+    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int): Asset {
+        require(limitFrames in 1..PadRender.MAX_FRAMES)
+        require(releaseAt == null || releaseAt in 0..limitFrames)
+        val samples = withContext(Dispatchers.Default) {
+            com.choplab.engine.PadPerformanceRender.render(
+                ProgramCompiler.enginePad(pad, source, pcm.load(source)), releaseAt, limitFrames)
+        }
+        currentCoroutineContext().ensureActive()
+        val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()
+        val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), 48_000, 2, samples.size / 2L,
+            source.name.take(200) + " performance", AssetRole.RENDERED, derivedFrom = source.hash)
+        withContext(Dispatchers.IO) {
+            val context = currentCoroutineContext()
+            assets.publish(asset, java.io.ByteArrayInputStream(bytes)) { !context.isActive }
+        }
+        return asset
+    }
+
     /** [flush] is false only after the user chose to close without the final autosave. */
     suspend fun shutdown(flush: Boolean = true) {
         try { if (flush) flushAutosave(); studio.dispatch(Action.Stop); studio.dispatch(Action.Close) }

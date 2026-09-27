@@ -75,6 +75,8 @@ interface ContinuousEditorPorts {
     val padRenderAvailable: Boolean get() = false
     /** Renders [pad] from [source] as it sounds from its PAD into a stored sound for the song; null when it cannot. */
     suspend fun renderPad(pad: Pad, source: Asset): Asset? = null
+    /** Complete performed voice, including gain/pan and release. */
+    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int): Asset? = null
 }
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */

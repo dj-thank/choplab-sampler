@@ -12,7 +12,7 @@ rootがPR150相当の統合候補で追加Presenter境界試験を実行し、�
 
 曲末欠落の修正候補では、各押下を固有のgestureとして録音passへ登録し、指を離す前にpassが終わっても保存する。pass内のスクロール取消は未確定押下を破棄し、後から届く別passの解放とは混同しない。曲末後の解放を含むPresenter再現と、実Compose pointerによるONE SHOT/GATE/スクロール取消/読み上げ操作の2試験が成功。GATEの長さとLOOP/chokeの記録はまだ未修正で、PR150は引き続きdraft。
 
-演奏音の修正途中: offline専用の `PadPerformanceRender` を追加し、liveと同じVoiceでGATE/LOOP/ONE SHOTのnote-off、ADSR、逆再生、音程、音色、gain/pan、左右を処理する。live engine出力とのsample比較と自然終端/上限/不正入力の2試験が成功。録音Presenter・資産保存・配置への接続はまだ未完であり、GATEの再現不具合を解消済みとはしない。
+演奏音の修正途中: offline専用の `PadPerformanceRender` を追加し、liveと同じVoiceでGATE/LOOP/ONE SHOTのnote-off、ADSR、逆再生、音程、音色、gain/pan、左右を処理する。live engine出力とのsample比較と自然終端/上限/不正入力の2試験が成功。後続で共有EditorBackendのfloat WAV資産保存とMac/Android host portへ接続。480frameのGATE押下+96frameのlive解放減衰=576frame、48kHz stereo float32、元bytes/document不変・同じ演奏の資産再利用をJVM試験で確認し、desktop/Android Preview compileが成功。録音Presenterの押下/解放時刻と配置への接続はまだ未完であり、GATEの再現不具合を解消済みとはしない。音の一致ではnote-off後の実エンジンの減衰も保存対象とする。
 
 デザイン参照の訂正: 左右2円盤のスクラッチ画像のみを継続参照する。同時に送られた取り込み画面とビート画面の2枚は利用者の訂正により参照から外す。現在の4工程・原曲共通表示・可変幅等の明文化された契約は維持する。
 
