@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
@@ -24,6 +25,58 @@ import kotlin.test.*
 
 class ContinuousBankPadEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("bank-pad-editor").apply { mkdirs() }
+
+    @Test fun aClosedDraftStillBlocksPointersUntilTheDialogLayerIsReleased() = runBlocking {
+        val h = BankPadEditorHarness()
+        val actions = mutableListOf<BankPadEditAction>()
+        // Drive frames explicitly: the race must not depend on this machine's rendering speed.
+        var frameTime = 0L
+        val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f),
+            coroutineContext = coroutineContext + object : MotionDurationScale { override val scaleFactor = 2f }) {
+            val state by h.controller.view.collectAsState()
+            val send = { action: BankPadEditAction -> actions += action; h.scope.launch { h.controller.dispatch(action) }; Unit }
+            CETheme {
+                CEBankPadEditButtons(ContinuousEditorFixture.state(ContinuousStage.BEAT), send, null)
+                CEBankPadEditor(state, send, null) {}
+            }
+        }
+        suspend fun frame(advanceMillis: Long = 0) {
+            frameTime += advanceMillis * 1_000_000
+            scene.render(frameTime).close()
+            delay(1)
+        }
+        suspend fun pointer(value: String) {
+            val center = scene.tag(value).boundsInWindow.center
+            scene.sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse,
+                buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+            frame()
+            scene.sendPointerEvent(PointerEventType.Release, center, type = PointerType.Mouse,
+                buttons = PointerButtons(), button = PointerButton.Primary)
+            repeat(3) { frame() }
+        }
+        try {
+            repeat(3) { frame() }
+            pointer("ce-bank-edit")
+            repeat(3) { frame(200) }
+            assertIs<BankPadDraft.BankMetadata>(h.controller.view.value.draft)
+            pointer("ce-bank-pad-cancel")
+            assertNull(h.controller.view.value.draft)
+            assertFalse(scene.nodes().any { it.config.getOrNull(SemanticsProperties.TestTag) == "ce-bank-pad-fields" })
+            assertEquals(2, scene.semanticsOwners.size, "Removed fields do not mean the modal input layer was released")
+            val sent = actions.size
+            pointer("ce-pad-sound-edit")
+            assertEquals(listOf(BankPadEditAction.Cancel), actions.drop(sent),
+                "The exit layer treats the next editor pointer as an outside dismissal, not OpenPad")
+            assertNull(h.controller.view.value.draft)
+
+            scene.awaitBankPadDialogClosed { frameTime += 16_000_000; scene.render(frameTime).close() }
+            val ready = actions.size
+            pointer("ce-pad-sound-edit")
+            assertEquals(listOf(BankPadEditAction.OpenPad), actions.drop(ready), "After release one pointer opens exactly one editor")
+            assertIs<BankPadDraft.PadSound>(h.controller.view.value.draft)
+            assertEquals(0, h.studio.document.value.revision)
+        } finally { scene.close(); h.close() }
+    }
 
     @Test fun normalBankDisplayUsesCommittedNameRoleAndColorThenFollowsUndo() = runBlocking {
         val h = BankPadEditorHarness()
@@ -91,6 +144,7 @@ class ContinuousBankPadEditorTest {
                     assertEquals(0, h.studio.document.value.revision)
                     scene.click("ce-bank-pad-apply")
                     assertNull(h.controller.view.value.draft)
+                    scene.awaitBankPadDialogClosed()
                     assertEquals(0xfaaa20, h.studio.document.value.project.banks[0].color)
                     assertEquals(1, h.studio.document.value.revision)
 
@@ -105,6 +159,7 @@ class ContinuousBankPadEditorTest {
                     assertEquals(1, h.studio.document.value.revision, "Typing never commits partial values")
                     scene.click("ce-bank-pad-apply")
                     assertNull(h.controller.view.value.draft)
+                    scene.awaitBankPadDialogClosed()
                     assertEquals(2, h.studio.document.value.revision)
                     val pad = h.studio.document.value.project.pads[0]
                     assertEquals(-.75f, pad.pan); assertEquals(480, pad.attackFrames)
@@ -114,6 +169,7 @@ class ContinuousBankPadEditorTest {
                     scene.setText("name", "Cancelled")
                     scene.click("ce-bank-pad-cancel")
                     assertNull(h.controller.view.value.draft)
+                    scene.awaitBankPadDialogClosed()
                     assertEquals(2, h.studio.document.value.revision)
                     assertNotEquals("Cancelled", h.studio.document.value.project.banks[0].name)
                 } finally { scene.close(); h.close() }

@@ -62,6 +62,7 @@ class BankPadEditorIntegrationTest {
                     scene.click("ce-bank-pad-stop")
                     assertEquals(stops + 1, h.engine.commands.count { it is EngineCommand.Stop })
                     scene.click("ce-bank-pad-cancel")
+                    scene.awaitBankPadDialogClosed()
                     assertEquals(before, h.studio.document.value.project)
                     assertFalse(h.studio.document.value.canUndo)
 
@@ -71,7 +72,7 @@ class BankPadEditorIntegrationTest {
                     scene.setText("role", "リズム")
                     scene.click("ce-bank-pad-apply")
                     h.until { it.bankPadEditor.draft == null && it.banks[0].name == "低音" }
-                    scene.settle()
+                    scene.awaitBankPadDialogClosed()
                     assertEquals(Bank(0, "低音", 0xfaba20, "リズム"), h.studio.document.value.project.banks[0])
                     assertEquals(0xfaba20, h.presenter.state.value.banks[0].color)
                     assertTrue(scene.description("ce-bank-0").contains("低音"))
@@ -90,6 +91,7 @@ class BankPadEditorIntegrationTest {
                     scene.click("ce-pad-sound-edit")
                     scene.setText("pan", "-50")
                     scene.click("ce-bank-pad-cancel")
+                    scene.awaitBankPadDialogClosed()
                     assertEquals(before.pads, h.studio.document.value.project.pads)
                     scene.click("ce-pad-sound-edit")
                     scene.setText("pan", "-50")
@@ -102,6 +104,7 @@ class BankPadEditorIntegrationTest {
                     scene.capture("pad-${width}x$height-ready.png")
                     scene.click("ce-bank-pad-apply")
                     h.until { it.bankPadEditor.draft == null }
+                    scene.awaitBankPadDialogClosed()
                     val changed = h.studio.document.value.project
                     val expected = before.pads[0].copy(pan = -.5f, attackFrames = 960, decayFrames = 3840, sustainLevel = .35f, releaseFrames = 2160)
                     assertEquals(expected, changed.pads[0])
