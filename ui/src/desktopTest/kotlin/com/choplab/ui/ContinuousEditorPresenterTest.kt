@@ -79,8 +79,16 @@ class ContinuousEditorPresenterTest {
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(0, ContinuousPadMode.LOOP)))
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadChoke(0, 5)))
             assertEquals(undone, h.studio.document.value.project.pads[0])
-            // Choosing how a looping PAD plays ends its loop; the loop has no older mode left to restore.
+            // Choosing how a PAD the loop button made loop plays ends that loop. After an Undo of the choice it loops
+            // as the loop button left it, and ending that loop returns it to the mode it had before (GATE).
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(1, ContinuousPadMode.ONE_SHOT)))
+            assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(PlayMode.LOOP, h.studio.document.value.project.pads[1].mode)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
+            assertEquals(PlayMode.GATE, h.studio.document.value.project.pads[1].mode)
+            // A choice made while nothing loops stays as it is when another PAD loops.
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(1, ContinuousPadMode.ONE_SHOT)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(0)))
             assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)

@@ -400,12 +400,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 // A changed PAD stops sounding (Studio stops it), as with its other settings; only a PAD with a sound changes.
                 is ContinuousEditorAction.SetPadReverse -> project.pads[action.padId].takeIf { it.assetHash != null }
                     ?.let { edit(Intent.SetPad(it.copy(reverse = action.reverse))) } ?: false
+                // Choosing for a PAD the loop button made loop ends that loop. The record of its earlier mode stays: it
+                // applies only while the PAD is LOOP, so again after an Undo of the choice, as the loop button left it.
                 is ContinuousEditorAction.SetPadMode -> {
                     require(action.mode != ContinuousPadMode.LOOP) { "Looping is the loop button's" }
-                    project.pads[action.padId].takeIf { it.assetHash != null }?.let { pad ->
-                        // A loop the loop button started ends here: its mode is no longer one to restore.
-                        edit(Intent.SetPad(pad.copy(mode = PlayMode.valueOf(action.mode.name)))).also { if (it) loopModes.remove(pad.id) }
-                    } ?: false
+                    project.pads[action.padId].takeIf { it.assetHash != null }
+                        ?.let { edit(Intent.SetPad(it.copy(mode = PlayMode.valueOf(action.mode.name)))) } ?: false
                 }
                 is ContinuousEditorAction.SetPadChoke -> {
                     require(action.group in 0..4)
