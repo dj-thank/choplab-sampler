@@ -65,7 +65,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
                     PACKAGE.build(Path('unused-jdk'), Path('unused-tools'))
                 run.assert_not_called()
 
-    def test_linked_editor_has_tools_and_pinned_model_but_no_spotify_configuration(self):
+    def test_linked_editor_has_tools_pinned_model_and_public_spotify_configuration(self):
         commands = self.package_commands('0123456789abcdef0123456789abcdef', linked=True)
         # The same pinned model preparer precedes packaging for NEXT.
         self.assertEqual(2, len(commands))
@@ -78,7 +78,8 @@ class MacPackageConfigurationTest(unittest.TestCase):
         self.assertIn('-Dchoplab.mediaTools=$APPDIR/tools', args)
         self.assertIn('-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio', args)
         self.assertIn('-Dchoplab.separatorModels=$APPDIR/models', args)
-        self.assertFalse(any(a.startswith('-Dchoplab.spotifyClientId=') for a in args))
+        self.assertEqual(1, args.count('-Dchoplab.spotifyClientId=0123456789abcdef0123456789abcdef'))
+        self.assertFalse(any('secret' in a.lower() or 'token' in a.lower() for a in args))
 
     def test_linked_editor_is_never_built_as_a_signed_release(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(PACKAGE, 'run') as run:

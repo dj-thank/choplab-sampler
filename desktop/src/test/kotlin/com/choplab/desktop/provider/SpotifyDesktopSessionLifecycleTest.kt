@@ -381,7 +381,8 @@ class SpotifyDesktopSessionLifecycleTest {
     @Test
     fun apiRecoveryInformationIsTypedAndClearedAfterASuccessfulRetry() {
         val api = FakeApi(savedTracksResponse = SpotifyApiResponse(429, "untrusted response", 12L))
-        val session = session(api = api, callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback })
+        var now = java.time.Instant.parse("2026-09-28T00:00:00Z")
+        val session = session(api = api, callbackFactory = SpotifyAuthorizationCallbackFactory { ImmediateCallback }, now = { now })
         try {
             connect(session)
             session.showLibrary()
@@ -390,6 +391,7 @@ class SpotifyDesktopSessionLifecycleTest {
             assertTrue(session.connected)
             assertFalse(session.state.value.toString().contains("untrusted response"))
             api.savedTracksResponse = SpotifyApiResponse(200, "{\"items\":[]}")
+            now = now.plusSeconds(12)
             session.showLibrary()
             await { !session.state.value.busy }
             assertEquals(null, session.state.value.problem)
@@ -410,6 +412,7 @@ class SpotifyDesktopSessionLifecycleTest {
         api: SpotifyApiClient = FakeApi(),
         callbackFactory: SpotifyAuthorizationCallbackFactory,
         browser: SpotifyBrowser = SpotifyBrowser { },
+        now: () -> java.time.Instant = java.time.Instant::now,
     ) = SpotifyDesktopSession(
         onStatus = {},
         clientId = clientId,
@@ -417,6 +420,7 @@ class SpotifyDesktopSessionLifecycleTest {
         api = api,
         callbackFactory = callbackFactory,
         browser = browser,
+        now = now,
     )
 
     private fun await(condition: () -> Boolean) {
