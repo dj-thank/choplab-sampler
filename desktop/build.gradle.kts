@@ -38,13 +38,16 @@ tasks.register<JavaExec>("runLinkedPreview") {
 
 val macHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 val macSystemAudioHelper = layout.buildDirectory.file("choplab-sck-audio")
+// ScreenCaptureKit capture is built against a stable OS baseline; bundled native tools may require newer macOS.
+val macSystemAudioTarget = "${System.getProperty("os.arch").let { if (it == "aarch64") "arm64" else it }}-apple-macos14.0"
 val compileMacSystemAudioHelper = tasks.register<Exec>("compileMacSystemAudioHelper") {
     onlyIf { macHost }
     val source = layout.projectDirectory.file("src/main/swift/ChoplabSystemAudio.swift")
     inputs.file(source)
+    inputs.property("deploymentTarget", macSystemAudioTarget)
     outputs.file(macSystemAudioHelper)
     commandLine(
-        "swiftc", "-O", "-parse-as-library",
+        "swiftc", "-O", "-parse-as-library", "-target", macSystemAudioTarget,
         "-o", macSystemAudioHelper.get().asFile.absolutePath,
         source.asFile.absolutePath,
     )

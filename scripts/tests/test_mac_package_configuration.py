@@ -1,6 +1,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -115,6 +116,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
 
             with patch.object(PACKAGE, 'ROOT', root), patch.object(PACKAGE, 'run', side_effect=run), \
                     patch.object(PACKAGE.subprocess, 'check_output', return_value=''), \
+                    patch.object(PACKAGE, 'minimum_system_version', return_value='27.0'), \
                     patch.dict(os.environ, {}, clear=True), contextlib.redirect_stdout(io.StringIO()):
                 PACKAGE.build(root / 'jdk', tools, linked=True)
             codesign = [c[1:] for c in commands if c[0] == 'codesign']
@@ -126,7 +128,11 @@ class MacPackageConfigurationTest(unittest.TestCase):
             self.assertEqual(('ChopLab NEXT.app', 'Contents', 'MacOS', 'ChopLab NEXT'), Path(codesign[removed[0]][1]).parts[-4:])
             self.assertEqual(1, len(signed_app))
             self.assertLess(removed[0], signed_app[0])
-            self.assertTrue((root / 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app/Contents/Info.plist').is_file())
+            plist_path = root / 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app/Contents/Info.plist'
+            with plist_path.open('rb') as stream:
+                self.assertEqual('27.0', plistlib.load(stream)['LSMinimumSystemVersion'])
+            manifest = json.loads((plist_path.parents[2] / 'manifest.json').read_text())
+            self.assertEqual('27.0', manifest['minimum_system_version'])
 
 
 if __name__ == '__main__':
