@@ -5,6 +5,7 @@ import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
 import com.choplab.jvm.ai.*
+import com.choplab.ui.*
 import com.choplab.ui.ai.*
 import kotlinx.coroutines.*
 import java.io.ByteArrayInputStream
@@ -24,15 +25,22 @@ class GeminiLyricFlowTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var calls = 0
         val provider = GeminiLyricProvider(UrlConnectionGeminiTransport { url -> calls++; Connection(url) })
-        val controller = LyricProposalController(backend.studio.document, provider, LyricProposalApply { lines, revision ->
-            backend.studio.dispatch(Action.Edit(Intent.SetLyrics(lines), revision)).accepted
-        }, scope, LyricProviderAvailability.AVAILABLE)
+        val ports = DesktopEditorPorts(backend) { null }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, object : ContinuousEditorPorts by ports {
+            override val lyricProposal = object : LyricProposalPort {
+                override val availability = LyricProviderAvailability.AVAILABLE
+                override fun createProvider() = provider
+            }
+        })
         val saved: Project
         try {
             val original = Project(lyrics = frozenListOf(LyricLine("old", "元の歌", 0, 1920,
                 frozenListOf(LyricWord("元", 0, 960), LyricWord("の歌", 960, 1920)))))
             assertTrue(backend.studio.dispatch(Action.New(original)).accepted)
             idle(backend)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.Lyrics(LyricAction.Open)))
+            assertTrue(presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+            val controller = requireNotNull(presenter.lyricProposal.value)
             val before = backend.studio.document.value
             assertFalse(before.canUndo)
             val audioRevision = backend.engine.snapshot().programRevision
@@ -52,10 +60,10 @@ class GeminiLyricFlowTest {
             assertEquals(listOf(2880L, 4800L), saved.lyrics.map { it.endTick })
             assertTrue(saved.lyrics.all { it.words.isEmpty() }, "Manual placement does not claim provider word timing")
             assertFalse(controller.applyPreview())
-            assertTrue(backend.studio.dispatch(Action.Undo).accepted)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.Undo))
             assertEquals(original, backend.studio.document.value.project)
             assertFalse(backend.studio.document.value.canUndo, "Exactly one undo transaction")
-            assertTrue(backend.studio.dispatch(Action.Redo).accepted)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.Redo))
             assertEquals(saved, backend.studio.document.value.project)
             val archive = directory.resolve("song.choplab")
             assertTrue(backend.saveProject(archive).accepted); idle(backend)
@@ -70,9 +78,31 @@ class GeminiLyricFlowTest {
             assertTrue(backend.openProject(archive).accepted); idle(backend)
             assertEquals(saved, backend.studio.document.value.project)
             backend.flushAutosave()
-        } finally { controller.close(); scope.cancel(); backend.shutdown() }
+        } finally { presenter.close(); ports.close(); scope.cancel(); backend.shutdown() }
         val restored = NextBackend.create(profile, sinkFactory = { error("No device in this test") }, microphone = { null })
         try { assertEquals(saved, restored.studio.document.value.project) } finally { restored.shutdown() }
+    }
+
+    @Test fun defaultDesktopEntryExplainsUnverifiedProviderWithoutSendingOrEditing() = runBlocking<Unit> {
+        val backend = NextBackend.create(Files.createTempDirectory("gemini-lyrics-unverified-"), sinkFactory = { error("No device") }, microphone = { null })
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val ports = DesktopEditorPorts(backend) { null }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+        try {
+            idle(backend)
+            val before = backend.studio.document.value
+            assertEquals(LyricProviderAvailability.UNVERIFIED, ports.lyricProposal.availability)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+            val controller = requireNotNull(presenter.lyricProposal.value)
+            val key = SessionApiKey("fake-key")
+            assertFalse(controller.generate(request(), key, 0, 4, true))
+            assertEquals(LyricAiProblem.PROVIDER_UNVERIFIED, controller.state.value.failure?.problem)
+            assertFailsWith<IllegalStateException> { key.useValue { it } }
+            assertEquals(before, backend.studio.document.value)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.CloseLyricProposal))
+            assertEquals(LyricProposalPhase.CLOSED, controller.state.value.phase)
+            assertNull(presenter.lyricProposal.value)
+        } finally { presenter.close(); ports.close(); scope.cancel(); backend.shutdown() }
     }
 
     @Test fun realActorRefusesARevisionChangedAfterPreviewBeforeAtomicApply() = runBlocking<Unit> {
