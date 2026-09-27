@@ -320,7 +320,7 @@ class ContinuousEditorPresenterTest {
     @Test fun diagnosticsComeFromTheHostAndCopyingReportsTheResult() = runBlocking<Unit> {
         val h = Harness()
         try {
-            assertEquals(ContinuousDiagnostics(outputAttached = true, underruns = 4), h.presenter.diagnostics())
+            assertEquals(ContinuousDiagnostics(outputAttached = true, underruns = 4, pendingFrames = 1_920), h.presenter.diagnostics())
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.CopyDiagnostics("音の診断\n音切れ: 4 回")))
             assertEquals(listOf("音の診断\n音切れ: 4 回"), h.ports.copied)
             assertEquals(ContinuousStatus.COPIED, withTimeout(2000) { h.presenter.state.first { it.status == ContinuousStatus.COPIED } }.status)
@@ -389,7 +389,271 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
-    private class Harness(kits: Boolean = false, adjust: (Project) -> Project = { it }) {
+    @Test fun aTakeGoesToTheFirstEmptyVoicePadAndOntoTheSongWhereItWasSung() = runBlocking<Unit> {
+        val h = Harness(voice = true) { p -> p.copy(pads = p.pads.map { if (it.id == 48) Pad(48, p.assets[1].hash, FrameRange(0, 48_000)) else it }.frozen()) }
+        try {
+            val attached = h.until { it.permits(ContinuousCapability.PAD_AUDITION) }
+            assertEquals(ContinuousUnavailable.NO_SONG, attached.unavailable[ContinuousCapability.RECORD_VOICE], "Nothing to sing to yet")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.ports.voiceStarts.isEmpty())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            h.until { it.permits(ContinuousCapability.RECORD_VOICE) }
+            val before = h.studio.document.value.project
+            // The song stands paused half way through.
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 24_000, sequencePaused = true)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            val recording = h.until { it.recordingVoice }
+            assertTrue(h.ports.voiceStarts.single() in 1..300)
+            assertEquals(1, h.ports.cues)
+            assertTrue(h.ports.commandsAtCue.last() is EngineCommand.Resume, "The song starts right before the cue")
+            assertTrue(h.ports.commandsAtCue.none { it is EngineCommand.Seek }, "It plays on from where it stood")
+            // Playing along and stopping stay available; changing the document does not.
+            assertTrue(recording.permits(ContinuousCapability.PAD_AUDITION) && recording.permits(ContinuousCapability.SONG_PLAYBACK))
+            assertFalse(recording.permits(ContinuousCapability.RECORD_VOICE) || recording.permits(ContinuousCapability.HISTORY)
+                || recording.permits(ContinuousCapability.SONG_SEEK) || recording.permits(ContinuousCapability.IMPORT_AUDIO))
+            assertEquals(ContinuousUnavailable.RECORDING, recording.unavailable[ContinuousCapability.TEMPO])
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetTempo(100)))
+            h.until { it.status == ContinuousStatus.RECORDING_BUSY }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            val stopped = h.until { !it.recordingVoice && it.status == ContinuousStatus.VOICE_SAVED && it.selectedPadId == 49 }
+            assertTrue(h.engine.commands.last { it is EngineCommand.Pause || it is EngineCommand.Resume } is EngineCommand.Pause, "Stopping pauses the song")
+            assertEquals(listOf("VOICE 2"), h.ports.voiceNames, "BANK D's first PAD is taken, so the take is its second")
+            val p = h.studio.document.value.project
+            val take = p.assets.single { it.name == "VOICE 2" }
+            assertEquals(Pad(49, take.hash, FrameRange(0, 96_000), "VOICE 2", gain = .9f), p.pads[49])
+            val track = p.tracks.single { it.kind == TrackKind.VOCAL }
+            assertEquals("VOICE", track.name)
+            val clip = p.clips.single { it.assetHash == take.hash }
+            // The lead-in before the cue (2 400) and the output's delay (1 920) are cut from its start, and it ends where
+            // the song ends (48 000), half a second after it began.
+            assertEquals(FrameRange(4_320, 28_320), clip.range)
+            assertEquals(24_000L, clip.timelineStartFrame)
+            assertEquals(track.id, clip.trackId)
+            assertTrue(stopped.permits(ContinuousCapability.RECORD_VOICE), "The take's PAD is selected and another take can follow")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project, "The take is one Undo")
+        } finally { h.close() }
+    }
+
+    @Test fun aTakeEndsWithTheSongOrAtItsLimitAndKeepsWhatWasSung() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            // The song had played to its end: recording starts it again from the top.
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 48_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.ports.commandsAtCue.any { it is EngineCommand.Seek && it.sequenceFrame == 0L })
+            // The song reaching its end (or the host stopping it) ends the take.
+            h.engine.transport = h.engine.transport.copy(playing = false)
+            h.until { !it.recordingVoice && it.status == ContinuousStatus.VOICE_SAVED }
+            val first = h.studio.document.value.project.clips.last()
+            assertEquals(0L, first.timelineStartFrame)
+            assertEquals("VOICE 1", h.studio.document.value.project.pads[48].name)
+            // Pressing stop just after the song ended the take finds nothing to stop and keeps the take's message.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            delay(200) // Time for a cleared status to reach the state, were it cleared.
+            assertEquals(ContinuousStatus.VOICE_SAVED, h.presenter.state.value.status)
+
+            // A take that reached its length limit stops by itself, pausing the song.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.ports.full = true
+            h.until { !it.recordingVoice && it.status == ContinuousStatus.VOICE_LIMIT }
+            assertFalse(h.engine.transport.playing)
+            val p = h.studio.document.value.project
+            assertEquals("VOICE 2", p.pads[49].name)
+            assertEquals(1, p.tracks.count { it.kind == TrackKind.VOCAL }, "Takes share the voice track")
+            h.ports.full = false
+
+            // The output is lost: the song cannot be heard any more, so the take ends and is kept.
+            h.engine.transport = h.engine.transport.copy(sequencePaused = true)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.engine.transport = h.engine.transport.copy(outputAttached = false)
+            h.until { !it.recordingVoice && it.status == ContinuousStatus.VOICE_SAVED }
+            assertEquals("VOICE 3", h.studio.document.value.project.pads[50].name)
+            h.engine.transport = h.engine.transport.copy(outputAttached = true)
+            h.until { it.permits(ContinuousCapability.RECORD_VOICE) }
+
+            // Leaving the stage, stopping everything or closing the editor end the take and keep it; tapping the stage
+            // already shown does not.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CAPTURE)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+            h.until { it.recordingVoice }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.SAVE)))
+            assertEquals("VOICE 5", h.studio.document.value.project.pads[52].name)
+            assertFalse(h.until { it.stage == ContinuousStage.SAVE }.recordingVoice)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+            assertEquals("VOICE 6", h.studio.document.value.project.pads[53].name)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.presenter.close()
+            assertEquals("VOICE 7", h.studio.document.value.project.pads[54].name)
+            assertEquals(0, h.ports.discards)
+        } finally { h.close() }
+    }
+
+    @Test fun refusedMicrophoneFullBankAndEmptyTakesAreExplained() = runBlocking<Unit> {
+        val h = Harness(voice = true) { p -> p.copy(pads = p.pads.map { if (it.id in 48..63) Pad(it.id, p.assets[1].hash, FrameRange(0, 48_000)) else it }.frozen()) }
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            val placed = h.studio.document.value.project
+            for ((answer, status) in listOf(VoiceStart.DENIED to ContinuousStatus.MIC_DENIED, VoiceStart.UNAVAILABLE to ContinuousStatus.MIC_UNAVAILABLE,
+                VoiceStart.NO_ROOM to ContinuousStatus.VOICE_NO_ROOM)) {
+                h.ports.microphone = answer
+                h.engine.commands.clear()
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+                assertFalse(h.until { it.status == status }.recordingVoice)
+                assertTrue(h.engine.commands.none { it is EngineCommand.Resume }, "The song does not start")
+            }
+            h.ports.microphone = VoiceStart.STARTED
+
+            // BANK D is full: the take goes onto the song only.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            h.until { it.status == ContinuousStatus.VOICE_SAVED_SONG_ONLY }
+            assertEquals(placed.pads, h.studio.document.value.project.pads)
+            assertEquals("VOICE 1", h.studio.document.value.project.clips.last().let { c -> h.studio.document.value.project.asset(c.assetHash).name })
+
+            // Nothing recorded, or stopped before anything was sung to the song: nothing is added.
+            val once = h.studio.document.value.project
+            for ((frames, status) in listOf(null to ContinuousStatus.VOICE_EMPTY, 4_000L to ContinuousStatus.VOICE_TOO_SHORT)) {
+                h.ports.takeFrames = frames
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+                h.until { it.status == status }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(0)), "Clears the status")
+            }
+            // Storage failed: said so, and the editor records again afterwards.
+            h.ports.takeFrames = 96_000
+            h.ports.storeFails = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            assertFalse(h.until { it.status == ContinuousStatus.VOICE_NOT_SAVED }.recordingVoice)
+            h.ports.storeFails = false
+            assertEquals(once, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
+    @Test fun aTakeEndedAtTheSongEndLeavesTheNextOneStartingFromTheTop() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 24_000, sequencePaused = true)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            // The song reaches its end, and the singer presses stop right then, perhaps before the poll noticed.
+            h.engine.transport = h.engine.transport.copy(playing = false, sequenceFrame = 48_000)
+            h.presenter.dispatch(ContinuousEditorAction.StopVoice)
+            h.until { !it.recordingVoice && it.status == ContinuousStatus.VOICE_SAVED }
+            assertFalse(h.engine.transport.sequencePaused, "Nothing pauses a song that already ended")
+            assertTrue(h.engine.commands.last { it is EngineCommand.Pause || it is EngineCommand.Resume } is EngineCommand.Resume)
+            // So the next take (and a plain play) start the song from the top again.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.ports.commandsAtCue.any { it is EngineCommand.Seek && it.sequenceFrame == 0L })
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            h.engine.transport = TransportState(outputAttached = true, sequenceFrame = 48_000, sequencePaused = true)
+            h.engine.commands.clear()
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlaySong))
+            assertTrue(h.engine.commands.any { it is EngineCommand.Seek && it.sequenceFrame == 0L }, "Paused at the end plays from the top")
+        } finally { h.close() }
+    }
+
+    @Test fun aMicrophoneThatStopsWorkingEndsTheTakeAndSaysSo() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.ports.interrupted = true
+            h.until { !it.recordingVoice && it.status == ContinuousStatus.VOICE_INTERRUPTED }
+            assertFalse(h.engine.transport.playing, "The song pauses with the take")
+            assertEquals("VOICE 1", h.studio.document.value.project.pads[48].name, "What was sung is kept")
+        } finally { h.close() }
+    }
+
+    @Test fun aTakeWhoseFirstFrameCameLateIsPlacedLaterAndEndsWithTheSong() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            // The microphone's first frame came 100 ms after the song started; the output was 40 ms behind.
+            h.ports.takeLead = -4_800
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            h.until { it.status == ContinuousStatus.VOICE_SAVED }
+            val clip = h.studio.document.value.project.clips.last()
+            assertEquals(2_880L, clip.timelineStartFrame, "60 ms after where the song started")
+            assertEquals(FrameRange(0, 45_120), clip.range, "Whole from its first frame, up to the song's end at 48 000")
+        } finally { h.close() }
+    }
+
+    @Test fun aStopWhileTheTakeIsAddedNeverLosesIt() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            // A stop pressed while the take's edit is prepared does not cancel that edit.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            val before = h.engine.prepares
+            h.engine.duringPrepare = { h.presenter.onAction(ContinuousEditorAction.StopAll); delay(100) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            assertEquals("VOICE 1", h.studio.document.value.project.pads[48].name)
+            assertEquals(before + 1, h.engine.prepares, "Prepared once, never cancelled")
+            // Let the queued stop run first: UI events run in order.
+            h.presenter.onAction(ContinuousEditorAction.SelectPad(0))
+            h.until { it.selectedPadId == 0 }
+            // One sent just before (so nothing held it back) cancels the edit, which is then added again.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.engine.duringPrepare = { h.studio.dispatch(Action.CancelWork) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            assertNull(h.engine.duringPrepare)
+            assertEquals("VOICE 2", h.studio.document.value.project.pads[49].name)
+            h.until { it.status == ContinuousStatus.VOICE_SAVED }
+        } finally { h.close() }
+    }
+
+    @Test fun aSongThatRefusesTheTakeStillLeavesItOnThePad() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            h.engine.refuses = { p -> p.tracks.any { it.kind == TrackKind.VOCAL } }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            h.until { it.status == ContinuousStatus.VOICE_SAVED_PAD_ONLY }
+            val p = h.studio.document.value.project
+            assertEquals("VOICE 1", p.pads[48].name)
+            assertTrue(p.tracks.none { it.kind == TrackKind.VOCAL } && p.clips.size == 1, "Only the PAD changed")
+        } finally { h.close() }
+    }
+
+    @Test fun aTakeNeverOutgrowsTheEngineBudgetAndHostsWithoutAMicrophoneKeepItOff() = runBlocking<Unit> {
+        // The original fills the engine's PCM budget but for half a second.
+        val limit = com.choplab.core.ProgramCompiler.RESIDENT_FRAME_LIMIT
+        val h = Harness { p ->
+            val long = p.assets[0].copy(frames = limit - 48_000 - 24_000)
+            p.copy(assets = frozenListOf(long, p.assets[1]), source = Source(long.hash, FrameRange(0, long.frames)),
+                pads = p.pads.map { if (it.id == 2) Pad(2, long.hash, FrameRange(0, 48_000)) else it }.frozen())
+        }
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            val placed = h.until { it.clips.isNotEmpty() }
+            assertEquals(ContinuousUnavailable.NOT_CONNECTED, placed.unavailable[ContinuousCapability.RECORD_VOICE], "No microphone on this host")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.ports.voice = true
+            h.ports.playing = true
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.until { it.status == ContinuousStatus.VOICE_NO_ROOM }
+            assertTrue(h.ports.voiceStarts.isEmpty(), "The microphone is not opened")
+            assertEquals(0, h.ports.stops, "and nothing that plays is stopped")
+        } finally { h.close() }
+    }
+
+    private class Harness(kits: Boolean = false, voice: Boolean = false, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, 96_000, "Original")
         val chopped = Asset("b".repeat(64), "wav", 100, 48_000, 2, 48_000, "Chop")
@@ -412,19 +676,41 @@ class ContinuousEditorPresenterTest {
                     return ExportReceipt(request.frames.toLong(), 48_000, 2, request.bits)
                 }
             }, engine), initial)
-        val ports = FakePorts(kits)
+        val ports = FakePorts(kits, voice).also { it.engine = engine }
+        suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(2000) { presenter.state.first(condition) }
         val presenter = ContinuousEditorPresenter(studio, scope, ports)
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }
     }
     private class FakeEngine : EnginePort {
         val commands = java.util.concurrent.CopyOnWriteArrayList<EngineCommand>()
+        @Volatile var prepares = 0
+        /** Runs once inside the next preparation, as something happening while an edit is prepared. */
+        @Volatile var duringPrepare: (suspend () -> Unit)? = null
+        /** Programs this engine refuses to prepare, like a song with too many clips at once. */
+        @Volatile var refuses: (Project) -> Boolean = { false }
         override suspend fun prepare(project: Project, patternId: String, revision: Long) = EngineProgram(revision = revision)
-        override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long) = EngineProgram(revision = revision)
-        override suspend fun apply(command: EngineCommand): Boolean { commands += command; return true }
+        override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram {
+            prepares++
+            duringPrepare?.let { duringPrepare = null; it() }
+            check(!refuses(project)) { "Refused by the engine" }
+            return EngineProgram(revision = revision)
+        }
+        override suspend fun apply(command: EngineCommand): Boolean {
+            commands += command
+            // The song's transport as the engine would report it.
+            transport = when (command) {
+                is EngineCommand.Resume -> transport.copy(playing = true, sequencePaused = false)
+                is EngineCommand.Pause -> transport.copy(playing = false, sequencePaused = true)
+                is EngineCommand.Stop -> transport.copy(playing = false, sequencePaused = false)
+                is EngineCommand.Seek -> transport.copy(sequenceFrame = command.sequenceFrame)
+                else -> transport
+            }
+            return true
+        }
         @Volatile var transport = TransportState(outputAttached = true)
         override fun snapshot() = transport
     }
-    private class FakePorts(private val kits: Boolean = false) : ContinuousEditorPorts {
+    private class FakePorts(private val kits: Boolean = false, voice: Boolean = false) : ContinuousEditorPorts {
         @Volatile var originalFrame = 0L
         @Volatile var stops = 0
         val seeks = java.util.concurrent.CopyOnWriteArrayList<Long>()
@@ -457,9 +743,37 @@ class ContinuousEditorPresenterTest {
         override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
         @Volatile var clipboardWorks = true
-        override fun diagnostics() = ContinuousDiagnostics(outputAttached = true, underruns = 4)
+        override fun diagnostics() = ContinuousDiagnostics(outputAttached = true, underruns = 4, pendingFrames = outputDelay)
         override suspend fun copyText(text: String): Boolean = clipboardWorks.also { if (it) copied += text }
         override val drumKitsAvailable get() = kits
+        @Volatile var voice = voice
+        @Volatile var microphone = VoiceStart.STARTED
+        val voiceStarts = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        val voiceNames = java.util.concurrent.CopyOnWriteArrayList<String>()
+        @Volatile var cues = 0
+        @Volatile var discards = 0
+        @Volatile var full = false
+        @Volatile var interrupted = false
+        @Volatile var storeFails = false
+        /** The take the next stop returns: this many frames, captured this far ahead of the cue; null records nothing. */
+        @Volatile var takeFrames: Long? = 96_000
+        @Volatile var takeLead = 2_400L
+        @Volatile var outputDelay: Long? = 1_920
+        /** Engine commands seen when the song was cued. */
+        @Volatile var commandsAtCue: List<EngineCommand> = emptyList()
+        var engine: FakeEngine? = null
+        override val voiceAvailable get() = voice
+        override suspend fun startVoice(maxSeconds: Int): VoiceStart { voiceStarts += maxSeconds; return microphone }
+        override fun cueVoice() { cues++; commandsAtCue = engine?.commands?.toList().orEmpty() }
+        override fun voiceFull() = full
+        override fun voiceInterrupted() = interrupted
+        override suspend fun stopVoice(name: String): VoiceTake? {
+            voiceNames += name
+            if (storeFails) error("Storage full")
+            val frames = takeFrames ?: return null
+            return VoiceTake(Asset((voiceNames.size + 0xA0).toString(16).padStart(64, '0'), "wav", 44 + frames * 4, 48_000, 1, frames, name), takeLead)
+        }
+        override suspend fun discardVoice() { discards++ }
         fun kitHash(kitId: String, slot: Int) = (DrumKits.catalog.indexOfFirst { it.id == kitId } * 16 + slot + 1).toString(16).padStart(64, '0')
         override suspend fun drumKit(kitId: String): List<Asset>? = if (!kits) null else (0 until 16).map { slot ->
             val frames = DrumKits.frames(slot)

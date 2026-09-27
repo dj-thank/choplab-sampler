@@ -6,6 +6,7 @@ import com.choplab.core.model.ProjectLimits
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.*
+import java.nio.channels.FileChannel
 import java.nio.file.*
 import java.security.MessageDigest
 import java.util.UUID
@@ -36,8 +37,7 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
             require(digest(input, asset.byteCount) == asset.hash) { "Incoming asset hash mismatch" }
             return@synchronized
         }
-        val used = Files.list(directory).use { paths -> paths.filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }.mapToLong { Files.size(it) }.sum() }
-        require(used + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
+        require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
         val pending = directory.resolve(".pending-${UUID.randomUUID()}")
         try {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -57,6 +57,36 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
             require(!cancelled()) { "Asset publication cancelled" }
             Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
         } finally { Files.deleteIfExists(pending) }
+    }
+    /** What the store holds now, as [publish] and [adopt] count it against [maxStoredBytes]. */
+    fun storedBytes(): Long = synchronized(lock) {
+        Files.list(directory).use { paths -> paths.filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }.mapToLong { Files.size(it) }.sum() }
+    }
+    /**
+     * Stores [file], a finished audio file nobody else writes, as [asset]: checked as [publish] checks its input, then
+     * moved into place, or copied where it lives on another file system. [file] is gone afterwards in every case.
+     */
+    fun adopt(asset: Asset, file: Path) = synchronized(lock) {
+        try {
+            val target = path(asset)
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                require(verified(asset)) { "Existing asset is corrupt" }
+                return@synchronized
+            }
+            require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
+            require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.size(file) == asset.byteCount) { "Asset size mismatch" }
+            require(Files.newInputStream(file).use { digest(it, asset.byteCount) } == asset.hash) { "Asset hash mismatch" }
+            validateAudio(asset, file)
+            val pending = directory.resolve(".pending-${UUID.randomUUID()}")
+            try {
+                try { Files.move(file, pending, StandardCopyOption.ATOMIC_MOVE) }
+                catch (_: IOException) {
+                    Files.copy(file, pending)
+                    FileChannel.open(pending, StandardOpenOption.WRITE).use { it.force(true) }
+                }
+                Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
+            } finally { Files.deleteIfExists(pending) }
+        } finally { Files.deleteIfExists(file) }
     }
     fun verified(asset: Asset): Boolean = synchronized(lock) {
         val target = path(asset)

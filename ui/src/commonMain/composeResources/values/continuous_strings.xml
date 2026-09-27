@@ -56,6 +56,8 @@
     <string name="ce_gain">Volume</string>
     <string name="ce_add_drums">Add drums</string>
     <string name="ce_record_voice">Record voice</string>
+    <string name="ce_stop_voice">Stop recording</string>
+    <string name="ce_voice_hint">Recording. Sing along with the song, then press Stop recording. With headphones, the song stays out of your voice.</string>
     <string name="ce_scratch">Scratch</string>
     <string name="ce_pad_semantics">Bank %1$s, pad %2$d, %3$s, %4$s</string>
     <string name="ce_mode_one">One shot</string>
@@ -86,6 +88,7 @@
     <string name="ce_standard_width">Default width</string>
     <string name="ce_divider">Resize pad and arrangement panels</string>
     <string name="ce_pads">PADs</string>
+    <string name="ce_pads_recording">PADs (recording)</string>
     <string name="ce_song">Song</string>
     <string name="ce_timeline">Arrangement</string>
     <string name="ce_save_heading">Finish and save</string>
@@ -107,6 +110,8 @@
     <string name="ce_missing_pad">Assign a sound to this pad first</string>
     <string name="ce_missing_clip">Select a clip first</string>
     <string name="ce_no_output">No audio output; editing and saving remain available.</string>
+    <string name="ce_missing_song">Place a pad on the song first</string>
+    <string name="ce_recording_busy">Not while recording. Press Stop recording first.</string>
     <string name="ce_loading">Loading…</string>
     <string name="ce_saving">Saving…</string>
     <string name="ce_saved">Project saved.</string>
@@ -139,6 +144,17 @@
     <string name="ce_kit_replace">Replace</string>
     <string name="ce_kit_keep">Keep my sounds</string>
     <string name="ce_copied">Copied the numbers. Paste them into your message.</string>
+    <string name="ce_voice_saved">Added the take to a BANK D pad and to the VOICE track of the song.</string>
+    <string name="ce_voice_saved_song_only">BANK D has no empty pad, so the take went to the VOICE track of the song only.</string>
+    <string name="ce_voice_saved_pad_only">The take could not go on the song, so it went to a BANK D pad only.</string>
+    <string name="ce_voice_interrupted">The microphone stopped working, so recording stopped and the take was added up to there.</string>
+    <string name="ce_voice_limit">The take reached its length limit, so recording stopped and the take was added up to there.</string>
+    <string name="ce_voice_empty">Nothing was recorded. Check the microphone connection, level and permission.</string>
+    <string name="ce_voice_too_short">Recording ended before the song was heard, so no take was added.</string>
+    <string name="ce_voice_not_saved">The take could not be stored. Check the free storage space.</string>
+    <string name="ce_voice_no_room">Nothing more can be recorded: this project is near the limit of sound it can hold, or storage is nearly full.</string>
+    <string name="ce_mic_denied">Microphone access is not allowed. Allow it for this app in the device settings.</string>
+    <string name="ce_mic_unavailable">The microphone could not be used. Check that it is connected and not in use by another app.</string>
     <string name="ce_diag_title">Sound diagnostics</string>
     <string name="ce_diag_hint">When you try the app on your phone or computer, send these numbers. They include no device name or ID.</string>
     <string name="ce_diag_output">Audio output</string>

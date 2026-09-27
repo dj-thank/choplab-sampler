@@ -437,6 +437,12 @@ import kotlin.math.roundToLong
         ContinuousStatus.EXPORTED -> Res.string.ce_exported; ContinuousStatus.CANCELLED -> Res.string.ce_cancelled
         ContinuousStatus.FAILED -> Res.string.ce_failed; ContinuousStatus.NO_OUTPUT -> Res.string.ce_no_output
         ContinuousStatus.COPIED -> Res.string.ce_copied
+        ContinuousStatus.VOICE_SAVED -> Res.string.ce_voice_saved; ContinuousStatus.VOICE_SAVED_SONG_ONLY -> Res.string.ce_voice_saved_song_only
+        ContinuousStatus.VOICE_SAVED_PAD_ONLY -> Res.string.ce_voice_saved_pad_only; ContinuousStatus.VOICE_INTERRUPTED -> Res.string.ce_voice_interrupted
+        ContinuousStatus.VOICE_TOO_SHORT -> Res.string.ce_voice_too_short; ContinuousStatus.VOICE_NOT_SAVED -> Res.string.ce_voice_not_saved
+        ContinuousStatus.VOICE_LIMIT -> Res.string.ce_voice_limit; ContinuousStatus.VOICE_EMPTY -> Res.string.ce_voice_empty
+        ContinuousStatus.VOICE_NO_ROOM -> Res.string.ce_voice_no_room; ContinuousStatus.MIC_DENIED -> Res.string.ce_mic_denied
+        ContinuousStatus.MIC_UNAVAILABLE -> Res.string.ce_mic_unavailable; ContinuousStatus.RECORDING_BUSY -> Res.string.ce_recording_busy
     }) }.orEmpty()
     Text(text, Modifier.fillMaxWidth().heightIn(min = 24.dp).semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = CEColor.Border)
 }

@@ -228,6 +228,63 @@ class NextBackendTest {
         } finally { second.shutdown() }
     }
 
+    @Test fun aRecordedTakePlaysInTheSongAndSurvivesSaveAndAutosave() = runBlocking<Unit> {
+        val dir = temporary()
+        val profile = dir.resolve("profile")
+        // A microphone that hears a tenth of a second of tone, then nothing until it is stopped.
+        val mic = object : com.choplab.jvm.MicInput {
+            override val sampleRate = 48_000
+            @Volatile var stopped = false
+            @Volatile var delivered = false
+            override fun read(buffer: FloatArray): Int {
+                if (!delivered) {
+                    Thread.sleep(100)
+                    val count = minOf(buffer.size, 4_800)
+                    for (i in 0 until count) buffer[i] = (.3 * kotlin.math.sin(2 * Math.PI * 440 * i / 48_000)).toFloat()
+                    delivered = true
+                    return count
+                }
+                while (!stopped) Thread.sleep(2)
+                return -1
+            }
+            override fun stop() { stopped = true }
+            override fun close() = Unit
+        }
+        val first = NextBackend.create(profile, sinkFactory = { error("No device") }, microphone = { mic })
+        val saved: DocumentState
+        try {
+            assertEquals(com.choplab.jvm.VoiceTakes.Start.STARTED, first.voice.start(5))
+            first.voice.cue()
+            waitUntil { mic.delivered }
+            val take = assertNotNull(first.voice.stop("VOICE 1"))
+            assertEquals(com.choplab.core.model.AssetRole.ORIGINAL, take.asset.role)
+            val track = com.choplab.core.model.Track("voice", "VOICE", com.choplab.core.model.TrackKind.VOCAL)
+            // This stub delivers its first frames late, so the lead-in may be negative: nothing to cut then.
+            val range = com.choplab.core.model.FrameRange(take.leadFrames.coerceAtLeast(0), take.asset.frames)
+            val pad = com.choplab.core.model.Pad(48, take.asset.hash, com.choplab.core.model.FrameRange(0, take.asset.frames), "VOICE 1", gain = .9f)
+            val clip = com.choplab.core.model.Clip("take-1", track.id, take.asset.hash, range, timelineStartFrame = 0)
+            // The real compiler loads the float take for its PAD and the song.
+            assertTrue(first.studio.dispatch(Action.Edit(Intent.AddVoiceTake(take.asset, pad, clip, track))).accepted)
+            assertTrue(first.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())).accepted)
+            val song = dir.resolve("song.wav")
+            assertTrue(first.studio.dispatch(Action.Export(ExportRequest(first.files.register(song), range.length.toInt(), bits = 24),
+                PlaybackTarget.Arrangement())).accepted)
+            waitUntil { first.studio.work.value.jobId == null && Files.isRegularFile(song) }
+            val audio = Files.newInputStream(song).use { WavCodec.read(it) }
+            val peak = audio.samples.maxOf { kotlin.math.abs(it) }
+            assertTrue(peak in .2f..1f, "The take sounds in the song: peak $peak")
+            val archive = dir.resolve("voice.choplab")
+            assertTrue(first.saveProject(archive).accepted)
+            waitUntil { first.studio.work.value.jobId == null && Files.isRegularFile(archive) }
+            ZipFile(archive.toFile()).use { zip -> assertNotNull(zip.getEntry("assets/${take.asset.hash}.wav"), "The take travels with the project") }
+            first.flushAutosave()
+            saved = first.studio.document.value
+        } finally { first.shutdown() }
+        assertEquals(0, Files.list(profile.resolve("voice-scratch")).use { it.count() }, "No scratch file is left")
+        val second = NextBackend.create(profile, sinkFactory = { error("No device") }, microphone = { null })
+        try { assertEquals(saved.project, second.studio.document.value.project) } finally { second.shutdown() }
+    }
+
     @Test fun originalAuditionKeepsItsCursorAcrossSongStopAndCannotChangeOfflineWav() = runBlocking<Unit> {
         val dir = temporary()
         val input = dir.resolve("Original.wav")

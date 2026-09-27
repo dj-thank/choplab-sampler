@@ -58,7 +58,10 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     }
     if (compact) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEButton(stringResource(Res.string.ce_pads), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.PADS)) }, Modifier.weight(1f), primary = state.compactPane == ContinuousPane.PADS)
+            // While a take records, the PAD pane (where its stop button is) says so from the timeline pane too.
+            CEButton(stringResource(if (state.recordingVoice) Res.string.ce_pads_recording else Res.string.ce_pads),
+                { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.PADS)) }, Modifier.weight(1f),
+                primary = state.compactPane == ContinuousPane.PADS, tag = "ce-pane-pads")
             CEButton(stringResource(Res.string.ce_timeline), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.TIMELINE)) }, Modifier.weight(1f), primary = state.compactPane == ContinuousPane.TIMELINE)
         }
         if (state.compactPane == ContinuousPane.PADS) CEPadsPanel(state, onAction, readout, Modifier.weight(1f), { draggedPad = it }, drop)
@@ -144,9 +147,14 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CEActionButton(stringResource(if (state.installedDrumKit == null) Res.string.ce_add_drums else Res.string.ce_change_drums), ContinuousEditorAction.AddDrum,
                 state, ContinuousCapability.ADD_DRUM, onAction, Modifier.weight(1f), tag = "ce-add-drums")
-            CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, Modifier.weight(1f), tag = "ce-record-voice")
+            if (state.recordingVoice) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
+                ContinuousCapability.STOP_ALL, onAction, Modifier.weight(1f), primary = true, tag = "ce-record-voice")
+            else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, Modifier.weight(1f), tag = "ce-record-voice")
             CEActionButton(stringResource(Res.string.ce_scratch), ContinuousEditorAction.OpenScratch, state, ContinuousCapability.SCRATCH, onAction, Modifier.weight(1f), tag = "ce-scratch")
         }
+        // Below the button that started the take, so nothing it pressed moves; screen readers hear it appear.
+        if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
+            .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
     }
 }
 

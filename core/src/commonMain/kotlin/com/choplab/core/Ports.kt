@@ -26,6 +26,11 @@ data class ExportRequest(val location: Location, val frames: Int, val tailFrames
     init { require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..480_000 && bits in setOf(16, 24)) }
 }
 data class ExportReceipt(val frames: Long, val sampleRate: Int, val channels: Int, val bits: Int)
+/**
+ * A microphone take a host recorded and stored: its verified [asset], and the [leadFrames] of it (in the asset's own
+ * frames) captured before the song started; negative when its first frame arrived only after the song had started.
+ */
+data class VoiceTake(val asset: Asset, val leadFrames: Long) { init { require(leadFrames in -asset.frames..asset.frames) } }
 interface ExportPort {
     suspend fun export(project: Project, patternId: String, request: ExportRequest): ExportReceipt
     /** Legacy adapters remain usable for Pattern; arrangement support must be explicit. */

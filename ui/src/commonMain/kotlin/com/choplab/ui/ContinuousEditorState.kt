@@ -21,8 +21,20 @@ enum class ContinuousCapability {
     TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
     ADD_DRUM, RECORD_VOICE, SCRATCH, STOP_ALL,
 }
-enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT }
-enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT, COPIED }
+enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
+enum class ContinuousStatus {
+    LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT, COPIED,
+    /**
+     * A voice take went to a BANK D PAD and onto the song; with BANK D full, onto the song only; to the PAD only when
+     * the song refused it; it stopped at its length limit, or because the microphone went away.
+     */
+    VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
+    /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
+    VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM,
+    MIC_DENIED, MIC_UNAVAILABLE,
+    /** Refused because a take is being recorded. */
+    RECORDING_BUSY,
+}
 
 @Immutable data class ContinuousSource(
     val id: String,
@@ -101,6 +113,8 @@ enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCE
     val originalPlaying: Boolean = false,
     /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
     val liveChopping: Boolean = false,
+    /** A voice take is being recorded while the song plays. */
+    val recordingVoice: Boolean = false,
     val originalMonitorGain: Float = 1f,
     val banks: List<ContinuousBank> = (0..7).map(::ContinuousBank),
     val selectedBank: Int = 0,
@@ -231,7 +245,9 @@ sealed interface ContinuousEditorAction {
     /** Answers the question about replacing the user's own sounds; it applies only to the sounds it counted. */
     data object ConfirmDrumKit : ContinuousEditorAction
     data object DismissDrumKit : ContinuousEditorAction
+    /** Opens the microphone and plays the song; the take ends with [StopVoice] or when the song stops. */
     data object RecordVoice : ContinuousEditorAction
+    data object StopVoice : ContinuousEditorAction
     /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */
     data class CopyDiagnostics(val text: String) : ContinuousEditorAction
     data object OpenScratch : ContinuousEditorAction

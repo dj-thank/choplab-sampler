@@ -96,6 +96,8 @@ object WavCodec {
         require(samples.isNotEmpty() && samples.size % channels == 0 && samples.size.toLong() / channels <= ProjectLimits.MAX_FRAMES)
         require(samples.size.toLong() * 4 <= EngineFormat.MAX_RESIDENT_BYTES && samples.all { it.isFinite() })
     }
+    /** The header of a 32-bit float WAV holding [bytes] of samples, for writers that stream the samples after it. */
+    internal fun floatHeader(output: OutputStream, bytes: Long, rate: Int, channels: Int) = header(output, bytes, rate, channels, 32, 3)
     private fun header(output: OutputStream, bytes: Long, rate: Int, channels: Int, bits: Int, format: Int) {
         require(bytes + 44 + (bytes and 1L) <= MAX_EXPORT_WAV_BYTES)
         output.ascii("RIFF"); output.le32(36 + bytes + (bytes and 1L)); output.ascii("WAVEfmt "); output.le32(16)
