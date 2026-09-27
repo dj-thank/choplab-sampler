@@ -102,13 +102,13 @@ private const val VOICE_BUDGET_MARGIN_SECONDS = 2
  * A take being recorded: the song position it started from, where the song ended then, and how far the output
  * played behind the engine, all in 48 kHz frames.
  */
-private data class VoiceRecording(val songFrame: Long, val songEnd: Long, val outputDelayFrames: Long)
+private data class VoiceRecording(val songFrame: Long, val songEnd: Long, val outputDelayFrames: Long, val emptySong: Boolean = false)
 
 /**
  * A pass recording what the PADs play: the song's frame when it began and where the song ends, how late the output
  * played the song, each PAD where it was heard, and whether presses went past what one pass holds.
  */
-private data class HitRecording(val from: Long, val songEnd: Long, val outputDelayFrames: Long,
+private data class HitRecording(val from: Long, val songEnd: Long, val outputDelayFrames: Long, val emptySong: Boolean = false,
                                 val played: List<ContinuousHit> = emptyList(), val overflow: Boolean = false,
                                 val pending: Map<ContinuousHitGesture, ContinuousHit> = emptyMap())
 
@@ -787,33 +787,42 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      */
     private suspend fun startVoice(project: Project): Boolean {
         if (view.value.voice != null) return true
-        if (view.value.hits != null || !ports.voiceAvailable || project.clips.isEmpty()) return false
+        if (view.value.hits != null || !ports.voiceAvailable) return false
         val seconds = voiceSecondsLeft(project)
         if (seconds < 1) { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
         releaseHeld()
         stopOriginal()
         // Nothing plays while the platform may be asking for the microphone; the song is ready before it opens.
-        if (!send(Action.RefreshTransport) || (studio.transport.value.playing && !send(Action.Pause)) || !selectArrangement()) return false
-        when (ports.startVoice(seconds)) {
-            VoiceStart.STARTED -> Unit
-            VoiceStart.DENIED -> { refusal = ContinuousStatus.MIC_DENIED; return false }
-            VoiceStart.UNAVAILABLE -> { refusal = ContinuousStatus.MIC_UNAVAILABLE; return false }
-            VoiceStart.NO_ROOM -> { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
-        }
+        val emptySong = project.clips.isEmpty()
+        val recordingEnd = if (emptySong) seconds.toLong() * CONTINUOUS_TIMELINE_RATE else songFrames(project)
+        var microphoneOpened = false
+        var started = false
         try {
-            if (!send(Action.RefreshTransport)) { ports.discardVoice(); return false }
-            val ended = songEnded(project)
-            if (ended && !send(Action.Seek(0))) { ports.discardVoice(); return false }
+            if (!recordingOutputReady() || (studio.transport.value.playing && !send(Action.Pause)) ||
+                !selectArrangement(if (emptySong) recordingEnd else 0)) return false
+            when (ports.startVoice(seconds)) {
+                VoiceStart.STARTED -> microphoneOpened = true
+                VoiceStart.DENIED -> { refusal = ContinuousStatus.MIC_DENIED; return false }
+                VoiceStart.UNAVAILABLE -> { refusal = ContinuousStatus.MIC_UNAVAILABLE; return false }
+                VoiceStart.NO_ROOM -> { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
+            }
+            // Permission may have kept the microphone dialog open while the output route disappeared.
+            if (!recordingOutputReady()) return false
+            val ended = emptySong || songEnded(project)
+            if (ended && !send(Action.Seek(0))) return false
             val from = if (ended) 0L else studio.transport.value.sequenceFrame
             // What the output had queued when the song started is how late the singer heard it.
             val outputDelay = ports.diagnostics()?.pendingFrames?.coerceIn(0L, CONTINUOUS_TIMELINE_RATE.toLong()) ?: 0L
-            if (!send(Action.Resume)) { ports.discardVoice(); return false }
+            if (!send(Action.Resume)) return false
             ports.cueVoice()
-            view.update { it.copy(voice = VoiceRecording(from, songFrames(project), outputDelay)) }
+            view.update { it.copy(voice = VoiceRecording(from, recordingEnd, outputDelay, emptySong)) }
+            started = true
             return true
-        } catch (failure: Exception) {
-            withContext(NonCancellable) { ports.discardVoice() }
-            throw failure
+        } finally {
+            if (!started) withContext(NonCancellable) {
+                try { if (microphoneOpened) { pauseSong(); ports.discardVoice() } }
+                finally { clearRecordingClock() }
+            }
         }
     }
 
@@ -825,6 +834,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      * the song. Reports the outcome in the status line itself, also when a poll ends the take.
      */
     private suspend fun finishVoice(): Boolean {
+        if (view.value.voice == null) return true
+        var cleared: Boolean
+        val saved = try { finishVoiceTake() } finally { cleared = clearRecordingClock() }
+        return saved && cleared
+    }
+
+    private suspend fun finishVoiceTake(): Boolean {
         val recording = view.value.voice ?: return true
         view.update { it.copy(voice = null, status = ContinuousStatus.SAVING) }
         fun report(status: ContinuousStatus, ok: Boolean): Boolean {
@@ -934,17 +950,24 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      */
     private suspend fun startHits(project: Project): Boolean {
         if (view.value.hits != null) return true
-        if (view.value.voice != null || project.clips.isEmpty() || project.pads.none { it.assetHash != null }) return false
+        if (view.value.voice != null || project.pads.none { it.assetHash != null }) return false
         releaseHeld()
         stopOriginal()
-        if (!selectArrangement() || !send(Action.RefreshTransport)) return false
-        val ended = songEnded(project)
-        if (ended && !send(Action.Seek(0))) return false
-        val from = if (ended) 0L else studio.transport.value.sequenceFrame
-        val outputDelay = ports.diagnostics()?.pendingFrames?.coerceIn(0L, CONTINUOUS_TIMELINE_RATE.toLong()) ?: 0L
-        if (!studio.transport.value.playing && !send(Action.Resume)) return false
-        view.update { it.copy(hits = HitRecording(from, songFrames(project), outputDelay)) }
-        return true
+        val emptySong = project.clips.isEmpty()
+        val recordingEnd = if (emptySong) MAX_VOICE_SECONDS.toLong() * CONTINUOUS_TIMELINE_RATE else songFrames(project)
+        var started = false
+        try {
+            if (!recordingOutputReady() || (emptySong && studio.transport.value.playing && !send(Action.Pause)) ||
+                !selectArrangement(if (emptySong) recordingEnd else 0) || !recordingOutputReady()) return false
+            val ended = emptySong || songEnded(project)
+            if (ended && !send(Action.Seek(0))) return false
+            val from = if (ended) 0L else studio.transport.value.sequenceFrame
+            val outputDelay = ports.diagnostics()?.pendingFrames?.coerceIn(0L, CONTINUOUS_TIMELINE_RATE.toLong()) ?: 0L
+            if (!studio.transport.value.playing && !send(Action.Resume)) return false
+            view.update { it.copy(hits = HitRecording(from, recordingEnd, outputDelay, emptySong = emptySong)) }
+            started = true
+            return true
+        } finally { if (!started) clearRecordingClock() }
     }
 
     /**
@@ -973,6 +996,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private suspend fun finishHits(capturedEnd: Long? = null, stopVoices: Boolean = false): Boolean {
+        if (view.value.hits == null) return true
+        var cleared: Boolean
+        val placed = try { finishHitTake(capturedEnd, stopVoices) } finally { cleared = clearRecordingClock() }
+        return placed && cleared
+    }
+
+    private suspend fun finishHitTake(capturedEnd: Long?, stopVoices: Boolean): Boolean {
         val active = view.value.hits ?: return true
         // The pass owns presses already heard: a later pointer release cannot erase them at the song boundary.
         val endFrame = (capturedEnd ?: studio.transport.value.sequenceFrame).coerceAtMost(active.songEnd)
@@ -1217,8 +1247,31 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         return edit(Intent.InstallKit(sounds.frozen(), pads.frozen())) && send(Action.SelectPad(first))
     }
 
-    private suspend fun selectArrangement(): Boolean = if (studio.selection.value.playbackTarget is PlaybackTarget.Arrangement) true
-        else send(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement()))
+    private suspend fun selectArrangement(minimumFrames: Long =
+        view.value.voice?.takeIf { it.emptySong }?.songEnd ?: view.value.hits?.takeIf { it.emptySong }?.songEnd ?: 0): Boolean {
+        val current = studio.selection.value.playbackTarget as? PlaybackTarget.Arrangement
+        val target = PlaybackTarget.Arrangement(current?.takeIds ?: frozenListOf(), minimumFrames)
+        return current == target || send(Action.SelectPlaybackTarget(target))
+    }
+    private suspend fun recordingOutputReady(): Boolean {
+        if (!send(Action.RefreshTransport)) return false
+        return studio.transport.value.outputAttached.also { if (!it) refusal = ContinuousStatus.NO_OUTPUT }
+    }
+    /** A denied, cancelled or finished take must never leave a silent five-minute song behind. */
+    private suspend fun clearRecordingClock(): Boolean = withContext(NonCancellable) {
+        val current = studio.selection.value.playbackTarget as? PlaybackTarget.Arrangement ?: return@withContext true
+        if (current.minimumFrames == 0L) return@withContext true
+        // A concurrent Stop may cancel a preparation, so use the same bounded retry as adding the take.
+        finishingTake = true
+        try {
+            repeat(3) {
+                val result = answered(studio.dispatch(Action.SelectPlaybackTarget(current.copy(minimumFrames = 0))))
+                if (result.accepted) return@withContext true
+                if (result.notice !is Notice.Cancelled) return@withContext false
+            }
+            false
+        } finally { finishingTake = false }
+    }
     /** The song stands at its end (played there, or paused there), where Resume plays nothing. Reads the last refresh. */
     private fun songEnded(project: Project): Boolean = studio.transport.value.sequenceFrame >= songFrames(project)
     /** Pauses the song only while it plays: pausing at its end would leave the next start there. */
@@ -1336,8 +1389,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (source != null && ports.originalAvailable) capabilities += setOf(ContinuousCapability.ORIGINAL_PLAYBACK,
                 ContinuousCapability.ORIGINAL_SEEK, ContinuousCapability.ORIGINAL_MONITOR_GAIN, ContinuousCapability.LIVE_CHOP)
             if (ports.drumKitsAvailable) capabilities += ContinuousCapability.ADD_DRUM
-            if (ports.voiceAvailable && input.attached && p.clips.isNotEmpty()) capabilities += ContinuousCapability.RECORD_VOICE
-            if (input.attached && p.clips.isNotEmpty() && p.pads.any { it.assetHash != null }) capabilities += ContinuousCapability.RECORD_HITS
+            if (ports.voiceAvailable && input.attached) capabilities += ContinuousCapability.RECORD_VOICE
+            if (input.attached && p.pads.any { it.assetHash != null }) capabilities += ContinuousCapability.RECORD_HITS
             if (ports.voiceAvailable) capabilities += ContinuousCapability.RECORD_SOURCE
             if (ports.systemAudioCapture != null) capabilities += ContinuousCapability.RECORD_SYSTEM_SOURCE
             if (input.attached && (selected.assetHash != null || (source != null && ports.originalAvailable))) capabilities += ContinuousCapability.SCRATCH
@@ -1367,13 +1420,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             milliBpm = p.tempo.milliBpm, swingPermille = p.tempo.swingPermille, grid = v.grid,
             canUndo = input.document.canUndo, canRedo = input.document.canRedo, capabilities = capabilities,
             unavailable = ContinuousCapability.entries.filterNot { it in capabilities }.associateWith { capability ->
-                // Recording to the song needs a song, the output to hear it, and (for the PADs) a PAD with a sound.
+                // Recording needs an attached output clock and (for the PADs) a PAD with a sound.
                 val toSong = (capability == ContinuousCapability.RECORD_VOICE && ports.voiceAvailable) || capability == ContinuousCapability.RECORD_HITS
                 when {
                     busy -> ContinuousUnavailable.BUSY
                     recording -> ContinuousUnavailable.RECORDING
                     toSong && !input.attached -> ContinuousUnavailable.NO_OUTPUT
-                    toSong && p.clips.isEmpty() -> ContinuousUnavailable.NO_SONG
                     capability == ContinuousCapability.RECORD_HITS && p.pads.none { it.assetHash != null } -> ContinuousUnavailable.EMPTY_PAD
                     else -> ContinuousUnavailable.NOT_CONNECTED
                 }

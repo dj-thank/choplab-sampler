@@ -8,7 +8,10 @@ import com.choplab.core.model.requireId
 sealed interface PlaybackTarget {
     data class Pattern(val id: String) : PlaybackTarget { init { requireId(id) } }
     /** All document clips, plus only explicitly chosen takes. An empty arrangement stays silent. */
-    data class Arrangement(val takeIds: FrozenList<String> = frozenListOf()) : PlaybackTarget {
+    data class Arrangement(val takeIds: FrozenList<String> = frozenListOf(), val minimumFrames: Long = 0) : PlaybackTarget {
+        // A silent recording clock is session state, never document content or export padding.
+        init { require(minimumFrames in 0..MAX_RECORDING_FRAMES) }
         init { require(takeIds.size <= 1024 && takeIds.distinct().size == takeIds.size); takeIds.forEach(::requireId) }
+        companion object { const val MAX_RECORDING_FRAMES = 48_000L * 60 * 5 }
     }
 }
