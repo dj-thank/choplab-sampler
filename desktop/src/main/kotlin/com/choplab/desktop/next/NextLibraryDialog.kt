@@ -174,7 +174,9 @@ internal object NextLibraryDialog {
                 chooser.isMultipleMode = !save
                 chooser.filenameFilter = java.io.FilenameFilter { _, name -> extensions.any { name.endsWith(".$it", true) } }
                 chooser.isVisible = true
-                return chooser.files.map { it.toPath() }
+                return chooser.files.map { it.toPath() }.ifEmpty {
+                    listOfNotNull(chooser.file?.let { Path.of(chooser.directory, it) })
+                }
             } finally { chooser.dispose() }
         }
         val chooser = JFileChooser().apply {
