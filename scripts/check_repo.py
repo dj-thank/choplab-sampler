@@ -23,6 +23,7 @@ def contains_personal_path(text: str) -> bool:
         if match[1] == "lib" and text[:match.start()].endswith((
             "ChopLab.app/Contents/runtime/Contents",
             "ChopLab Preview.app/Contents/runtime/Contents",
+            "ChopLab NEXT.app/Contents/runtime/Contents",
         )):
             continue
         # Standard devcontainer Gradle volume only; other folders still fail.

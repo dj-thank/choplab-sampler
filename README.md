@@ -15,6 +15,18 @@
 
 録音はOSの許可を得た音声だけを扱います。オンライン取込は通信・提供元の利用条件に依存します。Spotifyの曲情報と、取得・検証が終わった再生可能音声は別の状態です。詳細は [製品契約](docs/PRODUCT.md) と [プライバシー方針](PRIVACY.md) を参照してください。
 
+### 新しい編集画面を Mac で試す（おとひろい NEXT）
+
+作り直し中の4工程の編集画面を、Apple Silicon（M1 以降）の Mac で試せます。正式な配布版ではなく、Apple の公証を受けていない試用版です。
+
+1. GitHub にログインし、[Actions の「ChopLab Mac NEXT preview」](https://github.com/dj-thank/choplab-sampler/actions/workflows/mac-preview.yml) を開きます。main の最新の成功した実行（緑のチェック）を選びます。
+2. ページ下の「Artifacts」から `choplab-mac-next-preview` をダウンロードします（作られてから7日間だけ置いてあります）。
+3. ダウンロードしたものを開き、中の `ChopLab-mac-next-preview.zip` をダブルクリックすると `ChopLab NEXT.app` が出ます。「アプリケーション」フォルダーへ移します。
+4. 初めて開くときは「開けません」と表示されます。「システム設定」→「プライバシーとセキュリティ」の下にある「このまま開く」を押し、もう一度開きます。
+5. 声を録るときは、マイクの使用を許可してください。
+
+今は WAV ファイルだけを取り込めます（MP3 などは、まだ取り込めません）。データは今までの Preview と別のフォルダーに保存します。Intel の Mac では動きません。
+
 ## 開発と文書
 
 - [参加・ローカル起動](CONTRIBUTING.md) / [変更ルール](AGENTS.md)

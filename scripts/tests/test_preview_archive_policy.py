@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 import unittest
 import zipfile
 
-from scripts.check_public_surface import is_packaged_runtime_binary_path, packaged_runtime_digest_findings, is_jdk_cacerts_path, is_mac_skiko_runtime, scan_zip
+from scripts.check_public_surface import is_packaged_runtime_binary_path, packaged_runtime_digest_findings, is_jdk_cacerts_path, is_jdk_modules_path, is_mac_skiko_runtime, scan_zip
 
 
 class PreviewArchivePolicyTest(unittest.TestCase):
@@ -16,6 +16,15 @@ class PreviewArchivePolicyTest(unittest.TestCase):
         self.assertTrue(is_mac_skiko_runtime(jar, None))
         self.assertFalse(is_mac_skiko_runtime(jar, PurePosixPath('nested.zip')))
         self.assertFalse(is_mac_skiko_runtime(PurePosixPath('Other.app/Contents/app/' + jar.name), None))
+
+    def test_linked_editor_app_receives_the_same_mac_runtime_policy(self):
+        self.assertTrue(is_jdk_cacerts_path(PurePosixPath('ChopLab NEXT.app/Contents/runtime/Contents/Home/lib/security/cacerts')))
+        self.assertTrue(is_jdk_modules_path(PurePosixPath('ChopLab NEXT.app/Contents/runtime/Contents/Home/lib/modules')))
+        self.assertTrue(is_mac_skiko_runtime(PurePosixPath('ChopLab NEXT.app/Contents/app/skiko-awt-runtime-macos-arm64-0.144.6.jar'), None))
+        self.assertTrue(is_packaged_runtime_binary_path(PurePosixPath('ChopLab NEXT.app/Contents/app/onnxruntime-1.29.0.jar'), None))
+        for other in ('ChopLab NEXT 2.app', 'Next.app'):
+            self.assertFalse(is_jdk_modules_path(PurePosixPath(other + '/Contents/runtime/Contents') / 'Home/lib/modules'))
+            self.assertFalse(is_packaged_runtime_binary_path(PurePosixPath(other + '/Contents/app/onnxruntime-1.29.0.jar'), None))
 
     def test_mac_skiko_jar_still_scans_nested_content(self):
         nested = BytesIO()

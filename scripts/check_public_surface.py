@@ -178,6 +178,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MAC_PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
     (REPOSITORY_ROOT / "config/mac-media-tool-files.txt").read_text(encoding="utf-8").splitlines()
 )
+# The Mac app bundles this repository builds: production, Preview and the linked editor's
+# Preview (scripts/package_mac_app.py). Only these roots receive the Mac runtime layout policy.
+MAC_APP_ROOTS = frozenset({"choplab.app", "choplab preview.app", "choplab next.app"})
 SEPARATOR_MODEL_PIN = REPOSITORY_ROOT / "scripts" / "prepare_separator_model.py"
 SHA256_TEXT = re.compile(r"\A[0-9a-f]{64}\Z")
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
@@ -1142,16 +1145,14 @@ def is_app_main_executable_path(path: PurePosixPath) -> bool:
 def is_jdk_modules_path(path: PurePosixPath) -> bool:
     parts = tuple(part.lower() for part in path.parts)
     return parts[-3:] == ("runtime", "lib", "modules") or (
-        len(parts) == 7 and parts[0] in {"choplab.app", "choplab preview.app"}
+        len(parts) == 7 and parts[0] in MAC_APP_ROOTS
         and parts[1:] == ("contents", "runtime", "contents", "home", "lib", "modules")
     )
 
 
 def mac_packaged_runtime_parts(path: PurePosixPath) -> tuple[str, ...] | None:
     parts = tuple(part.lower() for part in path.parts)
-    if parts[:3] not in {
-        ("choplab.app", "contents", "app"), ("choplab preview.app", "contents", "app")
-    }:
+    if len(parts) < 3 or parts[0] not in MAC_APP_ROOTS or parts[1:3] != ("contents", "app"):
         return None
     return parts[3:]
 
@@ -1166,7 +1167,7 @@ def is_mac_skiko_runtime(path: PurePosixPath, container_path: PurePosixPath | No
 def is_jdk_cacerts_path(path: PurePosixPath) -> bool:
     parts = tuple(part.lower() for part in path.parts)
     return parts[-4:] == ("runtime", "lib", "security", "cacerts") or (
-        len(parts) == 8 and parts[0] in {"choplab.app", "choplab preview.app"}
+        len(parts) == 8 and parts[0] in MAC_APP_ROOTS
         and parts[1:] == ("contents", "runtime", "contents", "home", "lib", "security", "cacerts")
     )
 
