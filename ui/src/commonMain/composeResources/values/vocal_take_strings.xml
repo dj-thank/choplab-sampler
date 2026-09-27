@@ -13,20 +13,20 @@
     <string name="vocal_comp_replacements">Check existing placements to replace. Unchecked placements remain and play together with the comp. All original takes remain saved.</string>
     <string name="vocal_comp_placement">%1$s · %2$s s</string>
     <string name="vocal_comp_preview">Preview comp</string>
-    <string name="vocal_apply">Apply to song · one Undo</string>
+    <string name="vocal_take_apply">Apply to song · one Undo</string>
     <string name="vocal_cancel">Cancel preparation</string>
     <string name="vocal_close">Close</string>
     <string name="vocal_stop_preview">Stop preview</string>
     <string name="vocal_reload">Reload saved takes</string>
-    <string name="vocal_applied">Comp applied. Original takes are retained.</string>
+    <string name="vocal_take_applied">Comp applied. Original takes are retained.</string>
     <string name="vocal_no_lines">Add timed lyric lines first.</string>
     <string name="vocal_take_short">This take does not cover the whole line.</string>
-    <string name="vocal_limit">There is not enough project or storage capacity for this comp.</string>
+    <string name="vocal_take_limit">There is not enough project or storage capacity for this comp.</string>
     <string name="vocal_recording">Finish recording before editing takes.</string>
-    <string name="vocal_busy">Wait for the current operation to finish.</string>
-    <string name="vocal_stale">The song changed. Reload its saved takes before continuing.</string>
+    <string name="vocal_take_busy">Wait for the current operation to finish.</string>
+    <string name="vocal_take_stale">The song changed. Reload its saved takes before continuing.</string>
     <string name="vocal_closed">The take editor is closed.</string>
     <string name="vocal_invalid">Check the selected take and line ranges.</string>
     <string name="vocal_render_failed">The comp could not be prepared. Existing takes and placements are unchanged.</string>
-    <string name="vocal_apply_failed">The comp was not applied. Existing takes and placements are unchanged.</string>
+    <string name="vocal_take_apply_failed">The comp was not applied. Existing takes and placements are unchanged.</string>
 </resources>
