@@ -492,7 +492,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 }
                 ContinuousEditorAction.PauseSong -> send(Action.Pause).also { finishVoice() }
                 ContinuousEditorAction.StopSong -> send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) }; finishVoice() }
-                is ContinuousEditorAction.SetTempo -> edit(Intent.SetTempo(Tempo(action.bpm * 1000, project.tempo.swingPermille)))
+                is ContinuousEditorAction.SetTempo -> edit(Intent.SetTempo(Tempo(action.bpm * 1000, action.swingPermille ?: project.tempo.swingPermille)))
                 ContinuousEditorAction.AddDrum -> ports.drumKitsAvailable.also { if (it) view.update { v -> v.copy(kitChooser = true, kitQuestion = null) } }
                 is ContinuousEditorAction.ChooseDrumKit -> ports.drumKitsAvailable && chooseKit(DrumKits.kit(action.kitId).id, project)
                 ContinuousEditorAction.ConfirmDrumKit -> view.value.kitQuestion?.let { question ->
@@ -1108,7 +1108,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             selectedClipId = v.clip?.takeIf { id -> p.clips.any { it.id == id } }, selectedTrackId = v.track,
             timelineDurationFrames = songFrames(p), pixelsPerSecond = v.pixelsPerSecond, paneFraction = v.paneFraction,
             compactPane = v.pane, songPlaying = input.playing, songMonitorGain = v.songGain, bpm = p.tempo.milliBpm / 1000,
-            milliBpm = p.tempo.milliBpm, grid = v.grid,
+            milliBpm = p.tempo.milliBpm, swingPermille = p.tempo.swingPermille, grid = v.grid,
             canUndo = input.document.canUndo, canRedo = input.document.canRedo, capabilities = capabilities,
             unavailable = ContinuousCapability.entries.filterNot { it in capabilities }.associateWith { capability ->
                 val voice = capability == ContinuousCapability.RECORD_VOICE && ports.voiceAvailable

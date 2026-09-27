@@ -204,6 +204,9 @@
     <string name="ce_tap_tempo">Tap</string>
     <string name="ce_tap_tempo_hint">Or tap along with the song four times or more, and the BPM is filled in.</string>
     <string name="ce_bpm">BPM</string>
+    <string name="ce_tempo_swing">%1$d BPM · swing %2$d%</string>
+    <string name="ce_swing_value">Swing %1$d%</string>
+    <string name="ce_swing_hint">Of the sounds placed on the beat, the in-between 16ths (the off 16ths) come a little later, for a bouncy feel. 50% is straight; 66% bounces close to triplets. It applies with the tempo.</string>
     <string name="ce_close">Close</string>
     <string name="ce_change_drums">Change drums</string>
     <string name="ce_kit_title">Choose a drum kit</string>

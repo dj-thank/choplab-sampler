@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.core.ProgramCompiler
+import com.choplab.engine.SequenceClock
+import com.choplab.engine.Tempo
 import com.choplab.ui.resources.*
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
@@ -249,21 +251,25 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 
 /**
  * The song timeline's lines between [from] and [to] pixels, each an x and how strong it is: 2 a bar, 1 a beat, 0 a
- * finer [grid] line. Lines closer than [minimumGap] are left out: finer lines first, then beats, then all but every
- * few bars.
+ * finer [grid] line. Swing moves the off sixteenths' lines where their sounds go. Lines closer than [minimumGap] are
+ * left out: finer lines first, then beats, then all but every few bars.
  */
-internal fun ceGridLines(milliBpm: Int, grid: ContinuousGrid, pxPerSecond: Float, minimumGap: Float, from: Float, to: Float): List<Pair<Float, Int>> {
-    val beat = 60_000f / milliBpm * pxPerSecond
+internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float, minimumGap: Float, from: Float, to: Float): List<Pair<Float, Int>> {
+    val beat = 60_000f / tempo.milliBpm * pxPerSecond
     val finer = if (grid == ContinuousGrid.FREE) 960 else grid.ticks
+    // Swing narrows the gap after an off sixteenth to (1000 - swing) / 500 of a sixteenth.
+    val tightest = if (finer % 480 != 0) (1000 - tempo.swingPermille) / 500f else 1f
     val unitTicks = when {
-        beat * finer / 960 >= minimumGap -> finer
+        beat * finer / 960 * tightest >= minimumGap -> finer
         beat >= minimumGap -> 960
         else -> 3_840 * kotlin.math.ceil(minimumGap / (beat * 4)).toInt()
     }
     val unit = beat * unitTicks / 960
     return (floor(from / unit).toLong().coerceAtLeast(0)..kotlin.math.ceil(to / unit).toLong()).map { index ->
         val ticks = index * unitTicks
-        index * unit to when { ticks % 3_840 == 0L -> 2; ticks % 960 == 0L -> 1; else -> 0 }
+        val swingTicks = (SequenceClock.targetNumerator(ticks, tempo.swingPermille) - ticks * SequenceClock.UNITS_PER_TICK).toFloat() /
+            SequenceClock.UNITS_PER_TICK
+        index * unit + swingTicks * beat / 960 to when { ticks % 3_840 == 0L -> 2; ticks % 960 == 0L -> 1; else -> 0 }
     }
 }
 
@@ -317,7 +323,7 @@ internal fun ceGridLines(milliBpm: Int, grid: ContinuousGrid, pxPerSecond: Float
                             val pps = state.pixelsPerSecond.dp.toPx()
                             for (index in 0..rows) drawLine(CEColor.Border.copy(alpha = .5f), Offset(0f, index * rowHeight.toPx()), Offset(size.width, index * rowHeight.toPx()))
                             val from = horizontal.value.toFloat()
-                            ceGridLines(state.milliBpm, state.grid, pps, 6.dp.toPx(), from, from + horizontal.viewportSize).forEach { (x, strength) ->
+                            ceGridLines(state.tempo, state.grid, pps, 6.dp.toPx(), from, from + horizontal.viewportSize).forEach { (x, strength) ->
                                 drawLine(CEColor.Border.copy(alpha = when (strength) { 2 -> .6f; 1 -> .3f; else -> .15f }),
                                     Offset(x, 0f), Offset(x, size.height), if (strength == 2) 2.dp.toPx() else 1.dp.toPx())
                             }
@@ -379,7 +385,7 @@ internal fun ceGridLines(milliBpm: Int, grid: ContinuousGrid, pxPerSecond: Float
         if (dx == 0f) return 0
         val pps = with(density) { pixelsPerSecond.dp.toPx() }
         val raw = (clip.timelineStartFrame + (dx / pps * CONTINUOUS_TIMELINE_RATE).roundToLong()).coerceAtLeast(0)
-        val frame = ContinuousClipEdits.snapTick(raw, state.milliBpm, state.grid)?.let { ProgramCompiler.tickToFrame(it, state.milliBpm) } ?: raw
+        val frame = ContinuousClipEdits.landingFrame(raw, state.tempo, state.grid)
         return ((frame - clip.timelineStartFrame).toDouble() / CONTINUOUS_TIMELINE_RATE * pps).roundToInt()
     }
     Box(Modifier.offset { IntOffset(with(density) { left.roundToPx() } + (if (trimEdge == 0) landing(drag.x) else 0),

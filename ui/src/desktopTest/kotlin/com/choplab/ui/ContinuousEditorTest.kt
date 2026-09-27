@@ -12,6 +12,7 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.choplab.core.ProgramCompiler
+import com.choplab.engine.Tempo
 import java.io.File
 import java.util.Locale
 import kotlin.test.*
@@ -238,7 +239,7 @@ class ContinuousEditorTest {
             scene.settle()
             // The request carries where the finger went; the edit puts it on the nearest beat, where it was shown.
             val moved = actions.filterIsInstance<ContinuousEditorAction.MoveClip>().last()
-            val beat = requireNotNull(ContinuousClipEdits.snapTick(moved.timelineStartFrame, 92_000, ContinuousGrid.BEAT))
+            val beat = requireNotNull(ContinuousClipEdits.snapTick(moved.timelineStartFrame, Tempo(92_000), ContinuousGrid.BEAT))
             assertEquals(0L, beat % 960)
             val landing = ProgramCompiler.tickToFrame(beat, 92_000)
             assertEquals((landing - 6L * 48_000) / 48_000f * 25f, shown, 1f)
@@ -306,8 +307,69 @@ class ContinuousEditorTest {
             assertTrue(actions.none { it is ContinuousEditorAction.SetTempo }, "Nothing changes until it is applied")
             scene.capture("tempo-tap-desktop.png")
             scene.click("ce-tempo-apply")
-            assertEquals(ContinuousEditorAction.SetTempo(240), actions.last())
+            // With the swing it opened at, unchanged.
+            assertEquals(ContinuousEditorAction.SetTempo(240, 500), actions.last())
         } finally { scene.close(); Locale.setDefault(previous) }
+    }
+
+    @Test fun theSwingIsChosenWithTheTempoAndShownBesideItWhenTheSongSwings() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val song = mutableStateOf(ContinuousEditorFixture.state())
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(song.value, actions::add, ContinuousEditorFixture::readout)
+        }
+        val choices = listOf(500, 540, 580, 620, 660, 710)
+        try {
+            scene.settle()
+            // The tempo button's label, from the text inside it.
+            fun label(): String = buildList { fun visit(node: SemanticsNode) { addAll(node.config.getOrNull(SemanticsProperties.Text).orEmpty()); node.children.forEach(::visit) }
+                visit(requireNotNull(scene.tag("ce-tempo"))) }.joinToString { it.text }
+            fun value() = requireNotNull(scene.tag("ce-swing-value")).config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString { it.text }
+            fun chosen() = choices.filter { requireNotNull(scene.tag("ce-swing-$it")) { "ce-swing-$it" }.config.getOrNull(SemanticsProperties.Selected) == true }
+            // A straight song shows its tempo only.
+            assertEquals("92 BPM", label())
+            scene.click("ce-tempo")
+            assertEquals("スウィング 50%", value())
+            assertEquals(listOf(500), chosen())
+            val top = requireNotNull(scene.tag("ce-swing-500")).boundsInRoot.top
+            for (choice in choices) {
+                val node = requireNotNull(scene.tag("ce-swing-$choice"))
+                assertTrue(node.size.height >= 48, "ce-swing-$choice keeps a 48 dp target")
+                assertEquals(top, node.boundsInRoot.top, .5f, "All six in one row where they fit")
+                assertEquals(listOf("スウィング ${choice / 10}%"), node.config.getOrNull(SemanticsProperties.ContentDescription))
+            }
+            scene.click("ce-swing-580")
+            assertEquals("スウィング 58%", value())
+            assertEquals(listOf(580), chosen())
+            assertTrue(actions.none { it is ContinuousEditorAction.SetTempo }, "Nothing changes until it is applied")
+            scene.capture("tempo-swing-desktop.png")
+            scene.click("ce-tempo-apply")
+            assertEquals(ContinuousEditorAction.SetTempo(92, 580), actions.last())
+            // A swung song says so beside its tempo, and the panel opens at its swing, even one between the choices.
+            song.value = song.value.copy(swingPermille = 670)
+            scene.settle()
+            assertEquals("92 BPM・スウィング67%", label())
+            scene.click("ce-tempo")
+            assertEquals("スウィング 67%", value())
+            assertEquals(emptyList(), chosen())
+            scene.click("ce-tempo-apply")
+            assertEquals(ContinuousEditorAction.SetTempo(92, 670), actions.last(), "Applying the tempo keeps that swing")
+        } finally { scene.close() }
+        // On a phone with large text the six choices are two rows below the tap button, each a 48 dp target.
+        val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+            ContinuousEditor(ContinuousEditorFixture.state().copy(swingPermille = 580), actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            phone.settle()
+            requireNotNull(requireNotNull(phone.tag("ce-tempo")).config[SemanticsActions.OnClick].action)()
+            phone.settle()
+            for (tag in listOf("ce-tempo-value", "ce-tap-tempo", "ce-tempo-apply") + choices.map { "ce-swing-$it" })
+                assertTrue(requireNotNull(phone.tag(tag)) { tag }.size.height >= 48, tag)
+            assertEquals(2, choices.map { requireNotNull(phone.tag("ce-swing-$it")).positionInRoot.y }.distinct().size)
+            phone.capture("tempo-swing-phone-font200.png")
+        } finally { phone.close(); Locale.setDefault(previous) }
     }
 
     @Test fun theFillPanelChoosesSpacingAndLengthAndFillsFromTheSongPositionsBar() = runBlocking<Unit> {

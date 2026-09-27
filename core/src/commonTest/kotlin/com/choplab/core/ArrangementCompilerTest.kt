@@ -62,6 +62,24 @@ class ArrangementCompilerTest {
         assertTrue(ProgramCompiler.songFits(layered(33).let { p -> p.copy(tracks = p.tracks.map { it.copy(mute = true) }.frozen()) }))
     }
 
+    @Test fun swingDelaysOnlyTickAnchoredOffSixteenthsAndStraightIsTheTempoMapping() = runTest {
+        val a = asset()
+        val p = project(a, listOf(
+            Clip("eighth", "t", a.hash, FrameRange(0, 100), startTick = 480),
+            Clip("off", "t", a.hash, FrameRange(0, 100), startTick = 720),
+            Clip("frame", "t", a.hash, FrameRange(0, 100), startTick = 240, timelineStartFrame = 6_000),
+        )).copy(tempo = Tempo(120_000, 600))
+        val swung = ProgramCompiler(Loader()).compile(p, PlaybackTarget.Arrangement(), 1).arrangement!!
+        val starts = (0 until swung.clipCount).associate { swung.clip(it).id to swung.clip(it).timelineStartFrame }
+        // At 120 BPM an eighth is 12,000 frames; at 60% its second sixteenth comes 7,200 frames in, not 6,000.
+        assertEquals(mapOf("clip-eighth" to 12_000L, "clip-off" to 19_200L, "clip-frame" to 6_000L), starts)
+        assertEquals(9_000L, ProgramCompiler.clipTickToFrame(240, Tempo(120_000, 750)))
+        for (tick in listOf(0L, 1, 239, 240, 241, 479, 480, 721, 3_840, 99_999_999)) for (milliBpm in listOf(40_000, 97_000, 147_125, 240_000))
+            assertEquals(ProgramCompiler.tickToFrame(tick, milliBpm), ProgramCompiler.clipTickToFrame(tick, Tempo(milliBpm, 500)))
+        assertEquals((0L..960).map { ProgramCompiler.clipTickToFrame(it, Tempo(240_000, 750)) }.sorted(),
+            (0L..960).map { ProgramCompiler.clipTickToFrame(it, Tempo(240_000, 750)) })
+    }
+
     @Test fun mixStateKeepsSilentTailAndCombinesClipAndTrackGainPan() = runTest {
         val a = asset(); val loader = Loader(); val compiler = ProgramCompiler(loader)
         val tracks = listOf(Track("a", "Audible", TrackKind.SOURCE, gain = 0.5f, pan = 0.3f, solo = true), Track("b", "Inactive", TrackKind.SOURCE))

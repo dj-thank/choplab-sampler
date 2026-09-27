@@ -200,17 +200,50 @@ class ContinuousClipEditsTest {
 
     @Test fun gridLinesAreBarsBeatsAndFinerLinesWhereThereIsRoom() {
         // 120 BPM at 24 px a second: a beat is 12 px, a bar 48 px.
-        val quarter = ceGridLines(120_000, ContinuousGrid.QUARTER, 24f, 6f, 0f, 50f)
+        val quarter = ceGridLines(Tempo(120_000), ContinuousGrid.QUARTER, 24f, 6f, 0f, 50f)
         assertEquals(listOf(0f to 2, 12f to 1, 24f to 1, 36f to 1, 48f to 2), quarter.take(5), "Quarter lines 3 px apart are left out")
-        val half = ceGridLines(120_000, ContinuousGrid.HALF, 24f, 6f, 0f, 13f)
+        val half = ceGridLines(Tempo(120_000), ContinuousGrid.HALF, 24f, 6f, 0f, 13f)
         assertEquals(listOf(0f to 2, 6f to 0, 12f to 1), half.take(3))
-        assertEquals(ceGridLines(120_000, ContinuousGrid.BEAT, 24f, 6f, 0f, 50f), ceGridLines(120_000, ContinuousGrid.FREE, 24f, 6f, 0f, 50f))
+        assertEquals(ceGridLines(Tempo(120_000), ContinuousGrid.BEAT, 24f, 6f, 0f, 50f), ceGridLines(Tempo(120_000), ContinuousGrid.FREE, 24f, 6f, 0f, 50f))
         // Zoomed far out (240 BPM at 4 px a second, a bar 4 px): every other bar.
-        val far = ceGridLines(240_000, ContinuousGrid.QUARTER, 4f, 6f, 0f, 17f)
+        val far = ceGridLines(Tempo(240_000), ContinuousGrid.QUARTER, 4f, 6f, 0f, 17f)
         assertEquals(listOf(0f to 2, 8f to 2, 16f to 2), far.take(3))
         // Only what is in view: a window far along starts near it.
-        val window = ceGridLines(120_000, ContinuousGrid.BEAT, 24f, 6f, 1_200f, 1_250f)
+        val window = ceGridLines(Tempo(120_000), ContinuousGrid.BEAT, 24f, 6f, 1_200f, 1_250f)
         assertTrue(window.first().first in 1_188f..1_200f && window.size <= 6)
+    }
+
+    @Test fun swingMovesTheOffSixteenthsLinesAndWhatIsPlacedOnThem() {
+        // 120 BPM at 60%: an eighth is 12 000 frames, and its second sixteenth comes 7 200 frames in, not 6 000.
+        val swung = Tempo(120_000, 600)
+        val straight = Tempo(120_000)
+        val p = fixture().copy(tempo = swung)
+        val off = apply(p, ContinuousEditorAction.PlacePad(0, null, 9_300), ContinuousGrid.QUARTER)
+        assertEquals(240L, off.clips.single().startTick, "Nearest the swung line, where straight the eighth would be")
+        assertEquals(7_200L, off.start())
+        assertEquals(7_200L, ContinuousClipEdits.landingFrame(9_300, swung, ContinuousGrid.QUARTER), "Shown where it lands")
+        assertEquals(9_300L, ContinuousClipEdits.landingFrame(9_300, swung, ContinuousGrid.FREE))
+        assertEquals(480L, ContinuousClipEdits.snapTick(9_300, straight, ContinuousGrid.QUARTER))
+        assertEquals(0L, ContinuousClipEdits.snapTick(3_500, swung, ContinuousGrid.QUARTER))
+        assertEquals(240L, ContinuousClipEdits.snapTick(3_500, straight, ContinuousGrid.QUARTER))
+        // From the swung line a nudge goes back to the beat before it, or on to the eighth after it.
+        val id = off.clips.single().id
+        assertEquals(0L, apply(off, ContinuousEditorAction.NudgeClip(id, forward = false), ContinuousGrid.QUARTER).clips.single().startTick)
+        assertEquals(480L, apply(off, ContinuousEditorAction.NudgeClip(id, forward = true), ContinuousGrid.QUARTER).clips.single().startTick)
+        // Between where the sixteenth would be straight (6 000) and where it swings to (7 200), it is still ahead.
+        assertEquals(240L, ContinuousClipEdits.adjacentTick(6_500, swung, ContinuousGrid.QUARTER, forward = true))
+        assertEquals(0L, ContinuousClipEdits.adjacentTick(6_500, swung, ContinuousGrid.QUARTER, forward = false))
+        // Bars and beats stay where they were.
+        assertEquals(1L, ContinuousClipEdits.barAt(96_000, swung))
+        assertEquals(0L, ContinuousClipEdits.barAt(95_999, swung))
+        assertEquals(ContinuousClipEdits.snapTick(29_000, straight, ContinuousGrid.BEAT), ContinuousClipEdits.snapTick(29_000, swung, ContinuousGrid.BEAT))
+        // The grid draws a swung line where its sounds go: at 96 px a second a sixteenth is 12 px, swung 2.4 px later.
+        val lines = ceGridLines(swung, ContinuousGrid.QUARTER, 96f, 6f, 0f, 48f)
+        assertEquals(listOf(2, 0, 0, 0, 1), lines.map { it.second })
+        listOf(0f, 14.4f, 24f, 38.4f, 48f).zip(lines.map { it.first }).forEach { (expected, x) -> assertEquals(expected, x, .001f) }
+        // At 75% the gap after an off sixteenth halves, to 6 px: with 7 px between lines, beats only.
+        assertEquals(listOf(0f to 2, 48f to 1), ceGridLines(Tempo(120_000, 750), ContinuousGrid.QUARTER, 96f, 7f, 0f, 48f))
+        assertEquals(5, ceGridLines(straight, ContinuousGrid.QUARTER, 96f, 7f, 0f, 48f).size)
     }
 
     @Test fun aFillPlacesThePadOnEveryLineThroughItsBarsInPlaceOfItsOwnSoundOnThatTrack() {
@@ -241,8 +274,8 @@ class ContinuousClipEditsTest {
         // At 97 BPM the second bar falls between frames: from the frame playback starts it, it is the second bar.
         val p = fixture().copy(tempo = Tempo(97_000))
         val second = ProgramCompiler.tickToFrame(3_840, 97_000)
-        assertEquals(1L, ContinuousClipEdits.barAt(second, 97_000))
-        assertEquals(0L, ContinuousClipEdits.barAt(second - 1, 97_000))
+        assertEquals(1L, ContinuousClipEdits.barAt(second, Tempo(97_000)))
+        assertEquals(0L, ContinuousClipEdits.barAt(second - 1, Tempo(97_000)))
         assertEquals(3_840L, apply(p, ContinuousEditorAction.FillPad(0, null, second, ContinuousGrid.BEAT, 1)).clips.first().startTick)
         assertEquals(0L, apply(p, ContinuousEditorAction.FillPad(0, null, second - 1, ContinuousGrid.BEAT, 1)).clips.first().startTick)
         assertEquals(32, apply(p, ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 8)).clips.size)
