@@ -47,8 +47,8 @@ def verify_document(profile, expected):
             raise RuntimeError('Restored production lost or changed its audio bytes')
 
 
-def verify(app, java_home):
-    manifest = json.loads((app.parent / 'manifest.json').read_text())
+def verify_package(app, manifest_path=None):
+    manifest = json.loads((manifest_path if manifest_path is not None else app.parent / 'manifest.json').read_text())
     if manifest['profile'] != 'preview-next':
         raise RuntimeError('Select the isolated NEXT package')
     actual = {str(path.relative_to(app)) for path in app.rglob('*') if path.is_file() and not path.is_symlink()}
@@ -59,6 +59,11 @@ def verify(app, java_home):
         if path.stat().st_size != expected['bytes'] or digest(path) != expected['sha256']:
             raise RuntimeError('Packaged file differs from its manifest: ' + name)
     run('codesign', '--verify', '--deep', '--strict', app)
+    return manifest
+
+
+def verify(app, java_home, manifest_path=None):
+    manifest = verify_package(app, manifest_path)
     libs = app / 'Contents/app'
     java = app / 'Contents/runtime/Contents' / 'Home/bin/java'
     # Do not inherit launch injection or an existing user's data-directory override.
@@ -149,6 +154,7 @@ def verify(app, java_home):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app', type=Path, required=True)
+    parser.add_argument('--manifest', type=Path, help='Exact package manifest, including the saved manifest for an installed app')
     parser.add_argument('--java-home', type=Path, required=True, help='Build JDK for the lifecycle test agent only')
     args = parser.parse_args()
-    verify(args.app.resolve(), args.java_home.resolve())
+    verify(args.app.resolve(), args.java_home.resolve(), args.manifest.resolve() if args.manifest is not None else None)

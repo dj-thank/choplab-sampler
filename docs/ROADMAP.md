@@ -4,7 +4,7 @@
 
 ## 最初に読む現状とSSOT（2026-09-28照合）
 
-9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、このrootがローカル実装・統合・Mac利用検証を再開する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
+9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、ローカル実装・統合・Mac利用検証を再開する。同日の追加指定に従い、未完実装はGPT-6 Astra・推論Maxが担当し、rootがPR統合・外部更新・Mac端末検証を担当する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
 
 ### 正本と参照順
 
@@ -24,11 +24,11 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `551d57fcaadb427df8b3845da9a05ab67d2c6c7e`、公開branch、PRの最新状態を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `6c2fd0210636192769cf9da012b025a5007e0f68`、公開branch、PRを9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
-| 演奏録音 [PR150](https://github.com/dj-thank/choplab-sampler/pull/150) | OPEN、head `ee18b7c965f4368a623d536d8aae168ef29435ec`。[run 36329071282](https://github.com/dj-thank/choplab-sampler/actions/runs/36329071282) はverify・Windows EXE・履歴/SBOMの3件成功。引継ぎ時のWindows失敗/verify実行中は現在状態ではない | 曲末/GATE/choke/StopAll/fade/取消LOOP/accessibilityの修正をレビューし、統合後の画面とpackageで録音→1Undo/Redo→保存再開→書出しを確認。CI成功を実聴合格へ読み替えない |
+| 演奏録音 [PR150](https://github.com/dj-thank/choplab-sampler/pull/150) | main `6c2fd02` へ統合済み。head `096edfc` の [run 36334596464](https://github.com/dj-thank/choplab-sampler/actions/runs/36334596464) はverify・Windows EXE・履歴/SBOMの3件成功。同headのMac配布物でGATE演奏→1Undo/Redo→24bit書出し→保存再起動が成功 | 曲末/GATE/LOOP/choke/全停止fade/取消/accessibilityの回帰は成功。実入力遅延・音・TalkBack/Humanは未確認。空曲録音、click/count-in、loop overdubを後続で完成する |
 | PAD可視領域 [PR153](https://github.com/dj-thank/choplab-sampler/pull/153) | DRAFT、head `c5048e2`。compact header/詳細折畳みの途中変更。元セッションの23試験中1失敗（ContinuousEditorTestのfill panel、392行IllegalArgumentException） | 失敗を修正し390×844/font1/1.3/2、短い横画面、広い画面の実描画と操作を確認。PAD・停止・原曲・音量・Undoが使えること。引継ぎ文だけを理由にWIPを完成扱いでmergeしない |
 | Spotify NEXT [保全branch](https://github.com/dj-thank/choplab-sampler/tree/codex/next-spotify-connection) | head `d2a06e1e2f279382da27874383f47de7877d70be`。typedエラー/session試験とnative metadata dialogまで。NEXT action/port/host/package接続、実OAuth/APIは未完 | metadataと音源を区別し、接続・取消・失敗・再試行・鍵管理と実providerを確認。PRODUCTの具体的な利用条件を満たす |
 | デザインの取り違え | 最後のBEAT画像とSOURCE/HAND画像をDESIGNへ保存。旧2枚目・3枚目は撤回済み | 大きな4×4 PAD＋右の配置、4工程、共通原曲監視、独立音量、可変divider、A–H×16を維持。scratchはSOURCE/HANDの独立経路まで実装・検証 |
@@ -40,9 +40,15 @@ rootが変更と統合を進め、各担当は独立worktreeと限定したフ�
 
 ## 選択中の実装・統合（2026-09-28）
 
-rootがmain `04cd1ed` と録音PR150 head `ee18b7c` の文書競合を解消して統合候補を作る。製品コードはPR150の修正を保持し、承認画像・SSOT索引はmainを保持する。曲末/GATE/LOOP/choke/全停止/取消/読み上げ入力の回帰、共有engine/core/JVM/UI/desktopとAndroid compile、Mac packageの録音→Undo/Redo→書出し→保存再開を検証して統合する。rollbackはPR150のrevertと前のMac appへの復帰。実聴・実入力遅延・TalkBackはこの合成検証から認定しない。
+rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
 
-画面担当は独立worktreeで、BEATの広い画面に応じた大きな正方形PAD、390×844/font1/1.3/2・短い横画面の可視領域と操作を修正する。原曲監視・4工程・停止・Undo・BANKと詳細操作を維持し、実Compose画像とgeometry/inputで確認する。左右2円盤scratch、Spotify、長尺、段階5〜11の未実装は別のbounded変更として続ける。
+Mac配布担当の修正をrootが統合する。Swift helperのdeployment targetをmacOS14.0へ明示し、app内のtool・Java・JAR内nativeの実最低OSの最大値をInfo.plistとmanifestへ保存する。現在の同梱依存はmacOS27.0を必要とするため、14対応済みとは主張しない。インストール済みappの保存manifestも受入スクリプトで指定できる。Python policy327件、helper実compileとminos14.0確認、既存installed appの238ファイル全hash/署名確認が成功。統合後は新package・制作通し・旧app保全付き更新・installed readbackをrootが行う。公開署名/notarizationは別ゲート。
+
+未完の段階0〜11は、利用者の明示指定により **GPT-6 Astra・推論Max** に実装を依頼した。録音担当は空の曲からのvoice/PAD録音、permission待ち/出力切断/停止のclock所有と保存・復元を完成し、次に歌詞/LRCの編集・同期・ファイル入口を接続する。Spotify担当はmetadata専用scope、設定、NEXT入口とhost寿命、取消・遅着・429・再試行を実装する。Spotify曲情報を音声と見なさず、旧YouTube自動照合をつながない。実OAuth/providerと一般配布の利用条件は個別に確認する。歌詞基盤候補はLRC/拡張LRC、offset、word時刻、typed failure、純編集・current/nextを実装しcore55件成功。ファイル/画面/本番hostへ未接続なので段階5の完了ではない。
+
+PAD画面の途中変更は保全して引き継ぐ。BEATの広い画面に応じた大きな正方形PAD、390×844/font1/1.3/2・短い横画面の可視領域と入力を確認し、原曲監視・4工程・停止・Undo・BANKと詳細操作を維持する。geometry/実Compose画像/入力の合格前には統合しない。左右SOURCE/HANDの独立scratch、BANK/PAD編集、長尺prefetch、step/pattern/click/count-in/overdub、vocal take/comp/punch、任意AI、mixer/FX/stems、pitch補正、4stem、歌唱練習、OS別I/O・配布サイズと受入表の未完も、Astra・Maxの実装範囲として続ける。基盤だけの追加や1件のPR成功で全完成にしない。
+
+各bounded変更は実装・意味のある検証・commitをrootへ返し、rootがdiff/required CIを確認して統合する。rootが外部更新と端末操作を所有する。rollbackは対象PRのrevertと以前のartifactへの復帰。旧app、制作data、dirty checkoutを保持し、必要な人間/provider/deviceの実観測は結果が得られるまで未確認として本書に残す。
 
 ## UIの固定条件
 

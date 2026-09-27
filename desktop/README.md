@@ -46,9 +46,20 @@ python3 scripts/run_mac_acceptance.py \
 
 ## Macの4工程NEXT
 
-`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Javaとローカル音源のデコーダーを含み、単体で起動できます。初回ビルドはHomebrewのffmpegとXcode CLIが必要です。codecの21個のnative依存は `config/mac-audio-tool-files.txt` で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
+`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Java、録音helper、取得/decodeツール、ドラム分離モデルを含み、単体で起動できます。初回ビルドはHomebrewのffmpeg/node、Python3.11以降とXcode CLIが必要です。同梱ツールとnative依存は `config/mac-media-tool-files.txt` で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
 
-現段階ではWAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opusの取込、チョップ、PAD、合成ドラム、曲への配置、原曲用のマイク録音、曲に合わせた声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン取込・端末音の録音・ライブラリ・ドラム分離は既存Preview側に残っています。NEXTだけで全機能を受入済みとはしません。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
+WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF/AIF・MP4・WebMの取込、チョップ、PAD、合成ドラム、曲への配置、原曲用のマイク録音、曲に合わせた声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン候補からの明示取込、Mac端末音録音、音源ライブラリ、ドラム分離もNEXTへ接続済みです。Spotify接続と長尺prefetchは移植中で、全制作機能の受入はROADMAPに沿って進めます。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
+
+helperはmacOS14.0を明示してbuildし、最終アプリの最低OSは同梱helper・ツール・Java runtime・JAR内native依存の実バイナリから判定して、Info.plistと配布manifestへ記録します。このMacで用意したcodecにはmacOS27.0を要求するものがあるため、そのbundleはmacOS27.0以降用です。Apple Silicon以外や古いOSは別のbytesでの検証が必要です。
+
+梱包後の受入は `scripts/run_mac_next_acceptance.py` を使います。インストール済みアプリでは、インストール時に保存したmanifestを `--manifest` で指定します。標準のbuild出力では省略できます。全ファイル・hash・署名を照合してから隔離profileで制作通しと通常終了・再開を確認します。
+
+```sh
+python3 scripts/run_mac_next_acceptance.py \
+  --app "$HOME/Applications/ChopLab NEXT.app" \
+  --manifest "$HOME/Applications/.choplab-manifests/ChopLab NEXT.app.json" \
+  --java-home "$JAVA_HOME"
+```
 
 ## データ・接続・検証
 
