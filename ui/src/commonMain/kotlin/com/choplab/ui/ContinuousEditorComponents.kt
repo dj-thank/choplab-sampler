@@ -271,7 +271,8 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                             // A screen reader user plays and records the PAD at the moment it is activated.
                             if (hit != null && filled) onClick(playLabel) {
                                 latestHit?.invoke()?.let { frame ->
-                                    latestAction(ContinuousEditorAction.TapPad(id)); latestAction(ContinuousEditorAction.CaptureHit(id, frame))
+                                    latestAction(ContinuousEditorAction.BeginHit(ContinuousHitGesture(id, frame)))
+                                    latestAction(ContinuousEditorAction.TapPad(id))
                                 }; true
                             }
                         }

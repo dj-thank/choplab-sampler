@@ -421,7 +421,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     taps.remove(action.padId)?.cancel()
                     if (!send(Action.Trigger(action.padId))) false else {
                         if (project.pads[action.padId].mode == PlayMode.GATE) taps[action.padId] = jobs.launch {
-                            delay(120); serialized.withLock { send(Action.Release(action.padId)); taps.remove(action.padId) }
+                            delay(120); serialized.withLock { releaseRecordedPad(action.padId); send(Action.Release(action.padId)); taps.remove(action.padId) }
                         }
                         true
                     }
@@ -429,13 +429,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.HoldPad -> send(Action.Trigger(action.padId)).also { if (it) held += action.padId }
                 is ContinuousEditorAction.ReleasePad -> {
                     held -= action.padId
-                    if (view.value.hits?.pending?.keys?.any { it.padId == action.padId } == true) {
-                        send(Action.RefreshTransport)
-                        val end = studio.transport.value.sequenceFrame
-                        view.update { v -> v.copy(hits = v.hits?.let { r -> r.copy(pending = r.pending.mapValues { (gesture, hit) ->
-                            if (gesture.padId == action.padId) releaseHit(hit, (end - gesture.songFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt()) else hit
-                        }) }) }
-                    }
+                    releaseRecordedPad(action.padId)
                     send(Action.Release(action.padId))
                 }
                 is ContinuousEditorAction.TogglePadLoop -> {
@@ -949,6 +943,16 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      * on the grid, as placing it would. The caller stops or pauses the song. Reports the outcome in the status line
      * itself, also when the song's end ends the pass.
      */
+    private suspend fun releaseRecordedPad(padId: Int) {
+                    if (view.value.hits?.pending?.keys?.any { it.padId == padId } == true) {
+                        send(Action.RefreshTransport)
+                        val end = studio.transport.value.sequenceFrame
+                        view.update { v -> v.copy(hits = v.hits?.let { r -> r.copy(pending = r.pending.mapValues { (gesture, hit) ->
+                            if (gesture.padId == padId) releaseHit(hit, (end - gesture.songFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt()) else hit
+                        }) }) }
+                    }
+    }
+
     /** A later finger-up cannot undo an earlier choke/note-off. */
     private fun releaseHit(hit: ContinuousHit, afterFrames: Int) =
         hit.copy(releaseAfterFrames = minOf(hit.releaseAfterFrames ?: afterFrames, afterFrames))

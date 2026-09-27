@@ -928,7 +928,9 @@ class ContinuousEditorTest {
                 val play = requireNotNull(requireNotNull(scene.tag("ce-pad-1")).config.getOrNull(SemanticsActions.OnClick))
                 assertEquals("たたいて録る", play.label)
                 requireNotNull(play.action).invoke()
-                assertEquals(listOf(ContinuousEditorAction.TapPad(1), ContinuousEditorAction.CaptureHit(1, 112_000)), actions)
+                val accessiblePress = (actions.first() as ContinuousEditorAction.BeginHit).gesture
+                assertEquals(1, accessiblePress.padId); assertEquals(112_000L, accessiblePress.songFrame)
+                assertEquals(listOf(ContinuousEditorAction.BeginHit(accessiblePress), ContinuousEditorAction.TapPad(1)), actions)
                 scene.capture("beat-recording-hits-desktop.png")
                 scene.click("ce-record-hits")
                 assertEquals(ContinuousEditorAction.StopHits, actions.last())
