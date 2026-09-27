@@ -12,21 +12,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RealtimeHarnessTest {
-    @Test fun sourceHandAndMaximumArrangementPadFadeMixAllocateZeroAndStopCompletely() {
+    @Test fun clickSourceHandAndMaximumArrangementPadFadeMixAllocateZeroAndStopCompletely() {
         val source = PcmAsset.fromMono(FloatArray(8_192) { (.001 * sin(2 * PI * it / 64)).toFloat() })
-        val pads = (0 until 31).map { Pad(it, source, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
+        val pads = (0 until 30).map { Pad(it, source, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
         val arrangement = Arrangement((0 until 32).map { ArrangementClip("clip-$it", source, 0, trackIndex = it % 16) })
         val engine = EngineCore(EngineProgram(pads, arrangement = arrangement), EngineConfig(controlCapacity = 128, eventCapacity = 2))
         var id = 0L
         engine.controls.offer(EngineCommand.SetOriginalSource(0, id++, OriginalSource(source, loop = true)))
         engine.controls.offer(EngineCommand.PlayOriginalSource(0, id++))
         engine.controls.offer(EngineCommand.ScratchOriginalStart(0, id++, 1_000.0, 500, 7_500))
-        for (i in 0 until 31) engine.controls.offer(EngineCommand.Trigger(0, id++, i))
+        for (i in 0 until 30) engine.controls.offer(EngineCommand.Trigger(0, id++, i))
+        engine.controls.offer(EngineCommand.SetMetronome(0, id++, true))
         engine.controls.offer(EngineCommand.StartSequence(0, id++))
         engine.render(FloatArray(2))
         repeat(16) { engine.controls.offer(EngineCommand.Trigger(engine.frame, id++, 0)) }
         engine.render(FloatArray(2))
-        assertEquals(32, engine.activeVoiceCount) // 31 PAD + one reserved HAND.
+        assertEquals(32, engine.activeVoiceCount) // 30 PAD + HAND + click, all within the existing 32 slots.
         assertEquals(16, engine.fadeVoiceCount)
         assertEquals(32, engine.activeClipCount)
         assertTrue(engine.originalPlaying)
@@ -34,7 +35,7 @@ class RealtimeHarnessTest {
         engine.render(output)
         val perBlock = 22
         fun command(frame: Long, order: Long, block: Int, index: Int): EngineCommand = when (index) {
-            0 -> EngineCommand.Seek(frame, order, (block * 97L) % 7_000)
+            0 -> EngineCommand.Seek(frame, order, 0) // Strike the click on every block as well as reading all 32 clips.
             1 -> EngineCommand.SeekOriginalSource(frame, order, (block * 193L) % 8_192)
             2 -> EngineCommand.SetOriginalPitch(frame, order, if (block % 2 == 0) 24f else 17f)
             3 -> EngineCommand.ScratchOriginalPosition(frame, order, if (block % 2 == 0) 7_499.0 else 500.0, 192)
@@ -68,8 +69,8 @@ class RealtimeHarnessTest {
             if (delta != 0L && firstAllocatingBlock < 0) firstAllocatingBlock = block
         }
         times.sort()
-        println("SOURCE_HAND JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=$blocks " +
-            "arrangement=32 primary=31PAD+1HAND fade=16 SOURCE=1 maxReaders=81 sourcePitch=24/17st handSpeed=+/-8 " +
+        println("CLICK_SOURCE_HAND JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=$blocks " +
+            "arrangement=32 primary=30PAD+1HAND+1click fade=16 SOURCE=1 maxPcmReaders=80 sourcePitch=24/17st handSpeed=+/-8 " +
             "renderAllocatedBytes=$renderAllocated firstAllocatingBlock=$firstAllocatingBlock p99ns=${times[9899]} maxNs=${times.last()} " +
             "p99BlockFraction=${times[9899] / 4_000_000.0}; desktop synthetic only")
         assertEquals(0L, renderAllocated)

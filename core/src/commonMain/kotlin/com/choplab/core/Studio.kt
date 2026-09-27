@@ -44,6 +44,8 @@ sealed interface Action {
     data object Play : Action
     data object Pause : Action
     data object Resume : Action
+    data class SetMetronome(val enabled: Boolean) : Action
+    data class CountInAndResume(val bars: Int) : Action { init { require(bars in 0..2) } }
     data class Seek(val sequenceFrame: Long) : Action { init { require(sequenceFrame in 0..com.choplab.core.model.ProjectLimits.MAX_TIMELINE_FRAMES) } }
     data object Stop : Action
     /** Stops the sound like [Stop] but lets an edit, import or open that is still preparing finish: for a host going quiet. */
@@ -197,6 +199,8 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         is Action.Release -> playback { frame, id -> EngineCommand.Release(frame, id, action.padId) }
         Action.Play -> playback { frame, id -> EngineCommand.StartSequence(frame, id) }
         Action.Pause -> playback { frame, id -> EngineCommand.Pause(frame, id) }
+        is Action.SetMetronome -> playback { frame, id -> EngineCommand.SetMetronome(frame, id, action.enabled) }
+        is Action.CountInAndResume -> playback { frame, id -> EngineCommand.CountInAndResume(frame, id, action.bars) }
         Action.Resume -> playback { frame, id -> EngineCommand.Resume(frame, id) }
         is Action.Seek -> playback { frame, id -> EngineCommand.Seek(frame, id, action.sequenceFrame) }
         Action.Stop -> { cancelPreparation(); playback { frame, id -> EngineCommand.Stop(frame, id) } }

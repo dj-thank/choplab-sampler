@@ -8,6 +8,25 @@ import kotlin.test.*
 
 /** The hosts' microphone: one take at a time into the asset store, sized to the room left, and nothing left behind. */
 class VoiceTakesTest {
+    @Test fun cancelledArmedStartReleasesALatePermissionResultWithoutPublishingATake() = runBlocking<Unit> {
+        val store = FileAssetStore(Files.createTempDirectory("armed-permission-store-"))
+        val scratch = Files.createTempDirectory("armed-permission-")
+        val opening = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val mic = ScriptedMic()
+        val takes = VoiceTakes(store, scratch) { opening.countDown(); release.await(5, TimeUnit.SECONDS); mic }
+        val start = async(Dispatchers.Default) { takes.start(300, waitForCue = true) }
+        assertTrue(opening.await(5, TimeUnit.SECONDS))
+        start.cancel()
+        release.countDown()
+        start.join()
+        assertNotNull(mic.closedBy)
+        assertFalse(takes.cueAt(System.nanoTime()))
+        assertNull(takes.stop("LATE"))
+        assertEquals(0, store.storedBytes())
+        assertEquals(0, Files.list(scratch).use { it.count() })
+        takes.close()
+    }
     @Test fun oneTakeAtATimeGoesToTheStore() = runBlocking<Unit> {
         val store = FileAssetStore(Files.createTempDirectory("choplab-takes-store-"))
         val scratch = Files.createTempDirectory("choplab-takes-")

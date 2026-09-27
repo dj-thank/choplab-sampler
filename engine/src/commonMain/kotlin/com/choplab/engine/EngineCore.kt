@@ -22,6 +22,13 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private val handVoice = OriginalHandVoice()
     /** One of the existing primary slots; never a new unbounded pool. The separate SOURCE slot is unchanged. */
     private var handReservation = -1
+    private val clickVoice = MetronomeVoice()
+    private var clickReservation = -1
+    private var nextClickTick = 0L
+    private var countInFromFrame = 0L
+    private var countInMilliBpm = 120_000
+    private var countInBeats = 0
+    private var nextCountInBeat = 0
     private val songGain = ParameterSmoother(1f)
     private val voices = Array(PRIMARY_VOICES + FADE_VOICES) { Voice() }
     private val assetScratch: Array<PcmAsset?> = arrayOfNulls(
@@ -61,8 +68,20 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     val originalMonitorGain: Float get() = originalVoice.monitorGain.value
     val songMonitorGain: Float get() = songGain.value
     val tickNumerator: Long get() = clock.tickNumerator
+    var metronomeEnabled = false
+        private set
+    var countInBeatsRemaining = 0
+        private set
+    var recordingStartFrame = -1L
+        private set
+    var recordingStartSequenceFrame = 0L
+        private set
+    /** Receipt survives stop/cancel so a short completed take is distinguishable from a cancelled count-in. */
+    var recordingStartedFrame = -1L
+        private set
     val programRevision: Long get() = program.revision
-    val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES) + if (handReservation >= 0) 1 else 0
+    val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES) +
+        (if (handReservation >= 0) 1 else 0) + (if (clickReservation >= 0) 1 else 0)
     val fadeVoiceCount: Int get() = countVoices(PRIMARY_VOICES, voices.size)
     internal fun playingPadMask(upper: Boolean): Long {
         var mask = 0L
@@ -90,6 +109,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         var peakRight = 0f
         for (f in 0 until frameCount) {
             consumeCommands()
+            scheduleClickAndCue()
             scheduleNotes()
             var left = 0.0
             var right = 0.0
@@ -118,6 +138,9 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 left += handVoice.outputLeft
                 right += handVoice.outputRight
                 if (!handVoice.active) handReservation = -1
+                val click = clickVoice.next()
+                left += click
+                right += click
             }
             limiter.process(left * config.masterGain, right * config.masterGain)
             val index = (offsetFrames + f) * 2
@@ -132,6 +155,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 if (arrangement != null && sequenceFrame >= arrangement.durationFrames) {
                     sequencePlaying = false
                     sequencePaused = false
+                    clickVoice.stop()
+                    clickReservation = -1
                 }
             }
             frame++
@@ -214,6 +239,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     accepted = false
                     events.emit(EngineEventType.PROGRAM_MEMORY_LIMIT, command.orderId, command.effectiveFrame, frame)
                 } else {
+                    cancelRecordingCue()
                     handVoice.end()
                     handFenceId = maxOf(handFenceId, command.orderId)
                     val arrangementChanged = program.arrangement != null || command.program.arrangement != null
@@ -233,14 +259,17 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                         // Samples already in lookahead retain their original graph until its 72-frame delay passes.
                     }
                     if (program.arrangement == null) repositionSequence()
+                    repositionClick()
                 }
             }
             is EngineCommand.StartSequence -> {
+                cancelRecordingCue()
                 clearTransportVoices()
                 clock.reset(); clock.setTempo(program.tempo)
                 sequenceCycle = 0; sequenceIndex = 0; sequenceFrame = 0; sequencePaused = false
                 val arrangement = program.arrangement
-                sequencePlaying = arrangement == null || arrangement.durationFrames > 0
+                sequencePlaying = false
+                accepted = resumeSequence(command)
                 if (!arrangementMixer.restore(arrangement, 0)) failArrangementOverload()
                 if (arrangement != null) limiter.reset()
             }
@@ -250,23 +279,53 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     accepted = false
                     events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
                 } else {
+                    cancelRecordingCue()
                     sequenceFrame = command.sequenceFrame
                     clock.seekFrame(sequenceFrame)
                     clearTransportVoices()
                     if (!arrangementMixer.restore(arrangement, sequenceFrame)) failArrangementOverload()
                     if (sequenceFrame >= arrangement.durationFrames) sequencePlaying = false
                     limiter.reset()
+                    repositionClick()
                 }
             }
             is EngineCommand.Pause -> {
                 sequencePlaying = false
                 sequencePaused = true
+                cancelRecordingCue()
                 limiter.reset()
             }
             is EngineCommand.Resume -> {
-                sequencePaused = false
+                cancelRecordingCue()
+                accepted = resumeSequence(command)
+            }
+            is EngineCommand.SetMetronome -> {
+                accepted = !command.enabled || !(sequencePlaying || countInBeatsRemaining > 0) || reserveClick(command)
+                if (accepted) {
+                    metronomeEnabled = command.enabled
+                    if (!command.enabled && countInBeatsRemaining == 0) { clickVoice.stop(); clickReservation = -1 }
+                    repositionClick()
+                }
+            }
+            is EngineCommand.CountInAndResume -> {
                 val arrangement = program.arrangement
-                sequencePlaying = arrangement == null || sequenceFrame < arrangement.durationFrames
+                if (countInBeatsRemaining > 0 || (command.bars > 0 && sequencePlaying) ||
+                    (arrangement != null && sequenceFrame >= arrangement.durationFrames)) {
+                    accepted = false
+                    events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
+                } else if ((command.bars > 0 || metronomeEnabled) && !reserveClick(command)) accepted = false
+                else {
+                    recordingStartSequenceFrame = sequenceFrame
+                    countInFromFrame = frame
+                    countInMilliBpm = clock.tempo.milliBpm
+                    countInBeats = command.bars * 4
+                    nextCountInBeat = 0
+                    countInBeatsRemaining = countInBeats
+                    recordingStartFrame = frame + (countInBeats * BEAT_UNITS + countInMilliBpm - 1) / countInMilliBpm
+                    recordingStartedFrame = if (countInBeats == 0) frame else -1
+                    if (countInBeats > 0) { sequencePlaying = false; sequencePaused = true }
+                    else { sequencePlaying = true; sequencePaused = false; repositionClick() }
+                }
             }
             is EngineCommand.SetOriginalSource -> {
                 handVoice.end()
@@ -314,7 +373,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             is EngineCommand.ScratchOriginalEnd -> { handVoice.end(); handFenceId = maxOf(handFenceId, command.orderId) }
             is EngineCommand.SetOriginalPitch -> originalVoice.pitch(command.semitones)
             is EngineCommand.SetSongMonitorGain -> songGain.set(command.gain, 96)
-            is EngineCommand.SetTempo -> clock.setTempo(command.tempo)
+            is EngineCommand.SetTempo -> { cancelRecordingCue(); clock.setTempo(command.tempo); repositionClick() }
             is EngineCommand.ScratchStart -> accepted = startScratch(command)
             is EngineCommand.ScratchPosition -> {
                 if (scratchIndex >= 0) {
@@ -363,13 +422,13 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     private fun acquireVoice(): Int {
-        for (i in 0 until PRIMARY_VOICES) if (i != handReservation && voices[i].pad == null) return i
+        for (i in 0 until PRIMARY_VOICES) if (i != handReservation && i != clickReservation && voices[i].pad == null) return i
         var fade = -1
         for (i in PRIMARY_VOICES until voices.size) if (voices[i].pad == null) { fade = i; break }
         if (fade < 0) return -1 // Preserve all existing tails; overload rejects the newest trigger.
         var oldest = -1
         for (i in 0 until PRIMARY_VOICES) {
-            if (i != handReservation && voices[i].pad != null && !voices[i].scratch && !voices[i].suspended &&
+            if (i != handReservation && i != clickReservation && voices[i].pad != null && !voices[i].scratch && !voices[i].suspended &&
                 (oldest < 0 || voices[i].serial < voices[oldest].serial)) oldest = i
         }
         if (oldest < 0) return -1
@@ -427,6 +486,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         if (panic) handReservation = -1
         sequencePlaying = false
         sequencePaused = false
+        cancelRecordingCue()
         sequenceFrame = 0
         clock.reset()
         sequenceCycle = 0
@@ -452,6 +512,61 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             trigger(note.padId, note.velocity, -1, true)
             sequenceIndex++
             if (sequenceIndex == pattern.noteCount) { sequenceIndex = 0; sequenceCycle++ }
+        }
+    }
+
+    private fun reserveClick(command: EngineCommand): Boolean {
+        if (clickReservation >= 0) return true
+        val slot = acquireVoice()
+        if (slot >= 0) { clickReservation = slot; return true }
+        rejectedVoices++
+        events.emit(EngineEventType.VOICE_LIMIT, command.orderId, command.effectiveFrame, frame)
+        return false
+    }
+
+    private fun resumeSequence(command: EngineCommand): Boolean {
+        val arrangement = program.arrangement
+        val canPlay = arrangement == null || sequenceFrame < arrangement.durationFrames
+        if (canPlay && metronomeEnabled && !reserveClick(command)) return false
+        sequencePlaying = canPlay
+        sequencePaused = false
+        repositionClick()
+        return true
+    }
+
+    private fun cancelRecordingCue() {
+        countInBeatsRemaining = 0
+        recordingStartFrame = -1
+        clickVoice.stop()
+        if (!metronomeEnabled || !sequencePlaying) clickReservation = -1
+    }
+
+    private fun repositionClick() {
+        nextClickTick = ((clock.tickNumerator + BEAT_UNITS - 1) / BEAT_UNITS) * EngineFormat.PPQ
+    }
+
+    private fun scheduleClickAndCue() {
+        if (config.outputMode != EngineOutputMode.MONITOR) return
+        if (countInBeatsRemaining > 0) {
+            if (frame >= recordingStartFrame) {
+                recordingStartedFrame = recordingStartFrame
+                countInBeatsRemaining = 0
+                sequencePlaying = true
+                sequencePaused = false
+                if (!metronomeEnabled) { clickVoice.stop(); clickReservation = -1 }
+                repositionClick()
+            } else {
+                val elapsed = (frame - countInFromFrame) * countInMilliBpm
+                if (nextCountInBeat < countInBeats && elapsed >= nextCountInBeat * BEAT_UNITS) {
+                    clickVoice.strike(nextCountInBeat % 4 == 0)
+                    countInBeatsRemaining = countInBeats - nextCountInBeat
+                    nextCountInBeat++
+                }
+            }
+        }
+        if (sequencePlaying && metronomeEnabled && clickReservation >= 0 && clock.framesUntil(nextClickTick) == 0L) {
+            clickVoice.strike(nextClickTick / EngineFormat.PPQ % 4 == 0L)
+            nextClickTick += EngineFormat.PPQ
         }
     }
 
@@ -507,6 +622,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     companion object {
+        private const val BEAT_UNITS = EngineFormat.PPQ.toLong() * SequenceClock.UNITS_PER_TICK
         const val PRIMARY_VOICES = 32
         const val FADE_VOICES = 16
         const val STEAL_FADE_FRAMES = 96
