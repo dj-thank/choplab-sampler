@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `b08744c834948806ec5362b95dec1c721a414798`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `275cab5f16b2662496b2ff562f3744046d0c4636`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
@@ -49,7 +49,7 @@ rootが変更と統合を進め、各担当は独立worktreeと限定したフ�
 
 ## 選択中の実装・統合（2026-09-28）
 
-Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)の[CI 36345747315](https://github.com/dj-thank/choplab-sampler/actions/runs/36345747315)はLinuxのHTTP試験とWindowsのHAND試験で失敗。修正 `cfa9b04`はHTTPの接続解放前にcallerが完了する製品raceを成功/例外のgate付き試験で再現して解消した。HANDはCUTの実ack・cursor・sink frameを待ち、SOURCE無音中の左右HAND出力を検証する。固定wall delayで完了を推測しない。provider6件・本番HAND1件が成功し、新headの必須CIを確認する。Linux artifactにexact assertのXMLは無く、再現した製品raceと元失敗行の断定を区別する。実API/課金・provider受入は未実施。
+Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)はhead `cb61ae5`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36353011462)成功後、main `275cab5`へ統合済み。先行CIのHTTP接続解放とHAND出力、count-in開始の断続的な失敗に対し、製品の接続完了gateと実ack/clock待機、状態診断を追加した。診断合成 `795ddfc7`では録音6件と実Windows JVMのfake入出力10回×2ケースが成功。今回の必須CIも成功したが、過去の断続失敗の単一原因は断定しない。実Google API/課金・provider受入は未実施。次は[PR169](https://github.com/dj-thank/choplab-sampler/pull/169)のVOCAL入口を最新mainと再検証し、依存順に統合する。
 
 rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
 
