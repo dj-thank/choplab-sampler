@@ -176,6 +176,11 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val bpm: Int = 120,
     /** The song's exact tempo, which the grid follows; [bpm] is it rounded down for display. */
     val milliBpm: Int = bpm * 1000,
+    /**
+     * The song's swing: how far through its eighth an off sixteenth placed on the beat sounds, in permille (500 is
+     * straight, 750 the most). It moves those clips and their grid lines alike.
+     */
+    val swingPermille: Int = 500,
     /** View state only: what placing and moving clips snap to. */
     val grid: ContinuousGrid = ContinuousGrid.BEAT,
     val canUndo: Boolean = false,
@@ -197,7 +202,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
         require(selectedBank in 0..7 && selectedPadId in 0..127)
         require(timelineDurationFrames > 0 && pixelsPerSecond.isFinite() && pixelsPerSecond in 4f..240f)
         require(paneFraction.isFinite() && paneFraction in 0.2f..0.8f)
-        require(milliBpm in 40_000..240_000)
+        require(milliBpm in 40_000..240_000 && swingPermille in 500..750)
     }
     fun permits(capability: ContinuousCapability) = capability in capabilities
     val selectedPad: ContinuousPad? get() = pads.firstOrNull { it.id == selectedPadId }
@@ -324,7 +329,8 @@ sealed interface ContinuousEditorAction {
     data object StopSong : ContinuousEditorAction
     /** Playback monitoring only, separate from track/clip/export gains. */
     data class SetSongMonitorGain(val gain: Float) : ContinuousEditorAction
-    data class SetTempo(val bpm: Int) : ContinuousEditorAction
+    /** The song's tempo, with its swing in permille (500..750); null keeps the swing. */
+    data class SetTempo(val bpm: Int, val swingPermille: Int? = null) : ContinuousEditorAction
     /** Opens the kit chooser; a kit fills the drum BANK only after [ChooseDrumKit]. */
     data object AddDrum : ContinuousEditorAction
     data class ChooseDrumKit(val kitId: String) : ContinuousEditorAction
