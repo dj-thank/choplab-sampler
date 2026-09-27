@@ -39,8 +39,9 @@
 
 音声クロックが主時計です。tick（960/四分音符）とframeの変換は端数を保持。LiveReadoutは整合した小さなsnapshotで、原子変数を読むだけで再描画が発生すると仮定しません。render内にI/O・ロック・確保を持ち込まず、実際のJVM/ARTで測定します。
 
-## 音声資産と保存（schema10の受入契約）
+## 音声資産と保存（NEXT schema11の契約）
 
+- NEXTのwriterはschema11、readerはschema10を明示移行して11を読む。旧アプリのschema7 writer/1–7 readerと別に扱う。構造化歌詞は曲名・言語・section名/種別/小節数、行IDと本文snapshotに結び付く読み・再計算したモーラ/韻を保存。word時刻はMANUAL/RETURNED/ESTIMATEDを保持する（[ADR9](adr/ADR-0009-structured-lyrics-and-timing.md)）。鍵・prompt・provider session・cache pathは保存しない。
 - `.choplab`: 先頭 `project.json`、`assets/<sha256>.<許可拡張子>`。元圧縮素材、編集/録音/生成float32 WAV、再生成可能PCM cacheを区別する。manifestから必須/派生/再生成可能を判断し、含まれるbytesをhash検証する。
 - AssetStore: 短いPADはresident、長い伴奏/歌はprefetch。全音声を128PAD分展開しない。cache missの無音/停止通知、再読込、RAM/disk上限をengine spike前に決める。
 - Autosave: 資産をtempへ書込み→flush/検証→atomic publish→参照する小さなdocumentを3世代で確定。文書だけが先に残らない順序にする。

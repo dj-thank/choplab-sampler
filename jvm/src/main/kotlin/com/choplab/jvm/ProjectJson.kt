@@ -42,7 +42,8 @@ object ProjectJson {
             "pan" to num(v.pan), "mute" to bool(v.mute), "solo" to bool(v.solo)) }),
         "clips" to arr(p.clips.map { v -> obj("id" to str(v.id), "trackId" to str(v.trackId), "assetHash" to str(v.assetHash), "range" to range(v.range), "startTick" to num(v.startTick), "timelineStartFrame" to (v.timelineStartFrame?.let(::num) ?: JsonNull), "gain" to num(v.gain), "pan" to num(v.pan)) }),
         "lyrics" to arr(p.lyrics.map { v -> obj("id" to str(v.id), "text" to str(v.text), "startTick" to num(v.startTick), "endTick" to num(v.endTick),
-            "words" to arr(v.words.map { w -> obj("text" to str(w.text), "startTick" to num(w.startTick), "endTick" to num(w.endTick)) })) }),
+            "words" to arr(v.words.map { w -> obj("text" to str(w.text), "startTick" to num(w.startTick), "endTick" to num(w.endTick), "timingOrigin" to str(w.timingOrigin.name)) })) }),
+        "lyricStructure" to lyricStructureJson(p.lyricStructure),
         "takes" to arr(p.takes.map { v -> obj("id" to str(v.id), "trackId" to str(v.trackId), "assetHash" to str(v.assetHash), "range" to range(v.range),
             "timelineStartFrame" to num(v.timelineStartFrame), "compensationFrames" to num(v.compensationFrames)) }),
         "source" to (p.source?.let { s -> obj("assetHash" to str(s.assetHash), "range" to range(s.range), "markers" to arr(s.markers.map(::num)),
@@ -51,8 +52,10 @@ object ProjectJson {
     )
 
     internal fun fromJson(p: JsonObject): Project {
-        p.fields("schemaVersion", "id", "title", "tempo", "assets", "banks", "pads", "patterns", "song", "tracks", "clips", "lyrics", "takes", "source")
-        require(p.int("schemaVersion") == 10) { "Unsupported project schema" }
+        val schema = p.int("schemaVersion")
+        require(schema == 10 || schema == ProjectLimits.SCHEMA) { "Unsupported project schema" }
+        p.fields("schemaVersion", "id", "title", "tempo", "assets", "banks", "pads", "patterns", "song", "tracks", "clips", "lyrics", "takes", "source",
+            *(if (schema == 11) arrayOf("lyricStructure") else emptyArray()))
         val tempo = p.getValue("tempo").obj().fields("milliBpm", "swingPermille")
         return Project(
             id = p.string("id"), title = p.string("title"), tempo = Tempo(tempo.int("milliBpm"), tempo.int("swingPermille")),
@@ -90,9 +93,12 @@ object ProjectJson {
             lyrics = p.list("lyrics", 4096) { e ->
                 val a = e.obj().fields("id", "text", "startTick", "endTick", "words")
                 LyricLine(a.string("id"), a.string("text"), a.long("startTick"), a.long("endTick"), a.list("words", 256) { n ->
-                    n.obj().fields("text", "startTick", "endTick").let { LyricWord(it.string("text"), it.long("startTick"), it.long("endTick")) }
+                    n.obj().fields("text", "startTick", "endTick", *(if (schema == 11) arrayOf("timingOrigin") else emptyArray())).let {
+                        LyricWord(it.string("text"), it.long("startTick"), it.long("endTick"), if (schema == 10) WordTimingOrigin.MANUAL else WordTimingOrigin.valueOf(it.string("timingOrigin")))
+                    }
                 })
             },
+            lyricStructure = if (schema == 10) null else readLyricStructure(p.getValue("lyricStructure")),
             takes = p.list("takes", 1024) { e ->
                 val a = e.obj().fields("id", "trackId", "assetHash", "range", "timelineStartFrame", "compensationFrames")
                 Take(a.string("id"), a.string("trackId"), a.string("assetHash"), readRange(a.getValue("range")), a.long("timelineStartFrame"), a.int("compensationFrames"))

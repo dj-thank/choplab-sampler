@@ -15,7 +15,7 @@ fun <T> Iterable<T>.frozen(): FrozenList<T> = FrozenList.from(this)
 fun <T> frozenListOf(vararg values: T): FrozenList<T> = values.asList().frozen()
 
 object ProjectLimits {
-    const val SCHEMA = 10
+    const val SCHEMA = 11
     const val PPQ = 960
     const val PAD_COUNT = 128
     const val BANK_COUNT = 8
@@ -164,7 +164,7 @@ data class Clip(val id: String, val trackId: String, val assetHash: String, val 
         require(gain.isFinite() && gain in 0f..8f && pan.isFinite() && pan in -1f..1f)
     }
 }
-data class LyricWord(val text: String, val startTick: Long, val endTick: Long) {
+data class LyricWord(val text: String, val startTick: Long, val endTick: Long, val timingOrigin: WordTimingOrigin = WordTimingOrigin.MANUAL) {
     init { require(text.isNotEmpty() && text.length <= 256 && text.none { it == '\u0000' }); require(startTick >= 0 && endTick > startTick && endTick <= ProjectLimits.MAX_TIMELINE_TICKS) }
 }
 data class LyricLine(val id: String, val text: String, val startTick: Long, val endTick: Long, val words: FrozenList<LyricWord> = frozenListOf()) {
@@ -185,7 +185,7 @@ data class Take(val id: String, val trackId: String, val assetHash: String, val 
     init { requireId(id); requireId(trackId); requireHash(assetHash); require(timelineStartFrame in 0..(48_000L * 60 * 60 * 24)); require(compensationFrames in -480_000..480_000) }
 }
 
-/** Durable schema 10 document only. No selection, progress, OS paths, handles or PCM arrays. */
+/** Durable document only. No selection, progress, OS paths, handles or PCM arrays. */
 data class Project(
     val id: String = "untitled",
     val title: String = "Untitled",
@@ -201,6 +201,7 @@ data class Project(
     val source: Source? = null,
     val tempo: Tempo = Tempo(),
     val schemaVersion: Int = ProjectLimits.SCHEMA,
+    val lyricStructure: LyricStructure? = null,
 ) {
     init {
         require(schemaVersion == ProjectLimits.SCHEMA); requireId(id); requireLabel(title)
@@ -213,6 +214,7 @@ data class Project(
         require(tracks.size <= 64 && tracks.map { it.id }.distinct().size == tracks.size)
         require(clips.size <= 4096 && clips.map { it.id }.distinct().size == clips.size)
         require(lyrics.size <= 4096 && lyrics.map { it.id }.distinct().size == lyrics.size)
+        require(lyricStructure == null || lyricStructure.sections.all { section -> section.lines.all { reading -> lyrics.any { it.id == reading.lineId } } })
         require(takes.size <= 1024 && takes.map { it.id }.distinct().size == takes.size)
         val byHash = assets.associateBy { it.hash }
         fun checkRange(hash: String, range: FrameRange) {

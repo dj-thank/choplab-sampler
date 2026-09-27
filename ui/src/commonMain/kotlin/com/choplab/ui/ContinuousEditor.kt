@@ -28,12 +28,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.ui.resources.*
+import com.choplab.ui.ai.LyricProposalController
+import com.choplab.ui.pattern.StepPatternController
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-/** User-selected four-stage workspace. This is intentionally not wired into a default host here. */
+/** User-selected four-stage workspace shared by the NEXT hosts. */
 @Composable fun ContinuousEditor(
     state: ContinuousEditorState,
     onAction: (ContinuousEditorAction) -> Unit,
@@ -42,6 +44,8 @@ import kotlin.math.roundToLong
     modifier: Modifier = Modifier,
     /** Output health for the SAVE stage's diagnostics card; without it the card is not shown. */
     diagnostics: (() -> ContinuousDiagnostics?)? = null,
+    lyricProposal: LyricProposalController? = null,
+    stepPatterns: StepPatternController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -86,6 +90,8 @@ import kotlin.math.roundToLong
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
         CELyricsPanel(state, onAction, readout, refreshKey)
+        lyricProposal?.let { CELyricProposalDialog(it, onAction) }
+        stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)
         }

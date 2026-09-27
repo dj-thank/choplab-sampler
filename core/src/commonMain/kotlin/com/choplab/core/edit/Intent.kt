@@ -49,6 +49,10 @@ sealed interface Intent {
     data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>,
                               val assets: FrozenList<Asset> = frozenListOf()) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
+    data class SetStructuredLyrics(val lines: FrozenList<LyricLine>, val structure: LyricStructure) : Intent
+    /** A confirmed guide proposal joins its rendered sounds and lyric alignment in one Undo. */
+    data class ApplyVocalGuide(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val assets: FrozenList<Asset>,
+                              val lines: FrozenList<LyricLine>, val structure: LyricStructure) : Intent
 }
 
 sealed interface Effect {
@@ -170,7 +174,10 @@ object Reducer {
             }
             is Intent.SetArrangement -> before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
                 tracks = intent.tracks, clips = intent.clips, takes = intent.takes)
-            is Intent.SetLyrics -> before.copy(lyrics = intent.lines)
+            is Intent.SetLyrics -> before.copy(lyrics = intent.lines, lyricStructure = before.lyricStructure?.retainFor(intent.lines))
+            is Intent.SetStructuredLyrics -> before.copy(lyrics = intent.lines, lyricStructure = intent.structure)
+            is Intent.ApplyVocalGuide -> before.copy(assets = mergeAssets(before.assets, intent.assets), tracks = intent.tracks,
+                clips = intent.clips, lyrics = intent.lines, lyricStructure = intent.structure)
         }
         val after = withoutUnusedRenderedSounds(edited)
         val key = when (intent) {
@@ -188,7 +195,7 @@ object Reducer {
     internal fun reduction(before: Project, after: Project, key: String? = null): Reduction {
         if (before == after) return Reduction(before, Mutation.NONE, frozenListOf())
         // Tapping lyric timing during playback edits the document without interrupting its voices.
-        if (before.copy(lyrics = after.lyrics) == after) return Reduction(after, Mutation.PROJECT, frozenListOf(), key)
+        if (before.copy(lyrics = after.lyrics, lyricStructure = after.lyricStructure) == after) return Reduction(after, Mutation.PROJECT, frozenListOf(), key)
         val stopped = before.pads.indices.filter { before.pads[it] != after.pads[it] && before.pads[it].assetHash != null }.frozen()
         val effects = buildList {
             if (stopped.isNotEmpty()) add(Effect.StopPads(stopped))
