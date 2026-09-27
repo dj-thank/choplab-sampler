@@ -115,7 +115,7 @@ class ContinuousEditorTest {
                     assertNotNull(scene.tag("ce-stage-${stage.name}"))
                     if (stage == ContinuousStage.BEAT) {
                         val pad = requireNotNull(scene.tag("ce-pad-0")).boundsInRoot
-                        assertTrue(pad.width > 100f && pad.height == pad.width, "The instrument fills its width with square PADs: $pad")
+                        assertTrue(pad.width > 100f && pad.height == pad.width, "The instrument keeps large square PADs within its width and height: $pad")
                         scene.capture("beat-desktop.png")
                         listOf("ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch").forEach { tag ->
                             scene.reach(tag)
@@ -136,6 +136,68 @@ class ContinuousEditorTest {
                 try { scene.settle(); assertNotNull(scene.tag("ce-original-wave")); scene.capture("beat-phone-${pane.name.lowercase()}-font${(font * 100).toInt()}.png") }
                 finally { scene.close() }
             }
+        } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun wideInitialLayoutShowsAndPlaysAllSixteenPadsWithoutScrolling() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            val sides = mutableListOf<Int>()
+            for ((width, height) in listOf(1440 to 1024, 1920 to 1080)) {
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val state = mutableStateOf(ContinuousEditorFixture.state().copy(canUndo = true,
+                    capabilities = ContinuousCapability.entries.toSet()))
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, { action ->
+                        actions += action
+                        if (action is ContinuousEditorAction.SelectPad) state.value = state.value.copy(selectedPadId = action.padId)
+                    }, ContinuousEditorFixture::readout)
+                }
+                try {
+                    scene.settle()
+                    val scroll = requireNotNull(requireNotNull(scene.tag("ce-pads-pane")).config.getOrNull(SemanticsProperties.VerticalScrollAxisRange))
+                    assertEquals(0f, scroll.value(), "The initial instrument is not scrolled")
+                    assertTrue(scroll.maxValue() <= 1f, "All initial instrument controls fit the available height")
+                    val initial = (0..15).associateWith { id ->
+                        val node = requireNotNull(scene.tag("ce-pad-$id"))
+                        val bounds = node.boundsInWindow
+                        assertEquals(node.size.width.toFloat(), bounds.width, .5f, "PAD $id is fully visible horizontally")
+                        assertEquals(node.size.height.toFloat(), bounds.height, .5f, "PAD $id is fully visible vertically")
+                        assertTrue(bounds.top >= 0 && bounds.bottom <= height && bounds.left >= 0 && bounds.right <= width)
+                        assertEquals(bounds.width, bounds.height, .5f)
+                        assertTrue(bounds.width > 100f, "The initial 4×4 instrument keeps large targets: $bounds")
+                        bounds
+                    }
+                    sides += requireNotNull(scene.tag("ce-pad-0")).size.width
+                    for (tag in listOf("ce-pad-details", "ce-bank-0", "ce-add-drums", "ce-record-hits", "ce-record-voice", "ce-scratch",
+                            "ce-original-play", "ce-source-monitor", "ce-undo", "ce-stop-all", "ce-song-stop")) {
+                        val node = requireNotNull(scene.tag(tag))
+                        assertEquals(node.size.height.toFloat(), node.boundsInWindow.height, .5f, "$tag stays wholly visible")
+                        assertTrue(node.boundsInWindow.height >= 48f, "$tag retains its input target")
+                    }
+                    scene.capture("wide-all-pads-${width}x$height-initial.png")
+                    // Intentionally no reach()/scroll helper: every press uses the initial window coordinates.
+                    for (id in 0..15) {
+                        val before = actions.size
+                        val center = requireNotNull(initial[id]).center
+                        scene.sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse,
+                            buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                        scene.render(System.nanoTime()).close()
+                        scene.sendPointerEvent(PointerEventType.Release, center, type = PointerType.Mouse,
+                            buttons = PointerButtons(), button = PointerButton.Primary)
+                        scene.settle()
+                        val expected = listOf(ContinuousEditorAction.SelectPad(id)) +
+                            if (id < 4) listOf(ContinuousEditorAction.TapPad(id)) else emptyList()
+                        assertEquals(expected, actions.drop(before))
+                        assertEquals(id, state.value.selectedPadId)
+                        assertEquals(0f, scroll.value(), "PAD input must not move the instrument")
+                        assertEquals(initial[id], requireNotNull(scene.tag("ce-pad-$id")).boundsInWindow)
+                    }
+                    scene.capture("wide-all-pads-${width}x$height-pressed.png")
+                } finally { scene.close() }
+            }
+            assertTrue(sides[1] > sides[0], "A taller instrument grows its PADs instead of using a fixed cap: $sides")
         } finally { Locale.setDefault(previous) }
     }
 
@@ -174,7 +236,7 @@ class ContinuousEditorTest {
                     }
                     if (width >= 900) {
                         val grid = requireNotNull(scene.tag("ce-pad-grid")).size.width
-                        assertEquals(grid.toFloat(), first.size.width * 4f + 18f, 4f, "Wide PADs use the grid width")
+                        assertTrue(first.size.width * 4f + 18f <= grid + 4f, "Wide PADs fit the width after the height bound")
                     }
                     scene.capture("$name-pads.png")
                     for (id in 0..15) {
@@ -195,8 +257,8 @@ class ContinuousEditorTest {
                     assertEquals(ContinuousEditorAction.SelectBank(0), actions.last())
                     scene.click("ce-undo")
                     assertEquals(ContinuousEditorAction.Undo, actions.last())
-                    // Compact PAD editing is deliberately opened before seeking its actions (the old WIP failure).
-                    if (width < 900) scene.click("ce-pad-details")
+                    // PAD details are opened explicitly, keeping the initial instrument available for playing.
+                    scene.click("ce-pad-details")
                     scene.click("ce-pad-fill")
                     assertNotNull(scene.tag("ce-pad-fill-panel"))
                     scene.click("ce-pad-fill-apply")
@@ -575,6 +637,7 @@ class ContinuousEditorTest {
         }
         try {
             scene.settle()
+            scene.click("ce-pad-details")
             // Beside placing once, in the one row of PAD actions the reference layout keeps.
             val audition = requireNotNull(scene.tag("ce-pad-audition")).boundsInRoot
             val place = requireNotNull(scene.tag("ce-place-pad")).boundsInRoot
@@ -842,7 +905,8 @@ class ContinuousEditorTest {
             try {
                 scene.settle()
                 // The opener sits with the PAD's other settings; the reference bottom actions stay where they were.
-                assertTrue(requireNotNull(scene.tag("ce-add-drums")).boundsInRoot.bottom <= 910f)
+                assertTrue(requireNotNull(scene.tag("ce-add-drums")).boundsInRoot.bottom <= requireNotNull(scene.tag("ce-stage-BEAT")).boundsInRoot.bottom)
+                scene.click("ce-pad-details")
                 scene.click("ce-pad-play")
                 assertEquals(ContinuousEditorAction.OpenPadPlay, actions.last())
                 assertNotNull(scene.tag("ce-pad-play-panel"))

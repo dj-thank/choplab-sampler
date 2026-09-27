@@ -20,6 +20,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -117,16 +118,28 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     // The fill panel's starting song position while it is open; another PAD closes it.
     var fillFrom by remember(state.selectedPadId) { mutableStateOf<Long?>(null) }
     fillFrom?.let { from -> if (pad != null && pad.kind != ContinuousPadKind.EMPTY) CEPadFillDialog(state, pad, from, onAction) { fillFrom = null } }
-    Column(modifier.clip(RoundedCornerShape(8.dp)).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))
+    BoxWithConstraints(modifier.clip(RoundedCornerShape(8.dp)).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))) {
+    val density = LocalDensity.current
+    var headerHeight by remember { mutableIntStateOf(0) }
+    var footerHeight by remember { mutableIntStateOf(0) }
+    // The wide instrument reserves the measured controls, then shares the remaining height between four PAD rows.
+    // Compact uses its existing single scroll surface and keeps the caller's one-row height bound.
+    val fittedPadSide = if (compactDetails) maximumPadSide else with(density) {
+        val fixedSpacing = (16.dp + 12.dp + 12.dp + 18.dp).roundToPx() // panel padding, section gaps, grid inset, row gaps
+        ((constraints.maxHeight - headerHeight - footerHeight - fixedSpacing).coerceAtLeast(0) / 4).toDp()
+    }
+    Column((if (compactDetails) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
         .then(if (compactDetails) Modifier else Modifier.verticalScroll(rememberScrollState())).padding(8.dp).testTag("ce-pads-pane"),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (compactDetails) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxWidth().onSizeChanged { headerHeight = it.height }.testTag("ce-pad-header"),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val detailLabel = stringResource(if (details) Res.string.ce_pad_details_hide else Res.string.ce_pad_details_show, cePadName(state.selectedPadId))
             CEButton(detailLabel, { details = !details }, Modifier.weight(1f).semantics { contentDescription = "$detailLabel $padName" }, tag = "ce-pad-details")
-            CEActionButton(stringResource(Res.string.ce_undo), ContinuousEditorAction.Undo, state, ContinuousCapability.HISTORY, onAction,
+            if (compactDetails) CEActionButton(stringResource(Res.string.ce_undo), ContinuousEditorAction.Undo, state, ContinuousCapability.HISTORY, onAction,
                 additionallyEnabled = state.canUndo, tag = "ce-undo")
         }
-        if (!compactDetails || details) {
+        if (details) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("${cePadName(state.selectedPadId)} / $padName", Modifier.weight(1f), color = CEColor.Cream, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -163,9 +176,12 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         }
         }
         CEBanks(state, onAction)
-        if (!compactDetails || details) Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
-        CEPads(state, onAction, Modifier.padding(top = 12.dp), maximumSide = maximumPadSide, onPadDrag = onDrag, onPadDrop = onDrop,
+        if (details) Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)
+        }
+        CEPads(state, onAction, Modifier.padding(top = 12.dp), maximumSide = fittedPadSide, onPadDrag = onDrag, onPadDrop = onDrop,
             hit = if (state.recordingHits) ({ readout().songFrame }) else null)
+        Column(Modifier.fillMaxWidth().onSizeChanged { footerHeight = it.height }.testTag("ce-pad-footer"),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
         @Composable fun Adjustments() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -199,11 +215,13 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f)) }
             }
         }
+        }
         // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.
         if (state.recordingVoice) Text(stringResource(Res.string.ce_voice_hint), Modifier.fillMaxWidth().testTag("ce-voice-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
         if (state.recordingHits) Text(stringResource(Res.string.ce_hits_hint), Modifier.fillMaxWidth().testTag("ce-hits-hint")
             .semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
+    }
     }
 }
 
