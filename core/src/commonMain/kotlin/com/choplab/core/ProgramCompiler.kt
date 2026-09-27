@@ -47,41 +47,48 @@ class ProgramCompiler(private val pcm: PcmPort) {
     }
     private data class TimelinePlan(val audible: List<PlannedClip>, val duration: Long)
 
-    private fun planArrangement(project: Project, target: PlaybackTarget.Arrangement): TimelinePlan {
-        val takes = target.takeIds.map { id -> requireNotNull(project.takes.firstOrNull { it.id == id }) { "Unknown selected take" } }
-        val tracks = project.tracks.associateBy { it.id }
-        val candidates = buildList {
-            project.clips.forEach { clip ->
-                val asset = project.asset(clip.assetHash)
-                val (sourceStart, sourceEnd) = normalizedRange(clip.range, asset.sampleRate, exactAdjacency = true)
-                val start = clip.timelineStartFrame ?: tickToFrame(clip.startTick, project.tempo.milliBpm)
-                val track = requireNotNull(tracks[clip.trackId])
-                add(PlannedClip("clip-${clip.id}", asset, sourceStart, sourceEnd, start, track, track.gain * clip.gain, (track.pan + clip.pan).coerceIn(-1f, 1f)))
-            }
-            takes.forEach { take ->
-                val asset = project.asset(take.assetHash)
-                val (originalStart, end) = normalizedRange(take.range, asset.sampleRate, exactAdjacency = true)
-                val corrected = take.timelineStartFrame - take.compensationFrames.toLong()
-                // Trimming the already normalized view preserves exact 48 kHz compensation, without
-                // rounding to a native sample and then rounding back a second time.
-                val trim = (-corrected).coerceAtLeast(0)
-                if (trim < end - originalStart) add(PlannedClip("take-${take.id}", asset, (originalStart + trim).toInt(), end,
-                    corrected.coerceAtLeast(0), requireNotNull(tracks[take.trackId])))
-            }
-        }
-        require(candidates.all { it.start in 0..Arrangement.MAX_DURATION_FRAMES && it.end <= Arrangement.MAX_DURATION_FRAMES }) { "Timeline exceeds 30 minutes" }
-        val duration = candidates.maxOfOrNull { it.end } ?: 0L
-        val anySolo = project.tracks.any { it.solo }
-        val audible = candidates.filter { it.sourceEnd > it.sourceStart && !it.track.mute && it.gain > 0f && (!anySolo || it.track.solo) }
-        require(audible.all { it.gain.isFinite() && it.gain <= 8f }) { "Combined track and clip gain exceeds engine limit" }
-        require(audible.size <= Arrangement.MAX_CLIPS && audible.map { it.track.id }.distinct().size <= Arrangement.MAX_TRACKS)
-        val edges = audible.flatMap { listOf(it.start to 1, it.end to -1) }.sortedWith(compareBy<Pair<Long, Int>> { it.first }.thenBy { it.second })
-        var overlap = 0
-        edges.forEach { (_, delta) -> overlap += delta; require(overlap <= Arrangement.MAX_SIMULTANEOUS_CLIPS) { "More than 32 overlapping timeline clips" } }
-        return TimelinePlan(audible, duration)
-    }
-
     companion object {
+        /**
+         * Whether playback takes [project]'s song as [compile] plans it: at most 30 minutes, 1024 sounding clips and 32
+         * of them at once.
+         */
+        fun songFits(project: Project): Boolean =
+            try { planArrangement(project, PlaybackTarget.Arrangement()); true } catch (_: IllegalArgumentException) { false }
+
+        private fun planArrangement(project: Project, target: PlaybackTarget.Arrangement): TimelinePlan {
+            val takes = target.takeIds.map { id -> requireNotNull(project.takes.firstOrNull { it.id == id }) { "Unknown selected take" } }
+            val tracks = project.tracks.associateBy { it.id }
+            val candidates = buildList {
+                project.clips.forEach { clip ->
+                    val asset = project.asset(clip.assetHash)
+                    val (sourceStart, sourceEnd) = normalizedRange(clip.range, asset.sampleRate, exactAdjacency = true)
+                    val start = clip.timelineStartFrame ?: tickToFrame(clip.startTick, project.tempo.milliBpm)
+                    val track = requireNotNull(tracks[clip.trackId])
+                    add(PlannedClip("clip-${clip.id}", asset, sourceStart, sourceEnd, start, track, track.gain * clip.gain, (track.pan + clip.pan).coerceIn(-1f, 1f)))
+                }
+                takes.forEach { take ->
+                    val asset = project.asset(take.assetHash)
+                    val (originalStart, end) = normalizedRange(take.range, asset.sampleRate, exactAdjacency = true)
+                    val corrected = take.timelineStartFrame - take.compensationFrames.toLong()
+                    // Trimming the already normalized view preserves exact 48 kHz compensation, without
+                    // rounding to a native sample and then rounding back a second time.
+                    val trim = (-corrected).coerceAtLeast(0)
+                    if (trim < end - originalStart) add(PlannedClip("take-${take.id}", asset, (originalStart + trim).toInt(), end,
+                        corrected.coerceAtLeast(0), requireNotNull(tracks[take.trackId])))
+                }
+            }
+            require(candidates.all { it.start in 0..Arrangement.MAX_DURATION_FRAMES && it.end <= Arrangement.MAX_DURATION_FRAMES }) { "Timeline exceeds 30 minutes" }
+            val duration = candidates.maxOfOrNull { it.end } ?: 0L
+            val anySolo = project.tracks.any { it.solo }
+            val audible = candidates.filter { it.sourceEnd > it.sourceStart && !it.track.mute && it.gain > 0f && (!anySolo || it.track.solo) }
+            require(audible.all { it.gain.isFinite() && it.gain <= 8f }) { "Combined track and clip gain exceeds engine limit" }
+            require(audible.size <= Arrangement.MAX_CLIPS && audible.map { it.track.id }.distinct().size <= Arrangement.MAX_TRACKS)
+            val edges = audible.flatMap { listOf(it.start to 1, it.end to -1) }.sortedWith(compareBy<Pair<Long, Int>> { it.first }.thenBy { it.second })
+            var overlap = 0
+            edges.forEach { (_, delta) -> overlap += delta; require(overlap <= Arrangement.MAX_SIMULTANEOUS_CLIPS) { "More than 32 overlapping timeline clips" } }
+            return TimelinePlan(audible, duration)
+        }
+
         /** The engine's PCM budget for one program, in 48 kHz frames (every sound is kept as stereo float). */
         const val RESIDENT_FRAME_LIMIT: Long = EngineFormat.MAX_RESIDENT_BYTES / 8
         /**

@@ -522,6 +522,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             refresh.update { it + 1 }
             accepted
         } catch (cancel: CancellationException) { throw cancel }
+        catch (_: ContinuousClipEdits.SongFull) { view.update { it.copy(status = ContinuousStatus.SONG_FULL) }; false }
         catch (_: Exception) { view.update { it.copy(status = ContinuousStatus.FAILED) }; false }
         }
     }

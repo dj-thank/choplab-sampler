@@ -53,6 +53,15 @@ class ArrangementCompilerTest {
         assertEquals(19_575L, ProgramCompiler.tickToFrame(960, 147_125))
     }
 
+    @Test fun songFitsIsWhatPlaybackTakes() {
+        val a = asset(frames = 1_000)
+        fun layered(count: Int) = project(a, (0 until count).map { Clip("c$it", "t", a.hash, FrameRange(0, 1_000), timelineStartFrame = it.toLong()) })
+        assertTrue(ProgramCompiler.songFits(layered(32)))
+        assertFalse(ProgramCompiler.songFits(layered(33)))
+        // A muted track's clips do not sound.
+        assertTrue(ProgramCompiler.songFits(layered(33).let { p -> p.copy(tracks = p.tracks.map { it.copy(mute = true) }.frozen()) }))
+    }
+
     @Test fun mixStateKeepsSilentTailAndCombinesClipAndTrackGainPan() = runTest {
         val a = asset(); val loader = Loader(); val compiler = ProgramCompiler(loader)
         val tracks = listOf(Track("a", "Audible", TrackKind.SOURCE, gain = 0.5f, pan = 0.3f, solo = true), Track("b", "Inactive", TrackKind.SOURCE))
