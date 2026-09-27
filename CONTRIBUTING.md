@@ -2,6 +2,8 @@
 
 [AGENTS](AGENTS.md) と [ROADMAP](docs/ROADMAP.md) を読み、対象の機能と現在の担当を確認してください。Android・Windows・Macの共通の振る舞いを小さな変更で改善します。
 
+開始時・重要な設計判断・完了時にはROADMAP冒頭の「正本と参照順」「現在の修正対象と再開点」を照合します。ローカル会話・クラウド会話・引継ぎZIPのみに決定を残さず、変更した契約を該当文書へ反映します。未統合PR、main、配布物、実機受入は別の状態です。
+
 ## 開発環境
 
 現行toolchainはJDK21、Java/Kotlin出力は17です。Android SDK Platform 37、Build Tools 36.0.0と同梱Gradle Wrapperを使います。実際の版はcheckoutのGradle設定を正本とします。Macの実行・取込ツールは [desktop手順](desktop/README.md) を参照してください。
