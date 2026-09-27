@@ -279,10 +279,18 @@ class ContinuousEditorTest {
                 }
                 assertEquals(false, requireNotNull(scene.tag("ce-choke-0")).config.getOrNull(SemanticsProperties.Selected))
                 scene.capture("pad-play-desktop.png")
+                fun asking() = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.any { it.text == "もう一度押すと空にします" }
                 val count = actions.size
                 scene.click("ce-clear-pad")
                 assertEquals(count, actions.size, "The first press only asks")
-                assertTrue(scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.any { it.text == "もう一度押すと空にします" })
+                assertTrue(asking())
+                // A change to the PAD withdraws the question: a press asked about what it was before does not count.
+                scene.click("ce-reverse-off")
+                assertEquals(ContinuousEditorAction.SetPadReverse(2, false), actions.last())
+                assertFalse(asking())
+                val again = actions.size
+                scene.click("ce-clear-pad")
+                assertEquals(again, actions.size, "Asked again after the change")
                 scene.click("ce-clear-pad")
                 assertEquals(ContinuousEditorAction.ClearPad(2), actions.last())
                 scene.click("ce-pad-play-close")
