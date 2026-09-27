@@ -367,7 +367,8 @@ import kotlin.math.roundToLong
                     if (state.originalPlaying) ContinuousEditorAction.StopOriginal else ContinuousEditorAction.PlayOriginal,
                     state, ContinuousCapability.ORIGINAL_PLAYBACK, onAction, Modifier.widthIn(min = 100.dp), tag = "ce-original-play")
                 CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
-                    { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.width(190.dp), tag = "ce-source-monitor")
+                    { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.width(190.dp), tag = "ce-source-monitor",
+                    stacked = LocalDensity.current.fontScale > 1.3f)
                 CEButton(stringResource(Res.string.ce_standard_width), { onAction(ContinuousEditorAction.ResetPanes) }, Modifier.widthIn(min = 78.dp), tag = "ce-reset-panes")
             }
         }
