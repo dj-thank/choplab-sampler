@@ -8,7 +8,7 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 
 初期案は32voice＋16fade枠。scratch/preview/metronomeも予算に含め、満杯時のsteal/release規則を試験します。Stop/Panicはqueue満杯でも消失させず、鳴り続けやstale voiceを防ぎます。1.5ms lookaheadと-1dBFS sample ceilingはlimiter候補であり、遅延・tailを全経路で扱います。
 
-位置scratchは開始、時刻付き絶対source位置、CUT、終了を受けます。touch/mouse/将来jogをadapterで位置へ変換し、更新周期、補間、負速、端、idle silence、解放fadeと元transportの復帰を一つの実装で定義します。
+位置scratchは開始、時刻付き絶対source位置、CUT、終了を受けます。touch/mouse/将来jogをadapterで位置へ変換し、更新周期、補間、負速、端、idle silence、解放fadeと元transportの復帰を一つの実装で定義します。現在のengineは、鳴っているPADを鳴っている位置でつかみ、通常の8倍を超える移動は断らずに8倍で追って遅れて着き、動き始めと停止を2 msでfadeし（停止中も直前の帯域で読む）、止めたまま離しても鳴らさず、元transportへはつかんだ時に再生中だったものだけを一度だけ戻します（PADの元voiceと原曲の再生）。
 
 ## 固定するfixtureと試験
 

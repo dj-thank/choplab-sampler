@@ -238,7 +238,7 @@ open class StreamingEnginePort(
         current?.engine?.readout?.copyInto(snapshot)
         return TransportState(snapshot.frame + (current?.offset ?: 0), snapshot.sequencePlaying, snapshot.programRevision,
             snapshot.activeVoices, snapshot.eventOverflows, statusValue.value.phase == DriverPhase.ATTACHED,
-            sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused)
+            sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused, scratchFrame = snapshot.scratchFrame)
     }
 
     fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
@@ -515,5 +515,9 @@ private fun EngineCommand.relativeTo(offset: Long, wireOrder: Long): EngineComma
         is EngineCommand.ScratchPosition -> EngineCommand.ScratchPosition(frame, orderId, sourceFrame, durationFrames)
         is EngineCommand.ScratchCut -> EngineCommand.ScratchCut(frame, orderId, gain)
         is EngineCommand.ScratchEnd -> EngineCommand.ScratchEnd(frame, orderId)
+        is EngineCommand.ScratchOriginalStart -> EngineCommand.ScratchOriginalStart(frame, orderId, sourceFrame, startFrame, endFrame)
+        is EngineCommand.ScratchOriginalPosition -> EngineCommand.ScratchOriginalPosition(frame, orderId, sourceFrame, durationFrames)
+        is EngineCommand.ScratchOriginalCut -> EngineCommand.ScratchOriginalCut(frame, orderId, gain)
+        is EngineCommand.ScratchOriginalEnd -> EngineCommand.ScratchOriginalEnd(frame, orderId)
     }
 }

@@ -59,6 +59,21 @@
     <string name="ce_stop_voice">Stop recording</string>
     <string name="ce_voice_hint">Recording. Sing along with the song, then press Stop recording. With headphones, the song stays out of your voice.</string>
     <string name="ce_scratch">Scratch</string>
+    <string name="ce_scratch_hint">Hold the platter and drag left and right to scratch the sound. Holding still stops the sound; letting go returns to what was playing. The song plays on.</string>
+    <string name="ce_scratch_pad">Selected PAD
+%1$s</string>
+    <string name="ce_scratch_original">Original range
+%1$s–%2$s</string>
+    <string name="ce_scratch_sensitivity">How far a drag moves</string>
+    <string name="ce_scratch_fine">Fine</string>
+    <string name="ce_scratch_normal">Normal</string>
+    <string name="ce_scratch_wide">Wide</string>
+    <string name="ce_scratch_platter">Scratch platter. Hold and drag left and right to scratch</string>
+    <string name="ce_scratch_holding">Scratching</string>
+    <string name="ce_scratch_resting">Resting</string>
+    <string name="ce_scratch_back">Scratch back</string>
+    <string name="ce_scratch_forward">Scratch forward</string>
+    <string name="ce_scratch_cut">Cut (sound in and out)</string>
     <string name="ce_pad_semantics">Bank %1$s, pad %2$d, %3$s, %4$s</string>
     <string name="ce_mode_one">One shot</string>
     <string name="ce_mode_gate">Gate</string>

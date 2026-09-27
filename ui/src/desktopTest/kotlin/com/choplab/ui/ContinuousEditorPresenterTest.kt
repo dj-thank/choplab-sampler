@@ -653,9 +653,194 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
-    private class Harness(kits: Boolean = false, voice: Boolean = false, adjust: (Project) -> Project = { it }) {
+    @Test fun aPadIsScratchedWhereTheHandMovesItAndContinuesFromThereNextTime() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertEquals(ContinuousScratchTarget.PAD, h.until { it.scratch != null }.scratch?.target, "The selected PAD holds a sound")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            val start = h.engine.commands.filterIsInstance<EngineCommand.ScratchStart>().single()
+            assertEquals(0, start.padId)
+            assertEquals(0.0, start.sourceFrame, "From the PAD's start")
+            assertTrue(h.until { it.scratch?.holding == true }.scratch!!.holding)
+            // 100 pixels forward at normal sensitivity: 48 000 / (60 × 7) frames each, as in the earlier app.
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(100f))
+            val aim = 100 * NORMAL_FRAMES_PER_PIXEL
+            withTimeout(2_000) { while (h.engine.commands.filterIsInstance<EngineCommand.ScratchPosition>().lastOrNull()?.sourceFrame != aim) delay(5) }
+            assertEquals(aim / 48_000, h.presenter.readout().scratchFraction.toDouble(), 1e-3)
+            // Each move stays well inside the engine's limit of eight times normal speed.
+            val moves = h.engine.commands.filterIsInstance<EngineCommand.ScratchPosition>()
+            assertTrue(moves.size >= 2, "A long drag goes on in several moves")
+            (listOf(0.0) + moves.map { it.sourceFrame }).zipWithNext().zip(moves) { (a, b), move ->
+                assertTrue(kotlin.math.abs(b - a) / move.durationFrames <= 8.0, "Too fast: $a → $b over ${move.durationFrames}")
+            }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertTrue(h.engine.commands.last() is EngineCommand.ScratchEnd)
+            assertFalse(h.until { it.scratch?.holding == false }.scratch!!.holding)
+            // The next hold picks the record up where it was left.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(aim, h.engine.commands.filterIsInstance<EngineCommand.ScratchStart>().last().sourceFrame)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseScratch))
+            assertTrue(h.engine.commands.last() is EngineCommand.ScratchEnd, "Closing lets go")
+            assertNull(h.until { it.scratch == null }.scratch)
+        } finally { h.close() }
+    }
+
+    @Test fun theOriginalIsScratchedWithinItsRangeAndPlaysOnOnlyIfItWasPlaying() = runBlocking<Unit> {
+        val h = Harness { it.copy(source = it.source!!.copy(range = FrameRange(12_000, 90_000))) }
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginal))
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            h.ports.originalFrame = 40_000
+            val plays = h.ports.plays
+            h.ports.playing = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(listOf(40_000L, 12_000L, 90_000L), h.ports.scratchStarts.single(), "Held where it was heard, within its range")
+            assertFalse(h.until { !it.originalPlaying }.originalPlaying, "Paused under the hand")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.PAD)), "Not while held")
+            // Pulled far back: it stops at the range start.
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(-2_000f))
+            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 12_000.0) delay(5) }
+            assertTrue(h.ports.scratchMoves.all { it.first >= 12_000.0 })
+            // The engine plays on what the hand paused; the editor shows what it did and starts nothing itself.
+            h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertEquals(1, h.ports.scratchEnds)
+            assertTrue(h.until { it.originalPlaying }.originalPlaying)
+            assertEquals(plays, h.ports.plays, "Never started a second time")
+            // Held again while paused: letting go leaves it paused.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopOriginal))
+            h.ports.playing = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertFalse(h.until { !it.originalPlaying }.originalPlaying)
+            assertEquals(plays, h.ports.plays)
+        } finally { h.close() }
+    }
+
+    @Test fun aSoundingPadIsTakenWhereItPlaysAndEarlyDragsAreKept() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            // The engine takes a sounding PAD where it plays, and says where that is.
+            h.engine.playhead = 20_000.0
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(100f))
+            val aim = 20_000 + 100 * NORMAL_FRAMES_PER_PIXEL
+            withTimeout(2_000) { while (h.engine.commands.filterIsInstance<EngineCommand.ScratchPosition>().lastOrNull()?.sourceFrame != aim) delay(5) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            // A drag made before the original is even loaded and held still counts.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            h.ports.originalFrame = 10_000
+            h.ports.scratchStartDelay = 600
+            h.presenter.onAction(ContinuousEditorAction.ScratchHold)
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(50f))
+            // The cut fader is not queued behind the hold either.
+            h.presenter.onAction(ContinuousEditorAction.SetScratchCut(.5f))
+            withTimeout(300) { h.presenter.state.first { it.scratch?.cut == .5f } }
+            withTimeout(2_000) { while (h.ports.scratchMoves.lastOrNull()?.first != 10_000 + 50 * NORMAL_FRAMES_PER_PIXEL) delay(5) }
+            assertEquals(.5f, h.ports.scratchCuts.last(), "Closed halfway before the first move")
+            h.presenter.onAction(ContinuousEditorAction.ScratchLetGo)
+            withTimeout(2_000) { while (h.ports.scratchEnds != 1) delay(5) }
+        } finally { h.close() }
+    }
+
+    @Test fun aMoveRefusedAfterTheScratchEndedStopsQuietly() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            // The output was rebuilt under the hand, say: the engine no longer knows this scratch.
+            h.engine.refuseScratchMoves = true
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(100f))
+            withTimeout(2_000) { while (h.engine.commands.none { it is EngineCommand.ScratchPosition }) delay(5) }
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(100f))
+            delay(200)
+            assertEquals(1, h.engine.commands.count { it is EngineCommand.ScratchPosition }, "No more moves once one was refused")
+            assertNull(h.presenter.state.value.status, "Not reported as a failure")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertFalse(h.until { it.scratch?.holding == false }.scratch!!.holding)
+        } finally { h.close() }
+    }
+
+    @Test fun theCutFaderStopAllAndLeavingTheStageEndAScratchCleanly() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchCut(0f)))
+            assertTrue(h.engine.commands.none { it is EngineCommand.ScratchCut }, "Kept for the next hold")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            val afterStart = h.engine.commands.dropWhile { it !is EngineCommand.ScratchStart }
+            assertEquals(0f, (afterStart[1] as EngineCommand.ScratchCut).gain, "Applied right after taking hold")
+            // The fader moves at once, like a drag; a held platter passes it on.
+            h.presenter.onAction(ContinuousEditorAction.SetScratchCut(.5f))
+            assertEquals(.5f, h.until { it.scratch?.cut == .5f }.scratch!!.cut)
+            withTimeout(2_000) { while (h.engine.commands.filterIsInstance<EngineCommand.ScratchCut>().last().gain != .5f) delay(5) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchCut(1f)))
+            withTimeout(2_000) { while (h.engine.commands.filterIsInstance<EngineCommand.ScratchCut>().last().gain != 1f) delay(5) }
+            // Stop all stops everything, the scratch with it, before letting go: nothing plays on.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+            val end = h.engine.commands.indexOfLast { it is EngineCommand.ScratchEnd }
+            val stop = h.engine.commands.indexOfLast { it is EngineCommand.Stop }
+            assertTrue(stop in 0 until end)
+            assertFalse(h.until { it.scratch?.holding == false }.scratch!!.holding)
+            // Leaving the BEAT stage closes the panel.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.SAVE)))
+            assertTrue(h.engine.commands.last() is EngineCommand.ScratchEnd)
+            assertNull(h.until { it.stage == ContinuousStage.SAVE }.scratch)
+        } finally { h.close() }
+    }
+
+    @Test fun aScreenReaderNudgeScratchesAnEighthAndLetsGo() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchNudge(forward = true)))
+            val commands = h.engine.commands.filter { it is EngineCommand.ScratchStart || it is EngineCommand.ScratchPosition || it is EngineCommand.ScratchEnd }
+            assertTrue(commands.first() is EngineCommand.ScratchStart && commands.last() is EngineCommand.ScratchEnd)
+            val moves = commands.filterIsInstance<EngineCommand.ScratchPosition>()
+            assertEquals(6_000.0, moves.last().sourceFrame, 1e-6, "An eighth of 48 000 frames")
+            assertTrue(moves.size >= 3, "A short movement, not a jump")
+            assertFalse(h.until { it.scratch?.holding == false }.scratch!!.holding)
+        } finally { h.close() }
+        // On a long original, at most half a second of it.
+        val long = Harness(originalFrames = 48_000L * 60) { it.copy(source = it.source!!.copy(range = FrameRange(0, 48_000L * 60))) }
+        try {
+            long.until { it.permits(ContinuousCapability.SCRATCH) }
+            assertTrue(long.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(long.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(long.presenter.dispatch(ContinuousEditorAction.ScratchNudge(forward = true)))
+            assertEquals(24_000.0, long.ports.scratchMoves.last().first, 1e-6)
+            assertEquals(1, long.ports.scratchEnds)
+        } finally { long.close() }
+    }
+
+    @Test fun scratchNeedsASoundOrTheOriginal() = runBlocking<Unit> {
+        val h = Harness { p -> p.copy(source = null, pads = (0..127).map { Pad(it) }.frozen()) }
+        try {
+            h.until { it.permits(ContinuousCapability.PAD_AUDITION) }
+            assertFalse(h.presenter.state.value.permits(ContinuousCapability.SCRATCH))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ScratchHold), "Nothing to hold without the panel")
+            h.presenter.onAction(ContinuousEditorAction.ScratchDrag(10f))
+            assertTrue(h.engine.commands.none { it is EngineCommand.ScratchStart || it is EngineCommand.ScratchPosition })
+        } finally { h.close() }
+    }
+
+    /** 48 kHz frames a screen pixel moves a platter at normal sensitivity, computed as the presenter does. */
+    private val NORMAL_FRAMES_PER_PIXEL = 48_000 / (60.0 * 7.0)
+
+    private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, 96_000, "Original")
+        val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, originalFrames, "Original")
         val chopped = Asset("b".repeat(64), "wav", 100, 48_000, 2, 48_000, "Chop")
         val initial = adjust(Project(assets = frozenListOf(original, chopped), source = Source(original.hash, FrameRange(0, 96_000)),
             pads = (0..127).map { if (it < 2) Pad(it, chopped.hash, FrameRange(0, 48_000), mode = PlayMode.GATE) else Pad(it) }.frozen()))
@@ -688,6 +873,10 @@ class ContinuousEditorPresenterTest {
         @Volatile var duringPrepare: (suspend () -> Unit)? = null
         /** Programs this engine refuses to prepare, like a song with too many clips at once. */
         @Volatile var refuses: (Project) -> Boolean = { false }
+        /** Where a scratched PAD sounds, as the engine reports it; below zero while it is silent. */
+        @Volatile var playhead = -1.0
+        /** Refuses scratch moves, as an engine that no longer knows the scratch. */
+        @Volatile var refuseScratchMoves = false
         override suspend fun prepare(project: Project, patternId: String, revision: Long) = EngineProgram(revision = revision)
         override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram {
             prepares++
@@ -697,12 +886,15 @@ class ContinuousEditorPresenterTest {
         }
         override suspend fun apply(command: EngineCommand): Boolean {
             commands += command
+            if (command is EngineCommand.ScratchPosition && refuseScratchMoves) return false
             // The song's transport as the engine would report it.
             transport = when (command) {
                 is EngineCommand.Resume -> transport.copy(playing = true, sequencePaused = false)
                 is EngineCommand.Pause -> transport.copy(playing = false, sequencePaused = true)
-                is EngineCommand.Stop -> transport.copy(playing = false, sequencePaused = false)
+                is EngineCommand.Stop -> transport.copy(playing = false, sequencePaused = false, scratchFrame = -1.0)
                 is EngineCommand.Seek -> transport.copy(sequenceFrame = command.sequenceFrame)
+                is EngineCommand.ScratchStart -> transport.copy(scratchFrame = if (playhead >= 0) playhead else command.sourceFrame)
+                is EngineCommand.ScratchEnd -> transport.copy(scratchFrame = -1.0)
                 else -> transport
             }
             return true
@@ -738,7 +930,21 @@ class ContinuousEditorPresenterTest {
             duringReading?.let { duringReading = null; it() }
             return value
         }
-        override suspend fun playOriginal(asset: Asset) = true
+        @Volatile var plays = 0
+        override suspend fun playOriginal(asset: Asset): Boolean { plays++; return true }
+        val scratchStarts = java.util.concurrent.CopyOnWriteArrayList<List<Long>>()
+        val scratchMoves = java.util.concurrent.CopyOnWriteArrayList<Pair<Double, Int>>()
+        val scratchCuts = java.util.concurrent.CopyOnWriteArrayList<Float>()
+        @Volatile var scratchEnds = 0
+        /** How long taking the original takes, as loading it can. */
+        @Volatile var scratchStartDelay = 0L
+        override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long): Boolean {
+            delay(scratchStartDelay)
+            scratchStarts += listOf(from, start, end); return true
+        }
+        override suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean { scratchMoves += position to durationFrames; return true }
+        override suspend fun scratchOriginalCut(gain: Float): Boolean { scratchCuts += gain; return true }
+        override suspend fun scratchOriginalEnd(): Boolean { scratchEnds++; return true }
         override suspend fun stopOriginal(): Boolean { stops++; return true }
         override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()

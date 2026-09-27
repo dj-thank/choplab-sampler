@@ -188,6 +188,41 @@ class StudioTest {
         studio.dispatch(Action.Close)
     }
 
+    @Test fun aScratchedPadReachesTheEngineAndAnEmptyOneIsRefused() = runTest {
+        val engine = Engine()
+        val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }),
+            Project(assets = frozenListOf(asset), pads = (0..127).map { if (it == 3) com.choplab.core.model.Pad(3, asset.hash, FrameRange(0, 7)) else com.choplab.core.model.Pad(it) }.frozen()),
+            preparationDispatcher = StandardTestDispatcher(testScheduler))
+        assertFalse(studio.dispatch(Action.ScratchStart(4, 0.0)).accepted, "PAD 5 holds no sound")
+        assertTrue(engine.commands.none { it is EngineCommand.ScratchStart })
+        for (action in listOf(Action.ScratchStart(3, 2.0), Action.ScratchMove(5.5, 480), Action.ScratchCut(0f), Action.ScratchEnd)) {
+            assertTrue(studio.dispatch(action).accepted, "$action")
+        }
+        val sent = engine.commands.takeLast(4)
+        assertEquals(3, (sent[0] as EngineCommand.ScratchStart).padId)
+        assertEquals(2.0, (sent[0] as EngineCommand.ScratchStart).sourceFrame)
+        assertEquals(5.5, (sent[1] as EngineCommand.ScratchPosition).sourceFrame)
+        assertEquals(480, (sent[1] as EngineCommand.ScratchPosition).durationFrames)
+        assertEquals(0f, (sent[2] as EngineCommand.ScratchCut).gain)
+        assertIs<EngineCommand.ScratchEnd>(sent[3])
+        // Increasing order, like every other command Studio sends.
+        assertEquals(engine.commands.map { it.orderId }.sorted(), engine.commands.map { it.orderId })
+        // Once the engine has ended the scratch, the hand's moves are refused without a notice; a refused hold is told.
+        val notices = mutableListOf<Notice>()
+        backgroundScope.launch { studio.notices.collect { notices += it } }
+        runCurrent()
+        engine.deny = true
+        assertFalse(studio.dispatch(Action.ScratchMove(6.0, 480)).accepted)
+        assertFalse(studio.dispatch(Action.ScratchCut(1f)).accepted)
+        runCurrent()
+        assertTrue(notices.isEmpty(), "$notices")
+        assertFalse(studio.dispatch(Action.ScratchStart(3, 0.0)).accepted)
+        runCurrent()
+        assertEquals(listOf<Notice>(Notice.Rejected(Rejection.ENGINE_REFUSED)), notices)
+        engine.deny = false
+        studio.dispatch(Action.Close)
+    }
+
     @Test fun replacementAndCallerCancellationFencePendingEdits() = runTest {
         val engine = Engine().apply { prepareGate = CompletableDeferred(); ignorePrepareCancellation = true }
         val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), preparationDispatcher = StandardTestDispatcher(testScheduler))

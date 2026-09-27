@@ -59,6 +59,21 @@
     <string name="ce_stop_voice">録音を止める</string>
     <string name="ce_voice_hint">録音中です。曲に合わせて歌い、終わったら「録音を止める」を押してください。ヘッドホンを使うと、曲の音が声に入りません。</string>
     <string name="ce_scratch">スクラッチ</string>
+    <string name="ce_scratch_hint">円盤を押さえて左右にドラッグすると、音をこすります。手を止めると音も止まり、離すと元の再生に戻ります。曲はそのまま流れます。</string>
+    <string name="ce_scratch_pad">選んだPAD
+%1$s</string>
+    <string name="ce_scratch_original">原曲の範囲
+%1$s–%2$s</string>
+    <string name="ce_scratch_sensitivity">ドラッグで動く量</string>
+    <string name="ce_scratch_fine">細かく</string>
+    <string name="ce_scratch_normal">標準</string>
+    <string name="ce_scratch_wide">大きく</string>
+    <string name="ce_scratch_platter">スクラッチの円盤。押さえて左右にドラッグすると音をこする</string>
+    <string name="ce_scratch_holding">こすっています</string>
+    <string name="ce_scratch_resting">止まっています</string>
+    <string name="ce_scratch_back">左へこする</string>
+    <string name="ce_scratch_forward">右へこする</string>
+    <string name="ce_scratch_cut">カット（音の出入り）</string>
     <string name="ce_pad_semantics">BANK %1$s、PAD %2$d、%3$s、%4$s</string>
     <string name="ce_mode_one">ワンショット</string>
     <string name="ce_mode_gate">ゲート</string>

@@ -68,6 +68,24 @@ enum class ContinuousStatus {
     val looping: Boolean = false,
 ) { init { require(id in 0..127 && sourceRate > 0) } }
 
+/** What a scratch moves: the selected PAD's sound, or the original within its range. */
+enum class ContinuousScratchTarget { PAD, ORIGINAL }
+/** How far a drag moves the sound, in screen pixels as in the earlier app: fine, normal or wide. */
+enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
+
+/**
+ * The open scratch panel: its target, whether each target can be scratched now, the sensitivity, the cut fader and
+ * whether a hand holds the platter. Where the platter stands is read live from [ContinuousEditorReadout.scratchFraction].
+ */
+@Immutable data class ContinuousScratch(
+    val target: ContinuousScratchTarget,
+    val padAvailable: Boolean = false,
+    val originalAvailable: Boolean = false,
+    val sensitivity: ContinuousScratchSensitivity = ContinuousScratchSensitivity.NORMAL,
+    val cut: Float = 1f,
+    val holding: Boolean = false,
+) { init { require(cut.isFinite() && cut in 0f..1f) } }
+
 /** A built-in drum kit the host can install; the name is the kit's own name in every language. */
 @Immutable data class ContinuousDrumKit(val id: String, val name: String)
 
@@ -142,6 +160,8 @@ enum class ContinuousStatus {
     val installedDrumKit: String? = null,
     val drumKitChooserOpen: Boolean = false,
     val drumKitQuestion: ContinuousKitQuestion? = null,
+    /** The scratch panel while it is open. */
+    val scratch: ContinuousScratch? = null,
 ) {
     init {
         require(selectedBank in 0..7 && selectedPadId in 0..127)
@@ -182,6 +202,8 @@ enum class ContinuousStatus {
 @Immutable data class ContinuousEditorReadout(
     val originalFrame: Long = 0,
     val songFrame: Long = 0,
+    /** Where the scratch platter stands within what it scratches, 0 to 1. */
+    val scratchFraction: Float = 0f,
 )
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
@@ -250,5 +272,22 @@ sealed interface ContinuousEditorAction {
     data object StopVoice : ContinuousEditorAction
     /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */
     data class CopyDiagnostics(val text: String) : ContinuousEditorAction
+    /** Opens the scratch panel; the beat plays on underneath. */
     data object OpenScratch : ContinuousEditorAction
+    data object CloseScratch : ContinuousEditorAction
+    data class SetScratchTarget(val target: ContinuousScratchTarget) : ContinuousEditorAction
+    data class SetScratchSensitivity(val sensitivity: ContinuousScratchSensitivity) : ContinuousEditorAction
+    /** The independent cut fader: 1 lets the scratch through, 0 silences it. Handled at once, like a drag. */
+    data class SetScratchCut(val gain: Float) : ContinuousEditorAction
+    /** A hand takes the platter: the sound stops under it and sounds again as it moves. */
+    data object ScratchHold : ContinuousEditorAction
+    /**
+     * The held platter moved by [distancePx] screen pixels (positive forward), as the earlier app counted them; handled
+     * at once, never queued behind other work.
+     */
+    data class ScratchDrag(val distancePx: Float) : ContinuousEditorAction
+    /** The hand lets go: what the scratch paused plays on once, and nothing else starts. */
+    data object ScratchLetGo : ContinuousEditorAction
+    /** One short scratch back or forward, for screen readers. */
+    data class ScratchNudge(val forward: Boolean) : ContinuousEditorAction
 }

@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.pow
 import kotlin.math.roundToLong
+import kotlin.time.TimeSource
 
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
@@ -54,6 +55,14 @@ interface ContinuousEditorPorts {
     suspend fun stopVoice(name: String): VoiceTake? = null
     /** Ends the take and drops it. */
     suspend fun discardVoice() {}
+    /**
+     * Takes the original by hand from [from] within [start, end) (its own frames): its playback pauses and it sounds
+     * only while moved by [scratchOriginalTo].
+     */
+    suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long): Boolean = false
+    suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean = false
+    suspend fun scratchOriginalCut(gain: Float): Boolean = false
+    suspend fun scratchOriginalEnd(): Boolean = false
 }
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */
@@ -78,6 +87,39 @@ private const val VOICE_BUDGET_MARGIN_SECONDS = 2
  */
 private data class VoiceRecording(val songFrame: Long, val songEnd: Long, val outputDelayFrames: Long)
 
+/** How often a held platter's moves go on: about every 12 ms, or once the engine took the last one when it is slower. */
+private const val SCRATCH_TICK_MILLIS = 12L
+/** One move covers at most two ticks, so a stall never turns into a long glide toward an old aim. */
+private const val SCRATCH_GAP_FRAMES = 2 * SCRATCH_TICK_MILLIS * CONTINUOUS_TIMELINE_RATE / 1_000
+/** The engine moves a scratch at most eight times normal speed; moves aim well inside that, and a faster one arrives late. */
+private const val SCRATCH_SPEED_LIMIT = 8.0 * .9
+/** A screen reader's nudge moves in this many steps, one a tick: a short movement rather than a jump. */
+private const val SCRATCH_NUDGE_STEPS = 12
+
+/** As in the earlier app, 60 × divisor screen pixels a second is normal speed: fine 12, normal 7, wide 4. */
+private fun ContinuousScratchSensitivity.framesPerPixel(rate: Int): Double = rate / (60.0 * when (this) {
+    ContinuousScratchSensitivity.FINE -> 12.0
+    ContinuousScratchSensitivity.NORMAL -> 7.0
+    ContinuousScratchSensitivity.WIDE -> 4.0
+})
+
+/** The open scratch panel. */
+private data class ScratchView(val target: ContinuousScratchTarget, val sensitivity: ContinuousScratchSensitivity = ContinuousScratchSensitivity.NORMAL,
+                               val cut: Float = 1f, val holding: Boolean = false)
+
+/**
+ * A hand on the platter, over [start, end) in the target's frames: 48 kHz frames for a PAD, the original's own frames
+ * for the original, each [engineFramesPerFrame] engine frames. Only the pump moves it: [aim] is where the drags put the
+ * sound, [sent] where the engine was last told to take it, [cut] the cut fader the engine took last.
+ */
+private class ScratchGrip(val target: ContinuousScratchTarget, val padId: Int, val start: Double, val end: Double,
+                          val framesPerPixel: Double, val engineFramesPerFrame: Double, from: Double) {
+    @Volatile var aim = from
+    @Volatile var sent = from
+    var cut = 1f
+    val fraction: Float get() = ((sent - start) / (end - start)).toFloat().coerceIn(0f, 1f)
+}
+
 /** A question is bound to the drum BANK it counted; any change there asks again. */
 private data class KitQuestion(val kitId: String, val bank: List<Pad>, val replaced: Int)
 
@@ -101,6 +143,8 @@ private data class EditorView(
     val livePasses: Int = 0,
     /** The take being recorded; null when the microphone is off. */
     val voice: VoiceRecording? = null,
+    /** The scratch panel while it is open. */
+    val scratch: ScratchView? = null,
 )
 private data class EditorInputs(val document: DocumentState, val selection: SelectionState,
                                 val work: WorkState, val playing: Boolean, val attached: Boolean)
@@ -125,6 +169,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private var refusal: ContinuousStatus? = null
     /** A finished take is being added: a stop pressed meanwhile must not cancel that edit. */
     @Volatile private var finishingTake = false
+    /** The hand on the scratch platter, if any, and the loop that passes its moves on. */
+    @Volatile private var grip: ScratchGrip? = null
+    private var pump: Job? = null
+    /** Drags the pump has not passed on yet, in screen pixels: kept from the moment a hand takes the platter. */
+    private val dragPixels = MutableStateFlow(0.0)
+    /** Where the platter stood when let go, so the next hold of the same silent PAD continues from there. */
+    private var lastPadScratch: Pair<Int, Double>? = null
+    @Volatile private var lastScratchFraction = 0f
     private val inputs = combine(studio.document, studio.selection, studio.work,
         studio.transport.map { it.playing to it.outputAttached }.distinctUntilChanged()) { d, s, w, t -> EditorInputs(d, s, w, t.first, t.second) }
     val state: StateFlow<ContinuousEditorState> = combine(inputs, view, envelopes, ::project)
@@ -175,9 +227,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         consumer = jobs.launch { for (action in queue) dispatch(action) }
     }
 
-    fun readout(): ContinuousEditorReadout = ports.readout()
+    fun readout(): ContinuousEditorReadout = ports.readout().copy(scratchFraction = grip?.fraction ?: lastScratchFraction)
     fun diagnostics(): ContinuousDiagnostics? = ports.diagnostics()
     fun onAction(action: ContinuousEditorAction) {
+        // A platter and its cut fader move at pointer rate: each move only updates where they should be.
+        if (action is ContinuousEditorAction.ScratchDrag) { dragScratch(action.distancePx); return }
+        if (action is ContinuousEditorAction.SetScratchCut) { setScratchCut(action.gain); return }
         // Stop must not wait behind an import, decode or preparation that is ahead of it in the queue.
         if (interrupts(action)) jobs.launch { interrupt(action) }
         queue.trySend(action)
@@ -206,6 +261,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             } else when (action) {
                 is ContinuousEditorAction.Navigate -> {
                     releaseHeld()
+                    if (action.stage != ContinuousStage.BEAT && view.value.scratch != null) { letGoScratch(); view.update { it.copy(scratch = null) } }
                     // The take belongs to the BEAT stage, where its stop button is: leaving it ends the take.
                     if (view.value.voice != null && action.stage != view.value.stage) { pauseSong(); finishVoice() }
                     view.update { it.copy(stage = action.stage, liveChop = it.liveChop.takeIf { action.stage == ContinuousStage.CHOP }) }; true
@@ -220,8 +276,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.Undo -> { endLiveChop(); send(Action.Undo) }
                 ContinuousEditorAction.Redo -> { endLiveChop(); send(Action.Redo) }
                 ContinuousEditorAction.StopAll -> {
+                    // Everything stops first, a scratch with it, so letting go afterwards plays nothing on.
                     releaseHeld(); val stopped = send(Action.Stop)
                     if (ports.originalAvailable) ports.stopOriginal()
+                    letGoScratch()
                     view.update { it.copy(originalPlaying = false, playingPads = emptySet(), liveChop = null) }
                     finishVoice(); stopped
                 }
@@ -346,8 +404,21 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     ports.copyText(action.text).also { copied -> if (copied) view.update { it.copy(status = ContinuousStatus.COPIED) } }
                 ContinuousEditorAction.RecordVoice -> startVoice(project)
                 ContinuousEditorAction.StopVoice -> { if (view.value.voice != null) pauseSong(); finishVoice() }
-                // Keep this control visible but unavailable until its real adapter is integrated.
-                ContinuousEditorAction.OpenScratch -> false
+                ContinuousEditorAction.OpenScratch -> openScratch(project)
+                ContinuousEditorAction.CloseScratch -> { letGoScratch(); view.update { it.copy(scratch = null) }; true }
+                is ContinuousEditorAction.SetScratchTarget -> view.value.scratch?.let { sheet ->
+                    val available = if (action.target == ContinuousScratchTarget.PAD) project.pads[studio.selection.value.padId].assetHash != null
+                        else project.source != null && ports.originalAvailable
+                    (grip == null && available).also { ok -> if (ok) view.update { it.copy(scratch = sheet.copy(target = action.target)) } }
+                } ?: false
+                is ContinuousEditorAction.SetScratchSensitivity -> view.value.scratch?.let { sheet ->
+                    view.update { it.copy(scratch = sheet.copy(sensitivity = action.sensitivity)) }; true
+                } ?: false
+                is ContinuousEditorAction.SetScratchCut -> setScratchCut(action.gain)
+                ContinuousEditorAction.ScratchHold -> holdScratch(project)
+                is ContinuousEditorAction.ScratchDrag -> { dragScratch(action.distancePx); true }
+                ContinuousEditorAction.ScratchLetGo -> letGoScratch()
+                is ContinuousEditorAction.ScratchNudge -> nudgeScratch(project, action.forward)
             }
             if (!accepted) {
                 val reason = refusal
@@ -507,6 +578,136 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         } finally { serialized.unlock() }
     }
 
+    /** Opens the scratch panel on the selected PAD when it holds a sound, otherwise on the original. */
+    private fun openScratch(project: Project): Boolean {
+        val pad = project.pads[studio.selection.value.padId].assetHash != null
+        if (!pad && (project.source == null || !ports.originalAvailable)) return false
+        view.update { it.copy(scratch = ScratchView(if (pad) ContinuousScratchTarget.PAD else ContinuousScratchTarget.ORIGINAL)) }
+        return true
+    }
+
+    /**
+     * A hand takes the platter. A PAD is scratched in the engine over its whole range, taken where it plays while it
+     * sounds, its own voices waiting meanwhile; the original within its range, its playback paused. The song plays on
+     * underneath either way.
+     */
+    private suspend fun holdScratch(project: Project): Boolean {
+        val sheet = view.value.scratch ?: return false
+        if (grip != null) return true
+        releaseHeld()
+        val held = when (sheet.target) {
+            ContinuousScratchTarget.PAD -> {
+                val padId = studio.selection.value.padId
+                val pad = project.pads[padId]
+                val asset = project.asset(pad.assetHash ?: return false)
+                val range = requireNotNull(pad.range)
+                // The engine holds the PAD at 48 kHz, as the compiler maps its range.
+                val start = (range.start * 48_000 / asset.sampleRate).toDouble()
+                val end = ProgramCompiler.sourceFrameTo48k(range.end, asset.sampleRate).toDouble()
+                val from = lastPadScratch?.takeIf { it.first == padId }?.second?.coerceIn(start, end - 1) ?: start
+                if (!send(Action.ScratchStart(padId, from))) return false
+                // A sounding PAD is taken where it plays; the engine says where that is.
+                val at = studio.transport.value.scratchFrame.takeIf { it >= 0 } ?: from
+                ScratchGrip(ContinuousScratchTarget.PAD, padId, start, end, sheet.sensitivity.framesPerPixel(CONTINUOUS_TIMELINE_RATE), 1.0,
+                    at.coerceIn(start, end - 1))
+            }
+            ContinuousScratchTarget.ORIGINAL -> {
+                val source = project.source ?: return false
+                val asset = project.asset(source.assetHash)
+                val now = ports.readout().originalFrame
+                val from = if (now in source.range.start until source.range.end) now else source.range.start
+                if (!ports.scratchOriginalStart(asset, from, source.range.start, source.range.end)) return false
+                view.update { it.copy(originalPlaying = false) }
+                ScratchGrip(ContinuousScratchTarget.ORIGINAL, -1, source.range.start.toDouble(), source.range.end.toDouble(),
+                    sheet.sensitivity.framesPerPixel(asset.sampleRate), CONTINUOUS_TIMELINE_RATE.toDouble() / asset.sampleRate, from.toDouble())
+            }
+        }
+        // A closed cut fader closes before the first move can sound.
+        val cut = view.value.scratch?.cut ?: 1f
+        if (cut < 1f && cutScratch(held, cut)) held.cut = cut
+        grip = held
+        view.update { it.copy(scratch = it.scratch?.copy(holding = true)) }
+        pump = jobs.launch { pumpScratch(held) }
+        return true
+    }
+
+    /** The held platter moved [distancePx] (positive forward); the pump passes it on. Any thread, at pointer rate. */
+    private fun dragScratch(distancePx: Float) {
+        if (distancePx.isFinite() && view.value.scratch != null) dragPixels.update { it + distancePx }
+    }
+
+    /** Sets the cut fader; the pump passes it on while a hand holds the platter. Any thread, at pointer rate. */
+    private fun setScratchCut(gain: Float): Boolean {
+        requireGain(gain)
+        var open = false
+        view.update { v -> v.scratch?.let { sheet -> open = true; v.copy(scratch = sheet.copy(cut = gain)) } ?: v.also { open = false } }
+        return open
+    }
+
+    /**
+     * Passes the hand's moves and the cut fader on about every 12 ms. Each move lasts half as long again as the time
+     * since the last, at most two ticks' worth, so the sound keeps moving until the next one arrives, and stays inside
+     * the engine's speed limit. A move refused means the scratch ended under it (the output was rebuilt, say): the pump
+     * stops quietly and the hand's letting go tidies up.
+     */
+    private suspend fun pumpScratch(held: ScratchGrip) {
+        var last = TimeSource.Monotonic.markNow()
+        while (currentCoroutineContext().isActive && grip === held) {
+            delay((SCRATCH_TICK_MILLIS - last.elapsedNow().inWholeMilliseconds).coerceAtLeast(1))
+            val now = TimeSource.Monotonic.markNow()
+            val elapsed = ((now - last).inWholeMicroseconds * CONTINUOUS_TIMELINE_RATE / 1_000_000).coerceIn(48, SCRATCH_GAP_FRAMES)
+            last = now
+            val dragged = dragPixels.getAndUpdate { 0.0 }
+            if (dragged != 0.0) held.aim = (held.aim + dragged * held.framesPerPixel).coerceIn(held.start, held.end - 1)
+            val cut = view.value.scratch?.cut ?: held.cut
+            if (cut != held.cut) { if (!cutScratch(held, cut)) return; held.cut = cut }
+            val reach = SCRATCH_SPEED_LIMIT * elapsed / held.engineFramesPerFrame
+            val target = held.aim.coerceIn(held.sent - reach, held.sent + reach)
+            if (target == held.sent) continue
+            val duration = (elapsed * 3 / 2).toInt()
+            val moved = if (held.target == ContinuousScratchTarget.PAD) send(Action.ScratchMove(target, duration))
+                else ports.scratchOriginalTo(target, duration)
+            if (!moved) return
+            held.sent = target
+        }
+    }
+
+    private suspend fun cutScratch(held: ScratchGrip, gain: Float): Boolean =
+        if (held.target == ContinuousScratchTarget.PAD) send(Action.ScratchCut(gain)) else ports.scratchOriginalCut(gain)
+
+    /**
+     * The hand lets go. The engine plays on once what the scratch paused: a PAD's own voices, or the original when it
+     * was playing as the hand took it; nothing that was not playing starts.
+     */
+    private suspend fun letGoScratch(): Boolean {
+        val held = grip
+        if (held == null) { dragPixels.value = 0.0; return true }
+        lastScratchFraction = held.fraction
+        grip = null
+        pump?.cancelAndJoin()
+        pump = null
+        dragPixels.value = 0.0
+        val ended = if (held.target == ContinuousScratchTarget.PAD) send(Action.ScratchEnd).also { lastPadScratch = held.padId to held.sent }
+            else ports.scratchOriginalEnd().also { ports.originalPlaying()?.let { playing -> view.update { it.copy(originalPlaying = playing) } } }
+        view.update { it.copy(scratch = it.scratch?.copy(holding = false)) }
+        return ended
+    }
+
+    /**
+     * For screen readers: one short movement back or forward, then let go. It covers an eighth of the range, at most half
+     * a second of sound, over about 0.15 s.
+     */
+    private suspend fun nudgeScratch(project: Project, forward: Boolean): Boolean {
+        if (grip == null && !holdScratch(project)) return false
+        val held = grip ?: return false
+        val step = minOf((held.end - held.start) / 8, CONTINUOUS_TIMELINE_RATE / held.engineFramesPerFrame / 2)
+        val pixels = (if (forward) step else -step) / held.framesPerPixel / SCRATCH_NUDGE_STEPS
+        repeat(SCRATCH_NUDGE_STEPS) { dragPixels.update { it + pixels }; delay(SCRATCH_TICK_MILLIS) }
+        withTimeoutOrNull(1_000) { while ((dragPixels.value != 0.0 || held.sent != held.aim) && grip === held) delay(SCRATCH_TICK_MILLIS) }
+        delay(100)
+        return letGoScratch()
+    }
+
     /** The user's own sounds on the drum BANK are replaced only after they agree; kit sounds just change kit. */
     private suspend fun chooseKit(kitId: String, project: Project): Boolean {
         val bank = drumBank(project)
@@ -581,7 +782,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         // Nothing queued starts after this (a take, for one, could otherwise open the microphone after the host let go).
         consumer.cancelAndJoin()
         // A take still running keeps what was sung.
-        serialized.withLock { releaseHeld(); stopOriginal(); if (view.value.voice != null) { pauseSong(); finishVoice() } }
+        serialized.withLock {
+            // The original stops before a hand on it lets go, so nothing plays on as the editor closes.
+            releaseHeld(); stopOriginal(); letGoScratch()
+            if (view.value.voice != null) { pauseSong(); finishVoice() }
+        }
         owner.cancel()
     }
     private fun requireGain(gain: Float) { require(gain.isFinite() && gain in 0f..1f) }
@@ -635,6 +840,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousCapability.ORIGINAL_SEEK, ContinuousCapability.ORIGINAL_MONITOR_GAIN, ContinuousCapability.LIVE_CHOP)
             if (ports.drumKitsAvailable) capabilities += ContinuousCapability.ADD_DRUM
             if (ports.voiceAvailable && input.attached && p.clips.isNotEmpty()) capabilities += ContinuousCapability.RECORD_VOICE
+            if (input.attached && (selected.assetHash != null || (source != null && ports.originalAvailable))) capabilities += ContinuousCapability.SCRATCH
         }
         val kitSounds = p.pads.map { pad -> pad.assetHash?.let { DrumKits.identify(p.asset(it)) } }
         return ContinuousEditorState(stage = v.stage, projectTitle = p.title, original = source,
@@ -671,6 +877,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             // In use only while every sound on the drum BANK comes from that one kit.
             installedDrumKit = (DrumKits.BANK * 16 until DrumKits.BANK * 16 + 16).filter { p.pads[it].assetHash != null }
                 .map { kitSounds[it]?.kit?.id }.distinct().singleOrNull(),
-            drumKitChooserOpen = v.kitChooser, drumKitQuestion = v.kitQuestion?.let { ContinuousKitQuestion(it.kitId, it.replaced) })
+            drumKitChooserOpen = v.kitChooser, drumKitQuestion = v.kitQuestion?.let { ContinuousKitQuestion(it.kitId, it.replaced) },
+            scratch = v.scratch?.let { sheet -> ContinuousScratch(sheet.target, padAvailable = input.attached && selected.assetHash != null,
+                originalAvailable = input.attached && source != null && ports.originalAvailable, sheet.sensitivity, sheet.cut, sheet.holding) })
     }
 }

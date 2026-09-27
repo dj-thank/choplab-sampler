@@ -97,6 +97,37 @@ class SourceAuditionController(
         require(gain.isFinite() && gain in 0f..1f)
         return controls.withLock { command { frame, id -> EngineCommand.SetSongMonitorGain(frame, id, gain) } }
     }
+    /**
+     * Takes the original by hand between [start] and [end] (its own frames, end exclusive) from [from]: its playback
+     * pauses until [scratchEnd], and it sounds only while [scratchTo] moves it. Loads the original first when it is not
+     * loaded.
+     */
+    suspend fun scratchStart(asset: Asset, from: Long, start: Long, end: Long): Boolean {
+        require(start in 0 until end && end <= asset.frames && from in start until end)
+        cancelPreparation()
+        val token = generation.get()
+        if (!ensureSource(asset, token)) return false
+        val first = ProgramFrames.to48k(start, asset.sampleRate).toInt()
+        val last = ProgramFrames.to48k(end, asset.sampleRate).toInt()
+        val at = from * 48_000.0 / asset.sampleRate
+        return controls.withLock {
+            token == generation.get() && command { frame, id -> EngineCommand.ScratchOriginalStart(frame, id, at, first, last) }
+        }
+    }
+    /**
+     * Moves the held original to [position] (its own frames, fractional) over [durationFrames] output frames, no faster
+     * than eight times normal speed.
+     */
+    suspend fun scratchTo(position: Double, durationFrames: Int): Boolean {
+        val asset = loaded.get() ?: return false
+        return controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalPosition(frame, id, position * 48_000 / asset.sampleRate, durationFrames) } }
+    }
+    suspend fun scratchCut(gain: Float): Boolean {
+        require(gain.isFinite() && gain in 0f..1f)
+        return controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalCut(frame, id, gain) } }
+    }
+    /** Lets go of the original: playback the hand paused plays on once from there; otherwise it stays paused. */
+    suspend fun scratchEnd(): Boolean = controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalEnd(frame, id) } }
     fun nativeFrame(): Long {
         val asset = loaded.get() ?: return 0
         return (driver.originalPlayback().sourceFrame * asset.sampleRate / 48_000).coerceIn(0, asset.frames)

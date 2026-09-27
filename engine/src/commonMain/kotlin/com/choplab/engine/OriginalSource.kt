@@ -1,5 +1,6 @@
 package com.choplab.engine
 
+import kotlin.math.abs
 import kotlin.math.pow
 
 /** Monitor-only source region. It has no PAD identity and is not part of the saved mix graph. */
@@ -25,8 +26,21 @@ internal class OriginalSourceVoice {
         private set
     var playing = false
         private set
+    /** Moved by hand instead of playing: see [startScratch]. */
+    var scratching = false
+        private set
+    /** The original was playing when the hand took it, so letting go plays it on once; read only while scratching. */
+    private var resumeAfterScratch = false
     /** Source frames per output frame: exactly 1 at zero semitones, so unpitched playback stays sample-exact. */
     private var step = 1.0
+    private var scratchStart = 0
+    private var scratchEnd = 0
+    private var scratchStep = 0.0
+    private var motionFrames = 0
+    private var moving = false
+    /** Fades the scratch in as the hand starts moving and out as it stops, so neither clicks. */
+    private val motion = ParameterSmoother(0f)
+    val cut = ParameterSmoother(1f)
     val monitorGain = ParameterSmoother(1f)
     var outputLeft = 0.0
         private set
@@ -45,15 +59,56 @@ internal class OriginalSourceVoice {
         assetSlot = slot
         position = (value?.startFrame ?: 0).toDouble()
         playing = continuePlaying
+        scratching = false
     }
     fun play(): Boolean {
         val source = source ?: return false
         if (position >= source.endFrame) position = source.startFrame.toDouble()
         beginTransition()
         playing = true
+        scratching = false
         return true
     }
-    fun pause() { beginTransition(); playing = false }
+    /**
+     * Pauses playback and holds the original at [frame] within [start, end), heard only while moved. What was playing
+     * plays on from where the hand lets go ([endScratch]).
+     */
+    fun startScratch(frame: Double, start: Int, end: Int): Boolean {
+        val source = source ?: return false
+        val from = maxOf(start, source.startFrame)
+        val to = minOf(end, source.endFrame)
+        if (to <= from) return false
+        beginTransition()
+        if (!scratching) resumeAfterScratch = playing
+        playing = false
+        scratching = true
+        scratchStart = from
+        scratchEnd = to
+        position = frame.coerceIn(from.toDouble(), to - 1.0)
+        scratchStep = 0.0; motionFrames = 0; moving = false
+        motion.set(0f, 0)
+        cut.set(1f, 0)
+        return true
+    }
+    /**
+     * Heads for [frame] over [frames] output frames. A hand faster than [EngineCore.MAX_SCRATCH_SPEED] moves at that
+     * limit and arrives late; false only when the original is not being scratched.
+     */
+    fun scratchTo(frame: Double, frames: Int): Boolean {
+        if (!scratching) return false
+        val target = frame.coerceIn(scratchStart.toDouble(), scratchEnd - 1.0)
+        scratchStep = ((target - position) / frames).coerceIn(-EngineCore.MAX_SCRATCH_SPEED, EngineCore.MAX_SCRATCH_SPEED)
+        motionFrames = frames
+        return true
+    }
+    /** Lets go: playback the hand paused plays on once from here; otherwise the original stays paused. */
+    fun endScratch() {
+        if (!scratching) return
+        beginTransition()
+        scratching = false
+        playing = resumeAfterScratch
+    }
+    fun pause() { beginTransition(); playing = false; scratching = false }
     fun seek(frame: Long): Boolean {
         val source = source ?: return false
         if (frame < source.startFrame || frame > source.endFrame) return false
@@ -77,6 +132,7 @@ internal class OriginalSourceVoice {
             outputLeft = 0.0; outputRight = 0.0
         } else beginTransition()
         playing = false
+        scratching = false
         position = (source?.startFrame ?: 0).toDouble()
     }
     private fun beginTransition() {
@@ -89,7 +145,22 @@ internal class OriginalSourceVoice {
         val source = source
         var targetLeft = 0.0
         var targetRight = 0.0
-        if (playing && source != null) {
+        if (scratching && source != null) {
+            val nowMoving = motionFrames > 0 && abs(scratchStep) > 1e-12
+            if (nowMoving != moving) { moving = nowMoving; motion.set(if (nowMoving) 1f else 0f, TRANSITION_FRAMES) }
+            val gate = motion.next().toDouble() * cut.next()
+            if (gate > 0.0) {
+                // Held still, it keeps reading with the last movement's band, so the fade out cannot click.
+                targetLeft = interpolator.read(source.asset, position, scratchStep, 0, scratchStart, scratchEnd, false) * gate
+                targetRight = interpolator.read(source.asset, position, scratchStep, 1, scratchStart, scratchEnd, false) * gate
+            }
+            if (moving) {
+                position += scratchStep
+                motionFrames--
+                if (position < scratchStart || position > scratchEnd - 1.0) motionFrames = 0
+                position = position.coerceIn(scratchStart.toDouble(), scratchEnd - 1.0)
+            }
+        } else if (playing && source != null) {
             targetLeft = interpolator.read(source.asset, position, step, 0, source.startFrame, source.endFrame, source.loop)
             targetRight = interpolator.read(source.asset, position, step, 1, source.startFrame, source.endFrame, source.loop)
         }
@@ -105,7 +176,7 @@ internal class OriginalSourceVoice {
         }
         outputLeft = lastDryLeft * gain
         outputRight = lastDryRight * gain
-        if (playing && source != null) {
+        if (playing && !scratching && source != null) {
             position += step
             if (position >= source.endFrame) {
                 // A loop keeps the fraction past its end, so a pitched loop runs on without a jump.
