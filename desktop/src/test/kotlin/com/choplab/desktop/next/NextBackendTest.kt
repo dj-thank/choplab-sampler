@@ -205,8 +205,10 @@ class NextBackendTest {
             waitUntil { sink.leftEnergy > 1 }
             driver.setMonitorGain(0f)
             waitUntil { sink.lastWriteZero }
-            assertTrue(driver.snapshot().activeVoices > 0)
-            assertEquals(1L, driver.snapshot().programRevision)
+            // The render readout is a bounded seqlock: a racing read may retain the previous tick.
+            // Await a published voice/program observation rather than treating one stale tick as voice loss.
+            val mutedThrough = sink.frames
+            waitUntil { driver.snapshot().let { it.frame > mutedThrough && it.activeVoices > 0 && it.programRevision == 1L } }
             driver.setMonitorGain(1f)
             waitUntil { !sink.lastWriteZero }
         } finally { driver.close() }
