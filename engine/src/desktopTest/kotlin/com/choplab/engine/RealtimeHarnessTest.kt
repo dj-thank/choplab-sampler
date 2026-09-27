@@ -122,6 +122,59 @@ class RealtimeHarnessTest {
         assertEquals(0, engine.fadeVoiceCount)
     }
 
+    @Test fun scratchingAPadAndTheOriginalAllocatesZeroAcrossTenThousandBlocks() {
+        val source = PcmAsset.fromMono(FloatArray(8_192) { (.005 * sin(2 * PI * it / 64)).toFloat() })
+        val pads = (0 until 32).map { Pad(it, source, mode = PlayMode.LOOP, attackFrames = 0, loopCrossfadeFrames = 0) }
+        val engine = EngineCore(EngineProgram(pads), EngineConfig(controlCapacity = 128, eventCapacity = 2))
+        for (i in 0 until 31) engine.controls.offer(EngineCommand.Trigger(0, i.toLong(), i))
+        engine.controls.offer(EngineCommand.SetOriginalSource(0, 31, OriginalSource(source)))
+        val output = FloatArray(192 * 2)
+        engine.render(output)
+        var id = 32L
+        // Each block moves both scratches, now and then works the cut, and every 50 blocks lets go and takes hold again.
+        fun block(frame: Long, block: Int, next: () -> Long): Array<EngineCommand> {
+            val target = (block * 37 % 8_000).toDouble()
+            val commands = ArrayList<EngineCommand>(6)
+            if (block % 50 == 0) {
+                commands += EngineCommand.ScratchStart(frame, next(), 31, target)
+                commands += EngineCommand.ScratchOriginalStart(frame, next(), target, 100, 8_000)
+            }
+            commands += EngineCommand.ScratchPosition(frame, next(), target + 150, 192)
+            commands += EngineCommand.ScratchOriginalPosition(frame, next(), 8_000 - target, 192)
+            if (block % 7 == 0) {
+                commands += EngineCommand.ScratchCut(frame, next(), (block % 2).toFloat())
+                commands += EngineCommand.ScratchOriginalCut(frame, next(), (block % 3 % 2).toFloat())
+            }
+            if (block % 50 == 49) {
+                commands += EngineCommand.ScratchEnd(frame, next())
+                commands += EngineCommand.ScratchOriginalEnd(frame, next())
+            }
+            return commands.toTypedArray()
+        }
+        repeat(1_500) { b ->
+            for (command in block(engine.frame, b) { id++ }) engine.controls.offer(command)
+            engine.render(output)
+        }
+        val blocks = 10_000
+        val base = engine.frame
+        val commands = Array(blocks) { b -> block(base + b * 192L, b) { id++ } }
+        val bean = ManagementFactory.getThreadMXBean() as ThreadMXBean
+        assertTrue(bean.isThreadAllocatedMemorySupported)
+        bean.isThreadAllocatedMemoryEnabled = true
+        val thread = Thread.currentThread().id
+        repeat(100_000) { bean.getThreadAllocatedBytes(thread); System.nanoTime() }
+        var renderAllocated = 0L
+        for (b in 0 until blocks) {
+            for (command in commands[b]) engine.controls.offer(command)
+            val renderBefore = bean.getThreadAllocatedBytes(thread)
+            engine.render(output)
+            renderAllocated += bean.getThreadAllocatedBytes(thread) - renderBefore
+        }
+        println("SCRATCH JVM JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=1500 blocks=$blocks " +
+            "loopVoices=31 padScratch=1 originalScratch=1 renderAllocatedBytes=$renderAllocated; desktop synthetic only")
+        assertEquals(0L, renderAllocated)
+    }
+
     @Test fun spscPublicationAndCoherentReadoutSurviveConcurrentProducerAndConsumer() {
         val one = EngineProgram(listOf(Pad(0, PcmAsset.fromMono(FloatArray(8)))), revision = 1)
         val two = EngineProgram(listOf(Pad(0, PcmAsset.fromMono(FloatArray(16)))), revision = 2)

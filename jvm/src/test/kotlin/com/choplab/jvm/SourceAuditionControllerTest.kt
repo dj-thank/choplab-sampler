@@ -56,4 +56,40 @@ class SourceAuditionControllerTest {
             rateBecomes(2.0)
         } finally { audition.close(); scope.cancel(); driver.close() }
     }
+
+    @Test fun theOriginalIsScratchedInItsOwnFramesAndPlaysOnOnlyIfItWasPlaying() = runBlocking<Unit> {
+        val driver = StreamingEnginePort(compiler(), paced)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        // A 44.1 kHz original, normalized to 48 kHz by its loader as usual.
+        val audition = SourceAuditionController(driver, object : PcmPort {
+            override suspend fun load(asset: Asset): PcmAsset = PcmAsset.fromInterleaved(FloatArray(48_000 * 2 * 10) { .1f })
+        }, scope)
+        val song = Asset("e".repeat(64), "wav", 44, 44_100, 2, 44_100L * 10, "song")
+        try {
+            waitUntil { driver.status.value.phase == DriverPhase.ATTACHED }
+            assertFalse(audition.scratchTo(1_000.0, 480), "Nothing is held before a scratch starts")
+            assertTrue(audition.play(song))
+            waitUntil { driver.originalPlayback().playing }
+            // Held at 2 s of the original's own 44.1 kHz frames, within 1 s to 4 s: playback pauses there.
+            assertTrue(audition.scratchStart(song, 88_200, 44_100, 176_400))
+            waitUntil { !driver.originalPlayback().playing }
+            assertEquals(2.0, driver.originalPlayback().sourceFrame / 48_000.0, .01)
+            // Moved half a second ahead over 0.25 s, then pulled far past the range end: it stops at 4 s.
+            assertTrue(audition.scratchTo(110_250.0, 12_000))
+            waitUntil { abs(driver.originalPlayback().sourceFrame / 48_000.0 - 2.5) < .01 }
+            assertTrue(audition.scratchTo(176_000.0, 48_000))
+            waitUntil { abs(driver.originalPlayback().sourceFrame / 48_000.0 - 4.0) < .01 }
+            assertTrue(audition.scratchCut(0f))
+            assertTrue(audition.scratchEnd())
+            // It was playing when taken, so it plays on once from where the hand left it.
+            waitUntil { driver.originalPlayback().playing && driver.originalPlayback().sourceFrame > 4.02 * 48_000 }
+            assertTrue(audition.pause())
+            waitUntil { !driver.originalPlayback().playing }
+            // Taken while paused, it stays paused when let go.
+            assertTrue(audition.scratchStart(song, 88_200, 44_100, 176_400))
+            assertTrue(audition.scratchEnd())
+            delay(100)
+            assertFalse(driver.originalPlayback().playing, "Taken while paused, it stays paused")
+        } finally { audition.close(); scope.cancel(); driver.close() }
+    }
 }

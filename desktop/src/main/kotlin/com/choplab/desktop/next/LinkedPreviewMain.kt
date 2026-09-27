@@ -115,6 +115,10 @@ private class DesktopEditorPorts(private val backend: NextBackend, private val p
         return backend.audition.seek(asset, frame)
     }
     override suspend fun setOriginalMonitorGain(gain: Float) = backend.audition.originalGain(gain)
+    override suspend fun scratchOriginalStart(asset: Asset, from: Long, start: Long, end: Long) = backend.audition.scratchStart(asset, from, start, end)
+    override suspend fun scratchOriginalTo(position: Double, durationFrames: Int) = backend.audition.scratchTo(position, durationFrames)
+    override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
+    override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)

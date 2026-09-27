@@ -50,6 +50,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     val originalLoaded: Boolean get() = originalVoice.source != null
     val originalPlaying: Boolean get() = originalVoice.playing
     val originalSourceFrame: Long get() = originalVoice.position.toLong()
+    /** The scratched PAD's source frame, or -1 while no PAD is scratched. */
+    val scratchFrame: Double get() = if (scratchIndex >= 0) voices[scratchIndex].position else -1.0
     val originalMonitorGain: Float get() = originalVoice.monitorGain.value
     val songMonitorGain: Float get() = songGain.value
     val tickNumerator: Long get() = clock.tickNumerator
@@ -258,6 +260,16 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
             }
             is EngineCommand.SetOriginalMonitorGain -> originalVoice.monitorGain.set(command.gain, 96)
+            is EngineCommand.ScratchOriginalStart -> {
+                accepted = originalVoice.startScratch(command.sourceFrame, command.startFrame, command.endFrame)
+                if (!accepted) events.emit(EngineEventType.ASSET_MISS, command.orderId, command.effectiveFrame, frame)
+            }
+            is EngineCommand.ScratchOriginalPosition -> {
+                accepted = originalVoice.scratchTo(command.sourceFrame, command.durationFrames)
+                if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
+            }
+            is EngineCommand.ScratchOriginalCut -> if (originalVoice.scratching) originalVoice.cut.set(command.gain, 96)
+            is EngineCommand.ScratchOriginalEnd -> originalVoice.endScratch()
             is EngineCommand.SetOriginalPitch -> originalVoice.pitch(command.semitones)
             is EngineCommand.SetSongMonitorGain -> songGain.set(command.gain, 96)
             is EngineCommand.SetTempo -> clock.setTempo(command.tempo)
@@ -268,11 +280,9 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     val pad = voice.pad
                     if (pad != null) {
                         val target = command.sourceFrame.coerceIn(pad.startFrame.toDouble(), pad.endFrame - 1.0)
-                        val speed = (target - voice.position) / command.durationFrames
-                        if (abs(speed) <= 8.0) {
-                            voice.scratchStep = speed
-                            voice.motionFrames = command.durationFrames
-                        } else accepted = false
+                        // A hand faster than the limit moves at the limit and arrives late, never falls silent.
+                        voice.scratchStep = ((target - voice.position) / command.durationFrames).coerceIn(-MAX_SCRATCH_SPEED, MAX_SCRATCH_SPEED)
+                        voice.motionFrames = command.durationFrames
                     } else accepted = false
                 } else accepted = false
                 if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame, scratchPad)
@@ -333,6 +343,13 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             return false
         }
         endScratch()
+        // A PAD that sounds is taken where it plays, like a record under the hand; a silent one at the given frame.
+        var from = command.sourceFrame
+        var newest = -1L
+        for (voice in voices) if (voice.pad?.id == pad.id && !voice.scratch && !voice.releasing && voice.serial > newest) {
+            newest = voice.serial
+            from = voice.position
+        }
         for (voice in voices) if (voice.pad?.id == pad.id && !voice.scratch) voice.suspended = true
         val slot = acquireVoice()
         if (slot < 0) {
@@ -344,7 +361,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         voices[slot].start(pad, 1f, triggerSerial++)
         voices[slot].assetSlot = slotForPad(pad)
         voices[slot].scratch = true
-        voices[slot].position = command.sourceFrame.coerceIn(pad.startFrame.toDouble(), pad.endFrame - 1.0)
+        voices[slot].position = from.coerceIn(pad.startFrame.toDouble(), pad.endFrame - 1.0)
         scratchPad = pad.id
         scratchIndex = slot
         return true
@@ -354,8 +371,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         if (scratchIndex >= 0) {
             val voice = voices[scratchIndex]
             voice.release(STEAL_FADE_FRAMES)
-            // Continue the last movement while fading, then release its retained PCM.
-            voice.motionFrames = maxOf(voice.motionFrames, STEAL_FADE_FRAMES)
+            // A moving scratch keeps moving while it fades; one held still stays still and silent.
+            if (voice.motionFrames > 0) voice.motionFrames = maxOf(voice.motionFrames, STEAL_FADE_FRAMES)
         }
         for (voice in voices) if (voice.suspended) { voice.suspended = false; voice.age = 0 }
         scratchPad = -1
@@ -448,6 +465,10 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         const val PRIMARY_VOICES = 32
         const val FADE_VOICES = 16
         const val STEAL_FADE_FRAMES = 96
+        /** How long a scratch takes to fade in or out as the hand starts or stops moving (2 ms). */
+        const val SCRATCH_MOTION_FRAMES = 96
+        /** The fastest a scratch moves, PAD or original: eight times normal speed, the interpolator's widest band. */
+        const val MAX_SCRATCH_SPEED = 8.0
         const val STOP_TAIL_FRAMES = STEAL_FADE_FRAMES + MasterLimiter.LOOKAHEAD_FRAMES
     }
 }
@@ -464,8 +485,12 @@ private class Voice {
     var scratchStep = 0.0
     var motionFrames = 0
     val cut = ParameterSmoother(1f)
+    /** A scratch fades in as the hand starts moving and out as it stops, so neither clicks. */
+    private val motion = ParameterSmoother(0f)
+    private var moving = false
     private var velocity = 1f
     private var released = false
+    val releasing: Boolean get() = released
     private var releaseAge = 0
     private var releaseLength = 96
     private var releaseGain = 1.0
@@ -486,6 +511,7 @@ private class Voice {
         released = false; releaseAge = 0; releaseLength = pad.releaseFrames; releaseGain = 1.0
         toneLeft = 0.0; toneRight = 0.0
         cut.set(1f, 0)
+        motion.set(0f, 0); moving = false
     }
     fun clear() {
         pad = null; outputLeft = 0.0; outputRight = 0.0; suspended = false; scratch = false; transportVoice = false; assetSlot = -1
@@ -512,6 +538,10 @@ private class Voice {
         releaseGain = other.releaseGain
         toneLeft = other.toneLeft; toneRight = other.toneRight
         cut.set(other.cut.value, 0)
+        // The copy continues the fade the original was in.
+        moving = other.moving
+        motion.set(other.motion.value, 0)
+        if (scratch) motion.set(if (moving) 1f else 0f, EngineCore.SCRATCH_MOTION_FRAMES)
     }
     fun render(interpolator: PitchInterpolator) {
         outputLeft = 0.0; outputRight = 0.0
@@ -529,8 +559,15 @@ private class Voice {
             if (naturalRelease > 0) envelope *= smoothUnit(remaining / naturalRelease)
         }
         val gate = cut.next().toDouble()
-        if (!scratch || (motionFrames > 0 && abs(speed) > 1e-12)) {
-            envelope *= gate * velocity
+        var held = 1.0
+        if (scratch) {
+            val nowMoving = motionFrames > 0 && abs(speed) > 1e-12
+            if (nowMoving != moving) { moving = nowMoving; motion.set(if (nowMoving) 1f else 0f, EngineCore.SCRATCH_MOTION_FRAMES) }
+            held = motion.next().toDouble()
+        }
+        if (!scratch || held > 0.0) {
+            envelope *= gate * velocity * held
+            // Held still, a scratch reads its resting frame with the last movement's band, so the fade out cannot click.
             var left = interpolator.read(pad.asset, position, speed, 0, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames)
             var right = interpolator.read(pad.asset, position, speed, 1, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames)
             if (pad.toneAlpha < 1.0) {
@@ -539,14 +576,19 @@ private class Voice {
             }
             outputLeft = left * envelope * pad.leftGain
             outputRight = right * envelope * pad.rightGain
-            position += speed
             if (scratch) {
-                motionFrames--
-                if (position < pad.startFrame || position > pad.endFrame - 1.0) motionFrames = 0
-                position = position.coerceIn(pad.startFrame.toDouble(), pad.endFrame - 1.0)
-            } else if (loop) {
-                val length = pad.endFrame - pad.startFrame
-                position = pad.startFrame + (position - pad.startFrame) - floor((position - pad.startFrame) / length) * length
+                if (moving) {
+                    position += speed
+                    motionFrames--
+                    if (position < pad.startFrame || position > pad.endFrame - 1.0) motionFrames = 0
+                    position = position.coerceIn(pad.startFrame.toDouble(), pad.endFrame - 1.0)
+                }
+            } else {
+                position += speed
+                if (loop) {
+                    val length = pad.endFrame - pad.startFrame
+                    position = pad.startFrame + (position - pad.startFrame) - floor((position - pad.startFrame) / length) * length
+                }
             }
         }
         if (age < Int.MAX_VALUE) age++

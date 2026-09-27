@@ -97,14 +97,15 @@ internal object CEColor {
     capability: ContinuousCapability, onValue: (Float) -> Unit, modifier: Modifier = Modifier,
     dark: Boolean = false, tag: String = "", range: ClosedFloatingPointRange<Float> = 0f..1f,
     /** Document edits commit once when the gesture ends (one Undo step); monitoring follows every move. */
-    commitOnRelease: Boolean = false) {
+    commitOnRelease: Boolean = false,
+    /** The label above the slider, which then has the whole width: for narrow places and large text. */
+    stacked: Boolean = false) {
     val foreground = if (dark) CEColor.Cream else CEColor.Ink
     // The dragged value stays shown until the committed value arrives, or is dropped if the edit fails.
     var pending by remember(value) { mutableStateOf<Float?>(null) }
     LaunchedEffect(state.status) { if (state.status == ContinuousStatus.FAILED) pending = null }
     val shown = pending ?: value
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = foreground, fontSize = 12.sp)
+    @Composable fun RowScope.SliderAndValue() {
         Slider(shown.coerceIn(range.start, range.endInclusive), { next -> if (commitOnRelease) pending = next else onValue(next) },
             Modifier.weight(1f).heightIn(min = 48.dp).testTag(tag).semantics { contentDescription = label },
             enabled = state.permits(capability), valueRange = range,
@@ -112,7 +113,14 @@ internal object CEColor {
             colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange,
                 inactiveTrackColor = CEColor.Tan, activeTickColor = CEColor.Tan, inactiveTickColor = CEColor.Tan))
         Text(stringResource(Res.string.ce_percent, (shown * 100).roundToInt()), color = foreground,
-            fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            fontSize = 12.sp, fontFamily = FontFamily.Monospace, softWrap = false)
+    }
+    if (stacked) Column(modifier) {
+        Text(label, color = foreground, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { SliderAndValue() }
+    } else Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = foreground, fontSize = 12.sp)
+        SliderAndValue()
     }
 }
 

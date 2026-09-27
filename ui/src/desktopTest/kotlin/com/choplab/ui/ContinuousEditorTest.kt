@@ -411,6 +411,81 @@ class ContinuousEditorTest {
         } finally { Locale.setDefault(previous) }
     }
 
+    @Test fun theScratchPanelHoldsDragsAndLetsGoAndOffersScreenReaderActions() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).let {
+                it.copy(capabilities = it.capabilities + ContinuousCapability.SCRATCH,
+                    scratch = ContinuousScratch(ContinuousScratchTarget.PAD, padAvailable = true, originalAvailable = true))
+            })
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { actions += it }, { ContinuousEditorReadout(scratchFraction = .25f) })
+            }
+            fun ImageComposeScene.texts() = nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            try {
+                scene.settle()
+                assertNotNull(scene.tag("ce-scratch-panel"))
+                assertTrue(scene.texts().any { it.startsWith("選んだPAD") } && scene.texts().any { it.startsWith("原曲の範囲") })
+                scene.click("ce-scratch-target-original")
+                assertEquals(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL), actions.last())
+                scene.click("ce-scratch-fine")
+                assertEquals(ContinuousEditorAction.SetScratchSensitivity(ContinuousScratchSensitivity.FINE), actions.last())
+                // A drag on the platter: hold, moves in screen pixels, let go.
+                val platter = requireNotNull(scene.tag("ce-scratch-platter"))
+                assertTrue(platter.boundsInRoot.width >= 190f)
+                actions.clear()
+                scene.drag(platter.boundsInRoot.center, Offset(60f, 0f))
+                assertEquals(ContinuousEditorAction.ScratchHold, actions.first())
+                assertEquals(ContinuousEditorAction.ScratchLetGo, actions.last())
+                assertEquals(60f, actions.filterIsInstance<ContinuousEditorAction.ScratchDrag>().sumOf { it.distancePx.toDouble() }.toFloat(), .01f)
+                // Screen readers scratch back or forward with actions.
+                val custom = platter.config.getOrNull(SemanticsActions.CustomActions).orEmpty()
+                assertEquals(listOf("左へこする", "右へこする"), custom.map { it.label })
+                actions.clear()
+                custom[1].action()
+                assertEquals(ContinuousEditorAction.ScratchNudge(true), actions.single())
+                requireNotNull(scene.tag("ce-scratch-cut")!!.config.getOrNull(SemanticsActions.SetProgress)?.action).invoke(.3f)
+                assertEquals(ContinuousEditorAction.SetScratchCut(.3f), actions.last())
+                scene.click("ce-scratch-close")
+                assertEquals(ContinuousEditorAction.CloseScratch, actions.last())
+                state.value = state.value.copy(scratch = state.value.scratch!!.copy(holding = true))
+                scene.settle()
+                assertEquals("こすっています", scene.tag("ce-scratch-platter")!!.config.getOrNull(SemanticsProperties.StateDescription))
+                scene.capture("beat-scratch-desktop.png")
+            } finally { scene.close() }
+
+            // Counted in screen pixels as in the earlier app, also on a dense screen.
+            val dense = ImageComposeScene(width = 1440, height = 2048, density = Density(2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { actions += it }, { ContinuousEditorReadout() })
+            }
+            try {
+                dense.settle()
+                val platter = requireNotNull(dense.tag("ce-scratch-platter"))
+                actions.clear()
+                dense.drag(platter.boundsInRoot.center, Offset(60f, 0f))
+                assertEquals(60f, actions.filterIsInstance<ContinuousEditorAction.ScratchDrag>().sumOf { it.distancePx.toDouble() }.toFloat(), .01f)
+            } finally { dense.close() }
+
+            // A phone at double text size reaches the platter, the fader and the close button by scrolling.
+            val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, {}, { ContinuousEditorReadout(scratchFraction = .6f) })
+            }
+            try {
+                phone.settle()
+                assertNotNull(phone.tag("ce-scratch-platter"))
+                phone.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+                phone.settle()
+                val close = requireNotNull(phone.tag("ce-scratch-close")).boundsInRoot
+                assertTrue(close.height >= 48f && close.bottom <= 844f, "Close stays reachable: $close")
+                val cut = requireNotNull(phone.tag("ce-scratch-cut")).boundsInRoot
+                assertTrue(cut.width >= 150f, "The cut fader keeps a usable width at large text: $cut")
+                phone.capture("beat-scratch-phone-font200.png")
+            } finally { phone.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }

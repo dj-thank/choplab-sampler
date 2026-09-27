@@ -29,6 +29,16 @@ sealed interface Action {
     data object CancelWork : Action
     data class Trigger(val padId: Int, val velocity: Float = 1f) : Action
     data class Release(val padId: Int) : Action
+    /**
+     * A PAD scratched by hand: taken at [sourceFrame] (its asset's frames at 48 kHz), then moved to absolute positions
+     * over given output frames, with a cut fader, and let go. Its own loop waits meanwhile; the song plays on.
+     */
+    data class ScratchStart(val padId: Int, val sourceFrame: Double) : Action { init { require(padId in 0..127 && sourceFrame.isFinite()) } }
+    data class ScratchMove(val sourceFrame: Double, val durationFrames: Int) : Action {
+        init { require(sourceFrame.isFinite() && durationFrames in 1..48_000) }
+    }
+    data class ScratchCut(val gain: Float) : Action { init { require(gain.isFinite() && gain in 0f..1f) } }
+    data object ScratchEnd : Action
     data object Play : Action
     data object Pause : Action
     data object Resume : Action
@@ -170,6 +180,13 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
             playback { frame, id -> EngineCommand.Trigger(frame, id, action.padId, action.velocity) }
         }
+        is Action.ScratchStart -> {
+            require(session.project.pads[action.padId].assetHash != null)
+            playback { frame, id -> EngineCommand.ScratchStart(frame, id, action.padId, action.sourceFrame) }
+        }
+        is Action.ScratchMove -> quietly { frame, id -> EngineCommand.ScratchPosition(frame, id, action.sourceFrame, action.durationFrames) }
+        is Action.ScratchCut -> quietly { frame, id -> EngineCommand.ScratchCut(frame, id, action.gain) }
+        Action.ScratchEnd -> playback { frame, id -> EngineCommand.ScratchEnd(frame, id) }
         is Action.Release -> playback { frame, id -> EngineCommand.Release(frame, id, action.padId) }
         Action.Play -> playback { frame, id -> EngineCommand.StartSequence(frame, id) }
         Action.Pause -> playback { frame, id -> EngineCommand.Pause(frame, id) }
@@ -337,6 +354,11 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
     private suspend fun playback(command: (Long, Long) -> EngineCommand): ActionResult {
         val accepted = apply(command); _transport.value = services.engine.snapshot()
         return if (accepted) ActionResult(true) else rejected(Rejection.ENGINE_REFUSED)
+    }
+    /** A hand's scratch update: refused only once the scratch has ended in the engine, which the hand needs no notice of. */
+    private suspend fun quietly(command: (Long, Long) -> EngineCommand): ActionResult {
+        val accepted = apply(command); _transport.value = services.engine.snapshot()
+        return ActionResult(accepted)
     }
     private fun publishDocument() { _document.value = DocumentState(session.project, session.revision, session.canUndo, session.canRedo, _document.value.savedRevision, !services.engine.snapshot().outputAttached) }
     private fun notice(value: Notice) { _notices.tryEmit(value) }

@@ -33,6 +33,28 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
     class SetOriginalMonitorGain(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
         init { require(gain.isFinite() && gain in 0f..2f) }
     }
+    /**
+     * Scratches the loaded original by hand between [startFrame] and [endFrame] (source frames, end exclusive), from
+     * [sourceFrame]: its playback pauses until the hand lets go, and it sounds only while the hand moves it, like a PAD
+     * scratch.
+     */
+    class ScratchOriginalStart(effectiveFrame: Long, orderId: Long, val sourceFrame: Double, val startFrame: Int, val endFrame: Int) :
+        OriginalSourceCommand(effectiveFrame, orderId) {
+        init { require(sourceFrame.isFinite() && startFrame >= 0 && endFrame > startFrame) }
+    }
+    /**
+     * Reach this absolute source position of the scratched original over the next durationFrames output frames, no faster
+     * than [EngineCore.MAX_SCRATCH_SPEED]: a faster hand arrives late.
+     */
+    class ScratchOriginalPosition(effectiveFrame: Long, orderId: Long, val sourceFrame: Double, val durationFrames: Int) :
+        OriginalSourceCommand(effectiveFrame, orderId) {
+        init { require(sourceFrame.isFinite() && durationFrames in 1..48_000) }
+    }
+    class ScratchOriginalCut(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
+        init { require(gain.isFinite() && gain in 0f..1f) }
+    }
+    /** Ends the original's scratch: playback it paused plays on once from there; otherwise it stays paused. */
+    class ScratchOriginalEnd(effectiveFrame: Long, orderId: Long) : OriginalSourceCommand(effectiveFrame, orderId)
     /** Varispeed for listening to the original: pitch and tempo change together, like the earlier app's song key. */
     class SetOriginalPitch(effectiveFrame: Long, orderId: Long, val semitones: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
         init { require(semitones.isFinite() && semitones in -24f..24f) }
@@ -41,11 +63,15 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
         init { require(gain.isFinite() && gain in 0f..1f) }
     }
     class SetTempo(effectiveFrame: Long, orderId: Long, val tempo: Tempo) : EngineCommand(effectiveFrame, orderId)
+    /** Takes a PAD by hand where it sounds (its newest voice), or at [sourceFrame] while it is silent; its voices wait. */
     class ScratchStart(effectiveFrame: Long, orderId: Long, val padId: Int, val sourceFrame: Double) :
         EngineCommand(effectiveFrame, orderId) {
         init { require(padId in 0 until 128 && sourceFrame.isFinite()) }
     }
-    /** Reach this absolute source position over the next durationFrames output frames. */
+    /**
+     * Reach this absolute source position over the next durationFrames output frames, no faster than
+     * [EngineCore.MAX_SCRATCH_SPEED]: a faster hand arrives late.
+     */
     class ScratchPosition(effectiveFrame: Long, orderId: Long, val sourceFrame: Double, val durationFrames: Int) :
         EngineCommand(effectiveFrame, orderId) {
         init { require(sourceFrame.isFinite() && durationFrames in 1..48_000) }
@@ -221,6 +247,8 @@ class EngineSnapshot {
     @Volatile var originalLoaded = false
     @Volatile var originalPlaying = false
     @Volatile var originalSourceFrame = 0L
+    /** The scratched PAD's source frame, or -1 while no PAD is scratched. */
+    @Volatile var scratchFrame = -1.0
     @Volatile var originalMonitorGain = 1f
     @Volatile var songMonitorGain = 1f
     @Volatile var tickNumerator = 0L
@@ -252,6 +280,7 @@ class LiveReadout internal constructor() {
         data.originalLoaded = engine.originalLoaded
         data.originalPlaying = engine.originalPlaying
         data.originalSourceFrame = engine.originalSourceFrame
+        data.scratchFrame = engine.scratchFrame
         data.originalMonitorGain = engine.originalMonitorGain
         data.songMonitorGain = engine.songMonitorGain
         data.tickNumerator = engine.tickNumerator
@@ -281,6 +310,7 @@ class LiveReadout internal constructor() {
                 target.originalLoaded = data.originalLoaded
                 target.originalPlaying = data.originalPlaying
                 target.originalSourceFrame = data.originalSourceFrame
+                target.scratchFrame = data.scratchFrame
                 target.originalMonitorGain = data.originalMonitorGain
                 target.songMonitorGain = data.songMonitorGain
                 target.tickNumerator = data.tickNumerator

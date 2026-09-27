@@ -54,6 +54,8 @@ data class TransportState(
     /** Next 48 kHz transport/source frame; distinct from the monotonically advancing render/DAC clock. */
     val sequenceFrame: Long = 0,
     val sequencePaused: Boolean = false,
+    /** The scratched PAD's 48 kHz source frame, or -1 while no PAD is scratched. */
+    val scratchFrame: Double = -1.0,
 )
 interface EnginePort {
     suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram
