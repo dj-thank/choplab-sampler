@@ -209,7 +209,7 @@
     {
       "coordinate": "com.android.tools:desugar_jdk_libs_nio:2.1.5",
       "scope": "android-desugar",
-      "license": "GPL-2.0-with-classpath-exception",
+      "license": "NOASSERTION",
       "license_url": "https://github.com/google/desugar_jdk_libs/blob/master/LICENSE",
       "binary": {
         "file": "desugar_jdk_libs_nio-2.1.5.jar",
@@ -225,7 +225,9 @@
           "sha256": "1ba5db067a494d09f5c4a94f4cb4d58fc6fd33e0a55417e0e46d3b288328f3bc"
         }
       ],
-      "corresponding_source_status": "Exact 2.1.5 source/build mapping must be resolved before distribution; the POM license URL identifies the upstream license, not a source delivery receipt."
+      "corresponding_source_status": "Exact 2.1.5 source/build mapping must be resolved before distribution; the POM license URL identifies the upstream license, not a source delivery receipt.",
+      "declared_license": "GNU General Public License, version 2, with the Classpath Exception (publisher POM declaration)",
+      "license_status": "The upstream Classpath exception applies only to source files with an explicit header designation. The 2.1.5 binary has no embedded license or source receipt and its sources classifier is unavailable. Exact source/build mapping and per-file exception coverage are not verified; this is not a distribution clearance."
     }
   ],
   "android_rules_source": "https://github.com/TeamNewPipe/NewPipe/blob/7e5df38aad4b2c035332b3f71aee3064d4fdaae4/app/proguard-rules.pro"
