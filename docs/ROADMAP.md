@@ -129,14 +129,16 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 2B-1 NEXTの制作通し | 接続中（Windows Linked Preview、Android NEXT入口） | Previewだけに実hostを配線。取込→chop→PAD→step→再生→保存/再開→書出し/Undoを両OSで通す。Java Sound/AudioTrack driverと診断、Pixel CPU/underrunを測る |
 | 2B-2 移植・切替 | 移行中（合成ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置・旧制作ファイルの音声救出・PADの鳴らし方と切り位置・拍に合わせた配置・配置プリセット接続済み） | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
-| 4 ビート | 着手（BPM入力・tap・swing接続済み、空曲voice/PAD録音候補 `b86eeac` は共有clock・1Undo・24bit書出し・保存再開の本番窓口試験成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
-| 5 ボーカル・歌詞 | LRC基盤はPR156でmain統合済み、編集/同期/ファイル接続はroot `codex/lyrics-editor-integration`候補でLOCAL_PASS。段階全体は未完 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
+| 4 ビート | 着手（BPM入力/tap/swing、空曲録音はPR157で統合済み。BANK名/色/役割・PAD名/pan/ADSRの画面接続候補 `42c0862`は通常BEAT→取消/適用/Undo→本番archive保存/再開が成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
+| 5 ボーカル・歌詞 | LRC基盤PR156と編集/同期/ファイル接続PR160をmain `daedfae`へ統合済み。段階全体は未完 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
 | 6 作詞・TTS | 計画 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
 | 7 ミックス・FX | 計画 | source/bank/stem/vocal/guide/click track、gain/pan/mute/solo/meter、EQ/filter/comp/delay/reverb/master。latency/tail/loop。24bit/16bitディザ、stems/LRC/長さ、同一mix graph |
 | 8 ピッチ補正 | 計画 | YIN/PSOLA等を単音voiceで比較。key/scale/retune/vibrato、無声/低信頼bypass、非破壊A/B。測定と人間の試聴が採用条件 |
 | 9 4パート分離 | 計画 | drums/bass/other/vocalsを1推論から逐次出力、acapella/ボーカル抜き。commit/hash固定DL、shape/order、空きRAM/ORT/長尺peak/cancel、4資産transactionを両OSで確認 |
 | 10 練習coach | 計画 | local timing/pitch指標、take履歴、苦手行反復、日本語説明。reference有無・rap・低信頼を区別し、未実装ASRや根拠のない正解率を作らない |
 | 11 仕上げ・1.0 | 計画 | WASAPI event出力/入力/loopback、format/device/COM失敗とfallback。installer/更新/初回guide、起動/RAM/電池、TalkBack/keyboard、署名と配布readback、対象routeの実音とHuman受入 |
+
+BANK/PAD編集候補はAstra Max担当がcontroller6/panel3/archive1件、rootと担当が本番接続3件・録音後の編集復帰1件・広い画面の初期全16PAD入力1件を確認した。日英・1440pxと390px文字2倍で実textfield、取消/適用/Undo/停止、元音bytesを保つ保存/新store再開が成功。invalid/stale/selection変更/録音/処理中/音声拒否で未確定内容を制作へ入れない。機能sourceは前の検証候補と一致するためその証拠を再利用し、必須CIは本PR headで実施する。実音・TalkBack/Humanは未確認。rollbackはBANK/PAD編集PRのrevert。
 
 ## 要求を落とさない対応表
 
