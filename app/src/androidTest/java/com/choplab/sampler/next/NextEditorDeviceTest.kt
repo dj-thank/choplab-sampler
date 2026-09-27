@@ -3,12 +3,18 @@ package com.choplab.sampler.next
 import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.choplab.core.Action
 import com.choplab.core.Notice
+import com.choplab.core.kits.DrumKits
 import com.choplab.jvm.DriverDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +74,39 @@ class NextEditorDeviceTest {
         assertTrue("Undo was refused: $undone", undone.accepted)
         rule.waitUntil(10_000) { studio.document.value.project == before.project }
         file.delete()
+    }
+
+    @Test
+    fun drumKitButtonFillsBankBThroughTheEditor() {
+        val session = startedSession()
+        val studio = session.backend.studio
+        val before = studio.document.value
+
+        EditorTrace(session).use { trace ->
+            rule.onNodeWithTag("ce-nav-BEAT").performClick()
+            trace.waitUntil("The drum button did not become available") {
+                rule.onAllNodes(hasTestTag("ce-add-drums") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+            }
+            rule.onNodeWithTag("ce-add-drums").performScrollTo().performClick()
+            trace.waitUntil("The kit chooser did not open", 10_000) { rule.onAllNodesWithTag("ce-kit-dusty-jazz").fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithTag("ce-kit-dusty-jazz").performClick()
+            // A developer's own sounds on BANK B are replaced only after this explicit answer; Undo restores them below.
+            trace.waitUntil("The kit was neither asked about nor installed") {
+                rule.onAllNodesWithTag("ce-kit-question").fetchSemanticsNodes().isNotEmpty() || studio.document.value.revision != before.revision
+            }
+            if (rule.onAllNodesWithTag("ce-kit-question").fetchSemanticsNodes().isNotEmpty()) rule.onNodeWithTag("ce-kit-replace").performClick()
+            trace.waitUntil("The kit was not installed") { studio.work.value.jobId == null && studio.document.value.revision != before.revision }
+            val project = studio.document.value.project
+            (0 until 16).forEach { slot ->
+                val hash = requireNotNull(project.pads[16 + slot].assetHash) { "BANK B PAD ${slot + 1} is empty$trace" }
+                assertEquals(slot, DrumKits.identify(project.asset(hash))?.slot)
+                assertTrue(runBlocking { session.backend.assets.containsVerified(project.asset(hash)) })
+            }
+        }
+
+        val undone = runBlocking { studio.dispatch(Action.Undo) }
+        assertTrue("Undo was refused: $undone", undone.accepted)
+        rule.waitUntil(10_000) { studio.document.value.project == before.project }
     }
 
     private fun startedSession(): NextSession {

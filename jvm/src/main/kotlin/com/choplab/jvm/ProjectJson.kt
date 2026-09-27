@@ -32,7 +32,9 @@ object ProjectJson {
         "pads" to arr(p.pads.map { a -> obj("id" to num(a.id), "assetHash" to nullable(a.assetHash), "range" to (a.range?.let(::range) ?: JsonNull),
             "name" to str(a.name), "mode" to str(a.mode.name), "pitchSemitones" to num(a.pitchSemitones), "gain" to num(a.gain), "pan" to num(a.pan),
             "reverse" to bool(a.reverse), "chokeGroup" to num(a.chokeGroup), "attackFrames" to num(a.attackFrames),
-            "releaseFrames" to num(a.releaseFrames), "loopCrossfadeFrames" to num(a.loopCrossfadeFrames), "decayFrames" to num(a.decayFrames), "sustainLevel" to num(a.sustainLevel)) }),
+            "releaseFrames" to num(a.releaseFrames), "loopCrossfadeFrames" to num(a.loopCrossfadeFrames), "decayFrames" to num(a.decayFrames), "sustainLevel" to num(a.sustainLevel),
+            // Written only when set, so a document that never used tone stays readable by builds without it.
+            *(if (a.tone == 1f) emptyArray() else arrayOf("tone" to num(a.tone)))) }),
         "patterns" to arr(p.patterns.map { v -> obj("id" to str(v.id), "name" to str(v.name), "bars" to num(v.bars),
             "notes" to arr(v.notes.map { n -> obj("tick" to num(n.tick), "padId" to num(n.padId), "velocity" to num(n.velocity)) })) }),
         "song" to arr(p.song.map { v -> obj("patternId" to str(v.patternId), "repeats" to num(v.repeats)) }),
@@ -43,7 +45,9 @@ object ProjectJson {
             "words" to arr(v.words.map { w -> obj("text" to str(w.text), "startTick" to num(w.startTick), "endTick" to num(w.endTick)) })) }),
         "takes" to arr(p.takes.map { v -> obj("id" to str(v.id), "trackId" to str(v.trackId), "assetHash" to str(v.assetHash), "range" to range(v.range),
             "timelineStartFrame" to num(v.timelineStartFrame), "compensationFrames" to num(v.compensationFrames)) }),
-        "source" to (p.source?.let { s -> obj("assetHash" to str(s.assetHash), "range" to range(s.range), "markers" to arr(s.markers.map(::num))) } ?: JsonNull),
+        "source" to (p.source?.let { s -> obj("assetHash" to str(s.assetHash), "range" to range(s.range), "markers" to arr(s.markers.map(::num)),
+            // Written only when set, like a PAD's tone, so a document heard at its own key stays as it was.
+            *(if (s.pitchSemitones == 0.0) emptyArray() else arrayOf("pitchSemitones" to num(s.pitchSemitones)))) } ?: JsonNull),
     )
 
     internal fun fromJson(p: JsonObject): Project {
@@ -59,10 +63,12 @@ object ProjectJson {
             },
             banks = p.list("banks", 8) { e -> e.obj().fields("id", "name", "color", "role").let { Bank(it.int("id"), it.string("name"), it.int("color"), it.string("role")) } },
             pads = p.list("pads", 128) { e ->
-                val a = e.obj().fields("id", "assetHash", "range", "name", "mode", "pitchSemitones", "gain", "pan", "reverse", "chokeGroup", "attackFrames", "releaseFrames", "loopCrossfadeFrames", "decayFrames", "sustainLevel")
+                val a = e.obj().fields("id", "assetHash", "range", "name", "mode", "pitchSemitones", "gain", "pan", "reverse", "chokeGroup", "attackFrames",
+                    "releaseFrames", "loopCrossfadeFrames", "decayFrames", "sustainLevel", optional = setOf("tone"))
                 Pad(a.int("id"), a.optionalString("assetHash"), a.getValue("range").let { if (it == JsonNull) null else readRange(it) }, a.string("name"),
                     PlayMode.valueOf(a.string("mode")), a.double("pitchSemitones"), a.float("gain"), a.float("pan"), a.boolean("reverse"),
-                    a.int("chokeGroup"), a.int("attackFrames"), a.int("releaseFrames"), a.int("loopCrossfadeFrames"), a.int("decayFrames"), a.float("sustainLevel"))
+                    a.int("chokeGroup"), a.int("attackFrames"), a.int("releaseFrames"), a.int("loopCrossfadeFrames"), a.int("decayFrames"), a.float("sustainLevel"),
+                    if ("tone" in a) a.float("tone") else 1f)
             },
             patterns = p.list("patterns", 128) { e ->
                 val a = e.obj().fields("id", "name", "bars", "notes")
@@ -92,8 +98,9 @@ object ProjectJson {
                 Take(a.string("id"), a.string("trackId"), a.string("assetHash"), readRange(a.getValue("range")), a.long("timelineStartFrame"), a.int("compensationFrames"))
             },
             source = p.getValue("source").let { e -> if (e == JsonNull) null else {
-                val a = e.obj().fields("assetHash", "range", "markers")
-                Source(a.string("assetHash"), readRange(a.getValue("range")), a.list("markers", 127) { it.strictLong() })
+                val a = e.obj().fields("assetHash", "range", "markers", optional = setOf("pitchSemitones"))
+                Source(a.string("assetHash"), readRange(a.getValue("range")), a.list("markers", 127) { it.strictLong() },
+                    if ("pitchSemitones" in a) a.double("pitchSemitones") else 0.0)
             } },
         )
     }
@@ -109,6 +116,11 @@ internal fun bool(value: Boolean) = JsonPrimitive(value)
 internal fun nullable(value: String?): JsonElement = value?.let(::str) ?: JsonNull
 internal fun JsonElement.obj(): JsonObject = this as? JsonObject ?: throw IllegalArgumentException("Expected object")
 internal fun JsonObject.fields(vararg names: String): JsonObject { require(keys == names.toSet()) { "Missing or unknown JSON field" }; return this }
+/** Like [fields], and also accepts the [optional] fields a later build may write. */
+internal fun JsonObject.fields(vararg names: String, optional: Set<String>): JsonObject {
+    require(keys.containsAll(names.toSet()) && (keys - names.toSet()).all { it in optional }) { "Missing or unknown JSON field" }
+    return this
+}
 private fun JsonElement.primitive(): JsonPrimitive = this as? JsonPrimitive ?: throw IllegalArgumentException("Expected primitive")
 internal fun JsonObject.string(key: String): String = getValue(key).primitive().let { require(it.isString); it.content }
 internal fun JsonObject.optionalString(key: String): String? = if (getValue(key) == JsonNull) null else string(key)

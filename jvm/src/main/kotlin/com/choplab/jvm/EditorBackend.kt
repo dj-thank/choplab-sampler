@@ -1,6 +1,7 @@
 package com.choplab.jvm
 
 import com.choplab.core.*
+import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pattern
 import com.choplab.core.model.Project
@@ -41,6 +42,12 @@ class EditorBackend private constructor(
                 catch (_: Exception) { persistenceFailed.value = true }
             }
         }
+        // The original is heard at the document's song key however the document changed: edit, Undo, open or import.
+        scope.launch {
+            studio.document.map { it.project.source?.pitchSemitones ?: 0.0 }.distinctUntilChanged().collect { semitones ->
+                audition.pitch(semitones.toFloat())
+            }
+        }
     }
 
     suspend fun flushAutosave() = withContext(Dispatchers.IO) {
@@ -58,6 +65,9 @@ class EditorBackend private constructor(
         List(peaks.buckets) { bucket -> maxOf(abs(peaks.minimum(bucket, 0)), abs(peaks.maximum(bucket, 0)),
             abs(peaks.minimum(bucket, 1)), abs(peaks.maximum(bucket, 1))) }
     }
+
+    /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
+    suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)
 
     /** [flush] is false only after the user chose to close without the final autosave. */
     suspend fun shutdown(flush: Boolean = true) {

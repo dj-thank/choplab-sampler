@@ -33,6 +33,10 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
     class SetOriginalMonitorGain(effectiveFrame: Long, orderId: Long, val gain: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
         init { require(gain.isFinite() && gain in 0f..2f) }
     }
+    /** Varispeed for listening to the original: pitch and tempo change together, like the earlier app's song key. */
+    class SetOriginalPitch(effectiveFrame: Long, orderId: Long, val semitones: Float) : OriginalSourceCommand(effectiveFrame, orderId) {
+        init { require(semitones.isFinite() && semitones in -24f..24f) }
+    }
     class SetSongMonitorGain(effectiveFrame: Long, orderId: Long, val gain: Float) : EngineCommand(effectiveFrame, orderId) {
         init { require(gain.isFinite() && gain in 0f..1f) }
     }

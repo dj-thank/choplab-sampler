@@ -30,6 +30,9 @@
     <string name="ce_mic_record">マイクで録音</string>
     <string name="ce_device_record">端末音声を録音</string>
     <string name="ce_chop_start">チョップ開始</string>
+    <string name="ce_chop_stop">チョップを止める</string>
+    <string name="ce_chop_live_hint">音に合わせてPADを叩くと、その瞬間から切ります。</string>
+    <string name="ce_chop_pad_action">今の位置で切る</string>
     <string name="ce_play_from_start">頭から再生</string>
     <string name="ce_add_audio">音源を追加</string>
     <string name="ce_chop_hint">音を流しながらPADで切る。音ありPADを長押しして微調整</string>
@@ -122,4 +125,17 @@
     <string name="ce_tempo_hint">40–240 BPM</string>
     <string name="ce_bpm">BPM</string>
     <string name="ce_close">閉じる</string>
+    <string name="ce_change_drums">ドラムを変える</string>
+    <string name="ce_kit_title">ドラムキットを選ぶ</string>
+    <string name="ce_kit_hint">BANK Bの16個のPADに入ります。曲に置いたドラムは、並びはそのままで新しい音に変わります。</string>
+    <string name="ce_kit_in_use">使用中</string>
+    <string name="ce_kit_dusty_jazz">丸いキック・乾いたスネア</string>
+    <string name="ce_kit_boom_bap">太い低音・強いバックビート</string>
+    <string name="ce_kit_vinyl_soul">柔らかい輪郭・古い盤の質感</string>
+    <string name="ce_kit_lofi_tape">暗いハット・揺れた質感</string>
+    <string name="ce_kit_clean_studio">明瞭・現代的</string>
+    <string name="ce_kit_replace_title">BANK Bの音を置き換えますか？</string>
+    <string name="ce_kit_replace_body">BANK Bにある自分の音%1$d個が、ドラムに置き換わります。曲に置いた分はそのまま残ります。「戻す」で元に戻せます。</string>
+    <string name="ce_kit_replace">置き換える</string>
+    <string name="ce_kit_keep">やめる</string>
 </resources>

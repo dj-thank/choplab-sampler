@@ -53,6 +53,36 @@ import kotlin.math.roundToLong
                 CEStatus(state.status)
             }
         }
+        CEDrumKitDialogs(state, onAction)
+    }
+}
+
+@Composable private fun CEDrumKitDialogs(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
+    if (state.drumKitChooserOpen) AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.DismissDrumKit) },
+        modifier = Modifier.testTag("ce-kit-chooser"), title = { Text(stringResource(Res.string.ce_kit_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(Res.string.ce_kit_hint), fontSize = 14.sp, lineHeight = 20.sp)
+                val inUse = stringResource(Res.string.ce_kit_in_use)
+                state.drumKits.forEach { kit ->
+                    val installed = kit.id == state.installedDrumKit
+                    val character = when (kit.id) {
+                        "dusty-jazz" -> Res.string.ce_kit_dusty_jazz; "boom-bap" -> Res.string.ce_kit_boom_bap
+                        "vinyl-soul" -> Res.string.ce_kit_vinyl_soul; "lofi-tape" -> Res.string.ce_kit_lofi_tape
+                        "clean-studio" -> Res.string.ce_kit_clean_studio; else -> null
+                    }?.let { "\n" + stringResource(it) }.orEmpty()
+                    CEButton("${kit.name}$character${if (installed) "\n$inUse" else ""}", { onAction(ContinuousEditorAction.ChooseDrumKit(kit.id)) },
+                        Modifier.fillMaxWidth().semantics { selected = installed }, primary = installed, tag = "ce-kit-${kit.id}")
+                }
+            }
+        },
+        confirmButton = { CEButton(stringResource(Res.string.ce_close), { onAction(ContinuousEditorAction.DismissDrumKit) }, tag = "ce-kit-close") })
+    state.drumKitQuestion?.let { question ->
+        AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.DismissDrumKit) },
+            modifier = Modifier.testTag("ce-kit-question"), title = { Text(stringResource(Res.string.ce_kit_replace_title)) },
+            text = { Text(stringResource(Res.string.ce_kit_replace_body, question.replacedSounds), fontSize = 14.sp, lineHeight = 20.sp) },
+            confirmButton = { CEButton(stringResource(Res.string.ce_kit_replace), { onAction(ContinuousEditorAction.ConfirmDrumKit) }, primary = true, tag = "ce-kit-replace") },
+            dismissButton = { CEButton(stringResource(Res.string.ce_kit_keep), { onAction(ContinuousEditorAction.DismissDrumKit) }, tag = "ce-kit-keep") })
     }
 }
 
@@ -197,18 +227,20 @@ import kotlin.math.roundToLong
 
 @Composable private fun CEChop(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean) {
+    // During a live chop pass a PAD cuts the original where it was playing when the PAD went down.
+    val capture: (() -> Long)? = if (state.liveChopping) ({ readout().originalFrame }) else null
     if (compact) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxWidth(), 240.dp)
         CEBanks(state, onAction)
-        CEPads(state, onAction, maximumSide = 140.dp)
+        CEPads(state, onAction, maximumSide = 140.dp, capture = capture)
     } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.weight(.58f).fillMaxHeight()) {
             CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxSize(), null)
         }
         Column(Modifier.weight(.42f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CEBanks(state, onAction)
-            Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CEPads(state, onAction, maximumSide = 160.dp) }
+            CEChopHint(state)
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CEPads(state, onAction, maximumSide = 160.dp, capture = capture) }
         }
     }
 }
@@ -224,7 +256,11 @@ import kotlin.math.roundToLong
             onSeek = if (original != null && state.permits(ContinuousCapability.ORIGINAL_SEEK)) ({ onAction(ContinuousEditorAction.SeekOriginal((it * original.frames).roundToLong())) }) else null,
             tag = "ce-original-wave")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEActionButton(stringResource(Res.string.ce_chop_start), ContinuousEditorAction.BeginLiveChop, state, ContinuousCapability.LIVE_CHOP, onAction, Modifier.weight(1f))
+            // Ending a pass is always possible; starting one needs the original on an output.
+            if (state.liveChopping) CEActionButton(stringResource(Res.string.ce_chop_stop), ContinuousEditorAction.EndLiveChop, state,
+                ContinuousCapability.STOP_ALL, onAction, Modifier.weight(1f), primary = true, tag = "ce-live-chop")
+            else CEActionButton(stringResource(Res.string.ce_chop_start), ContinuousEditorAction.BeginLiveChop, state,
+                ContinuousCapability.LIVE_CHOP, onAction, Modifier.weight(1f), tag = "ce-live-chop")
             CEActionButton(stringResource(Res.string.ce_play_from_start), ContinuousEditorAction.SeekOriginal(0), state, ContinuousCapability.ORIGINAL_SEEK, onAction, Modifier.weight(1f))
             CEActionButton(stringResource(Res.string.ce_add_audio), ContinuousEditorAction.ImportAudio, state, ContinuousCapability.IMPORT_AUDIO, onAction, Modifier.weight(1f))
         }
@@ -232,7 +268,7 @@ import kotlin.math.roundToLong
             { onAction(ContinuousEditorAction.SetOriginalPitch(it)) }, true, Modifier.fillMaxWidth())
         CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
             { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.fillMaxWidth(), tag = "ce-source-monitor")
-        Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
+        CEChopHint(state)
         val frames = original?.frames ?: 1
         fun framesOf(range: ClosedFloatingPointRange<Float>): Pair<Long, Long> {
             val a = (range.start * frames).roundToLong().coerceIn(0, frames - 1)
@@ -257,8 +293,13 @@ import kotlin.math.roundToLong
     }
 }
 
+@Composable private fun CEChopHint(state: ContinuousEditorState) {
+    if (state.liveChopping) Text(stringResource(Res.string.ce_chop_live_hint), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = CEColor.Ink)
+    else Text(stringResource(Res.string.ce_chop_hint), fontSize = 12.sp, color = CEColor.Border)
+}
+
 @Composable internal fun CEAdjustment(label: String, value: Float, state: ContinuousEditorState, capability: ContinuousCapability,
-    onValue: (Float) -> Unit, semitones: Boolean = false, modifier: Modifier = Modifier) {
+    onValue: (Float) -> Unit, semitones: Boolean = false, modifier: Modifier = Modifier, maximum: Float = 2f) {
     val decrease = stringResource(Res.string.ce_decrease, label)
     val increase = stringResource(Res.string.ce_increase, label)
     Column(modifier.heightIn(min = 88.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Tan).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -268,7 +309,7 @@ import kotlin.math.roundToLong
                 Modifier.weight(1f, fill = false).widthIn(min = 56.dp), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
             CEButton("−", { onValue(if (semitones) (value - 1).coerceAtLeast(-24f) else (value - .05f).coerceAtLeast(0f)) },
                 enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = decrease })
-            CEButton("+", { onValue(if (semitones) (value + 1).coerceAtMost(24f) else (value + .05f).coerceAtMost(2f)) },
+            CEButton("+", { onValue(if (semitones) (value + 1).coerceAtMost(24f) else (value + .05f).coerceAtMost(maximum)) },
                 enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = increase })
         }
     }

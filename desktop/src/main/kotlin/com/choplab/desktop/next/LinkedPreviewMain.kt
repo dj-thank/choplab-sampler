@@ -115,6 +115,8 @@ private class DesktopEditorPorts(private val backend: NextBackend, private val p
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
+    override val drumKitsAvailable get() = true
+    override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
     override suspend fun chooseAudio() = choose(false, "wav", if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, "choplab", if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
     override suspend fun chooseSave() = choose(true, "choplab", if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)

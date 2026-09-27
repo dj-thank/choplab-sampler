@@ -133,7 +133,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEAdjustment(stringResource(Res.string.ce_key), pad?.pitchSemitones ?: 0f, state, ContinuousCapability.PAD_PITCH,
                 { onAction(ContinuousEditorAction.SetPadPitch(state.selectedPadId, it)) }, true, Modifier.weight(1f))
             CEAdjustment(stringResource(Res.string.ce_tone), pad?.tone ?: 1f, state, ContinuousCapability.PAD_TONE,
-                { onAction(ContinuousEditorAction.SetPadTone(state.selectedPadId, it)) }, modifier = Modifier.weight(1f))
+                { onAction(ContinuousEditorAction.SetPadTone(state.selectedPadId, it)) }, modifier = Modifier.weight(1f), maximum = 1f)
             CEAdjustment(stringResource(Res.string.ce_gain), pad?.gain ?: 1f, state, ContinuousCapability.PAD_GAIN,
                 { onAction(ContinuousEditorAction.SetPadGain(state.selectedPadId, it)) }, modifier = Modifier.weight(1f))
         }
@@ -142,7 +142,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         else Box(Modifier.horizontalScroll(rememberScrollState())) { Box(Modifier.width(540.dp)) { Adjustments() } }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEActionButton(stringResource(Res.string.ce_add_drums), ContinuousEditorAction.AddDrum, state, ContinuousCapability.ADD_DRUM, onAction, Modifier.weight(1f), tag = "ce-add-drums")
+            CEActionButton(stringResource(if (state.installedDrumKit == null) Res.string.ce_add_drums else Res.string.ce_change_drums), ContinuousEditorAction.AddDrum,
+                state, ContinuousCapability.ADD_DRUM, onAction, Modifier.weight(1f), tag = "ce-add-drums")
             CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, Modifier.weight(1f), tag = "ce-record-voice")
             CEActionButton(stringResource(Res.string.ce_scratch), ContinuousEditorAction.OpenScratch, state, ContinuousCapability.SCRATCH, onAction, Modifier.weight(1f), tag = "ce-scratch")
         }

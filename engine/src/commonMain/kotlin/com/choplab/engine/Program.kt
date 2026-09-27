@@ -2,6 +2,7 @@ package com.choplab.engine
 
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.pow
 
 /** All counts and positions are stereo frames, never interleaved sample indices. */
@@ -59,6 +60,8 @@ class Pad(
     val loopCrossfadeFrames: Int = 48,
     val decayFrames: Int = 0,
     val sustainLevel: Float = 1f,
+    /** 1 leaves the sound untouched; lower values darken it with a one-pole low-pass, down to 80 Hz at 0. */
+    val tone: Float = 1f,
 ) {
     init {
         require(id in 0 until EngineFormat.PAD_COUNT)
@@ -68,10 +71,18 @@ class Pad(
         require(chokeGroup in 0..128)
         require(attackFrames in 0..48_000 && releaseFrames in 1..48_000 && loopCrossfadeFrames in 0..24_000)
         require(decayFrames in 0..48_000 && sustainLevel.isFinite() && sustainLevel in 0f..1f)
+        require(tone.isFinite() && tone in 0f..1f)
     }
+    /** The earlier app's curve: corner 80 Hz x 225^tone, so 1 would be 18 kHz; the top step bypasses exactly. */
+    internal val toneAlpha: Double = if (tone >= TONE_BYPASS) 1.0 else 1.0 - exp(-2.0 * PI * 80.0 * 225.0.pow(tone.toDouble()) / EngineFormat.SAMPLE_RATE)
     internal val step = 2.0.pow(pitchSemitones / 12.0) * if (reverse) -1.0 else 1.0
     internal val leftGain = gain * if (pan > 0f) cos(pan * PI / 2).toFloat() else 1f
     internal val rightGain = gain * if (pan < 0f) cos(-pan * PI / 2).toFloat() else 1f
+
+    companion object {
+        /** At or above this, tone is bypassed and the PAD renders bit for bit as before tone existed. */
+        const val TONE_BYPASS = 0.995f
+    }
 }
 
 class SequenceNote(val tick: Int, val padId: Int, val velocity: Float = 1f) {

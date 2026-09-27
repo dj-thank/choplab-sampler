@@ -1,5 +1,7 @@
 package com.choplab.engine
 
+import kotlin.math.pow
+
 /** Monitor-only source region. It has no PAD identity and is not part of the saved mix graph. */
 class OriginalSource(
     val asset: PcmAsset,
@@ -18,10 +20,13 @@ internal class OriginalSourceVoice {
         private set
     var assetSlot = -1
         private set
-    var position = 0
+    /** Source frame being read; fractional while the pitch is not zero. */
+    var position = 0.0
         private set
     var playing = false
         private set
+    /** Source frames per output frame: exactly 1 at zero semitones, so unpitched playback stays sample-exact. */
+    private var step = 1.0
     val monitorGain = ParameterSmoother(1f)
     var outputLeft = 0.0
         private set
@@ -38,12 +43,12 @@ internal class OriginalSourceVoice {
         beginTransition()
         source = value
         assetSlot = slot
-        position = value?.startFrame ?: 0
+        position = (value?.startFrame ?: 0).toDouble()
         playing = continuePlaying
     }
     fun play(): Boolean {
         val source = source ?: return false
-        if (position >= source.endFrame) position = source.startFrame
+        if (position >= source.endFrame) position = source.startFrame.toDouble()
         beginTransition()
         playing = true
         return true
@@ -53,9 +58,16 @@ internal class OriginalSourceVoice {
         val source = source ?: return false
         if (frame < source.startFrame || frame > source.endFrame) return false
         beginTransition()
-        position = frame.toInt()
-        if (position == source.endFrame) playing = false
+        position = frame.toDouble()
+        if (frame == source.endFrame.toLong()) playing = false
         return true
+    }
+    /** Keeps the read position; a sounding change is blended like a seek so a new interpolation band cannot click. */
+    fun pitch(semitones: Float) {
+        val next = if (semitones == 0f) 1.0 else 2.0.pow(semitones / 12.0)
+        if (next == step) return
+        if (playing) beginTransition()
+        step = next
     }
     fun stop(immediate: Boolean) {
         if (immediate) {
@@ -65,7 +77,7 @@ internal class OriginalSourceVoice {
             outputLeft = 0.0; outputRight = 0.0
         } else beginTransition()
         playing = false
-        position = source?.startFrame ?: 0
+        position = (source?.startFrame ?: 0).toDouble()
     }
     private fun beginTransition() {
         fromLeft = lastDryLeft
@@ -78,10 +90,8 @@ internal class OriginalSourceVoice {
         var targetLeft = 0.0
         var targetRight = 0.0
         if (playing && source != null) {
-            targetLeft = interpolator.read(source.asset, position.toDouble(), 1.0, 0,
-                source.startFrame, source.endFrame, source.loop)
-            targetRight = interpolator.read(source.asset, position.toDouble(), 1.0, 1,
-                source.startFrame, source.endFrame, source.loop)
+            targetLeft = interpolator.read(source.asset, position, step, 0, source.startFrame, source.endFrame, source.loop)
+            targetRight = interpolator.read(source.asset, position, step, 1, source.startFrame, source.endFrame, source.loop)
         }
         if (transitionAge < TRANSITION_FRAMES - 1) {
             val blend = smoothUnit(transitionAge.toDouble() / (TRANSITION_FRAMES - 1))
@@ -96,9 +106,10 @@ internal class OriginalSourceVoice {
         outputLeft = lastDryLeft * gain
         outputRight = lastDryRight * gain
         if (playing && source != null) {
-            position++
-            if (position == source.endFrame) {
-                if (source.loop) position = source.startFrame
+            position += step
+            if (position >= source.endFrame) {
+                // A loop keeps the fraction past its end, so a pitched loop runs on without a jump.
+                if (source.loop) position = source.startFrame + (position - source.endFrame) % (source.endFrame - source.startFrame)
                 else { playing = false; beginTransition() }
             }
         }

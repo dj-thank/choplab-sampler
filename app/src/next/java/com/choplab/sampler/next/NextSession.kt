@@ -80,6 +80,8 @@ class NextSession private constructor(
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
         override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
         override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
+        override val drumKitsAvailable get() = true
+        override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
 
         override suspend fun chooseAudio(): Location? {
             val uri = pickers.pick(PickerKind.AUDIO) ?: return null

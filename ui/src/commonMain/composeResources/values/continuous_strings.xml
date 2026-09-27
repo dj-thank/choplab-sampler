@@ -30,6 +30,9 @@
     <string name="ce_mic_record">Record microphone</string>
     <string name="ce_device_record">Record device audio</string>
     <string name="ce_chop_start">Start chopping</string>
+    <string name="ce_chop_stop">Stop chopping</string>
+    <string name="ce_chop_live_hint">Tap a pad in time with the sound to cut from that moment.</string>
+    <string name="ce_chop_pad_action">Cut here</string>
     <string name="ce_play_from_start">Play from start</string>
     <string name="ce_add_audio">Add audio</string>
     <string name="ce_chop_hint">Chop with a pad while playing. Hold an assigned pad for fine adjustment.</string>
@@ -122,4 +125,17 @@
     <string name="ce_tempo_hint">40–240 BPM</string>
     <string name="ce_bpm">BPM</string>
     <string name="ce_close">Close</string>
+    <string name="ce_change_drums">Change drums</string>
+    <string name="ce_kit_title">Choose a drum kit</string>
+    <string name="ce_kit_hint">Fills the 16 PADs of BANK B. Drums already placed in the song keep their rhythm and take the new sounds.</string>
+    <string name="ce_kit_in_use">In use</string>
+    <string name="ce_kit_dusty_jazz">Round kick, dry snare</string>
+    <string name="ce_kit_boom_bap">Deep low end, strong backbeat</string>
+    <string name="ce_kit_vinyl_soul">Soft edges, old-vinyl texture</string>
+    <string name="ce_kit_lofi_tape">Dark hats, wobbly tape texture</string>
+    <string name="ce_kit_clean_studio">Clear and modern</string>
+    <string name="ce_kit_replace_title">Replace the sounds in BANK B?</string>
+    <string name="ce_kit_replace_body">%1$d of your own sounds in BANK B will be replaced by drums. What you already placed in the song stays. Undo brings them back.</string>
+    <string name="ce_kit_replace">Replace</string>
+    <string name="ce_kit_keep">Keep my sounds</string>
 </resources>

@@ -439,6 +439,7 @@ private fun EngineCommand.relativeTo(offset: Long, wireOrder: Long): EngineComma
         is EngineCommand.PauseOriginalSource -> EngineCommand.PauseOriginalSource(frame, orderId)
         is EngineCommand.SeekOriginalSource -> EngineCommand.SeekOriginalSource(frame, orderId, sourceFrame)
         is EngineCommand.SetOriginalMonitorGain -> EngineCommand.SetOriginalMonitorGain(frame, orderId, gain)
+        is EngineCommand.SetOriginalPitch -> EngineCommand.SetOriginalPitch(frame, orderId, semitones)
         is EngineCommand.SetSongMonitorGain -> EngineCommand.SetSongMonitorGain(frame, orderId, gain)
         is EngineCommand.SetTempo -> EngineCommand.SetTempo(frame, orderId, tempo)
         is EngineCommand.ScratchStart -> EngineCommand.ScratchStart(frame, orderId, padId, sourceFrame)

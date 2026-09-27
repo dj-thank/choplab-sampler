@@ -15,6 +15,8 @@ class SourceAuditionController(
     private val driver: StreamingEnginePort,
     private val pcm: PcmPort,
     scope: CoroutineScope,
+    /** How monitoring commands reach the output. */
+    private val send: suspend (EngineCommand) -> Boolean = driver::applyMonitoring,
 ) : AutoCloseable {
     private val owner = SupervisorJob(scope.coroutineContext[Job])
     private val jobs = CoroutineScope(scope.coroutineContext + owner)
@@ -23,6 +25,10 @@ class SourceAuditionController(
     private val preparation = AtomicReference<Deferred<com.choplab.engine.PcmAsset>?>(null)
     private val loaded = AtomicReference<Asset?>(null)
     private val controls = Mutex()
+    /** The song key the original should play at; sent again with every source, so a rebuilt output keeps it. */
+    @Volatile private var semitones = 0f
+    /** Whether the loaded original took [semitones]; a key the output refused is sent again before the next play. */
+    @Volatile private var keyApplied = false
 
     fun cancelPreparation() {
         generation.incrementAndGet()
@@ -38,8 +44,9 @@ class SourceAuditionController(
             val data = job.await()
             return controls.withLock {
                 if (token != generation.get()) return@withLock false
-                val accepted = command { frame, id -> EngineCommand.SetOriginalSource(frame, id, OriginalSource(data)) }
-                if (accepted && token == generation.get()) loaded.set(asset)
+                val accepted = command { frame, id -> EngineCommand.SetOriginalSource(frame, id, OriginalSource(data)) } &&
+                    command { frame, id -> EngineCommand.SetOriginalPitch(frame, id, semitones) }
+                if (accepted && token == generation.get()) { loaded.set(asset); keyApplied = true }
                 accepted && token == generation.get()
             }
         } finally { preparation.compareAndSet(job, null) }
@@ -49,7 +56,9 @@ class SourceAuditionController(
         cancelPreparation()
         val token = generation.get()
         if (!ensureSource(asset, token)) return false
-        return controls.withLock { token == generation.get() && command { frame, id -> EngineCommand.PlayOriginalSource(frame, id) } }
+        return controls.withLock {
+            token == generation.get() && (keyApplied || sendKey()) && command { frame, id -> EngineCommand.PlayOriginalSource(frame, id) }
+        }
     }
     suspend fun pause(): Boolean {
         cancelPreparation()
@@ -68,6 +77,18 @@ class SourceAuditionController(
         val frame48 = ProgramFrames.to48k(nativeFrame, asset.sampleRate)
         return controls.withLock { token == generation.get() && command { frame, id -> EngineCommand.SeekOriginalSource(frame, id, frame48) } }
     }
+    /**
+     * Varispeed for listening: pitch and tempo change together. Kept even when no output takes it now (hidden,
+     * lost or still opening); the next source sent to an output carries it.
+     */
+    suspend fun pitch(semitones: Float): Boolean {
+        require(semitones.isFinite() && semitones in -24f..24f)
+        return controls.withLock {
+            this.semitones = semitones
+            sendKey()
+        }
+    }
+    private suspend fun sendKey(): Boolean = command { frame, id -> EngineCommand.SetOriginalPitch(frame, id, semitones) }.also { keyApplied = it }
     suspend fun originalGain(gain: Float): Boolean {
         require(gain.isFinite() && gain in 0f..1f)
         return controls.withLock { command { frame, id -> EngineCommand.SetOriginalMonitorGain(frame, id, gain) } }
@@ -81,7 +102,7 @@ class SourceAuditionController(
         return (driver.originalPlayback().sourceFrame * asset.sampleRate / 48_000).coerceIn(0, asset.frames)
     }
     private suspend fun command(factory: (Long, Long) -> EngineCommand): Boolean =
-        driver.applyMonitoring(factory(driver.snapshot().frame, order.incrementAndGet()))
+        send(factory(driver.snapshot().frame, order.incrementAndGet()))
 
     override fun close() { cancelPreparation(); loaded.set(null); owner.cancel() }
 

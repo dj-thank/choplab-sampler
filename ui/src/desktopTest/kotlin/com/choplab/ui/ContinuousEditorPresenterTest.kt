@@ -1,6 +1,8 @@
 package com.choplab.ui
 
 import com.choplab.core.*
+import com.choplab.core.edit.Intent
+import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
@@ -90,6 +92,243 @@ class ContinuousEditorPresenterTest {
             withTimeout(2000) { h.presenter.state.first { it.clips.isEmpty() } }
         } finally { h.close() }
     }
+    @Test fun drumKitFillsBankBAndAKitChangeKeepsThePlacedBeat() = runBlocking<Unit> {
+        val h = Harness(kits = true)
+        try {
+            val offered = h.presenter.state.value
+            assertTrue(offered.permits(ContinuousCapability.ADD_DRUM))
+            assertEquals(DrumKits.catalog.map { it.id }, offered.drumKits.map { it.id })
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.AddDrum))
+            withTimeout(2000) { h.presenter.state.first { it.drumKitChooserOpen } }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("dusty-jazz")))
+            val installed = withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "dusty-jazz" && it.selectedPadId == 16 } }
+            assertFalse(installed.drumKitChooserOpen)
+            assertNull(installed.drumKitQuestion, "An empty drum BANK needs no question")
+            assertTrue(installed.pads.subList(16, 32).all { it.kind == ContinuousPadKind.DRUM })
+            assertEquals(listOf("KICK 1", "SNARE 1", "CLOSED HAT 1", "CLAP 1"), listOf(16, 20, 24, 28).map { installed.pads[it].name })
+            assertEquals(ContinuousPadKind.SAMPLE, installed.pads[0].kind, "The user's own chop stays a sample")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(16, null, 4_800)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            val placed = h.studio.document.value.project.clips
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("boom-bap")))
+            withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "boom-bap" } }
+            val changed = h.studio.document.value.project.clips
+            assertEquals(placed.map { it.copy(assetHash = if (it.assetHash == h.ports.kitHash("dusty-jazz", 0)) h.ports.kitHash("boom-bap", 0) else it.assetHash) }, changed,
+                "The placed kick takes the new kit's kick in the same place; the chop clip stays")
+            assertNotEquals(placed, changed)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(placed, h.studio.document.value.project.clips, "One Undo returns the previous kit")
+            withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "dusty-jazz" } }
+        } finally { h.close() }
+    }
+
+    @Test fun aKitChangeSwapsOnlyTheSoundsAndEachDrumKeepsItsSettings() = runBlocking<Unit> {
+        val h = Harness(kits = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("dusty-jazz")))
+            withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "dusty-jazz" } }
+            val tuned = h.studio.document.value.project.pads[16].copy(gain = .5f, pitchSemitones = -2.0, tone = .6f, mode = PlayMode.GATE)
+            assertTrue(h.studio.dispatch(Action.Edit(Intent.SetPad(tuned))).accepted)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("boom-bap")))
+            assertNull(withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "boom-bap" } }.drumKitQuestion,
+                "Kit sounds are not the user's own sounds, so no question")
+            val project = h.studio.document.value.project
+            assertEquals(tuned.copy(assetHash = h.ports.kitHash("boom-bap", 0)), project.pads[16], "The kick keeps its settings with the new kit's sound")
+            assertEquals(DrumKits.pad(17, 1, project.asset(h.ports.kitHash("boom-bap", 1))), project.pads[17])
+
+            val revision = h.studio.document.value.revision
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("boom-bap")))
+            assertEquals(revision, h.studio.document.value.revision, "Choosing the kit in use again changes nothing")
+
+            // A kit is shown as in use only while every sound on the drum BANK comes from it.
+            assertTrue(h.studio.dispatch(Action.Edit(Intent.AssignRange(h.chopped.hash, FrameRange(0, 48_000), 17))).accepted)
+            val mixed = withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == null } }
+            assertEquals(ContinuousPadKind.DRUM, mixed.pads[16].kind)
+        } finally { h.close() }
+    }
+
+    @Test fun ownSoundsOnTheDrumBankAreReplacedOnlyAfterTheUserAgrees() = runBlocking<Unit> {
+        val h = Harness(kits = true) { p -> p.copy(pads = p.pads.map { if (it.id == 17) Pad(17, "b".repeat(64), FrameRange(0, 48_000)) else it }.frozen()) }
+        try {
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("vinyl-soul")))
+            assertEquals(ContinuousKitQuestion("vinyl-soul", 1), withTimeout(2000) { h.presenter.state.first { it.drumKitQuestion != null } }.drumKitQuestion)
+            assertEquals(before, h.studio.document.value.project, "Nothing changes before the user agrees")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DismissDrumKit))
+            withTimeout(2000) { h.presenter.state.first { it.drumKitQuestion == null } }
+            assertEquals(before, h.studio.document.value.project)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("vinyl-soul")))
+            // The drum BANK changes while the question is open; the answer never covers a sound it did not count.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.AssignSourceRange(18)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmDrumKit))
+            val asked = withTimeout(2000) { h.presenter.state.first { it.drumKitQuestion?.replacedSounds == 2 } }
+            assertNull(asked.installedDrumKit)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmDrumKit))
+            val installed = withTimeout(2000) { h.presenter.state.first { it.installedDrumKit == "vinyl-soul" } }
+            assertNull(installed.drumKitQuestion)
+            assertEquals(before.pads.subList(0, 16), h.studio.document.value.project.pads.subList(0, 16), "Other BANKs are untouched")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals("b".repeat(64), h.studio.document.value.project.pads[17].assetHash, "Undo brings the user's sound back")
+        } finally { h.close() }
+    }
+
+    @Test fun toneDarkensTheSelectedPadAndKeepsItOffTheTimelineUntilReset() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(0)))
+            // Capabilities are judged once the edit's preparation has finished (LOADING withholds them all).
+            suspend fun settled(condition: (ContinuousEditorState) -> Boolean) =
+                withTimeout(2000) { h.presenter.state.first { condition(it) && it.status != ContinuousStatus.LOADING } }
+            val open = settled { it.selectedPadId == 0 }
+            assertTrue(open.permits(ContinuousCapability.PAD_TONE))
+            assertTrue(open.permits(ContinuousCapability.PLACE_PAD))
+            assertEquals(1f, open.pads[0].tone)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadTone(0, .45f)))
+            assertEquals(.45f, h.studio.document.value.project.pads[0].tone)
+            val dark = settled { it.pads[0].tone == .45f }
+            // A placed clip would play the source untouched, so a toned PAD is not placed until tone is reset.
+            assertFalse(dark.permits(ContinuousCapability.PLACE_PAD))
+            assertTrue(h.engine.commands.any { it is EngineCommand.Release && it.padId == 0 }, "Changing tone stops the old voice")
+
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadTone(0, 1.05f)), "Tone stays within its range")
+            assertEquals(.45f, h.studio.document.value.project.pads[0].tone)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadTone(0, 1f)))
+            assertTrue(settled { it.pads[0].tone == 1f }.permits(ContinuousCapability.PLACE_PAD))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(.45f, h.studio.document.value.project.pads[0].tone, "Each tone step is one Undo")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(5)))
+            val empty = settled { it.selectedPadId == 5 }
+            assertTrue(empty.permits(ContinuousCapability.TEMPO), "Settled, so the missing tone control is about the empty PAD")
+            assertFalse(empty.permits(ContinuousCapability.PAD_TONE), "An empty PAD has no tone")
+        } finally { h.close() }
+    }
+
+    @Test fun songKeyIsSavedWithTheDocumentAndShownOnTheOriginal() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            suspend fun settled(condition: (ContinuousEditorState) -> Boolean) =
+                withTimeout(2000) { h.presenter.state.first { condition(it) && it.status != ContinuousStatus.LOADING } }
+            val open = settled { it.original != null }
+            assertTrue(open.permits(ContinuousCapability.ORIGINAL_PITCH))
+            assertEquals(0f, open.original!!.pitchSemitones)
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(3f)))
+            assertEquals(3.0, h.studio.document.value.project.source!!.pitchSemitones)
+            assertEquals(3f, settled { it.original?.pitchSemitones == 3f }.original!!.pitchSemitones)
+            assertEquals(h.initial.pads, h.studio.document.value.project.pads, "The key is for listening to the original only")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(25f)), "The key stays within two octaves")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(0.0, h.studio.document.value.project.source!!.pitchSemitones)
+        } finally { h.close() }
+
+        val empty = Harness { it.copy(source = null) }
+        try {
+            val state = withTimeout(2000) { empty.presenter.state.first { it.status != ContinuousStatus.LOADING && it.permits(ContinuousCapability.TEMPO) } }
+            assertFalse(state.permits(ContinuousCapability.ORIGINAL_PITCH), "No original, no key")
+            assertFalse(empty.presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(2f)))
+        } finally { empty.close() }
+    }
+
+    @Test fun liveChopCutsWhereEachTapWasHeardAndUndoEndsThePass() = runBlocking<Unit> {
+        val h = Harness { it.copy(source = it.source!!.copy(range = FrameRange(12_000, 90_000))) }
+        try {
+            fun pads() = h.studio.document.value.project.pads
+            val untouched = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, 40_000)), "A tap outside a pass is not an error")
+            assertEquals(untouched, h.studio.document.value.project, "It cuts nothing")
+
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            assertEquals(listOf(12_000L), h.ports.seeks, "A pass plays the original from the start of the range")
+            withTimeout(2000) { h.presenter.state.first { it.liveChopping && it.originalPlaying } }
+            // A tap cuts where it was heard: 60 ms, 2 880 frames at 48 kHz, before the original's position at the press.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, 42_880)))
+            assertEquals(FrameRange(40_000, 90_000), pads()[3].range)
+            assertEquals(h.original.hash, pads()[3].assetHash)
+            assertEquals(3, h.studio.selection.value.padId, "The chopped PAD is selected")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(0, 62_880)))
+            assertEquals(listOf(FrameRange(40_000, 60_000), FrameRange(60_000, 90_000)), listOf(pads()[3].range, pads()[0].range))
+            assertEquals(h.original.hash, pads()[0].assetHash, "A PAD that held another sound takes the original")
+            assertEquals(PlayMode.GATE, pads()[0].mode, "and keeps its other settings")
+            assertEquals(listOf(40_000L, 60_000L), h.studio.document.value.project.source!!.markers)
+            val cut = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, 92_880)), "A tap heard after the range is not an error")
+            assertEquals(cut, h.studio.document.value.project, "It cuts nothing")
+
+            // Undo takes back one tap and, as in the earlier app, ends the pass with the original.
+            val stops = h.ports.stops
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(FrameRange(40_000, 90_000), pads()[3].range)
+            assertEquals(h.initial.pads[0], pads()[0])
+            assertEquals(stops + 1, h.ports.stops)
+            assertFalse(withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }.originalPlaying)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, 80_000)))
+            assertNull(pads()[5].assetHash, "No pass, no cut")
+        } finally { h.close() }
+    }
+
+    @Test fun liveChopFollowsTheKeyAndEndsWithTheOriginal() = runBlocking<Unit> {
+        // An octave up the original plays twice as fast, so the same 60 ms spans twice as many of its frames.
+        val h = Harness { it.copy(source = it.source!!.copy(pitchSemitones = 12.0)) }
+        try {
+            h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, 30_000)))
+            assertEquals(FrameRange(24_240, 96_000), h.studio.document.value.project.pads[2].range)
+
+            // Leaving the CHOP stage ends the pass; the original keeps playing.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping && it.originalPlaying } }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
+
+            // The original reaching its end by itself ends the pass.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            withTimeout(2000) { h.presenter.state.first { it.liveChopping } }
+            h.ports.playing = false
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping && !it.originalPlaying } }
+
+            // A reading of the original taken just before a pass began does not end that pass.
+            h.ports.duringReading = {
+                runBlocking { assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop)) }
+                h.ports.playing = true
+            }
+            withTimeout(2000) { while (h.ports.duringReading != null) delay(5) }
+            delay(600)
+            assertTrue(h.presenter.state.value.liveChopping, "The pass that began during the reading is still running")
+
+            // Playing on past the range end ends the pass there, with the original.
+            val playedOn = h.ports.stops
+            h.ports.originalFrame = 96_000
+            assertFalse(withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }.originalPlaying)
+            assertEquals(playedOn + 1, h.ports.stops)
+            h.ports.originalFrame = 0
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            withTimeout(2000) { h.presenter.state.first { it.liveChopping } }
+
+            // Stopping the pass stops the original.
+            val stops = h.ports.stops
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndLiveChop))
+            assertEquals(stops + 1, h.ports.stops)
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }
+        } finally { h.close() }
+    }
+
+    @Test fun hostsWithoutKitsKeepDrumsUnavailable() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertFalse(h.presenter.state.value.permits(ContinuousCapability.ADD_DRUM))
+            assertTrue(h.presenter.state.value.drumKits.isEmpty())
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.AddDrum))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ChooseDrumKit("dusty-jazz")))
+            assertFalse(h.presenter.state.value.drumKitChooserOpen)
+            assertTrue(h.studio.document.value.project.pads.subList(16, 32).all { it.assetHash == null })
+        } finally { h.close() }
+    }
+
     @Test fun originalSurvivesPadSelectionAndStageChangesWithoutAutomaticPlacement() = runBlocking {
         val h = Harness()
         try {
@@ -137,7 +376,7 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
-    private class Harness(adjust: (Project) -> Project = { it }) {
+    private class Harness(kits: Boolean = false, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val original = Asset("a".repeat(64), "wav", 100, 48_000, 2, 96_000, "Original")
         val chopped = Asset("b".repeat(64), "wav", 100, 48_000, 2, 48_000, "Chop")
@@ -160,7 +399,7 @@ class ContinuousEditorPresenterTest {
                     return ExportReceipt(request.frames.toLong(), 48_000, 2, request.bits)
                 }
             }, engine), initial)
-        val ports = FakePorts()
+        val ports = FakePorts(kits)
         val presenter = ContinuousEditorPresenter(studio, scope, ports)
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }
     }
@@ -172,9 +411,14 @@ class ContinuousEditorPresenterTest {
         @Volatile var transport = TransportState(outputAttached = true)
         override fun snapshot() = transport
     }
-    private class FakePorts : ContinuousEditorPorts {
-        var originalFrame = 0L
-        var stops = 0
+    private class FakePorts(private val kits: Boolean = false) : ContinuousEditorPorts {
+        @Volatile var originalFrame = 0L
+        @Volatile var stops = 0
+        val seeks = java.util.concurrent.CopyOnWriteArrayList<Long>()
+        /** What the output reports about the original; null when this host does not report it. */
+        @Volatile var playing: Boolean? = null
+        /** Runs once inside the next reading of [playing], after the value was taken: a change the reading misses. */
+        @Volatile var duringReading: (() -> Unit)? = null
         var songGain = 1f
         var originalGain = 1f
         var exportFrames = 0L
@@ -190,7 +434,19 @@ class ContinuousEditorPresenterTest {
         override fun readout() = ContinuousEditorReadout(originalFrame = originalFrame)
         override suspend fun setSongMonitorGain(gain: Float): Boolean { songGain = gain; return true }
         override suspend fun setOriginalMonitorGain(gain: Float): Boolean { originalGain = gain; return true }
+        override fun originalPlaying(): Boolean? {
+            val value = playing
+            duringReading?.let { duringReading = null; it() }
+            return value
+        }
         override suspend fun playOriginal(asset: Asset) = true
         override suspend fun stopOriginal(): Boolean { stops++; return true }
+        override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
+        override val drumKitsAvailable get() = kits
+        fun kitHash(kitId: String, slot: Int) = (DrumKits.catalog.indexOfFirst { it.id == kitId } * 16 + slot + 1).toString(16).padStart(64, '0')
+        override suspend fun drumKit(kitId: String): List<Asset>? = if (!kits) null else (0 until 16).map { slot ->
+            val frames = DrumKits.frames(slot)
+            Asset(kitHash(kitId, slot), "wav", 44L + frames * 4, 48_000, 1, frames.toLong(), DrumKits.soundName(DrumKits.kit(kitId), slot), AssetRole.RENDERED)
+        }
     }
 }

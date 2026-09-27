@@ -70,11 +70,17 @@ data class FrameRange(val start: Long, val end: Long) {
     val length: Long get() = end - start
 }
 
-data class Source(val assetHash: String, val range: FrameRange, val markers: FrozenList<Long> = frozenListOf()) {
+/**
+ * [pitchSemitones] is the song key the original is heard at: varispeed for listening only, like the earlier
+ * app's. PADs, clips and export always use the source as it is.
+ */
+data class Source(val assetHash: String, val range: FrameRange, val markers: FrozenList<Long> = frozenListOf(),
+                  val pitchSemitones: Double = 0.0) {
     init {
         requireHash(assetHash)
         require(markers.size <= 127 && markers.zipWithNext().all { (a, b) -> a < b })
         require(markers.all { it > range.start && it < range.end })
+        require(pitchSemitones.isFinite() && pitchSemitones in -24.0..24.0)
     }
     fun slices(): FrozenList<FrameRange> = (listOf(range.start) + markers + range.end)
         .zipWithNext { a, b -> FrameRange(a, b) }.frozen()
@@ -100,6 +106,8 @@ data class Pad(
     val loopCrossfadeFrames: Int = 48,
     val decayFrames: Int = 0,
     val sustainLevel: Float = 1f,
+    /** 1 leaves the sound untouched; lower values darken it (the earlier app's tone control). */
+    val tone: Float = 1f,
 ) {
     init {
         require(id in 0 until ProjectLimits.PAD_COUNT)
@@ -110,6 +118,7 @@ data class Pad(
         require(gain.isFinite() && gain in 0f..8f && pan.isFinite() && pan in -1f..1f)
         require(chokeGroup in 0..128 && attackFrames in 0..48_000 && releaseFrames in 1..48_000 && loopCrossfadeFrames in 0..24_000)
         require(decayFrames in 0..48_000 && sustainLevel.isFinite() && sustainLevel in 0f..1f)
+        require(tone.isFinite() && tone in 0f..1f)
     }
 }
 

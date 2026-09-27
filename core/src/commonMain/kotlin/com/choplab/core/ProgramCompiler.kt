@@ -33,7 +33,7 @@ class ProgramCompiler(private val pcm: PcmPort) {
             val range = requireNotNull(pad.range)
             val (start, end) = normalizedRange(range, metadata.sampleRate)
             com.choplab.engine.Pad(pad.id, data, start, end, pad.mode, pad.pitchSemitones, pad.gain,
-                pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel)
+                pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone)
         }
         val arrangement = timeline?.let { plan ->
             val tracks = plan.audible.map { it.track.id }.distinct()

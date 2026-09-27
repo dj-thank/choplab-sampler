@@ -258,6 +258,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 if (!accepted) events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
             }
             is EngineCommand.SetOriginalMonitorGain -> originalVoice.monitorGain.set(command.gain, 96)
+            is EngineCommand.SetOriginalPitch -> originalVoice.pitch(command.semitones)
             is EngineCommand.SetSongMonitorGain -> songGain.set(command.gain, 96)
             is EngineCommand.SetTempo -> clock.setTempo(command.tempo)
             is EngineCommand.ScratchStart -> accepted = startScratch(command)
@@ -468,6 +469,9 @@ private class Voice {
     private var releaseAge = 0
     private var releaseLength = 96
     private var releaseGain = 1.0
+    /** One-pole low-pass state for the PAD's tone; untouched while the tone is bypassed. */
+    private var toneLeft = 0.0
+    private var toneRight = 0.0
     var outputLeft = 0.0
         private set
     var outputRight = 0.0
@@ -480,9 +484,13 @@ private class Voice {
         position = if (pad.reverse) pad.endFrame - 1.0 else pad.startFrame.toDouble()
         age = 0; suspended = false; scratch = false; transportVoice = false; scratchStep = 0.0; motionFrames = 0
         released = false; releaseAge = 0; releaseLength = pad.releaseFrames; releaseGain = 1.0
+        toneLeft = 0.0; toneRight = 0.0
         cut.set(1f, 0)
     }
-    fun clear() { pad = null; outputLeft = 0.0; outputRight = 0.0; suspended = false; scratch = false; transportVoice = false; assetSlot = -1 }
+    fun clear() {
+        pad = null; outputLeft = 0.0; outputRight = 0.0; suspended = false; scratch = false; transportVoice = false; assetSlot = -1
+        toneLeft = 0.0; toneRight = 0.0
+    }
     fun release(frames: Int = pad?.releaseFrames ?: 96) {
         if (!released) {
             val currentPad = pad
@@ -502,6 +510,7 @@ private class Voice {
         assetSlot = other.assetSlot
         velocity = other.velocity; released = other.released; releaseAge = other.releaseAge; releaseLength = other.releaseLength
         releaseGain = other.releaseGain
+        toneLeft = other.toneLeft; toneRight = other.toneRight
         cut.set(other.cut.value, 0)
     }
     fun render(interpolator: PitchInterpolator) {
@@ -522,10 +531,14 @@ private class Voice {
         val gate = cut.next().toDouble()
         if (!scratch || (motionFrames > 0 && abs(speed) > 1e-12)) {
             envelope *= gate * velocity
-            outputLeft = interpolator.read(pad.asset, position, speed, 0, pad.startFrame, pad.endFrame, loop,
-                pad.loopCrossfadeFrames) * envelope * pad.leftGain
-            outputRight = interpolator.read(pad.asset, position, speed, 1, pad.startFrame, pad.endFrame, loop,
-                pad.loopCrossfadeFrames) * envelope * pad.rightGain
+            var left = interpolator.read(pad.asset, position, speed, 0, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames)
+            var right = interpolator.read(pad.asset, position, speed, 1, pad.startFrame, pad.endFrame, loop, pad.loopCrossfadeFrames)
+            if (pad.toneAlpha < 1.0) {
+                toneLeft += pad.toneAlpha * (left - toneLeft); left = toneLeft
+                toneRight += pad.toneAlpha * (right - toneRight); right = toneRight
+            }
+            outputLeft = left * envelope * pad.leftGain
+            outputRight = right * envelope * pad.rightGain
             position += speed
             if (scratch) {
                 motionFrames--
