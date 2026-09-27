@@ -19,8 +19,10 @@ import java.io.IOException
 import java.net.BindException
 import java.net.URI
 import java.time.Instant
+import java.time.Duration
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +37,23 @@ enum class SpotifyConnectionPhase(val label: String) {
     ERROR("接続エラー"),
 }
 
+enum class SpotifySessionPurpose(val scopes: List<String>) {
+    METADATA_ONLY(listOf("user-library-read")),
+    LEGACY_PLAYBACK(listOf("user-library-read", "user-read-playback-state", "user-modify-playback-state")),
+}
+
+/** Safe, language-independent recovery information; never contains provider bodies or tokens. */
+enum class SpotifyProblemKind {
+    CANCELLED, TIMEOUT, DENIED, BROWSER_UNAVAILABLE, CALLBACK_PORT_UNAVAILABLE,
+    NETWORK, LOGIN_FAILED, AUTH_EXPIRED, API_FAILED, TOKEN_REFRESH_FAILED, INVALID_RESPONSE,
+}
+
+data class SpotifyProblem(
+    val kind: SpotifyProblemKind,
+    val statusCode: Int? = null,
+    val retryAfterSeconds: Long? = null,
+)
+
 data class SpotifyDesktopState(
     val phase: SpotifyConnectionPhase = SpotifyConnectionPhase.UNCONFIGURED,
     val clientIdConfigured: Boolean = false,
@@ -47,9 +66,12 @@ data class SpotifyDesktopState(
     val searchQuery: String = "",
     val searchResults: List<SourceTrack> = emptyList(),
     val searchMessage: String = "",
+    val searchCompletedQuery: String? = null,
+    val libraryLoaded: Boolean = false,
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
+    val problem: SpotifyProblem? = null,
 ) {
     val connection: String get() = phase.label
     val canLogin: Boolean get() = !busy && clientIdConfigured && phase != SpotifyConnectionPhase.CONNECTED
@@ -95,6 +117,7 @@ class SpotifyDesktopSession(
     private val callbackFactory: SpotifyAuthorizationCallbackFactory = SpotifyAuthorizationCallbackFactory { SpotifyLoopbackCallbackServer() },
     private val browser: SpotifyBrowser = DesktopSpotifyBrowser,
     private val now: () -> Instant = Instant::now,
+    val purpose: SpotifySessionPurpose = SpotifySessionPurpose.LEGACY_PLAYBACK,
 ) : AutoCloseable {
     private val executor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "ChopLab-Spotify-OAuth").apply { isDaemon = true }
@@ -108,11 +131,25 @@ class SpotifyDesktopSession(
     private var nextLoginId = 0L
     private var libraryOffset = 0
     private var activeLogin: ActiveLogin? = null
+    private var activeWork: Future<*>? = null
+    private var retryNotBefore: Instant? = null
+    private var activeSearchQuery: String? = null
     private val mutableState = MutableStateFlow(initialState())
     val state: StateFlow<SpotifyDesktopState> = mutableState.asStateFlow()
 
     val connected: Boolean
         get() = synchronized(lock) { credentials != null && mutableState.value.phase == SpotifyConnectionPhase.CONNECTED }
+
+    /** No timer or automatic retries: the caller chooses when to retry after this wait. */
+    fun retryWaitSeconds(): Long = synchronized(lock) {
+        val deadline = retryNotBefore ?: return@synchronized 0L
+        val remaining = Duration.between(now(), deadline)
+        if (remaining.isNegative || remaining.isZero) 0L else remaining.seconds + if (remaining.nano > 0) 1L else 0L
+    }
+
+    private fun submit(lease: Long, work: () -> Unit) = synchronized(lock) {
+        if (!closed.get() && generation.isCurrent(lease)) activeWork = executor.submit(work)
+    }
 
     fun configureClientId(value: String): Boolean {
         if (closed.get()) {
@@ -127,7 +164,9 @@ class SpotifyDesktopSession(
         val callback = synchronized(lock) {
             val old = activeLogin
             generation.invalidate()
+            activeWork?.cancel(true)
             activeLogin = null
+            activeSearchQuery = null
             credentials = null
             configuredClientId = normalized
             setStateLocked(
@@ -176,14 +215,16 @@ class SpotifyDesktopSession(
         } ?: return
 
         onStatus("ブラウザーでSpotify連携を許可してください")
-        executor.execute { performLogin(login.first, login.second) }
+        submit(login.first.lease) { performLogin(login.first, login.second) }
     }
 
     fun cancelLogin() {
         val callback = synchronized(lock) {
             val active = activeLogin ?: return@synchronized null
             activeLogin = null
+            activeSearchQuery = null
             generation.invalidate()
+            activeWork?.cancel(true)
             setStateLocked(readyState("Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"))
             active.callback
         }
@@ -191,7 +232,23 @@ class SpotifyDesktopSession(
         onStatus("Spotifyログインをキャンセルしました")
     }
 
-    fun showCurrentPlayback() = withAccessToken("Spotify現在再生") { token, lease ->
+    /** Closing a metadata window stops its work while keeping an established account connection. */
+    fun cancelPendingOperations() {
+        val callback = synchronized(lock) {
+            if (closed.get() || !mutableState.value.busy) return
+            generation.invalidate()
+            activeWork?.cancel(true)
+            val old = activeLogin?.callback
+            activeLogin = null
+            activeSearchQuery = null
+            if (credentials == null) setStateLocked(readyState("Spotifyログインをキャンセルしました"), SpotifyProblem(SpotifyProblemKind.CANCELLED))
+            else setStateLocked(mutableState.value.copy(busy = false), SpotifyProblem(SpotifyProblemKind.CANCELLED))
+            old
+        }
+        callback?.cancel()
+    }
+
+    fun showCurrentPlayback() = withLegacyAccessToken("Spotify現在再生") { token, lease ->
         val response = api.currentPlayback(token)
         generation.requireCurrent(lease)
         when (response.statusCode) {
@@ -208,10 +265,20 @@ class SpotifyDesktopSession(
     }
 
     fun setSearchQuery(value: String) = synchronized(lock) {
+        if (closed.get()) return@synchronized
         val query=value.take(240)
-        if(query!=mutableState.value.searchQuery) setStateLocked(mutableState.value.copy(
-            searchQuery=query,searchResults=emptyList(),searchMessage="",
-        ))
+        if(query!=mutableState.value.searchQuery) {
+            val wasSearching = activeSearchQuery != null
+            if (wasSearching) {
+                generation.invalidate()
+                activeWork?.cancel(true)
+                activeSearchQuery = null
+            }
+            setStateLocked(mutableState.value.copy(
+                searchQuery=query,searchResults=emptyList(),searchMessage="",searchCompletedQuery=null,
+                busy=if (wasSearching) false else mutableState.value.busy,
+            ), mutableState.value.problem)
+        }
     }
 
     fun searchForImport() {
@@ -219,15 +286,16 @@ class SpotifyDesktopSession(
         if(query.isBlank())return
         synchronized(lock) {
             if(mutableState.value.busy)return
-            setStateLocked(mutableState.value.copy(searchResults=emptyList(),searchMessage=""))
+            if (retryWaitSeconds() > 0) return
+            setStateLocked(mutableState.value.copy(searchResults=emptyList(),searchMessage="",searchCompletedQuery=null))
         }
-        withAccessToken("Spotify検索") { token,lease ->
+        withAccessToken("Spotify検索", query) { token,lease ->
             val response=api.searchTracks(token,query)
             generation.requireCurrent(lease)
             if(response.statusCode !in 200..299)throw SpotifyApiException(response,"検索")
-            val results=SourceRecipes.parseSpotifySearch(response.body)
+            val results=try { SourceRecipes.parseSpotifySearch(response.body) } catch (_: Exception) { throw SpotifyMetadataResponseException() }
             OperationResult("Spotify検索が完了しました",transform={ state ->
-                if(state.searchQuery.trim()!=query)state else state.copy(searchResults=results,
+                if(state.searchQuery.trim()!=query)state else state.copy(searchResults=results,searchCompletedQuery=query,
                     searchMessage=if(results.isEmpty())"曲が見つかりませんでした" else "${results.size}曲見つかりました")
             })
         }
@@ -239,15 +307,16 @@ class SpotifyDesktopSession(
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
         val parsed = SpotifyPlaybackJson.savedTracks(response.body)
         val sourceTracks = runCatching { SourceRecipes.parseSpotifyTracks(response.body) }.getOrDefault(emptyList())
-        libraryOffset = 20
         when {
             !parsed.recognized -> OperationResult(
                 "Spotifyライブラリの応答を読み取れませんでした。時間を置いて再試行してください",
+                problem = SpotifyProblem(SpotifyProblemKind.INVALID_RESPONSE),
                 transform = {
                     it.copy(
                         savedTracks = emptyList(),
                         sourceTracks = emptyList(),
                         sourceHasMore = false,
+                        libraryLoaded = false,
                         librarySummary = "ライブラリの応答を読み取れませんでした",
                     )
                 },
@@ -255,10 +324,12 @@ class SpotifyDesktopSession(
             parsed.tracks.isEmpty() -> OperationResult(
                 "保存済みトラックはありません",
                 transform = {
+                    libraryOffset = 20
                     it.copy(
                         savedTracks = emptyList(),
                         sourceTracks = emptyList(),
                         sourceHasMore = false,
+                        libraryLoaded = true,
                         librarySummary = "保存済みトラックはありません",
                     )
                 },
@@ -266,10 +337,12 @@ class SpotifyDesktopSession(
             else -> OperationResult(
                 "保存済みトラックを${parsed.tracks.size}件表示しました",
                 transform = {
+                    libraryOffset = 20
                     it.copy(
                         savedTracks = parsed.tracks,
                         sourceTracks = sourceTracks,
                         sourceHasMore = runCatching{SourceRecipes.spotifyHasNext(response.body)}.getOrDefault(false),
+                        libraryLoaded = true,
                         librarySummary = "保存済みトラックを${parsed.tracks.size}件表示中",
                     )
                 },
@@ -278,22 +351,25 @@ class SpotifyDesktopSession(
     }
 
     fun showMoreLibrary() {
-        if(mutableState.value.sourceTracks.isEmpty()) { showLibrary();return }
+        if (mutableState.value.busy) return
+        if (!mutableState.value.libraryLoaded) { showLibrary(); return }
+        if (!mutableState.value.sourceHasMore) return
         withAccessToken("Spotifyライブラリ") { token,lease ->
             val response=api.savedTracksPage(token,libraryOffset)
             generation.requireCurrent(lease)
             if(response.statusCode !in 200..299) throw SpotifyApiException(response,"ライブラリ")
             val parsed=SpotifyPlaybackJson.savedTracks(response.body)
+            if (!parsed.recognized) throw SpotifyMetadataResponseException()
             val sources=SourceRecipes.parseSpotifyTracks(response.body)
-            libraryOffset+=20
             OperationResult(if(sources.isEmpty()) "すべてのお気に入りを表示しました" else "お気に入りを追加表示しました",transform={ current ->
-                current.copy(savedTracks=(current.savedTracks+parsed.tracks).distinct(),sourceTracks=(current.sourceTracks+sources).distinctBy(SourceTrack::spotifyUrl),sourceHasMore=SourceRecipes.spotifyHasNext(response.body))
+                libraryOffset+=20
+                current.copy(savedTracks=(current.savedTracks+parsed.tracks).distinct().take(2000),sourceTracks=(current.sourceTracks+sources).distinctBy(SourceTrack::spotifyUrl).take(2000),sourceHasMore=libraryOffset < 2000 && SourceRecipes.spotifyHasNext(response.body))
             })
         }
     }
 
     /** Read-only metadata pagination, bounded to the private library's 2000-item display limit. */
-    fun loadImportLibrary() = withAccessToken("Spotifyのお気に入りを確認") { token,lease ->
+    fun loadImportLibrary() = withLegacyAccessToken("Spotifyのお気に入りを確認") { token,lease ->
         val tracks = linkedMapOf<String,SourceTrack>()
         var offset = 0
         var more: Boolean
@@ -312,14 +388,14 @@ class SpotifyDesktopSession(
         })
     }
 
-    fun pause() = withAccessToken("Spotify一時停止") { token, lease ->
+    fun pause() = withLegacyAccessToken("Spotify一時停止") { token, lease ->
         val response = api.pausePlayback(token)
         generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "一時停止")
         OperationResult("Spotify再生を一時停止しました")
     }
 
-    fun resume() = withAccessToken("Spotify再開") { token, lease ->
+    fun resume() = withLegacyAccessToken("Spotify再開") { token, lease ->
         val response = api.resumePlayback(token)
         generation.requireCurrent(lease)
         if (response.statusCode !in 200..299) throw SpotifyApiException(response, "再開")
@@ -331,7 +407,9 @@ class SpotifyDesktopSession(
         val callback = synchronized(lock) {
             val old = activeLogin
             generation.invalidate()
+            activeWork?.cancel(true)
             activeLogin = null
+            activeSearchQuery = null
             credentials = null
             setStateLocked(readyState("Spotify連携を解除しました。トークンと表示済みメタデータはメモリから破棄されました"))
             old?.callback
@@ -354,7 +432,7 @@ class SpotifyDesktopSession(
             val attempt = newSpotifyAuthorizationAttempt(
                 clientId = clientId,
                 redirectUri = callback.redirectUri,
-                scopes = listOf("user-library-read", "user-read-playback-state", "user-modify-playback-state"),
+                scopes = purpose.scopes,
             )
             callback.expectState(attempt.state)
             generation.requireCurrent(login.lease)
@@ -382,7 +460,7 @@ class SpotifyDesktopSession(
                 if (!isCurrentLoginLocked(login)) return@synchronized null
                 activeLogin = null
                 credentials = null
-                setStateLocked(errorState(loginFailureMessage(error)))
+                setStateLocked(errorState(loginFailureMessage(error)), loginProblem(error))
                 mutableState.value.message
             }
             if (failure != null) onStatus(failure)
@@ -391,12 +469,18 @@ class SpotifyDesktopSession(
         }
     }
 
-    private fun withAccessToken(label: String, action: (String, Long) -> OperationResult) {
+    private fun withLegacyAccessToken(label: String, action: (String, Long) -> OperationResult) {
+        check(purpose == SpotifySessionPurpose.LEGACY_PLAYBACK) { "This session only displays Spotify metadata" }
+        withAccessToken(label, action = action)
+    }
+
+    private fun withAccessToken(label: String, query: String? = null, action: (String, Long) -> OperationResult) {
         if (closed.get()) {
             onStatus("$label 失敗: Spotify連携は終了しています")
             return
         }
         val operation = synchronized(lock) {
+            if (retryWaitSeconds() > 0) return@synchronized null
             if (mutableState.value.busy) {
                 setStateLocked(mutableState.value.copy(message = "Spotifyの前の操作が完了してから実行してください"))
                 return@synchronized null
@@ -407,10 +491,11 @@ class SpotifyDesktopSession(
                 return@synchronized null
             }
             setStateLocked(mutableState.value.copy(busy = true, message = "$label を実行しています"))
+            activeSearchQuery = query
             Operation(generation.snapshot(), current, configuredClientId)
         } ?: return
 
-        executor.execute {
+        submit(operation.lease) {
             try {
                 generation.requireCurrent(operation.lease)
                 val current = refreshIfNeeded(operation.credentials, operation.clientId)
@@ -422,7 +507,8 @@ class SpotifyDesktopSession(
                         return@synchronized null
                     }
                     credentials = current
-                    setStateLocked(result.transform(mutableState.value).copy(busy = false, message = result.message))
+                    activeSearchQuery = null
+                    setStateLocked(result.transform(mutableState.value).copy(busy = false, message = result.message), result.problem)
                     result.message
                 }
                 if (message != null) onStatus(message)
@@ -448,21 +534,46 @@ class SpotifyDesktopSession(
         if (closed.get() || !generation.isCurrent(operation.lease) || mutableState.value.phase != SpotifyConnectionPhase.CONNECTED) {
             return null
         }
+        activeSearchQuery = null
         if ((error is SpotifyApiException && error.response.statusCode == 401) ||
             (error is SpotifyTokenRequestException && error.statusCode in 400..401)
         ) {
             credentials = null
-            setStateLocked(errorState("$label: 認証期限が切れたか更新できませんでした。もう一度ログインしてください"))
+            setStateLocked(errorState("$label: 認証期限が切れたか更新できませんでした。もう一度ログインしてください"),
+                SpotifyProblem(SpotifyProblemKind.AUTH_EXPIRED))
         } else {
             val message = when (error) {
                 is SpotifyApiException -> SpotifyErrorGuidance.forStatus(error.response.statusCode, label, error.response.retryAfterSeconds)
                 is SpotifyTokenRequestException -> "$label: Spotify認証の更新に失敗しました。時間を置いて再試行してください"
                 else -> "$label に失敗しました。ネットワーク接続とSpotifyの状態を確認して再試行してください"
             }
-            setStateLocked(mutableState.value.copy(busy = false, message = message))
+            val problem = when (error) {
+                is SpotifyApiException -> SpotifyProblem(SpotifyProblemKind.API_FAILED,
+                    error.response.statusCode, error.response.retryAfterSeconds)
+                is SpotifyTokenRequestException -> SpotifyProblem(SpotifyProblemKind.TOKEN_REFRESH_FAILED,
+                    error.statusCode)
+                is SpotifyMetadataResponseException -> SpotifyProblem(SpotifyProblemKind.INVALID_RESPONSE)
+                else -> SpotifyProblem(SpotifyProblemKind.NETWORK)
+            }
+            if (problem.statusCode == 429) {
+                // Bound arithmetic, including an untrusted/malformed Retry-After value.
+                val seconds = problem.retryAfterSeconds?.takeIf { it > 0 }?.coerceAtMost(31_536_000L)
+                retryNotBefore = seconds?.let { now().plusSeconds(it) }
+            }
+            setStateLocked(mutableState.value.copy(busy = false, message = message), problem)
         }
         return mutableState.value.message
     }
+
+    private fun loginProblem(error: Throwable) = SpotifyProblem(when (error) {
+        is CancellationException -> SpotifyProblemKind.CANCELLED
+        is TimeoutException -> SpotifyProblemKind.TIMEOUT
+        is SpotifyAuthorizationDeniedException -> SpotifyProblemKind.DENIED
+        is SpotifyBrowserUnavailableException -> SpotifyProblemKind.BROWSER_UNAVAILABLE
+        is BindException -> SpotifyProblemKind.CALLBACK_PORT_UNAVAILABLE
+        is IOException -> SpotifyProblemKind.NETWORK
+        else -> SpotifyProblemKind.LOGIN_FAILED
+    })
 
     private fun loginFailureMessage(error: Throwable): String = when (error) {
         is CancellationException -> "Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"
@@ -515,8 +626,8 @@ class SpotifyDesktopSession(
     private fun isCurrentLoginLocked(login: ActiveLogin): Boolean =
         !closed.get() && activeLogin?.id == login.id && activeLogin?.lease == login.lease && generation.isCurrent(login.lease)
 
-    private fun setStateLocked(value: SpotifyDesktopState) {
-        mutableState.value = value
+    private fun setStateLocked(value: SpotifyDesktopState, problem: SpotifyProblem? = null) {
+        mutableState.value = value.copy(problem = problem)
     }
 
     private fun report(message: String) {
@@ -531,6 +642,8 @@ class SpotifyDesktopSession(
             credentials = null
             val current = activeLogin?.callback
             activeLogin = null
+            activeSearchQuery = null
+            setStateLocked(readyState("Spotify連携は終了しています"))
             current
         }
         callback?.cancel()
@@ -542,9 +655,12 @@ class SpotifyDesktopSession(
     private data class Operation(val lease: Long, val credentials: Credentials, val clientId: String)
     private data class OperationResult(
         val message: String,
+        val problem: SpotifyProblem? = null,
         val transform: (SpotifyDesktopState) -> SpotifyDesktopState = { it },
     )
 }
+
+private class SpotifyMetadataResponseException : IllegalStateException("Unrecognized Spotify metadata")
 
 private fun isValidSpotifyClientId(value: String): Boolean = value.matches(Regex("[A-Za-z0-9]{16,128}"))
 

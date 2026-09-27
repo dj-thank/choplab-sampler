@@ -560,6 +560,8 @@ import kotlin.math.roundToLong
                 CEActionButton(stringResource(Res.string.ce_library), ContinuousEditorAction.ImportLibrary,
                     state, ContinuousCapability.IMPORT_LIBRARY, onAction, Modifier.fillMaxWidth(), tag = "ce-library")
             }
+            CEActionButton(stringResource(Res.string.ce_spotify_metadata), ContinuousEditorAction.OpenSpotifyMetadata,
+                state, ContinuousCapability.SPOTIFY_METADATA, onAction, Modifier.fillMaxWidth(), tag = "ce-spotify-metadata")
             if (state.recordingSource) {
                 val capture by CELive(true, refreshKey, readout)
                 Text(if (state.startingSourceRecording) stringResource(Res.string.ce_source_recording_starting)

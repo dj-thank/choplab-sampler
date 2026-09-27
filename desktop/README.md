@@ -65,7 +65,11 @@ python3 scripts/run_mac_next_acceptance.py \
 
 制作autosaveとlibraryはapp専用領域にあり、実行ファイルの更新と分けます。既存install scriptはversion/hashに結び付いたapp-imageを保持し、利用者の制作を上書きしません。Previewの専用設定/autosave/library/cache/lock分離は段階1Cで検証します。
 
-Spotifyには公開Client IDを設定し、PKCEのOAuthで接続します。tokenをsource/log/projectへ保存しません。現行のお気に入り自動取込は曲情報をYouTube候補へ照合し、取得・decode・library保存の成功後に使える音声となります。選択式への刷新は段階3です。登録/redirect/mode/scopeは採用時の公式設定と実accountを照合し、UI表示だけでprovider成功としません。
+NEXTの「Spotify情報」は曲名・artist・お気に入り・検索結果を表示し、「Spotifyで開く」から対象曲へ戻る専用窓です。制作・音声・Undo・ライブラリを変更せず、旧PreviewのYouTube自動照合へ接続しません。認可は[PKCE S256](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow)、scopeは `user-library-read` のみです。tokenと取得した曲情報はメモリ内だけに保持し、連携解除・アプリ終了で破棄します。窓を閉じると進行中の認証・取得を取り消し、成立済みの接続はアプリ終了まで保持します。429は `Retry-After` の待ち時間を表示して取得を止め、時間経過後に利用者が再試行できます。
+
+公開Client IDは `CHOPLAB_SPOTIFY_CLIENT_ID` でMac NEXTのビルドへ渡すか、窓内でその起動中だけ設定します。Client Secret・token・秘密鍵は指定・同梱しません。Spotifyの登録先[Redirect URI](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri)は `http://127.0.0.1/callback`（ポートなし）。実際の認証では空いている動的ポートを使い、token交換にも同じURIを渡します。`localhost` は使いません。[Development mode](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)ではアプリ所有者のPremiumと最大5人の許可ユーザー登録が前提です。OAuth画面を通っても未許可ユーザーのAPIは403になるため、接続表示をAPI成功としません。
+
+2026-09-28に[Developer Policy](https://developer.spotify.com/policy)を照合しました。リンク付きmetadata閲覧を独立させていますが、他サービスのcontentとの統合禁止、mix禁止、帰属表示などの製品全体の条件を満たしたとの判定は未了です。実accountのOAuth/API、native窓の操作、一般配布の適合確認は独立した受入としてROADMAPに残し、未解決の連携を一般配布へ有効化しません。旧Previewの自動取込は移行対象であり、NEXTでの受入証拠ではありません。
 
 Windows配布物はWindowsで起動・応答・停止、native dialog、音声routeを試し、対象revisionと全app-image bytesを結果に結び付けます。詳しくは [TESTING](../docs/TESTING.md)、[RELEASE](../docs/RELEASE.md)、[PRIVACY](../PRIVACY.md) を参照してください。
 

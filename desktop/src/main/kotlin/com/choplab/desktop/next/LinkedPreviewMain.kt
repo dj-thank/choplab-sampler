@@ -11,6 +11,8 @@ import com.choplab.core.model.Pad
 import com.choplab.desktop.DesktopProfile
 import com.choplab.desktop.applyMacOsHostProperties
 import com.choplab.desktop.isMacOsHost
+import com.choplab.desktop.provider.SpotifyDesktopSession
+import com.choplab.desktop.provider.SpotifySessionPurpose
 import com.choplab.jvm.OriginalAudioImportPort
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
@@ -102,10 +104,18 @@ fun main() {
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics)
             }
         }
-    } finally { recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+    } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
 }
 
-internal class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {
+internal class DesktopEditorPorts(
+    private val backend: NextBackend,
+    private val spotify: SpotifyDesktopSession = SpotifyDesktopSession(onStatus = {}, purpose = SpotifySessionPurpose.METADATA_ONLY),
+    private val parent: () -> AwtWindow?,
+) : ContinuousEditorPorts, AutoCloseable {
+    init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
+    override val spotifyMetadataAvailable = true
+    override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
+    override fun close() = spotify.close()
     override val systemAudioCapture get() = backend.systemAudio
     private val japanese get() = Locale.getDefault().language == "ja"
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
