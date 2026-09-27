@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ce_scratch_source_title">Listen to the original</string>
+    <string name="ce_scratch_hand_title">Scratch the selected sound</string>
+    <string name="ce_scratch_source_disc">SOURCE</string>
+    <string name="ce_scratch_hand_disc">HAND</string>
+    <string name="ce_scratch_source_start">Start</string>
+    <string name="ce_scratch_hand_gain">HAND volume</string>
+    <string name="ce_scratch_hand_stop">Let go of HAND</string>
+    <string name="ce_scratch_independent_hint">Hold and drag left or right. SOURCE keeps its own playback and position. HAND volume and CUT affect only the sound under your hand.</string>
+</resources>

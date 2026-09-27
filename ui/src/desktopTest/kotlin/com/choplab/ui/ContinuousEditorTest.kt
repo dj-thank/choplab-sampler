@@ -1305,6 +1305,21 @@ class ContinuousEditorTest {
             try {
                 scene.settle()
                 assertNotNull(scene.tag("ce-scratch-panel"))
+                val sourceFace = requireNotNull(scene.tag("ce-scratch-source-platter")).boundsInRoot
+                val handFace = requireNotNull(scene.tag("ce-scratch-platter")).boundsInRoot
+                assertTrue(sourceFace.width >= 260f && handFace.width >= 260f)
+                assertTrue(sourceFace.right < handFace.left, "SOURCE and HAND are separate, large left and right surfaces")
+                scene.capture("source-hand-desktop-initial.png")
+                scene.click("ce-scratch-source-play")
+                assertEquals(ContinuousEditorAction.PlayOriginal, actions.last())
+                scene.click("ce-scratch-source-stop")
+                assertEquals(ContinuousEditorAction.StopOriginal, actions.last())
+                scene.click("ce-scratch-source-start")
+                assertEquals(ContinuousEditorAction.SeekOriginal(0), actions.last())
+                scene.tag("ce-scratch-source-gain")!!.config[SemanticsActions.SetProgress].action!!.invoke(.2f)
+                assertEquals(ContinuousEditorAction.SetOriginalMonitorGain(.2f), actions.last())
+                scene.tag("ce-scratch-hand-gain")!!.config[SemanticsActions.SetProgress].action!!.invoke(.6f)
+                assertEquals(ContinuousEditorAction.SetHandMonitorGain(.6f), actions.last())
                 assertTrue(scene.texts().any { it.startsWith("選んだPAD") } && scene.texts().any { it.startsWith("原曲の範囲") })
                 scene.click("ce-scratch-target-original")
                 assertEquals(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL), actions.last())
@@ -1348,18 +1363,37 @@ class ContinuousEditorTest {
 
             // A phone at double text size reaches the platter, the fader and the close button by scrolling.
             val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
-                ContinuousEditor(state.value, {}, { ContinuousEditorReadout(scratchFraction = .6f) })
+                ContinuousEditor(state.value, { actions += it }, { ContinuousEditorReadout(scratchFraction = .6f) })
             }
             try {
                 phone.settle()
                 assertNotNull(phone.tag("ce-scratch-platter"))
+                phone.click("ce-scratch-source-stop")
+                assertEquals(ContinuousEditorAction.StopOriginal, actions.last())
                 phone.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
                 phone.settle()
                 val close = requireNotNull(phone.tag("ce-scratch-close")).boundsInRoot
                 assertTrue(close.height >= 48f && close.bottom <= 844f, "Close stays reachable: $close")
+                for (tag in listOf("ce-scratch-hand-stop", "ce-scratch-stop-all")) {
+                    val stop = requireNotNull(phone.tag(tag)).boundsInRoot
+                    assertTrue(stop.height >= 48f && stop.top >= 0f && stop.bottom <= 844f, "$tag stays visible while the panels scroll")
+                }
                 val cut = requireNotNull(phone.tag("ce-scratch-cut")).boundsInRoot
                 assertTrue(cut.width >= 150f, "The cut fader keeps a usable width at large text: $cut")
                 phone.capture("beat-scratch-phone-font200.png")
+                phone.reach("ce-scratch-platter")
+                actions.clear()
+                val point = requireNotNull(phone.tag("ce-scratch-platter")).boundsInRoot.center
+                phone.sendPointerEvent(PointerEventType.Press, point, type = PointerType.Mouse,
+                    buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                phone.settle()
+                state.value = state.value.copy(scratch = null)
+                phone.settle()
+                phone.sendPointerEvent(PointerEventType.Release, point, type = PointerType.Mouse,
+                    buttons = PointerButtons(), button = PointerButton.Primary)
+                phone.settle()
+                assertEquals(1, actions.count { it == ContinuousEditorAction.ScratchHold })
+                assertEquals(1, actions.count { it == ContinuousEditorAction.ScratchLetGo }, "Disposing a held panel releases it once")
             } finally { phone.close() }
         } finally { Locale.setDefault(previous) }
     }
