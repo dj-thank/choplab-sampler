@@ -111,6 +111,11 @@ def build(java_home, tools, signed=False, linked=False):
             run('codesign', '--verify', '--deep', '--strict', app)
         else:
             # Explicit local Preview identity; this is never promoted to a signed release.
+            # jpackage copies the launcher with the JDK vendor's signature. Signing over it in
+            # place leaves that signature's certificates behind, so remove it first, as jpackage
+            # does for every other binary it signs.
+            for launcher in sorted((app / 'Contents/MacOS').iterdir()):
+                run('codesign', '--remove-signature', launcher)
             run('codesign', '--force', '--sign', '-', runtime)
             run('codesign', '--force', '--sign', '-', app)
             run('codesign', '--verify', '--deep', '--strict', app)

@@ -1,6 +1,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import plistlib
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -78,6 +79,43 @@ class MacPackageConfigurationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'local ad-hoc'):
                 PACKAGE.build(Path('unused-jdk'), None, signed=True, linked=True)
             run.assert_not_called()
+
+    def test_ad_hoc_signing_first_removes_the_vendor_signature_from_the_launcher(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'desktop/build/install/desktop/lib').mkdir(parents=True)
+            (root / 'gradle.properties').write_text('choplabVersion=0.18.0\nchoplabBuildNumber=30\n')
+            for name in ('LICENSE', 'NOTICE.md'):
+                (root / name).write_text(name)
+            commands = []
+
+            def run(*args, **kwargs):
+                args = [str(a) for a in args]
+                commands.append(args)
+                if Path(args[0]).name == 'jpackage':
+                    # The smallest app image jpackage would leave behind.
+                    app = Path(args[args.index('--dest') + 1]) / (args[args.index('--name') + 1] + '.app')
+                    (app / 'Contents/MacOS').mkdir(parents=True)
+                    (app / 'Contents/MacOS' / args[args.index('--name') + 1]).write_bytes(b'launcher')
+                    (app / 'Contents/app').mkdir()
+                    (app / 'Contents/runtime/Contents' / 'Home' / 'legal').mkdir(parents=True)
+                    with (app / 'Contents/Info.plist').open('wb') as stream:
+                        plistlib.dump({}, stream)
+
+            with patch.object(PACKAGE, 'ROOT', root), patch.object(PACKAGE, 'run', side_effect=run), \
+                    patch.object(PACKAGE.subprocess, 'check_output', return_value=''), \
+                    patch.dict(os.environ, {}, clear=True):
+                PACKAGE.build(root / 'jdk', None, linked=True)
+            codesign = [c[1:] for c in commands if c[0] == 'codesign']
+            launcher = str(root / 'desktop/build')
+            removed = [i for i, c in enumerate(codesign) if c[0] == '--remove-signature']
+            signed_app = [i for i, c in enumerate(codesign) if c[:3] == ['--force', '--sign', '-'] and c[3].endswith('ChopLab NEXT.app')]
+            self.assertEqual(1, len(removed))
+            self.assertTrue(codesign[removed[0]][1].startswith(launcher))
+            self.assertTrue(codesign[removed[0]][1].endswith('ChopLab NEXT.app/Contents/MacOS/ChopLab NEXT'))
+            self.assertEqual(1, len(signed_app))
+            self.assertLess(removed[0], signed_app[0])
+            self.assertTrue((root / 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app/Contents/Info.plist').is_file())
 
 
 if __name__ == '__main__':

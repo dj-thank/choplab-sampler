@@ -131,7 +131,7 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 
 ### 新しい編集画面（NEXT）のMacアプリ — 2026-09-27
 
-オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。新しい編集画面はWAVだけを開きマイクはJava Soundで録るため、media tool・分離モデル・ScreenCaptureKit helperの起動設定・Spotifyは同梱しない（Homebrewの固定名一覧にも依存しない）。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、隔離profile・無音で30秒起動してデータ領域の作成を確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
+オーナーの「Macで使いたい」に対応し、4工程の編集画面だけを起動する `ChopLab NEXT.app`（表示名「おとひろい NEXT」、bundle ID `com.choplab.sampler.preview.next`、ad-hoc署名・未公証）を `:desktop:packageMacLinkedPreview` で作る。新しい編集画面はWAVだけを開きマイクはJava Soundで録るため、media tool・分離モデル・ScreenCaptureKit helperの起動設定・Spotifyは同梱しない（Homebrewの固定名一覧にも依存しない）。workflow `mac-preview.yml` がmainへの統合ごとにmacOS（Apple Silicon）で作り、隔離profile・無音で30秒起動してデータ領域の作成を確かめ、archive検査の後に `choplab-mac-next-preview`（7日保存）として置く。archive検査は `ChopLab NEXT.app` を既存のMac app rootと同じ規則で扱う。jpackageのランチャーはJDK配布元の署名付きで、その上にad-hoc署名すると古い証明書が残りarchive検査が検出したため、先に署名を外してから署名する（jpackageがほかのbinaryにしている手順と同じ）。Rollbackはこの変更のrevert。Intel Mac、実機での音・マイク・操作感、公証・公開配布は未確認/対象外。
 
 ## 判断・失敗・次の一手の記録
 

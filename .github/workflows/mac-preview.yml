@@ -72,6 +72,13 @@ jobs:
           python3 scripts/check_public_surface.py --archive dist/ChopLab-mac-next-preview.zip
           (cd dist && shasum -a 256 ChopLab-mac-next-preview.zip > ChopLab-mac-next-preview.zip.sha256)
 
+      - name: Show the app's signatures after a failure
+        if: failure()
+        run: |
+          app="desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app"
+          codesign -dvvv "$app" 2>&1 || true
+          codesign -dvvv "$app/Contents/runtime" 2>&1 || true
+
       - name: Upload the Mac app
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
