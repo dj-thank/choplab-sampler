@@ -231,10 +231,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     @Volatile private var scratchOpeningCancelled = false
     @Volatile private var lastScratchFraction = 0f
     private val lyricEditor = ContinuousLyricsController(studio, ports.lyricFiles) { intent, revision -> send(Action.Edit(intent, revision)) }
+    private val bankPadEditor = BankPadEditController(studio, { bankPadBlock(view.value, studio.work.value) }) { intent, revision ->
+        send(Action.Edit(intent, revision))
+    }
     private val inputs = combine(studio.document, studio.selection, studio.work,
         studio.transport.map { it.playing to it.outputAttached }.distinctUntilChanged()) { d, s, w, t -> EditorInputs(d, s, w, t.first, t.second) }
-    val state: StateFlow<ContinuousEditorState> = combine(inputs, view, envelopes, lyricEditor.view) { input, editor, peaks, lyrics ->
-        project(input, editor, peaks).copy(lyrics = lyrics.copy(lines = input.document.project.lyrics))
+    val state: StateFlow<ContinuousEditorState> = combine(inputs, view, envelopes, lyricEditor.view, bankPadEditor.view) { input, editor, peaks, lyrics, bankPad ->
+        project(input, editor, peaks).copy(lyrics = lyrics.copy(lines = input.document.project.lyrics), bankPadEditor = bankPad)
     }
         .stateIn(jobs, SharingStarted.Eagerly, project(EditorInputs(studio.document.value, studio.selection.value,
             studio.work.value, false, false), view.value, envelopes.value))
@@ -350,9 +353,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 (view.value.recordingSource && !allowedWhileCollecting(action))) {
                 refusal = ContinuousStatus.RECORDING_BUSY; false
             } else when (action) {
+                is ContinuousEditorAction.BankPadEdit -> bankPadEditor.dispatch(action.action)
                 is ContinuousEditorAction.Lyrics -> if (action.action != LyricAction.Close &&
                     (studio.work.value.jobId != null || studio.work.value.preparationId != null)) false else lyricEditor.dispatch(action.action)
                 is ContinuousEditorAction.Navigate -> {
+                    if (action.stage != view.value.stage) bankPadEditor.dispatch(BankPadEditAction.Cancel)
                     releaseHeld()
                     if (action.stage != ContinuousStage.BEAT && view.value.scratch != null) { letGoScratch(); view.update { it.copy(scratch = null) } }
                     // The take belongs to the BEAT stage, where its stop button is: leaving it ends the take.
@@ -670,7 +675,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
 
     private fun drumBank(project: Project): List<Pad> = project.pads.subList(DrumKits.BANK * 16, DrumKits.BANK * 16 + 16).toList()
 
+    private fun bankPadBlock(editor: EditorView, work: WorkState): BankPadEditProblem? = when {
+        editor.voice != null || editor.hits != null || editor.recordingSource || editor.startingSource || finishingTake -> BankPadEditProblem.RECORDING
+        work.jobId != null || work.preparationId != null -> BankPadEditProblem.BUSY
+        else -> null
+    }
+
     private fun allowedWhileCollecting(action: ContinuousEditorAction) = when (action) {
+        // The controller keeps drafts/cancel available and itself refuses opening or applying while recording.
+        is ContinuousEditorAction.BankPadEdit -> true
         is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.StopSourceRecording,
         ContinuousEditorAction.DiscardSourceRecording, ContinuousEditorAction.StopAll,
@@ -785,6 +798,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private fun allowedWhileRecording(action: ContinuousEditorAction) = when (action) {
+        is ContinuousEditorAction.BankPadEdit -> true
         is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
         ContinuousEditorAction.RecordVoice, ContinuousEditorAction.StopVoice, ContinuousEditorAction.StopAll,
         ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit,
@@ -1515,7 +1529,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             originalPlaying = v.originalPlaying, liveChopping = v.liveChop != null, recordingVoice = v.voice != null, recordingHits = v.hits != null,
             recordingSource = v.recordingSource, recordingSystemAudio = v.systemSource,
             startingSourceRecording = v.startingSource, originalMonitorGain = v.originalGain,
-            banks = p.banks.map { ContinuousBank(it.id, it.name) }, selectedBank = input.selection.padId / 16,
+            banks = p.banks.map { ContinuousBank(it.id, it.name, it.color, it.role) }, selectedBank = input.selection.padId / 16,
+            bankPadBlocked = bankPadBlock(v, input.work),
             pads = p.pads.map { pad -> ContinuousPad(pad.id, pad.name,
                 when { pad.assetHash == null -> ContinuousPadKind.EMPTY; kitSounds[pad.id] != null -> ContinuousPadKind.DRUM; else -> ContinuousPadKind.SAMPLE },
                 ContinuousPadMode.valueOf(pad.mode.name), slicePeaks(p, pad.assetHash, pad.range, peaks),

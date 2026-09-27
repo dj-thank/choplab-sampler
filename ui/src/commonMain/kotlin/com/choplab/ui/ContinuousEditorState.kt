@@ -74,8 +74,8 @@ enum class ContinuousStatus {
     init { require(frames > 0 && sampleRate > 0 && rangeStartFrame >= 0 && rangeEndFrame > rangeStartFrame && rangeEndFrame <= frames) }
 }
 
-@Immutable data class ContinuousBank(val id: Int, val name: String = "") {
-    init { require(id in 0..7) }
+@Immutable data class ContinuousBank(val id: Int, val name: String = "", val color: Int = 0x4477aa, val role: String = "samples") {
+    init { require(id in 0..7 && color in 0..0xffffff) }
 }
 
 @Immutable data class ContinuousPad(
@@ -154,6 +154,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 
 @Immutable data class ContinuousEditorState(
     val lyrics: ContinuousLyricsState = ContinuousLyricsState(),
+    val bankPadEditor: BankPadEditorState = BankPadEditorState(),
+    val bankPadBlocked: BankPadEditProblem? = null,
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
     val projectTitle: String = "",
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
@@ -268,6 +270,7 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
+    data class BankPadEdit(val action: BankPadEditAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
     data object ImportLibrary : ContinuousEditorAction
