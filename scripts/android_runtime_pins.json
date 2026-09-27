@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "verified_at": "2026-09-25",
+  "verified_at": "2026-09-26",
   "sources": [
     {
       "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
@@ -27,12 +27,12 @@
       "checksum": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
-      "url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.29.0/onnxruntime-android-1.29.0.aar",
-      "sha256": "e97540ca78fe36f6fe2013f82843414fb843b6c7681fb04644cba5e1406662dd",
-      "checksum_url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.29.0/onnxruntime-android-1.29.0.aar.sha1",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
+      "url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.30.0/onnxruntime-android-1.30.0.aar",
+      "sha256": "e7fb945e402205f6db858d65bb78d2bdb0812317b383976c9e3bceb4862c73f1",
+      "checksum_url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.30.0/onnxruntime-android-1.30.0.aar.sha1",
       "checksum_algorithm": "sha1",
-      "checksum": "22c4a984c9c6f86c188b4d5ae792527db4527889",
+      "checksum": "656d941369b97c730c4dc963799b159667893a45",
       "sha256_verified_by": "fresh full HTTPS AAR download"
     }
   ],
@@ -238,68 +238,68 @@
       "sha256": "5ca32e9d8514ed21a63510a3cba268db1e2c43ad13fb39e895a32e23127734f2"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/arm64-v8a/libonnxruntime.so",
       "apk_path": "lib/arm64-v8a/libonnxruntime.so",
       "kind": "native_elf",
-      "size": 32120992,
-      "sha256": "3a602b463d434d20fbf69cd1b8bdfd2f86a2cb67d08de97aec8f62476fa4ab87"
+      "size": 32990480,
+      "sha256": "df5d25c72a868dca773597c71e2000756d43fe4d70ade516d3693c54e12e0ada"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/arm64-v8a/libonnxruntime4j_jni.so",
       "apk_path": "lib/arm64-v8a/libonnxruntime4j_jni.so",
       "kind": "native_elf",
       "size": 111648,
-      "sha256": "45673d7fba377fe0555892460766051b5993d65c9f65e528dc9d515c07c9f683"
+      "sha256": "0695257178815f8c58c1719ba07d6d5d91a2b339634328cca2a0a98aa7ff2952"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/armeabi-v7a/libonnxruntime.so",
       "apk_path": "lib/armeabi-v7a/libonnxruntime.so",
       "kind": "native_elf",
-      "size": 22727712,
-      "sha256": "76fcaa5a49e939295cdd8b2f304a8fda0fa52aeca8fc4dd8215ee29089e00ccb"
+      "size": 23311344,
+      "sha256": "d8c6e57af1848c4b9b2571a8864ac53592e57105dc67fb1e7b9e49828e555279"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/armeabi-v7a/libonnxruntime4j_jni.so",
       "apk_path": "lib/armeabi-v7a/libonnxruntime4j_jni.so",
       "kind": "native_elf",
-      "size": 81552,
-      "sha256": "930d6e89a8e16ce820ad9e345bb25efc29bde6d79b525d203ee02f9e9e177886"
+      "size": 81584,
+      "sha256": "05c34d683a148da634af1997ee31aa4383307cf1daba0c890f15f2cfff2c3171"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/x86/libonnxruntime.so",
       "apk_path": "lib/x86/libonnxruntime.so",
       "kind": "native_elf",
-      "size": 38442284,
-      "sha256": "811892fdad82237373e7bc50a2cd6ca687af150cbb3bce9996d29f93d4861128"
+      "size": 39266604,
+      "sha256": "2c140256e58dd8b2a8b93020ee973f8c67500f945053da671239d7ae7425ef7f"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/x86/libonnxruntime4j_jni.so",
       "apk_path": "lib/x86/libonnxruntime4j_jni.so",
       "kind": "native_elf",
-      "size": 93636,
-      "sha256": "58f6543f7d850f6763fe76fafe282b97ad3f21d72c5590da2e8ef3cbb4094e09"
+      "size": 93620,
+      "sha256": "21576db11fec50c1698bd6f14c9eaac894c5e1024ee3d162c15aa61a4885d501"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/x86_64/libonnxruntime.so",
       "apk_path": "lib/x86_64/libonnxruntime.so",
       "kind": "native_elf",
-      "size": 38473056,
-      "sha256": "1fbfff77a79d79d4e99c2ae78d048044b689782da7e2b0a268443279ae615566"
+      "size": 39348488,
+      "sha256": "f59d4d59d4c71532028d56ab6ca1dae62c3838c7982adfdad7f2560048b89ed9"
     },
     {
-      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.29.0",
+      "coordinate": "com.microsoft.onnxruntime:onnxruntime-android:1.30.0",
       "aar_member": "jni/x86_64/libonnxruntime4j_jni.so",
       "apk_path": "lib/x86_64/libonnxruntime4j_jni.so",
       "kind": "native_elf",
       "size": 100032,
-      "sha256": "d1c4b89f0b88d8f9cb722ca5cedca0855001b6922d8abc268822f3c7936b2469"
+      "sha256": "fba30194109597cca36512e86c8f30d18951a0bdaa177ea680b562f9d8ea77a2"
     }
   ]
 }

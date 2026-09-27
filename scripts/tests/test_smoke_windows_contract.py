@@ -29,9 +29,11 @@ $process.HasExited = $false
 $process | Add-Member -Force -MemberType ScriptMethod -Name Refresh -Value { throw 'gone' }
 if (Test-SmokeProcessAlive $owner) { throw 'Failed identity query accepted' }
 '''
+        # A cold PowerShell start on a busy Linux runner has taken more than 15 seconds; the limit only stops a hang.
         result = subprocess.run(
             [shutil.which('pwsh'), '-NoProfile', '-NonInteractive', '-Command', code],
-            env=dict(os.environ, CHOPLAB_SMOKE_TEST_SCRIPT=str(script)),
-            capture_output=True, text=True, encoding='utf-8', timeout=15,
+            env=dict(os.environ, CHOPLAB_SMOKE_TEST_SCRIPT=str(script),
+                     POWERSHELL_TELEMETRY_OPTOUT='1', POWERSHELL_UPDATECHECK='Off'),
+            capture_output=True, text=True, encoding='utf-8', timeout=120,
         )
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
