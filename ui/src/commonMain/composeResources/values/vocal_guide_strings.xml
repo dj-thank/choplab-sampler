@@ -37,4 +37,5 @@
     <string name="vocal_limit">A line, duration, or storage limit was reached. Work in groups of up to 64 lines, at most 30 seconds each.</string>
     <string name="vocal_failed">Processing or source restoration failed. Check the output, stop, and retry.</string>
     <string name="vocal_source_owned">TTS guide preview · source controls return after Stop</string>
+    <string name="vocal_memory_limit">Audio memory is full. Stop playback or close another audio task, then retry. No speech was truncated.</string>
 </resources>

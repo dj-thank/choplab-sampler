@@ -92,6 +92,8 @@ class AndroidTtsProvider(context: Context) : TtsProvider {
             val capture = Capture(UUID.randomUUID().toString())
             val output = withContext(Dispatchers.IO) { File.createTempFile("next-speech-", ".wav", context.cacheDir) }
             active.set(capture)
+            var delivering: TtsAudio? = null
+            var successful = false
             try {
                 val queued = withContext(Dispatchers.Main.immediate) {
                     if (closed.get()) return@withContext false
@@ -103,18 +105,27 @@ class AndroidTtsProvider(context: Context) : TtsProvider {
                     tts.synthesizeToFile(request.spokenText, params, output, capture.id) == TextToSpeech.SUCCESS
                 }
                 if (!queued) return@withLock ttsFailure(TtsProblem.VOICE_CHANGED)
-                when (val completion = withTimeout(60_000) { capture.done.await() }) {
+                val result = when (val completion = withTimeout(60_000) { capture.done.await() }) {
                     is TtsResult.Failure -> completion
-                    is TtsResult.Success -> withContext(Dispatchers.Default) { ensureActive(); capture.pcm.finish() }
+                    is TtsResult.Success -> withContext(Dispatchers.Default) {
+                        ensureActive(); capture.pcm.finish().also { if (it is TtsResult.Success) delivering = it.value }
+                    }
                 }
+                successful = result is TtsResult.Success
+                result
             } catch (_: TimeoutCancellationException) { ttsFailure(TtsProblem.TIMEOUT) }
             catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { ttsFailure(TtsProblem.FAILED) }
             finally {
-                active.compareAndSet(capture, null)
-                capture.pcm.clear()
-                withContext(NonCancellable + Dispatchers.Main.immediate) { if (!closed.get()) tts.stop() }
-                withContext(NonCancellable + Dispatchers.IO) { output.delete() }
+                var cleaned = false
+                try {
+                    active.compareAndSet(capture, null)
+                    capture.pcm.clear()
+                    withContext(NonCancellable + Dispatchers.Main.immediate) { if (!closed.get()) tts.stop() }
+                    withContext(NonCancellable + Dispatchers.IO) { output.delete() }
+                    currentCoroutineContext().ensureActive()
+                    cleaned = true
+                } finally { if (!successful || !cleaned) delivering?.close() }
             }
         }
     }

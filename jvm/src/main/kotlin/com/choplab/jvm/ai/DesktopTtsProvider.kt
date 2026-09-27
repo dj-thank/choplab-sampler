@@ -26,6 +26,7 @@ class DesktopTtsProvider(
     private val osVersion: String = System.getProperty("os.version"),
     // Device APIs don't report the installed voice-data version. Do not reuse an unknown version across sessions.
     private val voiceSessionVersion: String = "unreported-session-${UUID.randomUUID()}",
+    private val memory: PcmMemoryBudget = PcmMemoryBudget.shared,
 ) : TtsProvider {
     private val closed = AtomicBoolean()
     private val serial = Mutex()
@@ -61,7 +62,8 @@ class DesktopTtsProvider(
                 platform == DesktopSpeechPlatform.MAC && request.settings.volumePermille != 1000) return@withLock ttsFailure(TtsProblem.UNSUPPORTED_SETTINGS)
             // say interprets embedded speech commands; plain lyric input must not silently change voice/settings.
             if (platform == DesktopSpeechPlatform.MAC && ("[[" in request.spokenText || "]]" in request.spokenText)) return@withLock ttsFailure(TtsProblem.INVALID_INPUT)
-            withContext(Dispatchers.IO) {
+            var delivering: TtsAudio? = null
+            try { withContext(Dispatchers.IO) {
                 inTemporary { directory ->
                     val output = directory.resolve("speech.wav")
                     val result = if (platform == DesktopSpeechPlatform.MAC) {
@@ -74,11 +76,12 @@ class DesktopTtsProvider(
                     if (closed.get()) return@inTemporary ttsFailure(TtsProblem.CLOSED)
                     if (result.exitCode != 0 || !Files.isRegularFile(output, LinkOption.NOFOLLOW_LINKS)) return@inTemporary ttsFailure(TtsProblem.FAILED)
                     if (Files.size(output) > TtsLimits.MAX_WAV_BYTES) return@inTemporary ttsFailure(TtsProblem.TOO_LARGE)
-                    val wave = Files.newInputStream(output).use { WavCodec.read(it, TtsLimits.MAX_WAV_BYTES, TtsLimits.MAX_DECODED_BYTES) }
-                    if (wave.info.frames > wave.info.sampleRate.toLong() * TtsLimits.MAX_SECONDS) return@inTemporary ttsFailure(TtsProblem.TOO_LARGE)
-                    TtsResult.Success(TtsAudio.fromPcm(wave.samples, wave.info.sampleRate, wave.info.channels))
+                    val context = coroutineContext
+                    val audio = SpeechPcmIo.read(output, memory) { context.ensureActive(); check(!closed.get()) }.also { delivering = it }
+                    if (closed.get() || !context.isActive) { audio.close(); context.ensureActive(); ttsFailure(TtsProblem.CLOSED) }
+                    else TtsResult.Success(audio)
                 }
-            }
+            }.also { delivering = null } } finally { delivering?.close() }
         }
     }
 
@@ -89,6 +92,7 @@ class DesktopTtsProvider(
         return try { work(directory) }
         catch (_: TimeoutCancellationException) { ttsFailure(TtsProblem.TIMEOUT) }
         catch (cancel: CancellationException) { throw cancel }
+        catch (_: PcmMemoryLimit) { ttsFailure(TtsProblem.MEMORY_LIMIT) }
         catch (_: IllegalArgumentException) { ttsFailure(TtsProblem.INVALID_AUDIO) }
         catch (_: Exception) { ttsFailure(TtsProblem.FAILED) }
         finally { Files.list(directory).use { files -> files.forEach { Files.deleteIfExists(it) } }; Files.deleteIfExists(directory) }

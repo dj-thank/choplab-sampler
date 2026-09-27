@@ -160,6 +160,7 @@ private fun failureLabel(problem: TtsProblem): StringResource = when (problem) {
     TtsProblem.RECORDING, TtsProblem.BUSY -> Res.string.vocal_busy
     TtsProblem.CANCELLED, TtsProblem.CLOSED -> Res.string.vocal_cancelled
     TtsProblem.DENSITY_CONFIRMATION -> Res.string.vocal_confirm_density
+    TtsProblem.MEMORY_LIMIT -> Res.string.vocal_memory_limit
     TtsProblem.TOO_LARGE, TtsProblem.CACHE_FULL -> Res.string.vocal_limit
     else -> Res.string.vocal_failed
 }

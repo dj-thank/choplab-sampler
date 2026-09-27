@@ -1,6 +1,8 @@
 package com.choplab.core.ai
 
 import com.choplab.core.model.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
 
 object TtsLimits {
     const val MAX_SECONDS = 30
@@ -35,19 +37,36 @@ data class TtsRequest(val text: String, val reading: String, val voice: TtsVoice
 data class TtsWord(val text: String, val startFrame: Long, val endFrame: Long, val origin: WordTimingOrigin) {
     init { requireLabel(text, 256); require(startFrame >= 0 && endFrame > startFrame) }
 }
-class TtsAudio private constructor(private val samples: FloatArray, val sampleRate: Int, val channels: Int, val words: FrozenList<TtsWord>) {
-    val frames: Int get() = samples.size / channels
-    val bytes: Long get() = samples.size.toLong() * 4
-    fun copySamples(): FloatArray = samples.copyOf()
+/** A worker-owned PCM value. The receiving worker must close it, including cancellation and late results. */
+class TtsAudio private constructor(samples: FloatArray, val sampleRate: Int, val channels: Int, val words: FrozenList<TtsWord>,
+                                   val reservationOwner: Any?, private val release: () -> Unit) {
+    private val storage = MutableStateFlow<FloatArray?>(samples)
+    val frames: Int = samples.size / channels
+    val bytes: Long = samples.size.toLong() * 4
+    /** Callers must reserve the defensive copy before using this method. */
+    fun copySamples(): FloatArray = requireNotNull(storage.value) { "Speech PCM is closed" }.copyOf()
+    fun copyInto(target: FloatArray, sourceOffset: Int, sampleCount: Int) {
+        requireNotNull(storage.value) { "Speech PCM is closed" }.copyInto(target, 0, sourceOffset, sourceOffset + sampleCount)
+    }
+    fun close() { if (storage.getAndUpdate { null } != null) release() }
     companion object {
-        /** Input ownership stays with the caller; no caller mutation can alter a prepared proposal. */
+        /** Input ownership stays with the caller; reserve input and copy if used by a production adapter. */
         fun fromPcm(samples: FloatArray, sampleRate: Int, channels: Int, words: List<TtsWord> = emptyList()): TtsAudio {
+            validate(samples, sampleRate, channels, words)
+            return TtsAudio(samples.copyOf(), sampleRate, channels, words.frozen(), null) {}
+        }
+        /** Transfers an exclusively owned, already reserved array without making another full PCM copy. */
+        fun takeOwnership(samples: FloatArray, sampleRate: Int, channels: Int, words: List<TtsWord> = emptyList(),
+                          reservationOwner: Any, release: () -> Unit): TtsAudio {
+            validate(samples, sampleRate, channels, words)
+            return TtsAudio(samples, sampleRate, channels, words.frozen(), reservationOwner, release)
+        }
+        private fun validate(samples: FloatArray, sampleRate: Int, channels: Int, words: List<TtsWord>) {
             require(sampleRate in 8_000..192_000 && channels in 1..2)
             require(samples.isNotEmpty() && samples.size % channels == 0 && samples.size.toLong() * 4 <= TtsLimits.MAX_DECODED_BYTES)
             val frames = samples.size / channels
             require(frames <= sampleRate * TtsLimits.MAX_SECONDS && samples.all { it.isFinite() })
             require(words.size <= 256 && words.all { it.endFrame <= frames } && words.zipWithNext().all { (a, b) -> a.endFrame <= b.startFrame })
-            return TtsAudio(samples.copyOf(), sampleRate, channels, words.frozen())
         }
     }
     override fun toString() = "TtsAudio(frames=$frames, sampleRate=$sampleRate, channels=$channels)"
@@ -56,7 +75,7 @@ class TtsAudio private constructor(private val samples: FloatArray, val sampleRa
 enum class TtsProblem {
     UNAVAILABLE, NO_OFFLINE_VOICE, VOICE_CHANGED, UNSUPPORTED_SETTINGS, INVALID_INPUT, INVALID_AUDIO, TOO_LARGE,
     SILENT_AUDIO, TOO_SHORT, CANNOT_FIT, CANCELLED, CLOSED, TIMEOUT, FAILED, CACHE_FULL, STALE_DOCUMENT,
-    RECORDING, BUSY, APPLY_REJECTED, DENSITY_CONFIRMATION,
+    RECORDING, BUSY, APPLY_REJECTED, DENSITY_CONFIRMATION, MEMORY_LIMIT,
 }
 data class TtsFailure(val problem: TtsProblem, val speedRequired: Double? = null) {
     init { require(speedRequired == null || speedRequired.isFinite() && speedRequired >= 0) }

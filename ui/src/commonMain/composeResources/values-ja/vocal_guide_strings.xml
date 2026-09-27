@@ -37,4 +37,5 @@
     <string name="vocal_limit">行数・音声長・保存容量の上限です。最大64行、各30秒以内で分けてください。</string>
     <string name="vocal_failed">処理または原曲への復帰に失敗しました。出力を確認し、停止してから再試行してください。</string>
     <string name="vocal_source_owned">TTSガイド試聴中 · 原曲操作は停止後に戻ります</string>
+    <string name="vocal_memory_limit">音声メモリの上限です。再生や他の音声処理を停止してから再試行してください。音声は切り捨てていません。</string>
 </resources>

@@ -4,6 +4,7 @@ import com.choplab.core.ProgramCompiler
 import com.choplab.core.ai.*
 import com.choplab.core.model.*
 import com.choplab.engine.*
+import com.choplab.jvm.PcmMemoryBudget
 import kotlin.math.*
 
 internal data class CachedSpeech(val audio: TtsAudio, val speed: Double = 1.0, val trimmedFrames: Long = 0, val contentHash: String? = null)
@@ -11,11 +12,18 @@ internal data class CachedSpeech(val audio: TtsAudio, val speed: Double = 1.0, v
 /** Native synthesis is normalized once; only conservative edge silence is discarded. */
 internal object VocalGuideProcessor {
     const val VERSION = "vocal-fit-1-" + OfflineWsola.VERSION
-    fun fit(audio: TtsAudio, request: TtsRequest, frames: Int, checkCancelled: () -> Unit): TtsResult<CachedSpeech> {
+    suspend fun fit(audio: TtsAudio, request: TtsRequest, frames: Int, memory: PcmMemoryBudget = PcmMemoryBudget.shared, checkCancelled: () -> Unit): TtsResult<CachedSpeech> {
         checkCancelled()
-        val native = audio.copySamples()
-        val stereo = if (audio.channels == 2) native else FloatArray(native.size * 2) { native[it / 2] }
-        val normalized = OfflineResampler.resample(stereo, audio.sampleRate, checkCancelled = checkCancelled)
+        val normalizedFrames = (audio.frames.toLong() * 48_000 + audio.sampleRate - 1) / audio.sampleRate
+        val normalizedBytes = normalizedFrames * 8
+        val stereoBytes = audio.frames * 8L
+        // Native copy, mono expansion, the resampler's defensive PCM copy, coefficients and output coexist.
+        val normalizePeak = audio.bytes + (if (audio.channels == 1) stereoBytes else 0) + normalizedBytes +
+            (if (audio.sampleRate != 48_000) stereoBytes + 512L * 4097 * 4 else 0)
+        val normalization = memory.reserve(normalizePeak)
+        try {
+        val normalized = normalize(audio, checkCancelled)
+        normalization.shrinkTo(normalizedBytes)
         val length = normalized.size / 2
         var first = 0; var end = length
         // -100 dBFS peak gate plus a 5 ms guard at each edge. No interior pause or voiced tail is cut.
@@ -30,7 +38,10 @@ internal object VocalGuideProcessor {
         val speed = (end - first).toDouble() / frames
         if (speed !in OfflineWsola.MIN_SPEED..OfflineWsola.MAX_SPEED) return ttsFailure(TtsProblem.CANNOT_FIT, speed)
         if (end - first < 128) return ttsFailure(TtsProblem.TOO_SHORT)
-        val output = OfflineWsola.stretch(normalized.copyOfRange(first * 2, end * 2), frames, checkCancelled)
+        val fittedCharge = memory.reserve((end - first) * 8L + frames * 8L)
+        try {
+        val output = stretch(normalized, first, end, frames, checkCancelled)
+        fittedCharge.shrinkTo(frames * 8L)
         val supplied = audio.words.takeIf { words -> words.isNotEmpty() && words.joinToString("") { it.text } == request.text }
         val words = supplied?.mapNotNull { word ->
             val rawFrom = word.startFrame * 48_000.0 / audio.sampleRate - first
@@ -44,8 +55,21 @@ internal object VocalGuideProcessor {
         }?.takeIf { it.size == supplied.size }
             ?: estimateWords(request.text, frames)
         checkCancelled()
-        return TtsResult.Success(CachedSpeech(TtsAudio.fromPcm(output, 48_000, 2, words), speed, (length - (end - first)).toLong()))
+        return TtsResult.Success(CachedSpeech(TtsAudio.takeOwnership(output, 48_000, 2, words, memory, fittedCharge::close),
+            speed, (length - (end - first)).toLong()))
+        } catch (failure: Throwable) { fittedCharge.close(); throw failure }
+        } finally { normalization.close() }
     }
+
+    /** Helpers return only their output, so temporary PCM is no longer referenced before shrinking its charge. */
+    private fun normalize(audio: TtsAudio, check: () -> Unit): FloatArray {
+        val native = audio.copySamples()
+        val stereo = if (audio.channels == 2) native else FloatArray(native.size * 2) { native[it / 2] }
+        return OfflineResampler.resample(stereo, audio.sampleRate, checkCancelled = check)
+    }
+    private fun stretch(normalized: FloatArray, first: Int, end: Int, frames: Int, check: () -> Unit): FloatArray =
+        OfflineWsola.stretch(normalized.copyOfRange(first * 2, end * 2), frames, check)
+
 
     /** No forced alignment claim: character/space groups divide the available duration proportionally. */
     private fun estimateWords(text: String, frames: Int): List<TtsWord> {

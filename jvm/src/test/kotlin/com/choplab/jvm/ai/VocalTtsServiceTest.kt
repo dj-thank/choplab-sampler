@@ -166,6 +166,7 @@ class VocalTtsServiceTest {
             val audio = assertIs<TtsResult.Success<TtsAudio>>(provider.synthesize(TtsRequest("川", "かわ", voice))).value
             assertEquals(22_050, audio.sampleRate, "Decode the container, never assume the requested format was returned")
             assertEquals(1, audio.channels)
+            audio.close()
             assertTrue(native.commands.all { "-NoProfile" in it && "-Command" in it && "-File" !in it &&
                 "-ExecutionPolicy" !in it && it.none { arg -> "かわ" in arg || "Bypass" in arg || directory.toString() in arg } })
             assertEquals(1, native.commands.map { it.last() }.distinct().size, "Enumeration and synthesis run identical fixed code")
@@ -190,11 +191,12 @@ class VocalTtsServiceTest {
             assertFalse(command.contains("かわ"), "Text is passed in its private file, not as shell syntax")
             assertEquals(22_050, audio.sampleRate)
             assertEquals(1, audio.channels)
+            audio.close()
             assertEquals(0L, Files.list(directory).use { it.count() })
         } finally { provider.close(); directory.toFile().deleteRecursively() }
     }
 
-    @Test fun returnedWordTimesStayReturnedOnlyForAnUnwarpedUnclippedSignal() {
+    @Test fun returnedWordTimesStayReturnedOnlyForAnUnwarpedUnclippedSignal() = runBlocking<Unit> {
         val voice = TtsVoice(TtsEngine("test", "1", "test", "1"), "voice", "Voice", "en-US", "1", LyricLanguage.ENGLISH)
         val samples = FloatArray(48_000 * 2) { (.1 * cos(2 * PI * 220 * (it / 2) / 48_000)).toFloat() }
         val audio = TtsAudio.fromPcm(samples, 48_000, 2, listOf(TtsWord("A ", 0, 24_000, WordTimingOrigin.RETURNED), TtsWord("word", 24_000, 48_000, WordTimingOrigin.RETURNED)))
@@ -203,5 +205,6 @@ class VocalTtsServiceTest {
         assertTrue(same.audio.words.all { it.origin == WordTimingOrigin.RETURNED })
         val warped = assertIs<TtsResult.Success<CachedSpeech>>(VocalGuideProcessor.fit(audio, request, 60_000) {}).value
         assertTrue(warped.audio.words.all { it.origin == WordTimingOrigin.ESTIMATED })
+        audio.close(); same.audio.close(); warped.audio.close()
     }
 }

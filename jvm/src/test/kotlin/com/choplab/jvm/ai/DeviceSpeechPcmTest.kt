@@ -8,18 +8,20 @@ class DeviceSpeechPcmTest {
         val eight = DeviceSpeechPcm().apply { begin(22_050, 2, DevicePcmEncoding.UNSIGNED_8); append(byteArrayOf(0, 255.toByte(), 128.toByte(), 64)) }
         val pcm8 = assertIs<TtsResult.Success<TtsAudio>>(eight.finish()).value
         assertEquals(22_050, pcm8.sampleRate); assertEquals(2, pcm8.channels)
-        assertContentEquals(floatArrayOf(-1f, 127 / 128f, 0f, -.5f), pcm8.copySamples())
+        assertContentEquals(floatArrayOf(-1f, 127 / 128f, 0f, -.5f), pcm8.copyAndClose())
         val sixteen = DeviceSpeechPcm().apply {
             begin(44_100, 1, DevicePcmEncoding.SIGNED_16)
             append(byteArrayOf(0, 128.toByte(), 255.toByte())); append(byteArrayOf(127))
         }
-        assertContentEquals(floatArrayOf(-1f, 32767 / 32768f), assertIs<TtsResult.Success<TtsAudio>>(sixteen.finish()).value.copySamples())
+        assertContentEquals(floatArrayOf(-1f, 32767 / 32768f), assertIs<TtsResult.Success<TtsAudio>>(sixteen.finish()).value.copyAndClose())
         val samples = floatArrayOf(.125f, -.375f, .7f, -.9f)
         val bytes = ByteArray(samples.size * 4)
         samples.forEachIndexed { index, sample -> repeat(4) { n -> bytes[index * 4 + n] = (sample.toRawBits() ushr (n * 8)).toByte() } }
         val floating = DeviceSpeechPcm().apply { begin(48_000, 2, DevicePcmEncoding.FLOAT_32); append(bytes) }
-        assertContentEquals(samples, assertIs<TtsResult.Success<TtsAudio>>(floating.finish()).value.copySamples())
+        assertContentEquals(samples, assertIs<TtsResult.Success<TtsAudio>>(floating.finish()).value.copyAndClose())
     }
+
+    private fun TtsAudio.copyAndClose() = try { copySamples() } finally { close() }
 
     @Test fun missingDuplicatePartialNonfiniteAndLateChunksCannotBecomeAnAudioResult() {
         val missing = DeviceSpeechPcm().apply { append(byteArrayOf(1)) }

@@ -7,8 +7,10 @@ import com.choplab.jvm.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
+import java.io.FileOutputStream
+import java.nio.file.Files
+import java.security.DigestOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Production preparation: device PCM → normalization/WSOLA → verified float Asset, before explicit Apply. */
@@ -25,38 +27,69 @@ class VocalTtsService(private val provider: TtsProvider, private val cache: TtsC
         withContext(Dispatchers.IO) {
             val context = coroutineContext
             val check = { context.ensureActive(); if (closed.get()) throw CancellationException("TTS session closed") }
+            var source: CachedSpeech? = null
+            var prepared: CachedSpeech? = null
+            var foreignSource: PcmMemoryBudget.Reservation? = null
+            val memory = cache.memory
             try {
                 val rawKey = TtsCache.rawKey(request)
                 val frames = VocalGuideProcessor.targetFrames(row, tempo)
                 val cached = if (regenerate) null else cache.get(rawKey, check)
-                val source = cached ?: when (val result = provider.synthesize(request)) {
+                source = cached ?: when (val result = provider.synthesize(request)) {
                     is TtsResult.Failure -> return@withContext result
                     is TtsResult.Success -> {
-                        check()
+                        // Keep the returned ownership even if cancellation happens immediately after the provider returns.
                         val entry = CachedSpeech(result.value)
+                        source = entry
+                        if (entry.audio.reservationOwner !== memory) foreignSource = memory.reserve(entry.audio.bytes)
+                        check()
                         entry.copy(contentHash = cache.put(rawKey, entry, check))
                     }
                 }
-                val fittedKey = TtsCache.fittedKey(rawKey, requireNotNull(source.contentHash), row, tempo)
-                val fitted = if (regenerate) null else cache.get(fittedKey, check)?.takeIf { it.audio.frames == frames && it.audio.sampleRate == 48_000 && it.audio.channels == 2 }
-                val prepared = fitted ?: run {
+                val raw = requireNotNull(source)
+                val fittedKey = TtsCache.fittedKey(rawKey, requireNotNull(raw.contentHash), row, tempo)
+                val fitted = if (regenerate) null else cache.get(fittedKey, check)?.let {
+                    if (it.audio.frames == frames && it.audio.sampleRate == 48_000 && it.audio.channels == 2) it else { it.audio.close(); null }
+                }
+                prepared = fitted
+                prepared = fitted ?: run {
                     check()
-                    when (val result = withContext(Dispatchers.Default) { VocalGuideProcessor.fit(source.audio, request, frames, check) }) {
+                    when (val result = withContext(Dispatchers.Default) {
+                        VocalGuideProcessor.fit(raw.audio, request, frames, memory, check).also { if (it is TtsResult.Success) prepared = it.value }
+                    }) {
                         is TtsResult.Failure -> return@withContext result
-                        is TtsResult.Success -> result.value.also { cache.put(fittedKey, it, check) }
+                        is TtsResult.Success -> result.value.also { prepared = it; cache.put(fittedKey, it, check) }
                     }
                 }
+                raw.audio.close(); source = null
+                foreignSource?.close(); foreignSource = null
                 check()
-                val bytes = ByteArrayOutputStream().also { WavCodec.writeFloat(it, prepared.audio.copySamples()) }.toByteArray()
-                val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), 48_000, 2, frames.toLong(), "Vocal guide.wav", AssetRole.RENDERED)
-                assets.publish(asset, ByteArrayInputStream(bytes)) { !context.isActive || closed.get() }
+                val ready = requireNotNull(prepared)
+                val asset = publish(ready.audio, frames, check)
                 check()
-                TtsResult.Success(PreparedVocalLine(row.line.copy(words = VocalGuideProcessor.lyricWords(row, prepared.audio)), asset,
-                    prepared.speed, prepared.trimmedFrames, cached != null, fitted != null))
+                TtsResult.Success(PreparedVocalLine(row.line.copy(words = VocalGuideProcessor.lyricWords(row, ready.audio)), asset,
+                    ready.speed, ready.trimmedFrames, cached != null, fitted != null))
             } catch (cancel: CancellationException) { throw cancel }
             catch (_: TtsCacheCapacityException) { ttsFailure(TtsProblem.CACHE_FULL) }
+            catch (_: PcmMemoryLimit) { ttsFailure(TtsProblem.MEMORY_LIMIT) }
             catch (_: Exception) { ttsFailure(TtsProblem.FAILED) }
+            finally { source?.audio?.close(); prepared?.audio?.close(); foreignSource?.close() }
         }
     }
+    private suspend fun publish(audio: TtsAudio, frames: Int, check: () -> Unit): Asset =
+        cache.memory.reserve(SpeechPcmIo.WRITE_BYTES + 64 * 1024).use {
+            val temporary = Files.createTempFile(assets.directory.parent, ".guide-", ".wav")
+            try {
+                val digest = MessageDigest.getInstance("SHA-256")
+                FileOutputStream(temporary.toFile()).use { output ->
+                    SpeechPcmIo.write(DigestOutputStream(output, digest), audio, check)
+                    output.fd.sync()
+                }
+                check()
+                val asset = Asset(digest.digest().hex(), "wav", Files.size(temporary), 48_000, 2, frames.toLong(), "Vocal guide.wav", AssetRole.RENDERED)
+                assets.adopt(asset, temporary) { check(); false }
+                asset
+            } finally { Files.deleteIfExists(temporary) }
+        }
     override fun close() { if (closed.compareAndSet(false, true)) provider.close() }
 }
