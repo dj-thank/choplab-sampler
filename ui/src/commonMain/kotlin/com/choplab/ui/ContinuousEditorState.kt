@@ -22,7 +22,7 @@ enum class ContinuousCapability {
     ADD_DRUM, RECORD_VOICE, SCRATCH, STOP_ALL,
 }
 enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT }
-enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT }
+enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT, COPIED }
 
 @Immutable data class ContinuousSource(
     val id: String,
@@ -139,6 +139,31 @@ enum class ContinuousStatus { LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCE
     val selectedClip: ContinuousClip? get() = clips.firstOrNull { it.id == selectedClipId }
 }
 
+/**
+ * Output health for the diagnostics card: formats, times and counts only, never a device name or identifier. Null
+ * where the platform or the current state does not tell.
+ */
+@Immutable data class ContinuousDiagnostics(
+    val outputAttached: Boolean,
+    /** Samples go out as 32-bit float (true) or 16-bit (false) while attached. */
+    val floatOutput: Boolean? = null,
+    val sampleRate: Int = CONTINUOUS_TIMELINE_RATE,
+    val blockFrames: Int = 256,
+    val bufferFrames: Int? = null,
+    /** Frames written but not yet played: the output's delay as far as the platform tells. */
+    val pendingFrames: Long? = null,
+    val underruns: Int? = null,
+    /** Output lost or failing to open since the editor opened. */
+    val outputLosses: Long = 0,
+    val measuredBlocks: Int = 0,
+    /** Time to produce one block as a share of its duration: 99th percentile and maximum over [measuredBlocks]. */
+    val renderP99: Double? = null,
+    val renderMax: Double? = null,
+    /** Frames drawn since the editor opened, and those that took 1/30 s or longer. */
+    val drawnFrames: Long? = null,
+    val slowFrames: Long? = null,
+)
+
 /** Read only in source waveform/time or song timeline/transport subtrees, never whole-app ticks. */
 @Immutable data class ContinuousEditorReadout(
     val originalFrame: Long = 0,
@@ -207,5 +232,7 @@ sealed interface ContinuousEditorAction {
     data object ConfirmDrumKit : ContinuousEditorAction
     data object DismissDrumKit : ContinuousEditorAction
     data object RecordVoice : ContinuousEditorAction
+    /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */
+    data class CopyDiagnostics(val text: String) : ContinuousEditorAction
     data object OpenScratch : ContinuousEditorAction
 }

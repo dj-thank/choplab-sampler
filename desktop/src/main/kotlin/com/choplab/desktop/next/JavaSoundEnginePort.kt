@@ -19,13 +19,22 @@ class JavaSoundEnginePort(
     blockFrames: Int = 256,
     acknowledgementMillis: Long = 1_000,
 ) : StreamingEnginePort(compiler, sinkFactory, blockFrames, acknowledgementMillis)
-private class JavaSoundSink(private val line: SourceDataLine, override val encoding: SinkEncoding) : AudioSink {
+internal class JavaSoundSink(private val line: SourceDataLine, override val encoding: SinkEncoding) : AudioSink {
+    private val frameBytes = encoding.bytesPerSample * 2
+    /** Frames handed to the line, and the times it was found empty after it had been fed: the owner writes, a reader reads. */
+    @Volatile private var framesWritten = 0L
+    @Volatile private var dry = 0
     override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
-        val frameBytes = encoding.bytesPerSample * 2
-        val available = line.available() / frameBytes * frameBytes
+        val free = line.available()
+        // Java Sound counts no underruns; a fed line with its whole buffer free has run out of audio.
+        if (framesWritten > 0 && free >= line.bufferSize) dry++
+        val available = free / frameBytes * frameBytes
         if (available <= 0) return 0
-        return line.write(bytes, offset, minOf(length, available))
+        return line.write(bytes, offset, minOf(length, available)).also { framesWritten += it / frameBytes }
     }
+    override fun bufferFrames(): Int = line.bufferSize / frameBytes
+    override fun underruns(): Int = dry
+    override fun pendingFrames(): Long = (framesWritten - line.longFramePosition).coerceAtLeast(0)
     override fun close() { try { line.stop(); line.flush() } finally { line.close() } }
     companion object {
         fun open(): AudioSink {

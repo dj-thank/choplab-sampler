@@ -295,6 +295,75 @@ class ContinuousEditorTest {
         } finally { Locale.setDefault(previous) }
     }
 
+    @Test fun diagnosticsCardShowsOutputHealthAndCopiesIt() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            val health = ContinuousDiagnostics(outputAttached = true, floatOutput = true, blockFrames = 256, bufferFrames = 1920,
+                pendingFrames = 1440, underruns = 2, outputLosses = 1, measuredBlocks = 4096, renderP99 = .184, renderMax = .52,
+                drawnFrames = 1200, slowFrames = 3)
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val scene = ImageComposeScene(width = 1440, height = 1600, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state(ContinuousStage.SAVE), actions::add, ContinuousEditorFixture::readout,
+                    diagnostics = { health })
+            }
+            try {
+                scene.settle()
+                assertNotNull(scene.tag("ce-diagnostics"))
+                val shown = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+                for (expected in listOf("音の診断", "つながっている", "48 kHz・ステレオ・32bit 浮動小数点", "256 フレーム（5.3 ms）",
+                    "1920 フレーム（40.0 ms）", "30.0 ms", "99%値 18%・最大 52%", "2 回", "1 回", "開いてから 1200 フレーム中 3 回")) {
+                    assertTrue(shown.any { expected in it }, "Missing $expected in $shown")
+                }
+                // A screen reader hears each row as one item: its label with its value.
+                val rows = scene.semanticsOwners.flatMap { owner ->
+                    buildList { fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }; visit(owner.rootSemanticsNode) }
+                }.map { node -> node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } }
+                assertTrue(rows.any { it == listOf("出力の遅れ（推定）", "30.0 ms") }, "No merged row: $rows")
+                scene.capture("save-diagnostics-desktop.png")
+                scene.click("ce-diag-copy")
+                val copied = assertIs<ContinuousEditorAction.CopyDiagnostics>(actions.last()).text
+                assertTrue(copied.startsWith("音の診断\n") && "音声出力: つながっている" in copied && "出力の遅れ（推定）: 30.0 ms" in copied, copied)
+            } finally { scene.close() }
+
+            // Nothing measured and nothing reported: the card says so instead of showing zeros.
+            val quiet = ImageComposeScene(width = 390, height = 2200, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state(ContinuousStage.SAVE), {}, ContinuousEditorFixture::readout,
+                    diagnostics = { ContinuousDiagnostics(outputAttached = false) })
+            }
+            try {
+                quiet.settle()
+                val shown = quiet.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+                for (expected in listOf("なし（編集と保存はできます）", "まだ測っていません（音を出すと測り始めます）", "—（出力なし）", "この環境では数えません")) {
+                    assertTrue(shown.any { expected in it }, "Missing $expected in $shown")
+                }
+                assertTrue(shown.none { it == "分かりません" }, "Without output nothing reads as unreported by the device")
+                // Scroll the SAVE page down so the card itself is in the picture.
+                quiet.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+                quiet.settle()
+                val card = requireNotNull(quiet.tag("ce-diag-copy")).boundsInRoot
+                assertTrue(card.height >= 48 && card.bottom <= 2200f, "The copy button is reachable and full size: $card")
+                quiet.capture("save-diagnostics-phone-font200.png")
+            } finally { quiet.close() }
+
+            // Connected, but the device does not tell: that reads as unreported, not as no output.
+            val silent = ImageComposeScene(width = 1440, height = 1600, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state(ContinuousStage.SAVE), {}, ContinuousEditorFixture::readout,
+                    diagnostics = { ContinuousDiagnostics(outputAttached = true, floatOutput = false) })
+            }
+            try {
+                silent.settle()
+                val shown = silent.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+                assertTrue(shown.any { it == "48 kHz・ステレオ・16bit" } && shown.any { it == "分かりません" } && shown.none { "出力なし" in it }, "$shown")
+            } finally { silent.close() }
+
+            val hosts = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state(ContinuousStage.SAVE), {}, ContinuousEditorFixture::readout)
+            }
+            try { hosts.settle(); assertNull(hosts.tag("ce-diagnostics"), "A host that measures nothing shows no card") } finally { hosts.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }

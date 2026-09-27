@@ -1,5 +1,7 @@
 package com.choplab.sampler.next
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import com.choplab.core.*
@@ -30,6 +32,8 @@ class NextSession private constructor(
     private val hostMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     /** Localized host messages (for example "too long") that the core's typed notices cannot carry. */
     val messages: SharedFlow<String> = hostMessages.asSharedFlow()
+    /** Frames the activity drew; declared before the presenter, whose ports read it. */
+    val frames = FrameCounter()
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
     @Volatile var closedWithoutAutosave = false
         private set
@@ -82,6 +86,18 @@ class NextSession private constructor(
         override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
         override val drumKitsAvailable get() = true
         override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
+        override fun diagnostics(): ContinuousDiagnostics = backend.engine.health().let { health ->
+            ContinuousDiagnostics(outputAttached = health.attached, floatOutput = health.encoding?.let { it == SinkEncoding.FLOAT32 },
+                sampleRate = health.sampleRate, blockFrames = health.blockFrames, bufferFrames = health.bufferFrames,
+                pendingFrames = health.pendingFrames, underruns = health.underruns, outputLosses = health.outputLosses,
+                measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax,
+                drawnFrames = frames.drawn.get(), slowFrames = frames.slow.get())
+        }
+        override suspend fun copyText(text: String): Boolean = withContext(Dispatchers.Main) {
+            val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return@withContext false
+            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.next_diagnostics_label), text))
+            true
+        }
 
         override suspend fun chooseAudio(): Location? {
             val uri = pickers.pick(PickerKind.AUDIO) ?: return null

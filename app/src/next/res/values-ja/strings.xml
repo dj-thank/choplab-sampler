@@ -9,4 +9,5 @@
     <string name="next_too_long">%1$d分%2$02d秒より長い音声は、まだ読み込めません。短いファイルを選んでください。</string>
     <string name="next_unreadable">このファイルは音声として読み込めません。</string>
     <string name="next_file_base">おとひろい</string>
+    <string name="next_diagnostics_label">おとひろい 音の診断</string>
 </resources>

@@ -17,11 +17,23 @@ import java.util.concurrent.locks.LockSupport
 
 enum class SinkEncoding(val bytesPerSample: Int) { FLOAT32(4), PCM16(2) }
 
-/** One owner calls write/close. Returning zero expresses bounded backpressure, not success. */
+/**
+ * One owner calls write/close. Returning zero expresses bounded backpressure, not success.
+ *
+ * The reports below are what the platform tells about the device, -1 when it does not say. A diagnostics reader asks
+ * for them on its own thread, never the audio owner, so they may run during a write or after close: they must be
+ * thread-safe and quick, and may throw once the device is gone.
+ */
 interface AudioSink : AutoCloseable {
     val encoding: SinkEncoding
     fun write(bytes: ByteArray, offset: Int, length: Int): Int
     override fun close()
+    /** Frames the device buffer holds. */
+    fun bufferFrames(): Int = -1
+    /** Times the device ran out of audio since it opened. */
+    fun underruns(): Int = -1
+    /** Frames written but not yet played. */
+    fun pendingFrames(): Long = -1
 }
 
 enum class DriverPhase { STARTING, ATTACHED, EDITING_ONLY, CLOSED }
@@ -42,6 +54,25 @@ data class DriverPlayback(val fraction: Float = 0f, val elapsedSeconds: Int = 0,
 /** What the audio owner last reported: how often it looped, what waits for it, and whether a device is still opening. */
 data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int, val openingDevice: Boolean, val engineFrame: Long)
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
+/**
+ * Output health for a diagnostics readout: formats, times and counts only, never a device name or identifier. Render
+ * times cover producing and converting one block with the current device, as a share of that block's duration, over
+ * its last [measuredBlocks] blocks. [outputLosses] counts output lost or failing to open ([DriverStatus.faults]).
+ * Null where the platform or the current state does not tell.
+ */
+data class OutputHealth(
+    val attached: Boolean,
+    val encoding: SinkEncoding?,
+    val sampleRate: Int,
+    val blockFrames: Int,
+    val bufferFrames: Int?,
+    val pendingFrames: Long?,
+    val underruns: Int?,
+    val outputLosses: Long,
+    val measuredBlocks: Int,
+    val renderP99: Double?,
+    val renderMax: Double?,
+)
 
 /** Continuous EngineCore output. All sink and EngineCore access belongs to one thread.
  * Control requests allocate on the producer; DSP and PCM conversion reuse fixed buffers.
@@ -84,6 +115,14 @@ open class StreamingEnginePort(
     @Volatile private var ownerLoops = 0L
     @Volatile private var ownerInFlight = 0
     @Volatile private var ownerOpening = false
+    /**
+     * Recent block times in nanoseconds with the current device, written by the owner only and restarted for each
+     * device; [renderedBlocks] publishes them. Ints, so a reader never sees half a value on a 32-bit runtime.
+     */
+    private val renderNanos = IntArray(RENDER_WINDOW)
+    @Volatile private var renderedBlocks = 0L
+    /** The device in use, for the diagnostics reader to ask about; the owner alone writes to and closes it. */
+    @Volatile private var attachedSink: AudioSink? = null
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
     /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
     private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
@@ -204,6 +243,22 @@ open class StreamingEnginePort(
 
     fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
 
+    /** Output health for a diagnostics readout; allocates, and asks the device, on the caller's thread only. */
+    fun health(): OutputHealth {
+        val status = statusValue.value
+        val device = attachedSink.takeIf { status.phase == DriverPhase.ATTACHED }
+        fun <T> ask(question: AudioSink.() -> T): T? = try { device?.question() } catch (_: Exception) { null }
+        val window = minOf(renderedBlocks, RENDER_WINDOW.toLong()).toInt()
+        val times = renderNanos.copyOf(window).also { it.sort() }
+        val blockNanos = blockFrames * 1_000_000_000.0 / EngineFormat.SAMPLE_RATE
+        // Nearest rank: the smallest time that at least 99% of the measured blocks did not exceed.
+        val p99 = if (window == 0) null else times[(window * 99 + 99) / 100 - 1] / blockNanos
+        return OutputHealth(device != null, status.encoding, EngineFormat.SAMPLE_RATE, blockFrames,
+            bufferFrames = ask { bufferFrames() }?.takeIf { it >= 0 }, pendingFrames = ask { pendingFrames() }?.takeIf { it >= 0 },
+            underruns = ask { underruns() }?.takeIf { it >= 0 }, outputLosses = status.faults, measuredBlocks = window,
+            renderP99 = p99, renderMax = if (window == 0) null else times[window - 1] / blockNanos)
+    }
+
     /** Audio-clock readout; callers use it only in a small display subtree. */
     fun playback(): DriverPlayback {
         val snapshot = snapshots.get()
@@ -257,7 +312,13 @@ open class StreamingEnginePort(
                     try { opened.close() } catch (_: Exception) { }
                     if (statusValue.value.phase == DriverPhase.STARTING) statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, faults = faults)
                 }
-                else -> { sink = opened; statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults) }
+                else -> {
+                    sink = opened
+                    // Block times describe this device only.
+                    renderedBlocks = 0
+                    attachedSink = opened
+                    statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults)
+                }
             }
         }
         startOpening()
@@ -273,6 +334,7 @@ open class StreamingEnginePort(
 
         fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) { request.dropped = dropped; request.answer.complete(accepted) }
         fun resetToEditingOnly(fault: DriverFault) {
+            attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             sink = null
             // Unknown/late queued commands cannot fire after cancellation. Rebuild from confirmed
@@ -317,6 +379,7 @@ open class StreamingEnginePort(
                 if (sink == null && !work && ownerInFlight == 0) { LockSupport.parkNanos(20_000_000); continue }
 
                 val count = if (sink == null) 1 else blockFrames
+                val blockStarted = System.nanoTime()
                 activeEngine.render(floats, 0, count)
                 if (activeEngine.events.overflowCount != previousLosses) {
                     previousLosses = activeEngine.events.overflowCount
@@ -362,6 +425,9 @@ open class StreamingEnginePort(
                     bytes[at] = bits.toByte(); bytes[at + 1] = (bits ushr 8).toByte()
                     bytes[at + 2] = (bits ushr 16).toByte(); bytes[at + 3] = (bits ushr 24).toByte()
                 }
+                val block = renderedBlocks
+                renderNanos[(block % RENDER_WINDOW).toInt()] = (System.nanoTime() - blockStarted).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                renderedBlocks = block + 1
                 var offset = 0
                 var lastProgress = System.nanoTime()
                 try {
@@ -379,6 +445,7 @@ open class StreamingEnginePort(
         } catch (_: Exception) {
             statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = ++faults)
         } finally {
+            attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             // A device still opening is closed as soon as it exists.
             opening?.let { pending -> opener.execute { try { pending.get().close() } catch (_: Exception) { } } }
@@ -403,6 +470,8 @@ open class StreamingEnginePort(
     private companion object {
         /** A device that keeps dropping commands this often is left to the output's own fault reporting. */
         const val DROPPED_ATTEMPTS = 3
+        /** Block times kept for the health readout: about 22 s of 256-frame blocks. */
+        const val RENDER_WINDOW = 4096
     }
 }
 

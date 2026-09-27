@@ -317,6 +317,19 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun diagnosticsComeFromTheHostAndCopyingReportsTheResult() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertEquals(ContinuousDiagnostics(outputAttached = true, underruns = 4), h.presenter.diagnostics())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CopyDiagnostics("音の診断\n音切れ: 4 回")))
+            assertEquals(listOf("音の診断\n音切れ: 4 回"), h.ports.copied)
+            assertEquals(ContinuousStatus.COPIED, withTimeout(2000) { h.presenter.state.first { it.status == ContinuousStatus.COPIED } }.status)
+            h.ports.clipboardWorks = false
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.CopyDiagnostics("x")))
+            assertEquals(ContinuousStatus.FAILED, withTimeout(2000) { h.presenter.state.first { it.status == ContinuousStatus.FAILED } }.status)
+        } finally { h.close() }
+    }
+
     @Test fun hostsWithoutKitsKeepDrumsUnavailable() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -442,6 +455,10 @@ class ContinuousEditorPresenterTest {
         override suspend fun playOriginal(asset: Asset) = true
         override suspend fun stopOriginal(): Boolean { stops++; return true }
         override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
+        val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
+        @Volatile var clipboardWorks = true
+        override fun diagnostics() = ContinuousDiagnostics(outputAttached = true, underruns = 4)
+        override suspend fun copyText(text: String): Boolean = clipboardWorks.also { if (it) copied += text }
         override val drumKitsAvailable get() = kits
         fun kitHash(kitId: String, slot: Int) = (DrumKits.catalog.indexOfFirst { it.id == kitId } * 16 + slot + 1).toString(16).padStart(64, '0')
         override suspend fun drumKit(kitId: String): List<Asset>? = if (!kits) null else (0 until 16).map { slot ->

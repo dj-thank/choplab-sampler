@@ -2,6 +2,10 @@ package com.choplab.sampler.next
 
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
+import android.view.FrameMetrics
+import android.view.Window
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -54,6 +58,14 @@ class NextActivity : ComponentActivity() {
         }
     }
 
+    /** Counts drawn frames for the diagnostics card off the main thread; the first frame of a window is not counted. */
+    private lateinit var frameThread: HandlerThread
+    private val frameMetrics = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+        if (metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 0L) {
+            (model.state.value as? NextViewModel.Startup.Ready)?.session?.frames?.record(metrics.getMetric(FrameMetrics.TOTAL_DURATION))
+        }
+    }
+
     private fun answer(kind: PickerKind, uri: Uri?) {
         (model.state.value as? NextViewModel.Startup.Ready)?.session?.pickers?.complete(kind, uri)
     }
@@ -61,6 +73,8 @@ class NextActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        frameThread = HandlerThread("ChopLab-NEXT-frames").apply { start() }
+        window.addOnFrameMetricsAvailableListener(frameMetrics, Handler(frameThread.looper))
         setContent {
             val startup by model.state.collectAsState()
             val closed by model.closed.collectAsState()
@@ -95,7 +109,7 @@ class NextActivity : ComponentActivity() {
         val failed by session.backend.persistenceFailure.collectAsState()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("next-editor")) {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                session.presenter::onAction, session.presenter::readout, refresh)
+                session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics)
         }
     }
 
@@ -118,6 +132,8 @@ class NextActivity : ComponentActivity() {
 
     override fun onDestroy() {
         (model.state.value as? NextViewModel.Startup.Ready)?.session?.pickers?.detach(launch)
+        window.removeOnFrameMetricsAvailableListener(frameMetrics)
+        frameThread.quitSafely()
         super.onDestroy()
     }
 

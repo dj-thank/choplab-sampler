@@ -1974,12 +1974,27 @@ def pkcs12_trusted_certificate_count(content: bytes) -> int | None:
         return None
 
 
+# Starting Java to compile and run the helper can take much longer than usual on a busy CI host.
+JAVA_TRUSTSTORE_TIMEOUT_SECONDS = 60
+JAVA_TRUSTSTORE_ATTEMPTS = 2
+# Stores Java already accepted, by content: one run often scans the same JDK in several archives.
+_JAVA_TRUSTED_STORES: set[tuple[bytes, int]] = set()
+
+
 def verify_pkcs12_trust_with_java(content: bytes, expected_count: int) -> bool:
-    """No password/key export: ask Java for the entry types after structural proof."""
+    """No password/key export: ask Java for the entry types after structural proof.
+
+    A check that times out or does not answer TRUSTED is tried once more, and every failed attempt is reported on
+    stderr, so a busy host can be told apart from a store that Java rejects.
+    """
     import shutil
 
+    key = (hashlib.sha256(content).digest(), expected_count)
+    if key in _JAVA_TRUSTED_STORES:
+        return True
     java = shutil.which("java")
     if java is None:
+        print("public surface: Java is not available for the JDK truststore check", file=sys.stderr)
         return False
     source = '''import java.nio.file.*;
 import java.security.*;
@@ -2008,12 +2023,27 @@ class ChopLabTruststoreCheck {
             helper.write_text(source, encoding="utf-8")
             public_store = root / "public-store"
             public_store.write_bytes(content)
-            result = subprocess.run(
-                [java, "-Xmx64m", "-XX:MaxMetaspaceSize=64m", str(helper), str(public_store), str(expected_count)],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=15,
-            )
-            return result.returncode == 0 and result.stdout == f"TRUSTED:{expected_count}".encode("ascii")
-    except (OSError, subprocess.TimeoutExpired):
+            for attempt in range(1, JAVA_TRUSTSTORE_ATTEMPTS + 1):
+                try:
+                    result = subprocess.run(
+                        [java, "-Xmx64m", "-XX:MaxMetaspaceSize=64m", str(helper), str(public_store), str(expected_count)],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                        timeout=JAVA_TRUSTSTORE_TIMEOUT_SECONDS,
+                    )
+                except subprocess.TimeoutExpired:
+                    print(f"public surface: JDK truststore check timed out after {JAVA_TRUSTSTORE_TIMEOUT_SECONDS} s "
+                          f"(attempt {attempt} of {JAVA_TRUSTSTORE_ATTEMPTS})", file=sys.stderr)
+                    continue
+                if result.returncode == 0 and result.stdout == f"TRUSTED:{expected_count}".encode("ascii"):
+                    _JAVA_TRUSTED_STORES.add(key)
+                    return True
+                last = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()[-1:]
+                print(f"public surface: JDK truststore check exited {result.returncode} without TRUSTED:{expected_count} "
+                      f"(attempt {attempt} of {JAVA_TRUSTSTORE_ATTEMPTS})" + (f": {last[0][:200]}" if last else ""),
+                      file=sys.stderr)
+            return False
+    except OSError as error:
+        print(f"public surface: JDK truststore check could not run: {error}", file=sys.stderr)
         return False
 
 
