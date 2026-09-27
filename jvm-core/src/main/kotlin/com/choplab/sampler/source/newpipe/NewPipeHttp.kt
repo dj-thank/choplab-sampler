@@ -39,6 +39,7 @@ internal class NewPipeJob(val id: String, timeoutSeconds: Long = 120) {
 }
 
 internal fun interface NewPipeConnectionFactory { fun open(url: URL): HttpURLConnection }
+private enum class NewPipeEndpoint { EXTRACTOR, AUDIO, ARTWORK }
 
 /** Bounded worker I/O shared by Android and desktop; redirects are checked before opening them. */
 internal class NewPipeHttp(
@@ -47,16 +48,21 @@ internal class NewPipeHttp(
     companion object {
         const val METADATA_LIMIT = 8 * 1024 * 1024
         const val AUDIO_LIMIT = 256L * 1024 * 1024
+        const val ARTWORK_LIMIT = 1024 * 1024
         private const val REQUEST_LIMIT = 64
         private const val REDIRECT_LIMIT = 4
         private val ranges = Regex("bytes 0-([0-9]+)/([0-9]+)")
 
-        fun checkedUrl(value: String, audio: Boolean = false): URL {
+        fun checkedUrl(value: String, audio: Boolean = false): URL = checked(value, if (audio) NewPipeEndpoint.AUDIO else NewPipeEndpoint.EXTRACTOR)
+        private fun checked(value: String, endpoint: NewPipeEndpoint): URL {
             val uri = try { URI(value) } catch (_: Exception) { refuse(OnlineSourceProblem.INVALID_INPUT) }
             val host = uri.host?.lowercase() ?: refuse(OnlineSourceProblem.INVALID_INPUT)
-            val allowed = if (audio) host.endsWith(".googlevideo.com") else
-                host == "youtube.com" || host.endsWith(".youtube.com") ||
+            val allowed = when (endpoint) {
+                NewPipeEndpoint.AUDIO -> host.endsWith(".googlevideo.com")
+                NewPipeEndpoint.ARTWORK -> host.endsWith(".ytimg.com") || host.endsWith(".googleusercontent.com")
+                NewPipeEndpoint.EXTRACTOR -> host == "youtube.com" || host.endsWith(".youtube.com") ||
                     host == "youtubei.googleapis.com" || host == "www.youtube-nocookie.com"
+            }
             if (value.length > 16_384 || uri.scheme != "https" || uri.rawUserInfo != null ||
                 uri.port !in setOf(-1, 443) || uri.rawFragment != null || !allowed)
                 refuse(OnlineSourceProblem.INVALID_INPUT)
@@ -68,7 +74,7 @@ internal class NewPipeHttp(
         val method = request.httpMethod()
         if (method !in setOf("GET", "HEAD", "POST") || (request.dataToSend()?.size ?: 0) > METADATA_LIMIT)
             refuse(OnlineSourceProblem.INVALID_INPUT)
-        return connection(request.url(), method, request.headers(), request.dataToSend(), job, false) { conn, url ->
+        return connection(request.url(), method, request.headers(), request.dataToSend(), job, NewPipeEndpoint.EXTRACTOR) { conn, url ->
             val code = conn.responseCode
             status(code)
             if (conn.contentLengthLong > METADATA_LIMIT) refuse(OnlineSourceProblem.TOO_LARGE)
@@ -97,7 +103,7 @@ internal class NewPipeHttp(
         val result = File(folder, "audio.$extension")
         if (!folder.isDirectory || part.exists() || result.exists()) refuse(OnlineSourceProblem.INVALID_INPUT)
         try {
-            connection(url, "GET", emptyMap(), null, job, true) { conn, _ ->
+            connection(url, "GET", emptyMap(), null, job, NewPipeEndpoint.AUDIO) { conn, _ ->
                 val code = conn.responseCode
                 status(code)
                 val declared = conn.contentLengthLong.takeIf { it >= 0 }
@@ -145,6 +151,30 @@ internal class NewPipeHttp(
         finally { part.delete() }
     }
 
+    fun artwork(url: String, job: NewPipeJob): ByteArray =
+        connection(url, "GET", emptyMap(), null, job, NewPipeEndpoint.ARTWORK) { conn, _ ->
+            status(conn.responseCode)
+            if (conn.contentLengthLong > ARTWORK_LIMIT) refuse(OnlineSourceProblem.TOO_LARGE)
+            if (conn.responseCode != 200 ||
+                conn.contentType?.substringBefore(';')?.lowercase() !in setOf("image/jpeg", "image/png", "image/webp"))
+                refuse(OnlineSourceProblem.MALFORMED_RESPONSE)
+            val bytes = ByteArrayOutputStream()
+            body(conn).use { input ->
+                val buffer = ByteArray(16 * 1024)
+                while (true) {
+                    job.check()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (bytes.size() + count > ARTWORK_LIMIT) refuse(OnlineSourceProblem.TOO_LARGE)
+                    bytes.write(buffer, 0, count)
+                }
+            }
+            job.check()
+            if (bytes.size() == 0 || conn.contentEncoding.orEmpty().let { it.isEmpty() || it == "identity" } &&
+                conn.contentLengthLong >= 0 && conn.contentLengthLong != bytes.size().toLong()) refuse(OnlineSourceProblem.MALFORMED_RESPONSE)
+            bytes.toByteArray()
+        }
+
     private fun body(connection: HttpURLConnection): java.io.InputStream = when (connection.contentEncoding?.lowercase()) {
         null, "", "identity" -> connection.inputStream
         "gzip" -> GZIPInputStream(connection.inputStream)
@@ -160,9 +190,9 @@ internal class NewPipeHttp(
     }
 
     private fun <T> connection(value: String, initialMethod: String, initialHeaders: Map<String, List<String>>,
-                               initialData: ByteArray?, job: NewPipeJob, audio: Boolean,
+                               initialData: ByteArray?, job: NewPipeJob, endpoint: NewPipeEndpoint,
                                consume: (HttpURLConnection, URL) -> T): T {
-        var url = checkedUrl(value, audio)
+        var url = checked(value, endpoint)
         var method = initialMethod
         var headers = initialHeaders
         var data = initialData
@@ -173,7 +203,8 @@ internal class NewPipeHttp(
             job.attach(conn)
             try {
                 conn.instanceFollowRedirects = false
-                conn.connectTimeout = 15_000; conn.readTimeout = 15_000; conn.useCaches = false
+                conn.connectTimeout = if (endpoint == NewPipeEndpoint.ARTWORK) 5_000 else 15_000
+                conn.readTimeout = conn.connectTimeout; conn.useCaches = false
                 conn.requestMethod = method
                 conn.setRequestProperty("User-Agent", "Mozilla/5.0")
                 conn.setRequestProperty("Accept-Encoding", "identity")
@@ -190,7 +221,7 @@ internal class NewPipeHttp(
                 if (code in setOf(301, 302, 303, 307, 308)) {
                     if (redirect == REDIRECT_LIMIT) refuse(OnlineSourceProblem.MALFORMED_RESPONSE)
                     val location = conn.getHeaderField("Location") ?: refuse(OnlineSourceProblem.MALFORMED_RESPONSE)
-                    val next = checkedUrl(url.toURI().resolve(location).toString(), audio)
+                    val next = checked(url.toURI().resolve(location).toString(), endpoint)
                     if (next.host != url.host) {
                         if (method == "POST" && code in setOf(307, 308)) refuse(OnlineSourceProblem.RESTRICTED)
                         headers = headers.filterKeys { it.lowercase() !in setOf("authorization", "cookie") }
