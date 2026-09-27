@@ -69,6 +69,7 @@ dependencies {
     implementation(project(":ui"))
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
+    implementation(libs.compose.resources)
     implementation(libs.jna.core)
     implementation(libs.jna.platform)
     implementation(libs.onnxruntime.desktop)

@@ -14,6 +14,21 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun libraryCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.state.value.permits(ContinuousCapability.IMPORT_LIBRARY))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportLibrary))
+            assertEquals(1, h.ports.libraryPicks)
+            assertEquals(before, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportLibrary))
+            assertEquals(1, h.ports.libraryPicks)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+        } finally { h.close() }
+    }
+
     @Test fun systemAudioBecomesAStereoOriginalWithoutOpeningTheMicrophone() = runBlocking<Unit> {
         val capture = FakeSystemCapture()
         val h = Harness(voice = true, system = capture)
@@ -1348,6 +1363,10 @@ class ContinuousEditorPresenterTest {
         var originalGain = 1f
         var exportFrames = 0L
         override val originalAvailable = true
+        override val libraryAvailable = true
+        var library: Location? = null
+        var libraryPicks = 0
+        override suspend fun chooseLibrary(): Location? { libraryPicks++; return library }
         override suspend fun chooseAudio(): Location? = null
         @Volatile var openLocation: Location? = null
         override suspend fun chooseOpen(): Location? = openLocation

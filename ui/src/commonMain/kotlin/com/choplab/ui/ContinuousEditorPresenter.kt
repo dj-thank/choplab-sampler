@@ -18,6 +18,8 @@ import kotlin.time.TimeSource
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
     val systemAudioCapture: SystemAudioCapture? get() = null
+    val libraryAvailable: Boolean get() = false
+    suspend fun chooseLibrary(): Location? = null
     suspend fun chooseAudio(): Location?
     suspend fun chooseOpen(): Location?
     suspend fun chooseSave(): Location?
@@ -306,6 +308,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     if (view.value.recordingSource && action.stage != view.value.stage) finishSource()
                     view.update { it.copy(stage = action.stage, liveChop = it.liveChop.takeIf { action.stage == ContinuousStage.CHOP }) }; true
                 }
+                ContinuousEditorAction.ImportLibrary -> ports.chooseLibrary()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.ImportAudio -> ports.chooseAudio()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.RecordSource -> startSource(project)
                 ContinuousEditorAction.RecordSystemSource -> startSource(project, system = true)
@@ -1044,6 +1047,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val selected = p.pads[input.selection.padId]
         val capabilities = if (recording) mutableSetOf(ContinuousCapability.STOP_ALL)
             else mutableSetOf(ContinuousCapability.OPEN_PROJECT, ContinuousCapability.IMPORT_AUDIO, ContinuousCapability.STOP_ALL)
+        if (ports.libraryAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_LIBRARY
         if (v.voice != null) {
             // Playing along, pausing or stopping, and listening levels; the take ends with the song.
             if (input.attached) capabilities += setOf(ContinuousCapability.PAD_AUDITION, ContinuousCapability.SONG_PLAYBACK,

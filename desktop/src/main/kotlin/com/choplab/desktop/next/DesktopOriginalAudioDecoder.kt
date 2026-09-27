@@ -62,7 +62,7 @@ class DesktopOriginalAudioDecoder(
         try {
             val probe = temporary.resolve("probe.json")
             val error = temporary.resolve("error.txt")
-            val input = listOf("-protocol_whitelist", "file,pipe", "-format_whitelist", "flac,mp3,mov,ogg,aac", "-i", path.toAbsolutePath().toString())
+            val input = listOf("-protocol_whitelist", "file,pipe", "-format_whitelist", "flac,mp3,mov,ogg,aac,aiff,matroska,webm", "-i", path.toAbsolutePath().toString())
             execute(listOf(ffprobe.toString(), "-v", "error") + input + listOf("-select_streams", "a:0",
                 "-show_entries", "stream=sample_rate,channels", "-of", "default=noprint_wrappers=1"), probe, error, cancelled, 64 * 1024L)
             val fields = Files.readAllLines(probe).associate { line ->
