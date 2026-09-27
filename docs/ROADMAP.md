@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-09-26。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-09-27。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## UIの固定条件
 
@@ -15,7 +15,7 @@
 - engineは[PR112](https://github.com/dj-thank/choplab-sampler/pull/112)で3件のCI成功後にmainへ統合済み。core/JVMはschema10、frame固定配置、Undo、atomic save、3世代autosave、PCM cache、streaming WAV、独立原曲と共通output driverを追加。
 - core/JVMは[PR113](https://github.com/dj-thank/choplab-sampler/pull/113)でmain統合済み。Mac取込高速化/UXは[PR118](https://github.com/dj-thank/choplab-sampler/pull/118)のhead `749132d`で必須CI3件成功、merge `d254e3c`。Mac host対応は[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)の最新head `544f2c7`で必須CI3件成功、merge `29c80b2`。
 - [PR114](https://github.com/dj-thank/choplab-sampler/pull/114) はmerge `02ac506` でmainへ統合済み。4工程UIを新しい編集・再生・保存へ接続。原曲をPAD選択で置換せず、曲全体と試聴音量を分ける。Windows専用Preview app-imageは隔離profile/無音adapterで起動・応答・正常終了を確認。レビュー指摘（96kHzの長さ0 clipでの起動不能、slider操作ごとのUndo、曲末からの再生、自動保存失敗時に閉じられない、tick丸め、loop切替によるPAD modeの上書き、操作順の入れ替わり、起動失敗時の解放、出力停止直後の編集拒否）を修正し回帰テストを追加。main（Mac host、[PR116](https://github.com/dj-thank/choplab-sampler/pull/116)/[PR117](https://github.com/dj-thank/choplab-sampler/pull/117)）との統合後は、MacのCommand-Qも同じ自動保存付きの終了経路を通す（Mac実機では未確認）。engine58/UI23テスト、desktop全体268件（Mac実録音1件skip、うちNextBackend13件）、Android Preview Kotlin/依存DEX、core27/JVM33テストが成功。
-- Android NEXT: debug/Previewだけに2つ目の入口「おとひろい NEXT」/「Earth Song NEXT」を追加し、同じ4工程の編集画面を共通の `EditorBackend`、AudioTrack出力、SAFのファイル窓口（取込・制作の開く/保存・WAV書出し）へ接続。WAV以外は既存のMediaCodec decoderで16bit WAVにしてから取り込む。新エンジンが常駐できる349秒を超える音源は取込前に案内して止める。曲/原曲の再生中だけ音声フォーカスを取り、フォーカス喪失・イヤホン抜けで停止（自動再開しない）。画面を離れたら停止・出力解放・自動保存し、戻ったら出力を開き直す。経路変更で外れた出力は表示中に数回つなぎ直す。戻る操作は最終自動保存に失敗したら確認する。release APKには入れない
+- Android NEXT: [PR124](https://github.com/dj-thank/choplab-sampler/pull/124) のhead `c27f005` で必須CI3件成功（同じcommitで2回）、merge `f69ecd6` でmainへ統合済み。debug/Previewだけに2つ目の入口「おとひろい NEXT」/「Earth Song NEXT」を追加し、同じ4工程の編集画面を共通の `EditorBackend`、AudioTrack出力、SAFのファイル窓口（取込・制作の開く/保存・WAV書出し）へ接続。WAV以外は既存のMediaCodec decoderで16bit WAVにしてから取り込む。新エンジンが常駐できる349秒を超える音源は取込前に案内して止める。曲/原曲の再生中だけ音声フォーカスを取り、フォーカス喪失・イヤホン抜けで停止（自動再開しない）。画面を離れたら停止・出力解放・自動保存し、戻ったら出力を開き直す。経路変更で外れた出力は表示中に数回つなぎ直す。戻る操作は最終自動保存に失敗したら確認する。release APKには入れない
 - 次の一手: Macの機能別受入と取り込み速度/UXを確認する。Android NEXTの実機（Pixel）での制作通し・音・遅延・CPU/underrunを測る。残るマイク/scratch/加工PAD配置/online/長尺prefetchを移行する（ドラム・PAD音色・原曲キー・ライブチョップは接続済み）。既定の本番入口は保持。実機・実音・Human受入は未完。
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
