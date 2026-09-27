@@ -75,9 +75,13 @@ class StreamingOutputRecoveryTest {
     @Test fun missingDeviceCanBeRetriedUntilItAppears() = runBlocking<Unit> {
         val available = AtomicBoolean(false)
         val attempts = AtomicInteger()
+        val retryGate = java.util.concurrent.CountDownLatch(1)
+        val retryEntered = CompletableDeferred<Unit>()
         val driver = StreamingEnginePort(compiler(), {
-            attempts.incrementAndGet()
-            check(available.get()) { "No output device" }
+            val attempt = attempts.incrementAndGet()
+            val found = available.get()
+            if (attempt == 2) { retryEntered.complete(Unit); retryGate.await() }
+            check(found) { "No output device" }
             Sink()
         })
         try {
@@ -86,8 +90,13 @@ class StreamingOutputRecoveryTest {
             assertTrue(driver.apply(EngineCommand.SwapProgram(driver.snapshot().frame, 1, program())), "Edits stay usable")
 
             assertTrue(driver.reattach())
-            waitUntil { attempts.get() == 2 }
-            delay(30)
+            withTimeout(15_000) { retryEntered.await() }
+            // EDITING_ONLY/NO_OUTPUT stays unchanged during this asynchronous failed retry.
+            // Observe the actual opener lifetime; an attempt count or a sleep does not join it.
+            waitUntil { driver.diagnostics().openingDevice }
+            assertEquals(2, attempts.get())
+            retryGate.countDown()
+            waitUntil { !driver.diagnostics().openingDevice }
             assertEquals(DriverPhase.EDITING_ONLY, driver.status.value.phase)
             assertEquals(DriverFault.NO_OUTPUT, driver.status.value.fault)
 
@@ -98,7 +107,7 @@ class StreamingOutputRecoveryTest {
             // The readout shows the carried-over program once the new line renders its first block.
             waitUntil { driver.snapshot().programRevision == 1L }
             assertTrue(driver.apply(EngineCommand.Trigger(driver.snapshot().frame, 2, 0)))
-        } finally { driver.close() }
+        } finally { retryGate.countDown(); driver.close() }
     }
 
     @Test fun lossesAreCountedOncePerTroubleNotPerFailedRetry() = runBlocking<Unit> {
