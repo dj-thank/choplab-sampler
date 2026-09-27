@@ -7,6 +7,8 @@ import com.choplab.core.model.*
 /** Converts one finished UI gesture into one Studio/Undo edit. Never mutates a document. */
 object ContinuousClipEdits {
     const val MAX_TIMELINE_FRAMES = 48_000L * 60 * 30
+    /** Frames × milli-BPM × PPQ over this is ticks. */
+    private const val FRAME_TICK_SCALE = 48_000L * 60_000
 
     /** Same floor mapping as playback/export, so the drawn start is the audible start. */
     fun startFrame(project: Project, clip: Clip): Long = clip.timelineStartFrame
@@ -32,11 +34,46 @@ object ContinuousClipEdits {
     fun trimEndRange(clip: ContinuousClip): LongRange =
         minOf(clip.sourceTotalFrames, clip.sourceStartFrame + minimumSourceFrames(clip.sourceRate))..clip.sourceTotalFrames
 
+    /**
+     * The [grid] line nearest [frame] at [milliBpm], in ticks: where something let go at [frame] starts, keeping its beat
+     * when the tempo changes. Null on a free grid.
+     */
+    fun snapTick(frame: Long, milliBpm: Int, grid: ContinuousGrid): Long? {
+        if (grid == ContinuousGrid.FREE) return null
+        val step = grid.ticks.toLong()
+        val scale = FRAME_TICK_SCALE * step
+        return (frame.coerceIn(0, MAX_TIMELINE_FRAMES) * milliBpm * ProjectLimits.PPQ + scale / 2) / scale * step
+    }
+
+    /**
+     * The [grid] line after the one at or before [frame] ([forward]), or the one before [frame] otherwise, in ticks;
+     * null before the first line.
+     */
+    fun adjacentTick(frame: Long, milliBpm: Int, grid: ContinuousGrid, forward: Boolean): Long? {
+        require(grid != ContinuousGrid.FREE)
+        val step = grid.ticks.toLong()
+        val at = frame.coerceIn(0, MAX_TIMELINE_FRAMES)
+        // A line sounds at the floor of its exact frame, as playback maps ticks, so the exact division can be one short.
+        var line = at * milliBpm * ProjectLimits.PPQ / (FRAME_TICK_SCALE * step)
+        while (ProgramCompiler.tickToFrame((line + 1) * step, milliBpm) <= at) line++
+        val target = if (forward) line + 1 else if (ProgramCompiler.tickToFrame(line * step, milliBpm) < at) line else line - 1
+        return if (target < 0) null else target * step
+    }
+
+    /** [clip] starting at [frame]: on a grid at its nearest line, where it keeps that beat as the tempo changes. */
+    private fun startingAt(clip: Clip, frame: Long, milliBpm: Int, grid: ContinuousGrid): Clip =
+        snapTick(frame, milliBpm, grid)?.let { clip.copy(startTick = it, timelineStartFrame = null) } ?: clip.copy(timelineStartFrame = frame)
+
     /** Pitch, reverse or tone change how a PAD sounds; the song plays placed sounds as they are, so such a PAD is rendered first. */
     fun transformed(pad: Pad): Boolean = pad.pitchSemitones != 0.0 || pad.reverse || pad.tone < com.choplab.engine.Pad.TONE_BYPASS
 
-    /** [rendered] is the transformed PAD's sound, for a [ContinuousEditorAction.PlacePad] of such a PAD. */
-    fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Asset? = null): Intent.SetArrangement {
+    /**
+     * [rendered] is the transformed PAD's sound, for a [ContinuousEditorAction.PlacePad] of such a PAD. Placing, moving,
+     * nudging and duplicating go by [grid]; trims and splits stay exactly where they are asked.
+     */
+    fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Asset? = null,
+               grid: ContinuousGrid = ContinuousGrid.FREE): Intent.SetArrangement {
+        val tempo = project.tempo.milliBpm
         var tracks: List<Track> = project.tracks
         var clips: List<Clip> = project.clips
         // Clips this gesture creates or reshapes must be audible. A zero-length clip saved by an
@@ -54,18 +91,33 @@ object ContinuousClipEdits {
                 val track = action.trackId?.let { id -> requireNotNull(tracks.firstOrNull { it.id == id }) }
                     ?: tracks.firstOrNull { it.kind == TrackKind.BANK }
                     ?: Track(freshId("track"), project.banks[pad.id / 16].name, TrackKind.BANK).also { tracks = tracks + it }
-                val placed = Clip(freshId("clip"), track.id, hash, range,
-                    timelineStartFrame = action.timelineFrame, gain = pad.gain, pan = pad.pan)
+                val placed = startingAt(Clip(freshId("clip"), track.id, hash, range, gain = pad.gain, pan = pad.pan),
+                    action.timelineFrame, tempo, grid)
                 clips = clips + placed
                 reshaped += placed.id
             }
             is ContinuousEditorAction.MoveClip -> {
                 require(tracks.any { it.id == action.trackId })
-                replace(selected(action.clipId).copy(trackId = action.trackId, timelineStartFrame = action.timelineStartFrame))
+                val old = selected(action.clipId)
+                val moved = old.copy(trackId = action.trackId)
+                // Moved only to another track, a clip stays where it was, on the beat or not.
+                replace(if (action.timelineStartFrame == startFrame(project, old)) moved else startingAt(moved, action.timelineStartFrame, tempo, grid))
+            }
+            is ContinuousEditorAction.NudgeClip -> {
+                val old = selected(action.clipId)
+                val start = startFrame(project, old)
+                if (grid == ContinuousGrid.FREE) {
+                    val second = if (action.forward) CONTINUOUS_TIMELINE_RATE.toLong() else -CONTINUOUS_TIMELINE_RATE.toLong()
+                    val frame = (start + second).coerceAtLeast(0)
+                    if (frame != start) replace(old.copy(timelineStartFrame = frame))
+                } else adjacentTick(start, tempo, grid, action.forward)?.let { replace(old.copy(startTick = it, timelineStartFrame = null)) }
             }
             is ContinuousEditorAction.TrimClip -> {
-                replace(selected(action.clipId).copy(
-                    range = FrameRange(action.sourceStartFrame, action.sourceEndFrame), timelineStartFrame = action.timelineStartFrame))
+                val old = selected(action.clipId)
+                val trimmed = old.copy(range = FrameRange(action.sourceStartFrame, action.sourceEndFrame))
+                // Trimming only the end leaves the start, on the beat or not, where it was.
+                replace(if (action.sourceStartFrame == old.range.start && action.timelineStartFrame == startFrame(project, old)) trimmed
+                    else trimmed.copy(timelineStartFrame = action.timelineStartFrame))
                 reshaped += action.clipId
             }
             is ContinuousEditorAction.SplitClip -> {
@@ -86,7 +138,13 @@ object ContinuousClipEdits {
             }
             is ContinuousEditorAction.DuplicateClip -> {
                 val old = selected(action.clipId)
-                val copy = old.copy(id = freshId("clip"), timelineStartFrame = startFrame(project, old) + durationFrames(project, old))
+                val start = startFrame(project, old)
+                val end = start + durationFrames(project, old)
+                // On a grid the copy starts on the line nearest the original's end, one line after its start at the
+                // earliest: a short hit repeats on the next beat, a loop whole beats long follows end to end.
+                val copy = if (grid == ContinuousGrid.FREE) old.copy(id = freshId("clip"), timelineStartFrame = end)
+                    else old.copy(id = freshId("clip"), timelineStartFrame = null, startTick = maxOf(requireNotNull(snapTick(end, tempo, grid)),
+                        requireNotNull(adjacentTick(start, tempo, grid, forward = true))))
                 clips = clips + copy
                 reshaped += copy.id
             }

@@ -655,6 +655,8 @@ class ContinuousEditorPresenterTest {
             assertEquals(initial, h.studio.document.value.project)
             assertEquals(0f, h.ports.songGain)
             assertEquals(.4f, h.ports.originalGain)
+            // Placed freely, exactly where asked, off the beat grid.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 73)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ExportWav))
             withTimeout(2000) { while (h.exportTarget == null) delay(5) }
@@ -669,11 +671,41 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
             assertTrue(h.engine.commands.any { it is EngineCommand.Release && it.padId == 0 })
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 913)))
             assertEquals(913L, h.studio.document.value.project.clips.single().timelineStartFrame)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
             assertTrue(h.studio.document.value.project.clips.isEmpty())
             assertEquals(h.original.hash, h.studio.document.value.project.source?.assetHash)
+        } finally { h.close() }
+    }
+
+    @Test fun onTheBeatGridPlacedClipsLandOnBeatsAndKeepThemWhenTheTempoChanges() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            // The beat grid is the default, and the state carries the exact tempo it follows.
+            val ready = h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            assertEquals(ContinuousGrid.BEAT, ready.grid)
+            assertEquals(120_000, ready.milliBpm)
+            // 120 BPM: a beat is 24 000 frames, and 29 000 is nearest the second beat.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 29_000)))
+            val clip = h.until { it.clips.size == 1 }.clips.single()
+            assertEquals(24_000L, clip.timelineStartFrame)
+            // At half the tempo it is still on the second beat.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(60)))
+            assertEquals(48_000L, h.until { it.milliBpm == 60_000 }.clips.single().timelineStartFrame)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgeClip(clip.id, forward = true)))
+            assertEquals(96_000L, h.until { it.clips.single().timelineStartFrame != 48_000L }.clips.single().timelineStartFrame)
+            // Free: a nudge is a second.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.grid == ContinuousGrid.FREE }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NudgeClip(clip.id, forward = true)))
+            assertEquals(144_000L, h.until { it.clips.single().timelineStartFrame != 96_000L }.clips.single().timelineStartFrame)
+            // Each move is one Undo.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(96_000L, h.until { it.clips.single().timelineStartFrame != 144_000L }.clips.single().timelineStartFrame)
+            // Back on its beat, as it was.
+            assertNull(h.studio.document.value.project.clips.single().timelineStartFrame)
         } finally { h.close() }
     }
 
@@ -970,6 +1002,7 @@ class ContinuousEditorPresenterTest {
         val h = Harness(render = true)
         try {
             h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
             // An untouched PAD is placed as its own sound.
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
             assertTrue(h.ports.renders.isEmpty())

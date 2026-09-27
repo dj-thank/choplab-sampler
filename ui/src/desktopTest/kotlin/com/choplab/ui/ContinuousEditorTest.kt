@@ -11,6 +11,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
+import com.choplab.core.ProgramCompiler
 import java.io.File
 import java.util.Locale
 import kotlin.test.*
@@ -132,6 +133,8 @@ class ContinuousEditorTest {
     @Test fun clipPointerMoveTrimAndKeyboardRequestsAreReachable() = runBlocking<Unit> {
         val state = ContinuousEditorFixture.state()
         val actions = mutableListOf<ContinuousEditorAction>()
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
         val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) { ContinuousEditor(state, actions::add, ContinuousEditorFixture::readout) }
         try {
             scene.settle()
@@ -150,8 +153,100 @@ class ContinuousEditorTest {
             scene.sendKeyEvent(KeyEvent(Key.DirectionRight, KeyEventType.KeyDown))
             scene.sendKeyEvent(KeyEvent(Key.DirectionRight, KeyEventType.KeyUp))
             scene.settle()
-            assertEquals(ContinuousEditorAction.MoveClip("warm-1", "melody", 7L * 48_000), actions.last())
-        } finally { scene.close() }
+            assertEquals(ContinuousEditorAction.NudgeClip("warm-1", forward = true), actions.last())
+            // Screen readers move it a grid line at a time too.
+            val moves = requireNotNull(requireNotNull(scene.tag("ce-clip-warm-1")).config.getOrNull(SemanticsActions.CustomActions))
+            moves.first { it.label == "配置を前へ移動" }.action()
+            assertEquals(ContinuousEditorAction.NudgeClip("warm-1", forward = false), actions.last())
+            moves.first { it.label == "配置を後へ移動" }.action()
+            assertEquals(ContinuousEditorAction.NudgeClip("warm-1", forward = true), actions.last())
+        } finally { scene.close(); Locale.setDefault(previous) }
+    }
+
+    @Test fun theBeatGridShowsBarsSnapsAMovedClipAndOffersItsChoices() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        val state = ContinuousEditorFixture.state()
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) { ContinuousEditor(state, actions::add, ContinuousEditorFixture::readout) }
+        try {
+            scene.settle()
+            fun texts() = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            // The ruler counts bars: at 92 BPM and 25 px a second a bar is about 65 px, so each is numbered.
+            assertTrue("小節" in texts())
+            val ruler = requireNotNull(scene.tag("ce-ruler")).boundsInRoot
+            val bars = scene.nodes().filter { node -> node.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text.toIntOrNull() != null } &&
+                node.boundsInRoot.center.y in ruler.top..ruler.bottom }
+            assertEquals(listOf("1", "2", "3"), bars.take(3).map { it.config[SemanticsProperties.Text].single().text })
+            assertEquals(65.2f, bars[1].boundsInRoot.left - bars[0].boundsInRoot.left, .5f)
+            // The choices: one selected, each read with what it is for.
+            for ((grid, label) in listOf(ContinuousGrid.BEAT to "1拍", ContinuousGrid.HALF to "1/2拍", ContinuousGrid.QUARTER to "1/4拍", ContinuousGrid.FREE to "自由")) {
+                val node = requireNotNull(scene.tag("ce-grid-${grid.name.lowercase()}"))
+                assertEquals(grid == ContinuousGrid.BEAT, node.config.getOrNull(SemanticsProperties.Selected))
+                assertEquals(listOf("拍に合わせる $label"), node.config.getOrNull(SemanticsProperties.ContentDescription))
+                assertTrue(node.boundsInRoot.height >= 48f)
+            }
+            scene.click("ce-grid-quarter")
+            assertEquals(ContinuousEditorAction.SetGrid(ContinuousGrid.QUARTER), actions.last())
+            // The zoom buttons say what they do, not "−" and "+".
+            assertEquals(listOf("縮小"), requireNotNull(scene.tag("ce-zoom-out")).config.getOrNull(SemanticsProperties.ContentDescription))
+            assertEquals(listOf("拡大"), requireNotNull(scene.tag("ce-zoom-in")).config.getOrNull(SemanticsProperties.ContentDescription))
+            // While dragged, a clip shows where it will land: the beat nearest where the finger has taken it.
+            val before = requireNotNull(scene.tag("ce-clip-warm-1")).boundsInRoot
+            val start = before.center
+            scene.sendPointerEvent(PointerEventType.Press, start, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+            repeat(5) { index ->
+                scene.sendPointerEvent(PointerEventType.Move, start + Offset(10f * (index + 1), 0f), type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true))
+                scene.render(System.nanoTime()).close(); delay(15)
+            }
+            val shown = requireNotNull(scene.tag("ce-clip-warm-1")).boundsInRoot.left - before.left
+            scene.sendPointerEvent(PointerEventType.Release, start + Offset(50f, 0f), type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+            scene.settle()
+            // The request carries where the finger went; the edit puts it on the nearest beat, where it was shown.
+            val moved = actions.filterIsInstance<ContinuousEditorAction.MoveClip>().last()
+            val beat = requireNotNull(ContinuousClipEdits.snapTick(moved.timelineStartFrame, 92_000, ContinuousGrid.BEAT))
+            assertEquals(0L, beat % 960)
+            val landing = ProgramCompiler.tickToFrame(beat, 92_000)
+            assertEquals((landing - 6L * 48_000) / 48_000f * 25f, shown, 1f)
+            assertNotEquals(moved.timelineStartFrame, landing, "Shown on the beat, not where the finger stopped")
+            scene.capture("beat-grid-desktop.png")
+        } finally { scene.close(); Locale.setDefault(previous) }
+    }
+
+    @Test fun onAPhoneWithLargeTextTheArrangementScrollsToEveryControl() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+            ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE), actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            scene.settle()
+            val pane = requireNotNull(scene.tag("ce-arrangement-pane"))
+            val scroll = requireNotNull(pane.config.getOrNull(SemanticsActions.ScrollBy)?.action) { "A short arrangement pane scrolls" }
+            suspend fun reach(tag: String) {
+                // Where it is laid out, visible or not; its bounds are empty until it scrolls into view.
+                val top = requireNotNull(scene.tag(tag)) { tag }.positionInRoot.y
+                scroll(0f, top - requireNotNull(scene.tag("ce-arrangement-pane")).boundsInRoot.top)
+                scene.settle()
+                val view = requireNotNull(scene.tag("ce-arrangement-pane")).boundsInRoot
+                val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
+                assertTrue(bounds.width > 0 && bounds.top >= view.top - 1 && bounds.top < view.bottom, "$tag scrolls into view: $bounds in $view")
+            }
+            reach("ce-grid-beat")
+            // The choices that do not fit across scroll sideways.
+            val first = requireNotNull(scene.tag("ce-grid-beat")).boundsInRoot
+            val choices = scene.nodes().first { it.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange) != null && it.boundsInRoot.contains(first.center) }
+            requireNotNull(choices.config[SemanticsActions.ScrollBy].action)(1_000f, 0f)
+            scene.settle()
+            val free = requireNotNull(scene.tag("ce-grid-free")).boundsInRoot
+            assertTrue(free.width >= 48 && free.right <= 390, "Free scrolls into view: $free")
+            scene.click("ce-grid-free")
+            assertEquals(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE), actions.last())
+            reach("ce-timeline")
+            reach("ce-clip-gain")
+            scene.capture("beat-phone-timeline-grid-font200.png")
+        } finally { scene.close(); Locale.setDefault(previous) }
     }
 
     @Test fun sliderDragsCommitOneDocumentEditWhenReleased() = runBlocking<Unit> {

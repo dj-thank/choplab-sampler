@@ -116,6 +116,11 @@
     <string name="ce_duplicate">複製</string>
     <string name="ce_delete">削除</string>
     <string name="ce_fit">全体表示</string>
+    <string name="ce_grid">拍に合わせる</string>
+    <string name="ce_grid_beat">1拍</string>
+    <string name="ce_grid_half">1/2拍</string>
+    <string name="ce_grid_quarter">1/4拍</string>
+    <string name="ce_bars">小節</string>
     <string name="ce_free">自由</string>
     <string name="ce_zoom_out">縮小</string>
     <string name="ce_zoom_in">拡大</string>
