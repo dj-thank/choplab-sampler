@@ -20,6 +20,12 @@
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
+## PAD演奏録音のCI追跡（PR150）
+
+rootがPR150 head `b019c5a6` と分離終了修正PR151の結合を確認。core44/UI106/desktop292件（実録音1skip）、Android UI compile、録音中の分離禁止の追加試験がMacで成功。同梱Mac候補 `568b6f81` で合成endpointと指定時刻の2打鍵→1Undo/Redo→24bit書出し→保存再開も成功。実打鍵の遅延/聴感の証明ではない。
+
+Windows CI `36325034289` の `theSongsEndEndsAPassAndATransformedPadIsRenderedOnceForAllItsHits` がAssertionErrorで失敗。Macの単独10回では再現せず、成功へ読み替えない。失敗時のUI XMLが保存対象外で詳細を取得できなかったため、root所有の `.github/workflows/ci.yml` と `ui/build.gradle.kts` を修正し、UI試験XML/HTMLと例外全文を残す。テスト本体・期待値・待ち時間は変更しない。完了条件は新しいCIの実結果から原因を特定し、修正が必要なら回帰確認後に統合すること。rollbackは診断追加commitのrevert。
+
 ## Mac NEXT端末音録音の接続（PR138統合済み）
 
 - owner: root。基準はPR136統合 `a5ec068`。対象は `desktop` のScreenCaptureKit helper/NextBackend、`jvm` のVoiceTakes、`ui` のSOURCE録音操作。従来のPCM16 helper出力は維持し、NEXTだけ48kHz stereo FLOAT32を選ぶ。

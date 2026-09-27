@@ -51,5 +51,8 @@ tasks.withType<Test>().configureEach {
     systemProperty("skiko.renderApi", "SOFTWARE")
     systemProperty("choplab.ui.evidenceDir", providers.gradleProperty("uiEvidenceDir")
         .orElse(layout.buildDirectory.dir("reports/ui-evidence").map { it.asFile.absolutePath }).get())
-    testLogging { events("passed", "failed", "skipped") }
+    testLogging {
+        events("passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

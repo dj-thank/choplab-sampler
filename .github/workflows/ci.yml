@@ -285,6 +285,8 @@ jobs:
           path: |
             desktop/build/test-results/test/*.xml
             desktop/build/reports/tests/test/**
+            ui/build/test-results/desktopTest/*.xml
+            ui/build/reports/tests/desktopTest/**
           retention-days: 7
 
       - name: Archive synthetic UI review evidence
