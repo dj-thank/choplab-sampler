@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `8cf229479b2bdaeca23e069ed7bdedaeea88c94c`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
@@ -32,6 +32,7 @@
 | PAD可視領域 [PR159](https://github.com/dj-thank/choplab-sampler/pull/159) | main `d667c1f`へ統合済み。head `322e68f`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36338417514)成功。1440×1024/1920×1080は実測した上下操作欄を除いた高さと幅から正方形PADを算出し、初期表示で16個すべて押下成功。390×844/font1/1.3/2・短い横画面・ja/enも実描画と入力成功。root UI120件/Android Preview compile成功、最新mainとの画面/Presenter99件成功 | PAD・固定停止・原曲・音量・Undo・BANKを維持。詳細は開閉式。GATEの画面/ペーン/BANK変更は1回だけ解放。実音・実機TalkBack・Humanは未確認。保全DRAFT [PR153](https://github.com/dj-thank/choplab-sampler/pull/153) は旧WIPとして扱う |
 | Spotify NEXT [PR158](https://github.com/dj-thank/choplab-sampler/pull/158) | main `0b42444`へ統合済み。head `c2ed7bb`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36338440869)と[Mac配布CI](https://github.com/dj-thank/choplab-sampler/actions/runs/36338440892)成功。SOURCE入口→専用metadata session/window→終了破棄、ja/en、取消/遅着/429/空結果/ページ再試行、public Client ID設定を接続。desktop302件・focused45件・package設定6件成功、最新mainとのPresenter71件/desktop10件成功 | tokenをsessionメモリに限定し、旧prefs/再生scope/YouTube自動照合を継承しない。実OAuth/API、public Client ID・redirect登録・開発allowlist・利用者同意と一般配布条件の確認は未完。provider合格をローカル試験で代用しない |
 | 歌詞/LRC [PR160](https://github.com/dj-thank/choplab-sampler/pull/160) | main `daedfae`へ統合済み。head `5a457bf`の必須CI3件成功。行/word時刻・tap・current/next、確認後の1Undo適用、native chooser/Android SAF、UTF-8上限とactor revision guardを接続 | 歌詞編集中の演奏継続・書出し/archive/再開は本番経路で成功。実SAF・聴感・take/comp/punch・route校正は未確認。Mac installed `f48397a`へ搭載済み |
+| LRC書出し保全 [PR161](https://github.com/dj-thank/choplab-sampler/pull/161) | head `e888ae3f`の必須CI3件成功後、main `c7a78890`へ統合済み。Androidの保存先を開く前に文字数・厳密UTF-8・byte上限と取消を検証し、不正入力で既存ファイルを空にしない。MacのLrcExportSafety/TextIO限定試験とAndroid Preview compile、差分checkも成功。元音・制作dataは変更しない | providerを開いた後のI/O障害による部分書込はatomic保証外。実SAFでの取消・書込失敗とHumanは未確認。rollbackは本PRのrevert |
 | SOURCE/HAND [PR163](https://github.com/dj-thank/choplab-sampler/pull/163) | main `108cae0`へ統合済み。head `4cfe93f`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36342078261)成功。独立音声経路・左右円盤・独立音量/CUTを接続し、engine17/JVM5/UI103/desktop12件・Android compileの成功証拠とsource一致を確認。HAND込み1万blockは割当0、p99 0.678ms（192frame/48kHz、Mac合成） | queue満杯/遅着/取消/切断、SOURCE継続、出力bytes・制作不変更を確認。Mac installed `f48397a`へ搭載済み。長尺prefetch・実音・物理入力遅延・TalkBack/Humanは未確認 |
 | Macの実ウィンドウ [PR165](https://github.com/dj-thank/choplab-sampler/pull/165) | head `8964af0`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36345743526)成功、main `f48397a`へ統合済み。installed同revisionの実launcher・同梱JREを隔離profileで2回起動・通常終了・再開し、outer1440×870/content1440×838/work1440×870、画面内、scale2.0を確認。文字2倍の原曲音量はラベルを上へ置き48dp以上を確保 | 実測content sizeの日英Compose試験でfont1は初期16PAD・原曲・Undo・固定停止と全PAD実入力、font2はscroll到達・固定停止・音量入力が成功。native窓とCompose入力は別証拠。Mac実マイクは同梱Javaで48kHz/12,288frames・非無音の読取成功、raw音声非保存。聴感・物理入力遅延・TalkBack/Humanは未確認 |
 | デザインの取り違え | 最後のBEAT画像とSOURCE/HAND画像をDESIGNへ保存。旧2枚目・3枚目は撤回済み | 大きな4×4 PAD＋右の配置、4工程、共通原曲監視、独立音量、可変divider、A–H×16を維持。scratchはSOURCE/HANDの独立経路まで実装・検証 |
@@ -49,9 +50,11 @@ rootが変更と統合を進め、各担当は独立worktreeと限定したフ�
 
 ## 選択中の実装・統合（2026-09-28）
 
+Windows必須CIのPR177/PR178で、既存NextScratchEditorTestは無音HANDドラッグ中に毎回readout前進を待ってtimeout。各指示のhost受理と操作全体の前進・無音を検査し、engineでmute中の移動と原曲独立を保護した[PR184](https://github.com/dj-thank/choplab-sampler/pull/184)はhead `ff3ec5e`の必須CI3件成功後main `53025c1`へ統合済み。PR177/PR178のWindows成功は最新mainを含むheadの再CIまで未確認。
+
 Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)はhead `cb61ae5`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36353011462)成功後、main `275cab5`へ統合済み。先行CIのHTTP接続解放とHAND出力、count-in開始の断続的な失敗に対し、製品の接続完了gateと実ack/clock待機、状態診断を追加した。診断合成 `795ddfc7`では録音6件と実Windows JVMのfake入出力10回×2ケースが成功。今回の必須CIも成功したが、過去の断続失敗の単一原因は断定しない。実Google API/課金・provider受入は未実施。[PR169](https://github.com/dj-thank/choplab-sampler/pull/169)のVOCAL入口は必須CI3件成功後main `8cf2294`へ統合。次は構造化歌詞を新mainと再検証し、依存順に統合する。
 
-旧[PR170](https://github.com/dj-thank/choplab-sampler/pull/170)の最新main合成後、初回Windows CIは `StreamingOutputRecoveryTest.lossesAreCountedOncePerTroubleNotPerFailedRetry` でtimeout。失敗したopenerが終わる前に次のreattachを呼ぶ制御再現を行い、限定修正 `ffe3d578`はfault count・15秒上限・製品driverを維持したまま実openingDevice完了を待つ。同型の別test `missingDeviceCanBeRetriedUntilItAppears` も修正 `2f5ec933`を祖先へ反映した。rootでRecovery全9件成功。旧PR170は後続commitの誤追加で統合せず閉じ、保存/Flowの限定変更を[PR177](https://github.com/dj-thank/choplab-sampler/pull/177)へ移した。PR177最新headの必須CI成功までは未完。
+旧[PR170](https://github.com/dj-thank/choplab-sampler/pull/170)の最新main合成後、初回Windows CIは `StreamingOutputRecoveryTest.lossesAreCountedOncePerTroubleNotPerFailedRetry` でtimeout。失敗したopenerが終わる前に次のreattachを呼ぶ制御再現を行い、限定修正 `ffe3d578`はfault count・15秒上限・製品driverを維持したまま実openingDevice完了を待つ。同型の別test `missingDeviceCanBeRetriedUntilItAppears` も修正 `2f5ec933`を祖先へ反映した。rootでRecovery全9件成功。旧PR170は後続commitの誤追加で統合せず閉じ、保存/Flowの限定変更を[PR177](https://github.com/dj-thank/choplab-sampler/pull/177)へ移した。PR177最新headの必須CI成功までは未完。旧PR171/172/173/176のGitHub上のMERGED表示は旧候補branchへの取り込みであり、mainの統合証拠ではない。対応する限定PR178/179/180/181を依存順に再検証する。
 
 rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
 
