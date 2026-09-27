@@ -1,6 +1,6 @@
 [versions]
 # Application version/build number remain in gradle.properties.
-agp = "9.4.0"
+agp = "9.4.1"
 kotlin = "2.4.20"
 # 1.12.0 collides on runtime-saveable-desktop-1.12.0.jar in Windows installDist.
 # Retain the packaged version until the upstream bridge/artifact collision is resolved.
@@ -10,7 +10,7 @@ compose-bom = "2026.09.00"
 cyclonedx = "3.4.1"
 activity = "1.13.0"
 lifecycle = "2.10.0"
-androidx-core = "1.19.0"
+androidx-core = "1.19.1"
 youtubedl = "0.18.1"
 onnxruntime = "1.30.0"
 jna = "5.19.1"
