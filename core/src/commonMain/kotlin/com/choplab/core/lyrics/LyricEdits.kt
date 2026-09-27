@@ -31,7 +31,7 @@ object LyricEdits {
         val word = line.words.getOrNull(index) ?: return@edit problem(LyricProblem.UNKNOWN_WORD)
         if (startTick < line.startTick || endTick > line.endTick || endTick <= startTick) return@edit problem(LyricProblem.INVALID_ORDER)
         if (index > 0 && line.words[index - 1].endTick > startTick || index < line.words.lastIndex && endTick > line.words[index + 1].startTick) return@edit problem(LyricProblem.INVALID_ORDER)
-        LyricResult.Success(line.copy(words = line.words.mapIndexed { i, original -> if (i == index) word.copy(startTick = startTick, endTick = endTick) else original }.frozen()))
+        LyricResult.Success(line.copy(words = line.words.mapIndexed { i, original -> if (i == index) word.copy(startTick = startTick, endTick = endTick, timingOrigin = WordTimingOrigin.MANUAL) else original }.frozen()))
     }
 
     /** Inserts by start time, after existing simultaneous rows, retaining all existing IDs and objects. */
