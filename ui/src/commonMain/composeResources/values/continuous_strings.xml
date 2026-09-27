@@ -285,4 +285,5 @@
     <string name="ce_online_candidates">Select one audio source to import.</string>
     <string name="ce_online_empty">No candidates found. Check the song name or URL.</string>
     <string name="ce_online_downloading">Importing audio…</string>
+    <string name="ce_online_failed">Could not import. Check the URL, connection, availability and audio length.</string>
 </resources>

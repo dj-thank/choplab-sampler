@@ -2,6 +2,7 @@ package com.choplab.desktop.next
 
 import com.choplab.desktop.source.DesktopYoutubeBackend
 import com.choplab.sampler.source.YoutubeSource
+import com.choplab.sampler.source.YoutubeSourceBackend
 import com.choplab.ui.resources.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.jetbrains.compose.resources.getString
@@ -16,18 +17,19 @@ import kotlin.coroutines.resume
 
 /** An owned native chooser. A lookup never downloads or replaces the current original. */
 internal object NextOnlineDialog {
-    suspend fun choose(parent: Window?, directory: Path, validate: (java.io.File) -> Unit): NextLibrary.Selection? {
+    suspend fun choose(parent: Window?, directory: Path, validate: (java.io.File) -> Unit,
+                       backend: YoutubeSourceBackend = DesktopYoutubeBackend(originalAudio = true)): NextLibrary.Selection? {
         val labels = listOf(
             Res.string.ce_online, Res.string.ce_online_query, Res.string.ce_online_search,
             Res.string.ce_online_acquire, Res.string.ce_library_cancel, Res.string.ce_library_close,
             Res.string.ce_online_ready, Res.string.ce_online_searching, Res.string.ce_online_candidates,
-            Res.string.ce_online_empty, Res.string.ce_online_downloading, Res.string.ce_library_failed,
+            Res.string.ce_online_empty, Res.string.ce_online_downloading, Res.string.ce_online_failed,
             Res.string.ce_library_cancelled, Res.string.ce_library_selected
         ).map { getString(it) }
         return suspendCancellableCoroutine { answer ->
             SwingUtilities.invokeLater {
                 if (!answer.isActive) return@invokeLater
-                val online = NextOnline(directory, validate, DesktopYoutubeBackend(originalAudio = true))
+                val online = NextOnline(directory, validate, backend)
                 val dialog = JDialog(parent, labels[0], Dialog.ModalityType.DOCUMENT_MODAL)
                 val query = JTextField().apply { name = "next-online-query"; accessibleContext.accessibleName = labels[1] }
                 val model = DefaultListModel<YoutubeSource>()
