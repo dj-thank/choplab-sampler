@@ -313,7 +313,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
     private fun normalizeTarget(project: Project, target: PlaybackTarget, replacing: Boolean): PlaybackTarget = when (target) {
         is PlaybackTarget.Pattern -> PlaybackTarget.Pattern(target.id.takeIf { id -> project.patterns.any { it.id == id } } ?: project.patterns.first().id)
         is PlaybackTarget.Arrangement -> PlaybackTarget.Arrangement(if (replacing) com.choplab.core.model.frozenListOf() else
-            com.choplab.core.model.FrozenList.from(target.takeIds.filter { id -> project.takes.any { it.id == id } }))
+            com.choplab.core.model.FrozenList.from(target.takeIds.filter { id -> project.takes.any { it.id == id } }), if (replacing) 0 else target.minimumFrames)
     }
 
     private fun start(operation: Operation, block: suspend () -> Any): ActionResult {
