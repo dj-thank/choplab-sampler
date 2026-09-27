@@ -177,8 +177,18 @@ class ContinuousEditorTest {
                         assertEquals(grid.toFloat(), first.size.width * 4f + 18f, 4f, "Wide PADs use the grid width")
                     }
                     scene.capture("$name-pads.png")
-                    scene.click("ce-pad-0")
-                    assertEquals(listOf(ContinuousEditorAction.SelectPad(0), ContinuousEditorAction.TapPad(0)), actions.takeLast(2))
+                    for (id in 0..15) {
+                        val before = actions.size
+                        scene.click("ce-pad-$id")
+                        val pad = requireNotNull(scene.tag("ce-pad-$id")).boundsInRoot
+                        assertTrue(pad.width >= 64 && pad.height >= 64 && pad.top >= 0 && pad.bottom <= height,
+                            "Every PAD is fully reachable: $id $pad at $width×$height font $font")
+                        assertEquals(pad.width, pad.height, .5f)
+                        val expected = listOf(ContinuousEditorAction.SelectPad(id)) +
+                            if (id < 4) listOf(ContinuousEditorAction.TapPad(id)) else emptyList()
+                        assertEquals(expected, actions.drop(before), "A pointer activates only the reached PAD")
+                    }
+                    scene.capture("$name-last-row.png")
                     scene.click("ce-bank-7")
                     assertEquals(ContinuousEditorAction.SelectBank(7), actions.last())
                     scene.click("ce-bank-0")
@@ -229,6 +239,75 @@ class ContinuousEditorTest {
                 assertTrue(requireNotNull(scene.tag("ce-pad-0")).positionInRoot.y < before - 20f, "Dragging a PAD scrolls the compact instrument")
                 assertTrue(actions.none { it is ContinuousEditorAction.TapPad || it is ContinuousEditorAction.HoldPad || it is ContinuousEditorAction.PlacePad },
                     "Scroll cannot play, hold or place $mode: $actions")
+            } finally { scene.close() }
+        }
+    }
+
+    @Test fun heldGateIsReleasedOnceWhenItsCompactSurfaceDisappears() = runBlocking<Unit> {
+        for (recording in listOf(false, true)) for (change in listOf("stage", "pane", "bank")) {
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val fixture = ContinuousEditorFixture.state().let { state -> state.copy(compactPane = ContinuousPane.PADS,
+                recordingHits = recording, pads = state.pads.map { if (it.id == 0) it.copy(mode = ContinuousPadMode.GATE) else it }) }
+            val state = mutableStateOf(fixture)
+            val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                scene.reach("ce-pad-0")
+                val center = requireNotNull(scene.tag("ce-pad-0")).boundsInRoot.center
+                scene.sendPointerEvent(PointerEventType.Press, center, type = PointerType.Touch)
+                scene.render(System.nanoTime()).close()
+                if (!recording) delay(650)
+                scene.settle()
+                assertEquals(1, actions.count { it == ContinuousEditorAction.HoldPad(0) }, "GATE starts: $recording $change $actions")
+                state.value = when (change) {
+                    "stage" -> state.value.copy(stage = ContinuousStage.CAPTURE)
+                    "pane" -> state.value.copy(compactPane = ContinuousPane.TIMELINE)
+                    else -> state.value.copy(selectedBank = 1)
+                }
+                scene.settle()
+                assertEquals(1, actions.count { it == ContinuousEditorAction.ReleasePad(0) }, "Removed GATE releases once: $recording $change $actions")
+                scene.sendPointerEvent(PointerEventType.Release, center, type = PointerType.Touch)
+                scene.settle()
+                assertEquals(1, actions.count { it == ContinuousEditorAction.ReleasePad(0) }, "A late pointer-up cannot release twice")
+                assertTrue(actions.none { it is ContinuousEditorAction.TapPad || it is ContinuousEditorAction.PlacePad })
+                if (recording) {
+                    val gesture = actions.filterIsInstance<ContinuousEditorAction.BeginHit>().single().gesture
+                    val end = actions.filterIsInstance<ContinuousEditorAction.EndHit>().single()
+                    assertEquals(gesture, end.gesture)
+                    assertTrue(end.cancelled, "A removed surface cancels the pending recorded press")
+                }
+            } finally { scene.close() }
+        }
+    }
+
+    @Test fun recordingStopIsReachableFromBothPanesAtActualCompactWindowHeights() = runBlocking<Unit> {
+        for ((width, height) in listOf(390 to 844, 844 to 390)) for (voice in listOf(false, true)) {
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val state = mutableStateOf(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE,
+                recordingVoice = voice, recordingHits = !voice,
+                capabilities = setOf(ContinuousCapability.STOP_ALL, ContinuousCapability.SONG_PLAYBACK, ContinuousCapability.PAD_AUDITION)))
+            val scene = ImageComposeScene(width = width, height = height, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { action ->
+                    actions += action
+                    if (action is ContinuousEditorAction.SelectCompactPane) state.value = state.value.copy(compactPane = action.pane)
+                }, ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                for (tag in listOf("ce-stop-all", "ce-song-stop")) {
+                    val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
+                    assertTrue(bounds.width >= 48 && bounds.height >= 48 && bounds.bottom <= height, "$tag remains visible while recording")
+                }
+                scene.click("ce-pane-pads")
+                val stopTag = if (voice) "ce-record-voice" else "ce-record-hits"
+                scene.click(stopTag)
+                assertEquals(if (voice) ContinuousEditorAction.StopVoice else ContinuousEditorAction.StopHits, actions.last())
+                scene.capture("recording-stop-${if (voice) "voice" else "hits"}-${width}x$height-font200.png")
+                scene.click("ce-stop-all")
+                scene.click("ce-song-stop")
+                assertEquals(listOf(ContinuousEditorAction.StopAll, ContinuousEditorAction.StopSong), actions.takeLast(2))
             } finally { scene.close() }
         }
     }
@@ -1200,7 +1279,16 @@ class ContinuousEditorTest {
                     (y < area.top || y + node.size.height > area.bottom)) y - area.top else 0f
                 if (dx != 0f || dy != 0f) {
                     requireNotNull(ancestor.config.getOrNull(SemanticsActions.ScrollBy)?.action)(dx, dy)
-                    settle()
+                    // Semantics ScrollBy animates. Measure the hit rectangle after the scroll stops, not mid-flight.
+                    val horizontal = ancestor.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange)
+                    val vertical = ancestor.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)
+                    var previous: Pair<Float?, Float?>? = null
+                    for (frame in 0..12) {
+                        settle()
+                        val position = horizontal?.value?.invoke() to vertical?.value?.invoke()
+                        if (position == previous) break
+                        previous = position
+                    }
                 }
             }
         }
