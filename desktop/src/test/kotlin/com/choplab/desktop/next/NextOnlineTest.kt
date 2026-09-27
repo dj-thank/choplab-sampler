@@ -9,6 +9,10 @@ import kotlin.test.*
 import org.junit.jupiter.api.Test
 
 class NextOnlineTest {
+    @Test fun selectedOnlineAudioPassesTheProductionSaveExportAndRestartPath() = kotlinx.coroutines.runBlocking<Unit> {
+        val root = Files.createTempDirectory("next-online-production-")
+        try { NextOnlineSelfTest.run(root) } finally { root.toFile().deleteRecursively() }
+    }
     private val source = YoutubeSource("abcdefghijk", "Synthetic original", "Synthetic", 1.0)
     private fun idle(online: NextOnline) {
         val until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)

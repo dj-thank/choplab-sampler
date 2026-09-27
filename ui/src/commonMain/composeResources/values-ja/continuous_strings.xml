@@ -276,4 +276,13 @@
     <string name="ce_library_overwrite">同じ名前のファイルを置き換えますか？</string>
     <string name="ce_library_filter">検索</string>
     <string name="ce_library_bundle_limit">音源セットは32音源・合計1GiBまでです。</string>
+    <string name="ce_online">YouTubeから音源を探す</string>
+    <string name="ce_online_query">曲名またはYouTube URL</string>
+    <string name="ce_online_search">候補を探す</string>
+    <string name="ce_online_acquire">選んだ音源を取り込む</string>
+    <string name="ce_online_ready">候補を確認して、取り込む音源を選んでください。</string>
+    <string name="ce_online_searching">候補を探しています…</string>
+    <string name="ce_online_candidates">取り込む音源を1つ選んでください。</string>
+    <string name="ce_online_empty">候補がありません。曲名やURLを確認してください。</string>
+    <string name="ce_online_downloading">音源を取り込んでいます…</string>
 </resources>

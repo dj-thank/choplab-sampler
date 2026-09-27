@@ -276,4 +276,13 @@
     <string name="ce_library_overwrite">Replace the existing file?</string>
     <string name="ce_library_filter">Filter</string>
     <string name="ce_library_bundle_limit">Audio bundles allow up to 32 items and 1 GiB total.</string>
+    <string name="ce_online">Find audio on YouTube</string>
+    <string name="ce_online_query">Song name or YouTube URL</string>
+    <string name="ce_online_search">Find candidates</string>
+    <string name="ce_online_acquire">Import selected audio</string>
+    <string name="ce_online_ready">Find and select the audio you want to import.</string>
+    <string name="ce_online_searching">Finding candidates…</string>
+    <string name="ce_online_candidates">Select one audio source to import.</string>
+    <string name="ce_online_empty">No candidates found. Check the song name or URL.</string>
+    <string name="ce_online_downloading">Importing audio…</string>
 </resources>

@@ -56,3 +56,5 @@ ADBは一つの明示serialだけを対象にし、全connected device taskを�
 性能試験はwarm-up、rate/buffer、機種、OS、冷間/熱時、反復数、p99/最大/underrunを添えます。サイズは同じbuild種別・圧縮形式で測り、初回DL・展開・利用者素材/cacheを分けます。human確認は最大5項目に絞り、未回答は未確認のまま残します。
 
 研究資料は [Android audio/accessibility review](research/android-audio-accessibility-reference-review-2026-08-17.md) に保存しています。資料の日時とsource revisionを現在の検証結果へ読み替えません。
+
+Mac NEXTのオンライン取込は `NextOnlineSelfTest` で合成providerから候補確認→明示取得→原本保持→制作・24bit書出し・保存再開を検証する。これは実YouTube/provider合格ではない。`run_mac_next_acceptance.py` は同梱Node/yt-dlpの起動も確認する。実providerとnative候補選択窓の操作は別に記録する。

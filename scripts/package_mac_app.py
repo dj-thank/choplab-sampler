@@ -33,7 +33,7 @@ def build(java_home, tools, signed=False, linked=False):
         identities = subprocess.check_output(['security', 'find-identity', '-v', '-p', 'codesigning'], text=True)
         if f'"{identity}"' not in identities:
             raise RuntimeError('The requested valid signing identity is not available in the keychain')
-    for name in (('ffmpeg', 'ffprobe', 'manifest.json') if linked else ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json')):
+    for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
         if tools is None or not (tools / name).is_file():
             raise RuntimeError(f'Prepare the complete Mac tools bundle first: missing {name}')
     if not linked:
@@ -154,7 +154,7 @@ def build(java_home, tools, signed=False, linked=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home', type=Path, required=True)
-    parser.add_argument('--tools', type=Path, required=True, help='Prepared Mac codec bundle for --linked, complete media tools otherwise')
+    parser.add_argument('--tools', type=Path, required=True, help='Prepared complete Mac media tools')
     parser.add_argument('--signed', action='store_true')
     parser.add_argument('--linked', action='store_true', help='Package the linked four-stage editor instead of the existing Preview')
     args = parser.parse_args()

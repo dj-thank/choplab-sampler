@@ -14,6 +14,21 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun onlineCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.state.value.permits(ContinuousCapability.IMPORT_ONLINE))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportOnline))
+            assertEquals(1, h.ports.onlinePicks)
+            assertEquals(before, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportOnline))
+            assertEquals(1, h.ports.onlinePicks)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+        } finally { h.close() }
+    }
+
     @Test fun libraryCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
         val h = Harness(voice = true)
         try {
@@ -1384,6 +1399,10 @@ class ContinuousEditorPresenterTest {
         var originalGain = 1f
         var exportFrames = 0L
         override val originalAvailable = true
+        override val onlineAvailable = true
+        var online: Location? = null
+        var onlinePicks = 0
+        override suspend fun chooseOnline(): Location? { onlinePicks++; return online }
         override val libraryAvailable = true
         var library: Location? = null
         var libraryPicks = 0
