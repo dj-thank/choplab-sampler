@@ -6,6 +6,8 @@ import com.choplab.sampler.separation.ChunkInference
 import com.choplab.sampler.separation.DrumSeparatorPipeline
 import com.choplab.sampler.separation.SeparatorSourceReader
 import com.choplab.sampler.separation.SeparatorSpec
+import com.choplab.sampler.separation.OnnxDrumChunkInference
+import java.security.MessageDigest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -13,6 +15,27 @@ import java.util.concurrent.CancellationException
 
 /** Worker-only float route. The caller owns the model session and an exclusive scratch destination. */
 internal object NextDrumSeparation {
+    fun renderWithModel(audio: WavAudio, destination: Path, model: Path,
+                        progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }) {
+        require(Files.isRegularFile(model) && Files.size(model) == SeparatorSpec.MODEL_BYTES) { "Separation model unavailable" }
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(model).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                if (cancelled() || Thread.currentThread().isInterrupted) throw CancellationException()
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        require(digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == SeparatorSpec.MODEL_SHA256) {
+            "Separation model differs from the pinned model"
+        }
+        OnnxDrumChunkInference(model.toFile(), threads = minOf(4, Runtime.getRuntime().availableProcessors()), lowMemory = true).use {
+            render(audio, destination, it, progress, cancelled)
+        }
+    }
+
     fun render(audio: WavAudio, destination: Path, inference: ChunkInference,
                progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }) {
         fun checkCancelled() { if (cancelled() || Thread.currentThread().isInterrupted) throw CancellationException() }
