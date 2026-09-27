@@ -62,6 +62,32 @@ class GeminiLyricProviderTest {
         assertNull(unknown.usage)
     }
 
+    @Test fun transportCompletesOnlyAfterConnectionCleanupForSuccessAndFailure() = runBlocking<Unit> {
+        for (fails in listOf(false, true)) {
+            val disconnecting = CompletableDeferred<Unit>()
+            val release = CountDownLatch(1)
+            lateinit var connection: Connection
+            val transport = UrlConnectionGeminiTransport { url -> object : Connection(url, reply()) {
+                override fun getInputStream(): InputStream = if (fails) throw IOException("Synthetic read failure") else super.getInputStream()
+                override fun disconnect() {
+                    disconnecting.complete(Unit)
+                    check(release.await(5, TimeUnit.SECONDS)) { "Cleanup was not released" }
+                    super.disconnect()
+                }
+            }.also { connection = it } }
+            // Run the resumed caller inline: returning before finally cannot hide behind dispatcher timing.
+            val pending = async(Dispatchers.Unconfined) { runCatching { transport.post(GeminiHttpRequest("gemini-test", "fake-key", "{}")) } }
+            try {
+                withTimeout(2_000) { disconnecting.await() }
+                assertFalse(pending.isCompleted, "The request must still own cleanup before completion (fails=$fails)")
+                release.countDown()
+                val result = withTimeout(2_000) { pending.await() }
+                assertEquals(fails, result.isFailure)
+                assertTrue(connection.disconnected)
+            } finally { release.countDown(); pending.cancelAndJoin(); transport.close() }
+        }
+    }
+
     @Test fun failuresAreTypedRetryAfterIsHonoredAndNothingRetriesAutomatically() = runBlocking<Unit> {
         val now = Instant.parse("2026-09-27T12:00:00Z")
         val cases = listOf(401 to LyricAiProblem.AUTHENTICATION, 403 to LyricAiProblem.AUTHENTICATION,

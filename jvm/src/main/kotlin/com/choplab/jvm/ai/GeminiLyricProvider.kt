@@ -14,8 +14,6 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 class GeminiHttpRequest(val model: String, val key: String, val body: String) {
     override fun toString() = "GeminiHttpRequest([redacted])"
@@ -42,7 +40,7 @@ class UrlConnectionGeminiTransport(
         val connection = AtomicReference<HttpURLConnection?>(null)
         val work = owner.launch {
             var http: HttpURLConnection? = null
-            try {
+            val result = try {
                 ensureActive()
                 http = open(URL("https://generativelanguage.googleapis.com/v1beta/models/${request.model}:generateContent"))
                 connection.set(http); active.add(http)
@@ -79,13 +77,15 @@ class UrlConnectionGeminiTransport(
                             .decode(java.nio.ByteBuffer.wrap(out.toByteArray())).toString()
                     } catch (_: CharacterCodingException) { throw IllegalArgumentException("Invalid response encoding") }
                 } else ""
-                if (answer.isActive) answer.resume(GeminiHttpResponse(status, retry, body))
+                Result.success(GeminiHttpResponse(status, retry, body))
             } catch (failure: Exception) {
-                if (answer.isActive) answer.resumeWithException(failure)
+                Result.failure(failure)
             } finally {
                 http?.let { active.remove(it); it.disconnect() }
                 connection.set(null)
             }
+            // Completion relinquishes ownership: even an inline caller must see the connection released.
+            if (answer.isActive) answer.resumeWith(result)
         }
         work.invokeOnCompletion { cause ->
             if (cause != null && answer.isActive) answer.cancel(CancellationException("Request closed", cause))
