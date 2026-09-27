@@ -86,6 +86,7 @@ class ContinuousEditorPresenterTest {
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(second)))
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(1)))
+                h.engine.transport = h.engine.transport.copy(sequenceFrame = 24_000)
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(first, false, 24_000)))
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(second, false, 24_000)))
@@ -102,6 +103,27 @@ class ContinuousEditorPresenterTest {
                 }
             } finally { h.close() }
         }
+    }
+
+    @Test fun aLoopKeepsPlayingAfterPointerUpAndRecordsUntilThePassStops() = runBlocking<Unit> {
+        val h = Harness { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(mode = PlayMode.LOOP) else it }.frozen()) }
+        try {
+            h.ports.outputDelay = 0
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val press = ContinuousHitGesture(0, 12_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(press)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(press, false, 16_800)))
+            assertTrue(h.engine.commands.none { it is EngineCommand.Release && it.padId == 0 })
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 24_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertTrue(h.engine.commands.any { it is EngineCommand.Release && it.padId == 0 })
+            val project = h.studio.document.value.project
+            assertEquals(12_096L, project.clips.single { ContinuousClipEdits.startFrame(project, it) == 12_000L }.range.length)
+        } finally { h.close() }
     }
 
     @Test fun reviewAGatePerformanceRetainsTheDurationThatWasPlayed() = runBlocking<Unit> {
