@@ -125,6 +125,17 @@
     <string name="ce_redo">やり直す</string>
     <string name="ce_split">分割</string>
     <string name="ce_duplicate">複製</string>
+    <string name="ce_repeat">くり返す</string>
+    <string name="ce_repeat_title">小節をくり返す</string>
+    <string name="ce_repeat_times">回数</string>
+    <string name="ce_repeat_count">%1$d回</string>
+    <string name="ce_repeat_plan">この範囲の配置%1$d個を、%2$d〜%3$d小節目にくり返します。</string>
+    <string name="ce_repeat_plan_one">この範囲の配置%1$d個を、%2$d小節目にくり返します。</string>
+    <string name="ce_repeat_empty">この範囲には配置がありません。</string>
+    <string name="ce_repeat_outlasting">この範囲に、選んだ長さより長く続く音があるので、くり返すと音が重なります。長さを長くしてください。</string>
+    <string name="ce_repeat_occupied">%1$d〜%2$d小節目には、もう配置があります。先に空けるか、長さか回数を変えてください。</string>
+    <string name="ce_repeat_occupied_one">%1$d小節目には、もう配置があります。先に空けるか、長さか回数を変えてください。</string>
+    <string name="ce_repeat_help">すべての段の配置をくり返します。1回の「戻す」で戻ります。</string>
     <string name="ce_delete">削除</string>
     <string name="ce_fit">全体表示</string>
     <string name="ce_grid">拍に合わせる</string>

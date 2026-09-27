@@ -125,6 +125,17 @@
     <string name="ce_redo">Redo</string>
     <string name="ce_split">Split</string>
     <string name="ce_duplicate">Duplicate</string>
+    <string name="ce_repeat">Repeat</string>
+    <string name="ce_repeat_title">Repeat bars</string>
+    <string name="ce_repeat_times">Times</string>
+    <string name="ce_repeat_count">%1$d×</string>
+    <string name="ce_repeat_plan">The %1$d clips in these bars repeat into bars %2$d–%3$d.</string>
+    <string name="ce_repeat_plan_one">The %1$d clips in this bar repeat into bar %2$d.</string>
+    <string name="ce_repeat_empty">There are no clips in these bars.</string>
+    <string name="ce_repeat_outlasting">A sound in these bars lasts longer than the length chosen, so its repeats would play over each other. Choose a longer length.</string>
+    <string name="ce_repeat_occupied">Bars %1$d–%2$d already have clips. Clear them, or choose another length or number of times.</string>
+    <string name="ce_repeat_occupied_one">Bar %1$d already has clips. Clear it, or choose another length or number of times.</string>
+    <string name="ce_repeat_help">Clips on every track repeat, on the beat or not. One Undo takes it back.</string>
     <string name="ce_delete">Delete</string>
     <string name="ce_fit">Fit song</string>
     <string name="ce_grid">Snap to</string>
