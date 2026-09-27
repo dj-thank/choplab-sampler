@@ -41,7 +41,9 @@ class PersistenceTest {
 
     @Test fun jsonMatchesIndependentGoldenAndRejectsAmbiguousInput() {
         val golden = requireNotNull(javaClass.getResourceAsStream("/schema10-empty.json")).use { it.readBytes() }
-        assertContentEquals(golden, ProjectJson.encode(Project()))
+        val currentGolden = requireNotNull(javaClass.getResourceAsStream("/schema11-empty.json")).use { it.readBytes() }
+        assertContentEquals(currentGolden, ProjectJson.encode(Project()))
+        assertEquals(Project(), ProjectJson.decode(currentGolden))
         assertEquals(Project(), ProjectJson.decode(golden))
         val text = golden.toString(Charsets.UTF_8)
         for (mutated in listOf(

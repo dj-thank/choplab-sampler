@@ -9,6 +9,33 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StudioTest {
+    @Test fun structuredLyricsAndWordProvenanceUndoWithoutReplacingAudioThenNextPadEditPrepares() = runTest {
+        val engine = Engine()
+        val initial = Project(assets = frozenListOf(asset), pads = (0..127).map {
+            if (it == 0) com.choplab.core.model.Pad(0, asset.hash, FrameRange(0, asset.frames)) else com.choplab.core.model.Pad(it)
+        }.frozen())
+        val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), initial,
+            preparationDispatcher = StandardTestDispatcher(testScheduler))
+        studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement()))
+        val audioRevision = engine.snapshot().programRevision
+        engine.commands.clear()
+        val reading = LyricReading.create("line", "川", "かわ", com.choplab.core.ai.LyricLanguage.JAPANESE)
+        val structure = LyricStructure("川の歌", com.choplab.core.ai.LyricLanguage.JAPANESE,
+            frozenListOf(LyricSection("一番", com.choplab.core.ai.LyricSectionKind.VERSE, 1, frozenListOf(reading))))
+        val lines = frozenListOf(LyricLine("line", "川", 0, 3840, frozenListOf(LyricWord("川", 0, 1920, WordTimingOrigin.ESTIMATED))))
+        assertTrue(studio.dispatch(Action.Edit(Intent.SetStructuredLyrics(lines, structure), expectedRevision = 0)).accepted)
+        repeat(3) { index -> assertTrue(studio.dispatch(Action.Edit(Intent.SetStructuredLyrics(lines, structure.copy(title = "Song $index")))).accepted) }
+        assertTrue(studio.dispatch(Action.Undo).accepted)
+        assertTrue(studio.dispatch(Action.Redo).accepted)
+        assertEquals(audioRevision, engine.snapshot().programRevision)
+        assertTrue(engine.commands.isEmpty())
+        assertNull(studio.work.value.preparationId)
+        assertFalse(studio.dispatch(Action.Edit(Intent.SetStructuredLyrics(lines, structure), expectedRevision = 0)).accepted)
+        assertTrue(studio.dispatch(Action.Edit(Intent.SetPad(initial.pads[0].copy(gain = .3f)))).accepted)
+        assertEquals(studio.document.value.revision, engine.snapshot().programRevision)
+        assertEquals("Song 2", studio.document.value.project.lyricStructure!!.title)
+        studio.dispatch(Action.Close)
+    }
     @Test fun lyricsOnlyEditsUndoAndRedoLeaveAudioRevisionAloneUntilTheNextAudioEdit() = runTest {
         val engine = Engine()
         val initial = Project(assets = frozenListOf(asset), pads = (0..127).map {
