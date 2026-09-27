@@ -28,7 +28,11 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 | Channels / export | 左右非対称/逆相/mono/headroom、16/24bit端値、ディザ分布/相関/seed、frame数/範囲/tail、保存→再読込。stemsは出力点を固定してpre-master和と比較 |
 | Listening A/B | 同じ拍/長さ/処理の新旧を同一ラウドネス基準で合わせ、無処理比較も保持。数値合格と人間の音質評価を別記録 |
 
-帯域制限の取込resampleと可変pitch補間は別の問題です。sincのtap/phase数は品質・CPUで採用を決めます。5分48kHz stereo floatは115.2MBなので、メモリ上限とprefetchなしで長尺を増やしません。renderにはfile/network I/O、allocation、blocking lock、logを入れません。
+帯域制限の取込resampleと可変pitch補間は別の問題です。取込は小窓の帯域制限resamplerを使い、AndroidのMediaCodec出力も私有float cacheへ渡す。元の圧縮bytesを保存用の正本として保持し、cacheを元資産の代わりにしない。長尺はresident全展開ではなくworkerのprefetchとpaged PCMを使う。renderのpage missはI/Oを起こさず無音・typed通知にし、Reloadは同じrevision/Undoを保持して自動再生しない。READY/FAILEDを制作hostに表示する。
+
+全hostが共有する128MiBはmanaged PCMの一つの予算であり、resident/paged cache、prepared/queued/active program、SOURCE、workerの防御copy・resample窓・ring・出力窓を先に予約する。cacheとengineに128MiBずつ別枠を許さない。非active LRUを解放しても入らないときはtyped拒否し、active音源を追い出さない。renderでのlease返却は原子操作だけとし、providerの破棄・解放再試行はworkerで行う。Stop/取消/遅着/終了でも所有を返す。これはJVM/RSS・OS codec・推論modelのactivationの総RAM上限ではない。新しいTTS/comp/音声driverもこの予算に接続した証拠を各sliceで得る。
+
+native資産の30,000,000frame（48kHzで625秒）と資産/disk scratchの1GiB上限は別に維持する。400秒のproduction通しと44.1/48/96kHzの精度oracleは候補revisionの証拠であり、全上限・全端末の性能を保証しない。renderにはfile/network I/O、allocation、blocking lock、logを入れない。固定条件の性能結果と実端末の10分underrunは分けて[ROADMAP](ROADMAP.md)に示す。
 
 ## 録音・遅延
 
