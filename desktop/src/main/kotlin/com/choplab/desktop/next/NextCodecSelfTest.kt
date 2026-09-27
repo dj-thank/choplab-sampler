@@ -41,7 +41,35 @@ object NextCodecSelfTest {
                 println("CODEC_PASS $name frames=${info.frames} milliseconds=${(System.nanoTime() - started) / 1_000_000}")
             }
         }
+        // Every newly admitted library container must also pass the document/archive path, not just a decoder.
+        for (extension in listOf("aiff", "aif", "mp4", "webm")) {
+            val original = directory.resolve("precision.$extension")
+            val production = NextSelfTest.run(directory.resolve("production-$extension"), original)
+            ZipFile(production.runDirectory.resolve("roundtrip.choplab").toFile()).use { archive ->
+                val encoded = archive.entries().asSequence().single { it.name.endsWith(".$extension") }
+                check(archive.getInputStream(encoded).use { it.readBytes() }.contentEquals(Files.readAllBytes(original)))
+            }
+            NextBackend.create(production.runDirectory.resolve("profile"), sinkFactory = { error("No endpoint in codec test") }).use { reopened ->
+                val asset = reopened.studio.document.value.project.assets.single { it.extension == extension }
+                check(reopened.assets.verified(asset) && reopened.loadPeaks(asset).any { it > 0f })
+            }
+        }
         val flac = directory.resolve("precision.flac")
+        // In this isolated JVM, make codecs unavailable after library validation. Import + waveform must consume
+        // the same decoder's bounded handoff instead of launching a second decode of the same compressed original.
+        val previousTools = System.getProperty("choplab.mediaTools")
+        NextBackend.create(directory.resolve("library-handoff"), sinkFactory = { error("No endpoint in codec test") }).use { backend ->
+            backend.validateLibraryFile(flac.toFile())
+            try {
+                System.setProperty("choplab.mediaTools", directory.resolve("unavailable-tools").toString())
+                check(backend.importAudio(flac).accepted)
+                withTimeout(10_000) { while (backend.studio.work.value.jobId != null || backend.studio.work.value.preparationId != null) delay(5) }
+                val asset = backend.studio.document.value.project.assets.single()
+                check(backend.loadPeaks(asset).any { it > 0f })
+            } finally {
+                if (previousTools == null) System.clearProperty("choplab.mediaTools") else System.setProperty("choplab.mediaTools", previousTools)
+            }
+        }
         val receipt = NextSelfTest.run(directory.resolve("production"), flac)
         ZipFile(receipt.runDirectory.resolve("roundtrip.choplab").toFile()).use { archive ->
             val encoded = archive.entries().asSequence().single { it.name.endsWith(".flac") }
@@ -78,6 +106,6 @@ object NextCodecSelfTest {
             check(checks >= 4)
             check(decoder.inspect(flac, sha256(Files.readAllBytes(flac))).frames == 96_000L) // retry after cancellation
         }
-        println("""{"status":"LOCAL_PASS","scope":"packaged-original-codecs","formats":11,"lossless24BitExact":true,"originalArchiveExact":true,"freshReopen":true,"cancelRetry":true,"nativeAudio":false}""")
+        println("""{"status":"LOCAL_PASS","scope":"packaged-original-codecs","formats":11,"lossless24BitExact":true,"originalArchiveExact":true,"freshReopen":true,"libraryDecodeHandoff":true,"cancelRetry":true,"nativeAudio":false}""")
     }
 }

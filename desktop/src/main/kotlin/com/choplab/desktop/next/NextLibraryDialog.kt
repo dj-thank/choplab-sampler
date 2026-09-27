@@ -1,7 +1,6 @@
 package com.choplab.desktop.next
 
 import com.choplab.desktop.isMacOsHost
-import com.choplab.desktop.source.DesktopAudioDecoder
 import com.choplab.sampler.source.AudioLibraryItem
 import com.choplab.sampler.source.LocalAudioLibrary
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -21,7 +20,7 @@ import kotlin.coroutines.resume
 
 /** Native file-selection surface. Worker-owned validation/import never runs on the event thread. */
 internal object NextLibraryDialog {
-    suspend fun choose(parent: Window?, directory: Path): NextLibrary.Selection? {
+    suspend fun choose(parent: Window?, directory: Path, validate: (java.io.File) -> Unit): NextLibrary.Selection? {
         val labels = mapOf(
             "bundle_limit" to getString(Res.string.ce_library_bundle_limit),
             "title" to getString(Res.string.ce_library_title),
@@ -53,7 +52,7 @@ internal object NextLibraryDialog {
             SwingUtilities.invokeLater {
                 if (!answer.isActive) return@invokeLater
                 val dialog = JDialog(parent, label("title"), Dialog.ModalityType.DOCUMENT_MODAL)
-                val library = NextLibrary(directory, DesktopAudioDecoder::validate)
+                val library = NextLibrary(directory, validate)
                 val model = DefaultListModel<AudioLibraryItem>()
                 val list = JList(model).apply {
                     selectionMode = ListSelectionModel.SINGLE_SELECTION

@@ -2,7 +2,6 @@ package com.choplab.desktop.next
 
 import com.choplab.core.*
 import com.choplab.core.model.Project
-import com.choplab.desktop.source.DesktopAudioDecoder
 import com.choplab.jvm.WavCodec
 import com.choplab.ui.*
 import kotlinx.coroutines.*
@@ -26,22 +25,6 @@ object NextLibrarySelfTest {
             (kotlin.math.sin(it / 31.0) * if (it % 2 == 0) .25 else -.12).toFloat()
         }, bits = 24, dither = false) }
         suspend fun idle(library: NextLibrary) = withTimeout(10_000) { while (library.state.value.busy) delay(5) }
-        val selected = NextLibrary(directory.resolve("library"), DesktopAudioDecoder::validate).use { library ->
-            idle(library); check(library.add(listOf(input))); idle(library)
-            check(library.state.value.status == NextLibrary.Status.ADDED && library.state.value.selection == null)
-            val item = library.state.value.items.single()
-            check(library.select(item.id)); idle(library)
-            val choice = requireNotNull(library.state.value.selection)
-            check(choice.title == "Library original" && Files.readAllBytes(choice.path).contentEquals(Files.readAllBytes(input)))
-            val bundle = directory.resolve("library.choplib")
-            check(library.export(bundle)); idle(library)
-            check(library.state.value.status == NextLibrary.Status.EXPORTED)
-            NextLibrary(directory.resolve("restored-library"), DesktopAudioDecoder::validate).use { restored ->
-                idle(restored); check(restored.add(listOf(bundle))); idle(restored)
-                check(restored.state.value.items.single().id == item.id)
-            }
-            choice
-        }
         val backend = NextBackend.create(profile, sinkFactory = { error("No native audio in library self-test") }, microphone = { null })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val presenter = ContinuousEditorPresenter(backend.studio, scope, DesktopEditorPorts(backend) { null })
@@ -50,6 +33,22 @@ object NextLibrarySelfTest {
             while (backend.studio.work.value.jobId != null || backend.studio.work.value.preparationId != null) delay(5)
         }
         try {
+            val selected = NextLibrary(directory.resolve("library"), backend::validateLibraryFile).use { library ->
+                idle(library); check(library.add(listOf(input))); idle(library)
+                check(library.state.value.status == NextLibrary.Status.ADDED && library.state.value.selection == null)
+                val item = library.state.value.items.single()
+                check(library.select(item.id)); idle(library)
+                val choice = requireNotNull(library.state.value.selection)
+                check(choice.title == "Library original" && Files.readAllBytes(choice.path).contentEquals(Files.readAllBytes(input)))
+                val bundle = directory.resolve("library.choplib")
+                check(library.export(bundle)); idle(library)
+                check(library.state.value.status == NextLibrary.Status.EXPORTED)
+                NextLibrary(directory.resolve("restored-library"), backend::validateLibraryFile).use { restored ->
+                    idle(restored); check(restored.add(listOf(bundle))); idle(restored)
+                    check(restored.state.value.items.single().id == item.id)
+                }
+                choice
+            }
             val before = backend.studio.document.value.project
             check(backend.studio.dispatch(Action.Import(backend.files.registerNamed(selected.path, selected.title, selected.hash))).accepted)
             ready()

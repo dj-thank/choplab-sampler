@@ -32,12 +32,32 @@ class NextFileLocations {
  * The caller selects Preview/next-v10 (or a test temporary directory), never the legacy data root.
  */
 class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations, val voice: VoiceTakes,
-    val systemAudio: com.choplab.ui.SystemAudioCapture?) : AutoCloseable {
+    val systemAudio: com.choplab.ui.SystemAudioCapture?, private val decoder: DesktopOriginalAudioDecoder) : AutoCloseable {
     val studio: Studio get() = shared.studio
     val engine: StreamingEnginePort get() = shared.engine
     val assets: FileAssetStore get() = shared.assets
     val audition: SourceAuditionController get() = shared.audition
     val persistenceFailure: StateFlow<Boolean> get() = shared.persistenceFailure
+
+    /** Worker-only library validation uses the same bounded decoder handoff as original import and playback. */
+    fun validateLibraryFile(file: java.io.File) {
+        require(file.isFile && file.length() in 1..com.choplab.core.model.ProjectLimits.MAX_ASSET_BYTES)
+        val extension = file.extension.lowercase()
+        require(extension in Asset.EXTENSIONS)
+        if (extension == "wav") { file.inputStream().use { WavCodec.read(it) }; return }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val bytes = ByteArray(64 * 1024)
+            while (true) {
+                if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                val count = input.read(bytes)
+                if (count < 0) break
+                digest.update(bytes, 0, count)
+            }
+        }
+        val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+        decoder.inspect(file.toPath(), hash) { Thread.currentThread().isInterrupted }
+    }
 
     suspend fun flushAutosave() = shared.flushAutosave()
     suspend fun importAudio(path: Path): ActionResult = studio.dispatch(Action.Import(files.register(path)))
@@ -77,7 +97,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), microphone = microphone) }
                 catch (failure: Exception) { runBlocking { shared.shutdown(flush = false) }; throw failure }
             val system = if (com.choplab.desktop.isMacOsHost()) NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch")) else null
-            return NextBackend(shared, files, voice, system)
+            return NextBackend(shared, files, voice, system, decoder)
         }
 
         fun patternFrames(project: Project, pattern: Pattern): Int = EditorBackend.patternFrames(project, pattern)

@@ -52,7 +52,7 @@ data class Asset(
 ) {
     init {
         requireHash(hash)
-        require(extension in setOf("wav", "mp3", "flac", "ogg", "opus", "m4a", "aac"))
+        require(extension in EXTENSIONS)
         require(byteCount in 1..ProjectLimits.MAX_ASSET_BYTES)
         require(sampleRate in 8_000..192_000 && channels in 1..2 && frames in 1..ProjectLimits.MAX_FRAMES)
         requireLabel(name)
@@ -61,6 +61,10 @@ data class Asset(
         require(required || (role == AssetRole.PCM_CACHE && derivedFrom != null))
         require(role != AssetRole.PCM_CACHE || (extension == "wav" && derivedFrom != null))
         require(role != AssetRole.RENDERED || extension == "wav")
+    }
+    companion object {
+        /** One allowlist for document validation, original import and host file selection. */
+        val EXTENSIONS: List<String> = frozenListOf("wav", "flac", "mp3", "m4a", "aac", "ogg", "opus", "aiff", "aif", "mp4", "webm")
     }
     val entryName: String get() = "assets/$hash.$extension"
 }

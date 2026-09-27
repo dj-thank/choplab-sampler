@@ -161,7 +161,7 @@ internal class DesktopEditorPorts(private val backend: NextBackend, private val 
     }
     override val libraryAvailable = true
     override suspend fun chooseLibrary() = NextLibraryDialog.choose(parent(),
-        DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"))?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
+        DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override suspend fun chooseAudio() = choose(false, OriginalAudioImportPort.EXTENSIONS, if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, listOf("choplab"), if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
     override suspend fun chooseSave() = choose(true, listOf("choplab"), if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)
