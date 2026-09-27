@@ -4,7 +4,7 @@
 
 ## 最初に読む現状とSSOT（2026-09-28照合）
 
-9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、このrootがローカル実装・統合・Mac利用検証を再開する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
+9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、ローカル実装・統合・Mac利用検証を再開する。同日の追加指定に従い、未完実装はGPT-6 Astra・推論Maxが担当し、rootがPR統合・外部更新・Mac端末検証を担当する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
 
 ### 正本と参照順
 
@@ -24,11 +24,11 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `551d57fcaadb427df8b3845da9a05ab67d2c6c7e`、公開branch、PRの最新状態を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `6c2fd0210636192769cf9da012b025a5007e0f68`、公開branch、PRを9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
-| 演奏録音 [PR150](https://github.com/dj-thank/choplab-sampler/pull/150) | OPEN、head `ee18b7c965f4368a623d536d8aae168ef29435ec`。[run 36329071282](https://github.com/dj-thank/choplab-sampler/actions/runs/36329071282) はverify・Windows EXE・履歴/SBOMの3件成功。引継ぎ時のWindows失敗/verify実行中は現在状態ではない | 曲末/GATE/choke/StopAll/fade/取消LOOP/accessibilityの修正をレビューし、統合後の画面とpackageで録音→1Undo/Redo→保存再開→書出しを確認。CI成功を実聴合格へ読み替えない |
+| 演奏録音 [PR150](https://github.com/dj-thank/choplab-sampler/pull/150) | main `6c2fd02` へ統合済み。head `096edfc` の [run 36334596464](https://github.com/dj-thank/choplab-sampler/actions/runs/36334596464) はverify・Windows EXE・履歴/SBOMの3件成功。同headのMac配布物でGATE演奏→1Undo/Redo→24bit書出し→保存再起動が成功 | 曲末/GATE/LOOP/choke/全停止fade/取消/accessibilityの回帰は成功。実入力遅延・音・TalkBack/Humanは未確認。空曲録音、click/count-in、loop overdubを後続で完成する |
 | PAD可視領域 [PR153](https://github.com/dj-thank/choplab-sampler/pull/153) | DRAFT、head `c5048e2`。compact header/詳細折畳みの途中変更。元セッションの23試験中1失敗（ContinuousEditorTestのfill panel、392行IllegalArgumentException） | 失敗を修正し390×844/font1/1.3/2、短い横画面、広い画面の実描画と操作を確認。PAD・停止・原曲・音量・Undoが使えること。引継ぎ文だけを理由にWIPを完成扱いでmergeしない |
 | Spotify NEXT [保全branch](https://github.com/dj-thank/choplab-sampler/tree/codex/next-spotify-connection) | head `d2a06e1e2f279382da27874383f47de7877d70be`。typedエラー/session試験とnative metadata dialogまで。NEXT action/port/host/package接続、実OAuth/APIは未完 | metadataと音源を区別し、接続・取消・失敗・再試行・鍵管理と実providerを確認。PRODUCTの具体的な利用条件を満たす |
 | デザインの取り違え | 最後のBEAT画像とSOURCE/HAND画像をDESIGNへ保存。旧2枚目・3枚目は撤回済み | 大きな4×4 PAD＋右の配置、4工程、共通原曲監視、独立音量、可変divider、A–H×16を維持。scratchはSOURCE/HANDの独立経路まで実装・検証 |
@@ -40,9 +40,15 @@ rootが変更と統合を進め、各担当は独立worktreeと限定したフ�
 
 ## 選択中の実装・統合（2026-09-28）
 
-rootがmain `04cd1ed` と録音PR150 head `ee18b7c` の文書競合を解消して統合候補を作る。製品コードはPR150の修正を保持し、承認画像・SSOT索引はmainを保持する。曲末/GATE/LOOP/choke/全停止/取消/読み上げ入力の回帰、共有engine/core/JVM/UI/desktopとAndroid compile、Mac packageの録音→Undo/Redo→書出し→保存再開を検証して統合する。rollbackはPR150のrevertと前のMac appへの復帰。実聴・実入力遅延・TalkBackはこの合成検証から認定しない。
+rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
 
-画面担当は独立worktreeで、BEATの広い画面に応じた大きな正方形PAD、390×844/font1/1.3/2・短い横画面の可視領域と操作を修正する。原曲監視・4工程・停止・Undo・BANKと詳細操作を維持し、実Compose画像とgeometry/inputで確認する。左右2円盤scratch、Spotify、長尺、段階5〜11の未実装は別のbounded変更として続ける。
+Mac配布担当の修正をrootが統合する。Swift helperのdeployment targetをmacOS14.0へ明示し、app内のtool・Java・JAR内nativeの実最低OSの最大値をInfo.plistとmanifestへ保存する。現在の同梱依存はmacOS27.0を必要とするため、14対応済みとは主張しない。インストール済みappの保存manifestも受入スクリプトで指定できる。Python policy327件、helper実compileとminos14.0確認、既存installed appの238ファイル全hash/署名確認が成功。統合後は新package・制作通し・旧app保全付き更新・installed readbackをrootが行う。公開署名/notarizationは別ゲート。
+
+未完の段階0〜11は、利用者の明示指定により **GPT-6 Astra・推論Max** に実装を依頼した。録音担当は空の曲からのvoice/PAD録音、permission待ち/出力切断/停止のclock所有と保存・復元を完成し、次に歌詞/LRCの編集・同期・ファイル入口を接続する。Spotify担当はmetadata専用scope、設定、NEXT入口とhost寿命、取消・遅着・429・再試行を実装する。Spotify曲情報を音声と見なさず、旧YouTube自動照合をつながない。実OAuth/providerと一般配布の利用条件は個別に確認する。歌詞基盤候補はLRC/拡張LRC、offset、word時刻、typed failure、純編集・current/nextを実装しcore55件成功。ファイル/画面/本番hostへ未接続なので段階5の完了ではない。
+
+PAD画面の途中変更は保全して引き継ぐ。BEATの広い画面に応じた大きな正方形PAD、390×844/font1/1.3/2・短い横画面の可視領域と入力を確認し、原曲監視・4工程・停止・Undo・BANKと詳細操作を維持する。geometry/実Compose画像/入力の合格前には統合しない。左右SOURCE/HANDの独立scratch、BANK/PAD編集、長尺prefetch、step/pattern/click/count-in/overdub、vocal take/comp/punch、任意AI、mixer/FX/stems、pitch補正、4stem、歌唱練習、OS別I/O・配布サイズと受入表の未完も、Astra・Maxの実装範囲として続ける。基盤だけの追加や1件のPR成功で全完成にしない。
+
+各bounded変更は実装・意味のある検証・commitをrootへ返し、rootがdiff/required CIを確認して統合する。rootが外部更新と端末操作を所有する。rollbackは対象PRのrevertと以前のartifactへの復帰。旧app、制作data、dirty checkoutを保持し、必要な人間/provider/deviceの実観測は結果が得られるまで未確認として本書に残す。
 
 ## UIの固定条件
 
@@ -124,7 +130,7 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 2B-2 移植・切替 | 移行中（合成ドラム・PAD音色・原曲キー・ライブチョップ・声の録音・スクラッチ・加工PADの配置・旧制作ファイルの音声救出・PADの鳴らし方と切り位置・拍に合わせた配置・配置プリセット接続済み） | 残機能と音声救出/復旧を機能表で合格させ、別削除PRで旧codeを外す。kit/loop/choke/record/interrupt/route loss/共有/.choplib/アクセス不能資産。画像だけで実音等を合格にしない |
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
 | 4 ビート | 着手（BPM入力・tap・swing接続済み、空曲voice/PAD録音候補 `b86eeac` は共有clock・1Undo・24bit書出し・保存再開の本番窓口試験成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
-| 5 ボーカル・歌詞 | 計画 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
+| 5 ボーカル・歌詞 | 歌詞/LRC基盤の候補を追加。画面・host・ファイル入口は未接続で段階未完 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
 | 6 作詞・TTS | 計画 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
 | 7 ミックス・FX | 計画 | source/bank/stem/vocal/guide/click track、gain/pan/mute/solo/meter、EQ/filter/comp/delay/reverb/master。latency/tail/loop。24bit/16bitディザ、stems/LRC/長さ、同一mix graph |
 | 8 ピッチ補正 | 計画 | YIN/PSOLA等を単音voiceで比較。key/scale/retune/vibrato、無声/低信頼bypass、非破壊A/B。測定と人間の試聴が採用条件 |
@@ -288,6 +294,12 @@ Macローカルで7 codec fixture、losslessのサンプル一致、44.1 kHz mon
 | 2026-09-27 | 4工程の編集画面の「3 ビート」のPADの操作に「並べる」を追加した。旧アプリの配置プリセット（4つ打ち・8分・16分）に当たる。選んだPADを、再生位置のある小節から1・2・4・8小節の間、1拍・1/2拍・1/4拍ごとに拍の線へ並べる（拍に固定、BPMを変えても付いていく）。その段にある同じ音（同じ音声・同じ範囲）は、その小節の分だけ置き換わる。ほかの音・ほかの段は残る。1回の「戻す」で戻る。音程・逆再生・音色を変えたPADは1回だけ音を作ってから並べる。窓の既定は4つ打ち・4小節で、選んだだけでは置かない。曲が再生できなくなる編集（同時に鳴る音が32個を超える・配置が1024個を超える・30分を超える）は、並べる以外の配置の操作も含めて、何も変えずに理由を出して断る（これまでは曲をまだ再生していないと通り、あとで再生・書き出しが失敗した。上限をすでに超えた曲は、減らす編集のために引き続き編集できる。判定は再生と同じ `ProgramCompiler.songFits`）。`ContinuousClipEditsTest` 3件（並べる位置・置き換えの範囲・97 BPMの小節の始まり・拒否・曲の上限）、presenter 2件（1回のUndo・加工PADは1回だけ作る・上限の理由表示）、描画1件（曲に置くと同じ列・窓の選択・48dp・再生位置の小節・スマホ文字2倍）、`ArrangementCompilerTest` 1件を追加し、main `7566698`（#143の音源ライブラリを含む）と合わせて `:ui:desktopTest` 88件・`:core:desktopTest` 43件・`:desktop:test` 284件（Macの実録音1件skip）が成功。要所を1か所ずつ壊すと試験が失敗することを16か所で確認 | 実機で並べたビートが揃って聞こえるかは未確認。曲の終わりまで並べる・小節ごとの複製（まとめたくり返し）は未対応 |
 | 2026-09-27 | 4工程の編集画面の「曲の並び」に「くり返す」を追加した（段階4の自由なrepeat）。再生位置のある小節から1・2・4・8小節の、すべての段の配置を、すぐ後ろへ1・2・4・8回くり返す。くり返す先の小節が空いている時だけで、選んだ長さより長く続く音がある時も断るので、音が自分のくり返しと重なって二重に鳴ることはない。拍に固定した配置は拍のまま、自由に置いた配置は小節の始まりからの位置を保って後ろへ動く（小節が1フレーム短くても、その小節の中に収める）。以前の版が残した無音の配置はくり返さない。1回の「戻す」で戻る。窓は、何個をどの小節へくり返すか、またはできない理由（空いていない・配置がない・長く続く音がある）を押す前に表示し、押せないボタンの読み上げも同じ理由にする。`ContinuousClipEditsTest` 2件（拍と自由の配置のくり返し・再生位置の小節から・空いていない/配置なし/選べない値の拒否・97 BPMの小節の長さと小節の中に収めること・長く続く音の拒否・無音の配置）、presenter 1件（1回のUndo・重なる時の拒否で何も変わらない）、描画1件（再生位置の小節・理由の表示と無効化とその読み上げ・1小節だけの表示・長く続く音・選ぶだけでは変えない・閉じる・配置なし（無音だけを含む）・スマホ文字2倍）を追加し、`:ui:desktopTest` 92件・`:core:desktopTest` 43件が成功。要所を1か所ずつ壊すと試験が失敗することを16か所で確認 | 実機でくり返したビートのつながり（継ぎ目）は未確認。置き換えながらのくり返し、曲の終わりまでのくり返しは未対応 |
 | 2026-09-27 | 4工程の編集画面のBPMの窓に「スウィング」を追加した（段階4のswing）。拍に合わせて置いた配置のうち、16分の裏（8分の中の2つ目の16分）を、選んだ割合までうしろへずらしてハネたリズムにする。選択肢は50%（まっすぐ）・54・58・62・66（3連に近い）・71%で、どれも48 dp（文字の大きいスマホでは2段）。BPMといっしょに「適用」で変わり、1回の「戻す」で戻る。BPMだけを変えてもスウィングは保つ。ハネている時はBPMのボタンに「92 BPM・スウィング58%」と出す。計算はパターン再生と同じ `SequenceClock.targetNumerator` で、再生・書き出し（`ProgramCompiler.clipTickToFrame`）・画面の配置の位置・1/4拍の線・置く/動かす/キーでの移動/複製の吸着・ドラッグ中の着地点が、すべて同じ計算を使う。自由に置いた配置と、拍・8分の位置は動かない。50%では今までとまったく同じ位置。制作ファイルには以前からある `swingPermille` として保存される。`ArrangementCompilerTest` 1件（16分の裏だけずれる・自由な配置は動かない・50%は今までと同じ・並び順が崩れない）、`ContinuousClipEditsTest` 1件（吸着・キーでの移動・小節と拍は動かない・線の位置と間引き・着地点）、presenter 1件（BPMといっしょの適用・BPMだけでは保つ・1回のUndo・範囲外の拒否）、描画1件（選択と読み上げ・適用・BPMボタンの表示・選択肢にない値を保つ・スマホ文字2倍で48 dp）を追加し、main `7c01347` の上で `:ui:desktopTest` 97件・`:core:desktopTest` 44件・`:jvm:test` 91件・`:desktop:test` 288件（Macの実録音1件skip）が成功。要所を1か所ずつ壊すと試験が失敗することを13か所で確認 | 実機でハネたビートの聞こえ方を確かめる。3連のグリッド（3連符の線）、パターンごとのスウィング、スウィングをかける細かさ（8分の裏）の切り替えは未対応 |
+
+## 歌詞/LRC基盤の実装候補（2026-09-28）
+
+ownerはroot統合・GPT-6 Astra Maxによる後続画面接続。core候補 `6f5ab98` は新しい `core/lyrics` とcommon testsだけを追加し、既存Project/保存schema/UIを変えない。LRC/拡張LRCの明示テンポ付きimport/export、offset、反復timestamp、Unicode、word時刻とend marker、上限/型付き失敗、非破壊の行/word編集とcurrent/nextを実装。core55件（追加11件）とAndroid共通compileが成功。絶対msを指定BPMでtickへ変換し、適用後は拍固定になるためBPM変更に追従する。ms往復の許容差は40〜240BPMで最大2tick。STANDARDはword時刻の省略をflagで返し、表せない重なりを拒否する。
+
+段階5の完了条件は、ファイル選択→内容確認→明示適用、行編集/tap/word timing、同期表示と保存再開、LRCの書出しを本番hostから検証すること。take/comp/punch/count-in/route補正も引き続き未完。基盤API試験を人間の歌唱/音質/実入力遅延の受入にしない。rollbackは本変更のrevert、制作data保持。
 
 ## 履歴の入口
 

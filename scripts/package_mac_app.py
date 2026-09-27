@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = 'java.base,java.desktop,java.instrument,java.logging,java.management,java.net.http,java.naming,jdk.httpserver,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets'
@@ -16,6 +17,55 @@ MODULES = 'java.base,java.desktop,java.instrument,java.logging,java.management,j
 
 def run(*args, **kwargs):
     return subprocess.run([str(a) for a in args], check=True, **kwargs)
+
+
+MACH_O_MAGIC = {bytes.fromhex(value) for value in (
+    'feedface', 'cefaedfe', 'feedfacf', 'cffaedfe', 'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca')}
+
+
+def native_minimum_versions(path):
+    """Read macOS deployment requirements from every architecture of a Mach-O binary."""
+    with path.open('rb') as stream:
+        if stream.read(4) not in MACH_O_MAGIC:
+            return []
+    output = subprocess.check_output(['otool', '-l', str(path)], text=True)
+    versions = []
+    for kind, block in re.findall(r'cmd (LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX)(.*?)(?=Load command|$)', output, re.S):
+        if kind == 'LC_BUILD_VERSION' and not re.search(r'\bplatform\s+(?:1|macos)\s', block, re.I):
+            continue
+        match = re.search(r'\b(?:minos|version)\s+(\d+(?:\.\d+){1,2})\b', block)
+        if match:
+            versions.append(match.group(1))
+    if not versions:
+        raise RuntimeError('Mac native binary has no readable macOS deployment target: ' + str(path))
+    return versions
+
+
+def minimum_system_version(app):
+    """The package's minimum OS is the highest requirement of its actual native bytes."""
+    versions = []
+    with tempfile.TemporaryDirectory(prefix='mac-native-requirements-') as temporary:
+        native_index = 0
+        for path in sorted(app.rglob('*')):
+            if not path.is_file() or path.is_symlink():
+                continue
+            versions.extend(native_minimum_versions(path))
+            if path.suffix != '.jar':
+                continue
+            # Skiko and ONNX ship their macOS native libraries inside dependency JARs.
+            with zipfile.ZipFile(path) as archive:
+                for entry in archive.infolist():
+                    if not entry.filename.endswith(('.dylib', '.jnilib')):
+                        continue
+                    native_index += 1
+                    native = Path(temporary) / str(native_index)
+                    with archive.open(entry) as source, native.open('wb') as target:
+                        shutil.copyfileobj(source, target)
+                    versions.extend(native_minimum_versions(native))
+                    native.unlink()
+    if not versions:
+        raise RuntimeError('Mac package contains no readable native deployment targets')
+    return max(versions, key=lambda version: tuple(int(part) for part in version.split('.')))
 
 
 def build(java_home, tools, signed=False, linked=False):
@@ -89,6 +139,8 @@ def build(java_home, tools, signed=False, linked=False):
         plist['CFBundleDisplayName'] = display_name
         plist['CFBundleShortVersionString'] = version
         plist['CFBundleVersion'] = build_number
+        minimum_os = minimum_system_version(app)
+        plist['LSMinimumSystemVersion'] = minimum_os
         with plist_path.open('wb') as stream:
             plistlib.dump(plist, stream)
         if signed:
@@ -121,6 +173,7 @@ def build(java_home, tools, signed=False, linked=False):
             'working_tree_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
             'version': version, 'profile': 'preview-next' if linked else 'preview',
             'signing': 'developer-id' if signed else 'local-ad-hoc', 'notarized': False,
+            'minimum_system_version': minimum_os,
             'files': {},
         }
         for path in sorted(app.rglob('*')):
