@@ -49,6 +49,7 @@ clickは共有engineのmonitorだけに出し、通常のWAV書出しgraphへ混
 - WSOLAはstretch、YIN/PSOLAは単音voiceのpitch補正候補。子音・無声・低信頼・低音・急変・倍半分誤検出を評価し、不成立なら原音を保つ。非破壊A/B、キー/スケール、retune/vibratoを明示する。
 - FXはgain/pan/mute/solo、EQ/filter/comp/delay/reverb send/masterを共有graphで処理。latency compensation、tail、loop折返し、solo/muteの意味を固定。post-fader/pre-master等stem出力点を表示し、非線形master後の和が一致するとは約束しない。
 - 4パート分離はdrums/bass/other/vocalsの順とshapeを実modelで検証。44.1kHz・7.8秒単位のstreaming、4出力のtransaction確定、取消/容量不足/空きRAM/ORT設定を両OSで試す。fp16 weightsだけでruntime RAM半減とは言わない。
-- AndroidはAudioTrack、Windowsはまず連続Java Sound、段階11でWASAPI event駆動の出力/入力/loopbackを試す。endpoint probe成功は実音やloopback成功の証拠ではない。
+- AndroidはAudioTrack、Windowsの既存hostは連続Java Sound。WASAPIはshared event駆動の専用STAに出力/マイク/通常global-mix loopbackを所有させ、Get/Releaseとcloseを同じworkerで行う。clientは48kHz stereo FLOAT32、OS共有変換を明示し、loopbackはWindows10 build15063以降のdefault render全mix（自分の出力を含む、OS保護に従う）。別endpoint/マイクへの自動fallback・自動retryを行わない。
+- WASAPIのring/endpoint/scratchは共有PCMへInitialize前に予約し実buffer後に縮小する。非協力workerは実finallyまでslot/予算を保持し同mode再openをBUSYで拒否、代替routeの明示選択は解放確認後に限る。capture gap/timestamp/overflow/device lossをtyped中断とし、QPC100nsをSystem.nanoTimeや往復実測補正と同一視しない。hostのroute変更通知と校正失効は別の接続受入。endpoint probe・短いnative stream・長時間/実音/Humanを別証拠にする。
 
 既存のchannel/PCM oracleは [ADR3](adr/ADR-0003-audio-parity-primitives.md) と [ADR4](adr/ADR-0004-pattern-master-parity-gate.md)、Windows調査は [WASAPI research](research/windows-wasapi-jna-2026-08-20.md) に残します。
