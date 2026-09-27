@@ -3,6 +3,9 @@ package com.choplab.core
 import com.choplab.core.model.*
 import com.choplab.engine.PcmAsset
 import com.choplab.engine.Tempo
+import com.choplab.engine.EngineCore
+import com.choplab.engine.EngineCommand
+import com.choplab.engine.OfferResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
@@ -18,6 +21,38 @@ class ArrangementCompilerTest {
     }
     private fun project(asset: Asset, clips: List<Clip> = emptyList(), tracks: List<Track> = listOf(Track("t", "Track", TrackKind.SOURCE)), takes: List<Take> = emptyList()) =
         Project(assets = frozenListOf(asset), tracks = tracks.frozen(), clips = clips.frozen(), takes = takes.frozen())
+
+    @Test fun anEmptyRecordingClockAdvancesSilentlyAndStopsAtItsBoundWithoutDocumentContent() = runTest {
+        val project = Project()
+        val loader = Loader()
+        val compiler = ProgramCompiler(loader)
+        val program = compiler.compile(project, PlaybackTarget.Arrangement(minimumFrames = 960), 1)
+        val engine = EngineCore(program)
+        val output = FloatArray(480 * 2)
+        assertEquals(0, program.arrangement!!.clipCount)
+        assertEquals(960L, program.arrangement!!.durationFrames)
+        assertEquals(OfferResult.ACCEPTED, engine.controls.offer(EngineCommand.Resume(0, 1)))
+        engine.render(output)
+        assertEquals(480L, engine.sequenceFrame)
+        assertTrue(engine.sequencePlaying)
+        assertTrue(output.all { it == 0f })
+        assertEquals(OfferResult.ACCEPTED, engine.controls.offer(EngineCommand.Pause(480, 2)))
+        engine.render(output)
+        assertEquals(480L, engine.sequenceFrame)
+        assertEquals(OfferResult.ACCEPTED, engine.controls.offer(EngineCommand.Resume(960, 3)))
+        engine.render(output)
+        assertEquals(960L, engine.sequenceFrame)
+        assertFalse(engine.sequencePlaying)
+        engine.render(output)
+        assertEquals(960L, engine.sequenceFrame)
+        assertTrue(output.all { it == 0f })
+        assertTrue(loader.loaded.isEmpty(), "A recording clock has no PCM placeholder")
+        assertEquals(Project(), project)
+        assertEquals(0L, compiler.compile(project, PlaybackTarget.Arrangement(), 2).arrangement!!.durationFrames)
+        assertEquals(14_400_000L, PlaybackTarget.Arrangement.MAX_RECORDING_FRAMES)
+        assertFailsWith<IllegalArgumentException> { PlaybackTarget.Arrangement(minimumFrames = -1) }
+        assertFailsWith<IllegalArgumentException> { PlaybackTarget.Arrangement(minimumFrames = 14_400_001) }
+    }
 
     @Test fun explicitArrangementRetainsAuditionPadsButNeverSequencesInactivePattern() = runTest {
         val a = asset(); val loader = Loader(); val compiler = ProgramCompiler(loader)

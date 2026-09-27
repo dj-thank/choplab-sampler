@@ -788,27 +788,34 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         // Nothing plays while the platform may be asking for the microphone; the song is ready before it opens.
         val emptySong = project.clips.isEmpty()
         val recordingEnd = if (emptySong) seconds.toLong() * CONTINUOUS_TIMELINE_RATE else songFrames(project)
-        if (!send(Action.RefreshTransport) || (studio.transport.value.playing && !send(Action.Pause)) || !selectArrangement(if (emptySong) recordingEnd else 0)) return false
-        when (ports.startVoice(seconds)) {
-            VoiceStart.STARTED -> Unit
-            VoiceStart.DENIED -> { refusal = ContinuousStatus.MIC_DENIED; return false }
-            VoiceStart.UNAVAILABLE -> { refusal = ContinuousStatus.MIC_UNAVAILABLE; return false }
-            VoiceStart.NO_ROOM -> { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
-        }
+        var microphoneOpened = false
+        var started = false
         try {
-            if (!send(Action.RefreshTransport)) { ports.discardVoice(); return false }
+            if (!recordingOutputReady() || (studio.transport.value.playing && !send(Action.Pause)) ||
+                !selectArrangement(if (emptySong) recordingEnd else 0)) return false
+            when (ports.startVoice(seconds)) {
+                VoiceStart.STARTED -> microphoneOpened = true
+                VoiceStart.DENIED -> { refusal = ContinuousStatus.MIC_DENIED; return false }
+                VoiceStart.UNAVAILABLE -> { refusal = ContinuousStatus.MIC_UNAVAILABLE; return false }
+                VoiceStart.NO_ROOM -> { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
+            }
+            // Permission may have kept the microphone dialog open while the output route disappeared.
+            if (!recordingOutputReady()) return false
             val ended = emptySong || songEnded(project)
-            if (ended && !send(Action.Seek(0))) { ports.discardVoice(); return false }
+            if (ended && !send(Action.Seek(0))) return false
             val from = if (ended) 0L else studio.transport.value.sequenceFrame
             // What the output had queued when the song started is how late the singer heard it.
             val outputDelay = ports.diagnostics()?.pendingFrames?.coerceIn(0L, CONTINUOUS_TIMELINE_RATE.toLong()) ?: 0L
-            if (!send(Action.Resume)) { ports.discardVoice(); return false }
+            if (!send(Action.Resume)) return false
             ports.cueVoice()
             view.update { it.copy(voice = VoiceRecording(from, recordingEnd, outputDelay, emptySong)) }
+            started = true
             return true
-        } catch (failure: Exception) {
-            withContext(NonCancellable) { ports.discardVoice() }
-            throw failure
+        } finally {
+            if (!started) withContext(NonCancellable) {
+                try { if (microphoneOpened) { pauseSong(); ports.discardVoice() } }
+                finally { clearRecordingClock() }
+            }
         }
     }
 
@@ -821,7 +828,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      */
     private suspend fun finishVoice(): Boolean {
         if (view.value.voice == null) return true
-        return try { finishVoiceTake() } finally { selectArrangement() }
+        var cleared: Boolean
+        val saved = try { finishVoiceTake() } finally { cleared = clearRecordingClock() }
+        return saved && cleared
     }
 
     private suspend fun finishVoiceTake(): Boolean {
@@ -939,14 +948,19 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         stopOriginal()
         val emptySong = project.clips.isEmpty()
         val recordingEnd = if (emptySong) MAX_VOICE_SECONDS.toLong() * CONTINUOUS_TIMELINE_RATE else songFrames(project)
-        if (!selectArrangement(if (emptySong) recordingEnd else 0) || !send(Action.RefreshTransport)) return false
-        val ended = emptySong || songEnded(project)
-        if (ended && !send(Action.Seek(0))) return false
-        val from = if (ended) 0L else studio.transport.value.sequenceFrame
-        val outputDelay = ports.diagnostics()?.pendingFrames?.coerceIn(0L, CONTINUOUS_TIMELINE_RATE.toLong()) ?: 0L
-        if (!studio.transport.value.playing && !send(Action.Resume)) return false
-        view.update { it.copy(hits = HitRecording(from, recordingEnd, outputDelay, emptySong = emptySong)) }
-        return true
+        var started = false
+        try {
+            if (!recordingOutputReady() || (emptySong && studio.transport.value.playing && !send(Action.Pause)) ||
+                !selectArrangement(if (emptySong) recordingEnd else 0) || !recordingOutputReady()) return false
+            val ended = emptySong || songEnded(project)
+            if (ended && !send(Action.Seek(0))) return false
+            val from = if (ended) 0L else studio.transport.value.sequenceFrame
+            val outputDelay = ports.diagnostics()?.pendingFrames?.coerceIn(0L, CONTINUOUS_TIMELINE_RATE.toLong()) ?: 0L
+            if (!studio.transport.value.playing && !send(Action.Resume)) return false
+            view.update { it.copy(hits = HitRecording(from, recordingEnd, outputDelay, emptySong = emptySong)) }
+            started = true
+            return true
+        } finally { if (!started) clearRecordingClock() }
     }
 
     /**
@@ -976,7 +990,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
 
     private suspend fun finishHits(capturedEnd: Long? = null, stopVoices: Boolean = false): Boolean {
         if (view.value.hits == null) return true
-        return try { finishHitTake(capturedEnd, stopVoices) } finally { selectArrangement() }
+        var cleared: Boolean
+        val placed = try { finishHitTake(capturedEnd, stopVoices) } finally { cleared = clearRecordingClock() }
+        return placed && cleared
     }
 
     private suspend fun finishHitTake(capturedEnd: Long?, stopVoices: Boolean): Boolean {
@@ -1229,6 +1245,25 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val current = studio.selection.value.playbackTarget as? PlaybackTarget.Arrangement
         val target = PlaybackTarget.Arrangement(current?.takeIds ?: frozenListOf(), minimumFrames)
         return current == target || send(Action.SelectPlaybackTarget(target))
+    }
+    private suspend fun recordingOutputReady(): Boolean {
+        if (!send(Action.RefreshTransport)) return false
+        return studio.transport.value.outputAttached.also { if (!it) refusal = ContinuousStatus.NO_OUTPUT }
+    }
+    /** A denied, cancelled or finished take must never leave a silent five-minute song behind. */
+    private suspend fun clearRecordingClock(): Boolean = withContext(NonCancellable) {
+        val current = studio.selection.value.playbackTarget as? PlaybackTarget.Arrangement ?: return@withContext true
+        if (current.minimumFrames == 0L) return@withContext true
+        // A concurrent Stop may cancel a preparation, so use the same bounded retry as adding the take.
+        finishingTake = true
+        try {
+            repeat(3) {
+                val result = answered(studio.dispatch(Action.SelectPlaybackTarget(current.copy(minimumFrames = 0))))
+                if (result.accepted) return@withContext true
+                if (result.notice !is Notice.Cancelled) return@withContext false
+            }
+            false
+        } finally { finishingTake = false }
     }
     /** The song stands at its end (played there, or paused there), where Resume plays nothing. Reads the last refresh. */
     private fun songEnded(project: Project): Boolean = studio.transport.value.sequenceFrame >= songFrames(project)
