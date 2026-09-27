@@ -238,6 +238,66 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aPadsPlaySettingsChangeItOneUndoEachAndClearingEmptiesIt() = runBlocking {
+        val h = Harness()
+        try {
+            // An empty PAD has nothing to set.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(5)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenPadPlay))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadReverse(5, true)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ClearPad(5)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenPadPlay))
+            h.until { it.padPlayOpen }
+            // The panel stays open while each change is prepared, so it does not flicker or forget a press.
+            var openWhilePrepared: Boolean? = null
+            h.engine.duringPrepare = { delay(150); openWhilePrepared = h.presenter.state.value.padPlayOpen }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadReverse(0, true)))
+            assertEquals(true, openWhilePrepared)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadReverse(0, true)), "Choosing what is chosen already is fine")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(0, ContinuousPadMode.ONE_SHOT)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadChoke(0, 2)))
+            h.until { s -> s.pads[0].let { it.reverse && it.mode == ContinuousPadMode.ONE_SHOT && it.chokeGroup == 2 } }
+            val set = h.studio.document.value.project.pads[0]
+            assertEquals(Triple(true, PlayMode.ONE_SHOT, 2), Triple(set.reverse, set.mode, set.chokeGroup))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            val undone = h.studio.document.value.project.pads[0]
+            assertEquals(Triple(true, PlayMode.ONE_SHOT, 0), Triple(undone.reverse, undone.mode, undone.chokeGroup), "One Undo per change")
+            // Looping stays the loop button's, and choke groups are 0 to 4 as in the earlier app.
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(0, ContinuousPadMode.LOOP)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetPadChoke(0, 5)))
+            assertEquals(undone, h.studio.document.value.project.pads[0])
+            // Choosing how a PAD the loop button made loop plays ends that loop. After an Undo of the choice it loops
+            // as the loop button left it, and ending that loop returns it to the mode it had before (GATE).
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(1, ContinuousPadMode.ONE_SHOT)))
+            assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(PlayMode.LOOP, h.studio.document.value.project.pads[1].mode)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
+            assertEquals(PlayMode.GATE, h.studio.document.value.project.pads[1].mode)
+            // A choice made while nothing loops stays as it is when another PAD loops.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetPadMode(1, ContinuousPadMode.ONE_SHOT)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(0)))
+            assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)
+            // Clearing a looping PAD stops it, empties it and closes the panel.
+            val before = h.engine.commands.size
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ClearPad(0)))
+            h.until { !it.padPlayOpen && it.pads[0].kind == ContinuousPadKind.EMPTY && 0 !in it.pads.filter { p -> p.looping }.map { p -> p.id } }
+            assertNull(h.studio.document.value.project.pads[0].assetHash)
+            assertTrue(h.engine.commands.drop(before).any { it is EngineCommand.Release && it.padId == 0 }, "The looping PAD stops")
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ClearPad(0)), "An empty PAD has nothing to clear")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(h.chopped.hash, h.studio.document.value.project.pads[0].assetHash, "Undo brings the sound back")
+            h.until { it.pads[0].kind != ContinuousPadKind.EMPTY }
+            assertFalse(h.presenter.state.value.padPlayOpen, "Closed by clearing, the panel does not come back with the sound")
+            // The loop it had is still the loop button's: the next loop returns it to the mode it had before looping (once).
+            assertEquals(PlayMode.LOOP, h.studio.document.value.project.pads[0].mode)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TogglePadLoop(1)))
+            assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[0].mode)
+        } finally { h.close() }
+    }
+
     @Test fun playAfterTheSongRanToItsEndStartsAgainFromTheTop() = runBlocking {
         val h = Harness()
         try {

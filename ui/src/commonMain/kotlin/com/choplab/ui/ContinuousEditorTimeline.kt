@@ -118,14 +118,24 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             }
             CEWaveform(pad?.peaks.orEmpty(), Modifier.fillMaxWidth().height(30.dp), stringResource(Res.string.ce_pad_wave, padName), tag = "ce-selected-pad-wave")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEActionButton(stringResource(Res.string.ce_audition), ContinuousEditorAction.TapPad(state.selectedPadId), state, ContinuousCapability.PAD_AUDITION,
-                onAction, Modifier.weight(1f), tag = "ce-pad-audition", additionallyEnabled = pad != null && pad.kind != ContinuousPadKind.EMPTY)
-            CEActionButton(stringResource(if (pad?.looping == true) Res.string.ce_stop_loop else Res.string.ce_loop_pad), ContinuousEditorAction.TogglePadLoop(state.selectedPadId),
-                state, ContinuousCapability.PAD_LOOP, onAction, Modifier.weight(1.6f), primary = pad?.looping == true)
-            CEButton(stringResource(Res.string.ce_place), { onAction(ContinuousEditorAction.PlacePad(state.selectedPadId, state.selectedTrackId, readout().songFrame)) },
-                Modifier.weight(1.3f), state.permits(ContinuousCapability.PLACE_PAD) && pad != null && pad.kind != ContinuousPadKind.EMPTY,
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            @Composable fun Audition(modifier: Modifier) = CEActionButton(stringResource(Res.string.ce_audition), ContinuousEditorAction.TapPad(state.selectedPadId),
+                state, ContinuousCapability.PAD_AUDITION, onAction, modifier, tag = "ce-pad-audition", additionallyEnabled = pad != null && pad.kind != ContinuousPadKind.EMPTY)
+            @Composable fun Loop(modifier: Modifier) = CEActionButton(stringResource(if (pad?.looping == true) Res.string.ce_stop_loop else Res.string.ce_loop_pad),
+                ContinuousEditorAction.TogglePadLoop(state.selectedPadId), state, ContinuousCapability.PAD_LOOP, onAction, modifier, primary = pad?.looping == true)
+            @Composable fun Place(modifier: Modifier) = CEButton(stringResource(Res.string.ce_place),
+                { onAction(ContinuousEditorAction.PlacePad(state.selectedPadId, state.selectedTrackId, readout().songFrame)) },
+                modifier, state.permits(ContinuousCapability.PLACE_PAD) && pad != null && pad.kind != ContinuousPadKind.EMPTY,
                 primary = true, reason = CEReason(state, ContinuousCapability.PLACE_PAD), tag = "ce-place-pad")
+            // With the PAD's own actions, so the reference layout keeps its bottom actions in view.
+            @Composable fun Play(modifier: Modifier) = CEActionButton(stringResource(Res.string.ce_pad_play), ContinuousEditorAction.OpenPadPlay,
+                state, ContinuousCapability.PAD_PLAY, onAction, modifier, tag = "ce-pad-play")
+            if (maxWidth >= 440.dp && LocalDensity.current.fontScale <= 1.3f) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Audition(Modifier.weight(1f)); Loop(Modifier.weight(1.6f)); Place(Modifier.weight(1.3f)); Play(Modifier.weight(1.1f))
+            } else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Audition(Modifier.weight(1f)); Loop(Modifier.weight(1.6f)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.3f)); Play(Modifier.weight(1.1f)) }
+            }
         }
         CEBanks(state, onAction)
         Text(stringResource(Res.string.ce_pad_help), fontSize = 12.sp, color = CEColor.Border)

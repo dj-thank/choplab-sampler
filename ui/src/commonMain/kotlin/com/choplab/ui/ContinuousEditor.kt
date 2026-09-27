@@ -61,6 +61,7 @@ import kotlin.math.roundToLong
             }
         }
         CEDrumKitDialogs(state, onAction)
+        CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
     }
 }
@@ -166,6 +167,51 @@ import kotlin.math.roundToLong
                 strokeWidth = 5f)
         }
     }
+}
+
+/**
+ * How the selected PAD plays, as the earlier app's PLAY page: reverse, once or while held, choke group, and clearing
+ * it. Clearing asks for a second press, and that press counts only for the PAD and sound it was armed for.
+ */
+@Composable private fun CEPadPlayDialog(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
+    val pad = state.selectedPad?.takeIf { state.padPlayOpen } ?: return
+    val id = pad.id
+    val close = { onAction(ContinuousEditorAction.ClosePadPlay) }
+    AlertDialog(onDismissRequest = close, modifier = Modifier.testTag("ce-pad-play-panel"),
+        title = { Text(stringResource(Res.string.ce_pad_play_title, cePadName(id))) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                @Composable fun Choice(label: String, chosen: Boolean, tag: String, modifier: Modifier, choose: () -> Unit) =
+                    CEButton(label, choose, modifier.semantics { selected = chosen }, primary = chosen, tag = tag)
+                Text(stringResource(Res.string.ce_reverse), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Choice(stringResource(Res.string.ce_off), !pad.reverse, "ce-reverse-off", Modifier.weight(1f)) {
+                        onAction(ContinuousEditorAction.SetPadReverse(id, false)) }
+                    Choice(stringResource(Res.string.ce_on), pad.reverse, "ce-reverse-on", Modifier.weight(1f)) {
+                        onAction(ContinuousEditorAction.SetPadReverse(id, true)) }
+                }
+                Text(stringResource(Res.string.ce_play_mode), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Choice(stringResource(Res.string.ce_play_once), pad.mode == ContinuousPadMode.ONE_SHOT, "ce-mode-once", Modifier.weight(1f)) {
+                        onAction(ContinuousEditorAction.SetPadMode(id, ContinuousPadMode.ONE_SHOT)) }
+                    Choice(stringResource(Res.string.ce_play_held), pad.mode == ContinuousPadMode.GATE, "ce-mode-held", Modifier.weight(1f)) {
+                        onAction(ContinuousEditorAction.SetPadMode(id, ContinuousPadMode.GATE)) }
+                }
+                Text(stringResource(Res.string.ce_play_mode_help), fontSize = 12.sp, lineHeight = 18.sp, color = CEColor.Border)
+                Text(stringResource(Res.string.ce_choke), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (group in 0..4) Choice(if (group == 0) stringResource(Res.string.ce_choke_none) else "$group",
+                        pad.chokeGroup == group, "ce-choke-$group", Modifier.weight(if (group == 0) 1.6f else 1f)) {
+                        onAction(ContinuousEditorAction.SetPadChoke(id, group)) }
+                }
+                Text(stringResource(Res.string.ce_choke_help), fontSize = 12.sp, lineHeight = 18.sp, color = CEColor.Border)
+                var armed by remember(pad) { mutableStateOf(false) }
+                CEButton(stringResource(if (armed) Res.string.ce_clear_pad_confirm else Res.string.ce_clear_pad),
+                    { if (armed) onAction(ContinuousEditorAction.ClearPad(id)) else armed = true }, Modifier.fillMaxWidth(),
+                    primary = armed, tag = "ce-clear-pad")
+            }
+        },
+        confirmButton = { CEButton(stringResource(Res.string.ce_close), close, tag = "ce-pad-play-close") })
 }
 
 @Composable private fun CEDrumKitDialogs(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
