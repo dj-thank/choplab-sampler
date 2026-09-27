@@ -264,6 +264,17 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
 }
 
 internal fun cePadName(id: Int) = "${'A' + id / 16}${(id % 16 + 1).toString().padStart(2, '0')}"
+/** Taps kept for a tap tempo: the last few, since a pause of two seconds or more starts over. */
+internal fun ceTap(taps: List<Long>, nowMillis: Long): List<Long> =
+    if (taps.isEmpty() || nowMillis - taps.last() >= 2_000) listOf(nowMillis) else (taps + nowMillis).takeLast(8)
+
+/** The tempo of [taps] (monotonic milliseconds, oldest first) as whole BPM within 40–240; null before the second tap. */
+internal fun ceTapBpm(taps: List<Long>): Int? {
+    if (taps.size < 2) return null
+    val interval = (taps.last() - taps.first()).toDouble() / (taps.size - 1)
+    return if (interval <= 0) 240 else kotlin.math.round(60_000 / interval).toInt().coerceIn(40, 240)
+}
+
 /** Minutes, seconds and milliseconds, for trims a millisecond at a time. */
 internal fun ceTimeMillis(frame: Long, rate: Int): String {
     val millis = frame.coerceAtLeast(0) * 1000 / rate.coerceAtLeast(1)

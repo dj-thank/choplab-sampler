@@ -617,11 +617,22 @@ import kotlin.math.roundToLong
 @Composable private fun CETempo(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
     var open by remember { mutableStateOf(false) }
     var value by remember(state.bpm) { mutableStateOf(state.bpm.toString()) }
-    CEButton("${state.bpm} ${stringResource(Res.string.ce_bpm)}", { value = state.bpm.toString(); open = true },
+    // Tapped along with the song, the taps' tempo fills in the value; applying it is still the user's choice.
+    var taps by remember { mutableStateOf(emptyList<Long>()) }
+    val clock = remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    CEButton("${state.bpm} ${stringResource(Res.string.ce_bpm)}", { value = state.bpm.toString(); taps = emptyList(); open = true },
         enabled = state.permits(ContinuousCapability.TEMPO), dark = true, reason = CEReason(state, ContinuousCapability.TEMPO), tag = "ce-tempo")
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(stringResource(Res.string.ce_bpm)) },
-        text = { Column { Text(stringResource(Res.string.ce_tempo_hint)); OutlinedTextField(value, { value = it.filter(Char::isDigit).take(3) }, singleLine = true) } },
-        confirmButton = { CEButton(stringResource(Res.string.ce_apply), { value.toIntOrNull()?.let { onAction(ContinuousEditorAction.SetTempo(it)); open = false } }, enabled = (value.toIntOrNull() ?: -1) in 40..240) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(Res.string.ce_tempo_hint))
+            OutlinedTextField(value, { value = it.filter(Char::isDigit).take(3) }, Modifier.testTag("ce-tempo-value"), singleLine = true)
+            Text(stringResource(Res.string.ce_tap_tempo_hint), fontSize = 14.sp)
+            CEButton(stringResource(Res.string.ce_tap_tempo), {
+                taps = ceTap(taps, clock.elapsedNow().inWholeMilliseconds)
+                ceTapBpm(taps)?.let { value = it.toString() }
+            }, Modifier.fillMaxWidth().heightIn(min = 64.dp), tag = "ce-tap-tempo")
+        } },
+        confirmButton = { CEButton(stringResource(Res.string.ce_apply), { value.toIntOrNull()?.let { onAction(ContinuousEditorAction.SetTempo(it)); open = false } }, enabled = (value.toIntOrNull() ?: -1) in 40..240, tag = "ce-tempo-apply") },
         dismissButton = { CEButton(stringResource(Res.string.ce_close), { open = false }) })
 }
 
