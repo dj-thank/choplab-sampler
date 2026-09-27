@@ -1,8 +1,10 @@
 package com.choplab.sampler.next
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import com.choplab.core.*
 import com.choplab.core.model.Asset
@@ -34,6 +36,10 @@ class NextSession private constructor(
     val messages: SharedFlow<String> = hostMessages.asSharedFlow()
     /** Frames the activity drew; declared before the presenter, whose ports read it. */
     val frames = FrameCounter()
+    /** The microphone permission screen and voice takes; also declared before the presenter. */
+    val microphone = MicrophonePermission({ context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED })
+    private val hasMicrophone = context.packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)
+    private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
     @Volatile var closedWithoutAutosave = false
         private set
@@ -58,9 +64,13 @@ class NextSession private constructor(
         closeAfterAutosave(backend::flushAutosave, { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
 
     suspend fun shutdown() {
-        withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close() }
+        withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close(); microphone.close() }
+        // Closing the presenter keeps a take still recording; anything left after that is dropped.
         try { withContext(NonCancellable) { presenter.close() } }
-        finally { withContext(NonCancellable) { backend.shutdown(flush = !closedWithoutAutosave) }; scope.cancel() }
+        finally {
+            withContext(NonCancellable) { try { voice.close() } finally { backend.shutdown(flush = !closedWithoutAutosave) } }
+            scope.cancel()
+        }
     }
 
     private fun message(text: String) { hostMessages.tryEmit(text) }
@@ -93,6 +103,18 @@ class NextSession private constructor(
                 measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax,
                 drawnFrames = frames.drawn.get(), slowFrames = frames.slow.get())
         }
+        override val voiceAvailable get() = hasMicrophone
+        override suspend fun startVoice(maxSeconds: Int): VoiceStart = if (!microphone.request()) VoiceStart.DENIED
+            else when (voice.start(maxSeconds)) {
+                VoiceTakes.Start.STARTED -> VoiceStart.STARTED
+                VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
+                VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+            }
+        override fun cueVoice() = voice.cue()
+        override fun voiceFull() = voice.full
+        override fun voiceInterrupted() = voice.interrupted
+        override suspend fun stopVoice(name: String) = voice.stop(name)
+        override suspend fun discardVoice() = voice.discard()
         override suspend fun copyText(text: String): Boolean = withContext(Dispatchers.Main) {
             val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return@withContext false
             clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.next_diagnostics_label), text))

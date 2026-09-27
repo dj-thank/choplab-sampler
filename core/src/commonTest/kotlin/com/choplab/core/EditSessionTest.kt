@@ -144,6 +144,48 @@ class EditSessionTest {
         assertEquals(listOf(FrameRange(500, 30_000), FrameRange(500, 30_000), FrameRange(30_000, 40_000)), listOf(pad(5).range, pad(6).range, pad(7).range))
     }
 
+    @Test fun aVoiceTakeGoesToItsPadAndTheSongInOneUndo() {
+        val song = Asset("c".repeat(64), "wav", 100, 48_000, 2, 480_000, "song.wav")
+        val take = Asset("d".repeat(64), "wav", 100, 48_000, 1, 96_000, "VOICE 1")
+        val session = EditSession()
+        apply(session, Intent.ImportAsset(song))
+        val before = session.project
+        val voice = Track("track-voice", "D", TrackKind.VOCAL)
+        val pad = Pad(48, take.hash, FrameRange(0, take.frames), "VOICE 1", gain = .9f)
+        val clip = Clip("clip-voice", voice.id, take.hash, FrameRange(2_400, take.frames), timelineStartFrame = 48_000)
+        assertFailsWith<IllegalArgumentException>("A take needs a track") { session.plan(Intent.AddVoiceTake(take, pad, clip)) }
+        assertFailsWith<IllegalArgumentException>("The PAD holds the take") { session.plan(Intent.AddVoiceTake(take, pad.copy(assetHash = song.hash), clip, voice)) }
+
+        apply(session, Intent.AddVoiceTake(take, pad, clip, voice))
+        assertEquals(pad, session.project.pads[48])
+        assertEquals(listOf(voice), session.project.tracks)
+        assertEquals(listOf(clip), session.project.clips)
+        assertTrue(take in session.project.assets && song in session.project.assets)
+        assertEquals(before.source, session.project.source, "The original stays")
+        // The next take joins the same track.
+        val second = take.copy(hash = "e".repeat(64), name = "VOICE 2")
+        val next = Clip("clip-voice-2", voice.id, second.hash, FrameRange(0, second.frames), timelineStartFrame = 240_000)
+        assertFailsWith<IllegalArgumentException>("The track exists already") {
+            session.plan(Intent.AddVoiceTake(second, pad.copy(id = 49, assetHash = second.hash), next, voice))
+        }
+        apply(session, Intent.AddVoiceTake(second, pad.copy(id = 49, assetHash = second.hash, name = "VOICE 2"), next))
+        assertEquals(listOf(clip, next), session.project.clips)
+        // With the voice BANK full a take goes to the song only; one that cannot go anywhere is refused.
+        val third = take.copy(hash = "f".repeat(64), name = "VOICE 3")
+        assertFailsWith<IllegalArgumentException>("A take goes somewhere") { session.plan(Intent.AddVoiceTake(third, null, null)) }
+        assertFailsWith<IllegalArgumentException>("A new track needs the clip") {
+            session.plan(Intent.AddVoiceTake(third, pad.copy(id = 50, assetHash = third.hash), null, voice.copy(id = "track-other")))
+        }
+        val songOnly = Clip("clip-voice-3", voice.id, third.hash, FrameRange(0, third.frames), timelineStartFrame = 480_000)
+        val pads = session.project.pads
+        apply(session, Intent.AddVoiceTake(third, null, songOnly))
+        assertEquals(pads, session.project.pads, "No PAD changes")
+        assertEquals(songOnly, session.project.clips.last())
+
+        repeat(3) { commit(session, assertNotNull(session.planUndo())) }
+        assertEquals(before, session.project, "Each take is one Undo")
+    }
+
     @Test fun coalescingIsOneUndoAndHistoryCapsAtOneHundred() {
         val session = EditSession()
         apply(session, Intent.SetTempo(Tempo(121_000), "drag-1"))

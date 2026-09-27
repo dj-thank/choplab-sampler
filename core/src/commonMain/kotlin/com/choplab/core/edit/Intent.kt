@@ -24,6 +24,12 @@ sealed interface Intent {
      * settings stay; each tap is one Undo. A [frame] at or after the range end is refused.
      */
     data class LiveChop(val padId: Int, val frame: Long, val session: FrozenList<Int> = frozenListOf()) : Intent
+    /**
+     * A voice take recorded while the song played, as in the earlier app's voice layer: the take's [asset] joins the
+     * document, goes to [pad] and is placed as [clip] (on a new [track] when one is given). Either may be left out, not
+     * both. One Undo.
+     */
+    data class AddVoiceTake(val asset: Asset, val pad: Pad?, val clip: Clip?, val track: Track? = null) : Intent
     data class SetPad(val pad: Pad, val gesture: String? = null) : Intent
     data class ClearPad(val padId: Int) : Intent
     data class PutPattern(val pattern: Pattern) : Intent
@@ -89,6 +95,19 @@ object Reducer {
             }
             is Intent.AssignRange -> assign(before, intent.assetHash, intent.range, intent.padId)
             is Intent.LiveChop -> liveChop(before, intent)
+            is Intent.AddVoiceTake -> {
+                val pad = intent.pad
+                val clip = intent.clip
+                require(pad != null || clip != null) { "A take goes to a PAD, the song or both" }
+                require(pad == null || pad.assetHash == intent.asset.hash)
+                require(clip == null || (clip.assetHash == intent.asset.hash && before.clips.none { it.id == clip.id }))
+                require(intent.track == null || (clip != null && before.tracks.none { it.id == intent.track.id }))
+                val tracks = intent.track?.let { before.tracks + it } ?: before.tracks
+                require(clip == null || tracks.any { it.id == clip.trackId }) { "No track for the take" }
+                before.copy(assets = mergeAssets(before.assets, listOf(intent.asset)),
+                    pads = if (pad == null) before.pads else before.pads.map { if (it.id == pad.id) pad else it }.frozen(),
+                    tracks = tracks.frozen(), clips = if (clip == null) before.clips else (before.clips + clip).frozen())
+            }
             is Intent.SetPad -> before.copy(pads = before.pads.map { if (it.id == intent.pad.id) intent.pad else it }.frozen())
             is Intent.ClearPad -> {
                 require(intent.padId in 0..127)

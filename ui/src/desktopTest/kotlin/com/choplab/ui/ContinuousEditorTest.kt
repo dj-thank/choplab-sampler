@@ -364,6 +364,53 @@ class ContinuousEditorTest {
         } finally { Locale.setDefault(previous) }
     }
 
+    @Test fun recordingTurnsTheVoiceButtonIntoStopAndExplainsItOnEveryPane() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).let { it.copy(capabilities = it.capabilities + ContinuousCapability.RECORD_VOICE) })
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { actions += it }, ContinuousEditorFixture::readout)
+            }
+            fun ImageComposeScene.texts() = nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
+            try {
+                scene.settle()
+                assertNull(scene.tag("ce-voice-hint"))
+                scene.click("ce-record-voice")
+                assertEquals(ContinuousEditorAction.RecordVoice, actions.last())
+                // While recording, the same button stops the take, and the hint says how.
+                state.value = state.value.copy(recordingVoice = true, capabilities = setOf(ContinuousCapability.STOP_ALL, ContinuousCapability.SONG_PLAYBACK,
+                    ContinuousCapability.PAD_AUDITION), unavailable = ContinuousCapability.entries.associateWith { ContinuousUnavailable.RECORDING })
+                scene.settle()
+                assertTrue(scene.texts().any { it == "録音を止める" })
+                val hint = requireNotNull(scene.tag("ce-voice-hint"))
+                assertEquals(LiveRegionMode.Polite, hint.config.getOrNull(SemanticsProperties.LiveRegion), "Screen readers hear that recording began")
+                scene.click("ce-record-voice")
+                assertEquals(ContinuousEditorAction.StopVoice, actions.last())
+                scene.capture("beat-recording-desktop.png")
+            } finally { scene.close() }
+
+            // On a phone at double text size (a tall one, as the PAD pane is short there) the hint sits under the stop
+            // button in the PAD pane; the status line explains refusals.
+            val phone = ImageComposeScene(width = 390, height = 2200, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(ContinuousEditorFixture.state().copy(recordingVoice = true, status = ContinuousStatus.RECORDING_BUSY),
+                    {}, ContinuousEditorFixture::readout)
+            }
+            try {
+                phone.settle()
+                assertTrue(phone.texts().any { it == "録音中はできません。先に「録音を止める」を押してください。" })
+                assertTrue(phone.texts().any { it == "PAD（録音中）" }, "The pane switch shows where the take's stop button is")
+                phone.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+                phone.settle()
+                val stop = requireNotNull(phone.tag("ce-record-voice")).boundsInRoot
+                val hint = requireNotNull(phone.tag("ce-voice-hint")).boundsInRoot
+                assertTrue(stop.height >= 48f && hint.top >= stop.bottom, "The hint follows the stop button: $stop $hint")
+                phone.capture("beat-recording-phone-font200.png")
+            } finally { phone.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }

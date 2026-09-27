@@ -1,5 +1,6 @@
 package com.choplab.sampler.next
 
+import android.Manifest
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -49,6 +50,10 @@ class NextActivity : ComponentActivity() {
         answer(PickerKind.SAVE_PROJECT, it)
     }
     private val exportWav = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/x-wav")) { answer(PickerKind.EXPORT_WAV, it) }
+    private val allowMicrophone = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        (model.state.value as? NextViewModel.Startup.Ready)?.session?.microphone?.complete(granted)
+    }
+    private val askMicrophone: () -> Unit = { allowMicrophone.launch(Manifest.permission.RECORD_AUDIO) }
     private val launch: (PickerKind, String?) -> Unit = { kind, name ->
         when (kind) {
             PickerKind.AUDIO -> openAudio.launch(arrayOf("audio/*", "application/ogg", "video/mp4"))
@@ -102,7 +107,7 @@ class NextActivity : ComponentActivity() {
 
     @Composable
     private fun Editor(session: NextSession) {
-        LaunchedEffect(session) { session.pickers.attach(launch) }
+        LaunchedEffect(session) { session.pickers.attach(launch); session.microphone.attach(askMicrophone) }
         LaunchedEffect(session) { session.messages.collect { Toast.makeText(this@NextActivity, it, Toast.LENGTH_LONG).show() } }
         val state by session.presenter.state.collectAsState()
         val refresh by session.presenter.refreshKey.collectAsState()
@@ -131,7 +136,7 @@ class NextActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        (model.state.value as? NextViewModel.Startup.Ready)?.session?.pickers?.detach(launch)
+        (model.state.value as? NextViewModel.Startup.Ready)?.session?.let { it.pickers.detach(launch); it.microphone.detach(askMicrophone) }
         window.removeOnFrameMetricsAvailableListener(frameMetrics)
         frameThread.quitSafely()
         super.onDestroy()

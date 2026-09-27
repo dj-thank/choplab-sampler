@@ -64,6 +64,8 @@ internal object CEColor {
         ContinuousUnavailable.EMPTY_PAD -> Res.string.ce_missing_pad
         ContinuousUnavailable.NO_CLIP -> Res.string.ce_missing_clip
         ContinuousUnavailable.NO_OUTPUT -> Res.string.ce_no_output
+        ContinuousUnavailable.NO_SONG -> Res.string.ce_missing_song
+        ContinuousUnavailable.RECORDING -> Res.string.ce_recording_busy
     })
 
 @Composable internal fun CEButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier,

@@ -10,6 +10,7 @@ import com.choplab.core.model.Asset
 import com.choplab.desktop.DesktopProfile
 import com.choplab.desktop.applyMacOsHostProperties
 import com.choplab.jvm.OutputRecovery
+import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
 import com.choplab.ui.*
 import kotlinx.coroutines.*
@@ -37,7 +38,7 @@ fun main() {
     applyMacOsHostProperties(title)
     val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
     val backend = if (java.lang.Boolean.getBoolean("choplab.silentSmoke"))
-        NextBackend.create(directory, sinkFactory = { error("Audio disabled for isolated lifecycle verification") })
+        NextBackend.create(directory, sinkFactory = { error("Audio disabled for isolated lifecycle verification") }, microphone = { null })
         else NextBackend.create(directory)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val parent = AtomicReference<AwtWindow?>(null)
@@ -126,6 +127,18 @@ private class DesktopEditorPorts(private val backend: NextBackend, private val p
             pendingFrames = health.pendingFrames, underruns = health.underruns, outputLosses = health.outputLosses,
             measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax)
     }
+    /** Java Sound reports no microphone before one is opened: a host without one answers at the first take. */
+    override val voiceAvailable get() = true
+    override suspend fun startVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds)) {
+        VoiceTakes.Start.STARTED -> VoiceStart.STARTED
+        VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
+        VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+    }
+    override fun cueVoice() = backend.voice.cue()
+    override fun voiceFull() = backend.voice.full
+    override fun voiceInterrupted() = backend.voice.interrupted
+    override suspend fun stopVoice(name: String) = backend.voice.stop(name)
+    override suspend fun discardVoice() = backend.voice.discard()
     override suspend fun copyText(text: String): Boolean = suspendCancellableCoroutine { answer ->
         SwingUtilities.invokeLater {
             val copied = try { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null); true }

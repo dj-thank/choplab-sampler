@@ -56,6 +56,8 @@
     <string name="ce_gain">音量</string>
     <string name="ce_add_drums">ドラムを足す</string>
     <string name="ce_record_voice">声を録る</string>
+    <string name="ce_stop_voice">録音を止める</string>
+    <string name="ce_voice_hint">録音中です。曲に合わせて歌い、終わったら「録音を止める」を押してください。ヘッドホンを使うと、曲の音が声に入りません。</string>
     <string name="ce_scratch">スクラッチ</string>
     <string name="ce_pad_semantics">BANK %1$s、PAD %2$d、%3$s、%4$s</string>
     <string name="ce_mode_one">ワンショット</string>
@@ -86,6 +88,7 @@
     <string name="ce_standard_width">標準幅</string>
     <string name="ce_divider">PAD面と配置面の幅を変更</string>
     <string name="ce_pads">PAD</string>
+    <string name="ce_pads_recording">PAD（録音中）</string>
     <string name="ce_song">曲全体</string>
     <string name="ce_timeline">配置</string>
     <string name="ce_save_heading">仕上げと保存</string>
@@ -107,6 +110,8 @@
     <string name="ce_missing_pad">先にPADへ音を割り当ててください</string>
     <string name="ce_missing_clip">先に配置を選んでください</string>
     <string name="ce_no_output">音声出力がありません。編集と保存は続けられます。</string>
+    <string name="ce_missing_song">先にPADを曲に置いてください</string>
+    <string name="ce_recording_busy">録音中はできません。先に「録音を止める」を押してください。</string>
     <string name="ce_loading">読み込み中…</string>
     <string name="ce_saving">保存中…</string>
     <string name="ce_saved">制作を保存しました。</string>
@@ -139,6 +144,17 @@
     <string name="ce_kit_replace">置き換える</string>
     <string name="ce_kit_keep">やめる</string>
     <string name="ce_copied">数値をコピーしました。メッセージに貼り付けて送れます。</string>
+    <string name="ce_voice_saved">録った声を、BANK D のPADと、曲の VOICE トラックに入れました。</string>
+    <string name="ce_voice_saved_song_only">BANK D のPADに空きがないので、録った声は曲の VOICE トラックにだけ入れました。</string>
+    <string name="ce_voice_saved_pad_only">曲の並びに置けなかったので、録った声は BANK D のPADにだけ入れました。</string>
+    <string name="ce_voice_interrupted">マイクが使えなくなったので録音を止め、そこまでの声を入れました。</string>
+    <string name="ce_voice_limit">録音できる長さの上限に達したので止めて、そこまでの声を入れました。</string>
+    <string name="ce_voice_empty">声を録れませんでした。マイクの接続・音量・使用の許可を確かめてください。</string>
+    <string name="ce_voice_too_short">曲が鳴り始める前に録音が終わったので、声は入れませんでした。</string>
+    <string name="ce_voice_not_saved">録った声を保存できませんでした。端末の空き容量を確かめてください。</string>
+    <string name="ce_voice_no_room">これ以上は録音できません。この制作で使える音の量か、保存できる容量が上限に近づいています。</string>
+    <string name="ce_mic_denied">マイクの使用が許可されていません。端末の設定で、このアプリにマイクを許可してください。</string>
+    <string name="ce_mic_unavailable">マイクを使えませんでした。つながっているか、ほかのアプリが使っていないかを確かめてください。</string>
     <string name="ce_diag_title">音の診断</string>
     <string name="ce_diag_hint">スマホやパソコンで試したときは、この数値を送ってください。機種名や端末の番号は含みません。</string>
     <string name="ce_diag_output">音声出力</string>

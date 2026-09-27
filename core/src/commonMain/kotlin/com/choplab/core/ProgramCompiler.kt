@@ -86,6 +86,14 @@ class ProgramCompiler(private val pcm: PcmPort) {
     }
 
     companion object {
+        /** The engine's PCM budget for one program, in 48 kHz frames (every sound is kept as stereo float). */
+        const val RESIDENT_FRAME_LIMIT: Long = EngineFormat.MAX_RESIDENT_BYTES / 8
+        /**
+         * The 48 kHz frames of every sound a PAD or clip uses, counted once each: at least what [compile] keeps
+         * resident, since muted clips count too. Compare with [RESIDENT_FRAME_LIMIT].
+         */
+        fun residentFrames(project: Project): Long =
+            (project.pads.mapNotNull { it.assetHash } + project.clips.map { it.assetHash }).distinct().sumOf { normalizedFrames(project.asset(it)) }
         /** Absolute conversion, so rounding never accumulates across clips or tempo changes. */
         fun tickToFrame(tick: Long, milliBpm: Int): Long {
             require(tick in 0..ProjectLimits.MAX_TIMELINE_TICKS && milliBpm in 40_000..240_000)

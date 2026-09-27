@@ -20,10 +20,10 @@ class NextFileLocations {
     fun resolve(location: Location): Path = requireNotNull(values[location.handle]) { "Unknown host file" }
 }
 
-/** Desktop face of the shared [EditorBackend]: Java Sound output and path-backed file services.
+/** Desktop face of the shared [EditorBackend]: Java Sound output and microphone, and path-backed file services.
  * The caller selects Preview/next-v10 (or a test temporary directory), never the legacy data root.
  */
-class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations) : AutoCloseable {
+class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations, val voice: VoiceTakes) : AutoCloseable {
     val studio: Studio get() = shared.studio
     val engine: StreamingEnginePort get() = shared.engine
     val assets: FileAssetStore get() = shared.assets
@@ -42,18 +42,20 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = shared.loadPeaks(asset, maximumBuckets)
     suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
 
-    /** [flush] is false only after the user chose to close without the final autosave. */
-    suspend fun shutdown(flush: Boolean = true) = shared.shutdown(flush)
+    /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
+    suspend fun shutdown(flush: Boolean = true) { try { voice.close() } finally { shared.shutdown(flush) } }
     override fun close() = runBlocking { shutdown() }
 
     companion object {
-        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null): NextBackend {
+        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: () -> MicInput? = JavaSoundMicInput::open): NextBackend {
             val files = NextFileLocations()
             val shared = EditorBackend.create(directory,
                 engine = { compiler -> if (sinkFactory == null) JavaSoundEnginePort(compiler) else JavaSoundEnginePort(compiler, sinkFactory) },
                 files = { assets, compiler -> HostFileServices(WavImportPort(assets, files::resolve),
                     FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) })
-            return NextBackend(shared, files)
+            val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), microphone = microphone) }
+                catch (failure: Exception) { runBlocking { shared.shutdown(flush = false) }; throw failure }
+            return NextBackend(shared, files, voice)
         }
 
         fun patternFrames(project: Project, pattern: Pattern): Int = EditorBackend.patternFrames(project, pattern)
