@@ -11,6 +11,44 @@ data class WavAudio(val info: WavInfo, val samples: FloatArray)
 
 /** RIFF/WAVE PCM16, PCM24 and IEEE float32. Size and channel identity are checked before allocation. */
 object WavCodec {
+    /** Known-length float asset stream. Owns only its bounded byte buffer, not the output. */
+    class FloatWriter(
+        private val output: OutputStream,
+        private val frames: Long,
+        sampleRate: Int = 48_000,
+        private val channels: Int = 2,
+    ) {
+        private val buffer = ByteArray(16_384)
+        private var written = 0L
+        private var finished = false
+        init {
+            require(frames in 1..ProjectLimits.MAX_FRAMES && sampleRate in 8_000..192_000 && channels in 1..2)
+            require(44 + frames * channels * 4 <= ProjectLimits.MAX_ASSET_BYTES)
+            floatHeader(output, frames * channels * 4, sampleRate, channels)
+        }
+        fun write(samples: FloatArray, offsetFrames: Int = 0, frameCount: Int = samples.size / channels - offsetFrames) {
+            check(!finished)
+            require(samples.size % channels == 0) { "Incomplete float PCM frame" }
+            require(offsetFrames >= 0 && frameCount >= 0 && (offsetFrames.toLong() + frameCount) * channels <= samples.size)
+            require(written + frameCount <= frames)
+            val start = offsetFrames * channels
+            val end = start + frameCount * channels
+            require((start until end).all { samples[it].isFinite() })
+            var bytes = 0
+            for (index in start until end) {
+                val bits = samples[index].toRawBits()
+                repeat(4) { buffer[bytes++] = (bits ushr (it * 8)).toByte() }
+                if (bytes == buffer.size) { output.write(buffer); bytes = 0 }
+            }
+            if (bytes > 0) output.write(buffer, 0, bytes)
+            written += frameCount
+        }
+        fun finish() {
+            check(!finished && written == frames) { "WAV frame count mismatch" }
+            finished = true
+        }
+    }
+
     /** Standalone 30-minute stereo PCM24 export plus the maximum explicit tail. Asset budgets are separate. */
     const val MAX_EXPORT_WAV_BYTES = 44L + (ProjectLimits.MAX_TIMELINE_FRAMES + 480_000) * 2 * 3
     /** Reuses one quantizer and byte buffer for a known-length PCM stream. Does not own output. */

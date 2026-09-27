@@ -301,4 +301,11 @@
     <string name="ce_online_empty">候補がありません。曲名やURLを確認してください。</string>
     <string name="ce_online_downloading">音源を取り込んでいます…</string>
     <string name="ce_online_failed">取り込めませんでした。URL・通信・音源の公開状態や長さを確認してください。</string>
+    <string name="ce_separate">ドラムを分離</string>
+    <string name="ce_separate_ready">原曲全体からドラムを分離します。元の音は残ります。</string>
+    <string name="ce_separate_running">ドラムを分離しています</string>
+    <string name="ce_separate_done">分離した音をライブラリへ保存しました。原曲として使うか選べます。</string>
+    <string name="ce_separate_failed">分離できませんでした。音源・モデル・空き容量を確認してください。</string>
+    <string name="ce_separate_use">分離音を原曲として使う</string>
+    <string name="ce_separate_name">ドラム</string>
 </resources>

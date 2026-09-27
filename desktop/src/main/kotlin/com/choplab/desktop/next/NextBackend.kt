@@ -72,6 +72,18 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
 
+    /** Caller owns and closes the job; the captured source is verified again on its worker. */
+    internal fun separation(source: Asset, library: Path, title: String): NextSeparation = NextSeparation(
+        library, ::validateLibraryFile, load = { cancelled ->
+            val path = assets.verifiedPath(source, cancelled)
+            if (source.extension == "wav") java.nio.file.Files.newInputStream(path).use { WavCodec.read(it) }
+            else decoder.decode(path, source.hash, cancelled)
+        }, render = { audio, output, progress, cancelled ->
+            val model = com.choplab.desktop.separation.defaultSeparatorModelsDir()
+                .resolve(com.choplab.sampler.separation.SeparatorSpec.MODEL_FILE).toPath()
+            NextDrumSeparation.renderWithModel(audio, output, model, progress, cancelled)
+        }, title = title)
+
     /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
     suspend fun shutdown(flush: Boolean = true) {
         try { systemAudio?.close() } finally { try { voice.close() } finally { shared.shutdown(flush) } }

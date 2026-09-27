@@ -28,6 +28,8 @@ class MacPackageConfigurationTest(unittest.TestCase):
             tools.mkdir()
             for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
                 (tools / name).touch()
+            (root / 'work/separator-models').mkdir(parents=True)
+            (root / 'work/separator-models/fixture.onnx').write_bytes(b'model')
             commands = []
 
             def run(*args, **kwargs):
@@ -62,19 +64,20 @@ class MacPackageConfigurationTest(unittest.TestCase):
                     PACKAGE.build(Path('unused-jdk'), Path('unused-tools'))
                 run.assert_not_called()
 
-    def test_linked_editor_has_local_codecs_but_no_online_tools_or_model(self):
+    def test_linked_editor_has_tools_and_pinned_model_but_no_spotify_configuration(self):
         commands = self.package_commands('0123456789abcdef0123456789abcdef', linked=True)
-        # Only jpackage runs: local codecs need no model download.
-        self.assertEqual(1, len(commands))
-        args = commands[0]
+        # The same pinned model preparer precedes packaging for NEXT.
+        self.assertEqual(2, len(commands))
+        self.assertIn("prepare_separator_model.py", commands[0][1])
+        args = commands[-1]
         self.assertEqual('com.choplab.desktop.next.LinkedPreviewMainKt', args[args.index('--main-class') + 1])
         self.assertEqual('ChopLab NEXT', args[args.index('--name') + 1])
         self.assertEqual('com.choplab.sampler.preview.next', args[args.index('--mac-package-identifier') + 1])
         self.assertIn('-Dchoplab.preview=true', args)
         self.assertIn('-Dchoplab.mediaTools=$APPDIR/tools', args)
         self.assertIn('-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio', args)
-        for option in ('-Dchoplab.separatorModels=', '-Dchoplab.spotifyClientId='):
-            self.assertFalse(any(a.startswith(option) for a in args), option)
+        self.assertIn('-Dchoplab.separatorModels=$APPDIR/models', args)
+        self.assertFalse(any(a.startswith('-Dchoplab.spotifyClientId=') for a in args))
 
     def test_linked_editor_is_never_built_as_a_signed_release(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(PACKAGE, 'run') as run:
@@ -93,6 +96,8 @@ class MacPackageConfigurationTest(unittest.TestCase):
             tools.mkdir()
             for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
                 (tools / name).touch()
+            (root / 'work/separator-models').mkdir(parents=True)
+            (root / 'work/separator-models/fixture.onnx').write_bytes(b'model')
             commands = []
 
             def run(*args, **kwargs):

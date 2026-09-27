@@ -97,6 +97,13 @@ def verify(app, java_home):
         if json.loads(online_result.stdout.strip().splitlines()[-1])['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged online selection production self-test did not pass')
         print(online_result.stdout.strip())
+        separation_result = run(java, '-Xmx1536m', '-Dchoplab.separatorModels=' + str(libs / 'models'),
+                                '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
+                                'com.choplab.desktop.next.NextSeparationProductionSelfTest', directory / 'separation',
+                                environment=environment, timeout=180)
+        if json.loads(separation_result.stdout.strip().splitlines()[-1])['status'] != 'LOCAL_PASS':
+            raise RuntimeError('Packaged real-model separation production self-test did not pass')
+        print(separation_result.stdout.strip())
         run(libs / 'tools/yt-dlp', '--version', environment=environment)
         run(libs / 'tools/node', '--version', environment=environment)
         source = next((directory / 'codecs/production').glob('next-self-test-*')) / 'profile'
