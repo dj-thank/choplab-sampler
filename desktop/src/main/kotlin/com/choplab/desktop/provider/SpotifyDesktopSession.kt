@@ -35,6 +35,18 @@ enum class SpotifyConnectionPhase(val label: String) {
     ERROR("接続エラー"),
 }
 
+/** Safe, language-independent recovery information; never contains provider bodies or tokens. */
+enum class SpotifyProblemKind {
+    CANCELLED, TIMEOUT, DENIED, BROWSER_UNAVAILABLE, CALLBACK_PORT_UNAVAILABLE,
+    NETWORK, LOGIN_FAILED, AUTH_EXPIRED, API_FAILED, TOKEN_REFRESH_FAILED,
+}
+
+data class SpotifyProblem(
+    val kind: SpotifyProblemKind,
+    val statusCode: Int? = null,
+    val retryAfterSeconds: Long? = null,
+)
+
 data class SpotifyDesktopState(
     val phase: SpotifyConnectionPhase = SpotifyConnectionPhase.UNCONFIGURED,
     val clientIdConfigured: Boolean = false,
@@ -50,6 +62,7 @@ data class SpotifyDesktopState(
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
+    val problem: SpotifyProblem? = null,
 ) {
     val connection: String get() = phase.label
     val canLogin: Boolean get() = !busy && clientIdConfigured && phase != SpotifyConnectionPhase.CONNECTED
@@ -382,7 +395,7 @@ class SpotifyDesktopSession(
                 if (!isCurrentLoginLocked(login)) return@synchronized null
                 activeLogin = null
                 credentials = null
-                setStateLocked(errorState(loginFailureMessage(error)))
+                setStateLocked(errorState(loginFailureMessage(error)), loginProblem(error))
                 mutableState.value.message
             }
             if (failure != null) onStatus(failure)
@@ -452,17 +465,35 @@ class SpotifyDesktopSession(
             (error is SpotifyTokenRequestException && error.statusCode in 400..401)
         ) {
             credentials = null
-            setStateLocked(errorState("$label: 認証期限が切れたか更新できませんでした。もう一度ログインしてください"))
+            setStateLocked(errorState("$label: 認証期限が切れたか更新できませんでした。もう一度ログインしてください"),
+                SpotifyProblem(SpotifyProblemKind.AUTH_EXPIRED))
         } else {
             val message = when (error) {
                 is SpotifyApiException -> SpotifyErrorGuidance.forStatus(error.response.statusCode, label, error.response.retryAfterSeconds)
                 is SpotifyTokenRequestException -> "$label: Spotify認証の更新に失敗しました。時間を置いて再試行してください"
                 else -> "$label に失敗しました。ネットワーク接続とSpotifyの状態を確認して再試行してください"
             }
-            setStateLocked(mutableState.value.copy(busy = false, message = message))
+            val problem = when (error) {
+                is SpotifyApiException -> SpotifyProblem(SpotifyProblemKind.API_FAILED,
+                    error.response.statusCode, error.response.retryAfterSeconds)
+                is SpotifyTokenRequestException -> SpotifyProblem(SpotifyProblemKind.TOKEN_REFRESH_FAILED,
+                    error.statusCode)
+                else -> SpotifyProblem(SpotifyProblemKind.NETWORK)
+            }
+            setStateLocked(mutableState.value.copy(busy = false, message = message), problem)
         }
         return mutableState.value.message
     }
+
+    private fun loginProblem(error: Throwable) = SpotifyProblem(when (error) {
+        is CancellationException -> SpotifyProblemKind.CANCELLED
+        is TimeoutException -> SpotifyProblemKind.TIMEOUT
+        is SpotifyAuthorizationDeniedException -> SpotifyProblemKind.DENIED
+        is SpotifyBrowserUnavailableException -> SpotifyProblemKind.BROWSER_UNAVAILABLE
+        is BindException -> SpotifyProblemKind.CALLBACK_PORT_UNAVAILABLE
+        is IOException -> SpotifyProblemKind.NETWORK
+        else -> SpotifyProblemKind.LOGIN_FAILED
+    })
 
     private fun loginFailureMessage(error: Throwable): String = when (error) {
         is CancellationException -> "Spotifyログインをキャンセルしました。必要ならもう一度ログインしてください"
@@ -515,8 +546,8 @@ class SpotifyDesktopSession(
     private fun isCurrentLoginLocked(login: ActiveLogin): Boolean =
         !closed.get() && activeLogin?.id == login.id && activeLogin?.lease == login.lease && generation.isCurrent(login.lease)
 
-    private fun setStateLocked(value: SpotifyDesktopState) {
-        mutableState.value = value
+    private fun setStateLocked(value: SpotifyDesktopState, problem: SpotifyProblem? = null) {
+        mutableState.value = value.copy(problem = problem)
     }
 
     private fun report(message: String) {

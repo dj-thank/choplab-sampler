@@ -20,6 +20,10 @@
 
 Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利用者data・dirty checkoutをreset/cleanしない。範囲外write、private data混入、未移植の保護削除、required check失敗、実行所有の衝突を検出したら、その依存する操作だけを止めてここへ理由と次の一手を残す。
 
+## Spotify接続のNEXT移植（作業中）
+
+rootがmain `46300aac` を基準に、既存のメモリ内OAuth sessionを再利用してNEXTの接続・曲情報・お気に入り選択へつなぐ。対象はdesktop provider/next窓・共有typed操作・ja/en表示・Mac packaging。失敗原因と再試行待ち時間を言語非依存の値で公開する入口を追加し、既存Previewの案内と認証世代による取消保護は保持する。完了条件はNEXTからの明示接続/取消/解除・曲情報表示・失敗復旧・ローカル回帰と配布物確認。実provider同意・応答とサービス間取得フローの利用条件は別途照合し、未確認を合格にしない。rollbackは当該PRのrevert。現時点ではNEXT画面へ未接続。
+
 ## Android実端末へのNEXT Preview導入
 
 2026-09-27、root所有で接続されたPixel 9a（API 37）へ署名済み `com.choplab.sampler.preview` 0.18.0-preview/code30を追加した。APKはmain `5d471c118c02f5a73481d2ff0af03cc5d4a9318d` の成功CI `36324167075` から取得し、281,916,442 bytes、SHA-256 `228dafca89a46cf8ad38b1306ebc3c9ff1a8fbe6fe9c353eb228fb428db542de`。署名・非debuggable・manifest/権限・16KiB alignmentを再検査。現main `46300aac` との差はMac終了修正/検証/docsのみでAndroid機能ソースは同一。同mainのローカル `:app:testPreviewUnitTest :app:lintPreview :app:assemblePreview` も成功した。端末へ入れたのはCI継続鍵の署名済みAPKで、ローカル未署名APKではない。
