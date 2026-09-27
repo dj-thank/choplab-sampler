@@ -298,4 +298,11 @@
     <string name="ce_online_empty">No candidates found. Check the song name or URL.</string>
     <string name="ce_online_downloading">Importing audio…</string>
     <string name="ce_online_failed">Could not import. Check the URL, connection, availability and audio length.</string>
+    <string name="ce_separate">Separate drums</string>
+    <string name="ce_separate_ready">Separate drums from the entire original. The original audio is kept.</string>
+    <string name="ce_separate_running">Separating drums</string>
+    <string name="ce_separate_done">The separated sound is saved in the library. You can choose to use it as the original.</string>
+    <string name="ce_separate_failed">Separation failed. Check the audio, model and available storage.</string>
+    <string name="ce_separate_use">Use separated audio as original</string>
+    <string name="ce_separate_name">Drums</string>
 </resources>

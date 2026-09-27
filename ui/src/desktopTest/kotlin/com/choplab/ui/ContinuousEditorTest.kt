@@ -21,6 +21,23 @@ import kotlinx.coroutines.runBlocking
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
+    @Test fun separationSelectionIsAnExplicitSourceAction() = runBlocking<Unit> {
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val fixture = ContinuousEditorFixture.state(ContinuousStage.CAPTURE)
+        val scene = ImageComposeScene(width = 1440, height = 1024, coroutineContext = coroutineContext) {
+            ContinuousEditor(fixture.copy(capabilities = fixture.capabilities + ContinuousCapability.SEPARATE_SOURCE), actions::add)
+        }
+        try {
+            scene.settle()
+            scene.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+            scene.settle()
+            val button = requireNotNull(scene.tag("ce-separate"))
+            assertTrue(button.boundsInRoot.height >= 48f && button.boundsInRoot.bottom <= 1024)
+            scene.click("ce-separate")
+            assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.SeparateSource), actions)
+        } finally { scene.close() }
+    }
+
     @Test fun onlineSelectionIsAnExplicitSourceAction() = runBlocking<Unit> {
         val actions = mutableListOf<ContinuousEditorAction>()
         val fixture = ContinuousEditorFixture.state(ContinuousStage.CAPTURE)
