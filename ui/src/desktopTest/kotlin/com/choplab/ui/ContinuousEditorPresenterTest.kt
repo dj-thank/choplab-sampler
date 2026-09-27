@@ -686,7 +686,8 @@ class ContinuousEditorPresenterTest {
             // A sound that cannot be made is not placed.
             h.ports.renderFails = true
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 96_000)))
-            assertEquals(ContinuousStatus.PLACE_FAILED, h.until { it.status != null }.status)
+            // Wait for this refusal itself: the Undo's engine preparation may still show LOADING first.
+            h.until { it.status == ContinuousStatus.PLACE_FAILED }
         } finally { h.close() }
         // Nor one the engine has no room left for: a five-minute PAD an octave down would need ten.
         val full = Harness(render = true) { p ->
@@ -697,7 +698,7 @@ class ContinuousEditorPresenterTest {
         try {
             full.until { it.permits(ContinuousCapability.PLACE_PAD) }
             assertFalse(full.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
-            assertEquals(ContinuousStatus.PLACE_NO_ROOM, full.until { it.status != null }.status)
+            full.until { it.status == ContinuousStatus.PLACE_NO_ROOM }
             assertTrue(full.ports.renders.isEmpty(), "Nothing is rendered")
         } finally { full.close() }
     }
