@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-以下はmain `804573a7a2b2d8dcc67ff126dd9d58e9136e48f3`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
+以下はmain `b08744c834948806ec5362b95dec1c721a414798`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
 |---|---|---|
@@ -38,13 +38,15 @@
 | 取込・長尺・OS差 | 約349秒のresident上限、AndroidのMediaCodec→16bit WAV経路が残る。ライブチョップの固定60ms補正もroute別実測への移行対象。過去の約44%高速化は限定した合成FLAC条件 | prefetch/RAM境界、原本bytes・精度・左右、取消/再試行、実利用時の待ち時間を確認。Macの成功をAndroid/Windowsの成功にしない |
 | BANK/PAD [PR164](https://github.com/dj-thank/choplab-sampler/pull/164) | main `97e575d`へ統合済み。head `a6aa946`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36343657193)成功。通常BEAT→取消/明示適用/1Undo→原音を保持するarchive保存/再開を接続。modal終了待機の試験修正後panel4/本番3件成功 | 名前/色/役割、PADpan/ADSR、範囲/invalid/stale/録音/処理中/音声拒否を確認。Mac installed `f48397a`へ搭載済み、実音・TalkBack/Humanは未確認 |
 | count-in/クリック [PR167](https://github.com/dj-thank/choplab-sampler/pull/167) | main `804573a`へ統合済み。head `16852c6`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36347871868)成功。本番接続候補 `788c2ec`は検証候補 `473dd6c`と機能source一致。engine96/core62/JVM109とHAND+click込み1万blockの割当0・p99 8.60%（Mac合成）の既存証拠を再利用。root baseでPresenter73・本番録音5/空曲1・画面2件・Android compileが成功。初回[Windows CI](https://github.com/dj-thank/choplab-sampler/actions/runs/36345570846)の失敗を、粗いtimerによる模擬入出力clockのずれとinput解放直後のclock cleanup未完として再現。修正 `9e42add`は累積frame期限と実cleanup条件を用い、同じ粗いwakeを残した録音6件成功。製品コードは変更なし | 0/1/2小節、monitor-only click、cue前PAD/マイク除外、permission/Stop/切断/遅着/取消、1Undo/24bit/archive再開を確認。Mac installed `f48397a`にはまだ未搭載。実マイク・聴感・route往復補正/Humanは未確認 |
-| Windows WASAPI形式 | 修正候補 `e5cf7fd`で標準PCM/FLOAT subtypeの誤GUIDを訂正。独立native byteによる7件成功。9月28日の実Windows probeは出力/入力ともactive・48kHz stereo FLOAT32・mask3、device period default10,000µs/min3,000µs。5JAR全hash照合・通常終了、既存app/data/launcher保持 | [既存調査](research/windows-wasapi-jna-2026-08-20.md)の8月のendpoint不在は当時の記録として保全。event出力/入力/loopbackはAstra Maxが別sliceで実装、rootが実機を検証。形式probeを実音・録音・遅延・Human合格にしない。rollbackは本PRのrevert |
+| Windows WASAPI形式 [PR168](https://github.com/dj-thank/choplab-sampler/pull/168) | main `b08744c`へ統合済み、head `171d3ae`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36349097054)成功。修正候補 `e5cf7fd`で標準PCM/FLOAT subtypeの誤GUIDを訂正。独立native byteによる7件成功。9月28日の実Windows probeは出力/入力ともactive・48kHz stereo FLOAT32・mask3、device period default10,000µs/min3,000µs。5JAR全hash照合・通常終了、既存app/data/launcher保持 | [既存調査](research/windows-wasapi-jna-2026-08-20.md)の8月のendpoint不在は当時の記録として保全。event出力/入力/loopbackはAstra Maxが別sliceで実装、rootが実機を検証。形式probeを実音・録音・遅延・Human合格にしない。rollbackは本PRのrevert |
 | 全制作機能 | ライブラリ等の移植は下の個別記録にあるが、段階0〜11全体の受入は未完 | BANK/PADや空曲録音の統合証拠と、metronome/count-in・loop overdub・step/pattern、vocal take/comp/punch/LRC、任意AI、4stem/mixer/FX/export、保存復旧、配布サイズの未完を受入表に沿って完遂。UIと録音だけへ範囲を縮めない |
 | インストール済みと実運用 | Mac NEXTはmain `f48397a`へ更新済み（238ファイル・522,079,813 bytes、全hash/署名一致、最低OS27.0、local ad-hoc）。旧app/manifestを保全し制作dataは変更していない。Android署名済Preview `5d471c11` build30は未更新。9月28日Windows SSH readbackでrebuild `a5c6343`、foundation `69b7ae6`、UI `ee3cc30`はいずれも同じorigin・tracked clean。通常起動は `0.17.2-53655c46e0a1`、EXE SHA-256 `80eb19b96454d408c2b75ea62043249cf34ea5ec1744def1c1f4399608fe54c5`と再確認 | Windowsの私有SSOT台帳にはGitHub main ROADMAP/契約/ADRへの参照を先頭へ追加し、元本文・bytes一致のbackup・起動先を保持した。私有ポインタと起動先をGitHub mainの証拠にしない。旧Spotify専用shortcutは実行先なし。Macのインストール先で11codec・実ドラムモデル・24bit制作/保存再開・native窓の通常終了再開2回を確認。原曲/HAND・歌詞・BANKは搭載済み。count-in以降の候補はまだ未搭載。Windows/Androidの実操作・音・マイク・遅延・TalkBack・Humanは別gate。既存data/branch/launcherを保持 |
 
 rootが変更と統合を進め、各担当は独立worktreeと限定したファイルを所有する。実機確認が必要な箇所は対象revision・artifact・操作・期待結果を明記してrootが検証する。`LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO`は別判定。確認済みでないものは未確認のまま残す。各bounded PRで検証・CI・統合・本書のreadbackまで行う。rollbackは該当PRのrevertと以前のartifactへの復帰で、既存アプリ・制作data・dirty workは保持する。
 
 ## 選択中の実装・統合（2026-09-28）
+
+Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)の[CI 36345747315](https://github.com/dj-thank/choplab-sampler/actions/runs/36345747315)はLinuxのHTTP試験とWindowsのHAND試験で失敗。修正 `cfa9b04`はHTTPの接続解放前にcallerが完了する製品raceを成功/例外のgate付き試験で再現して解消した。HANDはCUTの実ack・cursor・sink frameを待ち、SOURCE無音中の左右HAND出力を検証する。固定wall delayで完了を推測しない。provider6件・本番HAND1件が成功し、新headの必須CIを確認する。Linux artifactにexact assertのXMLは無く、再現した製品raceと元失敗行の断定を区別する。実API/課金・provider受入は未実施。 最新head `64a105f`の[CI36350391086](https://github.com/dj-thank/choplab-sampler/actions/runs/36350391086)ではcount-in開始のRecordVoice拒否が1件発生し、原因は未確定。診断 `4acf68e`は1回dispatch/元assertを維持して実cue/driver/receiptの状態を残す。rootの診断合成 `795ddfc7`で録音6件と実Windows JVMのfake入出力10回×2ケースは成功し、次CIで確認する。待機を増やしたり偽cueへ替えて成功扱いしない。
 
 rootがPR150の文書競合を解消し、main `6c2fd02` へ統合した。head `096edfc` とmainのtreeは一致する。engine80/core44/JVM94/UI115/desktop292件（実Mac録音1件skip）とAndroid Preview compileが成功。同headのMac app（238ファイル・521,686,247 bytes、local ad-hoc）で11codec、実ドラムモデル、元bytes・制作・24bit書出し・保存再開、日本語native分離窓、全hash/署名、正常終了再開2回が成功。GATE2打鍵のfloat資産と書出しとの差は3e-6以内。このMacのJava Soundへ48kHz stereo PCM16を14,400frame書き込む試験も成功。合成入力・制御時刻・無音sinkによる制作試験と、実音声出力driverへの書き込みを区別し、聴感・実入力遅延・TalkBackを認定しない。
 
@@ -137,7 +139,7 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 3 取込・サイズ | 計画 | 認証/候補/抽出→demux→decode spike後に選択式UI。元bytes/曲情報/品質/公式性/一致度。Android arm64+R8、Windows native同梱削減。利用条件と実provider、codec/取得/照合評価 |
 | 4 ビート | 着手（BPM入力/tap/swing、空曲録音PR157、BANK名/色/役割・PAD名/pan/ADSRはPR164で統合済み。metronome/count-in本番接続候補 `788c2ec`はLOCAL_PASS、step本番候補 `656bbd6`は日英desktop/compact文字2倍の実入力→複数pattern/repeat→1Undo/24bit/archive再開が成功） | BPM入力/tap/検出、key候補、metronome/count-in、1–8小節、velocity/3連/swing/note repeat/quantize/録音、自由なpattern/repeat、WSOLA、位置scratch+CUT。録音1回1Undo、frame timing一致 |
 | 5 ボーカル・歌詞 | LRC基盤PR156と編集/同期/ファイル接続PR160をmain `daedfae`へ統合済み。段階全体は未完 | count-in/pre-roll/punch/短crossfade、take/非破壊comp、同期歌詞/LRC、loop/slow練習。route別往復補正、drift/割込み/変更、指定条件の補正後±5ms目標と測定誤差 |
-| 6 作詞・TTS | 計画 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
+| 6 作詞・TTS | Google提案基盤候補 `95a1ad7`はcore/provider/controller/panel/本番保存経路19件とAndroid compileが成功。本番VOCAL入口とFlowPlanner/端末TTSはAstra Maxが接続中、段階全体は未完 | Google経路を一つ完結→契約test付きでmulti-provider。歌詞schema/FlowPlanner/行TTS/word highlight/掛合い。キー/同意/usage、offline/429/cancel/遅着/課金不明、端末TTS |
 | 7 ミックス・FX | 計画 | source/bank/stem/vocal/guide/click track、gain/pan/mute/solo/meter、EQ/filter/comp/delay/reverb/master。latency/tail/loop。24bit/16bitディザ、stems/LRC/長さ、同一mix graph |
 | 8 ピッチ補正 | 計画 | YIN/PSOLA等を単音voiceで比較。key/scale/retune/vibrato、無声/低信頼bypass、非破壊A/B。測定と人間の試聴が採用条件 |
 | 9 4パート分離 | 計画 | drums/bass/other/vocalsを1推論から逐次出力、acapella/ボーカル抜き。commit/hash固定DL、shape/order、空きRAM/ORT/長尺peak/cancel、4資産transactionを両OSで確認 |
@@ -145,6 +147,8 @@ rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsF
 | 11 仕上げ・1.0 | 計画 | WASAPI event出力/入力/loopback、format/device/COM失敗とfallback。installer/更新/初回guide、起動/RAM/電池、TalkBack/keyboard、署名と配布readback、対象routeの実音とHuman受入 |
 
 BANK/PAD編集候補はAstra Max担当がcontroller6/panel3/archive1件、rootと担当が本番接続3件・録音後の編集復帰1件・広い画面の初期全16PAD入力1件を確認した。日英・1440pxと390px文字2倍で実textfield、取消/適用/Undo/停止、元音bytesを保つ保存/新store再開が成功。invalid/stale/selection変更/録音/処理中/音声拒否で未確定内容を制作へ入れない。[PR164](https://github.com/dj-thank/choplab-sampler/pull/164)の初回[CI 36342252758](https://github.com/dj-thank/choplab-sampler/actions/runs/36342252758)はLinuxとWindowsの実ポインタ試験で失敗。draftとfieldsが消えても終了中のmodalが入力を遮る境界を仮想frame時刻で再現した。試験修正 `2bba987`はmodal ownerが実解放されるまでrenderして待ち、解除後の1クリックがOpenPadを1回だけ呼ぶことも検証する。panel4/本番接続3件が成功し、製品UI/controllerは変更していない。最新mainとの製品sourceは前の合成検証候補と一致し、その証拠を再利用した。修正head `a6aa946`の必須CI3件が成功し、main `97e575d`へ統合済み。実音・TalkBack/Humanは未確認。rollbackはBANK/PAD編集PRのrevert。
+
+Google提案基盤は `LlmProvider` と薄いHTTP adapter、送信内容と同意、厳密schema/かな再計算、usage実値と料金不明、429待ち/明示再試行、取消/遅着/revision/終了を実装した。通常hostは用途・利用条件の実確認までUNVERIFIEDで送信を無効にする。HTTP adapter→controller→Studio expectedRevision→1Undo→LRC/archive/autosave再開の本番経路2件を含む19件が成功し、終了が入力検証と競合しても鍵やjobを残さない回帰も確認した。現在は本文を手動start tick/行長で配置し、title/sectionは提案のmetadataとして表示する。構造の永続化・FlowPlanner・TTS・安全な鍵保存は後続実装で、実Google API/課金・provider/public受入は未確認。本番VOCAL入口の候補 `fe07111`は別のhost接続変更として統合する。rollbackは本PRのrevert、元の制作と音声bytesを保持する。
 
 ## 要求を落とさない対応表
 
