@@ -30,7 +30,7 @@ checkoutのJDK/SDKを設定してrepository rootから実行します。Windows�
 
 Macでは同じJVM/desktop suiteに加え、`:desktop:compileMacSystemAudioHelper`、`:desktop:desktopUiQualityTest`、`:desktop:desktopLongPressUiTest` を実行します。実ファイル・providerの取込は私有の隔離ライブラリで確認し、取得時間とdecode/再読込を分けて測ります。合成音源の比較ではフレーム・rate・左右・サンプル一致も確認します。
 
-Mac NEXTの梱包後は次を実行します。manifestの全ファイル・署名、PATHをシステム標準だけにした同梱codecで7種類（FLAC/MP3/AAC in M4A/raw AAC/Ogg/Opus/ALAC）の取込、24bit losslessの値一致・44.1 kHz monoの共有変換・原本bytes保持・取消後再試行、同梱Javaでの取込/chop/PAD/pattern/保存/再開/UndoRedo/16・24bit書出し、実launcherの画面応答と通常終了・再起動2回、自動保存の編集内容と全音源hash一致を確認します。合成素材・一時profile・無音出力を使い、利用者データは読み書きしません。実音・実マイク・ファイル窓口の手操作・聴感は別の確認です。
+Mac NEXTの梱包後は次を実行します。manifestの全ファイル・署名、PATHをシステム標準だけにした同梱codecで7種類（FLAC/MP3/AAC in M4A/raw AAC/Ogg/Opus/ALAC）の取込、24bit losslessの値一致・44.1 kHz monoの共有変換・原本bytes保持・取消後再試行、同梱Javaでの取込/chop/PAD/pattern/保存/再開/UndoRedo/16・24bit書出し、合成マイクから実presenter/host窓口を通した原曲録音（44.1 kHz floatの全sample保持、PAD・曲・24bit出力・autosave再開）、実launcherの画面応答と通常終了・再起動2回、自動保存の編集内容と全音源hash一致を確認します。合成素材・一時profile・無音出力を使い、利用者データは読み書きしません。実音・実マイク・ファイル窓口の手操作・聴感は別の確認です。
 
 ```sh
 python3 scripts/run_mac_next_acceptance.py \

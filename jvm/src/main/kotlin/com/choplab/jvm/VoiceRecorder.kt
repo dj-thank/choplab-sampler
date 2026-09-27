@@ -37,6 +37,7 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int)
 
     /** The take reached its length limit and records nothing more. */
     val full: Boolean get() = take.full
+    val recordedMillis: Long get() = take.frames * 1_000 / rate
     /** Recording stopped by itself before its limit: the input went away or the take could not be written. */
     val interrupted: Boolean get() = ended
 

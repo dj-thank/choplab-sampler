@@ -64,6 +64,7 @@ class VoiceTakes(
 
     /** The running take reached its limit. */
     val full: Boolean get() = synchronized(lock) { recorder }?.full == true
+    val recordedMillis: Long get() = synchronized(lock) { recorder }?.recordedMillis ?: 0
 
     /** The running take stopped by itself: the input went away or it could not be written. */
     val interrupted: Boolean get() = synchronized(lock) { recorder }?.interrupted == true

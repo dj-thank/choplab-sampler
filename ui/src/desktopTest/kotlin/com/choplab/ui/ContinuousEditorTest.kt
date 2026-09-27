@@ -20,6 +20,34 @@ import kotlinx.coroutines.runBlocking
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
+    @Test fun sourceMicrophoneShowsRecordingAndReachableStopAndDiscardAtLargeText() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            for ((width, height, font) in listOf(Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
+                val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.CAPTURE).copy(recordingSource = true, capabilities = setOf(ContinuousCapability.STOP_ALL)))
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, actions::add, { ContinuousEditorReadout(recordingMillis = 12_345) })
+                }
+                try {
+                    scene.settle()
+                    scene.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+                    scene.settle()
+                    val stop = requireNotNull(scene.tag("ce-source-record-stop"))
+                    val discard = requireNotNull(scene.tag("ce-source-record-discard"))
+                    assertTrue(stop.boundsInRoot.height >= 48f && stop.boundsInRoot.top >= 0 && stop.boundsInRoot.bottom <= height)
+                    assertTrue(discard.boundsInRoot.height >= 48f && discard.boundsInRoot.bottom <= height)
+                    assertTrue(requireNotNull(scene.tag("ce-source-recording")).config[SemanticsProperties.Text].joinToString().contains("12"))
+                    scene.click("ce-source-record-stop")
+                    scene.click("ce-source-record-discard")
+                    assertEquals(listOf(ContinuousEditorAction.StopSourceRecording, ContinuousEditorAction.DiscardSourceRecording), actions)
+                    scene.capture("source-recording-${width}-font${(font * 100).toInt()}.png")
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun renderExactReferenceStagesAndCompactLargeFonts() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)

@@ -28,6 +28,11 @@
     <string name="ce_capture_hint">Choose a place in the waveform, and keep listening as you move to chop.</string>
     <string name="ce_other_import">Other ways to add sound</string>
     <string name="ce_mic_record">Record microphone</string>
+    <string name="ce_source_recording">Recording: %1$s seconds. Stop recording to use it as the original. Recording stops automatically at the length or storage limit.</string>
+    <string name="ce_source_record_discard">Discard this recording</string>
+    <string name="ce_source_recorded">The recording is now the original. Chop it onto pads. Undo restores the previous original.</string>
+    <string name="ce_source_recording_limit">Recording reached its length limit. The sound captured so far is now the original.</string>
+    <string name="ce_source_recording_interrupted">The microphone stopped working. The sound captured so far is now the original.</string>
     <string name="ce_device_record">Record device audio</string>
     <string name="ce_chop_start">Start chopping</string>
     <string name="ce_chop_stop">Stop chopping</string>

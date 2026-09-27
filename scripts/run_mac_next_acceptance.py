@@ -80,6 +80,12 @@ def verify(app, java_home):
         if codec_receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged original codec self-test did not pass')
         print(codec_result.stdout.strip())
+        microphone_result = run(java, '-cp', libs / '*', 'com.choplab.desktop.next.NextMicrophoneSelfTest',
+                                directory / 'microphone', environment=environment)
+        microphone_receipt = json.loads(microphone_result.stdout.strip().splitlines()[-1])
+        if microphone_receipt['status'] != 'LOCAL_PASS':
+            raise RuntimeError('Packaged microphone source production self-test did not pass')
+        print(microphone_result.stdout.strip())
         source = next((directory / 'codecs/production').glob('next-self-test-*')) / 'profile'
         expected = snapshot(source)
         profile = directory / 'profile'

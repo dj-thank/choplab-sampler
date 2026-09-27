@@ -95,7 +95,7 @@ NEXT再構築の実音・実マイク・provider・Human GOは未受入です。
 - このMacのNEXT Java Sound adapterで48kHz/stereo/PCM16を14,400frame出力し、実マイクから48kHzで12,288frameの非ゼロ音声を読み取った。マイクのraw音声は保存しない。これは機器adapterの観測であり、画面上での歌の重ね録り・声と曲のずれ・人の聴感受入とは別。
 - 既存Previewの同梱ScreenCaptureKit helperで48kHz/2ch・301,440frameを取得。合成確認音の親Java音振幅6.18/外部音692.25、自己音抑制-40.98dB、正常終了を確認（`SYSTEM_CAPTURE_PARENT_EXCLUSION_PASS`）。raw録音は保存せず、NEXTの端末音録音UIの実装済み扱いにはしない。
 
-残り: NEXTはWAV/常駐音声上限に制限され、圧縮音源・online・端末音録音・ライブラリ/分離等が既存Preview側に残る。元の全機能要件を満たした扱いにせず、このMacで使う入口と実装を揃える。Spotifyの実同意/API、native file dialogの手操作、声と曲の遅延、人の聴感/操作感も未完。公開Client ID設定は引き継ぎ、値やtokenはsourceへ記録しない。
+残り: NEXTは常駐音声上限に制限され、online・端末音録音・ライブラリ/分離等が既存Preview側に残る。圧縮原本と原曲用マイク録音の後続結果は下記で追跡する。元の全機能要件を満たした扱いにせず、このMacで使う入口と実装を揃える。Spotifyの実同意/API、native file dialogの手操作、声と曲の遅延、人の聴感/操作感も未完。公開Client ID設定は引き継ぎ、値やtokenはsourceへ記録しない。
 
 ## Mac全機能対応とWindows正本の照合 — 2026-09-26
 
@@ -151,6 +151,14 @@ WindowsへSSHで入り、私有SSOTの現行ポインタ、origin、HEAD、dirty
 担当root、起点 `13bbfec`、対象 `jvm` の検証済み原本codec窓口とdesktop NEXTの取込・ファイルパネル・Mac codec梱包。元bytesをcontent hash付きで保持し、FLAC/ALACの24bit精度・source rate・左右を失わずfloatへdecode、共有PCM cache/resamplerへ渡す。成功したdecodeは64 MiBまで次の読込みへ引き渡し、同じ音源の取込直後の二重decodeを避ける。入力は256 MiB、decodeは現engineの常駐frame上限、子processは2分で制限し、取消・破損・過長入力では編集を確定しない。Macは標準ファイルパネル、名前は既存Previewと区別してNEXTとする。Rollbackはこの変更のrevert（圧縮原本を含む制作は旧版で上書きせず、対応するartifactとデータを保持する）。
 
 Macローカルで7 codec fixture、losslessのサンプル一致、44.1 kHz monoからの正確なframe数、原本bytesのarchive往復、取消/再試行・長さ/待ち時間上限、同梱アプリでの制作・正常終了・再起動2回が成功。JVM87件・desktop275件（実録音1skip）、UI55件、Android Preview compile、policy320件も成功。最終headのCIとartifact bytesはこの変更のPRへ記録する。349秒を超える長尺prefetch、複数素材ライブラリ、オンライン/端末音/分離のNEXT移行、Androidでの圧縮原本archive再開、Windows実端末codec、聴感・手操作は未完。旧Previewの機能は保持する。
+
+### NEXTの原曲用マイク録音 — 2026-09-27
+
+担当root、起点 `7046d5d`、範囲は共通4工程presenter/録音表示、既存VoiceTakesの経過表示、Mac/Android hostの終了・background境界、同梱アプリの再現試験。SOURCEの無効だったマイクボタンを既存の所有権付き録音へ接続する。曲も出力装置も不要で、停止した音全体を原曲へ入れる。既存PAD/曲を保持し、1回のUndoで戻す。取消はscratchだけを破棄。最大300秒とresident/asset/diskの残量で制限し、満杯・入力断・無音・許可拒否を区別する。最終autosaveより先に録音を確定する。RollbackはPRのrevert、既存app/profileは保持。
+
+合成マイクの全sample保持→原曲→チョップ/PAD→曲→24bit WAV→保存/再開を、実presenter・desktop ports・録音・asset store・engineで検証する。画面の停止/取消はdesktopと390px/font2.0で確認する。Macの入力形式は既存Java Soundの48/44.1 kHz PCM16をモノラル化したもの、保存はfloat WAV。float保存だけでnative float入力と呼ばない。実端末の聴感・遅延・権限UI、端末音録音/online/ライブラリ/分離のNEXT移植、長尺prefetchは別に残す。MacローカルでUI62件・JVM91件・desktop277件（実録音1skip）、Android Preview compile、policy320件が成功。revision・配布物bytes・実マイクの追加観測はPRへ記録する。
+
+前のmain `7046d5d` のWindows CIで、旧制作救出通知の待ちが失敗した。通知flowにreplayがなく、presenterの購読開始より先にOpenが完了すると通知を失う。購読を構築時に開始し、dispatcherを意図的に止めた条件でも最初の通知を受け取る回帰試験で確認する。通知待ち時間は延長しない。
 
 ## 判断・失敗・次の一手の記録
 
