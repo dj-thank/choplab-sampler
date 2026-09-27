@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- The linked editor on the new core. Its own task keeps it apart from the existing app. -->
+        <activity
+            android:name="com.choplab.sampler.next.NextActivity"
+            android:exported="true"
+            android:label="@string/next_app_name"
+            android:taskAffinity="${applicationId}.next"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

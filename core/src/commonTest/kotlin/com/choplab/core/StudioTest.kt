@@ -161,6 +161,33 @@ class StudioTest {
         studio.dispatch(Action.Close)
     }
 
+    @Test fun silenceStopsTheSoundButLetsPreparingWorkFinish() = runTest {
+        val engine = Engine().apply { prepareGate = CompletableDeferred() }
+        val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), preparationDispatcher = StandardTestDispatcher(testScheduler))
+        // An edit is waiting for its Program when the host goes quiet (hidden, audio focus lost).
+        val gate = engine.prepareGate!!
+        val editing = async { studio.dispatch(Action.Edit(Intent.Rename("Kept"))) }
+        runCurrent()
+        assertNotNull(studio.work.value.preparationId)
+        assertTrue(withTimeout(100) { studio.dispatch(Action.Silence) }.accepted)
+        assertTrue(engine.commands.last() is EngineCommand.Stop)
+        gate.complete(Unit); advanceUntilIdle()
+        assertTrue(editing.await().accepted)
+        assertEquals("Kept", studio.document.value.project.title)
+
+        // An import whose Program is still being prepared is kept as well.
+        val importing = CompletableDeferred<Unit>(); engine.prepareGate = importing
+        assertTrue(studio.dispatch(Action.Import(Location("picked"))).accepted)
+        runCurrent()
+        assertNotNull(studio.work.value.preparationId, "The import reached its preparation")
+        assertTrue(withTimeout(100) { studio.dispatch(Action.Silence) }.accepted)
+        importing.complete(Unit); advanceUntilIdle()
+        assertEquals(asset.hash, studio.document.value.project.source?.assetHash)
+        assertEquals(WorkState(), studio.work.value)
+        engine.prepareGate = null
+        studio.dispatch(Action.Close)
+    }
+
     @Test fun replacementAndCallerCancellationFencePendingEdits() = runTest {
         val engine = Engine().apply { prepareGate = CompletableDeferred(); ignorePrepareCancellation = true }
         val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), preparationDispatcher = StandardTestDispatcher(testScheduler))

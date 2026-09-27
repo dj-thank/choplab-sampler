@@ -76,6 +76,21 @@ object WavCodec {
         validateSamples(samples, sampleRate, channels)
         PcmWriter(output, samples.size.toLong() / channels, sampleRate, channels, bits, seed, dither).apply { write(samples); finish() }
     }
+    /** Writes a host decoder's 16-bit samples unchanged: no second quantization or dither. */
+    fun writePcm16(output: OutputStream, samples: ShortArray, sampleRate: Int, channels: Int) {
+        require(sampleRate in 8_000..192_000 && channels in 1..2)
+        require(samples.isNotEmpty() && samples.size % channels == 0 && samples.size.toLong() / channels <= ProjectLimits.MAX_FRAMES)
+        val bytes = samples.size.toLong() * 2
+        require(44 + bytes <= ProjectLimits.MAX_ASSET_BYTES)
+        header(output, bytes, sampleRate, channels, 16, 1)
+        val buffer = ByteArray(8192)
+        var count = 0
+        for (sample in samples) {
+            buffer[count++] = sample.toByte(); buffer[count++] = (sample.toInt() shr 8).toByte()
+            if (count == buffer.size) { output.write(buffer); count = 0 }
+        }
+        if (count > 0) output.write(buffer, 0, count)
+    }
     private fun validateSamples(samples: FloatArray, rate: Int, channels: Int) {
         require(rate in 8_000..192_000 && channels in 1..2)
         require(samples.isNotEmpty() && samples.size % channels == 0 && samples.size.toLong() / channels <= ProjectLimits.MAX_FRAMES)

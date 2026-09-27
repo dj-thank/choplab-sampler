@@ -34,6 +34,8 @@ sealed interface Action {
     data object Resume : Action
     data class Seek(val sequenceFrame: Long) : Action { init { require(sequenceFrame in 0..com.choplab.core.model.ProjectLimits.MAX_TIMELINE_FRAMES) } }
     data object Stop : Action
+    /** Stops the sound like [Stop] but lets an edit, import or open that is still preparing finish: for a host going quiet. */
+    data object Silence : Action
     data object RefreshTransport : Action
     data object Close : Action
 }
@@ -174,6 +176,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         Action.Resume -> playback { frame, id -> EngineCommand.Resume(frame, id) }
         is Action.Seek -> playback { frame, id -> EngineCommand.Seek(frame, id, action.sequenceFrame) }
         Action.Stop -> { cancelPreparation(); playback { frame, id -> EngineCommand.Stop(frame, id) } }
+        Action.Silence -> playback { frame, id -> EngineCommand.Stop(frame, id) }
         Action.RefreshTransport -> { _transport.value = services.engine.snapshot(); ActionResult(true) }
         Action.Close -> {
             cancelAllWork()

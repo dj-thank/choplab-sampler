@@ -73,6 +73,57 @@ class EditorBackendTest {
         assertEquals(DriverPhase.CLOSED, backend.engine.status.value.phase)
     }
 
+    @Test fun importsCompleteWhileTheOutputKeepsStallingAndReopening() = runBlocking<Unit> {
+        // Like an emulator or a flaky route: every device fills up and stalls, and a recovery policy keeps reopening it.
+        val stalling = { object : AudioSink {
+            override val encoding = SinkEncoding.FLOAT32
+            private var accepted = 0
+            override fun write(bytes: ByteArray, offset: Int, length: Int): Int =
+                if (accepted >= 16_384) 0 else length.also { accepted += it; java.util.concurrent.locks.LockSupport.parkNanos(1_000_000) }
+            override fun close() = Unit
+        } }
+        val dir = directory()
+        val files = CountingFiles()
+        val backend = EditorBackend.create(dir.resolve("profile"), { StreamingEnginePort(it, stalling, acknowledgementMillis = 300) }, files::services)
+        val flapping = launch(Dispatchers.Default) { while (isActive) { backend.engine.reattach(); delay(37) } }
+        try {
+            repeat(6) { round ->
+                val input = dir.resolve("Loop-$round.wav").also { Files.write(it, Fixtures.wav(samples = ShortArray(4096) { i -> ((i * (round + 3)) % 2000 - 1000).toShort() })) }
+                val before = backend.studio.document.value.project.source
+                assertTrue(backend.studio.dispatch(Action.Import(files.register(input))).accepted)
+                waitUntil { backend.studio.work.value.jobId == null && backend.studio.document.value.project.source != before }
+                assertEquals("Loop-$round.wav", backend.studio.document.value.project.asset(backend.studio.document.value.project.source!!.assetHash).name)
+            }
+        } finally { flapping.cancelAndJoin(); backend.shutdown() }
+    }
+
+    @Test fun importsCompleteWhileTheFirstDeviceIsStillOpening() = runBlocking<Unit> {
+        // Like the CI emulator: creating the first output takes several seconds, then the device plays normally.
+        val opens = AtomicInteger()
+        val slowFirst = {
+            if (opens.getAndIncrement() == 0) Thread.sleep(3_000)
+            object : AudioSink {
+                override val encoding = SinkEncoding.FLOAT32
+                override fun write(bytes: ByteArray, offset: Int, length: Int): Int =
+                    length.also { java.util.concurrent.locks.LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000L / 48_000) }
+                override fun close() = Unit
+            }
+        }
+        val dir = directory()
+        val files = CountingFiles()
+        val backend = EditorBackend.create(dir.resolve("profile"), { StreamingEnginePort(it, slowFirst) }, files::services)
+        val notices = java.util.concurrent.CopyOnWriteArrayList<Notice>()
+        val listening = launch(Dispatchers.Default) { backend.studio.notices.collect { notices += it } }
+        try {
+            val input = dir.resolve("Loop.wav").also { Files.write(it, Fixtures.wav(samples = ShortArray(9_600) { i -> (i % 2000 - 1000).toShort() })) }
+            val before = backend.studio.document.value.project.source
+            val started = backend.studio.dispatch(Action.Import(files.register(input)))
+            assertTrue(started.accepted, "$started")
+            waitUntil { backend.studio.work.value.jobId == null }
+            assertNotEquals(before, backend.studio.document.value.project.source, "Import was not kept: notices $notices, output ${backend.engine.status.value}")
+        } finally { listening.cancelAndJoin(); backend.shutdown() }
+    }
+
     @Test fun shutdownKeepsTheDocumentForTheNextLaunch() = runBlocking<Unit> {
         val dir = directory()
         val input = dir.resolve("Voice.wav").also { Files.write(it, Fixtures.wav(samples = ShortArray(2048) { (it % 400 - 200).toShort() })) }

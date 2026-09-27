@@ -26,12 +26,21 @@ interface AudioSink : AutoCloseable {
 
 enum class DriverPhase { STARTING, ATTACHED, EDITING_ONLY, CLOSED }
 enum class DriverFault { NONE, NO_OUTPUT, WRITE_FAILED, ACK_TIMEOUT, ACK_CANCELLED, EVENT_LOSS }
-data class DriverStatus(val phase: DriverPhase, val encoding: SinkEncoding? = null, val fault: DriverFault = DriverFault.NONE)
+/**
+ * [faults] counts every loss of output since the driver started: a failed device, an engine fault, or no device when
+ * output was first wanted or wanted back after a release. A failed attempt to reopen output already lost to a fault
+ * is not a new loss. A watcher of the conflated status flow can miss a short reopening between two identical
+ * failures; the count still tells it how many losses happened.
+ */
+data class DriverStatus(val phase: DriverPhase, val encoding: SinkEncoding? = null, val fault: DriverFault = DriverFault.NONE,
+                        val faults: Long = 0)
 data class DriverReceipt(
     val orderId: Long, val requestedFrame: Long, val appliedFrame: Long, val appliedLate: Boolean,
     val acknowledged: Boolean, val eventLosses: Long,
 )
 data class DriverPlayback(val fraction: Float = 0f, val elapsedSeconds: Int = 0, val sequenceRenderFrames: Long = 0)
+/** What the audio owner last reported: how often it looped, what waits for it, and whether a device is still opening. */
+data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int, val openingDevice: Boolean, val engineFrame: Long)
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
 
 /** Continuous EngineCore output. All sink and EngineCore access belongs to one thread.
@@ -48,8 +57,11 @@ open class StreamingEnginePort(
         val answer = CompletableDeferred<Boolean>()
         @Volatile var cancelled = false
         @Volatile var cancelFault = DriverFault.ACK_CANCELLED
+        /** Discarded unapplied because the owner timed it out or rebuilt its engine, not refused on its merits. */
+        @Volatile var dropped = false
         var offered = false
     }
+    private enum class Outcome { APPLIED, REFUSED, DROPPED }
     private val requests = ConcurrentLinkedQueue<Pending>()
     private val queued = AtomicInteger()
     private val producer = Mutex()
@@ -58,7 +70,10 @@ open class StreamingEnginePort(
     private val statusValue = MutableStateFlow(DriverStatus(DriverPhase.STARTING))
     val status: StateFlow<DriverStatus> = statusValue.asStateFlow()
     @Volatile private var closed = false
-    private val reattachRequested = AtomicBoolean(false)
+    /** Host lifecycle: false while the editor is hidden and should hold no output device. */
+    @Volatile private var outputWanted = true
+    /** Set by a device failure; output stays closed until [reattach], so a broken device is never retried in a loop. */
+    private val faultLatched = AtomicBoolean(false)
     @Volatile private var requestedMonitorGain = 1f
     @Volatile private var engineView: EngineView? = null
     @Volatile private var confirmedProgram = EngineProgram.EMPTY
@@ -66,7 +81,14 @@ open class StreamingEnginePort(
     @Volatile private var stoppedElapsedFrames = 0L
     @Volatile var lastReceipt: DriverReceipt? = null
         private set
+    @Volatile private var ownerLoops = 0L
+    @Volatile private var ownerInFlight = 0
+    @Volatile private var ownerOpening = false
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
+    /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
+    private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "ChopLab-NEXT-device-open").apply { isDaemon = true; priority = Thread.NORM_PRIORITY }
+    }
     private val owner: Thread
 
     /** Listening only, after EngineCore; does not enter documents or offline export. */
@@ -76,43 +98,75 @@ open class StreamingEnginePort(
     }
 
     /**
-     * After output was lost (route change, focus loss, device or acknowledgement fault), ask the audio owner
-     * to open a fresh sink. The document stays in Studio and the rebuilt engine keeps the confirmed Program;
-     * voices restart silent. Returns false while starting, attached or closed. The outcome arrives in
-     * [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is still unavailable.
+     * After output was lost (route change, focus loss, device or acknowledgement fault) or released by
+     * [releaseOutput], ask the audio owner to open a fresh sink. The document stays in Studio and the rebuilt
+     * engine keeps the confirmed Program; voices restart silent. Returns false while starting, attached or
+     * closed. The outcome arrives in [status]: ATTACHED, or EDITING_ONLY with NO_OUTPUT while the device is
+     * still unavailable.
      */
     fun reattach(): Boolean {
-        if (closed || statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
-        reattachRequested.set(true)
+        if (closed) return false
+        val releasing = !outputWanted
+        outputWanted = true
+        if (!releasing && statusValue.value.phase != DriverPhase.EDITING_ONLY) return false
+        faultLatched.set(false)
+        LockSupport.unpark(owner)
+        return true
+    }
+
+    /**
+     * Host lifecycle: close the output device while the editor is hidden, so nothing keeps rendering silence.
+     * Voices stop and edits stay usable in EDITING_ONLY without a fault; [reattach] opens a new device.
+     */
+    fun releaseOutput(): Boolean {
+        if (closed) return false
+        outputWanted = false
         LockSupport.unpark(owner)
         return true
     }
 
     init {
         require(blockFrames in 64..2048 && acknowledgementMillis in 50..1_500)
-        owner = Thread(::runOwner, "ChopLab-NEXT-audio").apply { isDaemon = true; start() }
+        // Built by the caller, before the audio owner starts: the first engine prepares its interpolation tables, which
+        // takes seconds on a slow or interpreted runtime. An edit sent meanwhile would wait for an engine that did not
+        // exist yet and be refused, so the driver exists only once its engine does.
+        val first = EngineCore()
+        engineView = EngineView(first, 0)
+        owner = Thread({ runOwner(first) }, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
     }
     override suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram =
         compiler.compile(project, patternId, revision)
     override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram =
         compiler.compile(project, target, revision)
 
-    override suspend fun apply(command: EngineCommand): Boolean = applyForClient(command, 0)
+    /**
+     * Output trouble (a stalled, frozen or lost device) can drop a command unapplied while the owner rebuilds its
+     * engine. An edit's Program or a stop must not be lost to that: they need no device, so they are offered again,
+     * a bounded number of times. Studio awaits each apply, so a retry never overtakes a later command.
+     */
+    override suspend fun apply(command: EngineCommand): Boolean {
+        var attempt = 0
+        while (true) {
+            val outcome = submit(command, 0, retry = attempt > 0)
+            if (outcome != Outcome.DROPPED || !command.needsNoDevice() || ++attempt >= DROPPED_ATTEMPTS || closed) return outcome == Outcome.APPLIED
+        }
+    }
 
     /** A separate logical client may control monitoring, never overwrite the document program. */
     suspend fun applyMonitoring(command: EngineCommand): Boolean {
         require(command is EngineCommand.OriginalSourceCommand || command is EngineCommand.SetSongMonitorGain)
-        return applyForClient(command, 1)
+        return submit(command, 1, retry = false) == Outcome.APPLIED
     }
 
-    private suspend fun applyForClient(command: EngineCommand, client: Int): Boolean {
+    private suspend fun submit(command: EngineCommand, client: Int, retry: Boolean): Outcome {
         val request = producer.withLock {
-            if (closed) return false
-            if (command.orderId <= lastClientOrder[client]) return false
-            while (engineView == null && !closed) delay(1)
-            val current = engineView ?: return false
+            if (closed) return Outcome.REFUSED
+            val last = lastClientOrder[client]
+            // Only a retry of the command that was just dropped may reuse its order.
+            if (command.orderId < last || (command.orderId == last && !retry)) return Outcome.REFUSED
+            val current = engineView ?: return Outcome.REFUSED
             val pending = Pending(command, command.relativeTo(current.offset, ++nextWireOrder), current)
-            if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); return false }
+            if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); return Outcome.REFUSED }
             requests.add(pending)
             lastClientOrder[client] = command.orderId
             LockSupport.unpark(owner)
@@ -120,12 +174,17 @@ open class StreamingEnginePort(
         }
         // Never hold the producer while awaiting audio: Stop must overtake a future deadline.
         return try {
-            withTimeoutOrNull(acknowledgementMillis) { request.answer.await() } ?: run {
+            val answer = withTimeoutOrNull(acknowledgementMillis) { request.answer.await() } ?: run {
                 request.cancelFault = DriverFault.ACK_TIMEOUT
                 request.cancelled = true
                 LockSupport.unpark(owner)
+                // Once cancelled the owner never applies it; an answer that raced the deadline still counts.
                 withTimeoutOrNull(500) { request.answer.await() }
-                false
+            }
+            when {
+                answer == true -> Outcome.APPLIED
+                answer == null || request.dropped -> Outcome.DROPPED
+                else -> Outcome.REFUSED
             }
         } catch (cancel: CancellationException) {
             request.cancelled = true
@@ -142,6 +201,8 @@ open class StreamingEnginePort(
             snapshot.activeVoices, snapshot.eventOverflows, statusValue.value.phase == DriverPhase.ATTACHED,
             sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused)
     }
+
+    fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
 
     /** Audio-clock readout; callers use it only in a small display subtree. */
     fun playback(): DriverPlayback {
@@ -172,13 +233,34 @@ open class StreamingEnginePort(
         }
     }
 
-    private fun runOwner() {
-        var activeEngine = EngineCore()
-        engineView = EngineView(activeEngine, 0)
-        fun openSink(): AudioSink? = try {
-            sinkFactory().also { reattachRequested.set(false); statusValue.value = DriverStatus(DriverPhase.ATTACHED, it.encoding) }
-        } catch (_: Exception) { statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT); null }
-        var sink: AudioSink? = openSink()
+    private fun runOwner(first: EngineCore) {
+        var activeEngine = first
+        val self = Thread.currentThread()
+        var faults = 0L
+        var sink: AudioSink? = null
+        // Until a device is adopted the owner keeps acknowledging edits silently, as in EDITING_ONLY.
+        var opening: java.util.concurrent.Future<AudioSink>? = null
+        fun startOpening() {
+            opening = opener.submit(java.util.concurrent.Callable { try { sinkFactory() } finally { LockSupport.unpark(self) } })
+        }
+        fun adoptOpened(pending: java.util.concurrent.Future<AudioSink>) {
+            opening = null
+            val opened = try { pending.get() } catch (_: Exception) { null }
+            when {
+                opened == null -> {
+                    val retrying = statusValue.value.let { it.phase == DriverPhase.EDITING_ONLY && it.fault != DriverFault.NONE }
+                    faultLatched.set(true)
+                    statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.NO_OUTPUT, faults = if (retrying) faults else ++faults)
+                }
+                !outputWanted || closed || faultLatched.get() -> {
+                    // Hidden while it opened, or a fault meanwhile that waits for reattach: hand the device straight back.
+                    try { opened.close() } catch (_: Exception) { }
+                    if (statusValue.value.phase == DriverPhase.STARTING) statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, faults = faults)
+                }
+                else -> { sink = opened; statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults) }
+            }
+        }
+        startOpening()
         val floats = FloatArray(blockFrames * 2)
         val bytes = ByteArray(blockFrames * 2 * 4)
         val quantizer = PcmQuantizer(0x43484f50, bits = 16, dither = true)
@@ -189,7 +271,7 @@ open class StreamingEnginePort(
         var monitorTarget = 1f
         var monitorRamp = 0
 
-        fun complete(request: Pending, accepted: Boolean) { request.answer.complete(accepted) }
+        fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) { request.dropped = dropped; request.answer.complete(accepted) }
         fun resetToEditingOnly(fault: DriverFault) {
             try { sink?.close() } catch (_: Exception) { }
             sink = null
@@ -200,35 +282,39 @@ open class StreamingEnginePort(
             engineView = EngineView(activeEngine, offset)
             previousLosses = 0
             sequenceStart = 0; stoppedElapsedFrames = 0
-            // Only a request made after this failure is visible may reopen output.
-            reattachRequested.set(false)
+            // A failure needs a fresh reattach request; a lifecycle release (NONE) reopens when wanted again.
+            if (fault != DriverFault.NONE) faultLatched.set(true)
             // Published after the rebuild: a caller reacting to EDITING_ONLY must already target the new
             // engine, or its first edit is bound to the discarded one and refused. Published before the
             // refusals below, so a caller told "false" already sees why.
-            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault)
-            inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false) }; inFlight[index] = null }
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = fault, faults = if (fault == DriverFault.NONE) faults else ++faults)
+            inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false, dropped = true) }; inFlight[index] = null }
         }
 
         try {
             while (!closed) {
-                if (sink == null && reattachRequested.getAndSet(false)) sink = openSink()
+                ownerLoops++
+                opening?.let { pending -> if (pending.isDone) adoptOpened(pending) }
+                if (sink != null && !outputWanted) resetToEditingOnly(DriverFault.NONE)
+                if (sink == null && opening == null && outputWanted && !faultLatched.get()) startOpening()
                 var work = false
                 inFlight.firstOrNull { it?.cancelled == true }?.let { resetToEditingOnly(it.cancelFault) }
                 while (true) {
                     val request = requests.poll() ?: break
                     queued.decrementAndGet()
-                    if (request.cancelled) { complete(request, false); continue }
-                    if (request.generation !== engineView) { complete(request, false); continue }
+                    if (request.cancelled) { complete(request, false, dropped = true); continue }
+                    if (request.generation !== engineView) { complete(request, false, dropped = true); continue }
                     val command = request.command
-                    if (sink == null && command !is EngineCommand.SwapProgram && command !is EngineCommand.Release &&
-                        command !is EngineCommand.Stop && command !is EngineCommand.Panic) { complete(request, false); continue }
+                    if (sink == null && !command.needsNoDevice()) { complete(request, false); continue }
                     val slot = inFlight.indexOfFirst { it == null }
                     if (slot < 0 || activeEngine.controls.offer(request.wireCommand) != OfferResult.ACCEPTED) { complete(request, false); continue }
                     request.offered = true
                     inFlight[slot] = request
                     work = true
                 }
-                if (sink == null && !work && inFlight.all { it == null }) { LockSupport.parkNanos(20_000_000); continue }
+                ownerOpening = opening != null
+                ownerInFlight = inFlight.count { it != null }
+                if (sink == null && !work && ownerInFlight == 0) { LockSupport.parkNanos(20_000_000); continue }
 
                 val count = if (sink == null) 1 else blockFrames
                 activeEngine.render(floats, 0, count)
@@ -253,7 +339,7 @@ open class StreamingEnginePort(
                         is EngineCommand.Stop, is EngineCommand.Panic -> stoppedElapsedFrames = (appliedFrame - sequenceStart).coerceAtLeast(0)
                         else -> Unit
                     }
-                    complete(request, accepted)
+                    complete(request, accepted, dropped = request.cancelled)
                     inFlight[slot] = null
                 }
 
@@ -291,23 +377,38 @@ open class StreamingEnginePort(
                 } catch (_: Exception) { resetToEditingOnly(DriverFault.WRITE_FAILED) }
             }
         } catch (_: Exception) {
-            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED)
+            statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = ++faults)
         } finally {
             try { sink?.close() } catch (_: Exception) { }
+            // A device still opening is closed as soon as it exists.
+            opening?.let { pending -> opener.execute { try { pending.get().close() } catch (_: Exception) { } } }
+            opener.shutdown()
             inFlight.forEach { it?.let { pending -> complete(pending, false) } }
             while (true) { val pending = requests.poll() ?: break; queued.decrementAndGet(); complete(pending, false) }
             closed = true
-            statusValue.value = DriverStatus(DriverPhase.CLOSED)
+            statusValue.value = DriverStatus(DriverPhase.CLOSED, faults = faults)
         }
     }
 
     override fun close() {
         closed = true
         LockSupport.unpark(owner)
-        if (Thread.currentThread() !== owner) owner.join(2_000)
+        if (Thread.currentThread() !== owner) {
+            owner.join(2_000)
+            opener.awaitTermination(2_000, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
         check(!owner.isAlive) { "Audio owner did not stop within its deadline" }
     }
+
+    private companion object {
+        /** A device that keeps dropping commands this often is left to the output's own fault reporting. */
+        const val DROPPED_ATTEMPTS = 3
+    }
 }
+
+/** Keeps its meaning without an output device: it changes the Program or silences voices. */
+private fun EngineCommand.needsNoDevice() = this is EngineCommand.SwapProgram || this is EngineCommand.Release ||
+    this is EngineCommand.Stop || this is EngineCommand.Panic
 
 private fun FloatArray.takeIsAllZero(count: Int): Boolean {
     for (i in 0 until count) if (this[i] != 0f) return false

@@ -1,0 +1,12 @@
+<resources>
+    <string name="next_app_name">Earth Song NEXT</string>
+    <string name="next_loading">Opening the editor…</string>
+    <string name="next_start_failed">The editor could not start. Your saved work was kept. Restart the app, or free some storage space and try again.</string>
+    <string name="next_close_title">Autosave failed</string>
+    <string name="next_close_message">Closing now loses the changes made after the last successful autosave. Close anyway?</string>
+    <string name="next_close_confirm">Close</string>
+    <string name="next_close_cancel">Keep editing</string>
+    <string name="next_too_long">This audio is longer than %1$d min %2$02d s. Choose a shorter file.</string>
+    <string name="next_unreadable">This file cannot be read as audio.</string>
+    <string name="next_file_base">EarthSong</string>
+</resources>
