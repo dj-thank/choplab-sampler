@@ -239,7 +239,7 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 latestAction(if (whileHeld) ContinuousEditorAction.HoldPad(id) else ContinuousEditorAction.TapPad(id))
                                 var released = false
                                 try { released = tryAwaitRelease() } finally {
-                                    if (gesture != null) latestAction(ContinuousEditorAction.EndHit(gesture, cancelled = !released))
+                                    if (gesture != null) latestAction(ContinuousEditorAction.EndHit(gesture, cancelled = !released, songFrame = latestHit?.invoke()))
                                     if (whileHeld) latestAction(ContinuousEditorAction.ReleasePad(id))
                                 }
                             })

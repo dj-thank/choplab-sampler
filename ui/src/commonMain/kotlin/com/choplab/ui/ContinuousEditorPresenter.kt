@@ -313,7 +313,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             // A stop that finds no take or pass (the song already ended it) leaves its message in place, and so does
             // letting go of a PAD, which a pass ending under a held finger sends.
             if ((action != ContinuousEditorAction.StopVoice || view.value.voice != null) &&
-                (action != ContinuousEditorAction.StopHits || view.value.hits != null) && action !is ContinuousEditorAction.ReleasePad &&
+                (action != ContinuousEditorAction.StopHits || view.value.hits != null) && action !is ContinuousEditorAction.ReleasePad && action !is ContinuousEditorAction.EndHit &&
                 (action != ContinuousEditorAction.StopSourceRecording || view.value.recordingSource)) view.update { it.copy(status = null) }
             refusal = null
             val project = studio.document.value.project
@@ -538,7 +538,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                             view.update { it.copy(hits = it.hits?.copy(overflow = true)) }; true
                         }
                         else -> {
-                            val heard = ContinuousHit(press.padId, (press.songFrame - recording.outputDelayFrames).coerceAtLeast(0))
+                            val heard = ContinuousHit(press.padId, (press.songFrame - recording.outputDelayFrames).coerceAtLeast(0),
+                                performed = true, limitFrames = (recording.songEnd - press.songFrame).coerceAtMost(com.choplab.engine.PadRender.MAX_FRAMES.toLong()).toInt())
                             view.update { it.copy(hits = it.hits?.copy(pending = recording.pending + (press to heard))) }; true
                         }
                     }
@@ -546,9 +547,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.EndHit -> {
                     val recording = view.value.hits
                     val heard = recording?.pending?.get(action.gesture)
-                    if (recording != null && heard != null) view.update { it.copy(hits = recording.copy(
-                        pending = recording.pending - action.gesture,
-                        played = if (action.cancelled) recording.played else recording.played + heard)) }
+                    if (recording != null && heard != null) {
+                        val end = action.songFrame ?: ports.readout().songFrame
+                        val heldFrames = (end - action.gesture.songFrame).coerceIn(0L, heard.limitFrames.toLong()).toInt()
+                        val released = if (project.pads[heard.padId].mode == PlayMode.ONE_SHOT) heard
+                            else heard.copy(releaseAfterFrames = heldFrames)
+                        view.update { it.copy(hits = recording.copy(pending = recording.pending - action.gesture,
+                            played = if (action.cancelled) recording.played else recording.played + released)) }
+                    }
                     true
                 }
                 is ContinuousEditorAction.CaptureHit -> view.value.hits?.let { recording ->
@@ -915,7 +921,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun finishHits(): Boolean {
         val active = view.value.hits ?: return true
         // The pass owns presses already heard: a later pointer release cannot erase them at the song boundary.
-        val recording = active.copy(played = active.played + active.pending.values, pending = emptyMap())
+        val endFrame = studio.transport.value.sequenceFrame.coerceAtMost(active.songEnd)
+        val pending = active.pending.map { (gesture, hit) ->
+            hit.copy(releaseAfterFrames = (endFrame - gesture.songFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt())
+        }
+        val recording = active.copy(played = active.played + pending, pending = emptyMap())
         view.update { it.copy(hits = null) }
         fun report(status: ContinuousStatus, ok: Boolean): Boolean {
             if (!ok) refusal = status
@@ -927,12 +937,29 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         return try {
             val project = studio.document.value.project
             // A transformed PAD that cannot be rendered leaves out its own hits, not the whole pass.
-            val rendered = renderTransformed(project, recording.played.map { it.padId })
+            val rendered = renderTransformed(project, recording.played.filterNot { it.performed }.map { it.padId })
+            val performances = mutableMapOf<ContinuousHit, Asset>()
+            var resident = ProgramCompiler.residentFrames(project) + rendered.values.sumOf { it.frames }
+            for (hit in recording.played.filter { it.performed }.distinct()) {
+                val pad = project.pads[hit.padId]
+                val source = project.asset(requireNotNull(pad.assetHash))
+                val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
+                val upper = minOf(hit.limitFrames.toLong(),
+                    if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,
+                    hit.releaseAfterFrames?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE)
+                if (resident + upper > ProgramCompiler.RESIDENT_FRAME_LIMIT) { refusal = ContinuousStatus.PLACE_NO_ROOM; continue }
+                val asset = try { ports.renderPerformance(pad, source, hit.releaseAfterFrames, hit.limitFrames) }
+                    catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { null }
+                if (asset == null) { refusal = ContinuousStatus.PLACE_FAILED; continue }
+                performances[hit] = asset
+                if (project.assets.none { it.hash == asset.hash } && performances.values.count { it.hash == asset.hash } == 1) resident += asset.frames
+            }
             val refused = refusal
-            val playable = recording.played.filter { !ContinuousClipEdits.transformed(project.pads[it.padId]) || it.padId in rendered }
-                .sortedBy { it.timelineFrame }
+            val playable = recording.played.filter {
+                if (it.performed) it in performances else !ContinuousClipEdits.transformed(project.pads[it.padId]) || it.padId in rendered
+            }.sortedBy { it.timelineFrame }
             fun plan(count: Int) = try {
-                ContinuousClipEdits.intent(project, ContinuousEditorAction.PlaceHits(playable.take(count)), ::freshId, rendered, view.value.grid)
+                ContinuousClipEdits.intent(project, ContinuousEditorAction.PlaceHits(playable.take(count)), ::freshId, rendered, view.value.grid, performances)
             } catch (_: ContinuousClipEdits.SongFull) { null }
             // What the song cannot take is left out from the end: the longest start of the pass that fits goes on.
             var fits = 0

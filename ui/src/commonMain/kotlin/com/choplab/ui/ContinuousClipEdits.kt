@@ -115,7 +115,7 @@ object ContinuousClipEdits {
      * duplicating go by [grid]; trims and splits stay exactly where they are asked.
      */
     fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Map<Int, Asset> = emptyMap(),
-               grid: ContinuousGrid = ContinuousGrid.FREE): Intent.SetArrangement {
+               grid: ContinuousGrid = ContinuousGrid.FREE, performances: Map<ContinuousHit, Asset> = emptyMap()): Intent.SetArrangement {
         val tempo = project.tempo
         var tracks: List<Track> = project.tracks
         var clips: List<Clip> = project.clips
@@ -163,7 +163,13 @@ object ContinuousClipEdits {
             is ContinuousEditorAction.PlaceHits -> {
                 require(action.hits.size in 1..1024)
                 action.hits.forEach { hit ->
-                    val (_, sound, _) = placing(hit.padId, null)
+                    val made = performances[hit]
+                    val sound = if (hit.performed) {
+                        requireNotNull(made) { "Render the recorded voice before placement" }
+                        val track = tracks.firstOrNull { it.kind == TrackKind.BANK }
+                            ?: Track(freshId("track"), project.banks[hit.padId / 16].name, TrackKind.BANK).also { tracks = tracks + it }
+                        Clip("hit", track.id, made.hash, FrameRange(0, made.frames), gain = 1f, pan = 0f)
+                    } else placing(hit.padId, null).second
                     val placed = startingAt(sound.copy(id = freshId("clip")), hit.timelineFrame, tempo, grid)
                     // Two hits on one line, or one where that sound already starts, would sound twice there: one is enough.
                     if (clips.none { it.trackId == placed.trackId && it.assetHash == placed.assetHash && it.range == placed.range &&
@@ -258,7 +264,8 @@ object ContinuousClipEdits {
         require(tracks.size <= 16)
         if (clips.size > 1024) throw SongFull()
         // A rendered PAD's sound joins the document with this edit: check its clips as if it had.
-        val added = rendered.values.distinctBy { it.hash }.filter { made -> project.assets.none { it.hash == made.hash } }
+        val produced = rendered.values + performances.filterKeys { action is ContinuousEditorAction.PlaceHits && it in action.hits }.values
+        val added = produced.distinctBy { it.hash }.filter { made -> project.assets.none { it.hash == made.hash } }
         val known = if (added.isEmpty()) project else project.copy(assets = (project.assets + added).sortedBy { it.hash }.frozen())
         clips.forEach { clip ->
             require(clip.range.end <= known.asset(clip.assetHash).frames)
@@ -269,6 +276,6 @@ object ContinuousClipEdits {
         // A song an earlier build let past that stays editable, so it can be thinned out.
         if (!ProgramCompiler.songFits(known.copy(tracks = tracks.frozen(), clips = clips.frozen())) && ProgramCompiler.songFits(project))
             throw SongFull()
-        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, rendered.values.distinctBy { it.hash }.frozen())
+        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, produced.distinctBy { it.hash }.frozen())
     }
 }

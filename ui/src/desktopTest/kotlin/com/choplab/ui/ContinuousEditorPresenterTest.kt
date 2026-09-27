@@ -51,15 +51,17 @@ class ContinuousEditorPresenterTest {
             h.until { it.recordingHits }
             val pressedAt = 12_000L
             val playedFrames = 4_800L
+            val gesture = ContinuousHitGesture(0, pressedAt)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(gesture)))
             h.engine.transport = h.engine.transport.copy(sequenceFrame = pressedAt)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
             h.engine.transport = h.engine.transport.copy(sequenceFrame = pressedAt + playedFrames)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, pressedAt)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(gesture, false, pressedAt + playedFrames)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
             val p = h.studio.document.value.project
             val recorded = p.clips.single { ContinuousClipEdits.startFrame(p, it) == pressedAt }
-            assertEquals(playedFrames, recorded.range.length, "A 100 ms GATE performance must not become the whole 1 s sample")
+            assertEquals(playedFrames + 96, recorded.range.length, "A 100 ms GATE plus live release must not become the whole 1 s sample")
         } finally { h.close() }
     }
 
@@ -1684,6 +1686,13 @@ class ContinuousEditorPresenterTest {
             if (renderFails) return null
             val frames = kotlin.math.ceil(requireNotNull(pad.range).length / 2.0.pow(pad.pitchSemitones / 12)).toLong()
             return Asset("c".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "${source.name} +12", AssetRole.RENDERED, derivedFrom = source.hash)
+        }
+        override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int): Asset? {
+            if (renderFails) return null
+            val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
+            val frames = minOf(limitFrames.toLong(), if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,
+                releaseAt?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE)
+            return Asset("d".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "performance", AssetRole.RENDERED, derivedFrom = source.hash)
         }
         @Volatile var originalFrame = 0L
         @Volatile var stops = 0
