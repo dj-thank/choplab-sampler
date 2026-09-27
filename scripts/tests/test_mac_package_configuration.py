@@ -26,7 +26,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
             (root / 'gradle.properties').write_text('choplabVersion=0.18.0\nchoplabBuildNumber=30\n')
             tools = root / 'tools'
             tools.mkdir()
-            for name in ('ffmpeg', 'ffprobe', 'manifest.json') + (() if linked else ('yt-dlp', 'node')):
+            for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
                 (tools / name).touch()
             commands = []
 
@@ -91,7 +91,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
                 (root / name).write_text(name)
             tools = root / 'tools'
             tools.mkdir()
-            for name in ('ffmpeg', 'ffprobe', 'manifest.json'):
+            for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
                 (tools / name).touch()
             commands = []
 

@@ -11,6 +11,7 @@ on:
       - 'scripts/package_mac_app.py'
       - 'scripts/prepare_mac_media_tools.py'
       - 'config/mac-audio-tool-files.txt'
+      - 'config/mac-media-tool-files.txt'
       - 'scripts/run_mac_next_acceptance.py'
       - 'scripts/acceptance/MacPreviewLifecycle.java'
       - 'scripts/check_public_surface.py'
@@ -49,7 +50,7 @@ jobs:
       - name: Prepare the local audio build dependency
         run: |
           brew update
-          brew install ffmpeg
+          brew install ffmpeg node@24
 
       - name: Package the linked editor as a local ad-hoc Mac app
         run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview

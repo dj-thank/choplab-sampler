@@ -159,6 +159,9 @@ internal class DesktopEditorPorts(private val backend: NextBackend, private val 
             if (answer.isActive) answer.resume(copied)
         }
     }
+    override val onlineAvailable = true
+    override suspend fun chooseOnline() = NextOnlineDialog.choose(parent(),
+        DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override val libraryAvailable = true
     override suspend fun chooseLibrary() = NextLibraryDialog.choose(parent(),
         DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }

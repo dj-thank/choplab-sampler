@@ -239,8 +239,8 @@ listOf(Triple("packageMacPreview", false, false), Triple("packageMacSignedPrevie
         workingDir(rootProject.projectDir)
         commandLine("python3", "scripts/package_mac_app.py", "--java-home",
             desktopRuntimeToolchain.get().metadata.installationPath.asFile.absolutePath)
-        dependsOn(if (linked) prepareMacAudioTools else prepareMacMediaTools)
-        args("--tools", (if (linked) macAudioToolsDirectory else macMediaToolsDirectory).get().asFile.absolutePath)
+        dependsOn(prepareMacMediaTools)
+        args("--tools", macMediaToolsDirectory.get().asFile.absolutePath)
         if (signed) args("--signed")
         if (linked) args("--linked")
     }

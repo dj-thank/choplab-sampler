@@ -456,6 +456,10 @@ import kotlin.math.roundToLong
                 else CEActionButton(stringResource(Res.string.ce_device_record), ContinuousEditorAction.RecordSystemSource,
                     state, ContinuousCapability.RECORD_SYSTEM_SOURCE, onAction, Modifier.weight(1f), tag = "ce-system-record")
             }
+            if (ContinuousCapability.IMPORT_ONLINE in state.capabilities) {
+                CEActionButton(stringResource(Res.string.ce_online), ContinuousEditorAction.ImportOnline,
+                    state, ContinuousCapability.IMPORT_ONLINE, onAction, Modifier.fillMaxWidth(), tag = "ce-online")
+            }
             if (ContinuousCapability.IMPORT_LIBRARY in state.capabilities) {
                 CEActionButton(stringResource(Res.string.ce_library), ContinuousEditorAction.ImportLibrary,
                     state, ContinuousCapability.IMPORT_LIBRARY, onAction, Modifier.fillMaxWidth(), tag = "ce-library")

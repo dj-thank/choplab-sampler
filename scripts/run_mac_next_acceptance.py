@@ -92,6 +92,13 @@ def verify(app, java_home):
         if library_receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged library source production self-test did not pass')
         print(library_result.stdout.strip())
+        online_result = run(java, '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
+                            'com.choplab.desktop.next.NextOnlineSelfTest', directory / 'online', environment=environment)
+        if json.loads(online_result.stdout.strip().splitlines()[-1])['status'] != 'LOCAL_PASS':
+            raise RuntimeError('Packaged online selection production self-test did not pass')
+        print(online_result.stdout.strip())
+        run(libs / 'tools/yt-dlp', '--version', environment=environment)
+        run(libs / 'tools/node', '--version', environment=environment)
         source = next((directory / 'codecs/production').glob('next-self-test-*')) / 'profile'
         expected = snapshot(source)
         profile = directory / 'profile'
