@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.choplab.core.ProgramCompiler
 import com.choplab.ui.resources.*
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
@@ -171,7 +172,11 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 @Composable private fun CETimelinePanel(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     readout: () -> ContinuousEditorReadout, refreshKey: Long, modifier: Modifier, onTarget: (CEPlacementTarget) -> Unit) {
     val clip = state.selectedClip
-    Column(modifier.clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // A short pane (a phone, large text) scrolls and gives the tracks a fixed height, so every control stays in reach.
+    BoxWithConstraints(modifier.clip(RoundedCornerShape(8.dp)).background(CEColor.Ink)) {
+    val roomy = maxHeight >= 520.dp
+    Column(Modifier.fillMaxSize().then(if (roomy) Modifier else Modifier.verticalScroll(rememberScrollState())).padding(12.dp)
+        .testTag("ce-arrangement-pane"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
         val inline = maxWidth >= 650.dp && LocalDensity.current.fontScale <= 1.3f
         Row(Modifier.fillMaxWidth().then(if (inline) Modifier else Modifier.horizontalScroll(rememberScrollState())), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -183,14 +188,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEActionButton(stringResource(Res.string.ce_delete), ContinuousEditorAction.DeleteClip(clip?.id.orEmpty()), state, ContinuousCapability.DELETE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-delete")
         }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEButton("−", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond / 1.25f).coerceAtLeast(4f))) }, dark = true,
-                modifier = Modifier.semantics { contentDescription = "−" })
-            CEButton("+", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond * 1.25f).coerceAtMost(240f))) }, dark = true,
-                modifier = Modifier.semantics { contentDescription = "+" })
-            CEButton(stringResource(Res.string.ce_fit), { onAction(ContinuousEditorAction.FitTimeline) }, dark = true)
-        }
-        CETimelineGrid(state, onAction, readout, refreshKey, Modifier.weight(1f).fillMaxWidth(), onTarget)
+        CETimelineTools(state, onAction)
+        CETimelineGrid(state, onAction, readout, refreshKey, if (roomy) Modifier.weight(1f).fillMaxWidth() else Modifier.height(300.dp).fillMaxWidth(), onTarget)
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(if (clip == null) stringResource(Res.string.ce_no_selected_clip) else stringResource(Res.string.ce_selected_clip, clip.title), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
             if (clip != null) {
@@ -204,6 +203,56 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             }
         }
     }
+    }
+}
+
+/** Zoom, and what placing and moving snap to: one row where both fit, otherwise one each (phones, large text). */
+@Composable private fun CETimelineTools(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val zoomOut = stringResource(Res.string.ce_zoom_out)
+        val zoomIn = stringResource(Res.string.ce_zoom_in)
+        @Composable fun Zoom() = Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            CEButton("−", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond / 1.25f).coerceAtLeast(4f))) }, dark = true,
+                modifier = Modifier.semantics { contentDescription = zoomOut }, tag = "ce-zoom-out")
+            CEButton("+", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond * 1.25f).coerceAtMost(240f))) }, dark = true,
+                modifier = Modifier.semantics { contentDescription = zoomIn }, tag = "ce-zoom-in")
+            CEButton(stringResource(Res.string.ce_fit), { onAction(ContinuousEditorAction.FitTimeline) }, dark = true)
+        }
+        val snap = stringResource(Res.string.ce_grid)
+        @Composable fun Grid() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(snap, color = CEColor.Cream, fontSize = 14.sp)
+            for ((grid, label) in listOf(ContinuousGrid.BEAT to Res.string.ce_grid_beat, ContinuousGrid.HALF to Res.string.ce_grid_half,
+                    ContinuousGrid.QUARTER to Res.string.ce_grid_quarter, ContinuousGrid.FREE to Res.string.ce_free)) {
+                val text = stringResource(label)
+                CEButton(text, { onAction(ContinuousEditorAction.SetGrid(grid)) },
+                    Modifier.semantics { contentDescription = "$snap $text"; selected = state.grid == grid },
+                    dark = true, primary = state.grid == grid, tag = "ce-grid-${grid.name.lowercase()}")
+            }
+        }
+        if (maxWidth >= 640.dp && LocalDensity.current.fontScale <= 1.3f) Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)) { Zoom(); Grid() }
+        else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { Zoom(); Box(Modifier.horizontalScroll(rememberScrollState())) { Grid() } }
+    }
+}
+
+/**
+ * The song timeline's lines between [from] and [to] pixels, each an x and how strong it is: 2 a bar, 1 a beat, 0 a
+ * finer [grid] line. Lines closer than [minimumGap] are left out: finer lines first, then beats, then all but every
+ * few bars.
+ */
+internal fun ceGridLines(milliBpm: Int, grid: ContinuousGrid, pxPerSecond: Float, minimumGap: Float, from: Float, to: Float): List<Pair<Float, Int>> {
+    val beat = 60_000f / milliBpm * pxPerSecond
+    val finer = if (grid == ContinuousGrid.FREE) 960 else grid.ticks
+    val unitTicks = when {
+        beat * finer / 960 >= minimumGap -> finer
+        beat >= minimumGap -> 960
+        else -> 3_840 * kotlin.math.ceil(minimumGap / (beat * 4)).toInt()
+    }
+    val unit = beat * unitTicks / 960
+    return (floor(from / unit).toLong().coerceAtLeast(0)..kotlin.math.ceil(to / unit).toLong()).map { index ->
+        val ticks = index * unitTicks
+        index * unit to when { ticks % 3_840 == 0L -> 2; ticks % 960 == 0L -> 1; else -> 0 }
+    }
 }
 
 @Composable private fun CETimelineGrid(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
@@ -215,7 +264,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     val live = CELive(state.songPlaying, refreshKey, readout)
     Row(modifier.testTag("ce-timeline")) {
         Column(Modifier.width(104.dp)) {
-            Spacer(Modifier.height(38.dp))
+            Box(Modifier.height(38.dp), contentAlignment = Alignment.CenterStart) {
+                Text(stringResource(Res.string.ce_bars), color = CEColor.Tan, fontSize = 12.sp)
+            }
             Column(Modifier.weight(1f).verticalScroll(vertical)) {
                 state.tracks.forEach { track -> Column(Modifier.height(rowHeight).fillMaxWidth().padding(end = 8.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(track.name, color = CEColor.Cream, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
@@ -231,11 +282,12 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             val rows = state.tracks.size.coerceAtLeast(1)
             Column {
                 Row(Modifier.fillMaxWidth().horizontalScroll(horizontal).height(38.dp).background(CEColor.Deep)) {
-                    Box(Modifier.width(width).fillMaxHeight()) {
-                        val seconds = (width.value / state.pixelsPerSecond).toInt()
-                        val interval = if (state.pixelsPerSecond >= 48) 2 else if (state.pixelsPerSecond >= 16) 4 else 8
-                        (0..seconds step interval).forEach { second ->
-                            Text(ceTime(second.toLong() * CONTINUOUS_TIMELINE_RATE), Modifier.offset(x = (second * state.pixelsPerSecond).dp + 8.dp).padding(top = 8.dp),
+                    Box(Modifier.width(width).fillMaxHeight().testTag("ce-ruler")) {
+                        // Bar numbers, a few bars apart where bars are narrow.
+                        val bar = 4 * 60_000f / state.milliBpm * state.pixelsPerSecond
+                        val every = kotlin.math.ceil(44f / bar).toInt().coerceAtLeast(1)
+                        (0..(width.value / bar).toInt() step every).forEach { index ->
+                            Text("${index + 1}", Modifier.offset(x = (index * bar).dp + 6.dp).padding(top = 8.dp),
                                 color = CEColor.Cream, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
                     }
@@ -252,8 +304,11 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                         }) {
                             val pps = state.pixelsPerSecond.dp.toPx()
                             for (index in 0..rows) drawLine(CEColor.Border.copy(alpha = .5f), Offset(0f, index * rowHeight.toPx()), Offset(size.width, index * rowHeight.toPx()))
-                            var x = 0f
-                            while (x < size.width) { drawLine(CEColor.Border.copy(alpha = .4f), Offset(x, 0f), Offset(x, size.height)); x += pps * 4 }
+                            val from = horizontal.value.toFloat()
+                            ceGridLines(state.milliBpm, state.grid, pps, 6.dp.toPx(), from, from + horizontal.viewportSize).forEach { (x, strength) ->
+                                drawLine(CEColor.Border.copy(alpha = when (strength) { 2 -> .6f; 1 -> .3f; else -> .15f }),
+                                    Offset(x, 0f), Offset(x, size.height), if (strength == 2) 2.dp.toPx() else 1.dp.toPx())
+                            }
                         }
                         state.clips.forEach { clip ->
                             val trackIndex = state.tracks.indexOfFirst { it.id == clip.trackId }
@@ -307,15 +362,22 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     val trimStart = stringResource(Res.string.ce_trim_start)
     val trimEnd = stringResource(Res.string.ce_trim_end)
     val positionLabel = stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true))
-    Box(Modifier.offset { IntOffset(with(density) { left.roundToPx() } + (if (trimEdge == 0) drag.x.roundToInt() else 0),
+    // A move shows where the clip will land: on a grid, the line nearest the finger, as the edit will put it.
+    fun landing(dx: Float): Int {
+        if (dx == 0f) return 0
+        val pps = with(density) { pixelsPerSecond.dp.toPx() }
+        val raw = (clip.timelineStartFrame + (dx / pps * CONTINUOUS_TIMELINE_RATE).roundToLong()).coerceAtLeast(0)
+        val frame = ContinuousClipEdits.snapTick(raw, state.milliBpm, state.grid)?.let { ProgramCompiler.tickToFrame(it, state.milliBpm) } ?: raw
+        return ((frame - clip.timelineStartFrame).toDouble() / CONTINUOUS_TIMELINE_RATE * pps).roundToInt()
+    }
+    Box(Modifier.offset { IntOffset(with(density) { left.roundToPx() } + (if (trimEdge == 0) landing(drag.x) else 0),
             with(density) { (rowHeight * trackIndex + 8.dp).roundToPx() } + (if (trimEdge == 0) drag.y.roundToInt() else 0)) }
         .width(hitWidth).height(rowHeight - 16.dp).testTag("ce-clip-${clip.id}")
         .onKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) false else when (event.key) {
                 Key.Enter, Key.Spacebar -> { latestAction(ContinuousEditorAction.SelectClip(clip.id)); true }
                 Key.DirectionLeft, Key.DirectionRight -> if (state.permits(ContinuousCapability.MOVE_CLIP)) {
-                    val direction = if (event.key == Key.DirectionLeft) -1 else 1
-                    latestAction(ContinuousEditorAction.MoveClip(clip.id, clip.trackId, (clip.timelineStartFrame + direction * CONTINUOUS_TIMELINE_RATE).coerceAtLeast(0))); true
+                    latestAction(ContinuousEditorAction.NudgeClip(clip.id, forward = event.key == Key.DirectionRight)); true
                 } else false
                 Key.Delete, Key.Backspace -> if (state.permits(ContinuousCapability.DELETE_CLIP)) { latestAction(ContinuousEditorAction.DeleteClip(clip.id)); true } else false
                 else -> false
@@ -325,8 +387,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             onClick { latestAction(ContinuousEditorAction.SelectClip(clip.id)); true }
             customActions = buildList {
                 if (state.permits(ContinuousCapability.MOVE_CLIP)) {
-                    add(CustomAccessibilityAction(earlier) { latestAction(ContinuousEditorAction.MoveClip(clip.id, clip.trackId, (clip.timelineStartFrame - CONTINUOUS_TIMELINE_RATE).coerceAtLeast(0))); true })
-                    add(CustomAccessibilityAction(later) { latestAction(ContinuousEditorAction.MoveClip(clip.id, clip.trackId, clip.timelineStartFrame + CONTINUOUS_TIMELINE_RATE)); true })
+                    add(CustomAccessibilityAction(earlier) { latestAction(ContinuousEditorAction.NudgeClip(clip.id, forward = false)); true })
+                    add(CustomAccessibilityAction(later) { latestAction(ContinuousEditorAction.NudgeClip(clip.id, forward = true)); true })
                 }
                 if (state.permits(ContinuousCapability.TRIM_CLIP)) {
                     // At the one-frame minimum these become no-ops instead of creating a silent clip.
