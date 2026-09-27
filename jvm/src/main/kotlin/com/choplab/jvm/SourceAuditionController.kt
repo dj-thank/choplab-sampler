@@ -29,6 +29,7 @@ class SourceAuditionController(
     @Volatile private var semitones = 0f
     /** Whether the loaded original took [semitones]; a key the output refused is sent again before the next play. */
     @Volatile private var keyApplied = false
+    @Volatile private var handMonitorGain = 1f
 
     fun cancelPreparation() {
         generation.incrementAndGet()
@@ -97,21 +98,32 @@ class SourceAuditionController(
         require(gain.isFinite() && gain in 0f..1f)
         return controls.withLock { command { frame, id -> EngineCommand.SetSongMonitorGain(frame, id, gain) } }
     }
+    suspend fun handGain(gain: Float): Boolean {
+        require(gain.isFinite() && gain in 0f..1f)
+        return controls.withLock {
+            handMonitorGain = gain
+            command { frame, id -> EngineCommand.SetHandMonitorGain(frame, id, gain) }
+        }
+    }
     /**
-     * Takes the original by hand between [start] and [end] (its own frames, end exclusive) from [from]: its playback
-     * pauses until [scratchEnd], and it sounds only while [scratchTo] moves it. Loads the original first when it is not
-     * loaded.
+     * HAND reads the original between [start] and [end] (native frames, end exclusive), from [from]. SOURCE continues
+     * independently. Reuses its loaded PCM; the existing bounded loader is used only when the source is not loaded.
      */
     suspend fun scratchStart(asset: Asset, from: Long, start: Long, end: Long): Boolean {
         require(start in 0 until end && end <= asset.frames && from in start until end)
         cancelPreparation()
         val token = generation.get()
+        val first48 = ProgramFrames.to48k(start, asset.sampleRate)
+        val last48 = ProgramFrames.to48k(end, asset.sampleRate)
+        // Sub-sample native regions can collapse when normalized to 48 kHz. Refuse that empty region.
+        if (last48 <= first48 || last48 > Int.MAX_VALUE) return false
         if (!ensureSource(asset, token)) return false
-        val first = ProgramFrames.to48k(start, asset.sampleRate).toInt()
-        val last = ProgramFrames.to48k(end, asset.sampleRate).toInt()
+        val first = first48.toInt()
+        val last = last48.toInt()
         val at = from * 48_000.0 / asset.sampleRate
         return controls.withLock {
-            token == generation.get() && command { frame, id -> EngineCommand.ScratchOriginalStart(frame, id, at, first, last) }
+            token == generation.get() && command { frame, id -> EngineCommand.SetHandMonitorGain(frame, id, handMonitorGain) } &&
+                token == generation.get() && command { frame, id -> EngineCommand.ScratchOriginalStart(frame, id, at, first, last) }
         }
     }
     /**
@@ -126,8 +138,16 @@ class SourceAuditionController(
         require(gain.isFinite() && gain in 0f..1f)
         return controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalCut(frame, id, gain) } }
     }
-    /** Lets go of the original: playback the hand paused plays on once from there; otherwise it stays paused. */
-    suspend fun scratchEnd(): Boolean = controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalEnd(frame, id) } }
+    /** Also cancels a pending load, so letting go cannot be followed by a late HAND start. SOURCE is untouched. */
+    suspend fun scratchEnd(): Boolean {
+        cancelPreparation()
+        return controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalEnd(frame, id) } }
+    }
+    fun nativeHandFrame(): Double {
+        val asset = loaded.get() ?: return -1.0
+        val hand = driver.handPlayback().sourceFrame
+        return if (hand < 0) -1.0 else (hand * asset.sampleRate / 48_000).coerceIn(0.0, asset.frames.toDouble())
+    }
     fun nativeFrame(): Long {
         val asset = loaded.get() ?: return 0
         return (driver.originalPlayback().sourceFrame * asset.sampleRate / 48_000).coerceIn(0, asset.frames)

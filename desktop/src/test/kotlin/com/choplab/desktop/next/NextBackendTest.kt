@@ -396,6 +396,48 @@ class NextBackendTest {
         } finally { backend.shutdown() }
     }
 
+    @Test fun independentHandThroughDesktopBackendKeepsSourceDocumentAndExportIntact() = runBlocking<Unit> {
+        val dir = temporary()
+        val input = dir.resolve("Source.wav")
+        Files.newOutputStream(input).use { WavCodec.writeFloat(it,
+            FloatArray(48_000 * 2 * 10) { if (it % 2 == 0) .04f else -.02f }) }
+        val backend = NextBackend.create(dir.resolve("profile"), { CaptureSink(SinkEncoding.FLOAT32) })
+        suspend fun export(name: String): ByteArray {
+            val path = dir.resolve(name)
+            assertTrue(backend.exportPattern(path, 24, 4_096).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && Files.exists(path) }
+            return Files.readAllBytes(path)
+        }
+        try {
+            waitUntil { backend.engine.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(backend.importAudio(input).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && backend.studio.document.value.project.source != null }
+            assertTrue(backend.studio.dispatch(Action.Edit(Intent.AssignSlice(0, 0))).accepted)
+            assertTrue(backend.studio.dispatch(Action.Edit(Intent.SetNote("pattern-1", com.choplab.core.model.Note(0, 0), true))).accepted)
+            val document = backend.studio.document.value
+            val source = document.project.asset(document.project.source!!.assetHash)
+            val before = export("before.wav")
+            assertTrue(backend.audition.play(source))
+            assertTrue(backend.audition.handGain(.25f))
+            assertTrue(backend.audition.scratchStart(source, 192_000, 144_000, 384_000))
+            assertTrue(backend.audition.scratchTo(240_000.0, 48_000))
+            val original = backend.audition.nativeFrame()
+            waitUntil { backend.audition.nativeFrame() > original + 256 }
+            assertTrue(backend.audition.nativeHandFrame() > 192_000)
+            assertTrue(backend.audition.scratchCut(0f))
+            assertTrue(backend.audition.scratchEnd())
+            assertTrue(backend.engine.originalPlayback().playing)
+            assertTrue(backend.audition.nativeFrame() < 144_000, "HAND did not move the SOURCE cursor into its range")
+            assertEquals(-1.0, backend.audition.nativeHandFrame())
+            assertContentEquals(before, export("after.wav"))
+            assertEquals(document, backend.studio.document.value, "HAND does not revise document or undo history")
+            assertTrue(backend.audition.scratchStart(source, 192_000, 144_000, 384_000))
+            assertTrue(backend.studio.dispatch(Action.New()).accepted)
+            waitUntil { backend.audition.nativeHandFrame() == -1.0 }
+            assertEquals(0, backend.engine.snapshot().activeVoices)
+        } finally { backend.shutdown() }
+    }
+
     private suspend fun waitUntil(condition: () -> Boolean) = withTimeout(15_000) { while (!condition()) delay(5) }
 
     private class CaptureSink(override val encoding: SinkEncoding, private val partial: Boolean = false) : AudioSink {
