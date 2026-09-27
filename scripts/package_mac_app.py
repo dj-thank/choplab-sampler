@@ -24,7 +24,7 @@ def build(java_home, tools, signed=False, linked=False):
     spotify_client = os.environ.get('CHOPLAB_SPOTIFY_CLIENT_ID', '')
     if spotify_client and not re.fullmatch(r'[A-Za-z0-9]{16,128}', spotify_client):
         raise RuntimeError('CHOPLAB_SPOTIFY_CLIENT_ID must contain 16 to 128 letters or digits')
-    # NEXT carries local codecs; online providers, the separator model and capture helper remain in Preview.
+    # NEXT carries codecs, YouTube tools, capture and separation; Spotify configuration remains in Preview.
     spotify_options = ['--java-options', '-Dchoplab.spotifyClientId=' + spotify_client] if spotify_client and not linked else []
     identity = os.environ.get('CHOPLAB_MAC_SIGNING_IDENTITY', '')
     if signed:
@@ -36,8 +36,7 @@ def build(java_home, tools, signed=False, linked=False):
     for name in ('ffmpeg', 'ffprobe', 'yt-dlp', 'node', 'manifest.json'):
         if tools is None or not (tools / name).is_file():
             raise RuntimeError(f'Prepare the complete Mac tools bundle first: missing {name}')
-    if not linked:
-        run('python3', ROOT / 'scripts/prepare_separator_model.py', '--out', ROOT / 'work/separator-models')
+    run('python3', ROOT / 'scripts/prepare_separator_model.py', '--out', ROOT / 'work/separator-models')
     version = re.search(r'^choplabVersion=(.+)$', (ROOT / 'gradle.properties').read_text(), re.M).group(1)
     build_number = re.search(r'^choplabBuildNumber=(\d+)$', (ROOT / 'gradle.properties').read_text(), re.M).group(1)
     build_root = ROOT / 'desktop/build'
@@ -64,13 +63,12 @@ def build(java_home, tools, signed=False, linked=False):
             '--java-options', '-Dfile.encoding=UTF-8', '--java-options', '-XX:-UsePerfData',
             '--java-options', '-Dchoplab.mediaTools=$APPDIR/tools',
             '--java-options', '-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio',
-            *([] if linked else ['--java-options', '-Dchoplab.separatorModels=$APPDIR/models']),
+            '--java-options', '-Dchoplab.separatorModels=$APPDIR/models',
             *spotify_options)
         app = stage / 'image' / f'{image_name}.app'
         application = app / 'Contents/app'
         shutil.copytree(tools, application / 'tools')
-        if not linked:
-            shutil.copytree(ROOT / 'work/separator-models', application / 'models')
+        shutil.copytree(ROOT / 'work/separator-models', application / 'models')
         for name in ('LICENSE', 'NOTICE.md'):
             shutil.copy2(ROOT / name, application / name)
         # jlink uses ../ links for repeated licenses. Materialize only in-bundle legal

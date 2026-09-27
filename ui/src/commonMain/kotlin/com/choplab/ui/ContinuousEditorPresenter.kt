@@ -18,6 +18,8 @@ import kotlin.time.TimeSource
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
     val systemAudioCapture: SystemAudioCapture? get() = null
+    val separationAvailable: Boolean get() = false
+    suspend fun separateSource(source: Asset): Location? = null
     val onlineAvailable: Boolean get() = false
     suspend fun chooseOnline(): Location? = null
     val libraryAvailable: Boolean get() = false
@@ -326,6 +328,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     if (view.value.recordingSource && action.stage != view.value.stage) finishSource()
                     view.update { it.copy(stage = action.stage, liveChop = it.liveChop.takeIf { action.stage == ContinuousStage.CHOP }) }; true
                 }
+                ContinuousEditorAction.SeparateSource -> project.source?.let { source ->
+                    releaseHeld(); stopOriginal()
+                    ports.separateSource(project.asset(source.assetHash))?.let { send(Action.Import(it)) } ?: cancelled()
+                } ?: false
                 ContinuousEditorAction.ImportOnline -> ports.chooseOnline()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.ImportLibrary -> ports.chooseLibrary()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.ImportAudio -> ports.chooseAudio()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
@@ -1185,6 +1191,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val selected = p.pads[input.selection.padId]
         val capabilities = if (recording) mutableSetOf(ContinuousCapability.STOP_ALL)
             else mutableSetOf(ContinuousCapability.OPEN_PROJECT, ContinuousCapability.IMPORT_AUDIO, ContinuousCapability.STOP_ALL)
+        if (ports.separationAvailable && source != null && !busy && !recording) capabilities += ContinuousCapability.SEPARATE_SOURCE
         if (ports.onlineAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_ONLINE
         if (ports.libraryAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_LIBRARY
         if (v.voice != null || v.hits != null) {

@@ -14,6 +14,21 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun separationCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.state.value.permits(ContinuousCapability.SEPARATE_SOURCE))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SeparateSource))
+            assertEquals(1, h.ports.separationPicks)
+            assertEquals(before, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SeparateSource))
+            assertEquals(1, h.ports.separationPicks)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+        } finally { h.close() }
+    }
+
     @Test fun onlineCancellationLeavesProductionUntouchedAndRecordingDoesNotOpenAPicker() = runBlocking<Unit> {
         val h = Harness(voice = true)
         try {
@@ -843,6 +858,9 @@ class ContinuousEditorPresenterTest {
             assertFalse(recording.permits(ContinuousCapability.RECORD_HITS) || recording.permits(ContinuousCapability.HISTORY))
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertFalse(recording.permits(ContinuousCapability.SEPARATE_SOURCE))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SeparateSource))
+            assertEquals(0, h.ports.separationPicks)
             // The output plays 1 920 frames behind the engine. Pressed at engine frame 61 000, PAD 0 was heard at 59 080:
             // nearest the third beat (48 000), not the fourth. At 61 500 the same beat again, once is enough; at 73 000
             // (heard 71 080) the fourth.
@@ -1628,6 +1646,9 @@ class ContinuousEditorPresenterTest {
         var originalGain = 1f
         var exportFrames = 0L
         override val originalAvailable = true
+        override val separationAvailable = true
+        var separationPicks = 0
+        override suspend fun separateSource(source: Asset): Location? { separationPicks++; return null }
         override val onlineAvailable = true
         var online: Location? = null
         var onlinePicks = 0

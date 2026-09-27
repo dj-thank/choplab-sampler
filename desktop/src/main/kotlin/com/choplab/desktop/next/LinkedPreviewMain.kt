@@ -159,6 +159,10 @@ internal class DesktopEditorPorts(private val backend: NextBackend, private val 
             if (answer.isActive) answer.resume(copied)
         }
     }
+    override val separationAvailable = true
+    override suspend fun separateSource(source: Asset) = NextSeparationDialog.choose(parent()) { suffix ->
+        backend.separation(source, DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), "${source.name} — $suffix")
+    }?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override val onlineAvailable = true
     override suspend fun chooseOnline() = NextOnlineDialog.choose(parent(),
         DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
