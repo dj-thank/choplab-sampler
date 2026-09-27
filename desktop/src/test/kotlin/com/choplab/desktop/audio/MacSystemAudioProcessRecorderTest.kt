@@ -17,11 +17,12 @@ class MacSystemAudioProcessRecorderTest {
     }
 
     @Test fun recordsFramesSplitAcrossReadsIntactUntilStop() {
-        val recorder = MacSystemAudioProcessRecorder(helper, FakeSystemAudioHelper.launcher("normal"))
+        val recorder = MacSystemAudioProcessRecorder(helper, FakeSystemAudioHelper.launcher("normal", "750"))
         val file = output()
         try {
             assertTrue(recorder.start(file).isSuccess)
-            Thread.sleep(400)
+            // Pipe throughput depends on the host. Wait for the frames this test verifies, not a wall-clock guess.
+            waitUntil { file.length() > 44 + 4 * 4_800 }
             val stopped = recorder.stop()
             assertTrue(stopped.isSuccess, stopped.exceptionOrNull()?.toString())
             val data = ByteBuffer.wrap(file.readBytes(), 44, (file.length() - 44).toInt()).order(ByteOrder.LITTLE_ENDIAN)
@@ -55,7 +56,7 @@ class MacSystemAudioProcessRecorderTest {
             val began = System.nanoTime()
             assertTrue(recorder.start(file).isSuccess)
             assertTrue((System.nanoTime() - began) / 1_000_000 < 1_200, "start blocked the caller")
-            Thread.sleep(2_200)
+            waitUntil { file.length() > 44 + 4 * 4_800 }
             val stopped = recorder.stop()
             assertTrue(stopped.isSuccess, stopped.exceptionOrNull()?.toString())
             assertTrue(file.length() > 44 + 4 * 4_800)

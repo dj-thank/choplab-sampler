@@ -27,6 +27,10 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 - Macローカル候補 `93c37fc` + 後続修正でUI/JVM/desktop試験・Android Previewコンパイル・Mac package・Python320件が成功。実ScreenCaptureKit→本番Presenterで257,280 stereo framesを録音し、Undo/Redo、PAD配置、24bit書出し、保存/再起動一致を確認。外部1703Hzの振幅876.329533に対し親Javaの997Hzは0.014385（-95.70dB）。合成音を使用し生音声は一時領域削除済み。これは人間の聴感受入ではない。
 - 完了条件: 追加の入力断回帰試験、必須CI、main統合、同revisionのMac packageインストール/起動readback。現時点は候補で、配布/Windows・Android端末音/Human受入は未完。rollbackは当該PRのrevertと前のapp-imageへの復帰。利用者の制作dataは保持する。
 
+## Windows CIの録音試験待機の修正
+
+rootがmain `b7d8f80` のWindows CI `36315193548` の失敗を調査。`recordsFramesSplitAcrossReadsIntactUntilStop` の4,800frame超のassertが失敗した。400ms固定待ちを保存済みbyte数に対する上限5秒の待機へ変更し、frame数・全左右sample・順序・正常停止のassertは維持する。遅い許可応答の試験も音声byteの到着を待つ。header後750ms遅延の合成helperで再現条件を固定し、旧待機では失敗、新待機で成功を確認する。失敗時のXML/HTMLをCI artifactへ残す。音声処理や実機性能の合格基準は変えない。rollbackはこの試験/CI変更のrevert。元mainのAndroid検証とMac packageは成功、Windows再検証は当該PRで追跡する。
+
 ## 段階と受入
 
 「計画」は実装済みを意味しません。PR総数は固定せず、独立して検証できる単位へ分けます。

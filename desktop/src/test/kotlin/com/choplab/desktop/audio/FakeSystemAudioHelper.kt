@@ -33,6 +33,8 @@ object FakeSystemAudioHelper {
         val finished = AtomicBoolean(false)
         Thread { while (System.`in`.read() >= 0) Unit; finished.set(true) }.apply { isDaemon = true; start() }
         out.write("CHOPLAB-PCM 48000 2\n".toByteArray()); out.flush()
+        // Optional cold-worker delay after the header: the consumer must await data, not assume pipe throughput.
+        if (mode == "normal") args.getOrNull(1)?.toLong()?.let(Thread::sleep)
         var frame = 0
         val started = System.nanoTime()
         while (!finished.get()) {
