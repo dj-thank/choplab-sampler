@@ -9,6 +9,9 @@ tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 dependencies {
     api(project(":core"))
     implementation(libs.kotlinx.serialization.json)
+    // Platform hosts already supply the matching desktop JAR or Android AAR.
+    compileOnly(libs.onnxruntime.desktop)
+    testImplementation(libs.onnxruntime.desktop)
     testImplementation(kotlin("test-junit"))
     testImplementation(libs.kotlinx.coroutines.test)
 }
