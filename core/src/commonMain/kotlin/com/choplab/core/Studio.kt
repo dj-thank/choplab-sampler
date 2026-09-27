@@ -79,10 +79,12 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
     private var commandFrame = 0L
     private var closed = false
 
-    private enum class Purpose { EDIT, NEW, OPEN, IMPORT, SELECT }
+    /** RESCUE opens a new, unsaved document built from an earlier app's file. */
+    private enum class Purpose { EDIT, NEW, OPEN, RESCUE, IMPORT, SELECT }
     private class Preparation(
         val id: Long, val generation: Long, val revision: Long, val plan: EditPlan?,
         val pattern: String, val target: PlaybackTarget, val purpose: Purpose, val answer: CompletableDeferred<ActionResult>?, val workJobId: Long?,
+        val rescued: Notice.Rescued? = null,
     ) { lateinit var job: Job }
 
     private sealed interface Message {
@@ -156,7 +158,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         is Action.Import -> start(Operation.IMPORT) { services.importer.import(action.location).also { require(services.assets.containsVerified(it)) } }
         is Action.Open -> {
             cancelAllWork()
-            start(Operation.OPEN) { services.projects.open(action.location) }
+            start(Operation.OPEN) { services.projects.openDocument(action.location) }
         }
         is Action.New -> {
             cancelAllWork()
@@ -214,15 +216,15 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
 
     /** Returns null while dispatch waits; the actor remains available for Stop, Cancel and replacement. */
     private suspend fun begin(plan: EditPlan?, answer: CompletableDeferred<ActionResult>?, purpose: Purpose = Purpose.EDIT,
-                              selectedTarget: PlaybackTarget? = null, originJobId: Long? = null): ActionResult? {
+                              selectedTarget: PlaybackTarget? = null, originJobId: Long? = null, rescued: Notice.Rescued? = null): ActionResult? {
         val project = plan?.project ?: session.project
-        val target = selectedTarget ?: normalizeTarget(project, _selection.value.playbackTarget, purpose == Purpose.NEW || purpose == Purpose.OPEN)
+        val target = selectedTarget ?: normalizeTarget(project, _selection.value.playbackTarget, purpose == Purpose.NEW || purpose == Purpose.OPEN || purpose == Purpose.RESCUE)
         val pattern = (target as? PlaybackTarget.Pattern)?.id ?: _selection.value.patternId.takeIf { id -> project.patterns.any { it.id == id } } ?: project.patterns.first().id
         if (plan != null && plan.effects.isEmpty()) return commitPrepared(plan, pattern, target, null, purpose)
         check(nextJob < Long.MAX_VALUE)
         val id = ++nextJob
         val ownsWork = originJobId ?: id.takeIf { _work.value.jobId == null }
-        val pending = Preparation(id, generation, session.revision, plan, pattern, target, purpose, answer, ownsWork)
+        val pending = Preparation(id, generation, session.revision, plan, pattern, target, purpose, answer, ownsWork, rescued)
         preparation = pending
         _work.value = if (_work.value.jobId == null) WorkState(id, Operation.EDIT, session.revision, id) else _work.value.copy(preparationId = id)
         pending.job = ownedScope.launch(preparationDispatcher) {
@@ -251,6 +253,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         pending.answer?.complete(result)
         if (result.accepted && pending.purpose == Purpose.IMPORT) notice(Notice.Completed(Operation.IMPORT))
         if (result.accepted && pending.purpose == Purpose.OPEN) notice(Notice.Completed(Operation.OPEN))
+        if (result.accepted && pending.purpose == Purpose.RESCUE) notice(requireNotNull(pending.rescued))
     }
 
     private suspend fun commitPrepared(plan: EditPlan?, pattern: String, target: PlaybackTarget, program: EngineProgram?, purpose: Purpose): ActionResult {
@@ -275,8 +278,9 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             session.commit(plan)
             _selection.value = _selection.value.copy(patternId = pattern, playbackTarget = target, slice = _selection.value.slice?.takeIf { it in (session.project.source?.slices()?.indices ?: IntRange.EMPTY) })
             publishDocument()
-            if (purpose == Purpose.NEW || purpose == Purpose.OPEN) {
+            if (purpose == Purpose.NEW || purpose == Purpose.OPEN || purpose == Purpose.RESCUE) {
                 check(generation < Long.MAX_VALUE); generation++
+                // A rescued document is new: saving must choose a file, never count the earlier app's file as saved.
                 _document.value = _document.value.copy(savedRevision = if (purpose == Purpose.OPEN) session.revision else null)
             }
             _transport.value = services.engine.snapshot()
@@ -338,7 +342,9 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             }
             Operation.OPEN -> {
                 cancelPreparation()
-                begin(session.planReplace(message.result.getOrThrow() as Project), null, Purpose.OPEN, originJobId = message.id)
+                val opened = message.result.getOrThrow() as OpenedProject
+                begin(session.planReplace(opened.project), null, if (opened.rescued == null) Purpose.OPEN else Purpose.RESCUE,
+                    originJobId = message.id, rescued = opened.rescued)
             }
             else -> {
                 _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null)

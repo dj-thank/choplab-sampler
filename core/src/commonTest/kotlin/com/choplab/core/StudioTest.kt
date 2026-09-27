@@ -49,7 +49,7 @@ class StudioTest {
         override suspend fun save(project: Project, revision: Long, location: Location) { stored = project }
         override suspend fun open(location: Location) = stored
     }
-    private fun services(engine: Engine, importer: ImportPort, projects: Projects = Projects()) = Services(MemoryAssets(), importer, projects, object : ExportPort {
+    private fun services(engine: Engine, importer: ImportPort, projects: ProjectPort = Projects()) = Services(MemoryAssets(), importer, projects, object : ExportPort {
         override suspend fun export(project: Project, patternId: String, request: ExportRequest) = ExportReceipt(request.frames.toLong() + request.tailFrames, 48_000, 2, request.bits)
     }, engine)
 
@@ -132,6 +132,35 @@ class StudioTest {
         assertEquals(-0.8f, peaks.minimum(0, 1)); assertEquals(-0.2f, peaks.maximum(0, 1))
         cache.build(WaveformCache.Key("b".repeat(64), 3), data)
         assertNull(cache.get(key)); assertTrue(cache.residentBytes <= 32)
+    }
+
+    @Test fun aDocumentRescuedFromAnEarlierAppsFileOpensUnsavedAndSaysWhatWasRescued() = runTest {
+        val rescued = Project(id = "rescued", title = "old beat", assets = frozenListOf(asset), source = Source(asset.hash, FrameRange(0, 7)),
+            pads = (0..127).map { if (it == 0) com.choplab.core.model.Pad(0, asset.hash, FrameRange(0, 7), "sample.wav") else com.choplab.core.model.Pad(it) }.frozen())
+        var earlierApp = true
+        val projects = object : ProjectPort {
+            override suspend fun save(project: Project, revision: Long, location: Location) = Unit
+            override suspend fun open(location: Location): Project = error("Studio opens through openDocument")
+            override suspend fun openDocument(location: Location) =
+                if (earlierApp) OpenedProject(rescued, Notice.Rescued(audio = 1, unplaced = 0)) else OpenedProject(Project(id = "saved"))
+        }
+        val studio = Studio(this, services(Engine(), object : ImportPort { override suspend fun import(location: Location) = asset }, projects),
+            preparationDispatcher = StandardTestDispatcher(testScheduler))
+        val notices = mutableListOf<Notice>()
+        backgroundScope.launch { studio.notices.collect { notices += it } }
+        studio.dispatch(Action.Edit(Intent.Rename("Before")))
+        assertTrue(studio.dispatch(Action.Open(Location("old.choplab"))).accepted)
+        advanceUntilIdle(); runCurrent() // The notice collector is background work.
+        assertEquals(rescued, studio.document.value.project)
+        // A new document: saving must choose a file; the earlier app's file never counts as where it was saved.
+        assertNull(studio.document.value.savedRevision)
+        assertEquals(listOf<Notice>(Notice.Rescued(1, 0)), notices)
+        notices.clear(); earlierApp = false
+        studio.dispatch(Action.Open(Location("saved.choplab"))); advanceUntilIdle(); runCurrent()
+        assertEquals("saved", studio.document.value.project.id)
+        assertEquals(studio.document.value.revision, studio.document.value.savedRevision)
+        assertEquals(listOf<Notice>(Notice.Completed(Operation.OPEN)), notices)
+        studio.dispatch(Action.Close)
     }
 
     @Test fun cancellingAnEditBeingPreparedPostsOneNotice() = runTest {

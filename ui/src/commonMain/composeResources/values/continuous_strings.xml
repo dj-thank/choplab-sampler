@@ -197,4 +197,8 @@
     <string name="ce_diag_frames_unknown">Not counted here</string>
     <string name="ce_place_no_room">Too little room is left for sounds to place this PAD with its pitch, reverse or tone on the song.</string>
     <string name="ce_place_failed">Could not prepare the sound of this PAD with its pitch, reverse or tone. Check the free storage.</string>
+    <string name="ce_rescued">Rescued the audio from a project file of the earlier app. The first sound is the original, and the others are on the PADs in order (its PAD cuts and arrangement are not carried over). The file itself is unchanged.</string>
+    <string name="ce_rescued_partly">Rescued the audio from a project file of the earlier app into the original and the PADs. Sounds beyond the sound limit are kept in this project only (its PAD cuts and arrangement are not carried over). The file itself is unchanged.</string>
+    <string name="ce_rescued_too_long">Rescued the audio from a project file of the earlier app, but it is too long for this editor for now (up to about 5 minutes 49 seconds). It is kept in this project only. The file itself is unchanged.</string>
+    <string name="ce_rescued_nothing">This project file of the earlier app holds no audio to rescue. The file itself is unchanged.</string>
 </resources>

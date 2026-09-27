@@ -70,10 +70,11 @@ class StreamFileServices(
                     publish(file, location)
                 }
             }
-            override suspend fun open(location: Location): Project = withContext(Dispatchers.IO) {
+            override suspend fun open(location: Location): Project = openDocument(location).project
+            override suspend fun openDocument(location: Location): OpenedProject = withContext(Dispatchers.IO) {
                 inScratch { file ->
                     copyBounded(documents.openInput(location), file, ArchiveLimits().maxArchiveBytes, coroutineContext)
-                    FileProjectPort(assets, { file }).open(location)
+                    FileProjectPort(assets, { file }, displayName = { documents.displayName(it) }).openDocument(location)
                 }
             }
         }

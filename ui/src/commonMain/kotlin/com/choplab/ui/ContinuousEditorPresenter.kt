@@ -225,6 +225,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 }
                 is Notice.Failed, is Notice.Rejected -> ContinuousStatus.FAILED
                 is Notice.Cancelled -> ContinuousStatus.CANCELLED
+                is Notice.Rescued -> when (notice.unplaced) {
+                    0 -> if (notice.audio == 0) ContinuousStatus.RESCUED_NOTHING else ContinuousStatus.RESCUED
+                    notice.audio -> ContinuousStatus.RESCUED_TOO_LONG
+                    else -> ContinuousStatus.RESCUED_PARTLY
+                }
                 else -> it.status
             }) }
         } }
