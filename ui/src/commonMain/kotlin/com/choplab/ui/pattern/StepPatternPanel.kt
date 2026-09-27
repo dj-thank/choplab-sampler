@@ -156,7 +156,8 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
             OutlinedTextField(firstBar, { input -> firstBar = input.take(5); input.toIntOrNull()?.takeIf { it in 1..26_041 }?.let { dispatch(PatternAction.FirstBar(it)) } },
                 enabled = state.editable, isError = !validStart, label = { Text(stringResource(Res.string.pattern_editor_start)) }, modifier = Modifier.fillMaxWidth().testTag("pattern-start"))
             val bars = state.sequence.sumOf { section -> state.project.patterns.first { it.id == section.patternId }.bars * section.repeats }
-            Text(stringResource(Res.string.pattern_editor_destination, trackName, state.firstBar, state.firstBar + bars))
+            if (state.sequence.isNotEmpty()) Text(stringResource(Res.string.pattern_editor_destination, trackName, state.firstBar, state.firstBar + bars),
+                Modifier.testTag("pattern-queue-range"))
             Button({ dispatch(PatternAction.Place(trackName)) }, enabled = state.editable && !state.dirty && state.sequence.isNotEmpty() && validStart,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pattern-place")) { Text(stringResource(Res.string.pattern_editor_place)) }
             if (state.phase == PatternPhase.RENDERING || state.phase == PatternPhase.APPLYING) {
