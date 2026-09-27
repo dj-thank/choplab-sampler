@@ -45,6 +45,7 @@
 - AssetStore: 短いPADはresident、長い伴奏/歌はprefetch。全音声を128PAD分展開しない。cache missの無音/停止通知、再読込、RAM/disk上限をengine spike前に決める。
 - Autosave: 資産をtempへ書込み→flush/検証→atomic publish→参照する小さなdocumentを3世代で確定。文書だけが先に残らない順序にする。
 - Asset lifetime: Undo/Redo、autosave全世代、実行中jobが参照する資産を保持。GCはrender外で、参照保護・中断復旧の検証後に導入する。
+- NEXTの元資産の許可拡張子はWAV/MP3/FLAC/Ogg/Opus/M4A/AAC/AIFF/AIF/MP4/WebM。コンテナ内の音声を検証し、元bytesを保持する。追加形式を含む制作は、その形式に対応したNEXTで開く（古いNEXT readerは未知の拡張子を拒否する）。
 - Import validation: 未知schema、path traversal、case衝突、重複ID/entry、不整合hash、ZIP bomb、過大size/frame、非有限値を拒否。拡張子・metadataだけを信頼しない。
 - Legacy salvage: schema1–7をまず実fixtureで音声救出。schema8/9は別履歴のfixtureが揃った場合だけ追加し、対応を自称しない。hash・frame長・channelを照合し、元を保持。容量不足・cancel・再試行は再実行可能にする。
 
