@@ -92,12 +92,12 @@ class EditorBackend private constructor(
     }
 
     /** A complete performed voice. Gain/pan/envelope are baked; placement must use unity gain and center pan. */
-    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int): Asset {
+    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset {
         require(limitFrames in 1..PadRender.MAX_FRAMES)
         require(releaseAt == null || releaseAt in 0..limitFrames)
         val samples = withContext(Dispatchers.Default) {
             com.choplab.engine.PadPerformanceRender.render(
-                ProgramCompiler.enginePad(pad, source, pcm.load(source)), releaseAt, limitFrames)
+                ProgramCompiler.enginePad(pad, source, pcm.load(source)), releaseAt, limitFrames, stopAt)
         }
         currentCoroutineContext().ensureActive()
         val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()

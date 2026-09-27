@@ -76,7 +76,7 @@ interface ContinuousEditorPorts {
     /** Renders [pad] from [source] as it sounds from its PAD into a stored sound for the song; null when it cannot. */
     suspend fun renderPad(pad: Pad, source: Asset): Asset? = null
     /** Complete performed voice, including gain/pan and release. */
-    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int): Asset? = null
+    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset? = null
 }
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */
@@ -364,7 +364,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     if (ports.originalAvailable) ports.stopOriginal()
                     letGoScratch()
                     view.update { it.copy(originalPlaying = false, playingPads = emptySet(), liveChop = null) }
-                    val kept = finishVoice() && finishHits(hitEnd) && finishSource()
+                    val kept = finishVoice() && finishHits(hitEnd, stopVoices = true) && finishSource()
                     stopped && kept
                 }
                 ContinuousEditorAction.PlayOriginal -> project.source?.let { source ->
@@ -524,7 +524,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.PauseSong -> send(Action.Pause).also { finishVoice(); finishHits() }
                 ContinuousEditorAction.StopSong -> {
                     val hitEnd = snapshotHitEnd()
-                    send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) }; finishVoice(); finishHits(hitEnd) }
+                    send(Action.Stop).also { ok -> if (ok) view.update { it.copy(playingPads = emptySet()) }; finishVoice(); finishHits(hitEnd, stopVoices = true) }
                 }
                 is ContinuousEditorAction.SetTempo -> edit(Intent.SetTempo(Tempo(action.bpm * 1000, action.swingPermille ?: project.tempo.swingPermille)))
                 ContinuousEditorAction.AddDrum -> ports.drumKitsAvailable.also { if (it) view.update { v -> v.copy(kitChooser = true, kitQuestion = null) } }
@@ -963,7 +963,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         return studio.transport.value.sequenceFrame
     }
 
-    private suspend fun finishHits(capturedEnd: Long? = null): Boolean {
+    private suspend fun finishHits(capturedEnd: Long? = null, stopVoices: Boolean = false): Boolean {
         val active = view.value.hits ?: return true
         // The pass owns presses already heard: a later pointer release cannot erase them at the song boundary.
         val endFrame = (capturedEnd ?: studio.transport.value.sequenceFrame).coerceAtMost(active.songEnd)
@@ -972,7 +972,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         }
         // A loop started by a tap remains audible after pointer-up, until the pass stops it.
         active.pending.keys.map { it.padId }.distinct().forEach { send(Action.Release(it)); held -= it }
-        val recording = active.copy(played = active.played + pending, pending = emptyMap())
+        val played = (active.played + pending).map { hit ->
+            if (stopVoices && hit.performed) hit.copy(stopAfterFrames =
+                (endFrame - active.outputDelayFrames - hit.timelineFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt()) else hit
+        }
+        val recording = active.copy(played = played, pending = emptyMap())
         view.update { it.copy(hits = null) }
         fun report(status: ContinuousStatus, ok: Boolean): Boolean {
             if (!ok) refusal = status
@@ -993,9 +997,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
                 val upper = minOf(hit.limitFrames.toLong(),
                     if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,
-                    hit.releaseAfterFrames?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE)
+                    hit.releaseAfterFrames?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE,
+                    hit.stopAfterFrames?.let { it.toLong() + com.choplab.engine.EngineCore.STEAL_FADE_FRAMES } ?: Long.MAX_VALUE)
                 if (resident + upper > ProgramCompiler.RESIDENT_FRAME_LIMIT) { refusal = ContinuousStatus.PLACE_NO_ROOM; continue }
-                val asset = try { ports.renderPerformance(pad, source, hit.releaseAfterFrames, hit.limitFrames) }
+                val asset = try { ports.renderPerformance(pad, source, hit.releaseAfterFrames, hit.limitFrames, hit.stopAfterFrames) }
                     catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { null }
                 if (asset == null) { refusal = ContinuousStatus.PLACE_FAILED; continue }
                 performances[hit] = asset

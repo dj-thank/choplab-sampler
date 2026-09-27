@@ -249,7 +249,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 
 @Immutable data class ContinuousHit(val padId: Int, val timelineFrame: Long,
-    val performed: Boolean = false, val releaseAfterFrames: Int? = null, val limitFrames: Int = 0)
+    val performed: Boolean = false, val releaseAfterFrames: Int? = null, val limitFrames: Int = 0, val stopAfterFrames: Int? = null)
 
 @Immutable data class ContinuousEditorReadout(
     val originalFrame: Long = 0,

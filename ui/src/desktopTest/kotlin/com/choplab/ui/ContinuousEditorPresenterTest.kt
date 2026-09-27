@@ -144,6 +144,27 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aReleasedOneShotIsCutAtGlobalStopInsteadOfSavingItsEntireTail() = runBlocking<Unit> {
+        val h = Harness { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(mode = PlayMode.ONE_SHOT, releaseFrames = 1_000) else it }.frozen()) }
+        try {
+            h.ports.outputDelay = 0
+            h.engine.resetPositionOnStop = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val press = ContinuousHitGesture(0, 12_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(press)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(press, false, 12_100)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 16_800)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+            val p = h.studio.document.value.project
+            assertEquals(4_896L, p.clips.single { ContinuousClipEdits.startFrame(p, it) == 12_000L }.range.length,
+                "Global stop uses the 96-frame fade, even after pointer-up and with a longer PAD release")
+        } finally { h.close() }
+    }
+
     @Test fun reviewAGatePerformanceRetainsTheDurationThatWasPlayed() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -1823,11 +1844,12 @@ class ContinuousEditorPresenterTest {
             val frames = kotlin.math.ceil(requireNotNull(pad.range).length / 2.0.pow(pad.pitchSemitones / 12)).toLong()
             return Asset("c".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "${source.name} +12", AssetRole.RENDERED, derivedFrom = source.hash)
         }
-        override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int): Asset? {
+        override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?): Asset? {
             if (renderFails) return null
             val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
             val frames = minOf(limitFrames.toLong(), if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,
-                releaseAt?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE)
+                releaseAt?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE,
+                stopAt?.let { it.toLong() + 96 } ?: Long.MAX_VALUE)
             val hash = java.security.MessageDigest.getInstance("SHA-256").digest("${pad.id}:$releaseAt:$frames".toByteArray()).joinToString("") { "%02x".format(it) }
             return Asset(hash, "wav", 44 + frames * 8, 48_000, 2, frames, "performance", AssetRole.RENDERED, derivedFrom = source.hash)
         }

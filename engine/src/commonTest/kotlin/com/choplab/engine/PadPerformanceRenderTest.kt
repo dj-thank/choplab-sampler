@@ -23,6 +23,16 @@ class PadPerformanceRenderTest {
         }
     }
 
+    @Test fun globalStopShortensAnExistingLongReleaseExactlyLikeTheLiveEngine() {
+        val pad = Pad(0, asset, 0, 2_400, releaseFrames = 1_000)
+        val rendered = PadPerformanceRender.render(pad, 480, 2_000, stopAt = 600)
+        assertEquals(696 * 2, rendered.size)
+        val live = OfflineRender.render(EngineProgram(listOf(pad)), listOf(
+            EngineCommand.Trigger(0, 0, 0), EngineCommand.Release(480, 1, 0), EngineCommand.Stop(600, 2)), 2_000)
+        for (i in rendered.indices) assertEquals(live[i], rendered[i], 1e-6f, "Sample $i")
+        for (i in rendered.size until live.size) assertEquals(0f, live[i], 1e-6f)
+    }
+
     @Test fun naturalEndAndTimelineBoundaryAreBoundedAndInvalidLoopsAreRejected() {
         val pad = Pad(0, asset, 0, 2_400)
         val natural = PadPerformanceRender.render(pad, null, 4_000)
