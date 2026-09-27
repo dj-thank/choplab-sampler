@@ -570,6 +570,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                             else releaseHit(heard, heldFrames)
                         view.update { it.copy(hits = recording.copy(pending = recording.pending - action.gesture,
                             played = if (action.cancelled) recording.played else recording.played + released)) }
+                        // A rejected scroll gesture must not leave a looping voice outside the pass's ownership.
+                        if (action.cancelled && project.pads[heard.padId].mode == PlayMode.LOOP) send(Action.Release(heard.padId))
                     }
                     true
                 }

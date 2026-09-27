@@ -165,6 +165,25 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aCancelledLoopPressStopsItsVoiceAndDoesNotCreateAnUndo() = runBlocking<Unit> {
+        val h = Harness { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(mode = PlayMode.LOOP) else it }.frozen()) }
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val press = ContinuousHitGesture(0, 12_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(press)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(press, true, 16_800)))
+            assertTrue(h.engine.commands.any { it is EngineCommand.Release && it.padId == 0 })
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertEquals(before, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertTrue(h.studio.document.value.project.clips.isEmpty(), "Only the original placement had an Undo")
+        } finally { h.close() }
+    }
+
     @Test fun reviewAGatePerformanceRetainsTheDurationThatWasPlayed() = runBlocking<Unit> {
         val h = Harness()
         try {
