@@ -231,14 +231,18 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 if (tryAwaitRelease() && frame != null) latestAction(ContinuousEditorAction.CapturePad(id, frame))
                             })
                         } else if (hit != null) Modifier.pointerInput(id, filled, pad.mode) {
-                            // A one-shot plays out as a tap does; a PAD that sounds while held stops when let go.
-                            val whileHeld = pad.mode != ContinuousPadMode.ONE_SHOT
+                            // As a tap plays it: a one-shot plays out and a loop keeps looping; a PAD that sounds while
+                            // held stops when let go.
+                            val whileHeld = pad.mode == ContinuousPadMode.GATE
                             if (filled) detectTapGestures(onPress = {
                                 val frame = latestHit?.invoke()
                                 latestAction(if (whileHeld) ContinuousEditorAction.HoldPad(id) else ContinuousEditorAction.TapPad(id))
+                                // Recorded as it begins, so a PAD still held when the pass ends is in it; taken back if
+                                // the touch turns out to be a scroll or slides off the PAD.
+                                if (frame != null) latestAction(ContinuousEditorAction.CaptureHit(id, frame))
                                 var released = false
                                 try { released = tryAwaitRelease() } finally { if (whileHeld) latestAction(ContinuousEditorAction.ReleasePad(id)) }
-                                if (released && frame != null) latestAction(ContinuousEditorAction.CaptureHit(id, frame))
+                                if (!released && frame != null) latestAction(ContinuousEditorAction.DropHit(id, frame))
                             })
                         } else Modifier.combinedClickable(interactionSource = interaction, indication = null,
                             onClick = { onAction(ContinuousEditorAction.SelectPad(id)); if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) onAction(ContinuousEditorAction.TapPad(id)) },

@@ -311,6 +311,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             // letting go of a PAD, which a pass ending under a held finger sends.
             if ((action != ContinuousEditorAction.StopVoice || view.value.voice != null) &&
                 (action != ContinuousEditorAction.StopHits || view.value.hits != null) && action !is ContinuousEditorAction.ReleasePad &&
+                // A press, or its taking back, that arrives once its pass has ended leaves that pass's message in place.
+                ((action !is ContinuousEditorAction.CaptureHit && action !is ContinuousEditorAction.DropHit) || view.value.hits != null) &&
                 (action != ContinuousEditorAction.StopSourceRecording || view.value.recordingSource)) view.update { it.copy(status = null) }
             refusal = null
             val project = studio.document.value.project
@@ -541,6 +543,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         }
                     }
                 } ?: true // A press still queued when its pass ended records nothing.
+                is ContinuousEditorAction.DropHit -> {
+                    view.update { v -> v.copy(hits = v.hits?.let { recording ->
+                        // The same hit the press recorded, heard where CaptureHit put it; the latest such, if any.
+                        val heard = ContinuousHit(action.padId, (action.songFrame - recording.outputDelayFrames).coerceAtLeast(0))
+                        val at = recording.played.lastIndexOf(heard)
+                        if (at < 0) recording else recording.copy(played = recording.played.filterIndexed { index, _ -> index != at })
+                    }) }
+                    true
+                }
                 // Only a pass puts what was played onto the song, from what it recorded.
                 is ContinuousEditorAction.PlaceHits -> false
                 ContinuousEditorAction.StopVoice -> { if (view.value.voice != null) pauseSong(); finishVoice() }
@@ -689,7 +700,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
 
     private fun allowedWhileRecording(action: ContinuousEditorAction) = when (action) {
         ContinuousEditorAction.RecordVoice, ContinuousEditorAction.StopVoice, ContinuousEditorAction.StopAll,
-        ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit,
+        ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit, is ContinuousEditorAction.DropHit,
         ContinuousEditorAction.StopSong, ContinuousEditorAction.PauseSong, is ContinuousEditorAction.Navigate,
         is ContinuousEditorAction.SelectBank, is ContinuousEditorAction.SelectPad, is ContinuousEditorAction.SelectClip,
         is ContinuousEditorAction.TapPad, is ContinuousEditorAction.HoldPad, is ContinuousEditorAction.ReleasePad,

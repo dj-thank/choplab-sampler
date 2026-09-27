@@ -860,9 +860,9 @@ class ContinuousEditorTest {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
         try {
-            // PAD A04 sounds while held; the fixture's others are one-shots.
+            // PAD A04 sounds while held and A01 loops; the fixture's others are one-shots.
             val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).let { s ->
-                s.copy(pads = s.pads.map { if (it.id == 3) it.copy(mode = ContinuousPadMode.GATE) else it }) })
+                s.copy(pads = s.pads.map { when (it.id) { 3 -> it.copy(mode = ContinuousPadMode.GATE); 0 -> it.copy(mode = ContinuousPadMode.LOOP); else -> it } }) })
             val actions = mutableListOf<ContinuousEditorAction>()
             // The song moves on while a PAD is down: the press, not the release, is when it was played.
             var songFrame = 100_000L
@@ -903,14 +903,19 @@ class ContinuousEditorTest {
                 actions.clear()
                 press("ce-pad-2")
                 assertEquals(listOf(ContinuousEditorAction.TapPad(2), ContinuousEditorAction.CaptureHit(2, 100_000)), actions)
-                // A PAD that sounds while held stops when let go.
+                // A PAD that sounds while held stops when let go; its press is recorded as it goes down, so one still
+                // held when the pass ends is in it.
                 actions.clear()
                 press("ce-pad-3")
-                assertEquals(listOf(ContinuousEditorAction.HoldPad(3), ContinuousEditorAction.ReleasePad(3), ContinuousEditorAction.CaptureHit(3, 100_000)), actions)
-                // A touch that slides off the PAD sounded, but records nothing.
+                assertEquals(listOf(ContinuousEditorAction.HoldPad(3), ContinuousEditorAction.CaptureHit(3, 100_000), ContinuousEditorAction.ReleasePad(3)), actions)
+                // A loop keeps looping when let go, as it does outside a pass.
+                actions.clear()
+                press("ce-pad-0")
+                assertEquals(listOf(ContinuousEditorAction.TapPad(0), ContinuousEditorAction.CaptureHit(0, 100_000)), actions)
+                // A touch that slides off the PAD sounded, and its press is taken back.
                 actions.clear()
                 press("ce-pad-2", Offset(0f, 160f))
-                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.TapPad(2)), actions)
+                assertEquals(listOf(ContinuousEditorAction.TapPad(2), ContinuousEditorAction.CaptureHit(2, 100_000), ContinuousEditorAction.DropHit(2, 100_000)), actions)
                 actions.clear()
                 press("ce-pad-9")
                 assertEquals(emptyList(), actions, "An empty PAD plays and records nothing")

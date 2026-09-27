@@ -938,6 +938,36 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun aPressTakenBackIsLeftOutAndOneStillHeldAsThePassEndsIsIn() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.PAD_AUDITION) }
+            // A song to play along with: PAD 1 on the first and fifth beats, to 144 000.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 96_000)))
+            h.until { it.permits(ContinuousCapability.RECORD_HITS) && it.clips.size == 2 }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.until { it.recordingHits }
+            // PAD 0 goes down at 49 920 (heard on the third beat) and is still held when the song ends. A press at 73 920
+            // turns out to be a scroll and is taken back; so is one that was never recorded, which changes nothing.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 49_920)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 73_920)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DropHit(0, 73_920)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DropHit(0, 99_999)))
+            h.engine.transport = h.engine.transport.copy(playing = false, sequencePaused = false)
+            val ended = h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED && it.clips.size == 3 }
+            assertEquals(listOf(0L, 48_000L, 96_000L), ended.clips.map { it.timelineStartFrame }.sorted())
+            // Let go after the pass, and a press or a take back that arrives after it, leave the pass and its message alone.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DropHit(0, 49_920)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 30_000)))
+            delay(100)
+            assertEquals(ContinuousStatus.HITS_PLACED, h.presenter.state.value.status)
+            assertEquals(3, h.studio.document.value.project.clips.size)
+        } finally { h.close() }
+    }
+
     @Test fun aStopWhileThePassIsAddedNeverLosesIt() = runBlocking<Unit> {
         val h = Harness()
         try {
