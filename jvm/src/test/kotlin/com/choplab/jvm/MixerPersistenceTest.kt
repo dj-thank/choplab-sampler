@@ -32,7 +32,7 @@ class MixerPersistenceTest {
         )) assertFailsWith<IllegalArgumentException> { ProjectJson.decode(mutant.toByteArray()) }
     }
 
-    @Test fun fullMixerArchiveRetainsOriginalBytesFlowStructureAndVocalChoicesInAFreshStore() = runBlocking {
+    @Test fun fullMixerArchiveRetainsOriginalBytesFlowStructureAndVocalChoicesInAFreshStore(): Unit = runBlocking {
         val directory = Files.createTempDirectory("mixer-archive-")
         try {
             val store = FileAssetStore(directory.resolve("before"))

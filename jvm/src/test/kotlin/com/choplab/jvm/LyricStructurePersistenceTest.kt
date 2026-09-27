@@ -2,12 +2,27 @@ package com.choplab.jvm
 
 import com.choplab.core.ai.*
 import com.choplab.core.model.*
+import kotlinx.serialization.json.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import kotlin.test.*
 
 class LyricStructurePersistenceTest {
+    /** Keep the actual older shape instead of relabelling a current document with new required fields. */
+    private fun previousLyricsDocument(project: Project, schema: Int): ByteArray {
+        val old = requireNotNull(javaClass.getResourceAsStream("/schema$schema-empty.json")).use { it.readBytes() }
+        val fields = ProjectJson.parse(old).jsonObject.toMutableMap()
+        val current = ProjectJson.parse(ProjectJson.encode(project)).jsonObject
+        for (name in listOf("id", "title", "tempo", "assets", "pads", "patterns", "song", "source", "lyrics")) fields[name] = current.getValue(name)
+        if (schema >= 11) fields["lyricStructure"] = current.getValue("lyricStructure")
+        else fields["lyrics"] = JsonArray(fields.getValue("lyrics").jsonArray.map { line ->
+            JsonObject(line.jsonObject + ("words" to JsonArray(line.jsonObject.getValue("words").jsonArray.map { word ->
+                JsonObject(word.jsonObject - "timingOrigin")
+            })))
+        })
+        return ProjectJson.encodeElement(JsonObject(fields))
+    }
     private fun structured(): Project {
         val placement = LyricProposal("川の歌", LyricLanguage.JAPANESE, frozenListOf(ProposalSection("一番", LyricSectionKind.VERSE, 2,
             frozenListOf(ProposalLine.create("川", "かわ", LyricLanguage.JAPANESE))))).placeStructured(0, 4, "line")
@@ -17,9 +32,7 @@ class LyricStructurePersistenceTest {
 
     @Test fun currentArchiveAutosaveAndFreshStoreKeepStructureAndWordProvenance() {
         val project = structured()
-        val previousSchema = ProjectJson.encode(project).toString(Charsets.UTF_8)
-            .replace("\"schemaVersion\":12", "\"schemaVersion\":11").replace("\"vocalComps\":[],", "")
-        assertEquals(project, ProjectJson.decode(previousSchema.toByteArray()), "Schema 11 keeps structure and returned word timing")
+        assertEquals(project, ProjectJson.decode(previousLyricsDocument(project, 11)), "Schema 11 keeps structure and returned word timing")
         val directory = Files.createTempDirectory("lyric-structure-")
         val assets = FileAssetStore(directory.resolve("assets"))
         val archive = ByteArrayOutputStream().also { ArchiveCodec().write(project, assets, it) }.toByteArray()
@@ -40,11 +53,7 @@ class LyricStructurePersistenceTest {
         val asset = Fixtures.asset(bytes)
         val project = Fixtures.project(asset).copy(lyrics = frozenListOf(LyricLine("old", "Old words", 0, 1920,
             frozenListOf(LyricWord("Old", 0, 960)))))
-        val oldDocument = ProjectJson.encode(project).toString(Charsets.UTF_8)
-            .replace("\"schemaVersion\":12", "\"schemaVersion\":10")
-            .replace("\"lyricStructure\":null,", "")
-            .replace("\"vocalComps\":[],", "")
-            .replace(",\"timingOrigin\":\"MANUAL\"", "").toByteArray()
+        val oldDocument = previousLyricsDocument(project, 10)
         val archive = Fixtures.zip(listOf("project.json" to oldDocument, asset.entryName to bytes))
         val directory = Files.createTempDirectory("lyric-migration-")
         val store = FileAssetStore(directory.resolve("assets"))
@@ -73,10 +82,13 @@ class LyricStructurePersistenceTest {
             json.replace("\"RETURNED\"", "\"PRECISE\""), json.replace("\"JAPANESE\"", "\"UNKNOWN\""),
             json.replace("\"VERSE\"", "\"UNKNOWN\""), json.replace("\"mora\":2", "\"mora\":20"),
             json.replace("\"lineId\":\"line-0\"", "\"lineId\":\"missing\""),
-            json.replace("\"schemaVersion\":12", "\"schemaVersion\":10"),
+            json.replace("\"schemaVersion\":${ProjectLimits.SCHEMA}", "\"schemaVersion\":10"),
             json.replace("\"reading\":\"かわ\"", "\"reading\":\"${"あ".repeat(513)}\""),
             json.replace("\"lyricStructure\":", "\"unknownStructure\":"),
-        )) assertFailsWith<IllegalArgumentException> { ProjectJson.decode(bad.toByteArray()) }
+        )) {
+            assertNotEquals(json, bad)
+            assertFailsWith<IllegalArgumentException> { ProjectJson.decode(bad.toByteArray()) }
+        }
         assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ByteArray(ProjectJson.MAX_BYTES + 1)) }
     }
 }

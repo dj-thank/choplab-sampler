@@ -5,6 +5,9 @@ import kotlin.math.*
 
 class MixerSnapshot {
     var frame = 0L
+    /** Bus IDs belong to the same publication as the levels, even across a Program swap. */
+    var program: MixerProgram = MixerProgram.BYPASS
+        internal set
     val peak = FloatArray(MixerProgram.STEM_COUNT * 2)
     val rms = FloatArray(MixerProgram.STEM_COUNT * 2)
 }
@@ -13,11 +16,13 @@ class MixerSnapshot {
 class MixerReadout internal constructor() {
     @Volatile private var version = 0L
     private var frame = 0L
+    private var program = MixerProgram.BYPASS
     private val peak = FloatArray(MixerProgram.STEM_COUNT * 2)
     private val rms = FloatArray(MixerProgram.STEM_COUNT * 2)
-    internal fun publish(at: Long, peaks: DoubleArray, sums: DoubleArray, frames: Int) {
+    internal fun publish(at: Long, value: MixerProgram, peaks: DoubleArray, sums: DoubleArray, frames: Int) {
         version++
         frame = at
+        program = value
         for (i in peak.indices) {
             peak[i] = peaks[i].coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
             rms[i] = (if (frames == 0) 0.0 else sqrt(sums[i] / frames)).coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
@@ -29,8 +34,9 @@ class MixerReadout internal constructor() {
             val before = version
             if (before and 1L == 0L) {
                 val at = frame
+                val value = program
                 for (i in peak.indices) { target.peak[i] = peak[i]; target.rms[i] = rms[i] }
-                if (before == version) { target.frame = at; return true }
+                if (before == version) { target.frame = at; target.program = value; return true }
             }
         }
         return false
@@ -68,7 +74,7 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
 
     fun use(value: MixerProgram) { program = value; reset() }
     fun beginBlock() { peak.fill(0.0); squares.fill(0.0) }
-    fun endBlock(frame: Long, frames: Int) { readout.publish(frame, peak, squares, frames) }
+    fun endBlock(frame: Long, frames: Int) { readout.publish(frame, program, peak, squares, frames) }
     fun beginFrame() { input.fill(0.0); hasInput = false }
     fun add(bus: Int, left: Double, right: Double) {
         require(bus in 0 until MixerProgram.MAX_BUSES)
@@ -139,8 +145,11 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
         preMasterLeft = if (program.bypass) dryLeft * fade else left
         preMasterRight = if (program.bypass) dryRight * fade else right
         master.process(program.master, preMasterLeft, preMasterRight)
-        outputLeft = master.left * settings.masterGain
-        outputRight = master.right * settings.masterGain
+        // Fading only its input leaves a low-cutoff master's stored response nonzero at reset.
+        // Include that response in the finite stop/tail fade; a bypassed master has no such history.
+        val masterFade = if (settings.master.bypass) 1.0 else fade
+        outputLeft = master.left * settings.masterGain * masterFade
+        outputRight = master.right * settings.masterGain * masterFade
         meter()
         if (stopping >= 0 && --stopping <= 0) reset()
     }

@@ -50,6 +50,11 @@ class MixerContractTest {
             assertTrue(dsp.readout.copyInto(read)); assertEquals(4992, read.frame)
             assertEquals(expected.toFloat(), read.peak[0]); assertEquals(expected.toFloat(), read.rms[0])
             assertEquals((expected / 4).toFloat(), read.rms[1])
+            assertEquals("bus-0", read.program.busId(0))
+            val replacement = MixerProgram(listOf(TrackFx()), busIds = listOf("other-track"))
+            dsp.use(replacement); dsp.beginBlock(); sample(dsp, .03125, -.015625); dsp.endBlock(4993, 1)
+            assertTrue(dsp.readout.copyInto(read)); assertSame(replacement, read.program)
+            assertEquals(4993, read.frame); assertEquals(.03125f, read.peak[0]); assertEquals(.015625f, read.peak[1])
         } finally { dsp.close() }
     }
 
@@ -176,6 +181,23 @@ class MixerContractTest {
             assertTrue(output.any { abs(it) > .8f })
             engine.controls.offer(EngineCommand.Panic(engine.frame, 2)); engine.render(output)
             assertTrue(output.all { it == 0f })
+        } finally { engine.close() }
+    }
+
+    @Test fun stopAllAlsoFadesTheMastersStoredFilterResponseBeforeClearingIt() {
+        val pcm = PcmAsset.fromInterleaved(FloatArray(2048) { .2f })
+        val program = EngineProgram(listOf(Pad(0, pcm, mode = PlayMode.LOOP, attackFrames = 0)),
+            mixer = MixerProgram(settings = MixSettings(master = MixInsert(filter = MixFilter(MixFilterMode.LOW_PASS, 20f)))))
+        val engine = EngineCore(program)
+        try {
+            engine.controls.offer(EngineCommand.Trigger(0, 1, 0)); engine.render(FloatArray(48_000 * 2))
+            engine.controls.offer(EngineCommand.StopAll(engine.frame, 2))
+            val output = FloatArray(400 * 2); engine.render(output)
+            val end = EngineCore.STEAL_FADE_FRAMES + engine.latencyFrames
+            assertTrue(output.take(72 * 2).any { it > .19f })
+            val resetEdge = (end - 4..end + 2).maxOf { abs(output[it * 2] - output[(it - 1) * 2]) }
+            assertTrue(resetEdge <= .001f, "The master filter state must not become a hard cut: edge=$resetEdge")
+            assertTrue(output.drop(end * 2).all { it == 0f })
         } finally { engine.close() }
     }
 }

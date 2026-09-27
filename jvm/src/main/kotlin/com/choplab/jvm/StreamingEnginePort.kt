@@ -316,6 +316,14 @@ open class StreamingEnginePort(
         return null
     }
 
+    /** Caller-owned storage; levels and immutable bus IDs come from one coherent rendered block. */
+    fun copyMixerReadout(target: MixerSnapshot): Boolean {
+        val view = engineView ?: return false
+        if (!view.engine.mixerReadout.copyInto(target) || view !== engineView) return false
+        target.frame += view.offset
+        return true
+    }
+
     fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
 
     /** Output health for a diagnostics readout; allocates, and asks the device, on the caller's thread only. */
