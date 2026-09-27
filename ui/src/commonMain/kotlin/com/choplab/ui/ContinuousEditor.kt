@@ -397,10 +397,11 @@ import kotlin.math.roundToLong
     Column(Modifier.fillMaxWidth().heightIn(min = 70.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (compact) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Brand()
+                Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
                 CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, primary = true, tag = "ce-stop-all")
             }
-            Box(Modifier.horizontalScroll(rememberScrollState())) { Stages(Modifier.widthIn(min = 420.dp)) }
+            Box(Modifier.horizontalScroll(rememberScrollState())) { Stages(Modifier.widthIn(min = 420.dp * LocalDensity.current.fontScale.coerceAtLeast(1f))) }
         } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(160.dp)) { Brand() }
             Stages(Modifier.weight(1f))

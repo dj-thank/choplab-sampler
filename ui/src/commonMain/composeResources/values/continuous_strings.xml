@@ -308,4 +308,6 @@
     <string name="ce_separate_failed">Separation failed. Check the audio, model and available storage.</string>
     <string name="ce_separate_use">Use separated audio as original</string>
     <string name="ce_separate_name">Drums</string>
+    <string name="ce_pad_details_show">Show sound details: %1$s</string>
+    <string name="ce_pad_details_hide">Hide sound details: %1$s</string>
 </resources>

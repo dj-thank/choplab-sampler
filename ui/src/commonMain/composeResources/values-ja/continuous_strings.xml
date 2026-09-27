@@ -308,4 +308,6 @@
     <string name="ce_separate_failed">分離できませんでした。音源・モデル・空き容量を確認してください。</string>
     <string name="ce_separate_use">分離音を原曲として使う</string>
     <string name="ce_separate_name">ドラム</string>
+    <string name="ce_pad_details_show">音の詳細を開く: %1$s</string>
+    <string name="ce_pad_details_hide">音の詳細を閉じる: %1$s</string>
 </resources>
