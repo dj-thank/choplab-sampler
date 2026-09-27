@@ -80,7 +80,7 @@ class ProgramCompiler(private val pcm: PcmPort) {
                 }
             }
             require(candidates.all { it.start in 0..Arrangement.MAX_DURATION_FRAMES && it.end <= Arrangement.MAX_DURATION_FRAMES }) { "Timeline exceeds 30 minutes" }
-            val duration = candidates.maxOfOrNull { it.end } ?: 0L
+            val duration = maxOf(candidates.maxOfOrNull { it.end } ?: 0L, target.minimumFrames)
             val anySolo = project.tracks.any { it.solo }
             val audible = candidates.filter { it.sourceEnd > it.sourceStart && !it.track.mute && it.gain > 0f && (!anySolo || it.track.solo) }
             require(audible.all { it.gain.isFinite() && it.gain <= 8f }) { "Combined track and clip gain exceeds engine limit" }
