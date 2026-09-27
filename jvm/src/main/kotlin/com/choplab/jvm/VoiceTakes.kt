@@ -3,6 +3,9 @@ package com.choplab.jvm
 import com.choplab.core.VoiceTake
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -43,8 +46,11 @@ class VoiceTakes(
      * Opens the microphone for at most [maxSeconds], fewer when the asset store or the disk has room for less: a take
      * is written once, as a 32-bit WAV, and then moved into the store.
      */
-    suspend fun start(maxSeconds: Int): Start = withContext(Dispatchers.IO) {
-        require(maxSeconds > 0)
+    suspend fun start(maxSeconds: Int, waitForCue: Boolean = false): Start {
+        var owned: VoiceRecorder? = null
+        var published = false
+        return try { withContext(Dispatchers.IO) {
+        require(maxSeconds in 1..300)
         synchronized(lock) {
             if (closed) return@withContext Start.NO_INPUT
             check(recorder == null) { "A take is already recording" }
@@ -53,19 +59,36 @@ class VoiceTakes(
         if (seconds < 1) return@withContext Start.NO_ROOM
         val input = try { microphone() } catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
         val created = try {
+            currentCoroutineContext().ensureActive()
             require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
-            VoiceRecorder(input, scratch, seconds)
+            VoiceRecorder(input, scratch, seconds, waitForCue).also { owned = it }
         } catch (failure: Exception) {
             try { input.close() } catch (_: Exception) { }
             throw failure
         }
+        currentCoroutineContext().ensureActive()
         val kept = synchronized(lock) { (!closed && recorder == null).also { if (it) recorder = created } }
-        if (!kept) { created.discard(); return@withContext Start.NO_INPUT }
+        published = kept
+        if (!kept) { owned = null; created.discard(); return@withContext Start.NO_INPUT }
         Start.STARTED
+        } } catch (cancel: CancellationException) {
+            // Permission/open can finish after cancellation. Release only the input this start still owns.
+            withContext(Dispatchers.IO + NonCancellable) {
+                owned?.let { created ->
+                    val release = synchronized(lock) {
+                        if (recorder === created) { recorder = null; true } else !published
+                    }
+                    if (release) created.discard()
+                }
+            }
+            throw cancel
+        }
     }
 
     /** The song started now. */
     fun cue() { synchronized(lock) { recorder }?.cue() }
+    fun cueAt(atNanos: Long): Boolean = synchronized(lock) { recorder }?.cueAt(atNanos) == true
+    val armingTimedOut: Boolean get() = synchronized(lock) { recorder }?.armingTimedOut == true
 
     /** The running take reached its limit. */
     val full: Boolean get() = synchronized(lock) { recorder }?.full == true
