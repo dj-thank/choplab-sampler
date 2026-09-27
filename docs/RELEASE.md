@@ -36,7 +36,7 @@ source/history scannerを短くすること自体は合格条件ではありま�
 2. Androidのsignature fingerprint、debuggable、package/version、permission/exported component、alignmentを検査。正式/Preview/debugは明示した別契約であり、見つかったbytesを後から適切な種類と呼び替えない。
 3. Windows全app-imageのversionとruntime/library/resourceを含むhash、最終APK/ZIP内部を検査。source検査だけでは生成物の安全を証明しない。
 4. ZIPは展開前にentry/path/count/size/CRC/local-central整合、compressed span/descriptorの連続所有を検証。safe名のtextでも音声magic/secretを走査。UTF-16/32、comment/extra field、nested ZIPも対象にする。
-5. 既存上限の意味を保持: 4,096 entries、通常text512KiB/member、metadata/output4MiB/archive、decoded text入力4MiB、100:1、LZMA辞書16MiB。nested depth3、64archives、16MiB/member、256MiB共有container/expanded上限。root/history集計やJIMAGEの例外も無制限化せず、置換にはattack/negative fixtureを付ける。
+5. 既存上限の意味を保持: 4,096 entries、通常text512KiB/member、metadata/output4MiB/archive、decoded text入力4MiB、100:1、LZMA辞書16MiB。nested depth3、通常64archives、16MiB/member、256MiB共有container/expanded上限。NewPipe同梱後の明示Windows app-image ZIPだけはnested JARを最大80件まで検査する（他の上限と全JAR内容検査は維持）。root/history集計やJIMAGEの例外も無制限化せず、置換にはattack/negative fixtureを付ける。
 6. 正式download後、manifest/hash/attestation/publication前にも最終配布surfaceを検査。SBOMとsource/artifact identityを結び付け、依存licenseと再配布条件をNOTICEへ反映。
 
 公開証明書とprivate keyを区別し、合成fixtureの許容は必要箇所だけに限定します。第三者依存のGPL等はNOTICE追記だけで完了にせず、combined workの配布条件・対応source・build手順を確認します。
