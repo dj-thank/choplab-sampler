@@ -174,6 +174,51 @@ import kotlin.math.roundToLong
  * while held, choke group, and clearing it. Clearing asks for a second press, and that press counts only for the PAD
  * and sound it was armed for.
  */
+/**
+ * Fills the song with the selected PAD every beat, half or quarter beat through a few bars from the bar holding [from],
+ * the song position when it was opened; applying is one Undo.
+ */
+@Composable internal fun CEPadFillDialog(state: ContinuousEditorState, pad: ContinuousPad, from: Long,
+                                         onAction: (ContinuousEditorAction) -> Unit, close: () -> Unit) {
+    var spacing by remember { mutableStateOf(ContinuousGrid.BEAT) }
+    var bars by remember { mutableIntStateOf(4) }
+    AlertDialog(onDismissRequest = close, modifier = Modifier.testTag("ce-pad-fill-panel"),
+        title = { Text(stringResource(Res.string.ce_pad_fill_title, cePadName(pad.id))) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                @Composable fun Choice(label: String, chosen: Boolean, tag: String, modifier: Modifier, choose: () -> Unit) =
+                    CEButton(label, choose, modifier.semantics { selected = chosen }, primary = chosen, tag = tag)
+                Text(stringResource(Res.string.ce_pad_fill_from, ContinuousClipEdits.barAt(from, state.milliBpm) + 1),
+                    Modifier.testTag("ce-pad-fill-from"), fontSize = 14.sp)
+                Text(stringResource(Res.string.ce_pad_fill_spacing), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for ((grid, label) in listOf(ContinuousGrid.BEAT to Res.string.ce_fill_quarters, ContinuousGrid.HALF to Res.string.ce_fill_eighths,
+                            ContinuousGrid.QUARTER to Res.string.ce_fill_sixteenths)) {
+                        Choice(stringResource(label), spacing == grid, "ce-fill-${grid.name.lowercase()}", Modifier.weight(1f)) { spacing = grid }
+                    }
+                }
+                Text(stringResource(Res.string.ce_pad_fill_length), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                @Composable fun Length(count: Int, modifier: Modifier) = Choice(if (count == 1) stringResource(Res.string.ce_fill_one_bar)
+                    else stringResource(Res.string.ce_fill_bars, count), bars == count, "ce-fill-bars-$count", modifier) { bars = count }
+                // All four in one row where they fit, otherwise two rows (phones, large text).
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    if (maxWidth >= 360.dp && LocalDensity.current.fontScale <= 1.3f) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (count in listOf(1, 2, 4, 8)) Length(count, Modifier.weight(1f))
+                    } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Length(1, Modifier.weight(1f)); Length(2, Modifier.weight(1f)) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Length(4, Modifier.weight(1f)); Length(8, Modifier.weight(1f)) }
+                    }
+                }
+                Text(stringResource(Res.string.ce_pad_fill_help), fontSize = 12.sp, lineHeight = 18.sp)
+            }
+        },
+        confirmButton = { CEButton(stringResource(Res.string.ce_pad_fill), {
+            onAction(ContinuousEditorAction.FillPad(pad.id, state.selectedTrackId, from, spacing, bars)); close()
+        }, enabled = state.permits(ContinuousCapability.PLACE_PAD), primary = true, reason = CEReason(state, ContinuousCapability.PLACE_PAD),
+            tag = "ce-pad-fill-apply") },
+        dismissButton = { CEButton(stringResource(Res.string.ce_close), close) })
+}
+
 @Composable private fun CEPadPlayDialog(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
     val pad = state.selectedPad?.takeIf { state.padPlayOpen } ?: return
     val id = pad.id
