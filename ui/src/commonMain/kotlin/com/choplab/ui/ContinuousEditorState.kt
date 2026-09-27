@@ -48,6 +48,7 @@ enum class ContinuousStatus {
     SYSTEM_DENIED, SYSTEM_NO_DISPLAY, SYSTEM_UNAVAILABLE, SYSTEM_TIMEOUT, SYSTEM_EMPTY,
     /** Refused because a take is being recorded. */
     RECORDING_BUSY,
+    RECORDING_ARM_TIMEOUT, RECORDING_CUE_CANCELLED,
     /**
      * A project file of the earlier app opened as a new document with its audio only: the first sound as the original
      * and the others on PADs; some beyond the sound limit, kept in the document only; all of them beyond it; or no
@@ -155,6 +156,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 @Immutable data class ContinuousEditorState(
     val lyrics: ContinuousLyricsState = ContinuousLyricsState(),
     val bankPadEditor: BankPadEditorState = BankPadEditorState(),
+    val recordingGuide: RecordingGuideState = RecordingGuideState(),
     val bankPadBlocked: BankPadEditProblem? = null,
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
     val projectTitle: String = "",
@@ -165,6 +167,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val liveChopping: Boolean = false,
     /** A voice take is being recorded while the song plays. */
     val recordingVoice: Boolean = false,
+    val startingVoiceRecording: Boolean = false,
     /** What the PADs play is being recorded into the song while it plays. */
     val recordingHits: Boolean = false,
     /** The microphone is collecting a new original, independent of a song or output device. */
@@ -265,10 +268,12 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     val recordingMillis: Long = 0,
     /** Independent original HAND position in native source frames; -1 while inactive. */
     val handSourceFrame: Double = -1.0,
+    val countInBeatsRemaining: Int = 0,
 )
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
+    data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
     data class BankPadEdit(val action: BankPadEditAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction

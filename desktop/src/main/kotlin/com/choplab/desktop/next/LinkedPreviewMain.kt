@@ -146,7 +146,7 @@ internal class DesktopEditorPorts(
         backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
-        handSourceFrame = backend.audition.nativeHandFrame())
+        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining)
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
     override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
@@ -165,6 +165,15 @@ internal class DesktopEditorPorts(
         VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
     }
     override fun cueVoice() = backend.voice.cue()
+    override val recordingCue: RecordingCuePort = object : RecordingCuePort {
+        override suspend fun startArmedVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds, waitForCue = true)) {
+            VoiceTakes.Start.STARTED -> VoiceStart.STARTED
+            VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
+            VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+        }
+        override fun cueVoiceAt(engineFrame: Long): Boolean = backend.engine.estimatedOutputNanos(engineFrame)?.let(backend.voice::cueAt) == true
+        override fun armingTimedOut() = backend.voice.armingTimedOut
+    }
     override fun voiceFull() = backend.voice.full
     override fun voiceRecordedMillis() = backend.voice.recordedMillis
     override fun voiceInterrupted() = backend.voice.interrupted

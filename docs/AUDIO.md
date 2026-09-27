@@ -36,6 +36,10 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 
 ボーカルの±5msは指定した有線/USB等のroute・rate・bufferで補正後の目標です。反復数・p95/最大・測定誤差を添え、Bluetoothや全端末への保証にしません。UNPROCESSED/VOICE_PERFORMANCEは対応確認とfallbackを実装。punch/compのcrossfadeは10msを初期案とし短区間でclampします。
 
+clickは共有engineのmonitorだけに出し、通常のWAV書出しgraphへ混ぜません。マイクが室内のmonitor音を拾うかどうかは実routeで別に確認します。count-inは0/1/2小節、四分音符と小節頭を同じ音声clockで鳴らし、開始cueまで曲のsequence frameを進めません。Stop/Pause/Seek/tempo変更・program交換・出力喪失でcueを取り消し、export engineはmonitor専用命令を拒否します。click用slotも既存32voice予算内に予約します。
+
+マイクを先にarmedにして、cueより前のsamplesは録音fileへ入れません。準備待ちの上限20秒と録音の最大5分を分けます。permission/command拒否・遅着・取消はscratchを破棄し、PADの開始前押下も制作へ記録しません。engine cueからhost出力時刻への変換はdriverの推定であり、入力遅延・往復補正や±5msの実測合格ではありません。
+
 ## ミックス・声・分離
 
 - WSOLAはstretch、YIN/PSOLAは単音voiceのpitch補正候補。子音・無声・低信頼・低音・急変・倍半分誤検出を評価し、不成立なら原音を保つ。非破壊A/B、キー/スケール、retune/vibratoを明示する。

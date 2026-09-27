@@ -23,6 +23,12 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
     }
     class Pause(effectiveFrame: Long, orderId: Long) : EngineCommand(effectiveFrame, orderId)
     class Resume(effectiveFrame: Long, orderId: Long) : EngineCommand(effectiveFrame, orderId)
+    /** Monitor-only click preference, absent from the document and offline rendering. */
+    class SetMetronome(effectiveFrame: Long, orderId: Long, val enabled: Boolean) : EngineCommand(effectiveFrame, orderId)
+    /** ACK immediately; the engine resumes at the published frame after 0, 1 or 2 four-beat bars. */
+    class CountInAndResume(effectiveFrame: Long, orderId: Long, val bars: Int) : EngineCommand(effectiveFrame, orderId) {
+        init { require(bars in 0..2) }
+    }
     sealed class OriginalSourceCommand(effectiveFrame: Long, orderId: Long) : EngineCommand(effectiveFrame, orderId)
     class SetOriginalSource(effectiveFrame: Long, orderId: Long, val source: OriginalSource?) : OriginalSourceCommand(effectiveFrame, orderId)
     class PlayOriginalSource(effectiveFrame: Long, orderId: Long) : OriginalSourceCommand(effectiveFrame, orderId)
@@ -120,7 +126,8 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
     fun offer(command: EngineCommand): OfferResult {
         val isOriginal = command is EngineCommand.OriginalSourceCommand
         val isHand = command is EngineCommand.OriginalHandCommand
-        if ((isOriginal || command is EngineCommand.SetSongMonitorGain) && outputMode == EngineOutputMode.EXPORT) return OfferResult.MONITOR_DISABLED
+        if ((isOriginal || command is EngineCommand.SetSongMonitorGain || command is EngineCommand.SetMetronome ||
+                command is EngineCommand.CountInAndResume) && outputMode == EngineOutputMode.EXPORT) return OfferResult.MONITOR_DISABLED
         if (command.orderId <= lastId) return OfferResult.OUT_OF_ORDER
         val globalStop = command is EngineCommand.Panic || command is EngineCommand.StopAll
         if ((globalStop && (song.full() || original.full() || hand.full() || command.effectiveFrame < maxOf(song.lastFrame, original.lastFrame, hand.lastFrame))) ||
@@ -281,6 +288,12 @@ class EngineSnapshot {
     @Volatile var originalMonitorGain = 1f
     @Volatile var songMonitorGain = 1f
     @Volatile var tickNumerator = 0L
+    @Volatile var metronomeEnabled = false
+    @Volatile var countInBeatsRemaining = 0
+    /** Absolute engine input frame of the current recording cue; -1 after cancellation. */
+    @Volatile var recordingStartFrame = -1L
+    @Volatile var recordingStartSequenceFrame = 0L
+    @Volatile var recordingStartedFrame = -1L
     @Volatile var peakLeft = 0f
     @Volatile var peakRight = 0f
     @Volatile var lateCommands = 0L
@@ -315,6 +328,11 @@ class LiveReadout internal constructor() {
         data.originalMonitorGain = engine.originalMonitorGain
         data.songMonitorGain = engine.songMonitorGain
         data.tickNumerator = engine.tickNumerator
+        data.metronomeEnabled = engine.metronomeEnabled
+        data.countInBeatsRemaining = engine.countInBeatsRemaining
+        data.recordingStartFrame = engine.recordingStartFrame
+        data.recordingStartSequenceFrame = engine.recordingStartSequenceFrame
+        data.recordingStartedFrame = engine.recordingStartedFrame
         data.peakLeft = peakLeft
         data.peakRight = peakRight
         data.lateCommands = engine.lateCommands
@@ -347,6 +365,11 @@ class LiveReadout internal constructor() {
                 target.originalMonitorGain = data.originalMonitorGain
                 target.songMonitorGain = data.songMonitorGain
                 target.tickNumerator = data.tickNumerator
+                target.metronomeEnabled = data.metronomeEnabled
+                target.countInBeatsRemaining = data.countInBeatsRemaining
+                target.recordingStartFrame = data.recordingStartFrame
+                target.recordingStartSequenceFrame = data.recordingStartSequenceFrame
+                target.recordingStartedFrame = data.recordingStartedFrame
                 target.peakLeft = data.peakLeft
                 target.peakRight = data.peakRight
                 target.lateCommands = data.lateCommands

@@ -1,0 +1,11 @@
+<resources>
+    <string name="ce_click_on">メトロノーム：オン</string>
+    <string name="ce_click_off">メトロノーム：オフ</string>
+    <string name="ce_count_in">録音前のカウントイン</string>
+    <string name="ce_count_in_off">なし</string>
+    <string name="ce_count_in_bars">%1$d 小節</string>
+    <string name="ce_count_in_remaining">カウントイン · あと %1$d 拍で録音</string>
+    <string name="ce_click_monitor_only">クリックは聴くための音です。曲や書き出しには入りません。</string>
+    <string name="ce_recording_arm_timeout">録音の準備がタイムアウトしました。開始し直してください。</string>
+    <string name="ce_recording_cue_cancelled">録音前のカウントインを取り消しました。</string>
+</resources>
