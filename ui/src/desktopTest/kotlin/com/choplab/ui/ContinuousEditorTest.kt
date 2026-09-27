@@ -236,6 +236,71 @@ class ContinuousEditorTest {
         } finally { Locale.setDefault(previous) }
     }
 
+    @Test fun padPlayPanelSetsReverseModeAndChokeAndClearsOnlyOnASecondPress() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        try {
+            val state = mutableStateOf(ContinuousEditorFixture.state())
+            val actions = mutableListOf<ContinuousEditorAction>()
+            fun update(pad: (ContinuousPad) -> ContinuousPad) {
+                state.value = state.value.copy(pads = state.value.pads.map { if (it.id == state.value.selectedPadId) pad(it) else it })
+            }
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, { action ->
+                    actions += action
+                    when (action) {
+                        ContinuousEditorAction.OpenPadPlay -> state.value = state.value.copy(padPlayOpen = true)
+                        ContinuousEditorAction.ClosePadPlay -> state.value = state.value.copy(padPlayOpen = false)
+                        is ContinuousEditorAction.SetPadReverse -> update { it.copy(reverse = action.reverse) }
+                        is ContinuousEditorAction.SetPadMode -> update { it.copy(mode = action.mode) }
+                        is ContinuousEditorAction.SetPadChoke -> update { it.copy(chokeGroup = action.group) }
+                        else -> Unit
+                    }
+                }, ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                // The opener sits with the PAD's other settings; the reference bottom actions stay where they were.
+                assertTrue(requireNotNull(scene.tag("ce-add-drums")).boundsInRoot.bottom <= 910f)
+                scene.click("ce-pad-play")
+                assertEquals(ContinuousEditorAction.OpenPadPlay, actions.last())
+                assertNotNull(scene.tag("ce-pad-play-panel"))
+                for (tag in listOf("ce-reverse-off", "ce-reverse-on", "ce-mode-once", "ce-mode-held", "ce-choke-0", "ce-choke-4", "ce-clear-pad")) {
+                    assertTrue(requireNotNull(scene.tag(tag)) { tag }.boundsInRoot.height >= 48, "$tag is a full-size button")
+                }
+                scene.click("ce-reverse-on")
+                assertEquals(ContinuousEditorAction.SetPadReverse(2, true), actions.last())
+                scene.click("ce-mode-held")
+                assertEquals(ContinuousEditorAction.SetPadMode(2, ContinuousPadMode.GATE), actions.last())
+                scene.click("ce-choke-2")
+                assertEquals(ContinuousEditorAction.SetPadChoke(2, 2), actions.last())
+                for (tag in listOf("ce-reverse-on", "ce-mode-held", "ce-choke-2")) {
+                    assertEquals(true, requireNotNull(scene.tag(tag)).config.getOrNull(SemanticsProperties.Selected), "$tag reads as chosen")
+                }
+                assertEquals(false, requireNotNull(scene.tag("ce-choke-0")).config.getOrNull(SemanticsProperties.Selected))
+                scene.capture("pad-play-desktop.png")
+                val count = actions.size
+                scene.click("ce-clear-pad")
+                assertEquals(count, actions.size, "The first press only asks")
+                assertTrue(scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.any { it.text == "もう一度押すと空にします" })
+                scene.click("ce-clear-pad")
+                assertEquals(ContinuousEditorAction.ClearPad(2), actions.last())
+                scene.click("ce-pad-play-close")
+                assertEquals(ContinuousEditorAction.ClosePadPlay, actions.last())
+                assertNull(scene.tag("ce-pad-play-panel"))
+            } finally { scene.close() }
+            val phone = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value.copy(padPlayOpen = true), {}, ContinuousEditorFixture::readout)
+            }
+            try {
+                phone.settle()
+                assertNotNull(phone.tag("ce-pad-play-panel"))
+                for (tag in listOf("ce-reverse-on", "ce-mode-held", "ce-choke-4")) assertTrue(requireNotNull(phone.tag(tag)) { tag }.boundsInRoot.height >= 48)
+                phone.capture("pad-play-phone-font200.png")
+            } finally { phone.close() }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun liveChopCutsWhereThePadWentDown() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)

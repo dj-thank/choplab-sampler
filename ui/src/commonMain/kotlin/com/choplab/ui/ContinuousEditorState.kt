@@ -17,6 +17,8 @@ enum class ContinuousCapability {
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
+    /** How the selected PAD plays (reverse, once or while held, choke group) and clearing it. */
+    PAD_PLAY,
     PLACE_PAD, MOVE_CLIP, TRIM_CLIP, SPLIT_CLIP, DUPLICATE_CLIP, DELETE_CLIP,
     TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
     ADD_DRUM, RECORD_VOICE, SCRATCH, STOP_ALL,
@@ -72,7 +74,10 @@ enum class ContinuousStatus {
     val tone: Float = 1f,
     val gain: Float = 1f,
     val looping: Boolean = false,
-) { init { require(id in 0..127 && sourceRate > 0) } }
+    val reverse: Boolean = false,
+    /** PADs sharing a nonzero group cut each other off; 0 is none. */
+    val chokeGroup: Int = 0,
+) { init { require(id in 0..127 && sourceRate > 0 && chokeGroup in 0..128) } }
 
 /** What a scratch moves: the selected PAD's sound, or the original within its range. */
 enum class ContinuousScratchTarget { PAD, ORIGINAL }
@@ -168,6 +173,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val drumKitQuestion: ContinuousKitQuestion? = null,
     /** The scratch panel while it is open. */
     val scratch: ContinuousScratch? = null,
+    /** The selected PAD's play settings panel is open. */
+    val padPlayOpen: Boolean = false,
 ) {
     init {
         require(selectedBank in 0..7 && selectedPadId in 0..127)
@@ -244,6 +251,14 @@ sealed interface ContinuousEditorAction {
     data class SetPadPitch(val padId: Int, val semitones: Float) : ContinuousEditorAction
     data class SetPadTone(val padId: Int, val tone: Float) : ContinuousEditorAction
     data class SetPadGain(val padId: Int, val gain: Float) : ContinuousEditorAction
+    data object OpenPadPlay : ContinuousEditorAction
+    data object ClosePadPlay : ContinuousEditorAction
+    data class SetPadReverse(val padId: Int, val reverse: Boolean) : ContinuousEditorAction
+    /** Once or while held; looping stays the loop button's, so LOOP is not one of these. */
+    data class SetPadMode(val padId: Int, val mode: ContinuousPadMode) : ContinuousEditorAction
+    /** 0 (none) to 4, as in the earlier app. */
+    data class SetPadChoke(val padId: Int, val group: Int) : ContinuousEditorAction
+    data class ClearPad(val padId: Int) : ContinuousEditorAction
     /** Explicit user placement only: original source is never placed by merely changing stages. */
     data class PlacePad(val padId: Int, val trackId: String?, val timelineFrame: Long) : ContinuousEditorAction
     data class SelectClip(val clipId: String?) : ContinuousEditorAction

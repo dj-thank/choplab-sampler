@@ -149,6 +149,8 @@ private data class EditorView(
     val voice: VoiceRecording? = null,
     /** The scratch panel while it is open. */
     val scratch: ScratchView? = null,
+    /** The selected PAD's play settings panel is open. */
+    val padPlay: Boolean = false,
 )
 private data class EditorInputs(val document: DocumentState, val selection: SelectionState,
                                 val work: WorkState, val playing: Boolean, val attached: Boolean)
@@ -391,6 +393,31 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.SetPadPitch -> edit(Intent.SetPad(project.pads[action.padId].copy(pitchSemitones = action.semitones.toDouble())))
                 is ContinuousEditorAction.SetPadGain -> edit(Intent.SetPad(project.pads[action.padId].copy(gain = action.gain)))
                 is ContinuousEditorAction.SetPadTone -> edit(Intent.SetPad(project.pads[action.padId].copy(tone = action.tone)))
+                ContinuousEditorAction.OpenPadPlay -> (project.pads[studio.selection.value.padId].assetHash != null).also { ok ->
+                    if (ok) view.update { it.copy(padPlay = true) }
+                }
+                ContinuousEditorAction.ClosePadPlay -> { view.update { it.copy(padPlay = false) }; true }
+                // A changed PAD stops sounding (Studio stops it), as with its other settings; only a PAD with a sound changes.
+                is ContinuousEditorAction.SetPadReverse -> project.pads[action.padId].takeIf { it.assetHash != null }
+                    ?.let { edit(Intent.SetPad(it.copy(reverse = action.reverse))) } ?: false
+                is ContinuousEditorAction.SetPadMode -> {
+                    require(action.mode != ContinuousPadMode.LOOP) { "Looping is the loop button's" }
+                    project.pads[action.padId].takeIf { it.assetHash != null }?.let { pad ->
+                        // A loop the loop button started ends here: its mode is no longer one to restore.
+                        edit(Intent.SetPad(pad.copy(mode = PlayMode.valueOf(action.mode.name)))).also { if (it) loopModes.remove(pad.id) }
+                    } ?: false
+                }
+                is ContinuousEditorAction.SetPadChoke -> {
+                    require(action.group in 0..4)
+                    project.pads[action.padId].takeIf { it.assetHash != null }
+                        ?.let { edit(Intent.SetPad(it.copy(chokeGroup = action.group))) } ?: false
+                }
+                // Studio stops the PAD. A loop the loop button started stays on record, so an Undo brings it back as it was.
+                is ContinuousEditorAction.ClearPad -> project.pads[action.padId].takeIf { it.assetHash != null }?.let { pad ->
+                    edit(Intent.ClearPad(pad.id)).also { cleared ->
+                        if (cleared) view.update { it.copy(padPlay = false, playingPads = it.playingPads - pad.id) }
+                    }
+                } ?: false
                 is ContinuousEditorAction.PlacePad -> placePad(project, action)
                 is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.TrimClip,
                 is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.DeleteClip,
@@ -463,7 +490,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         is ContinuousEditorAction.SetSongMonitorGain, is ContinuousEditorAction.SetOriginalMonitorGain,
         is ContinuousEditorAction.SetPixelsPerSecond, ContinuousEditorAction.FitTimeline, is ContinuousEditorAction.ResizePanes,
         ContinuousEditorAction.ResetPanes, is ContinuousEditorAction.SelectCompactPane, is ContinuousEditorAction.CopyDiagnostics,
-        ContinuousEditorAction.DismissDrumKit -> true
+        ContinuousEditorAction.DismissDrumKit, ContinuousEditorAction.ClosePadPlay -> true
         else -> false
     }
 
@@ -872,7 +899,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (source != null) capabilities += setOf(ContinuousCapability.SOURCE_RANGE, ContinuousCapability.ASSIGN_SOURCE_RANGE,
                 ContinuousCapability.AUTO_CHOP, ContinuousCapability.ORIGINAL_PITCH)
             if (selected.assetHash != null) {
-                capabilities += setOf(ContinuousCapability.PAD_PITCH, ContinuousCapability.PAD_TONE, ContinuousCapability.PAD_GAIN)
+                capabilities += setOf(ContinuousCapability.PAD_PITCH, ContinuousCapability.PAD_TONE, ContinuousCapability.PAD_GAIN,
+                    ContinuousCapability.PAD_PLAY)
                 // A placed clip plays its sound as it is: a transformed PAD needs a host that renders it first.
                 if (!ContinuousClipEdits.transformed(selected) || ports.padRenderAvailable) capabilities += ContinuousCapability.PLACE_PAD
             }
@@ -895,7 +923,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 when { pad.assetHash == null -> ContinuousPadKind.EMPTY; kitSounds[pad.id] != null -> ContinuousPadKind.DRUM; else -> ContinuousPadKind.SAMPLE },
                 ContinuousPadMode.valueOf(pad.mode.name), slicePeaks(p, pad.assetHash, pad.range, peaks),
                 pad.range?.start ?: 0, pad.range?.end ?: 0, pad.assetHash?.let { p.asset(it).sampleRate } ?: 48_000,
-                pad.pitchSemitones.toFloat(), tone = pad.tone, gain = pad.gain, looping = pad.mode == PlayMode.LOOP && pad.id in v.playingPads) },
+                pad.pitchSemitones.toFloat(), tone = pad.tone, gain = pad.gain, looping = pad.mode == PlayMode.LOOP && pad.id in v.playingPads,
+                reverse = pad.reverse, chokeGroup = pad.chokeGroup) },
             selectedPadId = input.selection.padId,
             tracks = p.tracks.mapIndexed { i, track -> ContinuousTrack(track.id, track.name,
                 listOf(0xFF89AD50, 0xFFC1843D, 0xFFB6A66D, 0xFFBF7A53)[i % 4], track.mute) },
@@ -924,6 +953,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 .map { kitSounds[it]?.kit?.id }.distinct().singleOrNull(),
             drumKitChooserOpen = v.kitChooser, drumKitQuestion = v.kitQuestion?.let { ContinuousKitQuestion(it.kitId, it.replaced) },
             scratch = v.scratch?.let { sheet -> ContinuousScratch(sheet.target, padAvailable = input.attached && selected.assetHash != null,
-                originalAvailable = input.attached && source != null && ports.originalAvailable, sheet.sensitivity, sheet.cut, sheet.holding) })
+                originalAvailable = input.attached && source != null && ports.originalAvailable, sheet.sensitivity, sheet.cut, sheet.holding) },
+            // Open while each change is prepared (busy), as the scratch panel and kit chooser are; a PAD left empty closes it.
+            padPlayOpen = v.padPlay && selected.assetHash != null)
     }
 }
