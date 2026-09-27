@@ -179,6 +179,8 @@
     <string name="ce_subbrand">ChopLab</string>
     <string name="ce_apply">Apply</string>
     <string name="ce_tempo_hint">40–240 BPM</string>
+    <string name="ce_tap_tempo">Tap</string>
+    <string name="ce_tap_tempo_hint">Or tap along with the song four times or more, and the BPM is filled in.</string>
     <string name="ce_bpm">BPM</string>
     <string name="ce_close">Close</string>
     <string name="ce_change_drums">Change drums</string>

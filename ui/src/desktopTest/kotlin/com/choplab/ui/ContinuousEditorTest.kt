@@ -249,6 +249,33 @@ class ContinuousEditorTest {
         } finally { scene.close(); Locale.setDefault(previous) }
     }
 
+    @Test fun tappingAlongFillsInTheTempoAndOnlyApplyingChangesIt() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.JAPAN)
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(ContinuousEditorFixture.state(), actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            scene.settle()
+            scene.click("ce-tempo")
+            fun value() = requireNotNull(scene.tag("ce-tempo-value")).config.getOrNull(SemanticsProperties.EditableText)?.text
+            assertEquals("92", value())
+            val tap = requireNotNull(scene.tag("ce-tap-tempo"))
+            assertTrue(tap.boundsInRoot.height >= 64f, "A large target to tap in time")
+            val press = requireNotNull(tap.config[SemanticsActions.OnClick].action)
+            press(); scene.settle()
+            assertEquals("92", value(), "One tap has no tempo yet")
+            // Taps at once are faster than any song: the fastest tempo it takes.
+            press(); press(); scene.settle()
+            assertEquals("240", value())
+            assertTrue(actions.none { it is ContinuousEditorAction.SetTempo }, "Nothing changes until it is applied")
+            scene.capture("tempo-tap-desktop.png")
+            scene.click("ce-tempo-apply")
+            assertEquals(ContinuousEditorAction.SetTempo(240), actions.last())
+        } finally { scene.close(); Locale.setDefault(previous) }
+    }
+
     @Test fun sliderDragsCommitOneDocumentEditWhenReleased() = runBlocking<Unit> {
         for ((stage, tag) in listOf(ContinuousStage.CHOP to "ce-source-range", ContinuousStage.BEAT to "ce-clip-gain")) {
             val actions = mutableListOf<ContinuousEditorAction>()
