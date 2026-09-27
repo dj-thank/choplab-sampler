@@ -9,6 +9,8 @@ sealed interface Intent {
     data class Rename(val title: String) : Intent
     data class SetTempo(val tempo: Tempo, val gesture: String? = null) : Intent
     data class SetBank(val bank: Bank) : Intent
+    data class SetTrackMix(val track: Track) : Intent
+    data class SetMasterMix(val settings: com.choplab.engine.MixSettings) : Intent
     data class ImportAsset(val asset: Asset) : Intent
     data class SetSourceRange(val range: FrameRange, val gesture: String? = null) : Intent
     data class SetSourcePitch(val semitones: Double, val gesture: String? = null) : Intent
@@ -71,6 +73,12 @@ object Reducer {
             is Intent.Rename -> before.copy(title = intent.title)
             is Intent.SetTempo -> before.copy(tempo = intent.tempo)
             is Intent.SetBank -> before.copy(banks = before.banks.map { if (it.id == intent.bank.id) intent.bank else it }.frozen())
+            is Intent.SetTrackMix -> {
+                val current = requireNotNull(before.tracks.firstOrNull { it.id == intent.track.id })
+                require(current.kind == intent.track.kind && current.name == intent.track.name) { "Mixing cannot change track identity" }
+                before.copy(tracks = before.tracks.map { if (it.id == current.id) intent.track else it }.frozen())
+            }
+            is Intent.SetMasterMix -> before.copy(mix = intent.settings)
             is Intent.ImportAsset -> before.copy(
                 assets = mergeAssets(before.assets, listOf(intent.asset)),
                 source = Source(intent.asset.hash, FrameRange(0, intent.asset.frames)),
@@ -202,7 +210,12 @@ object Reducer {
         if (before == after) return Reduction(before, Mutation.NONE, frozenListOf())
         // Tapping lyric timing during playback edits the document without interrupting its voices.
         if (before.copy(lyrics = after.lyrics, lyricStructure = after.lyricStructure) == after) return Reduction(after, Mutation.PROJECT, frozenListOf(), key)
-        val stopped = before.pads.indices.filter { before.pads[it] != after.pads[it] && before.pads[it].assetHash != null }.frozen()
+        val mixChanged = before.mix != after.mix || before.tracks != after.tracks ||
+            before.banks.map { it.trackId } != after.banks.map { it.trackId }
+        val stopped = before.pads.indices.filter {
+            before.pads[it].assetHash != null && (before.pads[it] != after.pads[it] ||
+                (mixChanged && (before.banks[it / 16].trackId != null || after.banks[it / 16].trackId != null)))
+        }.frozen()
         val effects = buildList {
             if (stopped.isNotEmpty()) add(Effect.StopPads(stopped))
             add(Effect.PublishProject)

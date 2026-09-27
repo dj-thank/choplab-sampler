@@ -101,6 +101,10 @@ class Pad(
     val sustainLevel: Float = 1f,
     /** 1 leaves the sound untouched; lower values darken it with a one-pole low-pass, down to 80 Hz at 0. */
     val tone: Float = 1f,
+    val mixBus: Int = MixerProgram.UNROUTED_BUS,
+    /** Track fader follows the raw PAD/bake, so its pan is never baked or combined twice. */
+    val mixGain: Float = 1f,
+    val mixPan: Float = 0f,
 ) {
     init {
         require(id in 0 until EngineFormat.PAD_COUNT)
@@ -111,9 +115,13 @@ class Pad(
         require(attackFrames in 0..48_000 && releaseFrames in 1..48_000 && loopCrossfadeFrames in 0..24_000)
         require(decayFrames in 0..48_000 && sustainLevel.isFinite() && sustainLevel in 0f..1f)
         require(tone.isFinite() && tone in 0f..1f)
+        require(mixBus in 0 until MixerProgram.MAX_BUSES)
+        require(mixGain.isFinite() && mixGain in 0f..8f && mixPan.isFinite() && mixPan in -1f..1f)
     }
     /** The earlier app's curve: corner 80 Hz x 225^tone, so 1 would be 18 kHz; the top step bypasses exactly. */
     internal val toneAlpha: Double = if (tone >= TONE_BYPASS) 1.0 else 1.0 - exp(-2.0 * PI * 80.0 * 225.0.pow(tone.toDouble()) / EngineFormat.SAMPLE_RATE)
+    internal val mixLeftGain = mixGain * if (mixPan > 0f) cos(mixPan * PI / 2).toFloat() else 1f
+    internal val mixRightGain = mixGain * if (mixPan < 0f) cos(-mixPan * PI / 2).toFloat() else 1f
     internal val step = 2.0.pow(pitchSemitones / 12.0) * if (reverse) -1.0 else 1.0
     internal val leftGain = gain * if (pan > 0f) cos(pan * PI / 2).toFloat() else 1f
     internal val rightGain = gain * if (pan < 0f) cos(-pan * PI / 2).toFloat() else 1f
@@ -157,6 +165,7 @@ class EngineProgram(
     val revision: Long = 0,
     val arrangement: Arrangement? = null,
     private val preparedPcm: PcmLeaseGroup? = null,
+    val mixer: MixerProgram = MixerProgram.BYPASS,
 ) {
     private val slots: Array<Pad?> = arrayOfNulls(EngineFormat.PAD_COUNT)
     private val assets: Array<PcmAsset>

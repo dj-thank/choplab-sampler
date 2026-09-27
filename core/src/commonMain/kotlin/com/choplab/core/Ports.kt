@@ -26,8 +26,11 @@ interface ProjectPort {
     /** Opens [location]; a port that also reads the earlier app's project files says what it rescued from one. */
     suspend fun openDocument(location: Location): OpenedProject = OpenedProject(open(location))
 }
-data class ExportRequest(val location: Location, val frames: Int, val tailFrames: Int = 0, val bits: Int = 24, val seed: Int = 1) {
-    init { require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..480_000 && bits in setOf(16, 24)) }
+enum class ExportTailMode { INCLUDE_GRAPH_TAIL, EXACT }
+data class ExportRequest(val location: Location, val frames: Int, val tailFrames: Int = 0, val bits: Int = 24, val seed: Int = 1,
+                         val tailMode: ExportTailMode = ExportTailMode.INCLUDE_GRAPH_TAIL) {
+    init { require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES &&
+        tailFrames in 0..com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES && bits in setOf(16, 24)) }
 }
 data class ExportReceipt(val frames: Long, val sampleRate: Int, val channels: Int, val bits: Int)
 /**

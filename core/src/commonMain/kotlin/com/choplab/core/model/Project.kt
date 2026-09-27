@@ -15,7 +15,7 @@ fun <T> Iterable<T>.frozen(): FrozenList<T> = FrozenList.from(this)
 fun <T> frozenListOf(vararg values: T): FrozenList<T> = values.asList().frozen()
 
 object ProjectLimits {
-    const val SCHEMA = 12
+    const val SCHEMA = 13
     const val PPQ = 960
     const val PAD_COUNT = 128
     const val BANK_COUNT = 8
@@ -90,8 +90,9 @@ data class Source(val assetHash: String, val range: FrameRange, val markers: Fro
         .zipWithNext { a, b -> FrameRange(a, b) }.frozen()
 }
 
-data class Bank(val id: Int, val name: String = ('A' + id).toString(), val color: Int = 0x4477aa, val role: String = "samples") {
-    init { require(id in 0..7 && color in 0..0xffffff); requireLabel(name, 48); requireLabel(role, 48) }
+data class Bank(val id: Int, val name: String = ('A' + id).toString(), val color: Int = 0x4477aa, val role: String = "samples",
+                val trackId: String? = null) {
+    init { require(id in 0..7 && color in 0..0xffffff); requireLabel(name, 48); requireLabel(role, 48); trackId?.let(::requireId) }
 }
 
 data class Pad(
@@ -145,7 +146,8 @@ data class SongSection(val patternId: String, val repeats: Int = 1) {
     init { requireId(patternId); require(repeats in 1..128) }
 }
 enum class TrackKind { BANK, SOURCE, STEM, VOCAL, GUIDE, CLICK }
-data class Track(val id: String, val name: String, val kind: TrackKind, val gain: Float = 1f, val pan: Float = 0f, val mute: Boolean = false, val solo: Boolean = false) {
+data class Track(val id: String, val name: String, val kind: TrackKind, val gain: Float = 1f, val pan: Float = 0f, val mute: Boolean = false, val solo: Boolean = false,
+                 val fx: com.choplab.engine.TrackFx = com.choplab.engine.TrackFx()) {
     init {
         requireId(id); requireLabel(name, 80)
         require(gain.isFinite() && gain in 0f..8f && pan.isFinite() && pan in -1f..1f)
@@ -201,6 +203,7 @@ data class Project(
     val source: Source? = null,
     val tempo: Tempo = Tempo(),
     val schemaVersion: Int = ProjectLimits.SCHEMA,
+    val mix: com.choplab.engine.MixSettings = com.choplab.engine.MixSettings(),
     val lyricStructure: LyricStructure? = null,
     val vocalComps: FrozenList<VocalComp> = frozenListOf(),
 ) {
@@ -213,6 +216,9 @@ data class Project(
         require(patterns.size in 1..ProjectLimits.MAX_PATTERNS && patterns.map { it.id }.distinct().size == patterns.size)
         require(song.size <= 1024 && song.all { section -> patterns.any { it.id == section.patternId } })
         require(tracks.size <= 64 && tracks.map { it.id }.distinct().size == tracks.size)
+        require(banks.all { bank -> bank.trackId == null || tracks.any { it.id == bank.trackId && it.kind == TrackKind.BANK } }) {
+            "A BANK route must reference a BANK track"
+        }
         require(clips.size <= 4096 && clips.map { it.id }.distinct().size == clips.size)
         require(lyrics.size <= 4096 && lyrics.map { it.id }.distinct().size == lyrics.size)
         require(lyricStructure == null || lyricStructure.sections.all { section -> section.lines.all { reading -> lyrics.any { it.id == reading.lineId } } })

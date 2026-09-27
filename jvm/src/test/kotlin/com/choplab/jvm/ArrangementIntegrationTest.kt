@@ -113,18 +113,21 @@ class ArrangementIntegrationTest {
 
     @Test fun thirtyMinuteExportBoundaryBuildsAnExactHeaderWithoutAllocatingTheSong() {
         val maximum = ProjectLimits.MAX_TIMELINE_FRAMES.toInt()
-        val request = ExportRequest(Location("maximum"), maximum, tailFrames = 480_000)
+        val request = ExportRequest(Location("maximum"), maximum, tailFrames = com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES)
         val output = ByteArrayOutputStream()
         val writer = WavCodec.PcmWriter(output, request.frames.toLong() + request.tailFrames, bits = 24, bufferFrames = 480)
         val header = output.toByteArray()
-        val dataBytes = (maximum.toLong() + 480_000) * 2 * 3
+        val dataBytes = (maximum.toLong() + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES) * 2 * 3
         assertEquals(44, header.size)
         assertEquals(dataBytes, header.u32(40)); assertEquals(dataBytes + 36, header.u32(4))
         assertEquals(2880, writer.bufferBytes)
-        assertEquals(dataBytes + 44, WavCodec.MAX_EXPORT_WAV_BYTES)
+        assertTrue(dataBytes + 44 < WavCodec.MAX_EXPORT_WAV_BYTES)
+        val floating = ByteArrayOutputStream()
+        WavCodec.FloatWriter(floating, maximum.toLong() + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES, assetBounded = false)
+        assertEquals(WavCodec.MAX_EXPORT_WAV_BYTES, floating.toByteArray().u32(40) + 44)
         assertTrue(dataBytes + 36 < 0x1_0000_0000L)
         assertFailsWith<IllegalArgumentException> { ExportRequest(Location("too-long"), maximum + 1) }
-        assertFailsWith<IllegalArgumentException> { WavCodec.PcmWriter(ByteArrayOutputStream(), maximum + 480_001L) }
+        assertFailsWith<IllegalArgumentException> { WavCodec.PcmWriter(ByteArrayOutputStream(), maximum + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES + 1L) }
         val cancelled = ByteArrayOutputStream()
         assertFailsWith<CancellationException> { StreamingWavRenderer.render(com.choplab.engine.EngineProgram.EMPTY, cancelled, maximum, 480_000, cancelled = { true }) }
         assertEquals(44, cancelled.size()) // Header/preflight only: zero audio frames rendered.

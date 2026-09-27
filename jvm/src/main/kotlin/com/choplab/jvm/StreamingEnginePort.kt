@@ -194,7 +194,7 @@ open class StreamingEnginePort(
         // Built by the caller, before the audio owner starts: the first engine prepares its interpolation tables, which
         // takes seconds on a slow or interpreted runtime. An edit sent meanwhile would wait for an engine that did not
         // exist yet and be refused, so the driver exists only once its engine does.
-        outputMemory = runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L) }
+        outputMemory = runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L + MixerDsp.PCM_BYTES) }
         val first = try { EngineCore() } catch (failure: Throwable) { outputMemory.close(); throw failure }
         engineView = EngineView(first, 0)
         owner = Thread({ runOwner(first) }, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }

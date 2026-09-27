@@ -64,7 +64,7 @@ class VocalCompRendererTest {
     }
 
     @Test fun schema12RequiresEveryChoiceAndMigrates10And11WithoutDroppingLyricStructure() {
-        val current = ProjectJson.encode(Project()).toString(Charsets.UTF_8)
+        val current = requireNotNull(javaClass.getResourceAsStream("/schema12-empty.json")).use { it.readBytes().toString(Charsets.UTF_8) }
         for (schema in listOf(10, 11)) {
             val old = requireNotNull(javaClass.getResourceAsStream("/schema$schema-empty.json")).use { it.readBytes() }
             assertEquals(Project(), ProjectJson.decode(old))

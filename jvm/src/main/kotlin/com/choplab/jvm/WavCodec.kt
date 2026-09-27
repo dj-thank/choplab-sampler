@@ -17,13 +17,15 @@ object WavCodec {
         private val frames: Long,
         sampleRate: Int = 48_000,
         private val channels: Int = 2,
+        assetBounded: Boolean = true,
     ) {
         private val buffer = ByteArray(16_384)
         private var written = 0L
         private var finished = false
         init {
-            require(frames in 1..ProjectLimits.MAX_FRAMES && sampleRate in 8_000..192_000 && channels in 1..2)
-            require(44 + frames * channels * 4 <= ProjectLimits.MAX_ASSET_BYTES)
+            require(frames in 1..(if (assetBounded) ProjectLimits.MAX_FRAMES else ProjectLimits.MAX_TIMELINE_FRAMES + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES) &&
+                sampleRate in 8_000..192_000 && channels in 1..2)
+            require(44 + frames * channels * 4 <= (if (assetBounded) ProjectLimits.MAX_ASSET_BYTES else MAX_EXPORT_WAV_BYTES))
             floatHeader(output, frames * channels * 4, sampleRate, channels)
         }
         fun write(samples: FloatArray, offsetFrames: Int = 0, frameCount: Int = samples.size / channels - offsetFrames) {
@@ -49,8 +51,8 @@ object WavCodec {
         }
     }
 
-    /** Standalone 30-minute stereo PCM24 export plus the maximum explicit tail. Asset budgets are separate. */
-    const val MAX_EXPORT_WAV_BYTES = 44L + (ProjectLimits.MAX_TIMELINE_FRAMES + 480_000) * 2 * 3
+    /** Standalone 30-minute stereo float32/PCM export plus the maximum explicit tail. Asset budgets stay separate. */
+    const val MAX_EXPORT_WAV_BYTES = 44L + (ProjectLimits.MAX_TIMELINE_FRAMES + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES) * 2 * 4
     /** Reuses one quantizer and byte buffer for a known-length PCM stream. Does not own output. */
     class PcmWriter(
         private val output: OutputStream,
@@ -69,7 +71,7 @@ object WavCodec {
         private var finished = false
         val bufferBytes: Int get() = buffer.size
         init {
-            require(frames in 1..(ProjectLimits.MAX_TIMELINE_FRAMES + 480_000) && sampleRate in 8_000..192_000 && channels in 1..2)
+            require(frames in 1..(ProjectLimits.MAX_TIMELINE_FRAMES + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES) && sampleRate in 8_000..192_000 && channels in 1..2)
             require(bufferFrames in 1..65_536)
             buffer = ByteArray(bufferFrames * channels * sampleBytes)
             header(output, frames * channels * sampleBytes, sampleRate, channels, bits, 1)
@@ -143,7 +145,7 @@ object WavCodec {
         output.le16(channels * bits / 8); output.le16(bits); output.ascii("data"); output.le32(bytes)
     }
     private fun parse(input: InputStream, maxBytes: Long, maxDecodedBytes: Long, allocate: Boolean): WavAudio {
-        require(maxBytes in 44..ProjectLimits.MAX_ASSET_BYTES)
+        require(maxBytes in 44..maxOf(ProjectLimits.MAX_ASSET_BYTES, MAX_EXPORT_WAV_BYTES))
         require(!allocate || maxDecodedBytes in 4..EngineFormat.MAX_RESIDENT_BYTES)
         val head = input.exact(12)
         require(head.ascii(0, 4) == "RIFF" && head.ascii(8, 4) == "WAVE") { "Not RIFF WAVE" }
@@ -178,7 +180,8 @@ object WavCodec {
                     val alignment = fmt.channels * sampleBytes
                     require(size > 0 && size % alignment == 0L)
                     val frames = size / alignment
-                    require(frames in 1..(ProjectLimits.MAX_FRAMES + 480_000))
+                    require(frames in 1..(if (maxBytes > ProjectLimits.MAX_ASSET_BYTES)
+                        ProjectLimits.MAX_TIMELINE_FRAMES + com.choplab.engine.MixerProgram.MAX_TAIL_FRAMES else ProjectLimits.MAX_FRAMES + 480_000))
                     val samples = frames * fmt.channels
                     require(!allocate || samples * 4 <= maxDecodedBytes) { "Decoded WAV exceeds residency limit" }
                     if (allocate) data = FloatArray(samples.toInt())
