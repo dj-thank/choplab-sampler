@@ -544,7 +544,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         else -> {
                             val heard = ContinuousHit(press.padId, (press.songFrame - recording.outputDelayFrames).coerceAtLeast(0),
                                 performed = true, limitFrames = (recording.songEnd - press.songFrame).coerceAtMost(com.choplab.engine.PadRender.MAX_FRAMES.toLong()).toInt())
-                            view.update { it.copy(hits = it.hits?.copy(pending = recording.pending + (press to heard))) }; true
+                            val group = project.pads[press.padId].chokeGroup
+                            fun choked(hit: ContinuousHit): ContinuousHit =
+                                if (group != 0 && hit.performed && project.pads[hit.padId].chokeGroup == group)
+                                    releaseHit(hit, (heard.timelineFrame - hit.timelineFrame).coerceAtLeast(0).coerceAtMost(hit.limitFrames.toLong()).toInt())
+                                else hit
+                            view.update { it.copy(hits = recording.copy(
+                                played = recording.played.map(::choked),
+                                pending = recording.pending.mapValues { choked(it.value) } + (press to heard))) }; true
                         }
                     }
                 } ?: true
@@ -555,7 +562,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         val end = action.songFrame ?: ports.readout().songFrame
                         val heldFrames = (end - action.gesture.songFrame).coerceIn(0L, heard.limitFrames.toLong()).toInt()
                         val released = if (project.pads[heard.padId].mode == PlayMode.ONE_SHOT) heard
-                            else heard.copy(releaseAfterFrames = heldFrames)
+                            else releaseHit(heard, heldFrames)
                         view.update { it.copy(hits = recording.copy(pending = recording.pending - action.gesture,
                             played = if (action.cancelled) recording.played else recording.played + released)) }
                     }
@@ -922,6 +929,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      * on the grid, as placing it would. The caller stops or pauses the song. Reports the outcome in the status line
      * itself, also when the song's end ends the pass.
      */
+    /** A later finger-up cannot undo an earlier choke/note-off. */
+    private fun releaseHit(hit: ContinuousHit, afterFrames: Int) =
+        hit.copy(releaseAfterFrames = minOf(hit.releaseAfterFrames ?: afterFrames, afterFrames))
+
     private suspend fun snapshotHitEnd(): Long? {
         if (view.value.hits == null) return null
         send(Action.RefreshTransport)
@@ -933,7 +944,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         // The pass owns presses already heard: a later pointer release cannot erase them at the song boundary.
         val endFrame = (capturedEnd ?: studio.transport.value.sequenceFrame).coerceAtMost(active.songEnd)
         val pending = active.pending.map { (gesture, hit) ->
-            hit.copy(releaseAfterFrames = (endFrame - gesture.songFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt())
+            releaseHit(hit, (endFrame - gesture.songFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt())
         }
         val recording = active.copy(played = active.played + pending, pending = emptyMap())
         view.update { it.copy(hits = null) }

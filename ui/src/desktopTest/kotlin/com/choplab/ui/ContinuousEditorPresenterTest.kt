@@ -69,6 +69,40 @@ class ContinuousEditorPresenterTest {
         }
     }
 
+    @Test fun loopReleaseAndChokeKeepTheFirstNoteOffAcrossLaterFingerRelease() = runBlocking<Unit> {
+        for (mode in listOf(PlayMode.GATE, PlayMode.LOOP, PlayMode.ONE_SHOT)) {
+            val h = Harness { p -> p.copy(pads = p.pads.map {
+                if (it.id in 0..1) it.copy(mode = mode, chokeGroup = 1) else it
+            }.frozen()) }
+            try {
+                h.ports.outputDelay = 0
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(1, null, 0)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
+                h.until { it.permits(ContinuousCapability.RECORD_HITS) }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+                val first = ContinuousHitGesture(0, 12_000)
+                val second = ContinuousHitGesture(1, 16_800)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(first)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(second)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(1)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(first, false, 24_000)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(second, false, 24_000)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(1)))
+                h.engine.transport = h.engine.transport.copy(sequenceFrame = 24_000)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+                val project = h.studio.document.value.project
+                val firstClip = project.clips.single { ContinuousClipEdits.startFrame(project, it) == 12_000L }
+                assertEquals(4_896L, firstClip.range.length, "$mode stopped at choke, not the later release")
+                if (mode == PlayMode.LOOP) {
+                    val secondClip = project.clips.single { ContinuousClipEdits.startFrame(project, it) == 16_800L }
+                    assertEquals(7_296L, secondClip.range.length, "Loop ends at note-off plus release")
+                }
+            } finally { h.close() }
+        }
+    }
+
     @Test fun reviewAGatePerformanceRetainsTheDurationThatWasPlayed() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -1723,7 +1757,8 @@ class ContinuousEditorPresenterTest {
             val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
             val frames = minOf(limitFrames.toLong(), if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,
                 releaseAt?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE)
-            return Asset("d".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "performance", AssetRole.RENDERED, derivedFrom = source.hash)
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest("${pad.id}:$releaseAt:$frames".toByteArray()).joinToString("") { "%02x".format(it) }
+            return Asset(hash, "wav", 44 + frames * 8, 48_000, 2, frames, "performance", AssetRole.RENDERED, derivedFrom = source.hash)
         }
         @Volatile var originalFrame = 0L
         @Volatile var stops = 0
