@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import com.choplab.core.*
 import com.choplab.core.model.Asset
+import com.choplab.core.model.Pad
 import com.choplab.jvm.*
 import com.choplab.sampler.R
 import com.choplab.ui.*
@@ -95,6 +96,8 @@ class NextSession private constructor(
         override suspend fun scratchOriginalTo(position: Double, durationFrames: Int) = backend.audition.scratchTo(position, durationFrames)
         override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
         override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
+        override val padRenderAvailable = true
+        override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
         override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames)
         override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)

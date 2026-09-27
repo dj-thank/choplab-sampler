@@ -63,6 +63,10 @@ interface ContinuousEditorPorts {
     suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean = false
     suspend fun scratchOriginalCut(gain: Float): Boolean = false
     suspend fun scratchOriginalEnd(): Boolean = false
+    /** Whether this host renders a transformed PAD (pitch, reverse, tone) so it can be placed on the song. */
+    val padRenderAvailable: Boolean get() = false
+    /** Renders [pad] from [source] as it sounds from its PAD into a stored sound for the song; null when it cannot. */
+    suspend fun renderPad(pad: Pad, source: Asset): Asset? = null
 }
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */
@@ -169,6 +173,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private var refusal: ContinuousStatus? = null
     /** A finished take is being added: a stop pressed meanwhile must not cancel that edit. */
     @Volatile private var finishingTake = false
+    /**
+     * Notices already received as the answer to this presenter's own requests. The studio also posts each on its notice
+     * flow, collected on another coroutine, where the copy can arrive after a newer message; those copies are skipped.
+     */
+    private val answeredNotices = MutableStateFlow<List<Notice>>(emptyList())
     /** The hand on the scratch platter, if any, and the loop that passes its moves on. */
     @Volatile private var grip: ScratchGrip? = null
     private var pump: Job? = null
@@ -201,6 +210,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             }
         }
         jobs.launch { studio.notices.collect { notice ->
+            var answered = false
+            answeredNotices.update { list ->
+                val at = list.indexOfFirst { it === notice }
+                answered = at >= 0
+                if (at >= 0) list.filterIndexed { index, _ -> index != at } else list
+            }
+            if (answered) return@collect
             view.update { it.copy(status = when (notice) {
                 is Notice.Completed -> when (notice.operation) {
                     Operation.SAVE -> ContinuousStatus.SAVED
@@ -370,7 +386,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.SetPadPitch -> edit(Intent.SetPad(project.pads[action.padId].copy(pitchSemitones = action.semitones.toDouble())))
                 is ContinuousEditorAction.SetPadGain -> edit(Intent.SetPad(project.pads[action.padId].copy(gain = action.gain)))
                 is ContinuousEditorAction.SetPadTone -> edit(Intent.SetPad(project.pads[action.padId].copy(tone = action.tone)))
-                is ContinuousEditorAction.PlacePad, is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.TrimClip,
+                is ContinuousEditorAction.PlacePad -> placePad(project, action)
+                is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.TrimClip,
                 is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.DeleteClip,
                 is ContinuousEditorAction.SetClipGain, is ContinuousEditorAction.SetTrackMuted -> {
                     val intent = ContinuousClipEdits.intent(project, action, ::freshId)
@@ -553,7 +570,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         finishingTake = true
         try {
             repeat(3) {
-                val result = studio.dispatch(Action.Edit(intent))
+                val result = answered(studio.dispatch(Action.Edit(intent)))
                 if (result.accepted) return true
                 if (result.notice !is Notice.Cancelled) return false
             }
@@ -576,6 +593,23 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             finishVoice()
             refresh.update { it + 1 }
         } finally { serialized.unlock() }
+    }
+
+    /** A transformed PAD is rendered first and placed as that sound, if the engine has room for it. */
+    private suspend fun placePad(project: Project, action: ContinuousEditorAction.PlacePad): Boolean {
+        val pad = project.pads.getOrNull(action.padId) ?: return false
+        val source = project.asset(pad.assetHash ?: return false)
+        val rendered = if (!ContinuousClipEdits.transformed(pad)) null else {
+            val range = requireNotNull(pad.range)
+            val length = ProgramCompiler.sourceFrameTo48k(range.end, source.sampleRate) - range.start * 48_000 / source.sampleRate
+            val frames = kotlin.math.ceil(length / 2.0.pow(pad.pitchSemitones / 12)).toLong()
+            if (ProgramCompiler.residentFrames(project) + frames > ProgramCompiler.RESIDENT_FRAME_LIMIT) {
+                refusal = ContinuousStatus.PLACE_NO_ROOM; return false
+            }
+            val asset = try { ports.renderPad(pad, source) } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { null }
+            asset ?: run { refusal = ContinuousStatus.PLACE_FAILED; return false }
+        }
+        return edit(ContinuousClipEdits.intent(project, action, ::freshId, rendered))
     }
 
     /** Opens the scratch panel on the selected PAD when it holds a sound, otherwise on the original. */
@@ -742,7 +776,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         send(Action.RefreshTransport)
         if (studio.transport.value.playing) send(Action.Pause)
     }
-    private suspend fun send(action: Action): Boolean = studio.dispatch(action).accepted
+    private suspend fun send(action: Action): Boolean = answered(studio.dispatch(action)).let { result ->
+        if (!result.accepted && result.notice is Notice.Cancelled) refusal = ContinuousStatus.CANCELLED
+        result.accepted
+    }
+    /** Remembers the notice answered to one of this presenter's own requests, so its later flow copy is skipped. */
+    private fun answered(result: ActionResult): ActionResult {
+        result.notice?.let { notice -> answeredNotices.update { (it + notice).takeLast(32) } }
+        return result
+    }
     private fun cancelled(): Boolean { view.update { it.copy(status = ContinuousStatus.CANCELLED) }; return false }
     private suspend fun edit(intent: Intent): Boolean = send(Action.Edit(intent))
     private suspend fun releaseHeld() {
@@ -826,10 +868,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousCapability.AUTO_CHOP, ContinuousCapability.ORIGINAL_PITCH)
             if (selected.assetHash != null) {
                 capabilities += setOf(ContinuousCapability.PAD_PITCH, ContinuousCapability.PAD_TONE, ContinuousCapability.PAD_GAIN)
-                // A placed clip plays the source as it is; pitch, reverse and tone stay PAD-only until processed placement.
-                if (selected.pitchSemitones == 0.0 && !selected.reverse && selected.tone >= com.choplab.engine.Pad.TONE_BYPASS) {
-                    capabilities += ContinuousCapability.PLACE_PAD
-                }
+                // A placed clip plays its sound as it is: a transformed PAD needs a host that renders it first.
+                if (!ContinuousClipEdits.transformed(selected) || ports.padRenderAvailable) capabilities += ContinuousCapability.PLACE_PAD
             }
             if (p.clips.isNotEmpty()) capabilities += ContinuousCapability.EXPORT_WAV
             if (input.attached) {

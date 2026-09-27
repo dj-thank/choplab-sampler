@@ -134,6 +134,23 @@ class StudioTest {
         assertNull(cache.get(key)); assertTrue(cache.residentBytes <= 32)
     }
 
+    @Test fun cancellingAnEditBeingPreparedPostsOneNotice() = runTest {
+        val engine = Engine().apply { prepareGate = CompletableDeferred() }
+        val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), preparationDispatcher = StandardTestDispatcher(testScheduler))
+        val notices = mutableListOf<Notice>()
+        backgroundScope.launch { studio.notices.collect { notices += it } }
+        val editing = async { studio.dispatch(Action.Edit(Intent.Rename("Cancelled"))) }
+        runCurrent()
+        assertNotNull(studio.work.value.preparationId)
+        assertTrue(studio.dispatch(Action.CancelWork).accepted)
+        // The one waiting for the edit is told, and the notice flow says it once: a copy arriving late must not repeat it.
+        assertEquals(Notice.Cancelled(Operation.EDIT), editing.await().notice)
+        runCurrent()
+        assertEquals(listOf<Notice>(Notice.Cancelled(Operation.EDIT)), notices)
+        engine.prepareGate?.complete(Unit); advanceUntilIdle()
+        studio.dispatch(Action.Close)
+    }
+
     @Test fun suspendedPrepareDoesNotBlockStopOrCancelAndCannotCommitLate() = runTest {
         val engine = Engine().apply { prepareGate = CompletableDeferred(); ignorePrepareCancellation = true }
         val studio = Studio(this, services(engine, object : ImportPort { override suspend fun import(location: Location) = asset }), preparationDispatcher = StandardTestDispatcher(testScheduler))

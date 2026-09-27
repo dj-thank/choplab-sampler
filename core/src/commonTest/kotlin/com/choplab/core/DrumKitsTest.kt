@@ -137,6 +137,19 @@ class DrumKitsTest {
         assertEquals(withDusty, session.project, "Undo brings each kit's sounds back")
     }
 
+    @Test fun aRenderedPadSoundStaysWhileItsClipDoesAndLeavesWithIt() {
+        val source = Asset("a".repeat(64), "wav", 44 + 48_000L * 8, 48_000, 2, 48_000, "Keys")
+        val rendered = Asset("b".repeat(64), "wav", 44 + 24_000L * 8, 48_000, 2, 24_000, "Keys +12", AssetRole.RENDERED, derivedFrom = source.hash)
+        val track = Track("t", "A", TrackKind.BANK)
+        val project = Project(assets = frozenListOf(source), tracks = frozenListOf(track),
+            pads = (0..127).map { if (it == 0) Pad(0, source.hash, FrameRange(0, 48_000), pitchSemitones = 12.0) else Pad(it) }.frozen())
+        val clip = Clip("c", track.id, rendered.hash, FrameRange(0, 24_000), timelineStartFrame = 0)
+        val placed = Reducer.reduce(project, Intent.SetArrangement(project.tracks, frozenListOf(clip), project.takes, frozenListOf(rendered))).project
+        assertEquals(setOf(source.hash, rendered.hash), placed.assets.map { it.hash }.toSet())
+        val removed = Reducer.reduce(placed, Intent.SetArrangement(placed.tracks, frozenListOf(), placed.takes)).project
+        assertEquals(listOf(source.hash), removed.assets.map { it.hash }, "The rendered sound leaves with its clip; the PAD's own stays")
+    }
+
     @Test fun installingRequiresOneWholeKitInSlotOrder() {
         val dusty = DrumKits.kit("dusty-jazz")
         val boom = DrumKits.kit("boom-bap")
