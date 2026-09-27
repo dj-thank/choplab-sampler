@@ -18,6 +18,32 @@ import kotlin.test.*
 
 class FourStemServiceTest {
     private val available = SeparationMemory(8L shl 30, 4L shl 30, false)
+    @Test fun freshAdmissionReceiptTracksTheSecondPreflightAndDiscardsAPreviousObservationOnRetry() = runBlocking<Unit> {
+        val directory = Files.createTempDirectory("four-stem-memory-")
+        val memory = PcmMemoryBudget(); val assets = FileAssetStore(directory.resolve("assets")); val pcm = WavPcmPort(assets, memory = memory)
+        val native = GainFactory()
+        val first = SeparationMemoryReceipt(SeparationMemorySource.MAC_FREE_AND_FILE_BACKED,
+            16L shl 30, 3L shl 30, false, 1_800_000_000_000L)
+        val second = first.copy(lowMemory = true, measuredAtEpochMillis = first.measuredAtEpochMillis + 20)
+        val observations = ArrayDeque(listOf(
+            SeparationMemory(first.totalBytes, first.availableBytes, first.lowMemory, first),
+            SeparationMemory(second.totalBytes, second.availableBytes, second.lowMemory, second),
+            SeparationMemory(0, 0, false),
+        ))
+        val service = FourStemService(assets, pcm, directory.resolve("scratch"), native) { observations.removeFirst() }
+        try {
+            val original = source(directory, assets)
+            assertEquals(SeparationProblem.LOW_MEMORY, assertIs<SeparationResult.Failure>(service.prepare(original)).failure.problem)
+            assertEquals(second, service.memoryReceipt()); assertEquals(0, native.opens.get())
+            assertEquals(SeparationProblem.RAM_UNAVAILABLE, assertIs<SeparationResult.Failure>(service.prepare(original)).failure.problem)
+            assertNull(service.memoryReceipt()); assertTrue(observations.isEmpty())
+            assertEquals(original.byteCount, assets.storedBytes()); assertTrue(assets.verified(original))
+            assertEquals(0L, Files.list(directory.resolve("scratch")).use { it.count() })
+            // Existing Java native readback helpers keep their three-argument constructor.
+            assertNotNull(SeparationMemory::class.java.getConstructor(Long::class.javaPrimitiveType, Long::class.javaPrimitiveType, Boolean::class.javaPrimitiveType))
+        } finally { service.close(); pcm.close(); directory.toFile().deleteRecursively() }
+        assertEquals(0L, memory.statistics().usedBytes)
+    }
     private class GainFactory : FourStemSessionFactory {
         val opens = AtomicInteger(); val closes = AtomicInteger(); val cancels = AtomicInteger(); val calls = AtomicInteger()
         var entered: CompletableDeferred<Unit>? = null

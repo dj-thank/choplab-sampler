@@ -23,11 +23,22 @@ class FourStemService(private val assets: FileAssetStore, private val pcm: WavPc
     private val closed = AtomicBoolean()
     private val generation = AtomicLong()
     private val active = AtomicReference<FourStemInference?>()
+    private val memory = AtomicReference<SeparationMemoryReceipt?>()
+    override fun memoryReceipt(): SeparationMemoryReceipt? = memory.get()
+
+    private fun checkMemory(): SeparationMemory {
+        memory.set(null)
+        val value = memoryProbe()
+        memory.set(value.receipt)
+        value.refusal()?.let { throw SeparationException(it) }
+        return value
+    }
 
     override suspend fun prepare(source: Asset, allowModelDownload: Boolean,
                                  progress: (SeparationProgress) -> Unit): SeparationResult<PreparedFourStems> {
         if (closed.get()) return separationFailure(SeparationProblem.CLOSED)
         if (!serial.tryLock()) return separationFailure(SeparationProblem.BUSY)
+        memory.set(null)
         val request = generation.incrementAndGet()
         try {
             return withContext(Dispatchers.IO) {
@@ -39,7 +50,7 @@ class FourStemService(private val assets: FileAssetStore, private val pcm: WavPc
                 var directory: Path? = null
                 try {
                     check()
-                    memoryProbe().refusal()?.let { throw SeparationException(it) }
+                    checkMemory()
                     if (!assets.containsVerified(source)) throw SeparationException(SeparationProblem.INVALID_INPUT)
                     val normalizedFrames = (source.frames * EngineFormat.SAMPLE_RATE + source.sampleRate - 1) / source.sampleRate
                     val outputFrames = (normalizedFrames * FourStemSpec.RATE + EngineFormat.SAMPLE_RATE - 1) / EngineFormat.SAMPLE_RATE
@@ -61,8 +72,7 @@ class FourStemService(private val assets: FileAssetStore, private val pcm: WavPc
                         val staged = pcm.memory.reserve(FourStemSpec.PIPELINE_PCM_BYTES).use {
                             pcm.acquire(source).use { lease ->
                                 check()
-                                val available = memoryProbe()
-                                available.refusal()?.let { throw SeparationException(it) }
+                                val available = checkMemory()
                                 val inference = factory.open(pcm.memory, available, allowModelDownload, check)
                                 active.set(inference)
                                 try {

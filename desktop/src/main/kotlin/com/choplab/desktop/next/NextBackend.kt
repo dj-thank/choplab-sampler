@@ -59,6 +59,9 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         decoder.inspect(file.toPath(), hash) { Thread.currentThread().isInterrupted }
     }
 
+    fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
+                            memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory) = shared.createFourStemWorker(factory, memoryProbe)
+
     suspend fun flushAutosave() = shared.flushAutosave()
     suspend fun importAudio(path: Path): ActionResult = studio.dispatch(Action.Import(files.register(path)))
     suspend fun openProject(path: Path): ActionResult = studio.dispatch(Action.Open(files.register(path)))

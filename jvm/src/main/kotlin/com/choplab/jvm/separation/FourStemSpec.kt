@@ -1,6 +1,7 @@
 package com.choplab.jvm.separation
 
 import com.choplab.core.separation.SeparationProblem
+import com.choplab.core.separation.SeparationMemoryReceipt
 
 /** Standard, single-model HT-Demucs; the FT drums specialist is a separate feature and remains unchanged. */
 object FourStemSpec {
@@ -20,9 +21,10 @@ object FourStemSpec {
     const val PIPELINE_PCM_BYTES = FRAMES * 4L * 14 + 4097L * 512 * 4 + 256 * 1024
     const val NATIVE_IO_PCM_BYTES = FRAMES * 4L * (2 + 8 + 8 + 8)
 }
-data class SeparationMemory(val totalBytes: Long, val availableBytes: Long, val lowMemory: Boolean) {
+data class SeparationMemory @JvmOverloads constructor(val totalBytes: Long, val availableBytes: Long, val lowMemory: Boolean,
+                                                     val receipt: SeparationMemoryReceipt? = null) {
     fun refusal(): SeparationProblem? = when {
-        totalBytes <= 0 || availableBytes <= 0 -> SeparationProblem.RAM_UNAVAILABLE
+        totalBytes <= 0 || availableBytes <= 0 || availableBytes > totalBytes -> SeparationProblem.RAM_UNAVAILABLE
         lowMemory || totalBytes < FourStemSpec.MIN_TOTAL_RAM || availableBytes < FourStemSpec.REQUIRED_AVAILABLE_RAM -> SeparationProblem.LOW_MEMORY
         else -> null
     }

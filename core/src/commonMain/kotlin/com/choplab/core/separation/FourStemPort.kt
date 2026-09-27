@@ -49,6 +49,8 @@ data class SeparationProgress(val completedFrames: Long, val totalFrames: Long) 
 interface FourStemPort {
     suspend fun prepare(source: Asset, allowModelDownload: Boolean = false,
                         progress: (SeparationProgress) -> Unit = {}): SeparationResult<PreparedFourStems>
+    /** The latest check for this preparation; null means unknown, not zero or an older successful observation. */
+    fun memoryReceipt(): SeparationMemoryReceipt? = null
     fun cancel()
     fun close()
 }

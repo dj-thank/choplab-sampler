@@ -18,7 +18,7 @@ enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
 enum class ContinuousCapability {
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE, FOUR_STEMS,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
@@ -278,6 +278,8 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 sealed interface ContinuousEditorAction {
     data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
+    data object OpenFourStems : ContinuousEditorAction
+    data object CloseFourStems : ContinuousEditorAction
     data object OpenVocalGuide : ContinuousEditorAction
     data object CloseVocalGuide : ContinuousEditorAction
     data object OpenLyricProposal : ContinuousEditorAction

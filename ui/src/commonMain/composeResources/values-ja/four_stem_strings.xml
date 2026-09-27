@@ -1,0 +1,34 @@
+<resources>
+    <string name="four_stem_title">4 パートに分離</string>
+    <string name="four_stem_local">原曲全体をこの端末で処理します。音声は外へ送信せず、結果を配置するまで原曲と制作は変わりません。</string>
+    <string name="four_stem_memory_observation">直近の RAM 確認: 利用可能 %1$d MiB / 全体 %2$d MiB · %3$s</string>
+    <string name="four_stem_memory_limit">確認値はメモリの確保や、後の割り当ての成功を保証しません。モデルを読み込む前に再確認します。</string>
+    <string name="four_stem_memory_mac">macOS 推定値: 空き・ファイル由来のページ</string>
+    <string name="four_stem_memory_windows">Windows の物理メモリ状態</string>
+    <string name="four_stem_memory_linux">Linux の MemAvailable 推定値</string>
+    <string name="four_stem_memory_android">Android の ActivityManager</string>
+    <string name="four_stem_download">固定モデルがない場合や修復が必要な場合に、166 MB のダウンロードを許可する</string>
+    <string name="four_stem_start">原曲を分離する</string>
+    <string name="four_stem_preparing">4 パートを準備中です。取消や、この窓を閉じる操作ができます。</string>
+    <string name="four_stem_progress">処理済み %1$d%%</string>
+    <string name="four_stem_cancelling">処理を停止し、音声メモリを解放しています…</string>
+    <string name="four_stem_cancel">分離を取り消す</string>
+    <string name="four_stem_heads">ドラム・ベース・その他の楽器・ボーカル</string>
+    <string name="four_stem_all">全パート</string>
+    <string name="four_stem_acapella">ボーカルのみ</string>
+    <string name="four_stem_instrumental">ボーカル抜き</string>
+    <string name="four_stem_first_bar">配置を始める小節</string>
+    <string name="four_stem_apply_hint">4 トラックをまとめて追加します。「ボーカルのみ」「ボーカル抜き」はほかのトラックをミュートし、全パートを保存します。</string>
+    <string name="four_stem_apply">4 トラックを配置・1 回の Undo</string>
+    <string name="four_stem_applied">曲に配置しました。保存すると原曲と全パートを再開できます。</string>
+    <string name="four_stem_model_missing">モデルがありません。ダウンロードを許可してから、もう一度開始してください。</string>
+    <string name="four_stem_model_invalid">モデルを検証できませんでした。修復用のダウンロードを許可して再試行してください。</string>
+    <string name="four_stem_download_failed">モデルを取得できませんでした。接続を確認して再試行してください。</string>
+    <string name="four_stem_ram">端末の空きメモリが不足しているか、確認できません。メモリを使うほかのアプリを閉じて再試行してください。</string>
+    <string name="four_stem_pcm">音声メモリが不足しています。再生を停止するか、ほかの音声処理を閉じて再試行してください。</string>
+    <string name="four_stem_space">4 出力が長さ・保存容量の上限を超えるか、空き容量が不足しています。</string>
+    <string name="four_stem_stale">制作が変わりました。この窓を閉じ、現在の原曲から開き直してください。</string>
+    <string name="four_stem_busy">録音・録音準備中、またはほかの編集処理中です。先にその操作を終えてください。</string>
+    <string name="four_stem_cancelled">取り消しました。制作は変更していません。</string>
+    <string name="four_stem_failed">分離または配置に失敗しました。原曲は保持しています。音源を確認して再試行してください。</string>
+</resources>
