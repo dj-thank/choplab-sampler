@@ -174,7 +174,8 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         Action.CancelWork -> {
             val operation = _work.value.operation
             cancelAllWork()
-            operation?.let { notice(Notice.Cancelled(it)) }; ActionResult(true)
+            // An edit's preparation reports its own cancel, to the one waiting for it and as a notice: say it once.
+            operation?.takeIf { it != Operation.EDIT }?.let { notice(Notice.Cancelled(it)) }; ActionResult(true)
         }
         is Action.Trigger -> {
             require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)

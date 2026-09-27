@@ -173,6 +173,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private var refusal: ContinuousStatus? = null
     /** A finished take is being added: a stop pressed meanwhile must not cancel that edit. */
     @Volatile private var finishingTake = false
+    /**
+     * Notices already received as the answer to this presenter's own requests. The studio also posts each on its notice
+     * flow, collected on another coroutine, where the copy can arrive after a newer message; those copies are skipped.
+     */
+    private val answeredNotices = MutableStateFlow<List<Notice>>(emptyList())
     /** The hand on the scratch platter, if any, and the loop that passes its moves on. */
     @Volatile private var grip: ScratchGrip? = null
     private var pump: Job? = null
@@ -205,6 +210,13 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             }
         }
         jobs.launch { studio.notices.collect { notice ->
+            var answered = false
+            answeredNotices.update { list ->
+                val at = list.indexOfFirst { it === notice }
+                answered = at >= 0
+                if (at >= 0) list.filterIndexed { index, _ -> index != at } else list
+            }
+            if (answered) return@collect
             view.update { it.copy(status = when (notice) {
                 is Notice.Completed -> when (notice.operation) {
                     Operation.SAVE -> ContinuousStatus.SAVED
@@ -212,9 +224,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     else -> null
                 }
                 is Notice.Failed, is Notice.Rejected -> ContinuousStatus.FAILED
-                // A cancelled edit is answered to the dispatch that sent it, which says so or adds a take again;
-                // its notice arrives later and must not replace a newer message.
-                is Notice.Cancelled -> if (notice.operation == Operation.EDIT) it.status else ContinuousStatus.CANCELLED
+                is Notice.Cancelled -> ContinuousStatus.CANCELLED
                 else -> it.status
             }) }
         } }
@@ -560,7 +570,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         finishingTake = true
         try {
             repeat(3) {
-                val result = studio.dispatch(Action.Edit(intent))
+                val result = answered(studio.dispatch(Action.Edit(intent)))
                 if (result.accepted) return true
                 if (result.notice !is Notice.Cancelled) return false
             }
@@ -766,9 +776,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         send(Action.RefreshTransport)
         if (studio.transport.value.playing) send(Action.Pause)
     }
-    private suspend fun send(action: Action): Boolean = studio.dispatch(action).let { result ->
+    private suspend fun send(action: Action): Boolean = answered(studio.dispatch(action)).let { result ->
         if (!result.accepted && result.notice is Notice.Cancelled) refusal = ContinuousStatus.CANCELLED
         result.accepted
+    }
+    /** Remembers the notice answered to one of this presenter's own requests, so its later flow copy is skipped. */
+    private fun answered(result: ActionResult): ActionResult {
+        result.notice?.let { notice -> answeredNotices.update { (it + notice).takeLast(32) } }
+        return result
     }
     private fun cancelled(): Boolean { view.update { it.copy(status = ContinuousStatus.CANCELLED) }; return false }
     private suspend fun edit(intent: Intent): Boolean = send(Action.Edit(intent))

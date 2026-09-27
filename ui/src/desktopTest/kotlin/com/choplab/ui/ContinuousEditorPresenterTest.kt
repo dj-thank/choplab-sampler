@@ -640,6 +640,9 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
             h.until { it.status == ContinuousStatus.VOICE_SAVED_PAD_ONLY }
+            // The refused attempt's own notice comes later and does not replace the message.
+            delay(200)
+            assertEquals(ContinuousStatus.VOICE_SAVED_PAD_ONLY, h.presenter.state.value.status)
             val p = h.studio.document.value.project
             assertEquals("VOICE 1", p.pads[48].name)
             assertTrue(p.tracks.none { it.kind == TrackKind.VOCAL } && p.clips.size == 1, "Only the PAD changed")
@@ -656,7 +659,8 @@ class ContinuousEditorPresenterTest {
         }
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
-            val placed = h.until { it.clips.isNotEmpty() }
+            // Once the placement's work is done: while it runs, recording is only busy.
+            val placed = h.until { it.clips.isNotEmpty() && it.unavailable[ContinuousCapability.RECORD_VOICE] != ContinuousUnavailable.BUSY }
             assertEquals(ContinuousUnavailable.NOT_CONNECTED, placed.unavailable[ContinuousCapability.RECORD_VOICE], "No microphone on this host")
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             h.ports.voice = true
@@ -927,7 +931,8 @@ class ContinuousEditorPresenterTest {
                 }
             }, engine), initial)
         val ports = FakePorts(kits, voice, render).also { it.engine = engine }
-        suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(2000) { presenter.state.first(condition) }
+        /** Waits for [condition]; generous, since a loaded CI runner can take a while, and a wait that never ends fails. */
+        suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(5000) { presenter.state.first(condition) }
         val presenter = ContinuousEditorPresenter(studio, scope, ports)
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }
     }
