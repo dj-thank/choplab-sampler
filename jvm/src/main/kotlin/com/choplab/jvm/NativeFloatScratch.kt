@@ -12,17 +12,21 @@ enum class NativePcmEncoding(val bytes: Int) { FLOAT32(4), SIGNED32(4), SIGNED24
 
 class NativeFloatScratch(directory: Path, private val rate: Int, private val channels: Int) : Closeable {
     init { require(rate in 8_000..192_000 && channels in 1..2) }
-    private val quota = PcmScratchBudget.reserve(ProjectLimits.MAX_FRAMES * channels * 4)
-    private val path = try { Files.createTempFile(directory, "decoded-", ".f32") } catch (failure: Throwable) { quota.close(); throw failure }
-    private val output = try { Files.newOutputStream(path).buffered(64 * 1024) } catch (failure: Throwable) {
-        Files.deleteIfExists(path); quota.close(); throw failure
+    private val memory = kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(128 * 1024L) }
+    private val quota = try { PcmScratchBudget.reserve(ProjectLimits.MAX_FRAMES * channels * 4) }
+        catch (failure: Throwable) { memory.close(); throw failure }
+    private val path = try { Files.createTempFile(directory, "decoded-", ".f32") } catch (failure: Throwable) { quota.close(); memory.close(); throw failure }
+    private var output: java.io.OutputStream? = try { Files.newOutputStream(path).buffered(64 * 1024) } catch (failure: Throwable) {
+        Files.deleteIfExists(path); quota.close(); memory.close(); throw failure
     }
-    private val bytes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN)
+    private var bytes: ByteBuffer? = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN)
     private var frames = 0L
     private var transferred = false
     private var closed = false
     fun write(input: ByteBuffer, encoding: NativePcmEncoding, cancelled: () -> Boolean) {
         check(!closed && !transferred)
+        val bytes = checkNotNull(bytes)
+        val output = checkNotNull(output)
         require(input.remaining() % (channels * encoding.bytes) == 0)
         val count = input.remaining() / (channels * encoding.bytes)
         require(frames + count <= ProjectLimits.MAX_FRAMES) { "Audio exceeds source frame limit" }
@@ -49,7 +53,8 @@ class NativeFloatScratch(directory: Path, private val rate: Int, private val cha
     fun finish(): PcmFrameSource {
         check(!closed && !transferred)
         require(frames > 0) { "Empty decoded audio" }
-        output.close()
+        output?.close(); output = null
+        bytes = null; memory.close()
         val result = RawFloatFrameSource(path, WavInfo(rate, channels, frames, 32, true)) {
             try { Files.deleteIfExists(path) } finally { quota.close() }
         }
@@ -59,6 +64,7 @@ class NativeFloatScratch(directory: Path, private val rate: Int, private val cha
     override fun close() {
         if (closed) return
         closed = true
-        if (!transferred) try { output.close() } finally { try { Files.deleteIfExists(path) } finally { quota.close() } }
+        try { if (!transferred) try { output?.close() } finally { try { Files.deleteIfExists(path) } finally { quota.close() } } }
+        finally { output = null; bytes = null; memory.close() }
     }
 }

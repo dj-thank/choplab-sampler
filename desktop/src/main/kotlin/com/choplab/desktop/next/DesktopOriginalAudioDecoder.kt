@@ -74,6 +74,8 @@ class DesktopOriginalAudioDecoder(
 
     private fun readSource(path: Path, cancelled: () -> Boolean): PcmFrameSource {
         require(Files.isRegularFile(path) && Files.size(path) in 1..ProjectLimits.MAX_ASSET_BYTES)
+        val memory = kotlinx.coroutines.runBlocking { com.choplab.jvm.PcmMemoryBudget.shared.reserve(256 * 1024L) }
+        try {
         val (ffmpeg, ffprobe) = tools()
         val temporary = Files.createTempDirectory("choplab-decode-")
         var quota: java.io.Closeable? = null
@@ -130,6 +132,7 @@ class DesktopOriginalAudioDecoder(
                 } finally { quota?.close() }
             }
         }
+        } finally { memory.close() }
     }
 
     private fun execute(command: List<String>, output: Path, error: Path, cancelled: () -> Boolean, limit: Long) {

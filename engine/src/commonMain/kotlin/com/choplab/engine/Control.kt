@@ -124,6 +124,7 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
     private var lastId = -1L
 
     fun offer(command: EngineCommand): OfferResult {
+        if (ownership.closed) return OfferResult.PCM_LIMIT
         val isOriginal = command is EngineCommand.OriginalSourceCommand
         val isHand = command is EngineCommand.OriginalHandCommand
         if ((isOriginal || command is EngineCommand.SetSongMonitorGain || command is EngineCommand.SetMetronome ||

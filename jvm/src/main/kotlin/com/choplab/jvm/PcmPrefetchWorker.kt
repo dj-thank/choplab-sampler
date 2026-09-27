@@ -20,17 +20,36 @@ class PcmPrefetchFailure(val status: PcmReadStatus) : IllegalStateException("PCM
 /** One worker for all page providers. Render only touches PagedPcm's immutable handoff. */
 class PcmPrefetchWorker : Closeable {
     private class Source(val pages: WeakReference<PagedPcm>, val input: PcmFrameSource,
-        val resampler: WindowedResampler) {
+        resampler: WindowedResampler) {
+        private var resampler: WindowedResampler? = resampler
         val access = Mutex()
         private val closed = AtomicBoolean()
-        suspend fun close() = access.withLock { if (closed.compareAndSet(false, true)) input.close() }
-        suspend fun read(first: Int, end: Int, cancelled: () -> Boolean): FloatArray = access.withLock {
+        suspend fun close(releaseStorage: Boolean = false) = access.withLock {
+            if (closed.compareAndSet(false, true)) try { input.close() } finally { resampler = null }
+            if (releaseStorage) pages.get()?.releaseStorage()
+        }
+        suspend fun read(first: Int, end: Int, cancelled: () -> Boolean): FloatArray = access.withLock { readLocked(first, end, cancelled) }
+        suspend fun publishNext(cancelled: () -> Boolean): Boolean = access.withLock {
+            val pages = pages.get() ?: return@withLock false
+            if (closed.get() || pages.status == PcmReadStatus.CLOSED) return@withLock false
+            val page = pages.nextRequest()
+            if (page < 0 || pages.isLoaded(page)) return@withLock false
+            val first = page * pages.pageFrames
+            val end = minOf(pages.frameCount, first + pages.pageFrames)
+            val samples = readLocked(first, end, cancelled)
+            if (cancelled()) throw CancellationException("PCM prefetch cancelled")
+            pages.publish(page, samples)
+            true
+        }
+        private fun readLocked(first: Int, end: Int, cancelled: () -> Boolean): FloatArray {
+            check(!closed.get()) { "PCM provider is closed" }
+            val resampler = checkNotNull(resampler)
             val from = resampler.inputStart(first)
             val to = resampler.inputEnd(end)
             val native = input.read(from, to - from, cancelled)
             val stereo = if (input.info.channels == 2) native else FloatArray(native.size * 2) { native[it / 2] }
             if (cancelled()) throw CancellationException("PCM prefetch cancelled")
-            resampler.render(stereo, first, end - first).also {
+            return resampler.render(stereo, first, end - first).also {
                 if (cancelled()) throw CancellationException("PCM prefetch cancelled")
             }
         }
@@ -47,16 +66,9 @@ class PcmPrefetchWorker : Closeable {
                     if (sources.remove(id, source)) try { source.close() } catch (_: Exception) { }
                     continue
                 }
-                // One page per source per pass: an old seek cannot starve another sounding source.
-                val page = pages.nextRequest()
-                if (page < 0 || pages.isLoaded(page)) continue
-                worked = true
+                // One page per source per pass; disposal owns this same access lock.
                 try {
-                    val first = page * pages.pageFrames
-                    val end = minOf(pages.frameCount, first + pages.pageFrames)
-                    val samples = source.read(first, end) { !scope.isActive || pages.status == PcmReadStatus.CLOSED }
-                    ensureActive()
-                    pages.publish(page, samples)
+                    if (source.publishNext { !scope.isActive || pages.status == PcmReadStatus.CLOSED }) worked = true
                 } catch (cancel: CancellationException) {
                     if (!scope.isActive) throw cancel
                     pages.fail()
@@ -97,20 +109,21 @@ class PcmPrefetchWorker : Closeable {
             if (owned == null || id < 0) input.close()
             else if (sources.remove(id, owned)) withContext(NonCancellable) {
                 owned.pages.get()?.close()
-                owned.close()
+                owned.close(releaseStorage = true)
             }
             throw failure
         }
     }
 
-    /** Only for an unpublished load that failed/cancelled before a cache or engine received it. */
+    /** Worker disposal after the asset is unpublished or the global ledger has claimed its last lease. */
     suspend fun discard(pcm: PcmAsset) {
         val pages = pcm.pages ?: return
+        pages.close()
         for ((id, source) in sources) if (source.pages.get() === pages && sources.remove(id, source)) {
-            pages.close()
-            withContext(NonCancellable) { source.close() }
+            withContext(NonCancellable) { source.close(releaseStorage = true) }
             return
         }
+        pages.releaseStorage()
     }
 
     /** Pins only the coming render block, so background hints cannot evict data during an export. */
@@ -164,7 +177,7 @@ class PcmPrefetchWorker : Closeable {
             worker.join()
             for ((id, source) in sources) if (sources.remove(id, source)) {
                 source.pages.get()?.close()
-                source.close()
+                source.close(releaseStorage = true)
             }
         }
     }

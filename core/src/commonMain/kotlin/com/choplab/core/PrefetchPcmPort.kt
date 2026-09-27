@@ -21,7 +21,7 @@ object PcmResidency {
     fun workerBytes(asset: Asset): Long {
         val nativeWindow = (PagedPcm.PAGE_FRAMES.toLong() * asset.sampleRate + 47_999) / 48_000 + 512
         val kernel = if (asset.sampleRate == 48_000) 0 else 512L * 4097 * 4
-        return kernel + nativeWindow * 8 * 3 + 32 * 1024
+        return kernel + nativeWindow * 8 * 3 + 64 * 1024 + PagedPcm.PAGE_FRAMES * 8L
     }
     fun bytes(asset: Asset): Long = if (resident(asset)) frames(asset) * 8 else
         PagedPcm.capacityFor(frames(asset).toInt(), workerBytes = workerBytes(asset))

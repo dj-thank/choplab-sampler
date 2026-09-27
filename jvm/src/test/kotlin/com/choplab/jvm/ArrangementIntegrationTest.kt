@@ -55,6 +55,7 @@ class ArrangementIntegrationTest {
             assertTrue(decoded.samples.take(73 * 2).all { abs(it) < 0.000001f }) // Stored PAD pattern has a note at zero.
             assertTrue(decoded.samples.any { abs(it) > 0.05f })
             assertFailsWith<IllegalArgumentException> { exporter.export(restored, "pattern-1", ExportRequest(Location("output"), 800)) }
+            program.releasePreparation()
         }
     }
 
@@ -68,7 +69,9 @@ class ArrangementIntegrationTest {
                 Clip("a", "t", asset.hash, FrameRange(0, 220), timelineStartFrame = 0),
                 Clip("b", "t", asset.hash, FrameRange(220, 441), timelineStartFrame = boundary),
             ))
-            fun render(program: com.choplab.engine.EngineProgram) = ByteArrayOutputStream().also { StreamingWavRenderer.render(program, it, 480, 192) }.toByteArray()
+            fun render(program: com.choplab.engine.EngineProgram) = try {
+                ByteArrayOutputStream().also { StreamingWavRenderer.render(program, it, 480, 192) }.toByteArray()
+            } finally { program.releasePreparation() }
             assertContentEquals(render(compiler.compile(whole, PlaybackTarget.Arrangement(), 1)), render(compiler.compile(split, PlaybackTarget.Arrangement(), 2)))
             val muted = compiler.compile(split.copy(tracks = split.tracks.map { it.copy(mute = true) }.frozen()), PlaybackTarget.Arrangement(), 3)
             assertEquals(480L, muted.arrangement!!.durationFrames); assertEquals(0, muted.arrangement!!.clipCount)
@@ -104,6 +107,7 @@ class ArrangementIntegrationTest {
             assertFalse(studio.transport.value.sequencePaused)
             assertEquals(48L, studio.transport.value.sequenceFrame)
             assertTrue(studio.dispatch(Action.Close).accepted)
+            engine.close()
         }
     }
 

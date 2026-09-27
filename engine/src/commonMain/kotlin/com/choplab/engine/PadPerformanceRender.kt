@@ -8,14 +8,7 @@ object PadPerformanceRender {
      */
     fun render(pad: Pad, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null,
                prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()); render() }): FloatArray {
-        require(limitFrames in 1..PadRender.MAX_FRAMES)
-        require(releaseAt == null || releaseAt in 0..limitFrames)
-        require(stopAt == null || stopAt in 0..limitFrames)
-        require(pad.mode != PlayMode.LOOP || releaseAt != null || stopAt != null) { "A loop needs an explicit stop" }
-        val natural = if (pad.mode == PlayMode.LOOP) limitFrames else PadRender.frames(pad)
-        val released = releaseAt?.let { (it.toLong() + pad.releaseFrames).coerceAtMost(limitFrames.toLong()).toInt() }
-        val stopped = stopAt?.let { (it.toLong() + EngineCore.STEAL_FADE_FRAMES).coerceAtMost(limitFrames.toLong()).toInt() }
-        val frames = minOf(limitFrames, natural, released ?: limitFrames, stopped ?: limitFrames)
+        val frames = frames(pad, releaseAt, limitFrames, stopAt)
         val output = FloatArray(frames * 2)
         val voice = Voice()
         val interpolator = PitchInterpolator()
@@ -37,4 +30,16 @@ object PadPerformanceRender {
         }
         return output
     }
+    /** Worker admission uses exactly the same output length before allocating its PCM buffer. */
+    fun frames(pad: Pad, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Int {
+        require(limitFrames in 1..PadRender.MAX_FRAMES)
+        require(releaseAt == null || releaseAt in 0..limitFrames)
+        require(stopAt == null || stopAt in 0..limitFrames)
+        require(pad.mode != PlayMode.LOOP || releaseAt != null || stopAt != null) { "A loop needs an explicit stop" }
+        val natural = if (pad.mode == PlayMode.LOOP) limitFrames else PadRender.frames(pad)
+        val released = releaseAt?.let { (it.toLong() + pad.releaseFrames).coerceAtMost(limitFrames.toLong()).toInt() }
+        val stopped = stopAt?.let { (it.toLong() + EngineCore.STEAL_FADE_FRAMES).coerceAtMost(limitFrames.toLong()).toInt() }
+        return minOf(limitFrames, natural, released ?: limitFrames, stopped ?: limitFrames)
+    }
+
 }

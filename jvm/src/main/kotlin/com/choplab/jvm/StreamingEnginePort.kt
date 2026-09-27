@@ -94,6 +94,11 @@ open class StreamingEnginePort(
         /** Discarded unapplied because the owner timed it out or rebuilt its engine, not refused on its merits. */
         @Volatile var dropped = false
         var offered = false
+        private val released = AtomicBoolean()
+        private val program = (command as? EngineCommand.SwapProgram)?.program
+        private val source = (command as? EngineCommand.SetOriginalSource)?.source?.asset?.acquire()
+        init { check(program?.retainPcm() != false) { "Queued PCM was evicted" } }
+        fun releasePcm() { if (released.compareAndSet(false, true)) { program?.releasePcm(); source?.close() } }
     }
     private enum class Outcome { APPLIED, REFUSED, DROPPED }
     private val requests = ConcurrentLinkedQueue<Pending>()
@@ -134,6 +139,7 @@ open class StreamingEnginePort(
         Thread(task, "ChopLab-NEXT-device-open").apply { isDaemon = true; priority = Thread.NORM_PRIORITY }
     }
     private val owner: Thread
+    private val outputMemory: PcmMemoryBudget.Reservation
 
     /** Listening only, after EngineCore; does not enter documents or offline export. */
     fun setMonitorGain(gain: Float) {
@@ -174,7 +180,8 @@ open class StreamingEnginePort(
         // Built by the caller, before the audio owner starts: the first engine prepares its interpolation tables, which
         // takes seconds on a slow or interpreted runtime. An edit sent meanwhile would wait for an engine that did not
         // exist yet and be refused, so the driver exists only once its engine does.
-        val first = EngineCore()
+        outputMemory = runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L) }
+        val first = try { EngineCore() } catch (failure: Throwable) { outputMemory.close(); throw failure }
         engineView = EngineView(first, 0)
         owner = Thread({ runOwner(first) }, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
     }
@@ -210,8 +217,12 @@ open class StreamingEnginePort(
             if (command.orderId < last || (command.orderId == last && !retry)) return Outcome.REFUSED
             val current = engineView ?: return Outcome.REFUSED
             val pending = Pending(command, command.relativeTo(current.offset, ++nextWireOrder), current)
-            if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); return Outcome.REFUSED }
+            if (queued.incrementAndGet() > 64) { queued.decrementAndGet(); pending.releasePcm(); return Outcome.REFUSED }
             requests.add(pending)
+            // Owner shutdown may have drained the queue between our first closed check and publication.
+            if (closed && requests.remove(pending)) {
+                queued.decrementAndGet(); pending.releasePcm(); return Outcome.REFUSED
+            }
             lastClientOrder[client] = command.orderId
             LockSupport.unpark(owner)
             pending
@@ -377,7 +388,9 @@ open class StreamingEnginePort(
         var monitorTarget = 1f
         var monitorRamp = 0
 
-        fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) { request.dropped = dropped; request.answer.complete(accepted) }
+        fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) {
+            request.dropped = dropped; request.releasePcm(); request.answer.complete(accepted)
+        }
         fun resetToEditingOnly(fault: DriverFault) {
             writtenFrame = -1
             if (activeEngine.recordingStartedFrame >= 0) completedCueBeforeReset =
@@ -388,6 +401,7 @@ open class StreamingEnginePort(
             // Unknown/late queued commands cannot fire after cancellation. Rebuild from confirmed
             // Program only, with no voices; the document remains in Studio and edits stay usable.
             val offset = requireNotNull(engineView).offset + activeEngine.frame
+            activeEngine.close()
             activeEngine = EngineCore(confirmedProgram)
             engineView = EngineView(activeEngine, offset)
             previousLosses = 0
@@ -445,7 +459,12 @@ open class StreamingEnginePort(
                     lastReceipt = DriverReceipt(request.command.orderId, request.command.effectiveFrame, appliedFrame,
                         appliedFrame > request.command.effectiveFrame, accepted, activeEngine.events.overflowCount)
                     if (accepted) when (val command = request.command) {
-                        is EngineCommand.SwapProgram -> confirmedProgram = command.program
+                        is EngineCommand.SwapProgram -> {
+                            check(command.program.retainPcm())
+                            val previous = confirmedProgram
+                            confirmedProgram = command.program
+                            previous.releasePcm()
+                        }
                         is EngineCommand.StartSequence -> { sequenceStart = appliedFrame; stoppedElapsedFrames = 0 }
                         is EngineCommand.Stop, is EngineCommand.Panic -> stoppedElapsedFrames = (appliedFrame - sequenceStart).coerceAtLeast(0)
                         else -> Unit
@@ -494,6 +513,7 @@ open class StreamingEnginePort(
         } catch (_: Exception) {
             statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = ++faults)
         } finally {
+            closed = true
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             // A device still opening is closed as soon as it exists.
@@ -501,6 +521,10 @@ open class StreamingEnginePort(
             opener.shutdown()
             inFlight.forEach { it?.let { pending -> complete(pending, false) } }
             while (true) { val pending = requests.poll() ?: break; queued.decrementAndGet(); complete(pending, false) }
+            activeEngine.close()
+            outputMemory.close()
+            confirmedProgram.releasePcm()
+            confirmedProgram = EngineProgram.EMPTY
             closed = true
             statusValue.value = DriverStatus(DriverPhase.CLOSED, faults = faults)
         }

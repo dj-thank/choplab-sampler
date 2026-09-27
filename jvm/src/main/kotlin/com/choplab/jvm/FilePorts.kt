@@ -84,37 +84,83 @@ class WavImportPort(
 }
 
 class WavPcmPort(private val assets: FileAssetStore, val cache: PcmAssetCache = PcmAssetCache(),
-                 private val decoder: OriginalAudioDecoder? = null) : PrefetchPcmPort, Closeable {
+                 private val decoder: OriginalAudioDecoder? = null,
+                 val memory: PcmMemoryBudget = PcmMemoryBudget.shared) : PrefetchPcmPort, Closeable {
     private val prefetch = PcmPrefetchWorker()
-    override fun close() { cache.close(); prefetch.close() }
+    private val legacy = java.util.concurrent.ConcurrentLinkedQueue<PcmLease>()
+    private val closed = java.util.concurrent.atomic.AtomicBoolean()
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        cache.close()
+        while (true) (legacy.poll() ?: break).close()
+        kotlinx.coroutines.runBlocking { memory.releaseOwner(this@WavPcmPort, prefetch::close) }
+    }
     override fun residentBytes(asset: Asset): Long = PcmResidency.bytes(asset)
     override suspend fun prefetch(pcm: PcmAsset, firstFrame: Int, endFrame: Int) = prefetch.prefetch(pcm, firstFrame, endFrame)
     override suspend fun <T> prepared(windows: List<PcmWindow>, render: () -> T): T = prefetch.prepared(windows, render)
+    /** Caller holds a PCM lease and reserves the returned <=4096-frame window for its own lifetime. */
     suspend fun readWindow(pcm: PcmAsset, firstFrame: Int, endFrame: Int): FloatArray = prefetch.read(pcm, firstFrame, endFrame)
-    override suspend fun load(asset: Asset): PcmAsset = cache.get(asset, prefetch::discard) { decode(asset) }
-    private suspend fun decode(asset: Asset): PcmAsset {
+    override suspend fun acquire(asset: Asset): PcmLease {
+        check(!closed.get()) { "PCM port is closed" }
+        val lease = cache.acquire(asset, discard = { memory.discard(it) }, decode = { decode(asset) })
+        try { memory.touch(lease.pcm); check(!closed.get()) { "PCM port is closed" }; return lease }
+        catch (failure: Throwable) { lease.close(); throw failure }
+    }
+    /** Compatibility callers keep their returned object until this port closes; production uses acquire. */
+    override suspend fun load(asset: Asset): PcmAsset {
+        val lease = acquire(asset)
+        legacy.add(lease)
+        if (closed.get()) { if (legacy.remove(lease)) lease.close(); error("PCM port is closed") }
+        return lease.pcm
+    }
+    private suspend fun decode(asset: Asset): PcmLease {
         var unpublished: PcmAsset? = null
+        var published: PcmLease? = null
         return try { withContext(Dispatchers.IO) {
-            val context = coroutineContext
-            val cancelled = { context[kotlinx.coroutines.Job]?.isActive == false }
-            if (!PcmResidency.resident(asset)) {
-                val path = assets.verifiedPath(asset, cancelled)
-                val source = if (asset.extension == "wav") WavFrameSource.open(path, cancelled)
-                    else requireNotNull(decoder) { "A host decoder is required for this codec" }.openPcm(path, asset.hash, cancelled)
-                return@withContext prefetch.open(asset, source).also { unpublished = it }
+            memory.reserve(decodePeakBytes(asset)).use { reservation ->
+                try {
+                val context = coroutineContext
+                val cancelled = { context[kotlinx.coroutines.Job]?.isActive == false }
+                val data = if (!PcmResidency.resident(asset)) {
+                    val path = assets.verifiedPath(asset, cancelled)
+                    val source = if (asset.extension == "wav") WavFrameSource.open(path, cancelled)
+                        else requireNotNull(decoder) { "A host decoder is required for this codec" }.openPcm(path, asset.hash, cancelled)
+                    prefetch.open(asset, source).also { unpublished = it }
+                } else {
+                    val audio = if (asset.extension == "wav") assets.openVerified(asset).use { WavCodec.read(CancellableInput(it, context)) }
+                        else requireNotNull(decoder) { "A host decoder is required for this codec" }
+                            .decode(assets.verifiedPath(asset, cancelled), asset.hash, cancelled)
+                    require(audio.info.frames == asset.frames && audio.info.channels == asset.channels && audio.info.sampleRate == asset.sampleRate)
+                    coroutineContext.ensureActive()
+                    val stereo = if (audio.info.channels == 2) audio.samples else FloatArray(audio.samples.size * 2) { audio.samples[it / 2] }
+                    val normalized = if (audio.info.sampleRate == 48_000) stereo else OfflineResampler.resample(stereo, audio.info.sampleRate)
+                    coroutineContext.ensureActive()
+                    PcmAsset.fromInterleaved(normalized)
+                }
+                coroutineContext.ensureActive()
+                reservation.publish(data, this@WavPcmPort) { prefetch.discard(data) }.also {
+                    published = it; unpublished = null
+                }
+                } catch (failure: Throwable) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { unpublished?.let { prefetch.discard(it) }; unpublished = null }
+                    throw failure
+                }
             }
-            val audio = if (asset.extension == "wav") assets.openVerified(asset).use { WavCodec.read(CancellableInput(it, context)) }
-                else requireNotNull(decoder) { "A host decoder is required for this codec" }
-                    .decode(assets.verifiedPath(asset, cancelled), asset.hash, cancelled)
-            require(audio.info.frames == asset.frames && audio.info.channels == asset.channels && audio.info.sampleRate == asset.sampleRate)
-            coroutineContext.ensureActive()
-            val stereo = if (audio.info.channels == 2) audio.samples else FloatArray(audio.samples.size * 2) { audio.samples[it / 2] }
-            val normalized = if (audio.info.sampleRate == 48_000) stereo else OfflineResampler.resample(stereo, audio.info.sampleRate)
-            coroutineContext.ensureActive()
-            PcmAsset.fromInterleaved(normalized)
         } } catch (failure: Throwable) {
-            unpublished?.let { prefetch.discard(it) }
+            published?.let { it.close(); memory.discard(it.pcm) }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { unpublished?.let { prefetch.discard(it) } }
             throw failure
+        }
+    }
+    companion object {
+        /** Existing resident decoder can hold native, mono expansion, resampler input/result and defensive copy. */
+        fun decodePeakBytes(asset: Asset): Long {
+            if (!PcmResidency.resident(asset)) return PcmResidency.bytes(asset)
+            val native = asset.frames * asset.channels * 4
+            val stereo = asset.frames * 8
+            val output = PcmResidency.frames(asset) * 8
+            return native + (if (asset.channels == 1) stereo else 0) + output + 256 * 1024 +
+                (if (asset.sampleRate != 48_000) stereo + output + 512L * 4097 * 4 else 0)
         }
     }
 }
@@ -129,6 +175,7 @@ class WavExportPort(private val compiler: ProgramCompiler, private val resolve: 
     }
     override suspend fun export(project: Project, target: PlaybackTarget, request: ExportRequest): ExportReceipt = withContext(Dispatchers.Default) {
         val program = compiler.compile(project, target, 0)
+        try {
         coroutineContext.ensureActive()
         withContext(Dispatchers.IO) {
             val context = coroutineContext
@@ -139,6 +186,7 @@ class WavExportPort(private val compiler: ProgramCompiler, private val resolve: 
             }
         }
         ExportReceipt(request.frames.toLong() + request.tailFrames, 48_000, 2, request.bits)
+        } finally { program.releasePreparation() }
     }
 }
 
@@ -152,11 +200,12 @@ private class CancellableInput(input: InputStream, private val context: Coroutin
  * to acknowledge edits while paused/disconnected. It never claims audible playback or device success.
  * A host must replace this port when attaching its output driver; it must not share this EngineCore.
  */
-class DetachedEnginePort(private val compiler: ProgramCompiler) : EnginePort {
+class DetachedEnginePort(private val compiler: ProgramCompiler) : EnginePort, Closeable {
     private val engine = EngineCore()
     private val snapshot = EngineSnapshot()
     private val event = MutableEngineEvent()
     private val scratch = FloatArray(2)
+    override fun close() { engine.close() }
     override suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram = compiler.compile(project, patternId, revision)
     override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram = compiler.compile(project, target, revision)
     override suspend fun apply(command: EngineCommand): Boolean {

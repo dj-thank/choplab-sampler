@@ -150,7 +150,11 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     /** Writes (does not add to) the supplied buffer; offsets and counts are frames. */
+    /** Owner only, after command publication and rendering have stopped. Idempotent. */
+    fun close() { pcmOwnership.close() }
+
     fun render(output: FloatArray, offsetFrames: Int = 0, frameCount: Int = output.size / 2 - offsetFrames) {
+        check(!pcmOwnership.closed) { "Engine is closed" }
         require(offsetFrames >= 0 && frameCount >= 0 && (offsetFrames.toLong() + frameCount) * 2 <= output.size)
         var peakLeft = 0f
         var peakRight = 0f

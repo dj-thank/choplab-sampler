@@ -62,22 +62,26 @@ class EditorBackend private constructor(
 
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = withContext(Dispatchers.Default) {
         require(maximumBuckets in 16..2048)
-        val audio = pcm.load(asset)
-        val bucketSize = ((audio.frameCount + maximumBuckets - 1) / maximumBuckets).coerceAtLeast(1)
-        val peaks = FloatArray((audio.frameCount + bucketSize - 1) / bucketSize)
-        var first = 0
-        while (first < audio.frameCount) {
-            currentCoroutineContext().ensureActive()
-            val end = minOf(audio.frameCount, first + com.choplab.engine.PagedPcm.PAGE_FRAMES)
-            val window = pcm.readWindow(audio, first, end)
-            for (frame in first until end) {
-                val sample = (frame - first) * 2
-                val bucket = frame / bucketSize
-                peaks[bucket] = maxOf(peaks[bucket], abs(window[sample]), abs(window[sample + 1]))
+        pcm.acquire(asset).use { lease ->
+            pcm.memory.reserve(com.choplab.engine.PagedPcm.PAGE_FRAMES * 8L + maximumBuckets * 4L).use {
+            val audio = lease.pcm
+            val bucketSize = ((audio.frameCount + maximumBuckets - 1) / maximumBuckets).coerceAtLeast(1)
+            val peaks = FloatArray((audio.frameCount + bucketSize - 1) / bucketSize)
+            var first = 0
+            while (first < audio.frameCount) {
+                currentCoroutineContext().ensureActive()
+                val end = minOf(audio.frameCount, first + com.choplab.engine.PagedPcm.PAGE_FRAMES)
+                val window = pcm.readWindow(audio, first, end)
+                for (frame in first until end) {
+                    val sample = (frame - first) * 2
+                    val bucket = frame / bucketSize
+                    peaks[bucket] = maxOf(peaks[bucket], abs(window[sample]), abs(window[sample + 1]))
+                }
+                first = end
             }
-            first = end
+            peaks.toList()
+            }
         }
-        peaks.toList()
     }
 
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
@@ -87,45 +91,60 @@ class EditorBackend private constructor(
      * Renders [pad] from [source] with its pitch, reverse and tone, as it sounds from its PAD, into a 48 kHz float WAV in
      * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
      */
-    suspend fun renderPad(pad: Pad, source: Asset): Asset {
-        val samples = withContext(Dispatchers.Default) {
-            val context = currentCoroutineContext()
-            PadRender.render(ProgramCompiler.enginePad(pad, source, pcm.load(source))) { windows, render ->
-                runBlocking(context) { pcm.prepared(windows, render) }
+    suspend fun renderPad(pad: Pad, source: Asset): Asset = withContext(Dispatchers.Default) {
+        pcm.acquire(source).use { lease ->
+            val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
+            pcm.memory.reserve(PadRender.frames(prepared) * 8L + 256 * 1024).use {
+                val context = currentCoroutineContext()
+                val samples = PadRender.render(prepared) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
+                val marks = buildList {
+                    if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
+                    if (pad.reverse) add("rev")
+                    if (pad.tone < com.choplab.engine.Pad.TONE_BYPASS) add("tone ${kotlin.math.round(pad.tone * 100).toInt()}%")
+                }
+                publishRendered(samples, (listOf(source.name.take(200)) + marks).joinToString(" "), source.hash)
             }
         }
-        val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()
-        val marks = buildList {
-            if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
-            if (pad.reverse) add("rev")
-            if (pad.tone < com.choplab.engine.Pad.TONE_BYPASS) add("tone ${kotlin.math.round(pad.tone * 100).toInt()}%")
-        }
-        val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), 48_000, 2, samples.size / 2L,
-            (listOf(source.name.take(200)) + marks).joinToString(" "), AssetRole.RENDERED, derivedFrom = source.hash)
-        withContext(Dispatchers.IO) { assets.publish(asset, java.io.ByteArrayInputStream(bytes)) }
-        return asset
     }
 
-    /** A complete performed voice. Gain/pan/envelope are baked; placement must use unity gain and center pan. */
-    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset {
-        require(limitFrames in 1..PadRender.MAX_FRAMES)
-        require(releaseAt == null || releaseAt in 0..limitFrames)
-        val samples = withContext(Dispatchers.Default) {
-            val context = currentCoroutineContext()
-            com.choplab.engine.PadPerformanceRender.render(
-                ProgramCompiler.enginePad(pad, source, pcm.load(source)), releaseAt, limitFrames, stopAt) { windows, render ->
-                runBlocking(context) { pcm.prepared(windows, render) }
+    /** A complete performed voice. Gain/pan/envelope are baked; placement uses unity gain and center pan. */
+    suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset = withContext(Dispatchers.Default) {
+        pcm.acquire(source).use { lease ->
+            val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
+            val frames = com.choplab.engine.PadPerformanceRender.frames(prepared, releaseAt, limitFrames, stopAt)
+            pcm.memory.reserve(frames * 8L + 256 * 1024).use {
+                val context = currentCoroutineContext()
+                val samples = com.choplab.engine.PadPerformanceRender.render(prepared, releaseAt, limitFrames, stopAt) { windows, render ->
+                    runBlocking(context) { pcm.prepared(windows, render) }
+                }
+                publishRendered(samples, source.name.take(200) + " performance", source.hash)
             }
         }
-        currentCoroutineContext().ensureActive()
-        val bytes = java.io.ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 48_000, 2) }.toByteArray()
-        val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), 48_000, 2, samples.size / 2L,
-            source.name.take(200) + " performance", AssetRole.RENDERED, derivedFrom = source.hash)
-        withContext(Dispatchers.IO) {
+    }
+
+    /** Stream float bytes: no second/third full-sized byte-array copy next to the rendered PCM. */
+    private suspend fun publishRendered(samples: FloatArray, name: String, sourceHash: String): Asset = withContext(Dispatchers.IO) {
+        val temporary = Files.createTempFile("choplab-render-", ".wav")
+        try {
+            val hash = java.security.MessageDigest.getInstance("SHA-256")
+            java.io.FileOutputStream(temporary.toFile()).use { file ->
+                val writer = WavCodec.FloatWriter(java.security.DigestOutputStream(file, hash), samples.size / 2L)
+                var first = 0
+                while (first < samples.size / 2) {
+                    ensureActive()
+                    val count = minOf(4096, samples.size / 2 - first)
+                    writer.write(samples, first, count)
+                    first += count
+                }
+                writer.finish(); file.fd.sync()
+            }
+            val asset = Asset(hash.digest().hex(), "wav", Files.size(temporary), 48_000, 2, samples.size / 2L,
+                name, AssetRole.RENDERED, derivedFrom = sourceHash)
             val context = currentCoroutineContext()
-            assets.publish(asset, java.io.ByteArrayInputStream(bytes)) { !context.isActive }
-        }
-        return asset
+            ensureActive()
+            assets.adopt(asset, temporary) { !context.isActive }
+            asset
+        } finally { Files.deleteIfExists(temporary) }
     }
 
     /** [flush] is false only after the user chose to close without the final autosave. */

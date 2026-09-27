@@ -19,7 +19,14 @@ import kotlin.test.*
 class LongSourceHostIntegrationTest {
     @Test fun selectedLongSourceSupportsLateHandPadsReloadUndoExportAndArchiveThroughNormalPorts() = runBlocking<Unit> {
         val directory = Files.createTempDirectory("long-source-host-")
-        try { exercise(directory) } finally { directory.toFile().deleteRecursively() }
+        val before = PcmMemoryBudget.shared.statistics().usedBytes
+        try {
+            exercise(directory)
+            withTimeout(5000) { while (PcmMemoryBudget.shared.statistics().usedBytes != before) delay(5) }
+            val memory = PcmMemoryBudget.shared.statistics()
+            assertTrue(memory.peakBytes <= memory.limitBytes)
+            println("400s production ports PCM peak=${memory.peakBytes} limit=${memory.limitBytes}; shutdown retained=${memory.usedBytes - before}")
+        } finally { directory.toFile().deleteRecursively() }
     }
 
     private suspend fun exercise(directory: Path) {

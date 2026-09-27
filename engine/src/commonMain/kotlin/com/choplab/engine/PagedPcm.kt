@@ -32,9 +32,9 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
     }
     private val pageShift = pageFrames.countTrailingZeroBits()
     private val pageMask = pageFrames - 1
-    private val entries: Array<Entry>
+    private var entries: Array<Entry>
     private val requests = PcmRequestRing(requestCapacity)
-    private val slots: IntArray
+    private var slots: IntArray
     private var clock = 0 // worker only
     @Volatile private var loaded = 0
     @Volatile private var failed = false
@@ -90,8 +90,13 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
             val cached = cursor.samples
             if (cached != null) return cached[(frame and pageMask) * 2 + channel]
         }
+        if (closed || failed) {
+            if (cursor != null) cursor.missing = true
+            missCount.fetchAndAdd(1)
+            return 0f
+        }
         val page = entries[index].page
-        if (page == null || closed || failed) {
+        if (page == null) {
             if (cursor != null) cursor.missing = true
             missCount.fetchAndAdd(1)
             requestPage(index)
@@ -148,6 +153,15 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
     /** Failure/cancellation never publishes a partial page. A new owner can retry with a fresh cache. */
     fun fail() { failed = true }
     fun close() { closed = true }
+    /** Worker only, after the page producer has stopped and every asset lease has ended. */
+    fun releaseStorage() {
+        closed = true
+        for (entry in entries) entry.page = null
+        entries = emptyArray()
+        slots = IntArray(0)
+        requests.releaseStorage()
+        loaded = 0
+    }
     fun statistics(): PcmPageStats = PcmPageStats(
         status,
         loaded.toLong() * pageFrames * 8, capacityBytes, misses, droppedCount.load(), requests.pending, loaded)
@@ -168,12 +182,13 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
 @OptIn(ExperimentalAtomicApi::class)
 private class PcmRequestRing(private val capacity: Int) {
     private class Slot { @Volatile var value = -1; val ready = AtomicLong(-1) }
-    private val slots = Array(capacity) { Slot() }
+    private var slots = Array(capacity) { Slot() }
     private val write = AtomicLong(0)
     private val read = AtomicLong(0)
     val consumed: Long get() = read.load()
     val pending: Int get() = (write.load() - read.load()).coerceIn(0, capacity.toLong()).toInt()
     init { require(capacity in 4..8192 && capacity.countOneBits() == 1) }
+    fun releaseStorage() { slots = emptyArray() }
     fun offer(value: Int): Boolean {
         repeat(8) {
             val at = write.load()

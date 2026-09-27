@@ -22,6 +22,8 @@ internal class PcmOwnership(private val byteLimit: Long, initialProgram: EngineP
     private val slots = Array(MAX_ASSETS) { Slot() }
     private val incoming: Array<PcmAsset?> = arrayOfNulls(EngineFormat.PAD_COUNT + Arrangement.MAX_CLIPS)
     private var epoch = 0L
+    var closed = false
+        private set
     var reservationBusy = false
         private set
     val initialSlots: IntArray
@@ -42,6 +44,7 @@ internal class PcmOwnership(private val byteLimit: Long, initialProgram: EngineP
     }
     private fun reserveIncoming(count: Int): IntArray? {
         reservationBusy = false
+        if (closed) { clearIncoming(count); return null }
         val indices = IntArray(count)
         val states = IntArray(count)
         var bytes = 0L
@@ -76,6 +79,12 @@ internal class PcmOwnership(private val byteLimit: Long, initialProgram: EngineP
                 return null
             }
         }
+        for (i in 0 until count) if (states[i] == 0 && !incoming[i]!!.retainPcm()) {
+            for (prior in 0 until i) if (states[prior] == 0) incoming[prior]!!.releasePcm()
+            for (reserved in 0 until count) slots[indices[reserved]].state.store(states[reserved])
+            clearIncoming(count)
+            return null
+        }
         for (i in 0 until count) {
             val slot = slots[indices[i]]
             slot.asset = incoming[i]
@@ -100,10 +109,22 @@ internal class PcmOwnership(private val byteLimit: Long, initialProgram: EngineP
             if (keep == 0L && slot.consumed == slot.acquired && slot.state.compareAndSet(1, 2)) {
                 // Producer may have acquired another lease before the CAS. Recheck under this claim.
                 if (slot.consumed == slot.acquired) {
+                    val retired = slot.asset
                     slot.asset = null
                     slot.state.store(0)
+                    retired!!.releasePcm()
                 } else slot.state.store(1)
             }
+        }
+    }
+    /** After producer/render have stopped. Final storage disposal stays on the PCM budget's worker. */
+    fun close() {
+        if (closed) return
+        closed = true
+        for (slot in slots) {
+            slot.asset?.releasePcm()
+            slot.asset = null
+            slot.state.store(0)
         }
     }
     companion object { const val MAX_ASSETS = 4096 }

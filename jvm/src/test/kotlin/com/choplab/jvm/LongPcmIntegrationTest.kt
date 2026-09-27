@@ -75,6 +75,7 @@ class LongPcmIntegrationTest {
                 pcm.prefetch(data, frames - 2048, frames)
                 assertEquals(sample(frames - 1, 1), data.sample(frames - 1, 1))
                 assertTrue(data.pages!!.statistics().retainedBytes <= beforeClear.capacityBytes)
+                compiled.releasePreparation()
             }
             val archive = directory.resolve("project.choplab")
             Files.newOutputStream(archive).use { ArchiveCodec().write(project, store, it) }

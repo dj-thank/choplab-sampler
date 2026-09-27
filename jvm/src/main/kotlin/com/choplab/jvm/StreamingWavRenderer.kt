@@ -21,7 +21,10 @@ object StreamingWavRenderer {
         prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()) { "Paged PCM needs worker preparation" }; render() },
     ): StreamingRenderStats {
         require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..480_000 && blockFrames in 1..65_536)
+        val buffers = kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L + 2048) }
+        try {
         val engine = EngineCore(program, EngineConfig(controlCapacity = 4, eventCapacity = 8, outputMode = EngineOutputMode.EXPORT))
+        try {
         require(engine.controls.offer(EngineCommand.StartSequence(0, 1)) == OfferResult.ACCEPTED)
         require(engine.controls.offer(EngineCommand.Stop(frames.toLong(), 2)) == OfferResult.ACCEPTED)
         val latency = engine.latencyFrames
@@ -43,5 +46,7 @@ object StreamingWavRenderer {
         if (cancelled()) throw CancellationException("WAV export cancelled")
         writer.finish()
         return StreamingRenderStats(outputFrames, rendered, buffer.size * 4, writer.bufferBytes, latency)
+        } finally { engine.close() }
+        } finally { buffers.close() }
     }
 }

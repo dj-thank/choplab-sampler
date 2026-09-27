@@ -5,6 +5,7 @@ import com.choplab.core.model.AssetRole
 import com.choplab.core.model.ProjectLimits
 import com.choplab.engine.EngineFormat
 import com.choplab.engine.PcmAsset
+import com.choplab.engine.PcmLease
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -28,7 +29,7 @@ class PcmAssetCache(
         val channels: Int, val frames: Long, val needsFloat: Boolean,
     )
     private class Flight {
-        val result = CompletableDeferred<PcmAsset>()
+        val result = CompletableDeferred<PcmLease>()
         lateinit var job: Job
         var waiters = 0
     }
@@ -38,18 +39,27 @@ class PcmAssetCache(
     private val entries = LinkedHashMap<Identity, PcmAsset>()
     private val flights = mutableMapOf<Identity, Flight>()
     private var retained = 0L
+    private val legacy = mutableListOf<PcmLease>()
     init { require(maxBytes in 8..EngineFormat.MAX_RESIDENT_BYTES && maximumPending in 1..ProjectLimits.MAX_ASSETS) }
 
+    /** Legacy callers own their returned PCM until cache.close. New worker paths use acquire/use. */
     suspend fun get(asset: Asset, discard: suspend (PcmAsset) -> Unit = {}, decode: suspend () -> PcmAsset): PcmAsset {
+        val lease = acquire(asset, discard) { decode().acquire() }
+        try { guard.withLock { check(scope.isActive); legacy.add(lease) } }
+        catch (failure: Throwable) { lease.close(); throw failure }
+        return lease.pcm
+    }
+
+    suspend fun acquire(asset: Asset, discard: suspend (PcmAsset) -> Unit = {}, decode: suspend () -> PcmLease): PcmLease {
         val identity = Identity(asset.hash, asset.extension, asset.byteCount, asset.sampleRate, asset.channels, asset.frames, asset.role != AssetRole.ORIGINAL)
         val frames = (asset.frames * 48_000 + asset.sampleRate - 1) / asset.sampleRate
         require(frames in 1..Int.MAX_VALUE.toLong())
-        var hit: PcmAsset? = null
+        var hit: PcmLease? = null
         val flight = guard.withLock {
             check(scope.isActive) { "PCM cache is closed" }
             entries.remove(identity)?.let {
-                if (it.pages?.status in listOf(com.choplab.engine.PcmReadStatus.FAILED, com.choplab.engine.PcmReadStatus.CLOSED)) retained -= it.residentBytes
-                else { entries[identity] = it; hit = it }
+                if (it.pages?.status !in listOf(com.choplab.engine.PcmReadStatus.FAILED, com.choplab.engine.PcmReadStatus.CLOSED)) hit = it.tryAcquire()
+                if (hit == null) retained -= it.residentBytes else entries[identity] = it
             }
             if (hit != null) return@withLock null
             (flights[identity]?.takeIf { !it.result.isCancelled && it.job.isActive } ?: run {
@@ -58,19 +68,21 @@ class PcmAssetCache(
                 Flight().also { created ->
                     flights[identity] = created
                     created.job = scope.launch(start = CoroutineStart.LAZY) {
-                        var unpublished: PcmAsset? = null
+                        var unpublished: PcmLease? = null
                         try {
-                            val pcm = decodeSlot.withPermit {
+                            val lease = decodeSlot.withPermit {
                                 coroutineContext.ensureActive()
                                 decode().also {
                                     unpublished = it
                                     coroutineContext.ensureActive()
-                                    require(it.frameCount.toLong() == frames && it.residentBytes <= EngineFormat.MAX_RESIDENT_BYTES &&
-                                        (it.pages != null || it.residentBytes == frames * 8)) { "PCM metadata mismatch" }
+                                    val pcm = it.pcm
+                                    require(pcm.frameCount.toLong() == frames && pcm.residentBytes <= EngineFormat.MAX_RESIDENT_BYTES &&
+                                        (pcm.pages != null || pcm.residentBytes == frames * 8)) { "PCM metadata mismatch" }
                                 }
                             }
                             guard.withLock {
                                 coroutineContext.ensureActive()
+                                val pcm = lease.pcm
                                 if (pcm.residentBytes <= maxBytes) {
                                     while (retained + pcm.residentBytes > maxBytes) {
                                         val oldest = entries.keys.first()
@@ -78,12 +90,19 @@ class PcmAssetCache(
                                     }
                                     entries[identity] = pcm; retained += pcm.residentBytes
                                 }
-                                created.result.complete(pcm)
+                                created.result.complete(lease)
+                                // The publication lease bridges completion -> every waiter's own lease.
+                                if (created.waiters == 0) lease.close()
                                 unpublished = null
                             }
                         } catch (failure: Throwable) {
-                            try { withContext(NonCancellable) { unpublished?.let { discard(it) } } }
-                            catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
+                            try {
+                                withContext(NonCancellable) {
+                                    unpublished?.let { lease -> lease.close(); discard(lease.pcm) }
+                                }
+                            } catch (cleanup: Throwable) {
+                                if (cleanup !== failure) failure.addSuppressed(cleanup)
+                            }
                             created.result.completeExceptionally(failure)
                             if (failure is Error) throw failure
                         } finally {
@@ -95,12 +114,15 @@ class PcmAssetCache(
         }
         hit?.let { return it }
         val waiting = requireNotNull(flight)
-        try { return waiting.result.await() }
+        try { return waiting.result.await().pcm.acquire() }
         finally {
             withContext(NonCancellable) {
                 guard.withLock {
                     waiting.waiters--
-                    if (waiting.waiters == 0 && !waiting.result.isCompleted) waiting.job.cancel()
+                    if (waiting.waiters == 0) {
+                        if (!waiting.result.isCompleted) waiting.job.cancel()
+                        else if (!waiting.result.isCancelled) waiting.result.await().close()
+                    }
                 }
             }
         }
@@ -108,5 +130,11 @@ class PcmAssetCache(
 
     suspend fun statistics(): PcmCacheStats = guard.withLock { PcmCacheStats(retained, entries.size, flights.size) }
     suspend fun clear() = guard.withLock { entries.clear(); retained = 0L }
-    override fun close() { scope.cancel() }
+    override fun close() {
+        scope.cancel()
+        runBlocking {
+            scope.coroutineContext[Job]!!.join()
+            guard.withLock { legacy.forEach { it.close() }; legacy.clear(); entries.clear(); retained = 0L }
+        }
+    }
 }
