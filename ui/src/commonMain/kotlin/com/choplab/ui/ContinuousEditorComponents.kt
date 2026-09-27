@@ -234,11 +234,14 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                             // A one-shot plays out as a tap does; a PAD that sounds while held stops when let go.
                             val whileHeld = pad.mode != ContinuousPadMode.ONE_SHOT
                             if (filled) detectTapGestures(onPress = {
-                                val frame = latestHit?.invoke()
+                                val gesture = latestHit?.invoke()?.let { ContinuousHitGesture(id, it) }
+                                if (gesture != null) latestAction(ContinuousEditorAction.BeginHit(gesture))
                                 latestAction(if (whileHeld) ContinuousEditorAction.HoldPad(id) else ContinuousEditorAction.TapPad(id))
                                 var released = false
-                                try { released = tryAwaitRelease() } finally { if (whileHeld) latestAction(ContinuousEditorAction.ReleasePad(id)) }
-                                if (released && frame != null) latestAction(ContinuousEditorAction.CaptureHit(id, frame))
+                                try { released = tryAwaitRelease() } finally {
+                                    if (gesture != null) latestAction(ContinuousEditorAction.EndHit(gesture, cancelled = !released))
+                                    if (whileHeld) latestAction(ContinuousEditorAction.ReleasePad(id))
+                                }
                             })
                         } else Modifier.combinedClickable(interactionSource = interaction, indication = null,
                             onClick = { onAction(ContinuousEditorAction.SelectPad(id)); if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) onAction(ContinuousEditorAction.TapPad(id)) },

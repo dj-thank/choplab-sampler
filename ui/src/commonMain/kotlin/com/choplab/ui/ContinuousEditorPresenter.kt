@@ -104,7 +104,8 @@ private data class VoiceRecording(val songFrame: Long, val songEnd: Long, val ou
  * played the song, each PAD where it was heard, and whether presses went past what one pass holds.
  */
 private data class HitRecording(val from: Long, val songEnd: Long, val outputDelayFrames: Long,
-                                val played: List<ContinuousHit> = emptyList(), val overflow: Boolean = false)
+                                val played: List<ContinuousHit> = emptyList(), val overflow: Boolean = false,
+                                val pending: Map<ContinuousHitGesture, ContinuousHit> = emptyMap())
 
 /** At most this many PAD presses in one pass: as many clips as the song holds. */
 private const val MAX_HITS = 1024
@@ -526,6 +527,28 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.RecordVoice -> startVoice(project)
                 ContinuousEditorAction.RecordHits -> startHits(project)
                 ContinuousEditorAction.StopHits -> { if (view.value.hits != null) pauseSong(); finishHits() }
+                is ContinuousEditorAction.BeginHit -> view.value.hits?.let { recording ->
+                    val press = action.gesture
+                    when {
+                        project.pads.getOrNull(press.padId)?.assetHash == null -> false
+                        press.songFrame !in recording.from until recording.songEnd -> true
+                        recording.played.size + recording.pending.size >= MAX_HITS -> {
+                            view.update { it.copy(hits = it.hits?.copy(overflow = true)) }; true
+                        }
+                        else -> {
+                            val heard = ContinuousHit(press.padId, (press.songFrame - recording.outputDelayFrames).coerceAtLeast(0))
+                            view.update { it.copy(hits = it.hits?.copy(pending = recording.pending + (press to heard))) }; true
+                        }
+                    }
+                } ?: true
+                is ContinuousEditorAction.EndHit -> {
+                    val recording = view.value.hits
+                    val heard = recording?.pending?.get(action.gesture)
+                    if (recording != null && heard != null) view.update { it.copy(hits = recording.copy(
+                        pending = recording.pending - action.gesture,
+                        played = if (action.cancelled) recording.played else recording.played + heard)) }
+                    true
+                }
                 is ContinuousEditorAction.CaptureHit -> view.value.hits?.let { recording ->
                     when {
                         project.pads.getOrNull(action.padId)?.assetHash == null -> false
@@ -690,6 +713,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun allowedWhileRecording(action: ContinuousEditorAction) = when (action) {
         ContinuousEditorAction.RecordVoice, ContinuousEditorAction.StopVoice, ContinuousEditorAction.StopAll,
         ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit,
+        is ContinuousEditorAction.BeginHit, is ContinuousEditorAction.EndHit,
         ContinuousEditorAction.StopSong, ContinuousEditorAction.PauseSong, is ContinuousEditorAction.Navigate,
         is ContinuousEditorAction.SelectBank, is ContinuousEditorAction.SelectPad, is ContinuousEditorAction.SelectClip,
         is ContinuousEditorAction.TapPad, is ContinuousEditorAction.HoldPad, is ContinuousEditorAction.ReleasePad,
@@ -887,7 +911,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
      * itself, also when the song's end ends the pass.
      */
     private suspend fun finishHits(): Boolean {
-        val recording = view.value.hits ?: return true
+        val active = view.value.hits ?: return true
+        // The pass owns presses already heard: a later pointer release cannot erase them at the song boundary.
+        val recording = active.copy(played = active.played + active.pending.values, pending = emptyMap())
         view.update { it.copy(hits = null) }
         fun report(status: ContinuousStatus, ok: Boolean): Boolean {
             if (!ok) refusal = status

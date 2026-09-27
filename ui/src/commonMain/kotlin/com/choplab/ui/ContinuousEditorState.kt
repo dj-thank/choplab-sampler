@@ -245,6 +245,9 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 
 /** Read only in source waveform/time or song timeline/transport subtrees, never whole-app ticks. */
 /** A PAD played where song frame [timelineFrame] (48 kHz) was heard. */
+/** Identity belongs to one physical press, even when a new pass starts at the same frame. */
+class ContinuousHitGesture(val padId: Int, val songFrame: Long)
+
 @Immutable data class ContinuousHit(val padId: Int, val timelineFrame: Long)
 
 @Immutable data class ContinuousEditorReadout(
@@ -360,6 +363,8 @@ sealed interface ContinuousEditorAction {
     data object StopHits : ContinuousEditorAction
     /** PAD [padId] was pressed as the engine played song frame [songFrame], while recording what the PADs play. */
     data class CaptureHit(val padId: Int, val songFrame: Long) : ContinuousEditorAction
+    data class BeginHit(val gesture: ContinuousHitGesture) : ContinuousEditorAction
+    data class EndHit(val gesture: ContinuousHitGesture, val cancelled: Boolean) : ContinuousEditorAction
     /** The presenter's one edit for a recorded pass: each PAD where it was heard, on the grid. Not sent by the UI. */
     data class PlaceHits(val hits: List<ContinuousHit>) : ContinuousEditorAction
     /** Puts the diagnostics card's text, already in the user's language, on the clipboard. */

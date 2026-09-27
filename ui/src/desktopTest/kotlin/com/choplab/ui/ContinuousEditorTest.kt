@@ -902,15 +902,20 @@ class ContinuousEditorTest {
                 // A one-shot plays out as a tap does, even when let go at once.
                 actions.clear()
                 press("ce-pad-2")
-                assertEquals(listOf(ContinuousEditorAction.TapPad(2), ContinuousEditorAction.CaptureHit(2, 100_000)), actions)
+                val oneShot = (actions.first() as ContinuousEditorAction.BeginHit).gesture
+                assertEquals(2, oneShot.padId); assertEquals(100_000L, oneShot.songFrame)
+                assertEquals(listOf(ContinuousEditorAction.BeginHit(oneShot), ContinuousEditorAction.TapPad(2), ContinuousEditorAction.EndHit(oneShot, false)), actions)
                 // A PAD that sounds while held stops when let go.
                 actions.clear()
                 press("ce-pad-3")
-                assertEquals(listOf(ContinuousEditorAction.HoldPad(3), ContinuousEditorAction.ReleasePad(3), ContinuousEditorAction.CaptureHit(3, 100_000)), actions)
+                val gate = (actions.first() as ContinuousEditorAction.BeginHit).gesture
+                assertEquals(3, gate.padId); assertEquals(100_000L, gate.songFrame)
+                assertEquals(listOf(ContinuousEditorAction.BeginHit(gate), ContinuousEditorAction.HoldPad(3), ContinuousEditorAction.EndHit(gate, false), ContinuousEditorAction.ReleasePad(3)), actions)
                 // A touch that slides off the PAD sounded, but records nothing.
                 actions.clear()
                 press("ce-pad-2", Offset(0f, 160f))
-                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.TapPad(2)), actions)
+                val cancelled = (actions.first() as ContinuousEditorAction.BeginHit).gesture
+                assertEquals(listOf(ContinuousEditorAction.BeginHit(cancelled), ContinuousEditorAction.TapPad(2), ContinuousEditorAction.EndHit(cancelled, true)), actions)
                 actions.clear()
                 press("ce-pad-9")
                 assertEquals(emptyList(), actions, "An empty PAD plays and records nothing")

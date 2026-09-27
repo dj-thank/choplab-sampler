@@ -23,14 +23,16 @@ class ContinuousEditorPresenterTest {
             h.until { it.permits(ContinuousCapability.RECORD_HITS) && it.grid == ContinuousGrid.FREE }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
             h.until { it.recordingHits }
-            // CEPads takes this timestamp on pointer down, but emits CaptureHit only on release.
+            // A physical press is owned by the pass before its release.
             val pressedAt = 43_200L
+            val gesture = ContinuousHitGesture(0, pressedAt)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(gesture)))
             h.engine.transport = h.engine.transport.copy(sequenceFrame = pressedAt)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
             h.engine.transport = h.engine.transport.copy(sequenceFrame = 48_000, playing = false, sequencePaused = false)
-            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_EMPTY }
+            h.until { !it.recordingHits && it.status == ContinuousStatus.HITS_PLACED && it.clips.size == 2 }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, pressedAt)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(gesture, cancelled = false)))
             assertEquals(listOf(0L, pressedAt), h.studio.document.value.project.clips.map {
                 ContinuousClipEdits.startFrame(h.studio.document.value.project, it)
             }.sorted(), "A PAD heard before the end must be retained when the finger is lifted after the end")
