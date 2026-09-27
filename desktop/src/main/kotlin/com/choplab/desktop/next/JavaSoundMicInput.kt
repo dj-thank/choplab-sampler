@@ -11,12 +11,12 @@ import javax.sound.sampled.TargetDataLine
  * recorder opened it, with both channels of a stereo line averaged to mono. The line is open and started.
  */
 internal class JavaSoundMicInput(private val line: TargetDataLine) : MicInput {
-    private val channels = line.format.channels
-    private val frameBytes = 2 * channels
+    private val inputChannels = line.format.channels
+    private val frameBytes = 2 * inputChannels
     private val bytes = ByteArray(4096 / frameBytes * frameBytes)
     override val sampleRate: Int = line.format.sampleRate.toInt()
 
-    init { require(line.format.sampleSizeInBits == 16 && !line.format.isBigEndian && channels in 1..2) }
+    init { require(line.format.sampleSizeInBits == 16 && !line.format.isBigEndian && inputChannels in 1..2) }
 
     override fun read(buffer: FloatArray): Int {
         val frames = minOf(buffer.size, bytes.size / frameBytes)
@@ -25,11 +25,11 @@ internal class JavaSoundMicInput(private val line: TargetDataLine) : MicInput {
         if (count <= 0) return -1
         for (frame in 0 until count) {
             var sum = 0
-            for (channel in 0 until channels) {
-                val at = (frame * channels + channel) * 2
+            for (channel in 0 until inputChannels) {
+                val at = (frame * inputChannels + channel) * 2
                 sum += (bytes[at].toInt() and 0xff) or (bytes[at + 1].toInt() shl 8)
             }
-            buffer[frame] = sum / (32_768f * channels)
+            buffer[frame] = sum / (32_768f * inputChannels)
         }
         return count
     }

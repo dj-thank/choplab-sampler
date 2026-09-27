@@ -23,7 +23,8 @@ class NextFileLocations {
 /** Desktop face of the shared [EditorBackend]: Java Sound output and microphone, and path-backed file services.
  * The caller selects Preview/next-v10 (or a test temporary directory), never the legacy data root.
  */
-class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations, val voice: VoiceTakes) : AutoCloseable {
+class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations, val voice: VoiceTakes,
+    val systemAudio: com.choplab.ui.SystemAudioCapture?) : AutoCloseable {
     val studio: Studio get() = shared.studio
     val engine: StreamingEnginePort get() = shared.engine
     val assets: FileAssetStore get() = shared.assets
@@ -44,7 +45,9 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
 
     /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
-    suspend fun shutdown(flush: Boolean = true) { try { voice.close() } finally { shared.shutdown(flush) } }
+    suspend fun shutdown(flush: Boolean = true) {
+        try { systemAudio?.close() } finally { try { voice.close() } finally { shared.shutdown(flush) } }
+    }
     override fun close() = runBlocking { shutdown() }
 
     companion object {
@@ -57,7 +60,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                     FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) }, decoder = decoder)
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), microphone = microphone) }
                 catch (failure: Exception) { runBlocking { shared.shutdown(flush = false) }; throw failure }
-            return NextBackend(shared, files, voice)
+            val system = if (com.choplab.desktop.isMacOsHost()) NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch")) else null
+            return NextBackend(shared, files, voice, system)
         }
 
         fun patternFrames(project: Project, pattern: Pattern): Int = EditorBackend.patternFrames(project, pattern)

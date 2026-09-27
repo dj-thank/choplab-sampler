@@ -19,7 +19,7 @@ enum class ContinuousCapability {
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
     PLACE_PAD, MOVE_CLIP, TRIM_CLIP, SPLIT_CLIP, DUPLICATE_CLIP, DELETE_CLIP,
     TRACK_MUTE, CLIP_GAIN, SONG_PLAYBACK, SONG_SEEK, SONG_MONITOR_GAIN, TEMPO,
-    ADD_DRUM, RECORD_VOICE, RECORD_SOURCE, SCRATCH, STOP_ALL,
+    ADD_DRUM, RECORD_VOICE, RECORD_SOURCE, RECORD_SYSTEM_SOURCE, SCRATCH, STOP_ALL,
 }
 enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
 enum class ContinuousStatus {
@@ -33,6 +33,7 @@ enum class ContinuousStatus {
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     MIC_DENIED, MIC_UNAVAILABLE,
     SOURCE_RECORDED, SOURCE_RECORDING_LIMIT, SOURCE_RECORDING_INTERRUPTED,
+    SYSTEM_DENIED, SYSTEM_NO_DISPLAY, SYSTEM_UNAVAILABLE, SYSTEM_TIMEOUT, SYSTEM_EMPTY,
     /** Refused because a take is being recorded. */
     RECORDING_BUSY,
     /**
@@ -142,6 +143,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val recordingVoice: Boolean = false,
     /** The microphone is collecting a new original, independent of a song or output device. */
     val recordingSource: Boolean = false,
+    val recordingSystemAudio: Boolean = false,
+    val startingSourceRecording: Boolean = false,
     val originalMonitorGain: Float = 1f,
     val banks: List<ContinuousBank> = (0..7).map(::ContinuousBank),
     val selectedBank: Int = 0,
@@ -222,6 +225,7 @@ sealed interface ContinuousEditorAction {
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
     data object RecordSource : ContinuousEditorAction
+    data object RecordSystemSource : ContinuousEditorAction
     data object StopSourceRecording : ContinuousEditorAction
     data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction

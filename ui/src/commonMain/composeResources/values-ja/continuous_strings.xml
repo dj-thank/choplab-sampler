@@ -30,9 +30,15 @@
     <string name="ce_mic_record">マイクで録音</string>
     <string name="ce_source_recording">録音中：%1$s 秒。「録音を止める」で原曲に入ります。長さ・空き容量の上限に達すると自動で止まります。</string>
     <string name="ce_source_record_discard">この録音を取り消す</string>
+    <string name="ce_source_recording_starting">録音を準備しています。許可の画面が出たら確認してください。取り消すこともできます。</string>
     <string name="ce_source_recorded">録った音を原曲に入れました。チョップしてPADへ置けます。「元に戻す」で前の原曲に戻せます。</string>
     <string name="ce_source_recording_limit">録音できる長さの上限に達したので止めて、そこまでの音を原曲に入れました。</string>
-    <string name="ce_source_recording_interrupted">マイクが使えなくなったので録音を止め、そこまでの音を原曲に入れました。</string>
+    <string name="ce_source_recording_interrupted">音声入力が止まったので録音を終え、そこまでの音を原曲に入れました。</string>
+    <string name="ce_system_denied">端末音を録れませんでした。システム設定の「プライバシーとセキュリティ」で画面収録とシステムオーディオ録音を許可し、もう一度お試しください。</string>
+    <string name="ce_system_no_display">画面ロックを解除してデスクトップを表示し、もう一度録音してください。外部ディスプレイの接続も確認してください。</string>
+    <string name="ce_system_unavailable">端末音の録音を開始できませんでした。アプリを開き直してお試しください。</string>
+    <string name="ce_system_timeout">端末音の録音が始まりませんでした。許可の画面を確認して、もう一度録音してください。</string>
+    <string name="ce_system_empty">端末音を録れませんでした。ほかのアプリで録音可能な音を再生してからお試しください。このアプリ自身の音は録りません。</string>
     <string name="ce_device_record">端末音声を録音</string>
     <string name="ce_chop_start">チョップ開始</string>
     <string name="ce_chop_stop">チョップを止める</string>
