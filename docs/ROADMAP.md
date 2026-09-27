@@ -84,6 +84,19 @@ Rollbackは対象commitのrevert/前のartifactへの復帰を基本とし、利
 
 NEXT再構築の実音・実マイク・provider・Human GOは未受入です。現行desktopのMac実マイク・YouTube・システム音の測定は下記で個別に記録し、NEXTへ昇格しません。音質A/B、デザイン案、NEXTの両OS制作通し、TalkBack/操作感などの確認用成果は実装に合わせて提示します。人間への確認は最大5項目にし、未回答を承認や合格へ変換しません。既存の包括的実装/統合許可は保持します。
 
+## Macローカル利用の統合受入 — 2026-09-27
+
+今回の完了条件は、このMacで取り込み→チョップ/PAD/ビート→録音→保存/再開→WAV書出しを実際に使えること。GitHub統合とCI成功は途中の確認とする。担当root、起点main `1734fef`（PR131統合後）、対象はMacの同梱Preview/NEXTと `scripts/run_mac_next_acceptance.py`・Mac CI。Rollbackは対象PRのrevertと以前のアプリへ戻すこと。利用者profile・既存素材は変更しない。
+
+- PR131のhead `0a4121d` は必須CI3件成功後にmerge `1734fef`。coroutines/serialization/ONNX更新を取り込み、重複するPR111/121はclose。Compose 1.12はdesktop梱包の重複JARで停止するため1.11.1を維持する。PR109はDependabotがPR132へ置き換えたため、新しいPRを統合対象とする。
+- 同revisionのMac/JDK21.0.12.1でengine77/core41/JVM84/shared desktop157・Android host157/jvm-core199/desktop275（システム録音1skip）/新UI55/旧UI42、失敗0。Gradleの変更なしtaskは既存の検証出力を再利用。policy320件成功。描画の1万block測定は割当0、192frame/48kHzでp99がblock時間の8.35%（配置＋PAD＋原曲）、5.47%（32voice＋fade）。Mac合成負荷の測定で、Pixelや10分間のunderrun受入ではない。
+- NEXT同梱195ファイル・169,020,346 bytesのmanifestを照合。実launcherの1440×870ウィンドウ応答と正常終了を確認。同梱Javaの制作通しはschema10、16/24bit・230,400frameの出力が成功。新しい受入runnerは合成素材を復元して通常終了・再起動を2回行い、自動保存の編集内容と全音源hashの一致を検査する。CIも強制終了だけの確認からこの経路へ変更する。
+- 既存Preview同梱238ファイル・521,144,600 bytesもmanifest一致。同梱codecでFLAC/ALAC/AIFF/MP3/AAC/Ogg/Opus/MP4/WebMと590秒FLACを確認。長尺FLACのdecode401ms（単回・合成素材、ネットワーク取得の速度ではない）。FLACを指定した実launcherの起動・通常終了・schema7 autosave生成も成功。
+- このMacのNEXT Java Sound adapterで48kHz/stereo/PCM16を14,400frame出力し、実マイクから48kHzで12,288frameの非ゼロ音声を読み取った。マイクのraw音声は保存しない。これは機器adapterの観測であり、画面上での歌の重ね録り・声と曲のずれ・人の聴感受入とは別。
+- 既存Previewの同梱ScreenCaptureKit helperで48kHz/2ch・301,440frameを取得。合成確認音の親Java音振幅6.18/外部音692.25、自己音抑制-40.98dB、正常終了を確認（`SYSTEM_CAPTURE_PARENT_EXCLUSION_PASS`）。raw録音は保存せず、NEXTの端末音録音UIの実装済み扱いにはしない。
+
+残り: NEXTはWAV/常駐音声上限に制限され、圧縮音源・online・端末音録音・ライブラリ/分離等が既存Preview側に残る。元の全機能要件を満たした扱いにせず、このMacで使う入口と実装を揃える。Spotifyの実同意/API、native file dialogの手操作、声と曲の遅延、人の聴感/操作感も未完。公開Client ID設定は引き継ぎ、値やtokenはsourceへ記録しない。
+
 ## Mac全機能対応とWindows正本の照合 — 2026-09-26
 
 担当はroot。起点はmain `29c80b2`、変更範囲はdesktop取込adapter・共有取込controller・既存契約文書。圧縮音源の登録時の検証済みPCMを最大64MiB/1素材だけ保持して同じbytesの初回使用へ渡し、二重decodeを除く。保持上限外も従来品質でdecodeする。複数取込は件数・失敗ファイル・再試行を表示し、成功分を保持。URLのscheme省略を補い共有パラメーターを正規化。RollbackはPRのrevert、利用者音源と保存形式は変更しない。

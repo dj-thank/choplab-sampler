@@ -9,6 +9,8 @@ on:
     paths:
       - '.github/workflows/mac-preview.yml'
       - 'scripts/package_mac_app.py'
+      - 'scripts/run_mac_next_acceptance.py'
+      - 'scripts/acceptance/MacPreviewLifecycle.java'
       - 'scripts/check_public_surface.py'
       - 'desktop/build.gradle.kts'
   workflow_dispatch:
@@ -45,25 +47,12 @@ jobs:
       - name: Package the linked editor as a local ad-hoc Mac app
         run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview
 
-      - name: Start the app once with an isolated profile and no audio
+      - name: Verify packaged production and normal close/reopen with an isolated profile
         timeout-minutes: 5
         run: |
-          app="desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app"
-          profile="$(mktemp -d)"
-          log="$RUNNER_TEMP/next-startup.log"
-          JAVA_TOOL_OPTIONS="-Duser.home=$profile -Dchoplab.silentSmoke=true" "$app/Contents/MacOS/ChopLab NEXT" >"$log" 2>&1 &
-          pid=$!
-          sleep 30
-          alive=0
-          if kill -0 "$pid" 2>/dev/null; then alive=1; kill "$pid"; fi
-          for _ in $(seq 20); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
-          kill -9 "$pid" 2>/dev/null || true
-          wait "$pid" || true
-          cat "$log"
-          if [ "$alive" -ne 1 ]; then echo "::error::The app exited during startup"; exit 1; fi
-          if grep -q "Exception in thread" "$log"; then echo "::error::The app reported an uncaught exception"; exit 1; fi
-          # The editor creates its data folder under the isolated profile only after its backend started.
-          test -d "$profile/Library/Application Support/ChopLab Preview/next-v10"
+          python3 scripts/run_mac_next_acceptance.py \
+            --app 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app' \
+            --java-home "$JAVA_HOME"
 
       - name: Archive and check the app
         run: |
