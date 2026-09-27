@@ -10,8 +10,10 @@ import com.choplab.core.*
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.jvm.*
+import com.choplab.jvm.ai.GeminiLyricProvider
 import com.choplab.sampler.R
 import com.choplab.ui.*
+import com.choplab.ui.ai.LyricProposalPort
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -81,6 +83,9 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
+            override fun createProvider() = GeminiLyricProvider()
+        }
         override val lyricFiles: LyricFiles = object : LyricFiles {
             override suspend fun importLrc(): String? {
                 val uri = pickers.pick(PickerKind.IMPORT_LRC) ?: return null

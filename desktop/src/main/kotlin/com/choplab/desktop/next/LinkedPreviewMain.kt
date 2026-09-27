@@ -17,7 +17,9 @@ import com.choplab.jvm.OriginalAudioImportPort
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
+import com.choplab.jvm.ai.GeminiLyricProvider
 import com.choplab.ui.*
+import com.choplab.ui.ai.LyricProposalPort
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -99,9 +101,10 @@ fun main() {
                 }
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
+                val lyricProposal by presenter.lyricProposal.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics)
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, lyricProposal = lyricProposal)
             }
         }
     } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -116,6 +119,9 @@ internal class DesktopEditorPorts(
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     override fun close() = spotify.close()
+    override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
+        override fun createProvider() = GeminiLyricProvider()
+    }
     override val lyricFiles: LyricFiles = DesktopLyricFiles { save ->
         choose(save, listOf("lrc"), if (japanese) { if (save) "歌詞を書き出す" else "歌詞を読み込む" }
             else { if (save) "Export lyrics" else "Import lyrics" })
