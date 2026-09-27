@@ -23,6 +23,51 @@ import kotlinx.coroutines.runBlocking
 class ContinuousEditorTest {
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
+    @Test fun recordingGuideSettingsAndStopRemainReachableAndEarlyPadPressesAreNotRecorded() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) {
+                Locale.setDefault(locale)
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.BEAT).copy(
+                    recordingGuide = RecordingGuideState(settingsEnabled = true)))
+                var countIn = 0
+                val scene = ImageComposeScene(width = 390, height = 844, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                    ContinuousEditor(state.value, actions::add, { ContinuousEditorReadout(songFrame = 0, countInBeatsRemaining = countIn) })
+                }
+                try {
+                    scene.settle()
+                    scene.click("ce-pad-details")
+                    for (bars in 0..2) {
+                        scene.click("ce-count-in-$bars")
+                        assertEquals(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.CountInBars(bars)), actions.last())
+                    }
+                    scene.click("ce-metronome")
+                    assertEquals(ContinuousEditorAction.RecordingGuide(RecordingGuideAction.Metronome(true)), actions.last())
+                    scene.capture("recording-guide-${locale.language}-font200.png")
+                    countIn = 4
+                    state.value = state.value.copy(recordingVoice = true,
+                        recordingGuide = RecordingGuideState(countInBars = 1, beatsRemaining = 4, settingsEnabled = false))
+                    scene.settle()
+                    assertTrue(requireNotNull(scene.tag("ce-metronome")).config.contains(SemanticsProperties.Disabled))
+                    scene.click("ce-record-voice")
+                    assertEquals(ContinuousEditorAction.StopVoice, actions.last())
+                    assertEquals(LiveRegionMode.Polite, requireNotNull(scene.tag("ce-count-in-progress")).config[SemanticsProperties.LiveRegion])
+                    state.value = state.value.copy(recordingVoice = false, recordingHits = true)
+                    scene.settle()
+                    actions.clear()
+                    scene.click("ce-pad-0")
+                    assertFalse(actions.any { it is ContinuousEditorAction.BeginHit }, "Read the audio clock at pointer-down, not a stale display tick")
+                    countIn = 0
+                    actions.clear()
+                    scene.click("ce-pad-0")
+                    assertEquals(1, actions.count { it is ContinuousEditorAction.BeginHit })
+                    assertEquals(1, actions.count { it is ContinuousEditorAction.EndHit })
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun separationSelectionIsAnExplicitSourceAction() = runBlocking<Unit> {
         val actions = mutableListOf<ContinuousEditorAction>()
         val fixture = ContinuousEditorFixture.state(ContinuousStage.CAPTURE)

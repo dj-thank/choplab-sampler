@@ -140,7 +140,8 @@ class DetachedEnginePort(private val compiler: ProgramCompiler) : EnginePort {
         return TransportState(snapshot.frame, snapshot.sequencePlaying, snapshot.programRevision, snapshot.activeVoices, snapshot.eventOverflows, outputAttached = false,
             sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused,
             metronomeEnabled = snapshot.metronomeEnabled, countInBeatsRemaining = snapshot.countInBeatsRemaining,
-            recordingStartFrame = snapshot.recordingStartFrame, recordingStartSequenceFrame = snapshot.recordingStartSequenceFrame)
+            recordingStartFrame = snapshot.recordingStartFrame, recordingStartSequenceFrame = snapshot.recordingStartSequenceFrame,
+            recordingStartedFrame = snapshot.recordingStartedFrame)
     }
 }
 

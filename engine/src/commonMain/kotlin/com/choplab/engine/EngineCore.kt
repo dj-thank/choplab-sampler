@@ -76,6 +76,9 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         private set
     var recordingStartSequenceFrame = 0L
         private set
+    /** Receipt survives stop/cancel so a short completed take is distinguishable from a cancelled count-in. */
+    var recordingStartedFrame = -1L
+        private set
     val programRevision: Long get() = program.revision
     val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES) +
         (if (handReservation >= 0) 1 else 0) + (if (clickReservation >= 0) 1 else 0)
@@ -319,6 +322,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     nextCountInBeat = 0
                     countInBeatsRemaining = countInBeats
                     recordingStartFrame = frame + (countInBeats * BEAT_UNITS + countInMilliBpm - 1) / countInMilliBpm
+                    recordingStartedFrame = if (countInBeats == 0) frame else -1
                     if (countInBeats > 0) { sequencePlaying = false; sequencePaused = true }
                     else { sequencePlaying = true; sequencePaused = false; repositionClick() }
                 }
@@ -545,6 +549,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         if (config.outputMode != EngineOutputMode.MONITOR) return
         if (countInBeatsRemaining > 0) {
             if (frame >= recordingStartFrame) {
+                recordingStartedFrame = recordingStartFrame
                 countInBeatsRemaining = 0
                 sequencePlaying = true
                 sequencePaused = false

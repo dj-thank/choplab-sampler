@@ -126,6 +126,7 @@ open class StreamingEnginePort(
     /** The device in use, for the diagnostics reader to ask about; the owner alone writes to and closes it. */
     @Volatile private var attachedSink: AudioSink? = null
     @Volatile private var writtenFrame = -1L
+    @Volatile private var completedCueBeforeReset = -1L
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
     /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
     private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
@@ -244,7 +245,9 @@ open class StreamingEnginePort(
             sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused, scratchFrame = snapshot.scratchFrame,
             metronomeEnabled = snapshot.metronomeEnabled, countInBeatsRemaining = snapshot.countInBeatsRemaining,
             recordingStartFrame = if (snapshot.recordingStartFrame < 0) -1 else snapshot.recordingStartFrame + (current?.offset ?: 0),
-            recordingStartSequenceFrame = snapshot.recordingStartSequenceFrame)
+            recordingStartSequenceFrame = snapshot.recordingStartSequenceFrame,
+            recordingStartedFrame = if (snapshot.recordingStartedFrame < 0) completedCueBeforeReset
+                else snapshot.recordingStartedFrame + (current?.offset ?: 0))
     }
 
     /**
@@ -371,6 +374,8 @@ open class StreamingEnginePort(
         fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) { request.dropped = dropped; request.answer.complete(accepted) }
         fun resetToEditingOnly(fault: DriverFault) {
             writtenFrame = -1
+            if (activeEngine.recordingStartedFrame >= 0) completedCueBeforeReset =
+                requireNotNull(engineView).offset + activeEngine.recordingStartedFrame
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             sink = null

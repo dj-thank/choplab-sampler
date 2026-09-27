@@ -293,6 +293,7 @@ class EngineSnapshot {
     /** Absolute engine input frame of the current recording cue; -1 after cancellation. */
     @Volatile var recordingStartFrame = -1L
     @Volatile var recordingStartSequenceFrame = 0L
+    @Volatile var recordingStartedFrame = -1L
     @Volatile var peakLeft = 0f
     @Volatile var peakRight = 0f
     @Volatile var lateCommands = 0L
@@ -331,6 +332,7 @@ class LiveReadout internal constructor() {
         data.countInBeatsRemaining = engine.countInBeatsRemaining
         data.recordingStartFrame = engine.recordingStartFrame
         data.recordingStartSequenceFrame = engine.recordingStartSequenceFrame
+        data.recordingStartedFrame = engine.recordingStartedFrame
         data.peakLeft = peakLeft
         data.peakRight = peakRight
         data.lateCommands = engine.lateCommands
@@ -367,6 +369,7 @@ class LiveReadout internal constructor() {
                 target.countInBeatsRemaining = data.countInBeatsRemaining
                 target.recordingStartFrame = data.recordingStartFrame
                 target.recordingStartSequenceFrame = data.recordingStartSequenceFrame
+                target.recordingStartedFrame = data.recordingStartedFrame
                 target.peakLeft = data.peakLeft
                 target.peakRight = data.peakRight
                 target.lateCommands = data.lateCommands

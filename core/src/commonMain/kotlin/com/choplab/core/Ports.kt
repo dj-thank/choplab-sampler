@@ -68,6 +68,7 @@ data class TransportState(
     /** Absolute render frame of the recording cue, or -1 when stopped/cancelled. */
     val recordingStartFrame: Long = -1,
     val recordingStartSequenceFrame: Long = 0,
+    val recordingStartedFrame: Long = -1,
 )
 interface EnginePort {
     suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram

@@ -19,7 +19,7 @@ import org.jetbrains.compose.resources.stringResource
         CEButton(click, { onAction(RecordingGuideAction.Metronome(!state.metronomeEnabled)) },
             Modifier.fillMaxWidth().testTag("ce-metronome").semantics { selected = state.metronomeEnabled },
             enabled = state.settingsEnabled)
-        Text(stringResource(Res.string.ce_count_in), color = CEColor.Cream)
+        Text(stringResource(Res.string.ce_count_in), color = CEColor.Ink)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             for (bars in 0..2) {
                 val label = if (bars == 0) stringResource(Res.string.ce_count_in_off)
@@ -29,6 +29,6 @@ import org.jetbrains.compose.resources.stringResource
                     enabled = state.settingsEnabled)
             }
         }
-        Text(stringResource(Res.string.ce_click_monitor_only), color = CEColor.Tan)
+        Text(stringResource(Res.string.ce_click_monitor_only), color = CEColor.Border)
     }
 }

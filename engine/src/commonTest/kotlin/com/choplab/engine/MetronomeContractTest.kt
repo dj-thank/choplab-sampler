@@ -63,6 +63,25 @@ class MetronomeContractTest {
         assertEquals(0, program.arrangement!!.clipCount)
     }
 
+    @Test fun completedCueReceiptSurvivesStopButACancelledCueCannotClaimItStarted() {
+        val engine = EngineCore(program(Tempo(240_000)))
+        engine.offer(EngineCommand.CountInAndResume(0, 0, 0))
+        engine.renderFrames(1)
+        assertEquals(0, engine.recordingStartedFrame)
+        engine.offer(EngineCommand.Stop(1, 1))
+        engine.renderFrames(1)
+        assertEquals(-1, engine.recordingStartFrame)
+        assertEquals(0, engine.recordingStartedFrame, "Even a one-frame take started before Stop")
+        engine.offer(EngineCommand.CountInAndResume(2, 2, 1))
+        engine.renderFrames(1)
+        assertEquals(-1, engine.recordingStartedFrame)
+        val end = engine.recordingStartFrame
+        engine.offer(EngineCommand.Stop(end, 3))
+        engine.renderFrames((end - engine.frame + 1).toInt())
+        assertEquals(-1, engine.recordingStartedFrame, "Commands take effect before their exact frame")
+        assertFalse(engine.sequencePlaying)
+    }
+
     @Test fun everyTransportChangeCancelsTheCueAndReturnsItsReservation() {
         val changes: List<(Long, Long, EngineProgram) -> EngineCommand> = listOf(
             { f, id, _ -> EngineCommand.Stop(f, id) },
