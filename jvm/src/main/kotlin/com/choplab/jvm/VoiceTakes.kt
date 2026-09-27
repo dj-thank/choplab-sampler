@@ -19,6 +19,7 @@ class VoiceTakes(
     /** Free space the disk keeps for everything else; a take never records into it. */
     private val diskReserveBytes: Long = 64L shl 20,
     private val usableDiskBytes: (Path) -> Long = { it.toFile().usableSpace },
+    private val captureChannels: Int = 1,
     private val microphone: () -> MicInput?,
 ) {
     /** How starting a take went. */
@@ -29,6 +30,7 @@ class VoiceTakes(
     private var closed = false
 
     init {
+        require(captureChannels in 1..2)
         // Scratch files a crash left behind hold nothing the document refers to; one that cannot go now goes later.
         try {
             if (Files.isDirectory(scratch)) Files.list(scratch).use { files ->
@@ -39,7 +41,7 @@ class VoiceTakes(
 
     /**
      * Opens the microphone for at most [maxSeconds], fewer when the asset store or the disk has room for less: a take
-     * is written once, as a 32-bit mono WAV, and then moved into the store.
+     * is written once, as a 32-bit WAV, and then moved into the store.
      */
     suspend fun start(maxSeconds: Int): Start = withContext(Dispatchers.IO) {
         require(maxSeconds > 0)
@@ -50,7 +52,10 @@ class VoiceTakes(
         val seconds = minOf(maxSeconds.toLong(), roomSeconds()).toInt()
         if (seconds < 1) return@withContext Start.NO_ROOM
         val input = try { microphone() } catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
-        val created = try { VoiceRecorder(input, scratch, seconds) } catch (failure: Exception) {
+        val created = try {
+            require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
+            VoiceRecorder(input, scratch, seconds)
+        } catch (failure: Exception) {
             try { input.close() } catch (_: Exception) { }
             throw failure
         }
@@ -85,9 +90,9 @@ class VoiceTakes(
         withContext(Dispatchers.IO + NonCancellable) { synchronized(lock) { closed = true; recorder.also { recorder = null } }?.discard() }
     }
 
-    /** Whole seconds of 48 kHz mono float the store's quota and the disk still take. */
+    /** Whole seconds of 48 kHz capture-channel float the store's quota and the disk still take. */
     private fun roomSeconds(): Long {
-        val perSecond = 4L * 48_000
+        val perSecond = 4L * 48_000 * captureChannels
         val store = assets.maxStoredBytes - assets.storedBytes() - 44
         val disk = usableDiskBytes(Files.createDirectories(scratch)) - diskReserveBytes - 44
         return minOf(store, disk).coerceAtLeast(0) / perSecond

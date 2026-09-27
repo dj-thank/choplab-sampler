@@ -14,6 +14,81 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun systemAudioBecomesAStereoOriginalWithoutOpeningTheMicrophone() = runBlocking<Unit> {
+        val capture = FakeSystemCapture()
+        val h = Harness(voice = true, system = capture)
+        try {
+            val before = h.studio.document.value.project
+            assertTrue(h.presenter.state.value.permits(ContinuousCapability.RECORD_SYSTEM_SOURCE))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSystemSource))
+            h.until { it.recordingSource && it.recordingSystemAudio && !it.startingSourceRecording }
+            assertEquals(987L, h.presenter.readout().recordingMillis)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertTrue(h.ports.voiceStarts.isEmpty())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopSourceRecording))
+            val after = h.studio.document.value.project
+            val asset = after.asset(requireNotNull(after.source).assetHash)
+            assertEquals(2, asset.channels)
+            assertEquals("SYSTEM 1", asset.name)
+            assertEquals(before.pads, after.pads)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value.project)
+            for ((result, message) in listOf(SystemAudioCapture.Start.DENIED to ContinuousStatus.SYSTEM_DENIED,
+                    SystemAudioCapture.Start.NO_DISPLAY to ContinuousStatus.SYSTEM_NO_DISPLAY,
+                    SystemAudioCapture.Start.TIMEOUT to ContinuousStatus.SYSTEM_TIMEOUT,
+                    SystemAudioCapture.Start.UNAVAILABLE to ContinuousStatus.SYSTEM_UNAVAILABLE)) {
+                capture.result = result
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSystemSource))
+                h.until { !it.recordingSource && it.status == message }
+                assertTrue(h.ports.voiceStarts.isEmpty(), "System failure must never fall back to a microphone")
+                assertEquals(before, h.studio.document.value.project)
+            }
+        } finally { h.close() }
+    }
+
+    @Test fun systemPermissionWaitCanBeCancelledAndClosingCancelsItBeforeAutosave() = runBlocking<Unit> {
+        val capture = FakeSystemCapture().also { it.waiting = CompletableDeferred() }
+        val h = Harness(system = capture)
+        try {
+            val before = h.studio.document.value.project
+            h.presenter.onAction(ContinuousEditorAction.RecordSystemSource)
+            h.until { it.startingSourceRecording && it.recordingSystemAudio }
+            h.presenter.onAction(ContinuousEditorAction.DiscardSourceRecording)
+            h.until { !it.recordingSource && it.status == ContinuousStatus.CANCELLED }
+            assertEquals(before, h.studio.document.value.project)
+            assertEquals(0, capture.stops)
+            capture.waiting = CompletableDeferred()
+            h.presenter.onAction(ContinuousEditorAction.RecordSystemSource)
+            h.until { it.startingSourceRecording }
+            assertTrue(withTimeout(2_000) { h.presenter.finishRecording() })
+            assertEquals(before, h.studio.document.value.project)
+            capture.waiting = null
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSystemSource), "Retry after cancellation")
+            assertTrue(h.presenter.finishRecording())
+            assertEquals(1, capture.stops)
+        } finally { h.close() }
+    }
+
+    private class FakeSystemCapture : SystemAudioCapture {
+        var result = SystemAudioCapture.Start.STARTED
+        var waiting: CompletableDeferred<SystemAudioCapture.Start>? = null
+        var stops = 0
+        override suspend fun start(maxSeconds: Int): SystemAudioCapture.Start {
+            assertTrue(maxSeconds in 1..300)
+            return waiting?.await() ?: result
+        }
+        override fun cancelOpening() { waiting?.complete(SystemAudioCapture.Start.CANCELLED) }
+        override val full = false
+        override val interrupted = false
+        override val recordedMillis = 987L
+        override suspend fun stop(name: String): Asset {
+            stops++
+            return Asset("f".repeat(64), "wav", 44 + 96_000L * 8, 48_000, 2, 96_000, name)
+        }
+        override suspend fun discard() = Unit
+        override suspend fun close() = Unit
+    }
+
     @Test fun recordingCannotStartWhileAnEarlierDocumentChangeIsStillPreparing() = runBlocking<Unit> {
         val h = Harness(voice = true)
         val preparing = CompletableDeferred<Unit>()
@@ -95,7 +170,7 @@ class ContinuousEditorPresenterTest {
             for (permission in listOf(VoiceStart.DENIED, VoiceStart.UNAVAILABLE, VoiceStart.NO_ROOM)) {
                 h.ports.microphone = permission
                 assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
-                assertFalse(h.presenter.state.value.recordingSource)
+                h.until { !it.recordingSource && it.status != null }
                 assertTrue(h.ports.voiceNames.isEmpty())
             }
             h.ports.microphone = VoiceStart.STARTED
@@ -1149,6 +1224,7 @@ class ContinuousEditorPresenterTest {
     }
 
     private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
+                          system: SystemAudioCapture? = null,
                           presenterDispatcher: CoroutineDispatcher = Dispatchers.Default,
                           rescue: Notice.Rescued? = null, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -1175,7 +1251,7 @@ class ContinuousEditorPresenterTest {
                     return ExportReceipt(request.frames.toLong(), 48_000, 2, request.bits)
                 }
             }, engine), initial)
-        val ports = FakePorts(kits, voice, render).also { it.engine = engine }
+        val ports = FakePorts(kits, voice, render).also { it.engine = engine; it.system = system }
         /** Waits for [condition]; generous, since a loaded CI runner can take a while, and a wait that never ends fails. */
         suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(5000) { presenter.state.first(condition) }
         val presenter = ContinuousEditorPresenter(studio, CoroutineScope(scope.coroutineContext + presenterDispatcher), ports)
@@ -1296,6 +1372,8 @@ class ContinuousEditorPresenterTest {
         @Volatile var commandsAtCue: List<EngineCommand> = emptyList()
         var engine: FakeEngine? = null
         override val voiceAvailable get() = voice
+        var system: SystemAudioCapture? = null
+        override val systemAudioCapture get() = system
         override suspend fun startVoice(maxSeconds: Int): VoiceStart { voiceStarts += maxSeconds; return microphone }
         override fun cueVoice() { cues++; commandsAtCue = engine?.commands?.toList().orEmpty() }
         override fun voiceFull() = full

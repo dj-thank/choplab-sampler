@@ -5,11 +5,13 @@ import java.nio.file.Path
 import kotlin.math.roundToLong
 
 /**
- * A microphone as the recorder sees it: blocking reads of mono float samples at [sampleRate]. Only the recording thread
+ * A capture input: blocking reads of interleaved float samples at [sampleRate]. Microphones default to mono.
+ * Only the recording thread
  * reads and closes it; [stop] may come from any thread.
  */
 interface MicInput : AutoCloseable {
     val sampleRate: Int
+    val channels: Int get() = 1
     /** Runs first on the recording thread, for a platform that gives audio threads their own priority. */
     fun onCaptureThread() {}
     /** Blocks until samples arrive; returns how many were read, or a negative number once the input is gone. */
@@ -28,7 +30,8 @@ interface MicInput : AutoCloseable {
  */
 class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int) {
     private val rate = input.sampleRate
-    private val take = TakeFile(scratch, rate, 1, maxSeconds.toLong() * rate)
+    private val channels = input.channels
+    private val take = TakeFile(scratch, rate, channels, maxSeconds.toLong() * rate)
     @Volatile private var firstFrameNanos = -1L
     @Volatile private var cueNanos = -1L
     @Volatile private var running = true
@@ -49,7 +52,8 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int)
                 val count = input.read(buffer)
                 if (count < 0) { ended = running; break }
                 if (count == 0) continue
-                if (firstFrameNanos < 0) firstFrameNanos = System.nanoTime() - count * 1_000_000_000L / rate
+                require(count <= buffer.size && count % channels == 0)
+                if (firstFrameNanos < 0) firstFrameNanos = System.nanoTime() - (count / channels) * 1_000_000_000L / rate
                 take.write(buffer, count)
             }
         } catch (_: Exception) {

@@ -30,9 +30,15 @@
     <string name="ce_mic_record">Record microphone</string>
     <string name="ce_source_recording">Recording: %1$s seconds. Stop recording to use it as the original. Recording stops automatically at the length or storage limit.</string>
     <string name="ce_source_record_discard">Discard this recording</string>
+    <string name="ce_source_recording_starting">Preparing to record. Check any permission dialog. You can also cancel.</string>
     <string name="ce_source_recorded">The recording is now the original. Chop it onto pads. Undo restores the previous original.</string>
     <string name="ce_source_recording_limit">Recording reached its length limit. The sound captured so far is now the original.</string>
-    <string name="ce_source_recording_interrupted">The microphone stopped working. The sound captured so far is now the original.</string>
+    <string name="ce_source_recording_interrupted">The audio input stopped. The sound captured so far is now the original.</string>
+    <string name="ce_system_denied">System audio could not be recorded. Allow Screen &amp; System Audio Recording in System Settings, Privacy &amp; Security, then try again.</string>
+    <string name="ce_system_no_display">Unlock the screen and show the desktop, then try recording again. Also check any external display connection.</string>
+    <string name="ce_system_unavailable">System audio recording could not start. Reopen the app and try again.</string>
+    <string name="ce_system_timeout">System audio recording did not start. Check the permission dialog, then try recording again.</string>
+    <string name="ce_system_empty">No system audio was recorded. Play recordable audio in another app and try again. This app excludes its own sound.</string>
     <string name="ce_device_record">Record device audio</string>
     <string name="ce_chop_start">Start chopping</string>
     <string name="ce_chop_stop">Stop chopping</string>

@@ -3,7 +3,7 @@ import CoreMedia
 import Foundation
 import ScreenCaptureKit
 
-/// Captures other apps' system audio and writes `CHOPLAB-PCM <hz> <channels>` plus PCM-16 LE on stdout.
+/// Other apps' audio; legacy PCM16 by default, stereo float32 LE with --float32 for NEXT.
 @main
 struct ChoplabSystemAudio {
     static func main() async {
@@ -35,7 +35,7 @@ struct ChoplabSystemAudio {
         configuration.excludesCurrentProcessAudio = true
         configuration.sampleRate = 48_000
         configuration.channelCount = 2
-        let sink = AudioSink()
+        let sink = AudioSink(floatOutput: CommandLine.arguments.contains("--float32"))
         let stream = SCStream(filter: filter, configuration: configuration, delegate: sink)
         try stream.addStreamOutput(sink, type: .audio, sampleHandlerQueue: sink.queue)
         try await stream.startCapture()
@@ -62,13 +62,17 @@ private final class AudioSink: NSObject, SCStreamOutput, SCStreamDelegate {
     private let output = FileHandle.standardOutput
     private let lock = NSLock()
     private var headerWritten = false
+    private let floatOutput: Bool
+
+    init(floatOutput: Bool) { self.floatOutput = floatOutput; super.init() }
 
     func writeHeader(sampleRate: Int, channels: Int) {
         lock.lock()
         defer { lock.unlock() }
         guard !headerWritten else { return }
         headerWritten = true
-        output.write(Data("CHOPLAB-PCM \(sampleRate) \(channels)\n".utf8))
+        let kind = floatOutput ? "CHOPLAB-FLOAT32" : "CHOPLAB-PCM"
+        output.write(Data("\(kind) \(sampleRate) \(channels)\n".utf8))
     }
 
     /// A capture that stops by itself (revoked permission, display change) must not look like a
@@ -105,19 +109,32 @@ private final class AudioSink: NSObject, SCStreamOutput, SCStreamDelegate {
         // The header promises two channels: mono is written to both sides, extra channels are dropped.
         let right = channels > 1 ? 1 : 0
         var bytes = [UInt8]()
-        bytes.reserveCapacity(frameCount * 4)
+        bytes.reserveCapacity(frameCount * (floatOutput ? 8 : 4))
         if let samples = buffer.floatChannelData {
             for frame in 0..<frameCount {
                 for channel in [0, right] {
-                    var value = Int16(max(-1, min(1, samples[channel][frame])) * 32_767).littleEndian
-                    withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
+                    let sample = buffer.format.isInterleaved ? samples[0][frame * channels + channel] : samples[channel][frame]
+                    let finite = sample.isFinite ? sample : 0
+                    if floatOutput {
+                        var value = finite.bitPattern.littleEndian
+                        withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
+                    } else {
+                        var value = Int16(max(-1, min(1, finite)) * 32_767).littleEndian
+                        withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
+                    }
                 }
             }
         } else if let samples = buffer.int16ChannelData {
             for frame in 0..<frameCount {
                 for channel in [0, right] {
-                    var value = samples[channel][frame].littleEndian
-                    withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
+                    let sample = buffer.format.isInterleaved ? samples[0][frame * channels + channel] : samples[channel][frame]
+                    if floatOutput {
+                        var value = (Float(sample) / 32_768).bitPattern.littleEndian
+                        withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
+                    } else {
+                        var value = sample.littleEndian
+                        withUnsafeBytes(of: &value) { bytes.append(contentsOf: $0) }
+                    }
                 }
             }
         } else {

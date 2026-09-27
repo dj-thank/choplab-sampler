@@ -63,8 +63,8 @@ def build(java_home, tools, signed=False, linked=False):
             '--mac-app-category', 'music', '--java-options', '-Dchoplab.preview=true',
             '--java-options', '-Dfile.encoding=UTF-8', '--java-options', '-XX:-UsePerfData',
             '--java-options', '-Dchoplab.mediaTools=$APPDIR/tools',
-            *([] if linked else ['--java-options', '-Dchoplab.separatorModels=$APPDIR/models',
-                                 '--java-options', '-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio']),
+            '--java-options', '-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio',
+            *([] if linked else ['--java-options', '-Dchoplab.separatorModels=$APPDIR/models']),
             *spotify_options)
         app = stage / 'image' / f'{image_name}.app'
         application = app / 'Contents/app'

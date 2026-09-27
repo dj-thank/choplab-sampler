@@ -106,6 +106,7 @@ fun main() {
 }
 
 internal class DesktopEditorPorts(private val backend: NextBackend, private val parent: () -> AwtWindow?) : ContinuousEditorPorts {
+    override val systemAudioCapture get() = backend.systemAudio
     private val japanese get() = Locale.getDefault().language == "ja"
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
     override fun originalPlaying() = backend.engine.originalPlayback().playing

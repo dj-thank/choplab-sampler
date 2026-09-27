@@ -72,7 +72,8 @@ class MacPackageConfigurationTest(unittest.TestCase):
         self.assertEqual('com.choplab.sampler.preview.next', args[args.index('--mac-package-identifier') + 1])
         self.assertIn('-Dchoplab.preview=true', args)
         self.assertIn('-Dchoplab.mediaTools=$APPDIR/tools', args)
-        for option in ('-Dchoplab.separatorModels=', '-Dchoplab.systemAudioHelper=', '-Dchoplab.spotifyClientId='):
+        self.assertIn('-Dchoplab.systemAudioHelper=$APPDIR/choplab-sck-audio', args)
+        for option in ('-Dchoplab.separatorModels=', '-Dchoplab.spotifyClientId='):
             self.assertFalse(any(a.startswith(option) for a in args), option)
 
     def test_linked_editor_is_never_built_as_a_signed_release(self):
