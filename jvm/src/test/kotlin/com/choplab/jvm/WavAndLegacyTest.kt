@@ -10,6 +10,40 @@ import kotlin.math.abs
 import kotlin.test.*
 
 class WavAndLegacyTest {
+    @Test fun streamingFloatMatchesWholeWavAcrossBufferAndBlockBoundaries() {
+        val samples = FloatArray(10_002) { index -> when (index % 4) {
+            0 -> 0.000001f; 1 -> -1.25f; 2 -> 1.125f; else -> -0.0000007f
+        } }
+        val whole = ByteArrayOutputStream().also { WavCodec.writeFloat(it, samples, 44_100) }
+        val streamed = ByteArrayOutputStream()
+        val writer = WavCodec.FloatWriter(streamed, samples.size / 2L, 44_100)
+        writer.write(samples, 0, 1)
+        writer.write(samples, 1, 17)
+        writer.write(samples, 18, samples.size / 2 - 18)
+        writer.finish()
+        assertContentEquals(whole.toByteArray(), streamed.toByteArray())
+        assertContentEquals(samples, WavCodec.read(streamed.toByteArray().inputStream()).samples)
+        assertFailsWith<IllegalStateException> { writer.write(samples, 0, 1) }
+    }
+
+    @Test fun streamingFloatRejectsInvalidBlocksBeforeWritingAndRequiresAllFrames() {
+        val output = ByteArrayOutputStream()
+        val writer = WavCodec.FloatWriter(output, 2)
+        val header = output.toByteArray()
+        for (bad in listOf(floatArrayOf(1f, Float.NaN), floatArrayOf(Float.POSITIVE_INFINITY, 1f))) {
+            assertFailsWith<IllegalArgumentException> { writer.write(bad) }
+            assertContentEquals(header, output.toByteArray())
+        }
+        assertFailsWith<IllegalArgumentException> { writer.write(FloatArray(6)) }
+        assertFailsWith<IllegalArgumentException> { writer.write(FloatArray(3)) }
+        assertFailsWith<IllegalStateException> { writer.finish() }
+        writer.write(floatArrayOf(0f, 0f, 1.25f, -1.25f)); writer.finish()
+        assertEquals(2L, WavCodec.read(output.toByteArray().inputStream()).info.frames)
+        val invalid = ByteArrayOutputStream()
+        assertFailsWith<IllegalArgumentException> { WavCodec.FloatWriter(invalid, ProjectLimits.MAX_FRAMES + 1) }
+        assertEquals(0, invalid.size())
+    }
+
     @Test fun floatHeadroomChannelsAndIntegerBoundariesRoundTrip() {
         val source = floatArrayOf(-1f, 0.5f, 1.25f, -0.125f, 0f, 1f)
         val floating = ByteArrayOutputStream().also { WavCodec.writeFloat(it, source) }.toByteArray()

@@ -39,7 +39,7 @@ PR146はhead `6cf57d60` の必須CI3件（run `36319513780`）成功後、main `
 
 次の選択範囲: rootが `572e2a51` から、NEXTの既存ドラム分離機能の移植を進める。対象は `jvm-core` の `DrumSeparationService`、desktop/nextの所有権付き処理とMacモデル設定、共通uiの選択/進捗/取消/確定。旧serviceのPCM16中間出力をそのままNEXTへ流さず、float精度と左右を保ち、原曲を保持して分離結果を明示確定する。取消/失敗では制作を変えず、Undo・配置・書出し・保存再開と実modelの合成fixtureを完了条件にする。段階9の4パート分離・品質受入とは区別する。rollbackは対象PRのrevertと旧Preview入口の維持。PR147の小節repeatは別途レビュー・結合試験・CI確認後に統合する。
 
-分離移植の途中結果: float PCMを既存chunk推論へ渡す `SeparatorSourceReader` の入口を追加。左右・PCM16未満の微小値・float headroomを保ち、空/不完全frame/非有限値/範囲外rateを拒否する。PCM16 readerと既存service/streaming oracleを含む8試験が成功。旧pipelineの先頭frameは既存の窓処理でゼロになることも確認した（この入力追加で変更していない）。float書出し・NEXTのUI/取消/保存接続と実model検証はまだ未実装で、分離が使える状態とは表示しない。PR147は現mainとの結合でUI94/core43とAndroid UI compile成功、CIを追跡中。
+分離移植の途中結果: float PCMを既存chunk推論へ渡す `SeparatorSourceReader` の入口を追加。左右・PCM16未満の微小値・float headroomを保ち、空/不完全frame/非有限値/範囲外rateを拒否する。PCM16 readerと既存service/streaming oracleを含む8試験が成功。旧pipelineの先頭frameは既存の窓処理でゼロになることも確認した（この入力追加で変更していない）。後続でbounded float WAV writerとdesktopのfloat分離出力経路を追加。WAV9件・分離出力2件で微小値/左右/headroom、block境界でのbytes一致、未完/不正値/取消時の破棄、既存ファイル保持が成功。NEXTのUI/ジョブ所有権/保存接続と実model検証はまだ未実装で、分離が使える状態とは表示しない。PR147は現mainとの結合でUI94/core43とAndroid UI compile成功、CIを追跡中。
 
 ## NEXTの音源ライブラリ（PR143統合・Mac更新済み）
 
