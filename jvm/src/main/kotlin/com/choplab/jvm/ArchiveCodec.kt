@@ -19,20 +19,25 @@ data class ArchiveLimits(
 
 /** Archives contain one document followed by lexically ordered content-addressed assets. */
 class ArchiveCodec(private val limits: ArchiveLimits = ArchiveLimits()) {
-    fun write(project: Project, assets: FileAssetStore, output: OutputStream) {
+    fun write(project: Project, assets: FileAssetStore, output: OutputStream, cancelled: () -> Boolean = { false }) {
+        require(!cancelled()) { "Archive cancelled" }
         val manifest = ProjectJson.encode(project)
         require(manifest.size <= limits.maxDocumentBytes)
         val included = project.assets.filter { if (it.required) { require(assets.verified(it)); true } else assets.verified(it) }.sortedBy { it.entryName }
         require(included.all { it.byteCount <= limits.maxAssetBytes } && included.sumOf { it.byteCount } <= limits.maxExpandedBytes)
         ZipOutputStream(BoundedOutput(NonClosingOutput(output), limits.maxArchiveBytes)).use { zip ->
-            zip.setLevel(9)
+            // Highest compression can spend tens of seconds chasing near-repeated float PCM,
+            // without producing a smaller archive. Keep lossless DEFLATE at its normal level.
+            zip.setLevel(6)
             zip.putNextEntry(entry("project.json")); zip.write(manifest); zip.closeEntry()
             included.forEach { asset ->
+                require(!cancelled()) { "Archive cancelled" }
                 zip.putNextEntry(entry(asset.entryName))
                 assets.openVerified(asset).use { input ->
                     val buffer = ByteArray(8192); var count = 0L
                     val digest = java.security.MessageDigest.getInstance("SHA-256")
                     while (true) {
+                        require(!cancelled()) { "Archive cancelled" }
                         val n = input.read(buffer); require(n != 0); if (n < 0) break
                         count += n; require(count <= asset.byteCount); digest.update(buffer, 0, n); zip.write(buffer, 0, n)
                     }
@@ -40,6 +45,7 @@ class ArchiveCodec(private val limits: ArchiveLimits = ArchiveLimits()) {
                 }
                 zip.closeEntry()
             }
+            require(!cancelled()) { "Archive cancelled" }
         }
     }
 

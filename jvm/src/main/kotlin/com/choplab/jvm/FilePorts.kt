@@ -24,7 +24,8 @@ class FileProjectPort(
     override suspend fun save(project: Project, revision: Long, location: Location) = withContext(Dispatchers.IO) {
         require(revision >= 0)
         val context = coroutineContext
-        atomicOutput(resolve(location), { !context[kotlinx.coroutines.Job]!!.isActive }) { output -> codec.write(project, assets, output) }
+        val cancelled = { !context[kotlinx.coroutines.Job]!!.isActive }
+        atomicOutput(resolve(location), cancelled) { output -> codec.write(project, assets, output, cancelled) }
     }
     override suspend fun open(location: Location): Project = openDocument(location).project
     /** A project file of the earlier app (schemas 1–7) opens as a new document holding only its audio; the file stays as it is. */
@@ -233,8 +234,20 @@ internal fun atomicOutput(targetPath: Path, cancelled: () -> Boolean = { false }
     require(Files.isDirectory(parent) && !Files.isSymbolicLink(target))
     val pending = parent.resolve(".choplab-${UUID.randomUUID()}.pending")
     try {
-        FileOutputStream(pending.toFile()).use { output -> write(output); output.fd.sync() }
+        FileOutputStream(pending.toFile()).use { output ->
+            writeBuffered(output, write)
+            output.fd.sync() // Flush the bounded Java buffer before syncing and publishing the file.
+        }
         require(!cancelled()) { "Output cancelled before publication" }
         Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     } finally { Files.deleteIfExists(pending) }
+}
+
+/** Worker-only: WAV blocks and the ZIP deflater emit small writes, expensive on host filesystems. */
+internal fun writeBuffered(output: OutputStream, write: (OutputStream) -> Unit) {
+    kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(64 * 1024L) }.use {
+        val buffered = BufferedOutputStream(output, 64 * 1024)
+        write(buffered)
+        buffered.flush()
+    }
 }

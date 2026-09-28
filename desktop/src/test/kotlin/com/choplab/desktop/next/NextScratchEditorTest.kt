@@ -40,15 +40,20 @@ class NextScratchEditorTest {
         val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
         suspend fun action(value: ContinuousEditorAction) { assertTrue(presenter.dispatch(value), value.toString()) }
         suspend fun outputFrames(count: Long) { val next = sink.counts.frames + count; waitUntil { sink.counts.frames >= next } }
-        suspend fun drag() {
+        suspend fun drag(expectForwardReadout: Boolean = true) {
+            val initialFrame = presenter.readout().handSourceFrame
             repeat(12) {
                 val previousMove = appliedMoves.get()
                 val previousFrame = presenter.readout().handSourceFrame
                 presenter.onAction(ContinuousEditorAction.ScratchDrag(8f))
-                waitUntil { appliedMoves.get() > previousMove && presenter.readout().handSourceFrame > previousFrame }
+                // A zero-gain HAND can be told to move while a render readout is still at its previous
+                // position. The engine contract below checks that muted motion reaches its target.
+                waitUntil { appliedMoves.get() > previousMove &&
+                    (!expectForwardReadout || presenter.readout().handSourceFrame > previousFrame) }
                 // An acknowledged command precedes sink.write. Cover its complete, at most 1,728-frame movement.
                 outputFrames(2_048)
             }
+            if (!expectForwardReadout) waitUntil { presenter.readout().handSourceFrame > initialFrame }
         }
         try {
             waitUntil { backend.engine.status.value.phase == DriverPhase.ATTACHED }
@@ -95,7 +100,7 @@ class NextScratchEditorTest {
             waitUntil { backend.engine.handPlayback().gain == 0f }
             outputFrames(1_024)
             val mutedHand = sink.counts.leftEnergy
-            drag()
+            drag(expectForwardReadout = false)
             assertEquals(mutedHand, sink.counts.leftEnergy, "HAND volume is independent of the open CUT")
             action(ContinuousEditorAction.SetHandMonitorGain(.5f))
             action(ContinuousEditorAction.SetOriginalMonitorGain(.4f))
