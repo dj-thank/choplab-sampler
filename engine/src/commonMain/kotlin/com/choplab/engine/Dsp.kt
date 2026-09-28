@@ -171,7 +171,8 @@ internal class SincTable(val taps: Int, val phases: Int, cutoff: Double, beta: D
  * Centered FIR removes group delay; output length is ceil(inputFrames * outRate / inRate).
  */
 object OfflineResampler {
-    fun resample(input: FloatArray, inputRate: Int, outputRate: Int = EngineFormat.SAMPLE_RATE): FloatArray {
+    fun resample(input: FloatArray, inputRate: Int, outputRate: Int = EngineFormat.SAMPLE_RATE, checkCancelled: () -> Unit = {}): FloatArray {
+        checkCancelled()
         require(inputRate in 8_000..192_000 && outputRate in 8_000..192_000)
         require(input.isNotEmpty() && input.size % 2 == 0 && input.all { it.isFinite() })
         if (inputRate == outputRate) return input.copyOf()
@@ -183,6 +184,7 @@ object OfflineResampler {
         val table = SincTable(512, 4096, (pass + nyquist) / (2 * inputRate), 14.0)
         val result = FloatArray(outputFrames.toInt() * 2)
         for (frame in 0 until outputFrames.toInt()) {
+            if (frame % 4096 == 0) checkCancelled()
             val position = frame.toDouble() * inputRate / outputRate
             result[frame * 2] = table.read(asset, position, 0, 0, asset.frameCount, false).toFloat()
             result[frame * 2 + 1] = table.read(asset, position, 1, 0, asset.frameCount, false).toFloat()

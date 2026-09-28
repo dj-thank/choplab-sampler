@@ -31,7 +31,7 @@
     <string name="ai_lyrics_generate">1 回送信して提案を見る</string>
     <string name="ai_lyrics_generating">Google の応答を待っています。取消できます。</string>
     <string name="ai_lyrics_replace">現在の %1$d 行を提案の %2$d 行に置き換えます。1 回の Undo で元の歌詞に戻せます。</string>
-    <string name="ai_lyrics_preview_only">適用で保存するのは歌詞本文と下記の拍配置です。題名・section・読み・韻のメモは今回の提案窓だけに残ります。</string>
+    <string name="ai_lyrics_preview_only">タイトル・構成・読み・モーラ・韻も、明示適用で保存します。</string>
     <string name="ai_lyrics_before">現在の歌詞</string>
     <string name="ai_lyrics_after">提案の歌詞</string>
     <string name="ai_lyrics_line_detail">%1$d–%2$d 拍 · %3$s · %4$s モーラ · 韻 %5$s</string>

@@ -22,6 +22,9 @@ Googleの作詞adapterは固定HTTPS originへ薄いRESTで接続し、redirect�
 - FlowPlannerは1行1小節/2小節/倍速から開始拍と長さを計算し、16分grid密度を検証。詰込みや空き過ぎには分割/倍速を提案する。
 - 行単位TTS→48kHz→無音検出→WSOLA0.6–1.6倍で割当。収まらない時は分割/読み修正/再生成を示し、黙って切らない。声試聴、行再生成、単語highlight、掛合い練習を提供する。
 - 返却されたword timingと推定timingを区別。cache keyには本文/読み、provider、model/version、voice/version、style、全合成設定を含め、BPM/配置依存の加工cacheは分ける。
+- 端末ガイドはVOCAL/LRCの明示入口から、読み確認→行生成/再生成→試聴→明示配置で使う。試聴はSOURCEの所有を一時取得し、終了/取消で元の原曲状態を戻す。再生tokenで古い取消が新しい試聴を止めない。録音/busy/古いrevision/閉じた画面の結果は適用せず、複数行の確定は1Undoにする。
+- 端末音声は導入済みのoffline voiceだけ使い、自動downloadやcloud送信を行わない。Macはsayの固定argument、Windowsは固定Command bootstrap＋私有request/WAV、Androidはnative callbackで受ける。未知のvoice data versionはsession nonceで跨session cacheを拒否。OS設定/実行policyは変更しない。
+- TtsAudioは受領workerがfinallyで閉じる所有資産。native WAV header・callback実chunk・defensive copy・resampler/WSOLA・cache/assetの固定窓は[AUDIO](AUDIO.md)の共有PCM予算へ先予約する。不足はMEMORY_LIMIT、0.6–1.6倍/30秒の境界を黙って緩めず、取消/遅着/失敗でも保持を返す。
 
 ## 鍵・同意・失敗
 

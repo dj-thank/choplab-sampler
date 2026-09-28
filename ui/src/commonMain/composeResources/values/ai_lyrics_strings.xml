@@ -31,7 +31,7 @@
     <string name="ai_lyrics_generate">Send once and preview</string>
     <string name="ai_lyrics_generating">Waiting for Google… You can cancel.</string>
     <string name="ai_lyrics_replace">Replace %1$d current lines with %2$d proposed lines. One Undo restores the previous lyrics.</string>
-    <string name="ai_lyrics_preview_only">Apply saves lyric text and the beat placement shown below. Title, section notes, reading and rhyme are preview notes for this session.</string>
+    <string name="ai_lyrics_preview_only">Explicit Apply preserves the title, sections, readings, mora counts, and rhymes.</string>
     <string name="ai_lyrics_before">Current lyrics</string>
     <string name="ai_lyrics_after">Proposed lyrics</string>
     <string name="ai_lyrics_line_detail">Beats %1$d–%2$d · %3$s · mora %4$s · rhyme %5$s</string>

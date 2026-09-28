@@ -16,6 +16,7 @@ data class LyricProposalState(
     val proposal: LyricProposal? = null,
     val before: FrozenList<LyricLine> = frozenListOf(),
     val placed: FrozenList<LyricLine> = frozenListOf(),
+    val structure: LyricStructure? = null,
     val usage: LyricUsage? = null,
     val modelVersion: String? = null,
     val failure: LyricAiFailure? = null,
@@ -24,9 +25,9 @@ data class LyricProposalState(
     override fun toString() = "LyricProposalState(phase=$phase)"
 }
 
-/** Host must apply through Studio's atomic Action.Edit(SetLyrics(lines), expectedRevision) guard. */
+/** Host must apply through Studio's atomic Action.Edit(SetStructuredLyrics(lines, structure), expectedRevision) guard. */
 fun interface LyricProposalApply {
-    suspend fun replace(lines: FrozenList<LyricLine>, expectedRevision: Long): Boolean
+    suspend fun replace(placement: StructuredLyricPlacement, expectedRevision: Long): Boolean
 }
 
 class LyricProposalController(
@@ -101,11 +102,11 @@ class LyricProposalController(
                 key = null
                 when (result) {
                     is LyricProviderResult.Success -> {
-                        val placed = runCatching { result.proposal.place(startTick, beatsPerLine, "ai-${snapshot.revision}-$token") }.getOrNull()
+                        val placed = runCatching { result.proposal.placeStructured(startTick, beatsPerLine, "ai-${snapshot.revision}-$token") }.getOrNull()
                         if (placed == null) publish(state.value.copy(phase = LyricProposalPhase.FAILED,
                             failure = LyricAiFailure(LyricAiProblem.INVALID_RESPONSE, costUnknown = true)))
                         else publish(state.value.copy(phase = LyricProposalPhase.PREVIEW, proposal = result.proposal,
-                            placed = placed, usage = result.usage, modelVersion = result.modelVersion))
+                            placed = placed.lines, structure = placed.structure, usage = result.usage, modelVersion = result.modelVersion))
                     }
                     is LyricProviderResult.Failure -> {
                         val seconds = result.failure.retryAfterSeconds ?: 0
@@ -137,7 +138,7 @@ class LyricProposalController(
                     failure = LyricAiFailure(LyricAiProblem.STALE_DOCUMENT))); return false
             }
             publish(state.value.copy(phase = LyricProposalPhase.APPLYING))
-            Triple(generation, revision, state.value.placed)
+            Triple(generation, revision, StructuredLyricPlacement(state.value.placed, requireNotNull(state.value.structure)))
         }
         // The actor checks the revision again atomically; a change after the preview check is still refused.
         val operation = jobs.async { apply.replace(pending.third, pending.second) }
