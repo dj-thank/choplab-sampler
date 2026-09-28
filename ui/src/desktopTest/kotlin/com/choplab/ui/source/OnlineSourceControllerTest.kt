@@ -5,6 +5,30 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.*
 
 class OnlineSourceControllerTest {
+    @Test fun stoppedQueuedApplyNeverBeginsImportAndANewExplicitUseCanRetry() = runBlocking<Unit> {
+        val queued = java.util.ArrayDeque<Runnable>()
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { queued.add(block) }
+        }
+        fun drain() { while (queued.isNotEmpty()) queued.removeFirst().run() }
+        val port = Port(source)
+        var imports = 0
+        val controller = OnlineSourceController(port, OnlineSourceApply { _, _ -> imports++; OnlineUseResult.APPLIED }, 0,
+            CoroutineScope(coroutineContext + dispatcher))
+        try {
+            controller.ready()
+            assertTrue(controller.dispatch(OnlineSourceAction.UseOriginal))
+            assertTrue(controller.state.value.applying)
+            controller.cancelPendingApply(); controller.stopAll()
+            drain()
+            assertEquals(0, imports); assertEquals(1, port.stops)
+            assertFalse(controller.state.value.applying)
+            assertEquals(OnlineProblem.CANCELLED, controller.state.value.issue)
+            assertTrue(controller.dispatch(OnlineSourceAction.UseOriginal)); drain()
+            assertEquals(1, imports); assertTrue(controller.state.value.applied)
+        } finally { controller.close(); drain() }
+    }
+
     private val format = OnlineAudioFormat("original", "webm", "opus", 48_000, 2, 128_000, false, 1024, "ja", null, null, false)
     private val source = OnlineCandidate("source", "Synthetic source", "Uploader", 2.0, formats = listOf(format))
     private class Port(private val source: OnlineCandidate) : OnlineSourcePort {

@@ -365,6 +365,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     fun diagnostics(): ContinuousDiagnostics? = ports.diagnostics()
     fun onAction(action: ContinuousEditorAction) {
         if (sourcePreviewBlocked(action)) return
+        if (action == ContinuousEditorAction.StopAll) online.value?.cancelPendingApply()
         // A platter and its cut fader move at pointer rate: each move only updates where they should be.
         if (action is ContinuousEditorAction.ScratchDrag) { dragScratch(action.distancePx); return }
         if (action is ContinuousEditorAction.SetScratchCut) { setScratchCut(action.gain); return }
@@ -394,6 +395,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     suspend fun dispatch(action: ContinuousEditorAction): Boolean {
         if (action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
             ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource)) vocal.value?.cancel(TtsProblem.RECORDING)
+        if (action == ContinuousEditorAction.StopAll) online.value?.cancelPendingApply()
         // The controller can be awaiting a selected-PAD action; cancel outside our serialized edit lock.
         if (action == ContinuousEditorAction.StopAll) patterns.value?.dispatch(PatternAction.Cancel)
         if (endsScratch(action)) cancelScratchOpening()

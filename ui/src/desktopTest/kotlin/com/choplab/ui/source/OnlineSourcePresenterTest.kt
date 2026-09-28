@@ -17,7 +17,8 @@ class OnlineSourcePresenterTest {
         val h = Harness()
         try {
             val controller = h.saved()
-            assertTrue(h.studio.dispatch(Action.Edit(Intent.Rename("Changed"))).accepted)
+            // A lyric-only revision changes the document without a transient audio-preparation BUSY state.
+            assertTrue(h.studio.dispatch(Action.Edit(Intent.SetLyrics(frozenListOf(LyricLine("line", "Changed", 0, 960))))).accepted)
             val before = h.studio.document.value
             assertTrue(controller.dispatch(OnlineSourceAction.UseOriginal))
             eventually { controller.state.value.issue == OnlineProblem.STALE_DOCUMENT }
@@ -69,7 +70,7 @@ class OnlineSourcePresenterTest {
             eventually { h.commands.count { it is EngineCommand.Stop } > stops }
             assertFalse(decoder.isCompleted, "Output stop must precede a noncooperative decoder result")
             eventually { !controller.state.value.applying }
-            assertEquals(OnlineProblem.APPLY_REJECTED, controller.state.value.issue)
+            assertEquals(OnlineProblem.CANCELLED, controller.state.value.issue)
             assertEquals(before, h.studio.document.value)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
             assertNull(h.presenter.onlineSource.value); assertEquals(1, h.closes.get())

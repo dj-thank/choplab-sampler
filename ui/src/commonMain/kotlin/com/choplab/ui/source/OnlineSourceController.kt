@@ -88,6 +88,8 @@ class OnlineSourceController(
     private val owner = SupervisorJob(scope.coroutineContext[Job])
     private val ownedScope = CoroutineScope(scope.coroutineContext + owner)
     private val lock = Mutex()
+    private val pendingApply = MutableStateFlow<Job?>(null)
+    private val stopGeneration = MutableStateFlow(0L)
     private val mutable = MutableStateFlow(OnlineSourceView(worker = port.state.value, availability = availability.value))
     val state = mutable.asStateFlow()
     init {
@@ -130,9 +132,10 @@ class OnlineSourceController(
             OnlineSourceAction.UseOriginal -> {
                 if (!current.canUse) return@withLock false
                 val saved = requireNotNull(current.worker.saved)
+                val generation = stopGeneration.value
                 mutable.update { it.copy(applying = true, issue = null) }
                 // Opening this dialog must return to the host immediately. Only explicit Apply awaits its guarded import.
-                ownedScope.launch {
+                val task = ownedScope.launch(start = CoroutineStart.LAZY) {
                     val result = try { apply.useOriginal(saved.id, expectedRevision) }
                         catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) { OnlineUseResult.REJECTED }
@@ -148,12 +151,25 @@ class OnlineSourceController(
                             }) }
                     }
                 }
+                pendingApply.value = task
+                task.invokeOnCompletion { cause ->
+                    pendingApply.compareAndSet(task, null)
+                    if (cause is CancellationException) mutable.update {
+                        if (it.closed) it else it.copy(applying = false, issue = OnlineProblem.CANCELLED)
+                    }
+                }
+                if (stopGeneration.value != generation || mutable.value.closed) task.cancel() else task.start()
                 true
             }
         }
     }
 
     fun stopAll() { if (!mutable.value.closed) port.stopAll() }
+    /** The host calls this synchronously before enqueueing Stop, including an Apply still waiting to run. */
+    fun cancelPendingApply() {
+        stopGeneration.update { it + 1 }
+        pendingApply.value?.cancel()
+    }
     suspend fun requestClose(): Boolean = lock.withLock {
         if (mutable.value.applying) false else { close(); true }
     }
