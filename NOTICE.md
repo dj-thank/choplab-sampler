@@ -24,6 +24,8 @@ DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
 | Java Native Access | [JNA](https://github.com/java-native-access/jna) / Apache-2.0 または LGPL-2.1-or-later | 選択した配布条件と同梱native noticeを保持 |
 | ONNX Runtime | [ONNX Runtime](https://github.com/microsoft/onnxruntime) / MIT | ThirdPartyNoticesも含め、Android/Windowsそれぞれのartifactを確認 |
 | youtubedl-android | [youtubedl-android](https://github.com/yausername/youtubedl-android) / GPL-3.0 | 現在のAndroid取込に同梱。Python/FFmpeg等の条件と対応sourceを含めて扱う |
+| NewPipeExtractor v0.26.5 | [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor/tree/v0.26.5) / GPL-3.0-or-later | 新しい取込workerのruntime依存。正確なcommit・JAR/POM/module/source JARのhashと推移依存は `config/newpipe-dependencies.json` に固定。公開時は組合せのライセンス条件、対応sourceとbuild手順、表示を実物に合わせて提供 |
+| NewPipeExtractorの推移依存とAndroid NIO desugar | nanojson、jsoup、jsr305、protobuf-javalite、Rhino、`desugar_jdk_libs_nio` | 固定座標・個別license表示・取得物hashは `config/newpipe-dependencies.json` を参照。最終APKに実際に含むものを照合し、必要なlicense本文・表示・source提供条件を満たす |
 | yt-dlp | [yt-dlp](https://github.com/yt-dlp/yt-dlp) / 本体Unlicense、配布EXEの依存には個別条件あり | 固定したReleaseのLICENSEとbinaryの構成を保持 |
 | FFmpeg / FFprobe | [FFmpeg](https://ffmpeg.org/legal.html)、[Windows build](https://www.gyan.dev/ffmpeg/builds/) | build構成によりGPL等が適用される。実際の固定buildに対応するlicense/sourceを提供 |
 | Node.js | [Node.js](https://github.com/nodejs/node) / MITおよび同梱部品の条件 | 固定versionのLICENSEをtoolと一緒に保持 |
@@ -38,7 +40,7 @@ ChopLab単体のMIT表示だけで、組合せ全体をMIT-onlyと扱いませ�
 
 ## Planned dependencies
 
-NewPipeExtractor、Concentus、4stemモデル、AI SDK等は、実際に導入した時点で
+Concentus、4stemモデル、AI SDK等は、実際に導入した時点で
 正確なversion・取得元・条件・配布内容をこの文書とSBOMへ追加します。
 計画に名前があるだけの部品を、現在同梱しているとは記載しません。
 
