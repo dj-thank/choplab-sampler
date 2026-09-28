@@ -53,6 +53,8 @@ rootが変更と統合を進め、各担当は独立worktreeと限定したフ�
 
 ## 選択中の実装・統合（2026-09-28）
 
+[PR188](https://github.com/dj-thank/choplab-sampler/pull/188)はPR181のWindows CIで `pattern-pad-1` が一時的にclipされた失敗成果物を受け、STEPの実pointer試験でポップアップの配置とスクロールを有界に待つ。表示領域全体に入らなければ従来どおり失敗し、bounds/sizeを記録する。製品コードと合格条件は変更しない。Macの同じ本番操作試験と公開面733候補・差分検査は成功、Windows必須CIは確認中。
+
 Windows必須CIのPR177/PR178で、既存NextScratchEditorTestは無音HANDドラッグ中に毎回readout前進を待ってtimeout。各指示のhost受理と操作全体の前進・無音を検査し、engineでmute中の移動と原曲独立を保護した[PR184](https://github.com/dj-thank/choplab-sampler/pull/184)はhead `ff3ec5e`の必須CI3件成功後main `53025c1`へ統合済み。PR177の最新headは必須CI3件成功後main `d28e888d`へ統合済み。PR178は更新head `f775ae88` の必須CI3件成功後、main `36c3d49f`へ統合済み。
 
 Google提案基盤[PR166](https://github.com/dj-thank/choplab-sampler/pull/166)はhead `cb61ae5`の[必須CI3件](https://github.com/dj-thank/choplab-sampler/actions/runs/36353011462)成功後、main `275cab5`へ統合済み。先行CIのHTTP接続解放とHAND出力、count-in開始の断続的な失敗に対し、製品の接続完了gateと実ack/clock待機、状態診断を追加した。診断合成 `795ddfc7`では録音6件と実Windows JVMのfake入出力10回×2ケースが成功。今回の必須CIも成功したが、過去の断続失敗の単一原因は断定しない。実Google API/課金・provider受入は未実施。[PR169](https://github.com/dj-thank/choplab-sampler/pull/169)のVOCAL入口は必須CI3件成功後main `8cf2294`へ統合。次は構造化歌詞を新mainと再検証し、依存順に統合する。
