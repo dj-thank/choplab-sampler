@@ -1,0 +1,14 @@
+<resources>
+    <string name="ce_pcm_short">音声</string>
+    <string name="ce_pcm_title">音声の読み込み</string>
+    <string name="ce_pcm_ready">再生できます</string>
+    <string name="ce_pcm_preparing">再生に必要な音声を先読みしています。</string>
+    <string name="ce_pcm_failed">音声を読み込めませんでした。停止して再読込できます。</string>
+    <string name="ce_pcm_closed">音声の読み込みが停止しました。再読込できます。</string>
+    <string name="ce_pcm_missing_label">音声が届かなかったフレーム数</string>
+    <string name="ce_pcm_queue_label">読込待ちが満杯だった回数</string>
+    <string name="ce_pcm_missing">音声が届かなかったフレーム数：%1$s</string>
+    <string name="ce_pcm_queue">読込待ちが満杯だった回数：%1$s</string>
+    <string name="ce_pcm_reload">音声を再読込</string>
+    <string name="ce_pcm_reload_help">再生を止めて音声を準備し直します。制作内容と Undo 履歴は変わりません。音声が欠落した WAV は保存しません。</string>
+</resources>

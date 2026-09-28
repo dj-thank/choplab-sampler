@@ -36,3 +36,5 @@ Googleの作詞adapterは固定HTTPS originへ薄いRESTで接続し、redirect�
 timing/pitch指標はlocalで計算し、LLMはその説明を担当します。基準melody/音符時刻/reference takeがある歌唱と、拍/発声timingを扱うrapを分けます。基準のない自由歌唱は観測pitchとして示し、音程正解率を作りません。rapではpitch点を出さず、低信頼・無声・伴奏かぶりは採点対象外と表示。ASRがない段階で歌詞内容の正誤を採点しません。
 
 テイク履歴、苦手な行の反復、日本語の具体的助言へつなぎます。モデルの自由文だけで点数を作らず、根拠と限界を画面から確認できるようにします。声複製やメロディ付き歌唱AIは将来候補です。
+
+構造化歌詞の保存と時刻の根拠は[ADR9](adr/ADR-0009-structured-lyrics-and-timing.md)・[ARCHITECTURE](ARCHITECTURE.md)に従う。FlowPlannerは1小節・2小節・倍速を音楽tickで明示配置し、16分あたりの密度を助言する。本文に一致しない読みや不足をtyped拒否し、duration変更時に古いword anchorを使わない。端末TTSがword timingを返さない時はESTIMATEDと表示する。

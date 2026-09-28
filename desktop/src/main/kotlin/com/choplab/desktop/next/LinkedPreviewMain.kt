@@ -102,9 +102,11 @@ fun main() {
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
                 val lyricProposal by presenter.lyricProposal.collectAsState()
+                val stepPatterns by presenter.stepPatterns.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, lyricProposal = lyricProposal)
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns)
             }
         }
     } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -147,12 +149,15 @@ internal class DesktopEditorPorts(
     override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
     override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
     override val padRenderAvailable = true
+    override val stepPatternsAvailable = true
     override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
     override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
         backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
-        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining)
+        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
+        pcm = pcmReadout())
+    private fun pcmReadout() = backend.engine.pcmPlayback().let { ContinuousPcmReadout(it.status, it.underrunFrames, it.droppedRequests) }
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
     override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
@@ -161,7 +166,7 @@ internal class DesktopEditorPorts(
         ContinuousDiagnostics(outputAttached = health.attached, floatOutput = health.encoding?.let { it == SinkEncoding.FLOAT32 },
             sampleRate = health.sampleRate, blockFrames = health.blockFrames, bufferFrames = health.bufferFrames,
             pendingFrames = health.pendingFrames, underruns = health.underruns, outputLosses = health.outputLosses,
-            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax)
+            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax, pcm = pcmReadout())
     }
     /** Java Sound reports no microphone before one is opened: a host without one answers at the first take. */
     override val voiceAvailable get() = true
