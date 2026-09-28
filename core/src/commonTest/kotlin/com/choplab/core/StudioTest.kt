@@ -36,6 +36,33 @@ class StudioTest {
         assertEquals("Song 2", studio.document.value.project.lyricStructure!!.title)
         studio.dispatch(Action.Close)
     }
+
+    @Test fun confirmedImportChecksRevisionInsideActorBeforeOpeningAnyBytesAndKeepsLegacyCalls() = runTest {
+        var imports = 0
+        val engine = Engine()
+        val studio = Studio(this, services(engine, object : ImportPort {
+            override suspend fun import(location: Location): Asset { imports++; return asset }
+        }), preparationDispatcher = StandardTestDispatcher(testScheduler))
+        val expected = studio.document.value.revision
+        // Both requests are enqueued before the actor runs. A caller-side revision check alone passes.
+        val edit = async(start = CoroutineStart.UNDISPATCHED) { studio.dispatch(Action.Edit(Intent.SetLyrics(frozenListOf(LyricLine("line", "Newer", 0, 960))))) }
+        val import = async(start = CoroutineStart.UNDISPATCHED) { studio.dispatch(Action.Import(Location("confirmed"), expected)) }
+        assertTrue(edit.await().accepted)
+        assertIs<Notice.StaleCompletion>(import.await().notice)
+        assertEquals(0, imports)
+        assertEquals("Newer", studio.document.value.project.lyrics.single().text)
+        assertNull(studio.document.value.project.source)
+        assertNull(studio.work.value.jobId)
+        assertTrue(studio.dispatch(Action.Undo).accepted)
+        assertFalse(studio.document.value.canUndo)
+        assertTrue(studio.dispatch(Action.Import(Location("legacy"))).accepted)
+        advanceUntilIdle()
+        assertEquals(1, imports)
+        assertEquals(asset.hash, studio.document.value.project.source?.assetHash)
+        assertFailsWith<IllegalArgumentException> { Action.Import(Location("invalid"), -1) }
+        studio.dispatch(Action.Close)
+    }
+
     @Test fun lyricsOnlyEditsUndoAndRedoLeaveAudioRevisionAloneUntilTheNextAudioEdit() = runTest {
         val engine = Engine()
         val initial = Project(assets = frozenListOf(asset), pads = (0..127).map {

@@ -1,4 +1,11 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.ui.InternalComposeUiApi::class)
+
 package com.choplab.desktop.next
+
+import androidx.compose.runtime.*
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.semantics.*
 
 import com.choplab.core.*
 import com.choplab.core.model.Project
@@ -29,7 +36,7 @@ class NextOnlineSourcePortTest {
                 originalBytes.size.toLong(), "ja", null, null, false)
             val candidate = YoutubeSource("abcdefghijk", "Synthetic source", "Synthetic uploader", 1.0,
                 YoutubeMetadata(formats = listOf(format)))
-            var downloads = 0; var imports = 0; var stops = 0
+            var downloads = 0
             val closes = AtomicInteger()
             val provider = object : DetailedYoutubeBackend, AutoCloseable {
                 override fun search(query: String, jobId: String) = listOf(candidate)
@@ -44,22 +51,25 @@ class NextOnlineSourcePortTest {
             }
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val backend = NextBackend.create(profile, sinkFactory = { error("No native output") }, microphone = { null })
-            val presenter = ContinuousEditorPresenter(backend.studio, scope, DesktopEditorPorts(backend) { null })
+            val ports = DesktopEditorPorts(backend, onlineDirectory = { root.resolve("library") }, onlineBackend = { provider }) { null }
+            val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
             suspend fun ready() = withTimeout(10_000) {
                 while (backend.studio.work.value.jobId != null || backend.studio.work.value.preparationId != null) delay(2)
             }
             val before = backend.studio.document.value
-            val port = NextOnlineSourcePort(root.resolve("library"), backend::validateLibraryFile, scope, { stops++ }, provider)
-            val controller = OnlineSourceController(port, OnlineSourceApply { id, revision ->
-                assertEquals(before.revision, revision)
-                val selected = requireNotNull(port.saved(id))
-                assertEquals(before.project, backend.studio.document.value.project)
-                imports++
-                assertTrue(backend.studio.dispatch(Action.Import(backend.files.registerNamed(selected.path, selected.title, selected.hash))).accepted)
-                ready()
-                assertEquals(id, backend.studio.document.value.project.source?.assetHash)
-                OnlineUseResult.APPLIED
-            }, before.revision, scope)
+            val scene = ImageComposeScene(width = 900, height = 838, coroutineContext = coroutineContext) {
+                val state by presenter.state.collectAsState()
+                val online by presenter.onlineSource.collectAsState()
+                ContinuousEditor(state, presenter::onAction, onlineSource = online)
+            }
+            scene.until { tag("ce-online")?.let { it.size.height >= 48 && !it.config.contains(SemanticsProperties.Disabled) } == true }
+            scene.nodes().mapNotNull { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }.forEach { it(0f, 10_000f) }
+            scene.until { tag("ce-online")!!.boundsInRoot.let { it.height >= 48 && it.top >= 0 && it.bottom <= 838 } }
+            scene.click("ce-online")
+            scene.until { tag("online-query") != null }
+            val controller = requireNotNull(presenter.onlineSource.value)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.ImportOnline))
+            assertSame(controller, presenter.onlineSource.value)
             suspend fun phase(expected: OnlinePhase) = withTimeout(10_000) {
                 while (controller.state.value.worker.phase != expected || controller.state.value.worker.busy) delay(2)
             }
@@ -67,22 +77,21 @@ class NextOnlineSourcePortTest {
             try {
                 assertTrue(controller.dispatch(OnlineSourceAction.Query(candidate.url)))
                 assertTrue(controller.dispatch(OnlineSourceAction.Search)); phase(OnlinePhase.CANDIDATES)
-                assertEquals(0, downloads); assertEquals(0, imports)
+                assertEquals(0, downloads)
                 assertTrue(controller.dispatch(OnlineSourceAction.Inspect(candidate.id))); phase(OnlinePhase.DETAILS)
                 assertFalse(controller.dispatch(OnlineSourceAction.Save))
                 assertTrue(controller.dispatch(OnlineSourceAction.Format(format.id)))
                 assertTrue(controller.dispatch(OnlineSourceAction.Save)); phase(OnlinePhase.SAVED)
-                assertEquals(1, downloads); assertEquals(0, imports)
+                assertEquals(1, downloads)
                 assertEquals(before, backend.studio.document.value)
                 val receipt = requireNotNull(controller.state.value.worker.saved)
-                val selection = requireNotNull(port.saved(receipt.id))
-                assertContentEquals(originalBytes, Files.readAllBytes(selection.path))
-                assertNull(port.saved("not the displayed receipt"))
+                val stored = LocalAudioLibrary(root.resolve("library").toFile(), backend::validateLibraryFile).resolve(receipt.id)
+                assertContentEquals(originalBytes, stored.readBytes())
                 assertNull(controller.state.value.worker.details!!.artist)
                 assertNull(controller.state.value.worker.details!!.album)
                 assertTrue(controller.dispatch(OnlineSourceAction.UseOriginal))
                 withTimeout(10_000) { while (!controller.state.value.applied) delay(2) }
-                assertEquals(1, imports)
+                assertEquals(before.revision + 1, backend.studio.document.value.revision)
                 assertFalse(controller.dispatch(OnlineSourceAction.UseOriginal))
                 val imported = backend.studio.document.value.project
                 assertEquals(candidate.title, imported.assets.single().name)
@@ -104,14 +113,36 @@ class NextOnlineSourcePortTest {
                     assertContentEquals(originalBytes, zip.getInputStream(requireNotNull(zip.getEntry("assets/${receipt.id}.wav"))).use { it.readBytes() })
                 }
                 saved = backend.studio.document.value.project
-                controller.stopAll(); assertEquals(1, stops)
-                assertTrue(controller.requestClose()); assertNull(port.saved(receipt.id))
-            } finally { controller.close(); presenter.close(); backend.shutdown(); scope.cancel() }
+                scene.until { tag("online-close")?.config?.contains(SemanticsProperties.Disabled) == false }
+                scene.click("online-stop")
+                scene.click("online-close")
+                scene.until { presenter.onlineSource.value == null && semanticsOwners.size == 1 }
+                assertNull(presenter.onlineSource.value)
+            } finally { scene.close(); controller.close(); presenter.close(); ports.close(); backend.shutdown(); scope.cancel() }
             NextBackend.create(profile, sinkFactory = { error("No native output") }, microphone = { null }).use { reopened ->
                 assertEquals(saved, reopened.studio.document.value.project)
                 assertContentEquals(originalBytes, reopened.assets.read(saved.assets.single()))
             }
             withTimeout(5_000) { while (closes.get() != 1) delay(2) }
         } finally { root.toFile().deleteRecursively() }
+    }
+
+    private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
+        fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
+        semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
+    }
+    private fun ImageComposeScene.tag(value: String) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == value }
+    private suspend fun ImageComposeScene.until(condition: ImageComposeScene.() -> Boolean) = withTimeout(10_000) {
+        do { render(System.nanoTime()).close(); if (condition()) return@withTimeout; delay(8) } while (true)
+    }
+    private suspend fun ImageComposeScene.click(value: String) {
+        val bounds = requireNotNull(tag(value)).boundsInRoot
+        assertTrue(bounds.height >= 48 && bounds.top >= 0 && bounds.bottom <= 838, "$value: $bounds")
+        sendPointerEvent(PointerEventType.Press, bounds.center, type = PointerType.Mouse,
+            buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+        render(System.nanoTime()).close(); delay(8)
+        sendPointerEvent(PointerEventType.Release, bounds.center, type = PointerType.Mouse,
+            buttons = PointerButtons(), button = PointerButton.Primary)
+        render(System.nanoTime()).close(); yield()
     }
 }
