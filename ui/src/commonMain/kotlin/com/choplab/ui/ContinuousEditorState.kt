@@ -18,7 +18,7 @@ enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
 enum class ContinuousCapability {
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
@@ -163,6 +163,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
     val original: ContinuousSource? = null,
     val originalPlaying: Boolean = false,
+    val vocalPreview: Boolean = false,
     /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
     val liveChopping: Boolean = false,
     /** A voice take is being recorded while the song plays. */
@@ -277,6 +278,8 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 sealed interface ContinuousEditorAction {
     data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
+    data object OpenVocalGuide : ContinuousEditorAction
+    data object CloseVocalGuide : ContinuousEditorAction
     data object OpenLyricProposal : ContinuousEditorAction
     data object CloseLyricProposal : ContinuousEditorAction
     data object OpenStepPatterns : ContinuousEditorAction

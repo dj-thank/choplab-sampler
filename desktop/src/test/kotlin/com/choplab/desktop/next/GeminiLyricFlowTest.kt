@@ -53,7 +53,10 @@ class GeminiLyricFlowTest {
             assertEquals(LyricUsage(40, 55, 95), controller.state.value.usage)
             assertTrue(controller.applyPreview())
             saved = backend.studio.document.value.project
-            assertEquals(original.copy(lyrics = saved.lyrics), saved, "Only lyric text and chosen beats enter the project")
+            assertEquals(original.copy(lyrics = saved.lyrics, lyricStructure = saved.lyricStructure), saved)
+            assertEquals("preview-title", saved.lyricStructure!!.title)
+            assertEquals("あたらしいうた", saved.lyricStructure!!.sections.single().lines.first().reading)
+            assertEquals(7, saved.lyricStructure!!.sections.single().lines.first().mora)
             assertEquals(before.revision + 1, backend.studio.document.value.revision)
             assertEquals(audioRevision, backend.engine.snapshot().programRevision, "Lyric edits do not rebuild audio")
             assertEquals(listOf(960L, 2880L), saved.lyrics.map { it.startTick })
@@ -70,9 +73,10 @@ class GeminiLyricFlowTest {
             assertTrue(Files.isRegularFile(archive))
             ZipFile(archive.toFile()).use { zip ->
                 val json = zip.getInputStream(zip.getEntry("project.json")).bufferedReader().use { it.readText() }
-                for (privateValue in listOf("fake-private-session-key", "private-theme-marker", "gemini-test", "preview-title")) {
-                    assertFalse(json.contains(privateValue), "Credentials, inputs and preview metadata must not enter the archive")
+                for (privateValue in listOf("fake-private-session-key", "private-theme-marker", "gemini-test")) {
+                    assertFalse(json.contains(privateValue), "Credentials, prompts and provider configuration must not enter the archive")
                 }
+                assertTrue(json.contains("preview-title"), "Explicitly applied composition metadata survives saving")
             }
             assertTrue(backend.studio.dispatch(Action.Undo).accepted)
             assertTrue(backend.openProject(archive).accepted); idle(backend)
@@ -113,9 +117,9 @@ class GeminiLyricFlowTest {
         val reached = CompletableDeferred<Unit>()
         val resume = CompletableDeferred<Unit>()
         var notice: Notice? = null
-        val controller = LyricProposalController(backend.studio.document, provider, LyricProposalApply { lines, revision ->
+        val controller = LyricProposalController(backend.studio.document, provider, LyricProposalApply { placement, revision ->
             reached.complete(Unit); resume.await()
-            backend.studio.dispatch(Action.Edit(Intent.SetLyrics(lines), revision)).also { notice = it.notice }.accepted
+            backend.studio.dispatch(Action.Edit(Intent.SetStructuredLyrics(placement.lines, placement.structure), revision)).also { notice = it.notice }.accepted
         }, scope, LyricProviderAvailability.AVAILABLE)
         try {
             idle(backend)

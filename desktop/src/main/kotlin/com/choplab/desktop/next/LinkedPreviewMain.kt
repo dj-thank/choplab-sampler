@@ -17,9 +17,10 @@ import com.choplab.jvm.OriginalAudioImportPort
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
-import com.choplab.jvm.ai.GeminiLyricProvider
+import com.choplab.jvm.ai.*
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.VocalGuidePort
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -103,10 +104,11 @@ fun main() {
                 val refresh by presenter.refreshKey.collectAsState()
                 val lyricProposal by presenter.lyricProposal.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
+                val vocalGuide by presenter.vocalGuide.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
-                    lyricProposal = lyricProposal, stepPatterns = stepPatterns)
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide)
             }
         }
     } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -120,7 +122,16 @@ internal class DesktopEditorPorts(
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
-    override fun close() = spotify.close()
+    private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
+    override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
+        override val preview = speechPreview
+        override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort {
+            val directory = backend.assets.directory.parent.resolve("vocal-guide")
+            return VocalTtsService(DesktopTtsProvider(directory.resolve("temporary")), TtsCache(directory.resolve("cache")), backend.assets)
+        }
+    }
+    override fun close() { try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
     override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
         override fun createProvider() = GeminiLyricProvider()
     }
