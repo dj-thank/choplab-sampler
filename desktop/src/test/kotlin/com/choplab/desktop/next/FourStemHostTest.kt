@@ -143,6 +143,9 @@ class FourStemHostTest {
             assertEquals(SeparationProblem.RECORDING, editor.state.value.problem)
             assertEquals(1, f.native.opens.get()); assertEquals(before, f.backend.studio.document.value)
             permission.complete(Unit); assertFalse(recording.await())
+            // The recording action has returned, but the derived availability flow may publish
+            // the cleared arming flag on its next turn. Reopen only after that real guard clears.
+            until { editor.state.value.availability == FourStemAvailability.EDITABLE }
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.CloseFourStems))
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenFourStems))
             val next = assertNotNull(f.presenter.fourStems.value)
