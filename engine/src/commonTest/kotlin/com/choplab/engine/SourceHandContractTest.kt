@@ -20,6 +20,21 @@ class SourceHandContractTest {
         return result
     }
 
+    @Test fun mutedHandKeepsMovingWithoutMutingTheOriginal() {
+        val engine = EngineCore()
+        engine.offer(EngineCommand.SetOriginalSource(0, 0, OriginalSource(pcm())))
+        engine.offer(EngineCommand.PlayOriginalSource(0, 1))
+        engine.offer(EngineCommand.ScratchOriginalStart(0, 2, 4_500.0, 4_096, 8_192))
+        engine.offer(EngineCommand.SetHandMonitorGain(0, 3, 0f))
+        engine.offer(EngineCommand.ScratchOriginalPosition(0, 4, 5_500.0, 125))
+        val output = engine.renderFrames(200)
+        assertEquals(5_500.0, engine.handSourceFrame, 1e-8)
+        for (frame in 168 until 200) {
+            assertEquals(.1f, output[frame * 2], 1e-6f, "SOURCE remains independent")
+            assertEquals(0f, output[frame * 2 + 1], 1e-6f, "muted HAND remains silent")
+        }
+    }
+
     @Test fun sourceAndHandHaveIndependentStereoGainCutAndCursor() {
         val asset = pcm()
         val engine = EngineCore()
