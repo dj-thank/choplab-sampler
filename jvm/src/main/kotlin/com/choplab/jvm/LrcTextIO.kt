@@ -17,6 +17,11 @@ object LrcTextIO {
         require(text.length <= MAX_CHARACTERS) { "LRC exceeds character limit" }
         return text
     }
+    /** Validates text without opening a destination. Use before APIs that may create/replace a document. */
+    fun validate(text: String) {
+        encode(text)
+    }
+
     /** Writes to a caller-owned stream; the caller remains responsible for closing it. */
     fun write(output: OutputStream, text: String) {
         output.write(encode(text))
