@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.ui.resources.*
 import com.choplab.ui.ai.LyricProposalController
+import com.choplab.ui.pattern.StepPatternController
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
@@ -44,6 +45,7 @@ import kotlin.math.roundToLong
     /** Output health for the SAVE stage's diagnostics card; without it the card is not shown. */
     diagnostics: (() -> ContinuousDiagnostics?)? = null,
     lyricProposal: LyricProposalController? = null,
+    stepPatterns: StepPatternController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -89,6 +91,7 @@ import kotlin.math.roundToLong
         CEScratchPanel(state, onAction, readout, refreshKey)
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
+        stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)
         }

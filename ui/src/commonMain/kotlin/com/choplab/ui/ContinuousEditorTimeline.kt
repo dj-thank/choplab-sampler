@@ -175,6 +175,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             }
         }
         CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
+        CEActionButton(stringResource(Res.string.pattern_editor_title), ContinuousEditorAction.OpenStepPatterns,
+            state, ContinuousCapability.STEP_PATTERNS, onAction, Modifier.fillMaxWidth(), tag = "ce-step-patterns")
         ContinuousRecordingGuidePanel(state.recordingGuide) { onAction(ContinuousEditorAction.RecordingGuide(it)) }
         }
         CEBanks(state, onAction)

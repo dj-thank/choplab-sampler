@@ -121,6 +121,7 @@ class NextSession private constructor(
         override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
         override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
         override val padRenderAvailable = true
+        override val stepPatternsAvailable = true
         override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
             backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
