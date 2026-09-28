@@ -105,10 +105,11 @@ fun main() {
                 val lyricProposal by presenter.lyricProposal.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
                 val vocalGuide by presenter.vocalGuide.collectAsState()
+                val onlineSource by presenter.onlineSource.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
-                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide)
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, onlineSource = onlineSource)
             }
         }
     } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -117,6 +118,8 @@ fun main() {
 internal class DesktopEditorPorts(
     private val backend: NextBackend,
     private val spotify: SpotifyDesktopSession = SpotifyDesktopSession(onStatus = {}, purpose = SpotifySessionPurpose.METADATA_ONLY),
+    private val onlineDirectory: () -> Path = { DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library") },
+    private val onlineBackend: () -> com.choplab.sampler.source.YoutubeSourceBackend = { com.choplab.sampler.source.newpipe.NewPipeSourceBackend() },
     private val parent: () -> AwtWindow?,
 ) : ContinuousEditorPorts, AutoCloseable {
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
@@ -213,6 +216,12 @@ internal class DesktopEditorPorts(
         backend.separation(source, DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), "${source.name} — $suffix")
     }?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override val onlineAvailable = true
+    override val onlineSource = com.choplab.ui.source.OnlineSourceHost { scope, stop ->
+        val port = NextOnlineSourcePort(onlineDirectory(), backend::validateLibraryFile, scope, stop, onlineBackend())
+        com.choplab.ui.source.OnlineImportSession(port) { id -> port.saved(id)?.let {
+            com.choplab.ui.source.OnlineImportSelection(backend.files.registerNamed(it.path, it.title, it.hash), it.hash)
+        } }
+    }
     override suspend fun chooseOnline() = NextOnlineDialog.choose(parent(),
         DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override val libraryAvailable = true

@@ -157,7 +157,12 @@ class StepPatternHostIntegrationTest {
     }
     private suspend fun ImageComposeScene.reach(value: String) {
         fun SemanticsNode.contains(): Boolean = config.getOrNull(SemanticsProperties.TestTag) == value || children.any { it.contains() }
-        repeat(3) {
+        // A desktop popup may still be positioning itself after its owner appears. Keep the
+        // actual hit-area assertion, but let its scroll viewport settle before deciding it is clipped.
+        repeat(16) {
+            val current = tag(value)
+            val visible = current.boundsInWindow
+            if (visible.width >= current.size.width - 1 && visible.height >= current.size.height - 1) return
             for (ancestor in nodes().filter { it.contains() && it.config.getOrNull(SemanticsActions.ScrollBy)?.action != null }) {
                 val target = tag(value); val rect = ancestor.boundsInRoot
                 if (rect.width <= 0 || rect.height <= 0) continue
@@ -172,9 +177,11 @@ class StepPatternHostIntegrationTest {
                     for (frame in 0..12) { settle(); val position = horizontal?.value?.invoke() to vertical?.value?.invoke(); if (position == previous) break; previous = position }
                 }
             }
+            settle()
         }
         val node = tag(value)
-        assertTrue(node.boundsInWindow.width >= node.size.width - 1 && node.boundsInWindow.height >= node.size.height - 1, "$value is clipped")
+        assertTrue(node.boundsInWindow.width >= node.size.width - 1 && node.boundsInWindow.height >= node.size.height - 1,
+            "$value is clipped: visible=${node.boundsInWindow}, size=${node.size}")
     }
     private fun ImageComposeScene.fullHit(value: String, width: Int, height: Int) {
         val node = tag(value); val bounds = node.boundsInWindow

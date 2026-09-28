@@ -23,7 +23,9 @@ sealed interface Action {
     data class SelectPattern(val id: String) : Action
     data class SelectPlaybackTarget(val target: PlaybackTarget) : Action
     data class SelectSlice(val index: Int?) : Action
-    data class Import(val location: Location) : Action
+    data class Import(val location: Location, val expectedRevision: Long? = null) : Action {
+        init { require(expectedRevision == null || expectedRevision >= 0) }
+    }
     data class Open(val location: Location) : Action
     data class New(val project: Project = Project()) : Action
     data class Save(val location: Location) : Action
@@ -164,7 +166,9 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             beforeEdit()
             begin(null, answer, Purpose.SELECT, action.target)
         }
-        is Action.Import -> start(Operation.IMPORT) { services.importer.import(action.location).also { require(services.assets.containsVerified(it)) } }
+        is Action.Import -> if (action.expectedRevision != null && action.expectedRevision != session.revision)
+            ActionResult(false, Notice.StaleCompletion).also { notice(Notice.StaleCompletion) }
+            else start(Operation.IMPORT) { services.importer.import(action.location).also { require(services.assets.containsVerified(it)) } }
         is Action.Open -> {
             cancelAllWork()
             start(Operation.OPEN) { services.projects.openDocument(action.location) }

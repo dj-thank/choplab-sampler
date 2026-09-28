@@ -27,6 +27,7 @@ import java.util.concurrent.locks.ReentrantLock
 
 interface DetailedYoutubeBackend : YoutubeSourceBackend {
     fun search(query: String, jobId: String, kind: YoutubeSearchKind): List<YoutubeSource>
+    fun artwork(source: YoutubeSource, jobId: String): ByteArray? = null
 }
 
 /** No accounts, cookies from users, alternative providers, subprocesses, or transcoding. */
@@ -47,6 +48,11 @@ class NewPipeSourceBackend internal constructor(
 
     override fun info(url: String, jobId: String): YoutubeSource = job(jobId) { job ->
         resolve(url, job).source
+    }
+
+    override fun artwork(source: YoutubeSource, jobId: String): ByteArray? {
+        val url = source.metadata?.thumbnailUrl ?: return null
+        return job(jobId, 10) { http.artwork(url, it) }
     }
 
     override fun download(source: YoutubeSource, folder: File, jobId: String, progress: (Float) -> Unit): File =

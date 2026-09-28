@@ -35,11 +35,11 @@ class NextOnlineTest {
             NextOnline(root.resolve("library"), {}, backend).use { online ->
                 assertTrue(online.search(source.url)); idle(online)
                 assertEquals(listOf(source), online.state.value.candidates)
-                assertEquals(0, downloads); assertNull(online.state.value.selection)
+                assertEquals(0, downloads); assertNull(online.state.value.saved)
                 assertFalse(online.acquire("unknown"))
                 assertTrue(online.acquire(source.id)); idle(online)
-                val chosen = requireNotNull(online.state.value.selection)
-                assertEquals(NextOnline.Status.SELECTED, online.state.value.status)
+                val chosen = requireNotNull(online.state.value.saved)
+                assertEquals(OnlineSourcePhase.SAVED, online.state.value.phase)
                 assertEquals(source.title, chosen.title)
                 assertContentEquals(original, Files.readAllBytes(chosen.path))
                 assertEquals(1, downloads)
@@ -66,8 +66,8 @@ class NextOnlineTest {
             NextOnline(root.resolve("library"), {}, backend).use { online ->
                 assertTrue(online.search("synthetic")); assertTrue(entered.await(5, TimeUnit.SECONDS))
                 online.cancel(); assertFalse(online.search("retry while owned")); release.countDown(); idle(online)
-                assertEquals(NextOnline.Status.CANCELLED, online.state.value.status)
-                assertTrue(online.state.value.candidates.isEmpty()); assertNull(online.state.value.selection)
+                assertEquals(OnlineSourcePhase.CANCELLED, online.state.value.phase)
+                assertTrue(online.state.value.candidates.isEmpty()); assertNull(online.state.value.saved)
                 assertEquals(1, cancelled)
                 assertTrue(online.search("retry")); idle(online); assertEquals(listOf(source), online.state.value.candidates)
             }
