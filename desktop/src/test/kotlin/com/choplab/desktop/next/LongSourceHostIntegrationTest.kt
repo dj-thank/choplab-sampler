@@ -143,8 +143,10 @@ class LongSourceHostIntegrationTest {
             assertEquals(24, wav.info.bits)
             assertTrue(wav.samples.filterIndexed { index, _ -> index % 2 == 0 }.any { it > .002f })
             assertTrue(wav.samples.filterIndexed { index, _ -> index % 2 == 1 }.any { it < -.01f })
+            val saveStarted = System.nanoTime()
             action(ContinuousEditorAction.SaveProject)
             idle(backend)
+            println("400s archive save ms=${(System.nanoTime() - saveStarted) / 1_000_000} originalBytes=${asset.byteCount} archiveBytes=${Files.size(archive)}")
             saved = backend.studio.document.value.project
             ZipFile(archive.toFile()).use { zip ->
                 val entry = assertNotNull(zip.getEntry(asset.entryName))
