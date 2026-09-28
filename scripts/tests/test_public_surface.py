@@ -21,6 +21,7 @@ from scripts.check_public_surface import (
     GitScanLimitError,
     ZIP_LOCAL_FILE_SIGNATURE,
     ZipCandidateScanBudget,
+    explicit_archive_nested_limit,
     historical_non_commit_tree_zip_objects,
     historical_structural_zip_objects,
     has_m4a_compatible_brand,
@@ -1119,6 +1120,47 @@ class PublicSurfacePolicyTest(unittest.TestCase):
 
         self.assertTrue(any("payload.zip" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_packaged_app_nested_jar_budget_keeps_scanning_and_stops_at_80(self) -> None:
+        safe_jar = BytesIO()
+        with zipfile.ZipFile(safe_jar, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("META-INF/NOTICE.txt", "safe")
+        secret_jar = BytesIO()
+        with zipfile.ZipFile(secret_jar, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("META-INF/NOTICE.txt", "github_pat_" + "z" * 24)
+
+        def package(count: int, *, secret_at_last: bool = False) -> BytesIO:
+            output = BytesIO()
+            with zipfile.ZipFile(output, "w", zipfile.ZIP_STORED) as archive:
+                for index in range(count):
+                    nested = secret_jar if secret_at_last and index == count - 1 else safe_jar
+                    archive.writestr(f"ChopLab/app/dependency-{index:02d}.jar", nested.getvalue())
+            return output
+
+        normal_findings = scan_zip(package(80), label="ordinary.zip")
+        for name in (
+            "ChopLab-windows-app-image.zip",
+            "ChopLab-windows-preview.zip",
+            "ChopLab-mac-next-preview.zip",
+        ):
+            self.assertEqual(80, explicit_archive_nested_limit(Path(name)))
+        self.assertEqual(64, explicit_archive_nested_limit(Path("ordinary.zip")))
+        admitted_findings = scan_zip(
+            package(80), label="ChopLab-mac-next-preview.zip",
+            nested_archive_count_limit=explicit_archive_nested_limit(Path("ChopLab-mac-next-preview.zip")),
+        )
+        hidden_findings = scan_zip(
+            package(80, secret_at_last=True), label="ChopLab-windows-app-image.zip",
+            nested_archive_count_limit=80,
+        )
+        overflow_findings = scan_zip(
+            package(81), label="ChopLab-windows-app-image.zip",
+            nested_archive_count_limit=80,
+        )
+        self.assertTrue(any("nested archive count exceeds 64" in item for item in normal_findings))
+        self.assertEqual([], admitted_findings)
+        self.assertTrue(any("secret-shaped content" in item for item in hidden_findings))
+        self.assertTrue(any("nested archive count exceeds 80" in item for item in overflow_findings))
 
     def test_zip_content_scan_detects_renamed_nested_zip_payload(self) -> None:
         token = "github_pat_" + "d" * 24
