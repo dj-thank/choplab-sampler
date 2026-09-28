@@ -1,7 +1,35 @@
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
 }
+
+val verifyNewPipeDesugaring = tasks.register("verifyNewPipeDesugaring") {
+    group = "verification"
+    description = "Verify the reviewed API 29 NIO desugaring artifact before APK preparation"
+    val pins = rootProject.file("config/newpipe-dependencies.json")
+    inputs.file(pins)
+    doLast {
+        val document = JsonSlurper().parse(pins) as Map<*, *>
+        val pin = (document["artifacts"] as List<*>).map { it as Map<*, *> }.single { it["scope"] == "android-desugar" }
+        val artifact = configurations.getByName("coreLibraryDesugaring").resolvedConfiguration.resolvedArtifacts.single {
+            it.moduleVersion.id.toString() == pin["coordinate"]
+        }
+        val expected = pin["binary"] as Map<*, *>
+        val digest = MessageDigest.getInstance("SHA-256")
+        artifact.file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+        check(artifact.file.length() == (expected["bytes"] as Number).toLong() && actual == expected["sha256"]) {
+            "NIO desugaring artifact changed; review provenance, license and pins"
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyNewPipeDesugaring) }
 
 kotlin {
     jvmToolchain(21)
@@ -93,6 +121,11 @@ android {
         }
         create("preview") {
             initWith(getByName("release"))
+            // Explicit local compatibility probe; this does not change the release size/signing gate.
+            if (providers.gradleProperty("choplabNewPipeR8Probe").orNull == "true") {
+                isMinifyEnabled = true
+                proguardFile(rootProject.file("config/newpipe-r8-probe.pro"))
+            }
             applicationIdSuffix = ".preview"
             versionNameSuffix = "-preview"
             isDebuggable = false
@@ -104,6 +137,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -145,6 +179,7 @@ androidComponents {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.nio)
     for (configuration in listOf("debugImplementation", "previewImplementation")) {
         add(configuration, project(":jvm"))
         add(configuration, project(":ui"))
