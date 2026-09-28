@@ -214,6 +214,31 @@ class NewPipeSourceBackendTest {
         assertEquals(125_000, gateway.audio(described)!!.format.bitrate)
     }
 
+    @Test fun artworkHasItsOwnBoundedReadAndCannotRedirectIntoMediaOrUnrelatedOrigins() {
+        val url = "https://i.ytimg.com/vi/abcdefghijk/default.jpg"
+        val http = NewPipeHttp(NewPipeConnectionFactory { at -> FakeConnection(at) { Reply(bytes, headers = mapOf("Content-Type" to "image/jpeg")) } })
+        NewPipeSourceBackend(http, gateway()).use { backend ->
+            val pictured = source.copy(metadata = source.metadata!!.copy(thumbnailUrl = url))
+            assertArrayEquals(bytes, backend.artwork(pictured, "picture"))
+        }
+        for (redirect in listOf(stream, "https://example.invalid/a.png", "http://i.ytimg.com/a.png")) {
+            var opened = 0
+            val redirecting = NewPipeHttp(NewPipeConnectionFactory { at ->
+                opened++; FakeConnection(at) { Reply(bytes, 302, mapOf("Location" to redirect)) }
+            })
+            failure(OnlineSourceProblem.INVALID_INPUT) { redirecting.artwork(url, NewPipeJob("redirect")) }
+            assertEquals(1, opened)
+        }
+        val huge = NewPipeHttp(NewPipeConnectionFactory { at -> FakeConnection(at) {
+            Reply(bytes, headers = mapOf("Content-Type" to "image/png"), declared = NewPipeHttp.ARTWORK_LIMIT + 1L)
+        } })
+        failure(OnlineSourceProblem.TOO_LARGE) { huge.artwork(url, NewPipeJob("huge")) }
+        val incomplete = NewPipeHttp(NewPipeConnectionFactory { at -> FakeConnection(at) {
+            Reply(bytes.copyOf(12), headers = mapOf("Content-Type" to "image/png"), declared = bytes.size.toLong())
+        } })
+        failure(OnlineSourceProblem.MALFORMED_RESPONSE) { incomplete.artwork(url, NewPipeJob("incomplete")) }
+    }
+
     private data class Reply(val bytes: ByteArray, val code: Int = 200, val headers: Map<String, String> = emptyMap(),
                              val declared: Long = bytes.size.toLong(), val input: InputStream? = null)
     private class FakeConnection(url: URL, private val onDisconnect: () -> Unit = {},

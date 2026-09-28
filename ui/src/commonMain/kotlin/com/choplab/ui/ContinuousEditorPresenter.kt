@@ -12,6 +12,7 @@ import com.choplab.ui.pattern.*
 import com.choplab.ui.separation.*
 import com.choplab.core.separation.*
 import com.choplab.core.pattern.PatternVoiceRender
+import com.choplab.ui.source.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -34,6 +35,7 @@ interface ContinuousEditorPorts {
     val separationAvailable: Boolean get() = false
     suspend fun separateSource(source: Asset): Location? = null
     val onlineAvailable: Boolean get() = false
+    val onlineSource: OnlineSourceHost? get() = null
     suspend fun chooseOnline(): Location? = null
     val libraryAvailable: Boolean get() = false
     suspend fun chooseLibrary(): Location? = null
@@ -273,6 +275,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }.stateIn(jobs, SharingStarted.Eagerly, VocalGuideAvailability.EDITABLE)
     private val patterns = MutableStateFlow<StepPatternController?>(null)
     val stepPatterns: StateFlow<StepPatternController?> = patterns.asStateFlow()
+    private val online = MutableStateFlow<OnlineSourceController?>(null)
+    val onlineSource: StateFlow<OnlineSourceController?> = online.asStateFlow()
+    private val onlineAvailability = combine(view, studio.work) { editor, work ->
+        when (bankPadBlock(editor, work)) {
+            BankPadEditProblem.RECORDING -> OnlineAvailability.RECORDING
+            BankPadEditProblem.BUSY -> OnlineAvailability.BUSY
+            else -> OnlineAvailability.EDITABLE
+        }
+    }.stateIn(jobs, SharingStarted.Eagerly, OnlineAvailability.EDITABLE)
     private val bankPadEditor = BankPadEditController(studio, { bankPadBlock(view.value, studio.work.value) }) { intent, revision ->
         send(Action.Edit(intent, revision))
     }
@@ -373,6 +384,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     fun cancelFourStemPreparation() { separation.value?.cancel() }
     fun onAction(action: ContinuousEditorAction) {
         if (sourcePreviewBlocked(action)) return
+        if (action == ContinuousEditorAction.StopAll) online.value?.cancelPendingApply()
         // A platter and its cut fader move at pointer rate: each move only updates where they should be.
         if (action is ContinuousEditorAction.ScratchDrag) { dragScratch(action.distancePx); return }
         if (action is ContinuousEditorAction.SetScratchCut) { setScratchCut(action.gain); return }
@@ -406,6 +418,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             vocal.value?.cancel(TtsProblem.RECORDING)
             separation.value?.cancel(SeparationProblem.RECORDING)
         }
+        if (action == ContinuousEditorAction.StopAll) online.value?.cancelPendingApply()
         // The controller can be awaiting a selected-PAD action; cancel outside our serialized edit lock.
         if (action == ContinuousEditorAction.StopAll) patterns.value?.dispatch(PatternAction.Cancel)
         if (endsScratch(action)) cancelScratchOpening()
@@ -447,8 +460,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.CloseLyricProposal -> { closeLyricProposal(); true }
                 ContinuousEditorAction.OpenStepPatterns -> openStepPatterns()
                 ContinuousEditorAction.CloseStepPatterns -> { closeStepPatterns(); true }
+                ContinuousEditorAction.CloseOnline -> closeOnline()
                 is ContinuousEditorAction.Navigate -> {
                     if (action.stage != view.value.stage && !closeFourStems()) return@withLock false
+                    if (action.stage != view.value.stage && !closeOnline()) return@withLock false
                     if (action.stage != view.value.stage) { bankPadEditor.dispatch(BankPadEditAction.Cancel); closeLyricProposal(); closeStepPatterns(); closeVocalGuide() }
                     releaseHeld()
                     if (action.stage != ContinuousStage.BEAT && view.value.scratch != null) { letGoScratch(); view.update { it.copy(scratch = null) } }
@@ -462,7 +477,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     releaseHeld(); stopOriginal()
                     ports.separateSource(project.asset(source.assetHash))?.let { send(Action.Import(it)) } ?: cancelled()
                 } ?: false
-                ContinuousEditorAction.ImportOnline -> ports.chooseOnline()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
+                ContinuousEditorAction.ImportOnline -> if (ports.onlineSource != null) openOnline()
+                    else ports.chooseOnline()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.ImportLibrary -> ports.chooseLibrary()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
                 ContinuousEditorAction.OpenSpotifyMetadata -> {
                     if (!ports.spotifyMetadataAvailable || studio.work.value.jobId != null || studio.work.value.preparationId != null) false
@@ -841,6 +857,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (!closeFourStems()) return false
         val port = ports.vocalGuide ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (vocal.value != null) return true
         closeLyricProposal(); closeStepPatterns()
         lyricEditor.dispatch(LyricAction.Close)
@@ -871,6 +888,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (!closeFourStems()) return false
         val port = ports.lyricProposal ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (proposal.value != null) return true
         closeStepPatterns(); closeVocalGuide()
         val controller = LyricProposalController(studio.document, port.createProvider(), LyricProposalApply { placement, revision ->
@@ -891,6 +909,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openStepPatterns(): Boolean {
         if (!closeFourStems()) return false
         if (!ports.stepPatternsAvailable || bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (patterns.value != null) return true
         closeLyricProposal(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
@@ -916,6 +935,84 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         else -> PatternAvailability.EDITABLE
     }
 
+    private suspend fun openOnline(): Boolean {
+        val host = ports.onlineSource ?: return false
+        if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (online.value != null) return true
+        val revision = studio.document.value.revision
+        val session = host.open(jobs) { onAction(ContinuousEditorAction.StopAll) }
+        lateinit var controller: OnlineSourceController
+        controller = OnlineSourceController(session.port, OnlineSourceApply { id, expected ->
+            useOnline(controller, session, id, expected)
+        }, revision, jobs, onlineAvailability)
+        online.value = controller
+        jobs.launch {
+            controller.state.first { it.closed }
+            online.compareAndSet(controller, null)
+        }
+        closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
+        lyricEditor.dispatch(LyricAction.Close)
+        bankPadEditor.dispatch(BankPadEditAction.Cancel)
+        return true
+    }
+
+    private suspend fun closeOnline(): Boolean {
+        val current = online.value ?: return true
+        if (!current.requestClose()) return false
+        online.compareAndSet(current, null)
+        return true
+    }
+
+    private fun onlineBlocked(): OnlineUseResult? = when (bankPadBlock(view.value, studio.work.value)) {
+        BankPadEditProblem.RECORDING -> OnlineUseResult.RECORDING
+        BankPadEditProblem.BUSY -> OnlineUseResult.BUSY
+        else -> null
+    }
+
+    /** Never hold the UI serial lock while a provider, decoder or engine preparation runs. */
+    private suspend fun useOnline(controller: OnlineSourceController, session: OnlineImportSession,
+                                  id: String, expectedRevision: Long): OnlineUseResult {
+        // Permission opening can already hold serialized. Refuse now, then check again at the actor boundary.
+        onlineBlocked()?.let { return it }
+        var selection: OnlineImportSelection? = null
+        var requested = false
+        try {
+            val refusal = serialized.withLock {
+                if (online.value !== controller || controller.state.value.closed) return@withLock OnlineUseResult.CLOSED
+                onlineBlocked()?.let { return@withLock it }
+                if (studio.document.value.revision != expectedRevision) return@withLock OnlineUseResult.STALE_DOCUMENT
+                val chosen = session.resolve(id) ?: return@withLock OnlineUseResult.REJECTED
+                releaseHeld(); stopOriginal()
+                requested = true
+                val result = studio.dispatch(Action.Import(chosen.location, expectedRevision))
+                if (!result.accepted) return@withLock when (result.notice) {
+                    Notice.StaleCompletion -> OnlineUseResult.STALE_DOCUMENT
+                    Notice.Rejected(Rejection.BUSY) -> OnlineUseResult.BUSY
+                    Notice.Rejected(Rejection.CLOSED) -> OnlineUseResult.CLOSED
+                    else -> OnlineUseResult.REJECTED
+                }
+                selection = chosen
+                null
+            }
+            if (refusal != null) return refusal
+            studio.work.first { it.operation != Operation.IMPORT || it.basedOnRevision != expectedRevision }
+            // A barrier puts the final document read after the actor's completion/cancellation bookkeeping.
+            studio.dispatch(Action.RefreshTransport)
+            val document = studio.document.value
+            return when {
+                document.revision == expectedRevision + 1 && document.project.source?.assetHash == selection?.assetHash -> OnlineUseResult.APPLIED
+                document.revision != expectedRevision -> OnlineUseResult.STALE_DOCUMENT
+                else -> OnlineUseResult.REJECTED
+            }
+        } catch (cancel: CancellationException) {
+            withContext(NonCancellable) {
+                val work = studio.work.value
+                if (requested && work.operation == Operation.IMPORT && work.basedOnRevision == expectedRevision) studio.dispatch(Action.CancelWork)
+            }
+            throw cancel
+        }
+    }
+
     /** Proposal callbacks await this directly, outside an open action; recording flags and revision are checked at apply. */
     suspend fun applyPreparedEdit(intent: Intent, expectedRevision: Long): Boolean = serialized.withLock {
         when (bankPadBlock(view.value, studio.work.value)) {
@@ -936,7 +1033,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         // The controller keeps drafts/cancel available and itself refuses opening or applying while recording.
         is ContinuousEditorAction.BankPadEdit -> true
         is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
-        ContinuousEditorAction.CloseLyricProposal, ContinuousEditorAction.CloseStepPatterns, ContinuousEditorAction.CloseVocalGuide, ContinuousEditorAction.CloseFourStems -> true
+        ContinuousEditorAction.CloseLyricProposal, ContinuousEditorAction.CloseStepPatterns, ContinuousEditorAction.CloseVocalGuide,
+        ContinuousEditorAction.CloseFourStems, ContinuousEditorAction.CloseOnline -> true
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.StopSourceRecording,
         ContinuousEditorAction.DiscardSourceRecording, ContinuousEditorAction.StopAll,
         is ContinuousEditorAction.Navigate, is ContinuousEditorAction.CopyDiagnostics -> true
@@ -1053,7 +1151,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun allowedWhileRecording(action: ContinuousEditorAction) = when (action) {
         is ContinuousEditorAction.BankPadEdit -> true
         is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
-        ContinuousEditorAction.CloseLyricProposal, ContinuousEditorAction.CloseStepPatterns, ContinuousEditorAction.CloseVocalGuide, ContinuousEditorAction.CloseFourStems -> true
+        ContinuousEditorAction.CloseLyricProposal, ContinuousEditorAction.CloseStepPatterns, ContinuousEditorAction.CloseVocalGuide,
+        ContinuousEditorAction.CloseFourStems, ContinuousEditorAction.CloseOnline -> true
         ContinuousEditorAction.RecordVoice, ContinuousEditorAction.StopVoice, ContinuousEditorAction.StopAll,
         ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit,
         is ContinuousEditorAction.BeginHit, is ContinuousEditorAction.EndHit, is ContinuousEditorAction.DropHit,
@@ -1735,6 +1834,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         closeFourStems()
         closeVocalGuide()
         ports.vocalGuide?.preview?.stop()
+        online.getAndUpdate { null }?.close()
         closeLyricProposal()
         closeStepPatterns()
         cancelScratchOpening()
@@ -1782,7 +1882,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             else mutableSetOf(ContinuousCapability.OPEN_PROJECT, ContinuousCapability.IMPORT_AUDIO, ContinuousCapability.STOP_ALL)
         if (ports.separationAvailable && source != null && !busy && !recording) capabilities += ContinuousCapability.SEPARATE_SOURCE
         if (ports.fourStems != null && source != null && bankPadBlock(v, input.work) == null) capabilities += ContinuousCapability.FOUR_STEMS
-        if (ports.onlineAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_ONLINE
+        if ((ports.onlineSource != null || ports.onlineAvailable) && !busy && !recording && !v.startingSource && !finishingTake)
+            capabilities += ContinuousCapability.IMPORT_ONLINE
         if (ports.libraryAvailable && !busy && !recording) capabilities += ContinuousCapability.IMPORT_LIBRARY
         if (ports.spotifyMetadataAvailable && !busy && !recording) capabilities += ContinuousCapability.SPOTIFY_METADATA
         if (v.voice != null || v.hits != null) {

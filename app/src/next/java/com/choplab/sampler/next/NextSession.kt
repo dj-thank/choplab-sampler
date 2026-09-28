@@ -105,6 +105,7 @@ class NextSession private constructor(
             override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort = VocalTtsService(
                 AndroidTtsProvider(context), TtsCache(File(context.cacheDir, "next-tts-cache").toPath()), backend.assets)
         }
+        override val onlineSource = AndroidOnlineSourceHost(context, documents)
         override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
             override fun createProvider() = GeminiLyricProvider()
         }

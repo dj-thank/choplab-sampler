@@ -31,6 +31,8 @@ import com.choplab.ui.resources.*
 import com.choplab.ui.ai.VocalGuideController
 import com.choplab.ui.ai.LyricProposalController
 import com.choplab.ui.pattern.StepPatternController
+import com.choplab.ui.source.OnlineSourceController
+import com.choplab.ui.source.OnlineSourceDialog
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
@@ -49,6 +51,7 @@ import kotlin.math.roundToLong
     stepPatterns: StepPatternController? = null,
     vocalGuide: VocalGuideController? = null,
     fourStems: com.choplab.ui.separation.FourStemController? = null,
+    onlineSource: OnlineSourceController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -99,6 +102,7 @@ import kotlin.math.roundToLong
         vocalGuide?.let { CEVocalGuideDialog(it, onAction) }
         fourStems?.let { controller -> com.choplab.ui.separation.FourStemDialog(controller,
             onStop = { onAction(ContinuousEditorAction.StopAll) }, onClose = { onAction(ContinuousEditorAction.CloseFourStems) }) }
+        onlineSource?.let { OnlineSourceDialog(it) { onAction(ContinuousEditorAction.CloseOnline) } }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)
         }
