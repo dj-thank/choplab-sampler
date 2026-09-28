@@ -291,6 +291,7 @@ sealed interface ContinuousEditorAction {
     data object OpenSpotifyMetadata : ContinuousEditorAction
     data object SeparateSource : ContinuousEditorAction
     data object ImportOnline : ContinuousEditorAction
+    data object CloseOnline : ContinuousEditorAction
     data object RecordSource : ContinuousEditorAction
     data object RecordSystemSource : ContinuousEditorAction
     data object StopSourceRecording : ContinuousEditorAction

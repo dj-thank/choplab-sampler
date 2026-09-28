@@ -3,6 +3,7 @@ package com.choplab.desktop.next
 import com.choplab.desktop.source.DesktopYoutubeBackend
 import com.choplab.sampler.source.YoutubeSource
 import com.choplab.sampler.source.YoutubeSourceBackend
+import com.choplab.sampler.source.OnlineSourcePhase
 import com.choplab.ui.resources.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.jetbrains.compose.resources.getString
@@ -24,7 +25,8 @@ internal object NextOnlineDialog {
             Res.string.ce_online_acquire, Res.string.ce_library_cancel, Res.string.ce_library_close,
             Res.string.ce_online_ready, Res.string.ce_online_searching, Res.string.ce_online_candidates,
             Res.string.ce_online_empty, Res.string.ce_online_downloading, Res.string.ce_online_failed,
-            Res.string.ce_library_cancelled, Res.string.ce_library_selected
+            Res.string.ce_library_cancelled, Res.string.online_saved, Res.string.online_use, Res.string.online_save,
+            Res.string.online_save_only
         ).map { getString(it) }
         return suspendCancellableCoroutine { answer ->
             SwingUtilities.invokeLater {
@@ -49,7 +51,8 @@ internal object NextOnlineDialog {
                     name = id; preferredSize = Dimension(preferredSize.width.coerceAtLeast(130), 48)
                 }
                 val search = button(2, "next-online-search")
-                val acquire = button(3, "next-online-acquire")
+                val acquire = button(15, "next-online-acquire")
+                val useOriginal = button(14, "next-online-use")
                 val cancel = button(4, "next-online-cancel")
                 val close = button(5, "next-online-close")
                 val status = JLabel(labels[6])
@@ -66,16 +69,16 @@ internal object NextOnlineDialog {
                     search.isEnabled = !state.busy && query.text.trim().length in 1..240
                     acquire.isEnabled = !state.busy && list.selectedValue != null && query.text.trim() == searched
                     cancel.isEnabled = state.busy
-                    status.text = when (state.status) {
-                        NextOnline.Status.READY -> labels[6]
-                        NextOnline.Status.SEARCHING -> labels[7]
-                        NextOnline.Status.CANDIDATES -> if (state.candidates.isEmpty()) labels[9] else labels[8]
-                        NextOnline.Status.DOWNLOADING -> "${labels[10]} ${state.progress}%"
-                        NextOnline.Status.SELECTED -> labels[13]
-                        NextOnline.Status.FAILED -> labels[11]
-                        NextOnline.Status.CANCELLED -> labels[12]
+                    useOriginal.isEnabled = !state.busy && state.saved != null && query.text.trim() == searched
+                    status.text = when (state.phase) {
+                        OnlineSourcePhase.READY -> labels[6]
+                        OnlineSourcePhase.SEARCHING, OnlineSourcePhase.INSPECTING -> labels[7]
+                        OnlineSourcePhase.CANDIDATES, OnlineSourcePhase.DETAILS -> if (state.candidates.isEmpty()) labels[9] else labels[8]
+                        OnlineSourcePhase.DOWNLOADING, OnlineSourcePhase.SAVING -> "${labels[10]} ${state.progress}%"
+                        OnlineSourcePhase.SAVED -> labels[13]
+                        OnlineSourcePhase.FAILED -> labels[11]
+                        OnlineSourcePhase.CANCELLED, OnlineSourcePhase.CLOSED -> labels[12]
                     }
-                    if (!state.busy) state.selection?.let { finishing(it) }
                 }
                 val timer = Timer(100) { refresh() }
                 finishing = { selection ->
@@ -91,6 +94,9 @@ internal object NextOnlineDialog {
                 }
                 search.addActionListener { lookup() }; query.addActionListener { lookup() }
                 acquire.addActionListener { list.selectedValue?.let { online.acquire(it.id); refresh() } }
+                useOriginal.addActionListener {
+                    if (useOriginal.isEnabled) online.state.value.saved?.let { finishing(NextLibrary.Selection(it.path, it.title, it.hash)) }
+                }
                 cancel.addActionListener { online.cancel(); refresh() }
                 close.addActionListener { finishing(null) }
                 list.addListSelectionListener { if (!it.valueIsAdjusting) refresh() }
@@ -109,8 +115,8 @@ internal object NextOnlineDialog {
                     }, BorderLayout.NORTH)
                     add(JScrollPane(list), BorderLayout.CENTER)
                     add(JPanel(BorderLayout(8, 8)).apply {
-                        add(status, BorderLayout.NORTH)
-                        add(JPanel(GridLayout(1, 3, 8, 8)).apply { listOf(acquire, cancel, close).forEach { add(it) } }, BorderLayout.SOUTH)
+                        add(JPanel(GridLayout(2, 1, 8, 8)).apply { add(status); add(JLabel(labels[16])) }, BorderLayout.NORTH)
+                        add(JPanel(GridLayout(1, 4, 8, 8)).apply { listOf(acquire, useOriginal, cancel, close).forEach { add(it) } }, BorderLayout.SOUTH)
                     }, BorderLayout.SOUTH)
                 }
                 dialog.minimumSize = Dimension(720, 440); dialog.setSize(840, 580); dialog.setLocationRelativeTo(parent)

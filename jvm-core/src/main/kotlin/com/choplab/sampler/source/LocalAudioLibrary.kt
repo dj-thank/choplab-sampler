@@ -2,6 +2,7 @@ package com.choplab.sampler.source
 
 import java.io.File
 import java.io.InputStream
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
@@ -39,10 +40,12 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
         return File(directory, "$id.$extension").also { check(it.isFile) { "音源ファイルが見つかりません" } }
     }
 
-    fun importFile(file: File, title: String = file.nameWithoutExtension, origin: String = "ファイル"): AudioLibraryItem {
+    fun importFile(file: File, title: String = file.nameWithoutExtension, origin: String = "ファイル",
+                   checkCancelled: () -> Unit = {}): AudioLibraryItem {
+        checkCancelled()
         require(file.isFile && file.extension.lowercase() in extensions) { "対応する音声・動画ファイルを選んでください" }
         require(file.length() in 1..MAX_FILE_BYTES) { "音源ファイルが大きすぎるか空です" }
-        return file.inputStream().use { importStream(it, file.extension.lowercase(), title, origin) }
+        return file.inputStream().use { importStream(it, file.extension.lowercase(), title, origin, checkCancelled) }
     }
 
     private fun spotifyLink(url: String): File {
@@ -73,7 +76,9 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
         } finally { temp.delete() }
     }
 
-    @Synchronized fun importStream(input: InputStream, extension: String, title: String, origin: String): AudioLibraryItem {
+    @Synchronized fun importStream(input: InputStream, extension: String, title: String, origin: String,
+                                   checkCancelled: () -> Unit = {}): AudioLibraryItem {
+        checkCancelled()
         require(extension in extensions) { "未対応の音源形式です" }
         val temp = File(directory, ".import-${UUID.randomUUID()}.$extension")
         val hash = MessageDigest.getInstance("SHA-256")
@@ -82,6 +87,7 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             temp.outputStream().use { output ->
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
+                    checkCancelled()
                     if (Thread.currentThread().isInterrupted) throw InterruptedException()
                     val length = input.read(buffer)
                     if (length < 0) break
@@ -92,6 +98,7 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
                 }
                 output.fd.sync()
             }
+            checkCancelled()
             require(count > 0) { "音源が空です" }
             val id = hash.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
             val metadata = File(directory, "$id.properties")
@@ -102,19 +109,54 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
                 }.getOrNull()?.let { return it }
             }
             validateAudio(temp)
+            checkCancelled()
             if(Thread.currentThread().isInterrupted) throw InterruptedException()
             val destination = File(directory, "$id.$extension")
-            Files.move(temp.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
             val cleanTitle = title.filter { it.code >= 32 }.take(240).ifBlank { "音源" }
             val properties = Properties().apply {
                 setProperty("title", cleanTitle); setProperty("extension", extension)
                 setProperty("origin", origin.filter { it.code >= 32 }.take(1024))
             }
             val metaTemp = File(directory, ".$id-${UUID.randomUUID()}.metadata")
+            var createdAudio = false
+            var committed = false
             try {
                 metaTemp.writer(Charsets.UTF_8).use { properties.store(it, "ChopLab personal audio") }
+                // An orphan from an earlier interrupted import may be reused only if its bytes are exact.
+                // Never overwrite an existing library payload in order to repair its metadata.
+                val existingAudio = destination.exists()
+                if (existingAudio) {
+                    if (!destination.isFile || destination.length() != count) throw IOException("Existing library payload differs")
+                    temp.inputStream().use { expected -> destination.inputStream().use { actual ->
+                        val a = ByteArray(64 * 1024); val b = ByteArray(a.size)
+                        while (true) {
+                            checkCancelled()
+                            if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                            val n = expected.read(a)
+                            if (n < 0) break
+                            var copied = 0
+                            while (copied < n) {
+                                val k = actual.read(b, copied, n - copied)
+                                if (k < 0) throw IOException("Existing library payload differs")
+                                copied += k
+                            }
+                            for (index in 0 until n) if (a[index] != b[index]) throw IOException("Existing library payload differs")
+                        }
+                    } }
+                }
+                // Cancellation is checked before the two short commit renames, never halfway through adoption.
+                checkCancelled()
+                if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                if (!existingAudio) {
+                    Files.move(temp.toPath(), destination.toPath())
+                    createdAudio = true
+                }
                 Files.move(metaTemp.toPath(), metadata.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            } finally { metaTemp.delete() }
+                committed = true
+            } finally {
+                metaTemp.delete()
+                if (createdAudio && !committed) destination.delete()
+            }
             return AudioLibraryItem(id, cleanTitle, properties.getProperty("origin"), count)
         } finally { temp.delete() }
     }
