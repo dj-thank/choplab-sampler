@@ -17,6 +17,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.choplab.engine.PcmReadStatus
 import com.choplab.ui.resources.*
 import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.delay
 
 /** PCM starvation is distinct from a device underrun, and from normal ahead-of-playhead prefetch. */
 @Immutable data class ContinuousPcmReadout(
@@ -38,8 +39,10 @@ import org.jetbrains.compose.resources.stringResource
     val latestRead by rememberUpdatedState(readout)
     var pcm by remember { mutableStateOf(readout().pcm) }
     LaunchedEffect(refreshKey) {
-        // SOURCE/song frames do not invalidate the header; only PCM health changes do.
-        while (true) withFrameNanos { pcm = latestRead().pcm }
+        // Health counters need no animation clock. Leave frames idle between polls, including on startup.
+        // The frame gate still suspends polling while this UI is not being drawn.
+        pcm = latestRead().pcm
+        while (true) { delay(100); withFrameNanos { pcm = latestRead().pcm } }
     }
     var acknowledgedFrames by remember { mutableLongStateOf(0) }
     var acknowledgedDrops by remember { mutableLongStateOf(0) }

@@ -89,8 +89,10 @@ class StepPatternFlowTest {
             assertEquals(saved, backend.studio.document.value.project)
             val end = ProgramCompiler.clipTickToFrame(plan.endTick, saved.tempo) + EngineCore.STEAL_FADE_FRAMES
             val output = directory.resolve("patterns.wav")
+            val exportStarted = System.nanoTime()
             assertTrue(backend.studio.dispatch(Action.Export(ExportRequest(backend.files.register(output), end.toInt() + 256, bits = 24), PlaybackTarget.Arrangement())).accepted)
             idle(backend)
+            println("STEP arrangement export ms=${(System.nanoTime() - exportStarted) / 1_000_000} frames=${end + 256} clips=${saved.clips.size}")
             val audio = Files.newInputStream(output).use { WavCodec.read(it) }
             assertEquals((end.toInt() + 256) * 2, audio.samples.size)
             val from = ProgramCompiler.clipTickToFrame(PatternEdits.BAR_TICKS.toLong(), saved.tempo).toInt()

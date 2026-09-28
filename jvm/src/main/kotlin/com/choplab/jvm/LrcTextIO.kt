@@ -17,12 +17,27 @@ object LrcTextIO {
         require(text.length <= MAX_CHARACTERS) { "LRC exceeds character limit" }
         return text
     }
+    /** Writes to a caller-owned stream; the caller remains responsible for closing it. */
     fun write(output: OutputStream, text: String) {
-        require(text.length <= MAX_CHARACTERS)
+        output.write(encode(text))
+    }
+
+    /**
+     * Validates and encodes the complete text before opening a possibly destructive destination.
+     * Owns and closes the returned stream, including when writing fails. An I/O failure after
+     * opening can still leave partial output; this does not provide atomic provider publication.
+     */
+    fun write(text: String, openOutput: () -> OutputStream) {
+        val bytes = encode(text)
+        openOutput().use { it.write(bytes) }
+    }
+
+    private fun encode(text: String): ByteArray {
+        require(text.length <= MAX_CHARACTERS) { "LRC exceeds character limit" }
         val encoded = Charsets.UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT).encode(CharBuffer.wrap(text))
         val bytes = ByteArray(encoded.remaining()).also(encoded::get)
-        require(bytes.size <= MAX_BYTES)
-        output.write(bytes)
+        require(bytes.size <= MAX_BYTES) { "LRC exceeds byte limit" }
+        return bytes
     }
 }
