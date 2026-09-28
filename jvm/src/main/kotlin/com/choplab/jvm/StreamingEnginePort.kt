@@ -86,9 +86,18 @@ open class StreamingEnginePort(
     private val blockFrames: Int = 256,
     private val acknowledgementMillis: Long = 1_000,
 ) : EnginePort, AutoCloseable {
-    private data class EngineView(val engine: EngineCore, val offset: Long)
+    private data class EngineView(val engine: EngineCore, val offset: Long) { val identity = Any() }
+    /** Reader-local buffers never keep the replaced engine or its PCM alive. */
+    private class TransportReadout {
+        var identity: Any? = null
+        var completed = EngineSnapshot()
+        var candidate = EngineSnapshot()
+    }
+    /** Allocated by the producer, filled once by the owner before APPLIED wakes its caller. */
+    private class AcknowledgedReadout(val generation: EngineView) { val snapshot = EngineSnapshot() }
     private class Pending(val command: EngineCommand, val wireCommand: EngineCommand, val generation: EngineView) {
         val answer = CompletableDeferred<Boolean>()
+        val readout = AcknowledgedReadout(generation)
         @Volatile var cancelled = false
         @Volatile var cancelFault = DriverFault.ACK_CANCELLED
         /** Discarded unapplied because the owner timed it out or rebuilt its engine, not refused on its merits. */
@@ -115,6 +124,7 @@ open class StreamingEnginePort(
     private val faultLatched = AtomicBoolean(false)
     @Volatile private var requestedMonitorGain = 1f
     @Volatile private var engineView: EngineView? = null
+    @Volatile private var acknowledgedReadout: AcknowledgedReadout? = null
     @Volatile private var confirmedProgram = EngineProgram.EMPTY
     @Volatile private var sequenceStart = 0L
     @Volatile private var stoppedElapsedFrames = 0L
@@ -134,6 +144,7 @@ open class StreamingEnginePort(
     @Volatile private var writtenFrame = -1L
     @Volatile private var completedCueBeforeReset = -1L
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
+    private val transportSnapshots = ThreadLocal.withInitial { TransportReadout() }
     /** Creates devices off the audio owner: a slow device open never holds up edits. The owner writes and closes. */
     private val opener = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "ChopLab-NEXT-device-open").apply { isDaemon = true; priority = Thread.NORM_PRIORITY }
@@ -249,9 +260,25 @@ open class StreamingEnginePort(
     }
 
     override fun snapshot(): TransportState {
-        val snapshot = snapshots.get()
+        val local = transportSnapshots.get()
         val current = engineView
-        current?.engine?.readout?.copyInto(snapshot)
+        if (local.identity !== current?.identity) {
+            local.identity = current?.identity
+            local.completed = EngineSnapshot()
+        }
+        // A bounded live read may collide with the next render publication. Its target can then be stale or
+        // partially copied, including a missing count-in cue immediately after APPLIED. Use the completed
+        // acknowledgement from this engine instead; never retry/spin on the audio owner or borrow a lost route's cue.
+        val snapshot = if (current?.engine?.readout?.copyInto(local.candidate) == true) {
+            val previous = local.completed
+            local.completed = local.candidate
+            local.candidate = previous
+            local.completed
+        } else {
+            val acknowledged = acknowledgedReadout?.takeIf { it.generation === current }?.snapshot
+            // The clock may have progressed far beyond the last command: keep a newer coherent read.
+            if (acknowledged != null && acknowledged.frame >= local.completed.frame) acknowledged else local.completed
+        }
         return TransportState(snapshot.frame + (current?.offset ?: 0), snapshot.sequencePlaying, snapshot.programRevision,
             snapshot.activeVoices, snapshot.eventOverflows, statusValue.value.phase == DriverPhase.ATTACHED,
             sequenceFrame = snapshot.sequenceFrame, sequencePaused = snapshot.sequencePaused, scratchFrame = snapshot.scratchFrame,
@@ -404,6 +431,7 @@ open class StreamingEnginePort(
             activeEngine.close()
             activeEngine = EngineCore(confirmedProgram)
             engineView = EngineView(activeEngine, offset)
+            acknowledgedReadout = null
             previousLosses = 0
             sequenceStart = 0; stoppedElapsedFrames = 0
             // A failure needs a fresh reattach request; a lifecycle release (NONE) reopens when wanted again.
@@ -468,6 +496,11 @@ open class StreamingEnginePort(
                         is EngineCommand.StartSequence -> { sequenceStart = appliedFrame; stoppedElapsedFrames = 0 }
                         is EngineCommand.Stop, is EngineCommand.Panic -> stoppedElapsedFrames = (appliedFrame - sequenceStart).coerceAtLeast(0)
                         else -> Unit
+                    }
+                    if (accepted) {
+                        // Only this owner publishes readout, and render has returned: this copy cannot race.
+                        check(activeEngine.readout.copyInto(request.readout.snapshot))
+                        acknowledgedReadout = request.readout
                     }
                     complete(request, accepted, dropped = request.cancelled)
                     inFlight[slot] = null
