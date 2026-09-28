@@ -94,7 +94,10 @@ object NextCodecSelfTest {
         }
         val broken = directory.resolve("broken.flac"); Files.writeString(broken, "not audio")
         DesktopOriginalAudioDecoder(maxResidentBytes = 48_000 * 8L).use { decoder ->
-            check(runCatching { decoder.inspect(flac, sha256(Files.readAllBytes(flac))) }.exceptionOrNull() is IllegalArgumentException)
+            val hash = sha256(Files.readAllBytes(flac))
+            check(decoder.inspect(flac, hash).frames == 96_000L)
+            decoder.openPcm(flac, hash).use { check(it.read(95_000, 100).size == 200) }
+            check(runCatching { decoder.decode(flac, hash) }.exceptionOrNull() is IllegalArgumentException)
         }
         DesktopOriginalAudioDecoder(timeoutMillis = 1).use { decoder ->
             check(runCatching { decoder.inspect(flac, sha256(Files.readAllBytes(flac))) }.exceptionOrNull() is IllegalArgumentException)

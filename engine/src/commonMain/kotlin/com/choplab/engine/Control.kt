@@ -124,6 +124,7 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
     private var lastId = -1L
 
     fun offer(command: EngineCommand): OfferResult {
+        if (ownership.closed) return OfferResult.PCM_LIMIT
         val isOriginal = command is EngineCommand.OriginalSourceCommand
         val isHand = command is EngineCommand.OriginalHandCommand
         if ((isOriginal || command is EngineCommand.SetSongMonitorGain || command is EngineCommand.SetMetronome ||
@@ -301,6 +302,9 @@ class EngineSnapshot {
     @Volatile var controlOverflows = 0L
     @Volatile var eventOverflows = 0L
     @Volatile var residentBytes = 0L
+    @Volatile var pcmUnderrunFrames = 0L
+    @Volatile var pcmReadStatus = PcmReadStatus.READY
+    @Volatile var pcmDroppedRequests = 0L
 }
 
 /** Bounded seqlock read; false means the reader should try again on its next UI/control tick. */
@@ -340,6 +344,9 @@ class LiveReadout internal constructor() {
         data.controlOverflows = engine.controls.overflowCount
         data.eventOverflows = engine.events.overflowCount
         data.residentBytes = engine.residentBytes
+        data.pcmUnderrunFrames = engine.pcmUnderrunFrames
+        data.pcmReadStatus = engine.pcmReadStatus
+        data.pcmDroppedRequests = engine.pcmDroppedRequests
         version++
     }
     fun copyInto(target: EngineSnapshot): Boolean {
@@ -377,6 +384,9 @@ class LiveReadout internal constructor() {
                 target.controlOverflows = data.controlOverflows
                 target.eventOverflows = data.eventOverflows
                 target.residentBytes = data.residentBytes
+                target.pcmUnderrunFrames = data.pcmUnderrunFrames
+                target.pcmReadStatus = data.pcmReadStatus
+                target.pcmDroppedRequests = data.pcmDroppedRequests
                 if (before == version) return true
             }
         }

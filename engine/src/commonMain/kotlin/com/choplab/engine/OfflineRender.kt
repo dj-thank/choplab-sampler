@@ -12,6 +12,7 @@ object OfflineRender {
         var capacity = 2
         while (capacity < commands.size) capacity *= 2
         val engine = EngineCore(program, EngineConfig(controlCapacity = capacity, outputMode = EngineOutputMode.EXPORT))
+        try {
         for (command in commands) {
             if (command is EngineCommand.OriginalSourceCommand || command is EngineCommand.SetSongMonitorGain) continue
             require(engine.controls.offer(command) == OfferResult.ACCEPTED)
@@ -24,6 +25,7 @@ object OfflineRender {
             offset += count
         }
         return output.copyOfRange(MasterLimiter.LOOKAHEAD_FRAMES * 2, output.size)
+        } finally { engine.close() }
     }
 }
 

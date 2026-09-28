@@ -43,7 +43,7 @@
 
 - NEXTのwriterはschema11、readerはschema10を明示移行して11を読む。旧アプリのschema7 writer/1–7 readerと別に扱う。構造化歌詞は曲名・言語・section名/種別/小節数、行IDと本文snapshotに結び付く読み・再計算したモーラ/韻を保存。word時刻はMANUAL/RETURNED/ESTIMATEDを保持する（[ADR9](adr/ADR-0009-structured-lyrics-and-timing.md)）。鍵・prompt・provider session・cache pathは保存しない。
 - `.choplab`: 先頭 `project.json`、`assets/<sha256>.<許可拡張子>`。元圧縮素材、編集/録音/生成float32 WAV、再生成可能PCM cacheを区別する。manifestから必須/派生/再生成可能を判断し、含まれるbytesをhash検証する。
-- AssetStore: 短いPADはresident、長い伴奏/歌はprefetch。全音声を128PAD分展開しない。cache missの無音/停止通知、再読込、RAM/disk上限をengine spike前に決める。
+- AssetStore: 短いPADはresident、長い伴奏/歌はworkerのprefetch＋paged PCM。共有128MiB ledgerへcache・program/SOURCEのlease・作業copy/窓/ringを先予約し、非active LRUのみ解放。予約失敗はtyped拒否。page missはrenderでI/Oせず無音/typed通知、READY/FAILEDとReloadをhostへ返す。Reloadは文書revision/Undoを変えず自動再生しない。native30,000,000frame・1GiBの資産/disk scratch制限、managed PCMとOS/推論RAMの区別は[AUDIO](AUDIO.md)に従う。
 - Autosave: 資産をtempへ書込み→flush/検証→atomic publish→参照する小さなdocumentを3世代で確定。文書だけが先に残らない順序にする。
 - Asset lifetime: Undo/Redo、autosave全世代、実行中jobが参照する資産を保持。GCはrender外で、参照保護・中断復旧の検証後に導入する。
 - NEXTの元資産の許可拡張子はWAV/MP3/FLAC/Ogg/Opus/M4A/AAC/AIFF/AIF/MP4/WebM。コンテナ内の音声を検証し、元bytesを保持する。追加形式を含む制作は、その形式に対応したNEXTで開く（古いNEXT readerは未知の拡張子を拒否する）。

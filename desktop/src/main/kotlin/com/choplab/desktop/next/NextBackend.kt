@@ -44,7 +44,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         require(file.isFile && file.length() in 1..com.choplab.core.model.ProjectLimits.MAX_ASSET_BYTES)
         val extension = file.extension.lowercase()
         require(extension in Asset.EXTENSIONS)
-        if (extension == "wav") { file.inputStream().use { WavCodec.read(it) }; return }
+        if (extension == "wav") { file.inputStream().use { WavCodec.inspect(it) }; return }
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
             val bytes = ByteArray(64 * 1024)

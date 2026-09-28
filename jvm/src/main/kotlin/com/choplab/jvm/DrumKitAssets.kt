@@ -19,12 +19,14 @@ object DrumKitAssets {
     suspend fun publish(kit: DrumKit, store: FileAssetStore): List<Asset> = withContext(Dispatchers.IO) {
         (0 until DrumKits.SOUNDS).map { slot ->
             ensureActive()
+            PcmMemoryBudget.shared.reserve(DrumKits.frames(slot) * 24L + 256 * 1024).use {
             val pcm = DrumKits.render(kit, slot).let { values -> FloatArray(values.size) { values[it] / 32768f } }
             val bytes = ByteArrayOutputStream().also { WavCodec.writeFloat(it, pcm, DrumKits.SAMPLE_RATE, 1) }.toByteArray()
             val asset = Asset(sha256(bytes), "wav", bytes.size.toLong(), DrumKits.SAMPLE_RATE, 1, DrumKits.frames(slot).toLong(),
                 DrumKits.soundName(kit, slot), AssetRole.RENDERED)
             store.publish(asset, ByteArrayInputStream(bytes))
             asset
+            }
         }
     }
 }

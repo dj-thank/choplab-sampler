@@ -155,7 +155,9 @@ internal class DesktopEditorPorts(
         backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
-        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining)
+        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
+        pcm = pcmReadout())
+    private fun pcmReadout() = backend.engine.pcmPlayback().let { ContinuousPcmReadout(it.status, it.underrunFrames, it.droppedRequests) }
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
     override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
@@ -164,7 +166,7 @@ internal class DesktopEditorPorts(
         ContinuousDiagnostics(outputAttached = health.attached, floatOutput = health.encoding?.let { it == SinkEncoding.FLOAT32 },
             sampleRate = health.sampleRate, blockFrames = health.blockFrames, bufferFrames = health.bufferFrames,
             pendingFrames = health.pendingFrames, underruns = health.underruns, outputLosses = health.outputLosses,
-            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax)
+            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax, pcm = pcmReadout())
     }
     /** Java Sound reports no microphone before one is opened: a host without one answers at the first take. */
     override val voiceAvailable get() = true

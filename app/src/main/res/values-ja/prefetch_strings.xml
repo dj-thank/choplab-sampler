@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="next_source_frame_limit">この音源は取り込み可能な長さを超えています。</string>
+</resources>

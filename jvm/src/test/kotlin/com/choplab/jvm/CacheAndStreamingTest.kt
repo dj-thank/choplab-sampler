@@ -39,6 +39,7 @@ class CacheAndStreamingTest {
             val second = compiler.compile(project.copy(title = "renamed"), "pattern-1", 2)
             assertSame(first.pad(0)!!.asset, second.pad(0)!!.asset)
             assertEquals(asset.frames * 8, pcm.cache.statistics().retainedBytes)
+            first.releasePreparation(); second.releasePreparation()
             assertFailsWith<IllegalArgumentException> { pcm.load(asset.copy(frames = asset.frames + 1)) }
         }
     }
@@ -94,6 +95,28 @@ class CacheAndStreamingTest {
                 }
             } }.awaitAll()
             assertEquals(1, maximum.get())
+        }
+    }
+
+    @Test fun failedDiscardStillCompletesWaitersAndAllowsRetry() = runBlocking {
+        PcmAssetCache().use { cache ->
+            val invalid = PcmAsset.fromInterleaved(FloatArray(12))
+            val cleanup = IOException("provider cleanup failed")
+            val failure = assertFailsWith<IllegalArgumentException> {
+                withTimeout(5_000) {
+                    cache.acquire(metadata("a"), discard = { throw cleanup }) { invalid.acquire() }.close()
+                }
+            }
+            assertEquals("PCM metadata mismatch", failure.message)
+            // Coroutine stack recovery may wrap the original exception; its cleanup diagnostic survives.
+            assertTrue(generateSequence<Throwable>(failure) { it.cause }.flatMap { it.suppressed.asSequence() }
+                .any { it is IOException && it.message == cleanup.message })
+            assertEquals(0, invalid.leaseCount)
+            withTimeout(5_000) { while (cache.statistics().pendingLoads != 0) yield() }
+            assertEquals(0, cache.statistics().pendingLoads)
+            cache.acquire(metadata("a")) { PcmAsset.fromInterleaved(FloatArray(14)).acquire() }.use {
+                assertEquals(7, it.pcm.frameCount)
+            }
         }
     }
 

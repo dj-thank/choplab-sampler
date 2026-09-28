@@ -1828,17 +1828,27 @@ class ContinuousEditorPresenterTest {
     }
 
     @Test fun aTakeNeverOutgrowsTheEngineBudgetAndHostsWithoutAMicrophoneKeepItOff() = runBlocking<Unit> {
-        // The original fills the engine's PCM budget but for half a second.
-        val limit = com.choplab.core.ProgramCompiler.RESIDENT_FRAME_LIMIT
+        // Fill managed PCM with eight distinct small resident assets. A single long original now
+        // uses bounded pages, so its duration is no longer an oracle for retained RAM.
+        val limit = ProgramCompiler.RESIDENT_FRAME_LIMIT
+        val smallFrames = PcmResidency.SMALL_ASSET_BYTES / 8
         val h = Harness { p ->
-            val long = p.assets[0].copy(frames = limit - 48_000 - 24_000)
-            p.copy(assets = frozenListOf(long, p.assets[1]), source = Source(long.hash, FrameRange(0, long.frames)),
-                pads = p.pads.map { if (it.id == 2) Pad(2, long.hash, FrameRange(0, 48_000)) else it }.frozen())
+            val fillers = (0..6).map { p.assets[0].copy(hash = it.toString(16).repeat(64),
+                frames = smallFrames, byteCount = smallFrames * 8 + 44) }
+            val original = p.assets[0].copy(frames = limit - 7 * smallFrames - 48_000 - 24_000)
+            p.copy(assets = (listOf(original, p.assets[1]) + fillers).frozen(), source = Source(original.hash, FrameRange(0, original.frames)),
+                pads = p.pads.map { when (it.id) {
+                    2 -> Pad(2, original.hash, FrameRange(0, 48_000))
+                    in 3..9 -> Pad(it.id, fillers[it.id - 3].hash, FrameRange(0, 48_000))
+                    else -> it
+                } }.frozen())
         }
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
             // Once the placement's work is done: while it runs, recording is only busy.
             val placed = h.until { it.clips.isNotEmpty() && it.unavailable[ContinuousCapability.RECORD_VOICE] != ContinuousUnavailable.BUSY }
+            assertEquals(com.choplab.engine.EngineFormat.MAX_RESIDENT_BYTES - 24_000 * 8L,
+                ProgramCompiler.residentBudgetBytes(h.studio.document.value.project), "Shared PAD/clip assets count once; only half a second remains")
             assertEquals(ContinuousUnavailable.NOT_CONNECTED, placed.unavailable[ContinuousCapability.RECORD_VOICE], "No microphone on this host")
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             h.ports.voice = true
@@ -1847,6 +1857,21 @@ class ContinuousEditorPresenterTest {
             h.until { it.status == ContinuousStatus.VOICE_NO_ROOM }
             assertTrue(h.ports.voiceStarts.isEmpty(), "The microphone is not opened")
             assertEquals(0, h.ports.stops, "and nothing that plays is stopped")
+        } finally { h.close() }
+    }
+
+    @Test fun aPagedFourHundredSecondOriginalStillLeavesRoomForABoundedVoiceTake() = runBlocking<Unit> {
+        val h = Harness(voice = true, originalFrames = 400L * 48_000) { p ->
+            p.copy(source = p.source!!.copy(range = FrameRange(0, p.assets[0].frames)))
+        }
+        try {
+            assertTrue(ProgramCompiler.residentFrames(h.studio.document.value.project) < ProgramCompiler.RESIDENT_FRAME_LIMIT)
+            assertTrue(h.studio.document.value.project.source!!.range.length > ProgramCompiler.RESIDENT_FRAME_LIMIT)
+            assertTrue(ProgramCompiler.residentBudgetBytes(h.studio.document.value.project) < 20L * 1024 * 1024)
+            h.ports.takeFrames = null
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice), "Paged duration alone cannot block recording")
+            assertTrue(h.ports.voiceStarts.single() in 1..300)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
         } finally { h.close() }
     }
 

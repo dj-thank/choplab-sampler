@@ -19,23 +19,34 @@ object PadRender {
         return count
     }
 
-    fun render(pad: Pad): FloatArray {
+    fun render(pad: Pad, prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()); render() }): FloatArray {
         val frames = frames(pad)
         val output = FloatArray(frames * 2)
         val interpolator = PitchInterpolator()
+        val cursor = PcmReadCursor()
         var position = start(pad)
         var toneLeft = 0.0
         var toneRight = 0.0
-        for (frame in 0 until frames) {
-            var left = interpolator.read(pad.asset, position, pad.step, 0, pad.startFrame, pad.endFrame, false, pad.loopCrossfadeFrames)
-            var right = interpolator.read(pad.asset, position, pad.step, 1, pad.startFrame, pad.endFrame, false, pad.loopCrossfadeFrames)
-            if (pad.toneAlpha < 1.0) {
-                toneLeft += pad.toneAlpha * (left - toneLeft); left = toneLeft
-                toneRight += pad.toneAlpha * (right - toneRight); right = toneRight
+        var first = 0
+        while (first < frames) {
+            val end = minOf(frames, first + 512)
+            prepared(PcmWindow.pad(pad, position, pad.step, end - first, false)) {
+                cursor.reset()
+                for (frame in first until end) {
+                var left = interpolator.read(pad.asset, position, pad.step, 0, pad.startFrame, pad.endFrame, false, pad.loopCrossfadeFrames, cursor)
+                var right = interpolator.read(pad.asset, position, pad.step, 1, pad.startFrame, pad.endFrame, false, pad.loopCrossfadeFrames, cursor)
+                if (pad.toneAlpha < 1.0) {
+                    toneLeft += pad.toneAlpha * (left - toneLeft); left = toneLeft
+                    toneRight += pad.toneAlpha * (right - toneRight); right = toneRight
+                }
+                output[frame * 2] = left.toFloat()
+                output[frame * 2 + 1] = right.toFloat()
+                position += pad.step
+                }
+                check(!cursor.missing) { "PCM missing during PAD render" }
+                cursor.clear()
             }
-            output[frame * 2] = left.toFloat()
-            output[frame * 2 + 1] = right.toFloat()
-            position += pad.step
+            first = end
         }
         return output
     }
