@@ -12,6 +12,8 @@ activity = "1.13.0"
 lifecycle = "2.10.0"
 androidx-core = "1.19.1"
 youtubedl = "0.18.1"
+newpipe = "v0.26.5"
+desugar-nio = "2.1.5"
 onnxruntime = "1.30.0"
 jna = "5.19.1"
 coroutines = "1.11.0"
@@ -43,6 +45,8 @@ compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-mu
 compose-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
 youtubedl-library = { module = "io.github.junkfood02.youtubedl-android:library", version.ref = "youtubedl" }
 youtubedl-ffmpeg = { module = "io.github.junkfood02.youtubedl-android:ffmpeg", version.ref = "youtubedl" }
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "newpipe" }
+desugar-nio = { module = "com.android.tools:desugar_jdk_libs_nio", version.ref = "desugar-nio" }
 onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntime" }
 onnxruntime-desktop = { module = "com.microsoft.onnxruntime:onnxruntime", version.ref = "onnxruntime" }
 jna-core = { module = "net.java.dev.jna:jna", version.ref = "jna" }
