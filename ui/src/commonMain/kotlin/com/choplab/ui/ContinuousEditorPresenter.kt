@@ -796,6 +796,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openVocalGuide(): Boolean {
         val port = ports.vocalGuide ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (vocal.value != null) return true
         closeLyricProposal(); closeStepPatterns()
         lyricEditor.dispatch(LyricAction.Close)
@@ -845,6 +846,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     /** Opening only publishes a controller; its rendering/apply callbacks run after the action lock is released. */
     private suspend fun openStepPatterns(): Boolean {
         if (!ports.stepPatternsAvailable || bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (patterns.value != null) return true
         closeLyricProposal(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
@@ -885,7 +887,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             controller.state.first { it.closed }
             online.compareAndSet(controller, null)
         }
-        closeLyricProposal()
+        closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
         bankPadEditor.dispatch(BankPadEditAction.Cancel)
         return true
