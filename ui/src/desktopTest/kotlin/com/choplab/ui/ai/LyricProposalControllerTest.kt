@@ -155,10 +155,10 @@ class LyricProposalControllerTest {
         val document = MutableStateFlow(DocumentState(Project(lyrics = frozenListOf(LyricLine("old", "元の歌", 0, 960))), 7))
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var edits = 0
-        val controller = LyricProposalController(document, provider, LyricProposalApply { lines, expected ->
+        val controller = LyricProposalController(document, provider, LyricProposalApply { placement, expected ->
             beforeApply()
             if (document.value.revision != expected) false else {
-                edits++; document.value = document.value.copy(project = document.value.project.copy(lyrics = lines), revision = expected + 1); true
+                edits++; document.value = document.value.copy(project = document.value.project.copy(lyrics = placement.lines, lyricStructure = placement.structure), revision = expected + 1); true
             }
         }, scope, availability, clock)
         suspend fun generate() = controller.generate(request(), SessionApiKey("fake-key"), 0, 4, true)
