@@ -98,7 +98,12 @@ HISTORICAL_NON_COMMIT_TREE_LIMIT = 128
 HISTORICAL_NON_COMMIT_REF_LIMIT = 4_096
 ZIP_NESTED_DEPTH_LIMIT = 3
 ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
-WINDOWS_APP_IMAGE_NESTED_ARCHIVE_COUNT_LIMIT = 80
+PACKAGED_APP_NESTED_ARCHIVE_COUNT_LIMIT = 80
+PACKAGED_APP_ARCHIVE_NAMES = frozenset({
+    "ChopLab-windows-app-image.zip",
+    "ChopLab-windows-preview.zip",
+    "ChopLab-mac-next-preview.zip",
+})
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
 ZIP_NESTED_TOTAL_LIMIT = 256 * 1024 * 1024
 CURRENT_ZIP_ARCHIVE_COUNT_LIMIT = 128
@@ -4226,6 +4231,14 @@ def scan_public_path(
     return findings
 
 
+def explicit_archive_nested_limit(path: Path) -> int:
+    return (
+        PACKAGED_APP_NESTED_ARCHIVE_COUNT_LIMIT
+        if path.name in PACKAGED_APP_ARCHIVE_NAMES
+        else ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+    )
+
+
 def scan_explicit_text_file(
     path: Path,
     *,
@@ -4316,11 +4329,7 @@ def main() -> int:
             scan_zip(
                 archive_path,
                 label=str(archive_path),
-                nested_archive_count_limit=(
-                    WINDOWS_APP_IMAGE_NESTED_ARCHIVE_COUNT_LIMIT
-                    if archive_path.name == "ChopLab-windows-app-image.zip"
-                    else ZIP_NESTED_ARCHIVE_COUNT_LIMIT
-                ),
+                nested_archive_count_limit=explicit_archive_nested_limit(archive_path),
                 _candidate_budget=zip_budget,
             )
         )
