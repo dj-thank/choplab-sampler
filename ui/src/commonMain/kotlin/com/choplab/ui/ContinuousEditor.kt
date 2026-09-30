@@ -47,6 +47,7 @@ import kotlin.math.roundToLong
     modifier: Modifier = Modifier,
     /** Output health for the SAVE stage's diagnostics card; without it the card is not shown. */
     diagnostics: (() -> ContinuousDiagnostics?)? = null,
+    mixerReadout: ((com.choplab.engine.MixerSnapshot) -> Boolean)? = null,
     lyricProposal: LyricProposalController? = null,
     stepPatterns: StepPatternController? = null,
     vocalGuide: VocalGuideController? = null,
@@ -98,6 +99,12 @@ import kotlin.math.roundToLong
         CEDrumKitDialogs(state, onAction)
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
+        com.choplab.ui.mixer.CEMixerPanel(state.mixer, { onAction(ContinuousEditorAction.Mixer(it)) },
+            when (state.bankPadBlocked) {
+                BankPadEditProblem.RECORDING -> com.choplab.ui.mixer.MixerProblem.RECORDING
+                null -> null
+                else -> com.choplab.ui.mixer.MixerProblem.BUSY
+            }, { onAction(ContinuousEditorAction.StopAll) }, mixerReadout)
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
@@ -602,18 +609,31 @@ import kotlin.math.roundToLong
             .border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text(stringResource(if (audio) Res.string.ce_save_audio else Res.string.ce_save_edit), fontSize = 21.sp, fontWeight = FontWeight.Bold, color = foreground)
             Text(stringResource(if (audio) Res.string.ce_save_audio_hint else Res.string.ce_save_edit_hint), fontSize = 14.sp, color = if (audio) CEColor.Tan else CEColor.Border)
+            if (audio) com.choplab.ui.mixer.CEExportOptions(state, onAction)
             CEActionButton(stringResource(if (audio) Res.string.ce_export_wav else Res.string.ce_save_project),
                 if (audio) ContinuousEditorAction.ExportWav else ContinuousEditorAction.SaveProject,
                 state, if (audio) ContinuousCapability.EXPORT_WAV else ContinuousCapability.SAVE_PROJECT,
                 onAction, Modifier.fillMaxWidth(), primary = true, tag = if (audio) "ce-export" else "ce-save")
             Text(stringResource(if (audio) Res.string.ce_wav_format else Res.string.ce_project_format), fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = if (audio) CEColor.Tan else CEColor.Border)
-            if (audio) Text(stringResource(Res.string.ce_export_monitor_hint), fontSize = 13.sp, color = CEColor.Tan)
+            if (audio) {
+                Text(stringResource(Res.string.ce_export_monitor_hint), fontSize = 13.sp, color = CEColor.Tan)
+                Text(stringResource(Res.string.mixer_stem_point), fontSize = 14.sp, color = CEColor.Tan)
+                CEActionButton(stringResource(Res.string.mixer_export_stems), ContinuousEditorAction.ExportStems,
+                    state, ContinuousCapability.EXPORT_STEMS, onAction, Modifier.fillMaxWidth(), tag = "ce-export-stems")
+                state.stemProgress?.let { progress ->
+                    Text(stringResource(Res.string.mixer_export_progress, progress.completedStems, progress.totalStems,
+                        if (progress.framesPerStem == 0L) 0 else (progress.renderedFrames * 100 / progress.framesPerStem).toInt()),
+                        fontSize = 14.sp, color = CEColor.Cream, modifier = Modifier.testTag("ce-stem-progress"))
+                }
+            }
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text(stringResource(Res.string.ce_save_heading), fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Text(stringResource(Res.string.ce_save_summary, state.clips.size, state.tracks.size, ceTime(state.timelineDurationFrames)), fontSize = 14.sp)
         Text(stringResource(Res.string.ce_save_hint), fontSize = 14.sp, color = CEColor.Border)
+        CEActionButton(stringResource(Res.string.mixer_open), ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open(com.choplab.ui.mixer.MixerTarget.Master)),
+            state, ContinuousCapability.MIXER, onAction, Modifier.fillMaxWidth(), tag = "ce-mixer-open")
         if (compact) { SaveCard(false, Modifier.fillMaxWidth()); SaveCard(true, Modifier.fillMaxWidth()) }
         else Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) { SaveCard(false, Modifier.weight(1f)); SaveCard(true, Modifier.weight(1f)) }
         CEActionButton(stringResource(Res.string.ce_reopen), ContinuousEditorAction.OpenProject, state, ContinuousCapability.OPEN_PROJECT, onAction, Modifier.fillMaxWidth(), tag = "ce-reopen")

@@ -18,7 +18,15 @@ import java.util.zip.ZipOutputStream
  */
 class FileStemExportPort(private val compiler: ProgramCompiler, private val resolve: (Location) -> Path) : StemExportPort {
     override suspend fun export(project: Project, target: PlaybackTarget, request: StemExportRequest,
-        progress: (StemExportProgress) -> Unit): StemExportReceipt = withContext(Dispatchers.IO) {
+        progress: (StemExportProgress) -> Unit): StemExportReceipt = exportFile(project, target, request, progress, null)
+
+    /** Private host staging holds the shared disk quota until the finished ZIP reaches the provider. */
+    suspend fun exportStaged(project: Project, target: PlaybackTarget, request: StemExportRequest,
+        progress: (StemExportProgress) -> Unit, publish: suspend (Path) -> Unit): StemExportReceipt =
+        exportFile(project, target, request, progress, publish)
+
+    private suspend fun exportFile(project: Project, target: PlaybackTarget, request: StemExportRequest,
+        progress: (StemExportProgress) -> Unit, publish: (suspend (Path) -> Unit)?): StemExportReceipt = withContext(Dispatchers.IO) {
         ensureActive()
         val program = compiler.compile(project, target, 0)
         try {
@@ -50,6 +58,8 @@ class FileStemExportPort(private val compiler: ProgramCompiler, private val reso
             // No full entry is buffered. Bound stored-block/header/ZIP64 overhead before opening output.
             val diskBytes = maximumBytes + maximumBytes / 1000 + selected.size * 256 + 1024 * 1024
             require(Files.getFileStore(parent).usableSpace >= diskBytes) { "Insufficient space for atomic stem export" }
+            val scratch = if (publish != null) PcmScratchBudget.reserve(diskBytes) else null
+            try {
             // Includes the native zlib workspace and its input/output windows, not only JVM arrays.
             PcmMemoryBudget.shared.reserve(512 * 1024L).use {
                 atomicOutput(destination, cancelled) { raw ->
@@ -74,8 +84,10 @@ class FileStemExportPort(private val compiler: ProgramCompiler, private val reso
                     }
                 }
             }
+            publish?.invoke(destination)
             progress(StemExportProgress(StemExportPhase.COMPLETE, selected.size, selected.size, null, frames, frames))
             StemExportReceipt(files, frames, request.format)
+            } finally { scratch?.close() }
         } finally { program.releasePreparation() }
     }
 }

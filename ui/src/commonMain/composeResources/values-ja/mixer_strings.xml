@@ -53,4 +53,13 @@
     <string name="mixer_meter_unrouted">未設定BANKは、まだ個別でなく未ルーティング音の合計を表示します。</string>
     <string name="mixer_meter_unavailable">メーター取得なし</string>
     <string name="mixer_meter_levels">Peak L %1$s / R %2$s dBFS · RMS L %3$s / R %4$s dBFS</string>
+    <string name="mixer_export_bits">%1$d bit WAV · 最終量子化時にディザ</string>
+    <string name="mixer_export_tail">曲の末尾に余韻を含める</string>
+    <string name="mixer_export_tail_hint">最後のクリップまで＋エフェクトの余韻を書き出します。</string>
+    <string name="mixer_export_exact_hint">最後のクリップまでの長さで切ります。エフェクトの余韻は含みません。</string>
+    <string name="mixer_export_stems">パート別WAVをZIPで書き出す</string>
+    <string name="mixer_stem_point">パート別は 32bit float、音量・各FXの後／masterの前。共通リターンは別ファイルです。非線形master後のWAVとは足し合わせても一致しません。</string>
+    <string name="mixer_export_progress">パート %1$d / %2$d · このパート %3$d%%</string>
+    <string name="mixer_master_gain">Master 音量 (%)</string>
+    <string name="mixer_master_meter">Master: FX後 / 最終リミッター前</string>
 </resources>

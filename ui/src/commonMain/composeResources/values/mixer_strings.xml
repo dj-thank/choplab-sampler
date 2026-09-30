@@ -53,4 +53,13 @@
     <string name="mixer_meter_unrouted">This BANK is not routed yet. Its meter shows the combined unrouted PADs.</string>
     <string name="mixer_meter_unavailable">Meter unavailable</string>
     <string name="mixer_meter_levels">Peak L %1$s / R %2$s dBFS · RMS L %3$s / R %4$s dBFS</string>
+    <string name="mixer_export_bits">%1$d-bit WAV · dither at final quantization</string>
+    <string name="mixer_export_tail">Include effect tails after the song</string>
+    <string name="mixer_export_tail_hint">Export through the last clip, then include the effects tail.</string>
+    <string name="mixer_export_exact_hint">End exactly at the last clip. Effect tails are cut.</string>
+    <string name="mixer_export_stems">Export stems as a WAV ZIP</string>
+    <string name="mixer_stem_point">Stems are 32-bit float, post-fader/post-insert and pre-master. Shared returns are separate files. Their sum does not match the nonlinear master output.</string>
+    <string name="mixer_export_progress">Stems %1$d / %2$d · current stem %3$d%%</string>
+    <string name="mixer_master_gain">Master gain (%)</string>
+    <string name="mixer_master_meter">Master: post-FX / pre-limiter</string>
 </resources>

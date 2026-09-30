@@ -174,6 +174,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.2f)); Fill(Modifier.weight(1f)); Play(Modifier.weight(1.1f)) }
             }
         }
+        CEActionButton(stringResource(Res.string.mixer_open), ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open()),
+            state, ContinuousCapability.MIXER, onAction, Modifier.fillMaxWidth(), tag = "ce-mixer-open")
         CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
         CEActionButton(stringResource(Res.string.pattern_editor_title), ContinuousEditorAction.OpenStepPatterns,
             state, ContinuousCapability.STEP_PATTERNS, onAction, Modifier.fillMaxWidth(), tag = "ce-step-patterns")

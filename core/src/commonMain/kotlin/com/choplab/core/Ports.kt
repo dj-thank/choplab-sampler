@@ -85,4 +85,5 @@ interface EnginePort {
     suspend fun apply(command: EngineCommand): Boolean
     fun snapshot(): TransportState
 }
-data class Services(val assets: AssetStore, val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort, val engine: EnginePort)
+data class Services(val assets: AssetStore, val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort, val engine: EnginePort,
+                    val stems: StemExportPort? = null)

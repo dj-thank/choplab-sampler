@@ -18,7 +18,7 @@ import kotlin.math.abs
 /** Import, project and export ports a host builds on the backend's asset store and compiler.
  * Paths or content URIs stay host-private behind opaque [Location] handles.
  */
-class HostFileServices(val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort)
+class HostFileServices(val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort, val stems: StemExportPort? = null)
 
 /**
  * UI-independent composition root shared by the desktop and Android editor hosts: one [Studio], one
@@ -32,6 +32,7 @@ class EditorBackend private constructor(
     private val pcm: WavPcmPort,
     private val scope: CoroutineScope,
     val audition: SourceAuditionController,
+    val stemsAvailable: Boolean,
     private val autosave: AutosaveStore,
     private val decoder: OriginalAudioDecoder?,
 ) {
@@ -193,9 +194,9 @@ class EditorBackend private constructor(
                 output = engine(compiler)
                 val services = files(assets, compiler)
                 val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
-                val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output),
+                val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output, services.stems),
                     recovered?.project ?: Project(), recovered?.revision ?: 0)
-                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), autosave, decoder)
+                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), services.stems != null, autosave, decoder)
             } catch (failure: Throwable) {
                 scope?.cancel()
                 try { output?.close() } finally { pcm.close(); decoder?.close() }

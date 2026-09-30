@@ -113,7 +113,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                         }
                     }
                     HostFileServices(named,
-                    FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) }, decoder = decoder)
+                    FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve), FileStemExportPort(compiler, files::resolve)) }, decoder = decoder)
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), microphone = microphone) }
                 catch (failure: Exception) { runBlocking { shared.shutdown(flush = false) }; throw failure }
             val system = if (com.choplab.desktop.isMacOsHost()) NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch")) else null

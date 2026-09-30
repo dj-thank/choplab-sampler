@@ -143,7 +143,7 @@ import kotlin.math.roundToInt
 
 @Composable private fun Field(state: MixerEditorState, field: MixerField, enabled: Boolean, onAction: (MixerAction) -> Unit) {
     val text = state.draft?.fields?.get(field) ?: return
-    val label = stringResource(fieldLabel(field))
+    val label = stringResource(if (field == MixerField.GAIN && state.draft?.channel?.target == MixerTarget.Master) Res.string.mixer_master_gain else fieldLabel(field))
     OutlinedTextField(text, { onAction(MixerAction.Change(field, it)) },
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ce-mixer-${field.name.lowercase()}"),
         enabled = enabled, singleLine = true, isError = field in state.invalidFields,
@@ -180,10 +180,11 @@ import kotlin.math.roundToInt
                 val buses = if (channel.target == MixerTarget.Master) listOf(MixerProgram.DELAY_RETURN, MixerProgram.REVERB_RETURN)
                     else listOf(if (channel.busId == null) MixerProgram.UNROUTED_BUS else
                         (0 until MixerProgram.MAX_BUSES).firstOrNull { snapshot.program.busId(it) == channel.busId } ?: -1)
-                if (buses.any { it < 0 }) null else buses.flatMap { bus -> listOf(snapshot.peak[bus * 2], snapshot.peak[bus * 2 + 1],
-                    snapshot.rms[bus * 2], snapshot.rms[bus * 2 + 1]) }
+                if (buses.any { it < 0 }) null else
+                    (if (channel.target == MixerTarget.Master) listOf(snapshot.masterPeak[0], snapshot.masterPeak[1], snapshot.masterRms[0], snapshot.masterRms[1]) else emptyList()) +
+                    buses.flatMap { bus -> listOf(snapshot.peak[bus * 2], snapshot.peak[bus * 2 + 1], snapshot.rms[bus * 2], snapshot.rms[bus * 2 + 1]) }
             } else null
-            delay(100)
+            delay(100); withFrameNanos { }
         }
         values = null
     }
@@ -193,7 +194,7 @@ import kotlin.math.roundToInt
         val levels = values
         if (levels == null) Text(stringResource(Res.string.mixer_meter_unavailable), fontSize = 14.sp)
         else for (index in levels.indices step 4) {
-            if (channel.target == MixerTarget.Master) Text(stringResource(if (index == 0) Res.string.mixer_delay_return else Res.string.mixer_reverb_return), fontSize = 14.sp)
+            if (channel.target == MixerTarget.Master) Text(stringResource(when (index) { 0 -> Res.string.mixer_master_meter; 4 -> Res.string.mixer_delay_return; else -> Res.string.mixer_reverb_return }), fontSize = 14.sp)
             Text(stringResource(Res.string.mixer_meter_levels, db(levels[index]), db(levels[index + 1]), db(levels[index + 2]), db(levels[index + 3])), fontSize = 14.sp)
             LinearProgressIndicator(progress = { maxOf(levels[index], levels[index + 1]).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
         }

@@ -37,12 +37,12 @@ class MixerContractTest {
     }
 
     @Test fun linkedCompressorFollowsStaticRatioAndMeterReportsActualPostInsertFrames() {
-        val dsp = MixerDsp(MixerProgram(listOf(TrackFx(MixInsert(compressor = MixCompressor(true, -20f, 4f, .1f, 100f))))))
+        val dsp = MixerDsp(MixerProgram(listOf(TrackFx(MixInsert(compressor = MixCompressor(true, -20f, 4f, .1f, 100f)))), MixSettings(masterGain = .5f)))
         try {
             repeat(4800) { sample(dsp, .5, -.125) }
             val expected = .1 * 5.0.pow(.25)
-            assertEquals(expected, dsp.outputLeft, 1e-9)
-            assertEquals(-expected / 4, dsp.outputRight, 1e-9)
+            assertEquals(expected * .5, dsp.outputLeft, 1e-9)
+            assertEquals(-expected / 8, dsp.outputRight, 1e-9)
             dsp.beginBlock()
             repeat(192) { sample(dsp, .5, -.125) }
             dsp.endBlock(4992, 192)
@@ -50,6 +50,7 @@ class MixerContractTest {
             assertTrue(dsp.readout.copyInto(read)); assertEquals(4992, read.frame)
             assertEquals(expected.toFloat(), read.peak[0]); assertEquals(expected.toFloat(), read.rms[0])
             assertEquals((expected / 4).toFloat(), read.rms[1])
+            assertEquals((expected / 2).toFloat(), read.masterPeak[0]); assertEquals((expected / 8).toFloat(), read.masterRms[1])
             assertEquals("bus-0", read.program.busId(0))
             val replacement = MixerProgram(listOf(TrackFx()), busIds = listOf("other-track"))
             dsp.use(replacement); dsp.beginBlock(); sample(dsp, .03125, -.015625); dsp.endBlock(4993, 1)

@@ -8,6 +8,8 @@ class MixerSnapshot {
     /** Bus IDs belong to the same publication as the levels, even across a Program swap. */
     var program: MixerProgram = MixerProgram.BYPASS
         internal set
+    val masterPeak = FloatArray(2)
+    val masterRms = FloatArray(2)
     val peak = FloatArray(MixerProgram.STEM_COUNT * 2)
     val rms = FloatArray(MixerProgram.STEM_COUNT * 2)
 }
@@ -17,15 +19,21 @@ class MixerReadout internal constructor() {
     @Volatile private var version = 0L
     private var frame = 0L
     private var program = MixerProgram.BYPASS
+    private val masterPeak = FloatArray(2)
+    private val masterRms = FloatArray(2)
     private val peak = FloatArray(MixerProgram.STEM_COUNT * 2)
     private val rms = FloatArray(MixerProgram.STEM_COUNT * 2)
-    internal fun publish(at: Long, value: MixerProgram, peaks: DoubleArray, sums: DoubleArray, frames: Int) {
+    internal fun publish(at: Long, value: MixerProgram, peaks: DoubleArray, sums: DoubleArray, masterPeaks: DoubleArray, masterSums: DoubleArray, frames: Int) {
         version++
         frame = at
         program = value
         for (i in peak.indices) {
             peak[i] = peaks[i].coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
             rms[i] = (if (frames == 0) 0.0 else sqrt(sums[i] / frames)).coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
+        }
+        for (i in 0..1) {
+            masterPeak[i] = masterPeaks[i].coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
+            masterRms[i] = (if (frames == 0) 0.0 else sqrt(masterSums[i] / frames)).coerceAtMost(Float.MAX_VALUE.toDouble()).toFloat()
         }
         version++
     }
@@ -36,6 +44,7 @@ class MixerReadout internal constructor() {
                 val at = frame
                 val value = program
                 for (i in peak.indices) { target.peak[i] = peak[i]; target.rms[i] = rms[i] }
+                for (i in 0..1) { target.masterPeak[i] = masterPeak[i]; target.masterRms[i] = masterRms[i] }
                 if (before == version) { target.frame = at; target.program = value; return true }
             }
         }
@@ -56,6 +65,8 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
     private val stems = DoubleArray(MixerProgram.STEM_COUNT * 2)
     private val peak = DoubleArray(MixerProgram.STEM_COUNT * 2)
     private val squares = DoubleArray(MixerProgram.STEM_COUNT * 2)
+    private val masterPeak = DoubleArray(2)
+    private val masterSquares = DoubleArray(2)
     private val delay = DelayState()
     private val reverb = ReverbState()
     private var hasInput = false
@@ -73,8 +84,8 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
         private set
 
     fun use(value: MixerProgram) { program = value; reset() }
-    fun beginBlock() { peak.fill(0.0); squares.fill(0.0) }
-    fun endBlock(frame: Long, frames: Int) { readout.publish(frame, program, peak, squares, frames) }
+    fun beginBlock() { peak.fill(0.0); squares.fill(0.0); masterPeak.fill(0.0); masterSquares.fill(0.0) }
+    fun endBlock(frame: Long, frames: Int) { readout.publish(frame, program, peak, squares, masterPeak, masterSquares, frames) }
     fun beginFrame() { input.fill(0.0); hasInput = false }
     fun add(bus: Int, left: Double, right: Double) {
         require(bus in 0 until MixerProgram.MAX_BUSES)
@@ -154,6 +165,8 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
         if (stopping >= 0 && --stopping <= 0) reset()
     }
     private fun meter() {
+        masterPeak[0] = max(masterPeak[0], abs(outputLeft)); masterPeak[1] = max(masterPeak[1], abs(outputRight))
+        masterSquares[0] += outputLeft * outputLeft; masterSquares[1] += outputRight * outputRight
         for (i in stems.indices) { peak[i] = max(peak[i], abs(stems[i])); squares[i] += stems[i] * stems[i] }
     }
 

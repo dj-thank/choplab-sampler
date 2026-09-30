@@ -19,7 +19,7 @@ enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
 enum class ContinuousCapability {
     LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, FOUR_STEMS,
-    RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
+    RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
@@ -156,6 +156,10 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 @Immutable data class ContinuousEditorState(
     val lyrics: ContinuousLyricsState = ContinuousLyricsState(),
     val bankPadEditor: BankPadEditorState = BankPadEditorState(),
+    val mixer: com.choplab.ui.mixer.MixerEditorState = com.choplab.ui.mixer.MixerEditorState(),
+    val exportBits: Int = 24,
+    val exportTail: Boolean = true,
+    val stemProgress: com.choplab.core.StemExportProgress? = null,
     val recordingGuide: RecordingGuideState = RecordingGuideState(),
     val bankPadBlocked: BankPadEditProblem? = null,
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
@@ -304,6 +308,10 @@ sealed interface ContinuousEditorAction {
     data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction
     data object SaveProject : ContinuousEditorAction
+    data class Mixer(val action: com.choplab.ui.mixer.MixerAction) : ContinuousEditorAction
+    data class ExportBits(val bits: Int) : ContinuousEditorAction { init { require(bits == 16 || bits == 24) } }
+    data class ExportTail(val include: Boolean) : ContinuousEditorAction
+    data object ExportStems : ContinuousEditorAction
     data object ExportWav : ContinuousEditorAction
     data object Undo : ContinuousEditorAction
     data object Redo : ContinuousEditorAction

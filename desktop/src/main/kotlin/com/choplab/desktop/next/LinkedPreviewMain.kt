@@ -114,7 +114,7 @@ fun main() {
                 val vocalPunch by presenter.vocalPunch.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
                     onlineSource = onlineSource, vocalTakes = vocalTakes, vocalPunch = vocalPunch)
             }
@@ -246,6 +246,12 @@ internal class DesktopEditorPorts(
     override suspend fun chooseAudio() = choose(false, OriginalAudioImportPort.EXTENSIONS, if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, listOf("choplab"), if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
     override suspend fun chooseSave() = choose(true, listOf("choplab"), if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)
+    override val stemsAvailable = true
+    override fun readMixer(target: com.choplab.engine.MixerSnapshot) = backend.engine.status.value.phase == DriverPhase.ATTACHED && backend.engine.copyMixerReadout(target)
+    override suspend fun chooseStems(frames: Long): com.choplab.core.StemExportRequest? {
+        val path = choose(true, listOf("zip"), if (japanese) "パート別WAVを書き出す" else "Export stems") ?: return null
+        return com.choplab.core.StemExportRequest(backend.files.register(path), Math.toIntExact(frames))
+    }
     override suspend fun chooseExport(frames: Long): ExportRequest? {
         val path = choose(true, listOf("wav"), if (japanese) "WAVを書き出す" else "Export WAV") ?: return null
         return ExportRequest(backend.files.register(path), Math.toIntExact(frames), bits = 24)

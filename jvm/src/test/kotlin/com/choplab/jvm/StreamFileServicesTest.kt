@@ -123,6 +123,45 @@ class StreamFileServicesTest {
         assertTrue(setup.scratch.isEmptyDirectory())
     }
 
+    @Test fun stemsReachTheHostOnlyAfterRenderingAndProviderFailureDiscardsThePartialZip() = runBlocking<Unit> {
+        val setup = Setup()
+        try {
+            val project = Fixtures.project(seed(setup))
+            val phases = mutableListOf<StemExportPhase>()
+            val exporter = requireNotNull(setup.services.stems)
+            val request = StemExportRequest(Location("stems"), 4096, tailMode = ExportTailMode.EXACT)
+            val receipt = exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request) { progress ->
+                if (progress.phase == StemExportPhase.COMPLETE) assertNotNull(setup.documents.outputs["stems"])
+                else assertFalse(setup.documents.outputs.containsKey("stems"))
+                phases += progress.phase
+            }
+            assertEquals(4096, receipt.frames)
+            val entries = Fixtures.unzip(requireNotNull(setup.documents.outputs["stems"])).toMap()
+            assertEquals(2, entries.size)
+            assertEquals(32, entries.getValue("stem-01.wav").inputStream().use(WavCodec::inspect).bits)
+            assertEquals(StemExportPhase.COMPLETE, phases.last())
+            assertTrue(setup.scratch.isEmptyDirectory())
+            setup.documents.failAfterBytes = 100
+            assertFailsWith<IOException> { exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request.copy(location = Location("failed"))) }
+            assertTrue("failed" in setup.documents.discarded); assertNull(setup.documents.outputs["failed"])
+            assertTrue(setup.scratch.isEmptyDirectory())
+            setup.documents.failAfterBytes = null
+            assertFailsWith<kotlinx.coroutines.CancellationException> {
+                exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request.copy(location = Location("cancelled"))) {
+                    throw kotlinx.coroutines.CancellationException("cancel before publishing")
+                }
+            }
+            assertNull(setup.documents.outputs["cancelled"]); assertTrue(setup.scratch.isEmptyDirectory())
+            val retained = setup.documents.outputs.getValue("stems")
+            PcmScratchBudget.reserve(com.choplab.core.model.ProjectLimits.MAX_TOTAL_BYTES).use {
+                assertFailsWith<IllegalArgumentException> { exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request) }
+                assertContentEquals(retained, setup.documents.outputs.getValue("stems"))
+                assertTrue(setup.scratch.isEmptyDirectory())
+            }
+            assertContentEquals(loop, setup.assets.read(project.assets.single()))
+        } finally { setup.root.toFile().deleteRecursively() }
+    }
+
     @Test fun exportPublishesTheRenderedWav() = runBlocking<Unit> {
         val setup = Setup()
         val project = Fixtures.project(seed(setup))

@@ -50,6 +50,7 @@ class NextActivity : ComponentActivity() {
         answer(PickerKind.SAVE_PROJECT, it)
     }
     private val exportWav = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/x-wav")) { answer(PickerKind.EXPORT_WAV, it) }
+    private val exportStems = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { answer(PickerKind.EXPORT_STEMS, it) }
     private val importLrc = registerForActivityResult(ActivityResultContracts.OpenDocument()) { answer(PickerKind.IMPORT_LRC, it) }
     private val exportLrc = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { answer(PickerKind.EXPORT_LRC, it) }
     private val allowMicrophone = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -62,6 +63,7 @@ class NextActivity : ComponentActivity() {
             PickerKind.PROJECT -> openProject.launch(arrayOf("*/*"))
             PickerKind.SAVE_PROJECT -> saveProject.launch(name ?: "project.choplab")
             PickerKind.EXPORT_WAV -> exportWav.launch(name ?: "export.wav")
+            PickerKind.EXPORT_STEMS -> exportStems.launch(name ?: "stems.zip")
             PickerKind.IMPORT_LRC -> importLrc.launch(arrayOf("*/*"))
             PickerKind.EXPORT_LRC -> exportLrc.launch(name ?: "lyrics.lrc")
         }
@@ -125,7 +127,7 @@ class NextActivity : ComponentActivity() {
         val failed by session.backend.persistenceFailure.collectAsState()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("next-editor")) {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics,
+                session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics, mixerReadout = session.presenter::readMixer,
                 lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
                 onlineSource = onlineSource, vocalTakes = vocalTakes, vocalPunch = vocalPunch)
         }
