@@ -26,10 +26,11 @@ sealed interface Intent {
     data class LiveChop(val padId: Int, val frame: Long, val session: FrozenList<Int> = frozenListOf()) : Intent
     /**
      * A voice take recorded while the song played, as in the earlier app's voice layer: the take's [asset] joins the
-     * document, goes to [pad] and is placed as [clip] (on a new [track] when one is given). Either may be left out, not
-     * both. One Undo.
+     * document, optionally goes to [pad], is placed as [clip], or is retained as a library [take] on [track].
+     * At least one destination is required. One Undo.
      */
-    data class AddVoiceTake(val asset: Asset, val pad: Pad?, val clip: Clip?, val track: Track? = null) : Intent
+    data class AddVoiceTake(val asset: Asset, val pad: Pad?, val clip: Clip?, val track: Track? = null,
+                            val take: Take? = null) : Intent
     data class SetPad(val pad: Pad, val gesture: String? = null) : Intent
     data class ClearPad(val padId: Int) : Intent
     data class PutPattern(val pattern: Pattern) : Intent
@@ -47,7 +48,8 @@ sealed interface Intent {
     data class InstallKit(val assets: FrozenList<Asset>, val pads: FrozenList<Pad>) : Intent
     /** The song's tracks, clips and takes; [assets] are new sounds its clips bring in, such as a rendered PAD. */
     data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>,
-                              val assets: FrozenList<Asset> = frozenListOf()) : Intent
+                              val assets: FrozenList<Asset> = frozenListOf(),
+                              val vocalComps: FrozenList<VocalComp>? = null) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
     data class SetStructuredLyrics(val lines: FrozenList<LyricLine>, val structure: LyricStructure) : Intent
     /** A confirmed guide proposal joins its rendered sounds and lyric alignment in one Undo. */
@@ -104,15 +106,19 @@ object Reducer {
             is Intent.AddVoiceTake -> {
                 val pad = intent.pad
                 val clip = intent.clip
-                require(pad != null || clip != null) { "A take goes to a PAD, the song or both" }
+                val take = intent.take
+                require(pad != null || clip != null || take != null) { "A recording must be retained" }
                 require(pad == null || pad.assetHash == intent.asset.hash)
                 require(clip == null || (clip.assetHash == intent.asset.hash && before.clips.none { it.id == clip.id }))
-                require(intent.track == null || (clip != null && before.tracks.none { it.id == intent.track.id }))
+                require(take == null || (take.assetHash == intent.asset.hash && before.takes.none { it.id == take.id }))
+                require(intent.track == null || ((clip != null || take != null) && before.tracks.none { it.id == intent.track.id }))
                 val tracks = intent.track?.let { before.tracks + it } ?: before.tracks
                 require(clip == null || tracks.any { it.id == clip.trackId }) { "No track for the take" }
+                require(take == null || tracks.any { it.id == take.trackId }) { "No track for the candidate" }
                 before.copy(assets = mergeAssets(before.assets, listOf(intent.asset)),
                     pads = if (pad == null) before.pads else before.pads.map { if (it.id == pad.id) pad else it }.frozen(),
-                    tracks = tracks.frozen(), clips = if (clip == null) before.clips else (before.clips + clip).frozen())
+                    tracks = tracks.frozen(), clips = if (clip == null) before.clips else (before.clips + clip).frozen(),
+                    takes = if (take == null) before.takes else (before.takes + take).frozen())
             }
             is Intent.SetPad -> before.copy(pads = before.pads.map { if (it.id == intent.pad.id) intent.pad else it }.frozen())
             is Intent.ClearPad -> {
@@ -173,7 +179,7 @@ object Reducer {
                     }.frozen())
             }
             is Intent.SetArrangement -> before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
-                tracks = intent.tracks, clips = intent.clips, takes = intent.takes)
+                tracks = intent.tracks, clips = intent.clips, takes = intent.takes, vocalComps = intent.vocalComps ?: before.vocalComps)
             is Intent.SetLyrics -> before.copy(lyrics = intent.lines, lyricStructure = before.lyricStructure?.retainFor(intent.lines))
             is Intent.SetStructuredLyrics -> before.copy(lyrics = intent.lines, lyricStructure = intent.structure)
             is Intent.ApplyVocalGuide -> before.copy(assets = mergeAssets(before.assets, intent.assets), tracks = intent.tracks,
@@ -255,6 +261,7 @@ object Reducer {
         project.pads.forEach { pad -> pad.assetHash?.let { used += it } }
         project.clips.forEach { used += it.assetHash }
         project.takes.forEach { used += it.assetHash }
+        project.vocalComps.forEach { used += it.renderedAssetHash }
         project.assets.forEach { asset -> asset.derivedFrom?.let { used += it } }
         val kept = project.assets.filter { it.hash in used || it.role != AssetRole.RENDERED }
         return if (kept.size == project.assets.size) project else project.copy(assets = kept.frozen())

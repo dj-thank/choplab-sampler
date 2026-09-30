@@ -15,8 +15,11 @@ class LyricStructurePersistenceTest {
             lyricStructure = placement.structure)
     }
 
-    @Test fun schema11ArchiveAutosaveAndFreshStoreKeepStructureAndWordProvenance() {
+    @Test fun currentArchiveAutosaveAndFreshStoreKeepStructureAndWordProvenance() {
         val project = structured()
+        val previousSchema = ProjectJson.encode(project).toString(Charsets.UTF_8)
+            .replace("\"schemaVersion\":12", "\"schemaVersion\":11").replace("\"vocalComps\":[],", "")
+        assertEquals(project, ProjectJson.decode(previousSchema.toByteArray()), "Schema 11 keeps structure and returned word timing")
         val directory = Files.createTempDirectory("lyric-structure-")
         val assets = FileAssetStore(directory.resolve("assets"))
         val archive = ByteArrayOutputStream().also { ArchiveCodec().write(project, assets, it) }.toByteArray()
@@ -38,15 +41,16 @@ class LyricStructurePersistenceTest {
         val project = Fixtures.project(asset).copy(lyrics = frozenListOf(LyricLine("old", "Old words", 0, 1920,
             frozenListOf(LyricWord("Old", 0, 960)))))
         val oldDocument = ProjectJson.encode(project).toString(Charsets.UTF_8)
-            .replace("\"schemaVersion\":11", "\"schemaVersion\":10")
+            .replace("\"schemaVersion\":12", "\"schemaVersion\":10")
             .replace("\"lyricStructure\":null,", "")
+            .replace("\"vocalComps\":[],", "")
             .replace(",\"timingOrigin\":\"MANUAL\"", "").toByteArray()
         val archive = Fixtures.zip(listOf("project.json" to oldDocument, asset.entryName to bytes))
         val directory = Files.createTempDirectory("lyric-migration-")
         val store = FileAssetStore(directory.resolve("assets"))
         val restored = ArchiveCodec().read(ByteArrayInputStream(archive), store)
         assertEquals(project, restored)
-        assertEquals(11, restored.schemaVersion)
+        assertEquals(ProjectLimits.SCHEMA, restored.schemaVersion)
         assertEquals(WordTimingOrigin.MANUAL, restored.lyrics.single().words.single().timingOrigin)
         assertContentEquals(bytes, store.openVerified(asset).use { it.readBytes() })
         val autoDirectory = Files.createDirectory(directory.resolve("autosave"))
@@ -63,13 +67,13 @@ class LyricStructurePersistenceTest {
         assertContentEquals(bytes, Fixtures.unzip(rewritten).single { it.first == asset.entryName }.second)
     }
 
-    @Test fun schema11RejectsUnknownEnumsForgedMetricsMissingStructureAndReadLimits() {
+    @Test fun currentSchemaRejectsUnknownEnumsForgedMetricsMissingStructureAndReadLimits() {
         val json = ProjectJson.encode(structured()).toString(Charsets.UTF_8)
         for (bad in listOf(
             json.replace("\"RETURNED\"", "\"PRECISE\""), json.replace("\"JAPANESE\"", "\"UNKNOWN\""),
             json.replace("\"VERSE\"", "\"UNKNOWN\""), json.replace("\"mora\":2", "\"mora\":20"),
             json.replace("\"lineId\":\"line-0\"", "\"lineId\":\"missing\""),
-            json.replace("\"schemaVersion\":11", "\"schemaVersion\":10"),
+            json.replace("\"schemaVersion\":12", "\"schemaVersion\":10"),
             json.replace("\"reading\":\"かわ\"", "\"reading\":\"${"あ".repeat(513)}\""),
             json.replace("\"lyricStructure\":", "\"unknownStructure\":"),
         )) assertFailsWith<IllegalArgumentException> { ProjectJson.decode(bad.toByteArray()) }
