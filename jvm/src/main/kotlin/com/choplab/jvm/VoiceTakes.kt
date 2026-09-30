@@ -23,6 +23,7 @@ class VoiceTakes(
     private val diskReserveBytes: Long = 64L shl 20,
     private val usableDiskBytes: (Path) -> Long = { it.toFile().usableSpace },
     private val captureChannels: Int = 1,
+    private val nanoTime: () -> Long = System::nanoTime,
     private val microphone: () -> MicInput?,
 ) {
     /** How starting a take went. */
@@ -46,22 +47,23 @@ class VoiceTakes(
      * Opens the microphone for at most [maxSeconds], fewer when the asset store or the disk has room for less: a take
      * is written once, as a 32-bit WAV, and then moved into the store.
      */
-    suspend fun start(maxSeconds: Int, waitForCue: Boolean = false): Start {
+    suspend fun start(maxSeconds: Int, waitForCue: Boolean = false, window: VoiceCaptureWindow? = null): Start {
         var owned: VoiceRecorder? = null
         var published = false
         return try { withContext(Dispatchers.IO) {
         require(maxSeconds in 1..300)
+        require(window == null || (waitForCue && window.frames48k <= maxSeconds * 48_000L))
         synchronized(lock) {
             if (closed) return@withContext Start.NO_INPUT
             check(recorder == null) { "A take is already recording" }
         }
         val seconds = minOf(maxSeconds.toLong(), roomSeconds()).toInt()
-        if (seconds < 1) return@withContext Start.NO_ROOM
+        if (seconds < 1 || (window != null && window.frames48k > seconds * 48_000L)) return@withContext Start.NO_ROOM
         val input = try { microphone() } catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
         val created = try {
             currentCoroutineContext().ensureActive()
             require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
-            VoiceRecorder(input, scratch, seconds, waitForCue).also { owned = it }
+            VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window).also { owned = it }
         } catch (failure: Exception) {
             try { input.close() } catch (_: Exception) { }
             throw failure
@@ -89,6 +91,7 @@ class VoiceTakes(
     fun cue() { synchronized(lock) { recorder }?.cue() }
     fun cueAt(atNanos: Long): Boolean = synchronized(lock) { recorder }?.cueAt(atNanos) == true
     val armingTimedOut: Boolean get() = synchronized(lock) { recorder }?.armingTimedOut == true
+    val windowComplete: Boolean get() = synchronized(lock) { recorder }?.windowComplete == true
 
     /** The running take reached its limit. */
     val full: Boolean get() = synchronized(lock) { recorder }?.full == true

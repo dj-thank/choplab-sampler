@@ -26,20 +26,27 @@ interface MicInput : AutoCloseable {
  * Records one take from [input] on its own thread into a private scratch file, up to [maxSeconds]; that thread owns
  * the input and releases it when it ends, also at the limit. [cue] marks when the song started; what was captured
  * before it is the take's lead-in. Times come from System.nanoTime on this host, and the first frame's time is when
- * its buffer arrived minus that buffer's length: the microphone's own delay is not measured here.
+ * its buffer arrived minus that buffer's length: the microphone's own delay is not measured here. An optional
+ * [window] ends capture on the recording thread at the cue-relative exclusive frame boundary, not a UI timer.
  */
 class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                     private val waitForCue: Boolean = false,
-                    private val nanoTime: () -> Long = System::nanoTime) {
+                    private val nanoTime: () -> Long = System::nanoTime,
+                    private val window: VoiceCaptureWindow? = null) {
+    init { require(window == null || (waitForCue && window.frames48k <= maxSeconds * 48_000L)) }
     private val rate = input.sampleRate
     private val channels = input.channels
     private val take = TakeFile(scratch, rate, channels, maxSeconds.toLong() * rate)
     @Volatile private var firstFrameNanos = UNSET
     @Volatile private var cueNanos = UNSET
     private val openedNanos = nanoTime()
+    private val armingSeconds = window?.armingSeconds ?: MAX_ARMING_SECONDS
     @Volatile private var armingExpired = false
+    /** The input reached the requested end; a wholly late or silent window can still return no take. */
+    @Volatile var windowComplete: Boolean = false
+        private set
     val armingTimedOut: Boolean get() = armingExpired || (waitForCue && firstFrameNanos == UNSET &&
-        nanoTime() - openedNanos > MAX_ARMING_SECONDS * 1_000_000_000L)
+        nanoTime() - openedNanos > armingSeconds * 1_000_000_000L)
     @Volatile private var running = true
     @Volatile private var ended = false
     private val thread = Thread(::capture, "ChopLab-NEXT-voice").apply { isDaemon = true; priority = Thread.MAX_PRIORITY - 1; start() }
@@ -66,9 +73,13 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                 if (captureFirstNanos == UNSET) captureFirstNanos = now - frames * 1_000_000_000L / rate
                 val cue = cueNanos
                 var skip = 0
+                var windowEnd: Long? = null
+                if (window != null && cue != UNSET) {
+                    windowEnd = window.nativeEnd(cue - captureFirstNanos, rate)
+                }
                 if (waitForCue && firstFrameNanos == UNSET) {
-                    if (now - openedNanos > MAX_ARMING_SECONDS * 1_000_000_000L ||
-                        capturedFrames > MAX_ARMING_SECONDS * rate.toLong()) {
+                    if (now - openedNanos > armingSeconds * 1_000_000_000L ||
+                        capturedFrames > armingSeconds * rate.toLong()) {
                         armingExpired = true; ended = running; break
                     }
                     if (cue == UNSET) skip = frames
@@ -79,11 +90,13 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                         skip = (cueFrame - capturedFrames).coerceIn(0L, frames.toLong()).toInt()
                     }
                 }
-                if (skip < frames) {
+                val kept = minOf((frames - skip).toLong(), windowEnd?.let { (it - capturedFrames - skip).coerceAtLeast(0) } ?: Long.MAX_VALUE).toInt()
+                if (kept > 0) {
                     if (firstFrameNanos == UNSET) firstFrameNanos = captureFirstNanos + (capturedFrames + skip) * 1_000_000_000L / rate
-                    take.write(buffer, count - skip * channels, skip * channels)
+                    take.write(buffer, kept * channels, skip * channels)
                 }
                 capturedFrames += frames
+                if (windowEnd != null && capturedFrames >= windowEnd) { windowComplete = true; running = false }
             }
         } catch (_: Exception) {
             // A failed input or a full disk ends the take with what it holds.
@@ -99,7 +112,7 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     /** Armed capture accepts one bounded host-clock cue. It spends none of its recording limit while waiting. */
     fun cueAt(atNanos: Long): Boolean {
         if (!running || ended || take.full || armingTimedOut || (waitForCue && cueNanos != UNSET)) return false
-        if (waitForCue && (atNanos - openedNanos !in 0..MAX_ARMING_SECONDS * 1_000_000_000L)) return false
+        if (waitForCue && (atNanos - openedNanos !in 0..armingSeconds * 1_000_000_000L)) return false
         cueNanos = atNanos
         return true
     }
