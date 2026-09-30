@@ -3,6 +3,7 @@ package com.choplab.desktop.next
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.choplab.core.*
@@ -23,6 +24,8 @@ import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
+import com.choplab.ui.resources.*
+import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -60,7 +63,7 @@ fun main() {
     val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
         guideStore::completed, guideStore::complete)
     // A device change or a stalled driver drops output to editing-only; bring it back while the window is open.
-    val recovery = OutputRecovery(backend.engine, scope).apply { start() }
+    val recovery = if (backend.windowsAudio == null) OutputRecovery(backend.engine, scope).apply { start() } else null
     val closedWithoutAutosave = AtomicBoolean(false)
     try {
         application {
@@ -100,7 +103,7 @@ fun main() {
                 DisposableEffect(window) {
                     // Java Sound reports no device changes: coming back to the window tries a lost output once more.
                     val focus = object : WindowAdapter() {
-                        override fun windowGainedFocus(event: WindowEvent) { recovery.retry() }
+                        override fun windowGainedFocus(event: WindowEvent) { recovery?.retry() }
                     }
                     window.addWindowFocusListener(focus)
                     onDispose { window.removeWindowFocusListener(focus) }
@@ -112,13 +115,43 @@ fun main() {
                 val vocalGuide by presenter.vocalGuide.collectAsState()
                 val onlineSource by presenter.onlineSource.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
+                backend.windowsAudio?.let { audio ->
+                    val route by audio.route.collectAsState()
+                    var changing by remember { mutableStateOf(false) }
+                    val menu = stringResource(Res.string.next_audio_menu)
+                    val wasapi = stringResource(Res.string.next_audio_wasapi)
+                    val javaSound = stringResource(Res.string.next_audio_java_sound)
+                    val retry = stringResource(Res.string.next_audio_retry)
+                    val refusal = stringResource(Res.string.next_audio_refused)
+                    val allowed = !changing && !state.recordingVoice && !state.startingVoiceRecording && !state.recordingSource &&
+                        !state.startingSourceRecording && !state.recordingSystemAudio && !state.recordingHits && !state.liveChopping && !state.vocalPreview
+                    fun choose(next: NextAudioRoute) {
+                        if (!allowed) return
+                        changing = true
+                        scope.launch {
+                            try {
+                                if (!backend.chooseAudioRoute(next)) SwingUtilities.invokeLater {
+                                    JOptionPane.showMessageDialog(window, refusal, menu, JOptionPane.INFORMATION_MESSAGE)
+                                }
+                            } finally { changing = false }
+                        }
+                    }
+                    MenuBar {
+                        Menu(menu) {
+                            CheckboxItem(wasapi, checked = route == NextAudioRoute.WASAPI, enabled = allowed, onCheckedChange = { choose(NextAudioRoute.WASAPI) })
+                            CheckboxItem(javaSound, checked = route == NextAudioRoute.JAVA_SOUND, enabled = allowed, onCheckedChange = { choose(NextAudioRoute.JAVA_SOUND) })
+                            Separator()
+                            Item(retry, enabled = allowed, onClick = { choose(route) })
+                        }
+                    }
+                }
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide,
                     onlineSource = onlineSource, quickStart = quickStart)
             }
         }
-    } finally { quickStart.close(); ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+    } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
 }
 
 internal class DesktopEditorPorts(

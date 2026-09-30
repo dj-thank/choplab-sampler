@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+Windows音声のhost接続候補はrootが `desktop/next/NextWindowsAudio`・`NextBackend`・`LinkedPreviewMain` と音声resourceを担当する。既定WASAPI出力、明示録音まで入力を開かない、歌mono/システム音stereo、録音中・旧route未解放の明示切替拒否、制作内容を保つ再接続を実host＋合成native endpointで確認する。LOCAL_PASS後に同revisionのWindows package/native経路を検証し、実音・長時間・Humanは観測まで未確認。rollbackは本候補のrevert。
+
 以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
