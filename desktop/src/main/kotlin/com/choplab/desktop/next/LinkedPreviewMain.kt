@@ -13,6 +13,7 @@ import com.choplab.desktop.applyMacOsHostProperties
 import com.choplab.desktop.isMacOsHost
 import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.SpotifySessionPurpose
+import com.choplab.jvm.FileQuickStartStore
 import com.choplab.jvm.OriginalAudioImportPort
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
@@ -21,6 +22,7 @@ import com.choplab.jvm.ai.*
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
+import com.choplab.ui.onboarding.QuickStartController
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -54,6 +56,9 @@ fun main() {
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
     val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+    val guideStore = FileQuickStartStore(directory.resolve("ui"))
+    val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
+        guideStore::completed, guideStore::complete)
     // A device change or a stalled driver drops output to editing-only; bring it back while the window is open.
     val recovery = OutputRecovery(backend.engine, scope).apply { start() }
     val closedWithoutAutosave = AtomicBoolean(false)
@@ -109,10 +114,11 @@ fun main() {
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
-                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, onlineSource = onlineSource)
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide,
+                    onlineSource = onlineSource, quickStart = quickStart)
             }
         }
-    } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+    } finally { quickStart.close(); ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
 }
 
 internal class DesktopEditorPorts(
