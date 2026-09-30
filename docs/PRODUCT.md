@@ -29,7 +29,7 @@
 保存・Undo/Redo・再生・BPMを共通にし、設定で音声デバイス、遅延の推定/実測、補正、AI接続、言語を扱います。範囲の詳細は [DESIGN](DESIGN.md)、[AUDIO](AUDIO.md)、[AI](AI.md) で定義します。
 
 - **制作継続**: 起動時は最新の有効な自動保存を原子的に復元。復旧中を空の制作と表示しない。新規だけにstarterを入れ、復元/手動読込やキット変更で既存の配置を失わない。
-- **PADとビート**: 128の容量を保ちページ概念を廃止。BANKの名前・色・役割は自由。pan/velocity/envelopeを追加。1–8小節、4/4・16分で総16–128step、表示列16/32/64は曲長と別。複数pattern/repeat、quantize、note repeat、録音1回=1Undo。
+- **PADとビート**: 128の容量を保ちページ概念を廃止。BANKの名前・色・役割は自由。pan/velocity/envelopeを追加。1–8小節、4/4・16分で総16–128step、8分3連で12–96step、16分3連で24–192step。表示列16/32/64は曲長・step間隔と別。グリッドの切替だけで既存音を移動しない。複数pattern/repeat、quantize、note repeat、録音1回=1Undo。
 - **波形と再生**: 音源・PAD選択・範囲は一貫して保持。runtime操作の成功後に状態を確定し、拒否や停止失敗で成功表示へ進めない。ONE SHOT/GATEのscroll誤爆防止を残す。長い音は全PADへ複製しない。
 - **録音と歌詞**: 同時録音は一つ。1–2小節count-in、pre-roll、punch-in/out、テイク保存、行ごとの非破壊comp、同期歌詞の行タップ/タイミング編集、LRC/拡張LRC、区間loop・slow練習。入力と伴奏の時刻を明示し、route変更・割込みで古い補正を無効にする。
 - **音と書出し**: 48kHz stereo floatの共通engineを目標に、元音声bytesとheadroomを保持。24bit既定/16bit任意と最終量子化時のディザ。選択長・tail・stemsの出力点を明示し、暗黙の4小節切捨てをなくす。

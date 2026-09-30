@@ -8,6 +8,42 @@ import kotlinx.coroutines.*
 import kotlin.test.*
 
 class StepPatternControllerTest {
+    @Test fun tripletGridChangesPreserveNotesAndRejectClicksFromThePreviousGrid() = runBlocking<Unit> {
+        val fixture = PatternTestFixture(selectedPad = 1)
+        try {
+            val before = fixture.document.value
+            fixture.action(PatternAction.Resize(8))
+            fixture.action(PatternAction.Toggle(1))
+            val draft = fixture.controller.state.value.draft
+            for ((grid, steps) in listOf(320 to 96, 160 to 192)) {
+                assertTrue(fixture.action(PatternAction.Grid(grid)))
+                assertEquals(draft, fixture.controller.state.value.draft, "Changing view spacing cannot move notes")
+                assertEquals(steps, fixture.controller.state.value.steps)
+                for (columns in listOf(16, 32, 64)) {
+                    assertTrue(fixture.action(PatternAction.Columns(columns)))
+                    assertEquals((steps + columns - 1) / columns, fixture.controller.state.value.pages)
+                }
+                assertFalse(fixture.action(PatternAction.Toggle(1)), "A late 16th-grid click cannot become a triplet")
+                assertEquals(draft, fixture.controller.state.value.draft)
+                assertEquals(before, fixture.document.value)
+            }
+            assertFalse(fixture.action(PatternAction.Grid(0)))
+            assertEquals(160, fixture.controller.state.value.gridTicks)
+            assertTrue(fixture.action(PatternAction.Page(2)))
+            assertTrue(fixture.action(PatternAction.Toggle(191, 160)))
+            assertEquals(listOf(240, 30_560), fixture.controller.state.value.draft.notes.map { it.tick })
+            assertTrue(fixture.action(PatternAction.Quantize(160)))
+            assertEquals(listOf(320, 30_560), fixture.controller.state.value.draft.notes.map { it.tick })
+            assertTrue(fixture.action(PatternAction.Save))
+            assertEquals(1, fixture.edits.size)
+            assertEquals(160, fixture.controller.state.value.gridTicks)
+            assertFalse(fixture.controller.state.value.dirty)
+            assertTrue(fixture.action(PatternAction.Grid(240)))
+            assertFalse(fixture.controller.state.value.dirty)
+            assertFalse(fixture.action(PatternAction.Save), "View changes do not add Undo entries")
+        } finally { fixture.close() }
+    }
+
     @Test fun viewColumnsAreIndependentFromLengthAndEditsKeepTheExplicitlySelectedPad() = runBlocking<Unit> {
         val fixture = PatternTestFixture(selectedPad = 1)
         try {

@@ -4,8 +4,9 @@ package com.choplab.ui.vocal
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import com.choplab.core.*
@@ -59,7 +60,9 @@ class VocalTakeProductionTest {
                         LyricLine("two", "Second line", 960, 1920))))).accepted)
                     val before = studio.document.value
                     var closed = false
-                    val scene = ImageComposeScene(width, height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    // Slow compact scrolling exposes a press before the animated list has settled.
+                    val motion = object : MotionDurationScale { override val scaleFactor = if (width < 500) 4f else 1f }
+                    val scene = ImageComposeScene(width, height, density = Density(1f, font), coroutineContext = coroutineContext + motion) {
                         MaterialTheme { VocalTakePanel(fixture.controller, { closed = true }) }
                     }
                     try {
@@ -198,24 +201,57 @@ class VocalTakeProductionTest {
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
     }
     private fun ImageComposeScene.tag(value: String) = nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == value }
-    private suspend fun ImageComposeScene.until(condition: () -> Boolean) = withTimeout(10000) {
-        do { render(System.nanoTime()).close(); delay(5) } while (!condition())
-        repeat(4) { render(System.nanoTime()).close(); delay(5) }
+    private suspend fun ImageComposeScene.until(label: String = "condition", condition: () -> Boolean) {
+        try { withTimeout(10000) {
+            do { render(System.nanoTime()).close(); delay(12) } while (!condition())
+            repeat(4) { render(System.nanoTime()).close(); delay(12) }
+        } } catch (failure: TimeoutCancellationException) {
+            val targets = nodes().mapNotNull { node -> node.config.getOrNull(SemanticsProperties.TestTag)?.let { "$it=${node.boundsInWindow}" } }
+            fail("Timed out at $label: owners=${semanticsOwners.size}, targets=$targets", failure)
+        }
     }
     private suspend fun ImageComposeScene.click(value: String) {
-        until { tag(value)?.config?.getOrNull(SemanticsActions.OnClick)?.action != null && tag(value)?.config?.contains(SemanticsProperties.Disabled) == false }
-        val bounds = tag(value)!!.boundsInRoot
-        sendPointerEvent(PointerEventType.Press, bounds.center)
-        sendPointerEvent(PointerEventType.Release, bounds.center)
+        var previous: Rect? = null
+        var stable = 0
+        until("click $value ready") {
+            val node = tag(value)
+            val bounds = node?.boundsInWindow
+            val ready = node != null && bounds != null && node.config.getOrNull(SemanticsActions.OnClick)?.action != null &&
+                !node.config.contains(SemanticsProperties.Disabled) && bounds.width >= 48 && bounds.height >= 48 &&
+                bounds.width >= node.size.width - .5f && bounds.height >= node.size.height - .5f && bounds.left >= 0 && bounds.top >= 0
+            stable = if (ready && bounds == previous) stable + 1 else 0
+            previous = bounds
+            stable >= 4
+        }
+        val point = tag(value)!!.boundsInWindow.center
+        sendPointerEvent(PointerEventType.Press, point, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+        render(System.nanoTime()).close()
+        assertEquals(point, tag(value)!!.boundsInWindow.center, "$value moved during the pointer press")
+        sendPointerEvent(PointerEventType.Release, point, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
         until { true }
     }
     private suspend fun ImageComposeScene.reach(value: String, height: Int) {
         repeat(30) {
             val node = tag(value)
-            if (node != null && node.boundsInRoot.height >= 48 && node.boundsInRoot.top >= 0 && node.boundsInRoot.bottom < height - 180) return
-            val scroll = tag("vocal-take-fields")!!.config[SemanticsActions.ScrollBy].action!!
-            scroll.invoke(0f, if (node != null) node.positionInRoot.y - 100f else 180f)
-            until { true }
+            val fields = tag("vocal-take-fields")!!
+            val viewport = fields.boundsInWindow
+            val bounds = node?.boundsInWindow
+            if (node != null && bounds != null && bounds.height >= 48 && bounds.width >= 48 &&
+                bounds.height >= node.size.height - .5f && bounds.width >= node.size.width - .5f &&
+                bounds.top >= viewport.top && bounds.bottom <= viewport.bottom && bounds.bottom <= height) return
+            val axis = fields.config[SemanticsProperties.VerticalScrollAxisRange]
+            val scroll = fields.config[SemanticsActions.ScrollBy].action!!
+            scroll.invoke(0f, if (node != null) node.positionInRoot.y - fields.boundsInRoot.top - 24f else 180f)
+            // LazyColumn's ScrollBy animates. A new request would cancel the previous scroll, and a
+            // pointer sent during it can miss even when the target was briefly inside the viewport.
+            var previous = Float.NaN
+            var stable = 0
+            until("scroll to $value") {
+                val position = axis.value()
+                stable = if (position == previous) stable + 1 else 0
+                previous = position
+                stable >= 4
+            }
         }
         error("Control not reachable: $value, bounds=${tag(value)?.boundsInRoot}, fields=${tag("vocal-take-fields")?.boundsInRoot}, tags=${nodes().mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }}")
     }
