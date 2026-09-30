@@ -13,10 +13,10 @@ enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
 enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
 /**
- * Where the song timeline puts what is placed or moved: on the nearest beat, half beat or quarter beat at the song's
+ * Where the song timeline puts what is placed or moved: on the nearest straight or triplet grid at the song's
  * tempo ([ticks] at 960 a beat), where the clip then keeps its beat when the tempo changes; or just where it is let go.
  */
-enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
+enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160), FREE(0) }
 enum class ContinuousCapability {
     LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE, FOUR_STEMS,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,

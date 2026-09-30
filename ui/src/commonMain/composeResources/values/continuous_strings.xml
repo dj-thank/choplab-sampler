@@ -93,7 +93,7 @@
     <string name="ce_pad_fill_length">Length</string>
     <string name="ce_fill_one_bar">1 bar</string>
     <string name="ce_fill_bars">%1$d bars</string>
-    <string name="ce_pad_fill_help">Quarters sound every beat, eighths every half beat, sixteenths every quarter beat, on the beat. The same sound on this track in those bars is replaced. One Undo takes it back.</string>
+    <string name="ce_pad_fill_help">Quarters sound every beat, eighths every half beat, and sixteenths every quarter beat. Eighth and sixteenth triplets divide a beat into 3 or 6 steps. All follow the song swing. The same sound on this track in those bars is replaced. One Undo takes it back.</string>
     <string name="ce_pad_sound">PAD sound</string>
     <string name="ce_key">Key</string>
     <string name="ce_tone">Tone</string>

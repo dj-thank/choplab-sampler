@@ -93,7 +93,7 @@
     <string name="ce_pad_fill_length">長さ</string>
     <string name="ce_fill_one_bar">1小節</string>
     <string name="ce_fill_bars">%1$d小節</string>
-    <string name="ce_pad_fill_help">4つ打ちは1拍ごと、8分は1/2拍ごと、16分は1/4拍ごとに、拍の線に合わせて並べます。この段にある同じ音は、その小節の分だけ置き換わります。1回の「戻す」で戻ります。</string>
+    <string name="ce_pad_fill_help">4つ打ちは1拍ごと、8分は1/2拍ごと、16分は1/4拍ごと。8分3連は1拍を3つ、16分3連は6つに分け、どれも曲のスウィングに従います。この段にある同じ音は、その小節の分だけ置き換わります。1回の「戻す」で戻ります。</string>
     <string name="ce_pad_sound">PADの音</string>
     <string name="ce_key">キー</string>
     <string name="ce_tone">音色</string>
