@@ -1,0 +1,13 @@
+<resources>
+    <string name="ce_note_repeat">Note repeat</string>
+    <string name="ce_note_repeat_setting">Note repeat: %1$s</string>
+    <string name="ce_note_repeat_help">Hold a PAD to repeat from the moment you press, at the song tempo and swing. Release to stop. A screen reader click or Enter/Space plays one beat. When recording, snapping moves the start of the whole phrase.</string>
+    <string name="ce_note_repeat_click">Repeat for one beat</string>
+    <string name="ce_note_repeat_off">Off</string>
+    <string name="ce_note_repeat_quarter">Quarter notes</string>
+    <string name="ce_note_repeat_eighth">Eighth notes</string>
+    <string name="ce_note_repeat_sixteenth">Sixteenth notes</string>
+    <string name="ce_note_repeat_thirty_second">Thirty-second notes</string>
+    <string name="ce_note_repeat_eighth_triplet">Eighth-note triplets</string>
+    <string name="ce_note_repeat_sixteenth_triplet">Sixteenth-note triplets</string>
+</resources>

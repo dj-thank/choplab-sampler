@@ -9,6 +9,14 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
         EngineCommand(effectiveFrame, orderId) {
         init { require(padId in 0 until 128 && velocity.isFinite() && velocity in 0f..1f) }
     }
+    /** A press-anchored musical repeat. Null duration holds until Release; a finite burst is accessible by click. */
+    class StartNoteRepeat(effectiveFrame: Long, orderId: Long, val padId: Int, val ticks: Int,
+                          val durationFrames: Int? = null) : EngineCommand(effectiveFrame, orderId) {
+        init {
+            require(padId in 0 until 128 && NoteRepeatClock.validTicks(ticks))
+            require(durationFrames == null || durationFrames in 1..PadRender.MAX_FRAMES)
+        }
+    }
     class Release(effectiveFrame: Long, orderId: Long, val padId: Int) : EngineCommand(effectiveFrame, orderId) {
         init { require(padId in 0 until 128) }
     }

@@ -160,11 +160,15 @@ class NextSession private constructor(
         override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
         override val padRenderAvailable = true
         override val stepPatternsAvailable = true
+        override val noteRepeatAvailable = true
         override val sourceAnalysisAvailable = true
         override suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = backend.analyseSource(asset, range)
         override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
             backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
+        override suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                             releaseAt: Int, limitFrames: Int, stopAt: Int?) =
+            backend.renderNoteRepeat(pad, source, tempo, ticks, releaseAt, limitFrames, stopAt)
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
         override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
             handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,

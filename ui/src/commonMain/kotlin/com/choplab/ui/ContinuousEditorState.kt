@@ -12,13 +12,16 @@ enum class ContinuousStage { CAPTURE, CHOP, BEAT, SAVE }
 enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
 enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
+enum class ContinuousNoteRepeat(val ticks: Int) {
+    OFF(0), QUARTER(960), EIGHTH(480), SIXTEENTH(240), THIRTY_SECOND(120), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160)
+}
 /**
  * Where the song timeline puts what is placed or moved: on the nearest straight or triplet grid at the song's
  * tempo ([ticks] at 960 a beat), where the clip then keeps its beat when the tempo changes; or just where it is let go.
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160), FREE(0) }
 enum class ContinuousCapability {
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, FOUR_STEMS, SOURCE_ANALYSIS,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, NOTE_REPEAT, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, FOUR_STEMS, SOURCE_ANALYSIS,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
@@ -205,6 +208,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val swingPermille: Int = 500,
     /** View state only: what placing and moving clips snap to. */
     val grid: ContinuousGrid = ContinuousGrid.BEAT,
+    /** Session performance preference; captured phrases remain ordinary reversible audio placements. */
+    val noteRepeat: ContinuousNoteRepeat = ContinuousNoteRepeat.OFF,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val capabilities: Set<ContinuousCapability> = emptySet(),
@@ -263,7 +268,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 
 @Immutable data class ContinuousHit(val padId: Int, val timelineFrame: Long,
-    val performed: Boolean = false, val releaseAfterFrames: Int? = null, val limitFrames: Int = 0, val stopAfterFrames: Int? = null)
+    val performed: Boolean = false, val releaseAfterFrames: Int? = null, val limitFrames: Int = 0, val stopAfterFrames: Int? = null,
+    val repeatTicks: Int = 0)
 
 @Immutable data class ContinuousEditorReadout(
     val originalFrame: Long = 0,
@@ -376,6 +382,7 @@ sealed interface ContinuousEditorAction {
     data class SetTrackMuted(val trackId: String, val muted: Boolean) : ContinuousEditorAction
     /** What placing and moving clips snap to; the document keeps no grid. */
     data class SetGrid(val grid: ContinuousGrid) : ContinuousEditorAction
+    data class SetNoteRepeat(val rate: ContinuousNoteRepeat) : ContinuousEditorAction
     data class SetPixelsPerSecond(val value: Float) : ContinuousEditorAction
     data object FitTimeline : ContinuousEditorAction
     data class ResizePanes(val fraction: Float) : ContinuousEditorAction

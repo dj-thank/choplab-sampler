@@ -101,6 +101,64 @@ class EditorBackendTest {
         } finally { backend.shutdown() }
     }
 
+    @Test fun noteRepeatReadsLateLongSourceWindowsAndRefusesOversizedOutputBeforePublishing() = runBlocking<Unit> {
+        val dir = directory()
+        val files = CountingFiles()
+        var reads = 0; var opens = 0; var closes = 0
+        val info = WavInfo(48_000, 2, 19_200_000, 32, true)
+        fun sample(frame: Int, channel: Int) = ((frame % 257 - 128) / 2048f) * if (channel == 0) 1f else -.4f
+        val decoder = object : OriginalAudioDecoder {
+            override fun inspect(path: Path, hash: String, cancelled: () -> Boolean) = info
+            override fun decode(path: Path, hash: String, cancelled: () -> Boolean): WavAudio = error("Long source cannot be resident")
+            override fun openPcm(path: Path, hash: String, cancelled: () -> Boolean): PcmFrameSource {
+                opens++
+                return object : PcmFrameSource {
+                    override val info = info
+                    override fun read(firstFrame: Int, frameCount: Int, cancelled: () -> Boolean): FloatArray {
+                        assertTrue(frameCount in 1..4096, "Bounded native read: $frameCount")
+                        reads++
+                        return FloatArray(frameCount * 2) { sample(firstFrame + it / 2, it % 2) }
+                    }
+                    override fun close() { closes++ }
+                }
+            }
+        }
+        val backend = EditorBackend.create(dir.resolve("profile"), ::silentEngine, files::services, decoder)
+        try {
+            val original = byteArrayOf(9)
+            val source = Asset(sha256(original), "flac", 1, info.sampleRate, info.channels, info.frames, "Long original")
+            backend.assets.publish(source, java.io.ByteArrayInputStream(original))
+            val before = backend.studio.document.value
+            val first = 18_000_000L
+            val pad = com.choplab.core.model.Pad(0, source.hash, com.choplab.core.model.FrameRange(first, first + 4_800),
+                mode = com.choplab.engine.PlayMode.ONE_SHOT, gain = .6f, pan = -.2f, reverse = true, pitchSemitones = -3.0, tone = .4f)
+            val tempo = com.choplab.engine.Tempo(97_125, 710)
+            val rendered = backend.renderNoteRepeat(pad, source, tempo, 160, 48_000, 60_000)
+            assertEquals(48_096, rendered.frames)
+            assertEquals(source.hash, rendered.derivedFrom)
+            val pcm = WavCodec.read(java.io.ByteArrayInputStream(backend.assets.read(rendered)))
+            // Keep the same absolute fractional source coordinates as live playback, including
+            // their double precision at a late position; a rebased short sample is a different oracle.
+            val pages = com.choplab.engine.PagedPcm(info.frames.toInt())
+            for (page in (first.toInt() / 4096 - 1)..((first.toInt() + 4_800) / 4096 + 1)) {
+                pages.publish(page, FloatArray(4096 * 2) { sample(page * 4096 + it / 2, it % 2) })
+            }
+            val expected = com.choplab.engine.NoteRepeatRender.render(ProgramCompiler.enginePad(
+                pad, source, com.choplab.engine.PcmAsset.paged(pages)), tempo, 160, 48_000, 60_000) { _, render -> render() }
+            assertContentEquals(expected, pcm.samples)
+            assertTrue(pcm.info.floatingPoint)
+            val count = Files.list(dir.resolve("profile/assets")).use { it.count() }
+            val maximum = com.choplab.engine.PadRender.MAX_FRAMES
+            assertFailsWith<PcmMemoryLimit> { backend.renderNoteRepeat(pad, source, tempo, 160, maximum, maximum) }
+            assertEquals(count, Files.list(dir.resolve("profile/assets")).use { it.count() }, "Refusal publishes no partial asset")
+            assertEquals(rendered, backend.renderNoteRepeat(pad, source, tempo, 160, 48_000, 60_000), "A failed admission returns its leases")
+            assertTrue(reads > 0); assertEquals(1, opens)
+            assertEquals(before, backend.studio.document.value)
+            assertContentEquals(original, backend.assets.read(source))
+        } finally { backend.shutdown() }
+        assertEquals(opens, closes)
+    }
+
     @Test fun importsCompleteWhileTheOutputKeepsStallingAndReopening() = runBlocking<Unit> {
         // Like an emulator or a flaky route: every device fills up and stalls, and a recovery policy keeps reopening it.
         val stalling = { object : AudioSink {

@@ -18,6 +18,142 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun noteRepeatIsAPerformancePreferenceAndAccessibleClickIsOneFiniteBeat() = runBlocking<Unit> {
+        val h = Harness(render = true)
+        try {
+            h.until { it.permits(ContinuousCapability.NOTE_REPEAT) }
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.EIGHTH_TRIPLET)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            val hold = h.engine.commands.filterIsInstance<EngineCommand.StartNoteRepeat>().last()
+            assertEquals(320, hold.ticks); assertNull(hold.durationFrames)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            val click = h.engine.commands.filterIsInstance<EngineCommand.StartNoteRepeat>().last()
+            assertEquals(24_000, click.durationFrames)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.OFF)))
+            assertEquals(before, h.studio.document.value, "Choosing/playing repeat never consumes an edit or Undo")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            assertTrue(h.engine.commands.last() is EngineCommand.Trigger)
+        } finally { h.close() }
+    }
+
+    @Test fun aRepeatedOneShotRecordsTheWholeHeldPhraseAsOneQuantizedPlacementAndOneUndo() = runBlocking<Unit> {
+        val h = Harness(render = true, adjust = { p -> p.copy(pads = p.pads.map { it.copy(mode = PlayMode.ONE_SHOT) }.frozen()) })
+        try {
+            h.until { it.permits(ContinuousCapability.NOTE_REPEAT) }
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.SIXTEENTH_TRIPLET)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.QUARTER)))
+            // Host output is queued by 1,920 frames; the heard onset still snaps to beat two.
+            val gesture = ContinuousHitGesture(0, 19_345)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(gesture)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 55_345)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(gesture, false, 55_345)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertEquals(listOf(160 to 36_000), h.ports.repeatRenders.toList())
+            val after = h.studio.document.value
+            assertEquals(before.revision + 1, after.revision)
+            val clip = after.project.clips.single()
+            assertEquals(960, clip.startTick)
+            assertEquals(36_096, clip.range.length)
+            assertEquals(1f, clip.gain); assertEquals(0f, clip.pan)
+            assertEquals(before.project.pads, after.project.pads)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo)); assertEquals(before.project, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Redo)); assertEquals(after.project, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
+    @Test fun cancelledOrRefusedRepeatNeverBecomesRecordedAudio() = runBlocking<Unit> {
+        for (refused in listOf(false, true)) {
+            val h = Harness(render = true)
+            try {
+                h.until { it.permits(ContinuousCapability.NOTE_REPEAT) }
+                val before = h.studio.document.value
+                h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.SIXTEENTH))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+                val gesture = ContinuousHitGesture(0, 100)
+                h.presenter.dispatch(ContinuousEditorAction.BeginHit(gesture))
+                h.engine.refuseRepeats = refused
+                assertEquals(!refused, h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+                h.engine.transport = h.engine.transport.copy(sequenceFrame = 12_000)
+                h.presenter.dispatch(ContinuousEditorAction.EndHit(gesture, cancelled = !refused, songFrame = 12_000))
+                h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+                assertEquals(before, h.studio.document.value)
+                assertTrue(h.ports.repeatRenders.isEmpty())
+            } finally { h.close() }
+        }
+    }
+
+    @Test fun aNewHoldOwnsItsNoteOffAndCutsThePreviousFiniteRepeatAtTheRetrigger() = runBlocking<Unit> {
+        val h = Harness(render = true)
+        try {
+            h.until { it.permits(ContinuousCapability.NOTE_REPEAT) }
+            h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.SIXTEENTH))
+            h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.presenter.dispatch(ContinuousEditorAction.BeginHit(ContinuousHitGesture(0, 4_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            val held = ContinuousHitGesture(0, 10_000)
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 10_000)
+            h.presenter.dispatch(ContinuousEditorAction.BeginHit(held))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            val releases = h.engine.commands.count { it is EngineCommand.Release }
+            delay(650) // Past the old accessible click's 500 ms cleanup; it no longer owns this PAD.
+            assertEquals(releases, h.engine.commands.count { it is EngineCommand.Release })
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 18_000)
+            h.presenter.dispatch(ContinuousEditorAction.EndHit(held, false, 18_000))
+            h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertEquals(listOf(240 to 6_000, 240 to 8_000), h.ports.repeatRenders.sortedBy { it.second })
+            assertEquals(listOf(2_080L, 8_080L), h.studio.document.value.project.clips.map { it.timelineStartFrame })
+        } finally { h.close() }
+    }
+
+    @Test fun refusingARetriggerDoesNotEraseTheEarlierAcceptedPhrase() = runBlocking<Unit> {
+        val h = Harness(render = true)
+        try {
+            h.until { it.permits(ContinuousCapability.NOTE_REPEAT) }
+            h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.SIXTEENTH))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            h.presenter.dispatch(ContinuousEditorAction.BeginHit(ContinuousHitGesture(0, 4_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 10_000)
+            h.presenter.dispatch(ContinuousEditorAction.BeginHit(ContinuousHitGesture(0, 10_000)))
+            h.engine.refuseRepeats = true
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.HoldPad(0)))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 40_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
+            assertEquals(listOf(240 to 24_000), h.ports.repeatRenders.toList())
+            assertEquals(1, h.studio.document.value.project.clips.size)
+        } finally { h.close() }
+    }
+
+    @Test fun refusedNoteOffUsesSafetyStopAndKeepsThePassBeforeTheClockResets() = runBlocking<Unit> {
+        val h = Harness(render = true)
+        try {
+            h.until { it.permits(ContinuousCapability.NOTE_REPEAT) }
+            val before = h.studio.document.value.project
+            h.presenter.dispatch(ContinuousEditorAction.SetNoteRepeat(ContinuousNoteRepeat.THIRTY_SECOND))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val gesture = ContinuousHitGesture(0, 100)
+            h.presenter.dispatch(ContinuousEditorAction.BeginHit(gesture)); h.presenter.dispatch(ContinuousEditorAction.HoldPad(0))
+            h.engine.transport = h.engine.transport.copy(sequenceFrame = 12_100)
+            h.engine.refuseReleases = true; h.engine.resetPositionOnStop = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ReleasePad(0)))
+            h.until { !it.recordingHits }
+            assertTrue(h.engine.commands.any { it is EngineCommand.Stop })
+            assertEquals(0, h.engine.transport.sequenceFrame)
+            assertEquals(listOf(120 to 12_000), h.ports.repeatRenders.toList())
+            assertEquals(1, h.studio.document.value.project.clips.size)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo)); assertEquals(before, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
     @Test fun stepPatternEntryAndApplyRefuseBusySourceVoiceAndPadRecordingWhileCloseStillWorks() = runBlocking<Unit> {
         for (block in 0..3) {
             val h = Harness(voice = true, render = true)
@@ -2277,6 +2413,8 @@ class ContinuousEditorPresenterTest {
         /** Refuses scratch moves, as an engine that no longer knows the scratch. */
         @Volatile var refuseScratchMoves = false
         @Volatile var refuseResume = false
+        @Volatile var refuseRepeats = false
+        @Volatile var refuseReleases = false
         override suspend fun prepare(project: Project, patternId: String, revision: Long) = EngineProgram(revision = revision)
         override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram {
             prepares++
@@ -2288,6 +2426,8 @@ class ContinuousEditorPresenterTest {
             commands += command
             if (command is EngineCommand.ScratchPosition && refuseScratchMoves) return false
             if (command is EngineCommand.Resume && refuseResume) return false
+            if (command is EngineCommand.StartNoteRepeat && refuseRepeats) return false
+            if (command is EngineCommand.Release && refuseReleases) return false
             // The song's transport as the engine would report it.
             transport = when (command) {
                 is EngineCommand.Resume -> transport.copy(playing = true, sequencePaused = false)
@@ -2308,6 +2448,16 @@ class ContinuousEditorPresenterTest {
         override var lyricProposal: LyricProposalPort? = null
         override val padRenderAvailable get() = render
         override val stepPatternsAvailable get() = render
+        override val noteRepeatAvailable get() = render
+        val repeatRenders = java.util.concurrent.CopyOnWriteArrayList<Pair<Int, Int>>()
+        override suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                             releaseAt: Int, limitFrames: Int, stopAt: Int?): Asset? {
+            repeatRenders += ticks to releaseAt
+            if (renderFails) return null
+            val frames = minOf(limitFrames.toLong(), releaseAt.toLong() + pad.releaseFrames,
+                stopAt?.let { it.toLong() + 96 } ?: Long.MAX_VALUE)
+            return Asset("d".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "repeat", AssetRole.RENDERED, derivedFrom = source.hash)
+        }
         @Volatile var duringPerformance: (suspend () -> Unit)? = null
         val renders = java.util.concurrent.CopyOnWriteArrayList<Pad>()
         @Volatile var renderFails = false

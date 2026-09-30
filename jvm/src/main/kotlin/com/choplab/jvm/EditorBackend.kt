@@ -136,6 +136,21 @@ class EditorBackend private constructor(
         }
     }
 
+    suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                 releaseAt: Int, limitFrames: Int, stopAt: Int? = null): Asset = withContext(Dispatchers.Default) {
+        pcm.acquire(source).use { lease ->
+            val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
+            val frames = com.choplab.engine.NoteRepeatRender.frames(prepared, releaseAt, limitFrames, stopAt)
+            pcm.memory.reserve(frames * 8L + 256 * 1024).use {
+                val context = currentCoroutineContext()
+                val samples = com.choplab.engine.NoteRepeatRender.render(prepared, tempo, ticks, releaseAt, limitFrames, stopAt) { windows, render ->
+                    runBlocking(context) { pcm.prepared(windows, render) }
+                }
+                publishRendered(samples, source.name.take(200) + " repeat", source.hash)
+            }
+        }
+    }
+
     /** Stream float bytes: no second/third full-sized byte-array copy next to the rendered PCM. */
     private suspend fun publishRendered(samples: FloatArray, name: String, sourceHash: String): Asset = withContext(Dispatchers.IO) {
         val temporary = Files.createTempFile("choplab-render-", ".wav")
