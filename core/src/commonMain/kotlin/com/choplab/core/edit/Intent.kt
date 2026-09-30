@@ -53,7 +53,9 @@ sealed interface Intent {
     /** The song's tracks, clips and takes; [assets] are new sounds its clips bring in, such as a rendered PAD. */
     data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>,
                               val assets: FrozenList<Asset> = frozenListOf(),
-                              val vocalComps: FrozenList<VocalComp>? = null) : Intent
+                              val vocalComps: FrozenList<VocalComp>? = null,
+                              /** A placement can establish its BANK routes atomically with its clips. */
+                              val banks: FrozenList<Bank>? = null) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
     data class SetStructuredLyrics(val lines: FrozenList<LyricLine>, val structure: LyricStructure) : Intent
     /** A confirmed guide proposal joins its rendered sounds and lyric alignment in one Undo. */
@@ -203,8 +205,16 @@ object Reducer {
                         if (next == null || clip.range.end > next.frames) clip else clip.copy(assetHash = next.hash)
                     }.frozen())
             }
-            is Intent.SetArrangement -> before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
-                tracks = intent.tracks, clips = intent.clips, takes = intent.takes, vocalComps = intent.vocalComps ?: before.vocalComps)
+            is Intent.SetArrangement -> {
+                intent.banks?.let { banks ->
+                    require(banks.size == before.banks.size && banks.indices.all { index ->
+                        banks[index].copy(trackId = before.banks[index].trackId) == before.banks[index]
+                    }) { "Arrangement placement can only establish BANK routes" }
+                }
+                before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
+                    tracks = intent.tracks, clips = intent.clips, takes = intent.takes,
+                    vocalComps = intent.vocalComps ?: before.vocalComps, banks = intent.banks ?: before.banks)
+            }
             is Intent.SetLyrics -> before.copy(lyrics = intent.lines, lyricStructure = before.lyricStructure?.retainFor(intent.lines))
             is Intent.SetStructuredLyrics -> before.copy(lyrics = intent.lines, lyricStructure = intent.structure)
             is Intent.ApplyVocalGuide -> before.copy(assets = mergeAssets(before.assets, intent.assets), tracks = intent.tracks,

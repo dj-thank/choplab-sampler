@@ -123,6 +123,9 @@ object PatternPlacement {
         return plan
     }
 
+    /** Both pieces are legal labels; preserve the BANK name inside the 80-character track bound. */
+    fun routeName(bank: Bank, trackName: String): String = "${trackName.take(31)} ${bank.name}"
+
     fun intent(project: Project, plan: PatternPlacementPlan, rendered: Map<PatternVoiceRender, Asset>, freshId: (String) -> String,
                trackName: String): Intent.SetArrangement {
         val sounds = plan.renders.map { request ->
@@ -132,15 +135,13 @@ object PatternPlacement {
                 reject(PatternProblem.RENDER_FAILED)
             asset
         }.distinctBy { it.hash }
-        val track = project.tracks.firstOrNull { it.kind == TrackKind.BANK }
-            ?: Track(freshId("track"), trackName, TrackKind.BANK)
-        val tracks = if (project.tracks.any { it.id == track.id }) project.tracks else (project.tracks + track).frozen()
+        val routes = com.choplab.core.BankPlacementRoutes(project, freshId) { bank -> routeName(bank, trackName) }
         val clips = (project.clips + plan.voices.map { voice ->
             val asset = rendered.getValue(voice.render)
-            Clip(freshId("clip"), track.id, asset.hash, FrameRange(0, asset.frames), startTick = voice.startTick,
+            Clip(freshId("clip"), routes.trackForPad(voice.render.padId).id, asset.hash, FrameRange(0, asset.frames), startTick = voice.startTick,
                 gain = voice.velocity, pan = 0f)
         }).frozen()
-        val intent = Intent.SetArrangement(tracks, clips, project.takes, sounds.frozen())
+        val intent = Intent.SetArrangement(routes.tracks.frozen(), clips, project.takes, sounds.frozen(), banks = routes.banks.frozen())
         val after = try { Reducer.reduce(project, intent).project } catch (_: IllegalArgumentException) { reject(PatternProblem.NO_ROOM) }
         if (ProgramCompiler.residentFrames(after) > ProgramCompiler.RESIDENT_FRAME_LIMIT) reject(PatternProblem.NO_ROOM)
         if (!ProgramCompiler.songFits(after)) reject(PatternProblem.SONG_FULL)

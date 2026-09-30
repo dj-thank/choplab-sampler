@@ -21,6 +21,23 @@ class ContinuousClipEditsTest {
         Reducer.reduce(p, ContinuousClipEdits.intent(p, action, ::fresh, grid = grid)).project
     private fun Project.start(clip: Clip = clips.last()) = ContinuousClipEdits.startFrame(this, clip)
 
+    @Test fun differentBanksGetIndependentRoutesAndExplicitDestinationRemainsAnOverride() {
+        val original = fixture().let { p -> p.copy(
+            pads = p.pads.map { if (it.id == 16) p.pads[0].copy(id = 16) else it }.frozen(),
+            tracks = frozenListOf(Track("legacy", "Earlier beat", TrackKind.BANK), Track("a", "A mix", TrackKind.BANK, gain = .2f)),
+            banks = p.banks.map { if (it.id == 0) it.copy(trackId = "a") else it }.frozen()) }
+        val first = apply(original, ContinuousEditorAction.PlacePad(16, null, 0))
+        assertEquals("a", first.banks[0].trackId)
+        val b = assertNotNull(first.banks[1].trackId)
+        assertNotEquals("a", b); assertNotEquals("legacy", b)
+        assertEquals(b, first.clips.single().trackId)
+        assertEquals(original.tracks, first.tracks.take(2))
+        val filled = apply(first, ContinuousEditorAction.FillPad(16, null, 0, ContinuousGrid.EIGHTH_TRIPLET, 1))
+        assertTrue(filled.clips.all { it.trackId == b }); assertEquals(3, filled.tracks.size)
+        val explicit = apply(original, ContinuousEditorAction.PlacePad(16, "legacy", 0))
+        assertNull(explicit.banks[1].trackId); assertEquals("legacy", explicit.clips.single().trackId)
+    }
+
     @Test fun placementSnapshotsPadAndKeepsOriginalWithOneUndo() {
         val original = fixture()
         val session = EditSession(original)

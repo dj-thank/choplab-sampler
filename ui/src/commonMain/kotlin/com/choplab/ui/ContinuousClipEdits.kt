@@ -108,7 +108,7 @@ object ContinuousClipEdits {
         ProgramCompiler.sourceFrameTo48k(clip.sourceEndFrame, clip.sourceRate) > ProgramCompiler.sourceFrameTo48k(clip.sourceStartFrame, clip.sourceRate)
 
     /** Pitch, reverse or tone change how a PAD sounds; the song plays placed sounds as they are, so such a PAD is rendered first. */
-    fun transformed(pad: Pad): Boolean = pad.pitchSemitones != 0.0 || pad.reverse || pad.tone < com.choplab.engine.Pad.TONE_BYPASS
+    fun transformed(pad: Pad): Boolean = pad.pitchSemitones != 0.0 || pad.reverse || pad.tone < com.choplab.engine.Pad.TONE_BYPASS || pad.pan != 0f
 
     /**
      * [rendered] holds each transformed PAD's sound, by PAD, for placing such a PAD. Placing, moving, nudging and
@@ -117,7 +117,9 @@ object ContinuousClipEdits {
     fun intent(project: Project, action: ContinuousEditorAction, freshId: (String) -> String, rendered: Map<Int, Asset> = emptyMap(),
                grid: ContinuousGrid = ContinuousGrid.FREE, performances: Map<ContinuousHit, Asset> = emptyMap()): Intent.SetArrangement {
         val tempo = project.tempo
+        val routes = com.choplab.core.BankPlacementRoutes(project, freshId)
         var tracks: List<Track> = project.tracks
+        fun bankTrack(padId: Int): Track = routes.trackForPad(padId).also { tracks = routes.tracks }
         var clips: List<Clip> = project.clips
         // Clips this gesture creates or reshapes must be audible. A zero-length clip saved by an
         // earlier build stays movable and deletable instead of blocking every other edit.
@@ -133,9 +135,8 @@ object ContinuousClipEdits {
             val hash = made?.hash ?: sound
             val range = if (made != null) FrameRange(0, made.frames) else requireNotNull(pad.range)
             val track = trackId?.let { id -> requireNotNull(tracks.firstOrNull { it.id == id }) }
-                ?: tracks.firstOrNull { it.kind == TrackKind.BANK }
-                ?: Track(freshId("track"), project.banks[pad.id / 16].name, TrackKind.BANK).also { tracks = tracks + it }
-            return Triple(pad, Clip("pad-${pad.id}", track.id, hash, range, gain = pad.gain, pan = pad.pan), track)
+                ?: bankTrack(padId)
+            return Triple(pad, Clip("pad-${pad.id}", track.id, hash, range, gain = pad.gain, pan = if (made != null) 0f else pad.pan), track)
         }
         when (action) {
             is ContinuousEditorAction.PlacePad -> {
@@ -166,8 +167,7 @@ object ContinuousClipEdits {
                     val made = performances[hit]
                     val sound = if (hit.performed) {
                         requireNotNull(made) { "Render the recorded voice before placement" }
-                        val track = tracks.firstOrNull { it.kind == TrackKind.BANK }
-                            ?: Track(freshId("track"), project.banks[hit.padId / 16].name, TrackKind.BANK).also { tracks = tracks + it }
+                        val track = bankTrack(hit.padId)
                         Clip("hit", track.id, made.hash, FrameRange(0, made.frames), gain = 1f, pan = 0f)
                     } else placing(hit.padId, null).second
                     val placed = startingAt(sound.copy(id = freshId("clip")), hit.timelineFrame, tempo, grid)
@@ -276,6 +276,7 @@ object ContinuousClipEdits {
         // A song an earlier build let past that stays editable, so it can be thinned out.
         if (!ProgramCompiler.songFits(known.copy(tracks = tracks.frozen(), clips = clips.frozen())) && ProgramCompiler.songFits(project))
             throw SongFull()
-        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, produced.distinctBy { it.hash }.frozen())
+        return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, produced.distinctBy { it.hash }.frozen(),
+            banks = routes.banks.frozen())
     }
 }

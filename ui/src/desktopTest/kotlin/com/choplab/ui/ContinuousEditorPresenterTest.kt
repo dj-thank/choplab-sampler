@@ -435,11 +435,12 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetGrid(ContinuousGrid.FREE)))
             h.until { it.permits(ContinuousCapability.RECORD_HITS) }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            val recordingCommandsFrom = h.engine.commands.size
             val press = ContinuousHitGesture(0, 12_000)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginHit(press)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.TapPad(0)))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndHit(press, false, 16_800)))
-            assertTrue(h.engine.commands.none { it is EngineCommand.Release && it.padId == 0 })
+            assertTrue(h.engine.commands.drop(recordingCommandsFrom).none { it is EngineCommand.Release && it.padId == 0 })
             h.engine.transport = h.engine.transport.copy(sequenceFrame = 24_000)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopHits))
             assertTrue(h.engine.commands.any { it is EngineCommand.Release && it.padId == 0 })
@@ -2432,7 +2433,12 @@ class ContinuousEditorPresenterTest {
             transport = when (command) {
                 is EngineCommand.Resume -> transport.copy(playing = true, sequencePaused = false)
                 is EngineCommand.Pause -> transport.copy(playing = false, sequencePaused = true)
-                is EngineCommand.Stop -> transport.copy(playing = false, sequencePaused = false, scratchFrame = -1.0, sequenceFrame = if (resetPositionOnStop) 0 else transport.sequenceFrame)
+                is EngineCommand.Stop -> {
+                    // A successful safety Stop drains/fences the full queue; later route effects can be acknowledged.
+                    refuseReleases = false
+                    transport.copy(playing = false, sequencePaused = false, scratchFrame = -1.0,
+                        sequenceFrame = if (resetPositionOnStop) 0 else transport.sequenceFrame)
+                }
                 is EngineCommand.Seek -> transport.copy(sequenceFrame = command.sequenceFrame)
                 is EngineCommand.ScratchStart -> transport.copy(scratchFrame = if (playhead >= 0) playhead else command.sourceFrame)
                 is EngineCommand.ScratchEnd -> transport.copy(scratchFrame = -1.0)
