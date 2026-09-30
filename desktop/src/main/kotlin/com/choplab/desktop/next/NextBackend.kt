@@ -59,6 +59,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         decoder.inspect(file.toPath(), hash) { Thread.currentThread().isInterrupted }
     }
 
+    suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
+        shared.renderVocalComp(project, draft, name)
     fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
                             memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory) = shared.createFourStemWorker(factory, memoryProbe)
 
@@ -96,7 +98,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     override fun close() = runBlocking { shutdown() }
 
     companion object {
-        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: () -> MicInput? = JavaSoundMicInput::open): NextBackend {
+        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: suspend () -> MicInput? = { JavaSoundMicInput.open() }): NextBackend {
             val files = NextFileLocations()
             val decoder = DesktopOriginalAudioDecoder()
             val shared = EditorBackend.create(directory,

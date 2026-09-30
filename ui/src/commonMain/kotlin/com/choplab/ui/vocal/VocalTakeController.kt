@@ -12,6 +12,12 @@ import kotlin.concurrent.Volatile
 
 enum class VocalAvailability { EDITABLE, BUSY, RECORDING }
 enum class VocalPhase { EDITING, RENDERING, APPLYING, CLOSED }
+/** One host-owned SOURCE preview, shared with the speech guide. */
+interface VocalTakePort {
+    val preview: com.choplab.core.ai.VocalPreviewPort
+    suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset
+}
+
 interface VocalTakePorts {
     suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset?
     /** Host serializes its final recording/busy check with the Studio expectedRevision dispatch. */
@@ -33,6 +39,7 @@ data class VocalTakeState(
     val problem: VocalProblem? = null,
     val previewing: Boolean = false,
     val applied: Boolean = false,
+    val punchRange: Pair<Long, Long>? = null,
 ) {
     val editable: Boolean get() = phase == VocalPhase.EDITING && availability == VocalAvailability.EDITABLE && problem != VocalProblem.STALE
     val replaceableClips: List<Clip> get() {
@@ -45,6 +52,7 @@ data class VocalTakeState(
 sealed interface VocalAction {
     data class SelectTake(val id: String) : VocalAction
     data class SelectComp(val id: String) : VocalAction
+    data object SplicePunch : VocalAction
     data object WholeTake : VocalAction
     data object FromLyrics : VocalAction
     data class Choose(val segmentId: String, val takeId: String) : VocalAction
@@ -63,11 +71,12 @@ class VocalTakeController(
     private val availability: StateFlow<VocalAvailability>,
     private val ports: VocalTakePorts,
     scope: CoroutineScope,
+    private val punchRange: Pair<Long, Long>? = null,
 ) {
     private val owner = SupervisorJob(scope.coroutineContext[Job])
     private val jobs = CoroutineScope(scope.coroutineContext + owner)
     private val mutex = Mutex()
-    private val mutable = MutableStateFlow(VocalTakeState(document.value.project, document.value.revision, availability = availability.value))
+    private val mutable = MutableStateFlow(VocalTakeState(document.value.project, document.value.revision, availability = availability.value, punchRange = punchRange))
     val state: StateFlow<VocalTakeState> = mutable.asStateFlow()
     @Volatile private var closed = false
     @Volatile private var generation = 0L
@@ -96,7 +105,12 @@ class VocalTakeController(
         return mutex.withLock {
             if (closed) return@withLock false
             val current = state.value
-            if (action == VocalAction.StopPreview) { ports.stopPreview(); publish(current.copy(previewing = false)); return@withLock true }
+            if (action == VocalAction.StopPreview) {
+                // Stop also fences an unfinished comp/take render, not only an already acquired SOURCE lane.
+                if (current.phase == VocalPhase.APPLYING) ports.stopPreview() else invalidate()
+                publish(current.copy(phase = if (current.phase == VocalPhase.RENDERING) VocalPhase.EDITING else current.phase, previewing = false))
+                return@withLock true
+            }
             if (action == VocalAction.Cancel) {
                 if (current.phase == VocalPhase.APPLYING) return@withLock false
                 invalidate(); publish(current.copy(draft = null, replaceClipIds = emptySet(), phase = VocalPhase.EDITING, problem = null, previewing = false)); return@withLock true
@@ -120,6 +134,12 @@ class VocalTakeController(
                         val draft = if (action == VocalAction.WholeTake) VocalCompEdits.fullTake(current.project, take, id)
                             else VocalCompEdits.lines(current.project, take, id)
                         next = next.copy(draft = draft, replaceClipIds = emptySet())
+                    }
+                    VocalAction.SplicePunch -> {
+                        val range = requireNotNull(current.punchRange)
+                        val base = requireNotNull(current.draft)
+                        val plan = VocalPunchPlan.create(range.first, range.second, base.endFrame, 0, 0, current.project.tempo)
+                        next = next.copy(draft = plan.splice(current.project, base, requireNotNull(current.selectedTake)))
                     }
                     is VocalAction.Choose -> {
                         next = next.copy(draft = VocalCompEdits.choose(current.project, requireNotNull(current.draft), action.segmentId, action.takeId))
@@ -229,7 +249,7 @@ class VocalTakeController(
     }
     private fun blocked(value: VocalAvailability) = if (value == VocalAvailability.RECORDING) VocalProblem.RECORDING else VocalProblem.BUSY
     private fun invalidate() { generation++; work?.cancel(); prepared = null; ports.stopPreview() }
-    private fun reset() { val value = document.value; publish(VocalTakeState(value.project, value.revision, availability = availability.value)) }
+    private fun reset() { val value = document.value; publish(VocalTakeState(value.project, value.revision, availability = availability.value, punchRange = punchRange)) }
     private fun publish(value: VocalTakeState) { if (!closed) mutable.value = value }
     fun close() {
         if (closed) return

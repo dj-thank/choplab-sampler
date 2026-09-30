@@ -53,6 +53,8 @@ import kotlin.math.roundToLong
     vocalGuide: VocalGuideController? = null,
     fourStems: com.choplab.ui.separation.FourStemController? = null,
     onlineSource: OnlineSourceController? = null,
+    vocalTakes: com.choplab.ui.vocal.VocalTakeController? = null,
+    vocalPunch: com.choplab.ui.vocal.VocalPunchController? = null,
     quickStart: QuickStartController? = null,
 ) {
     CETheme {
@@ -60,7 +62,7 @@ import kotlin.math.roundToLong
             val compact = maxWidth < 900.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEHeader(state, onAction, compact, readout, refreshKey)
-                if (state.vocalPreview) Text(stringResource(Res.string.vocal_source_owned), Modifier.testTag("ce-vocal-preview-owner"))
+                if (state.vocalPreview) Text(stringResource(Res.string.vocal_preview_source_owned), Modifier.testTag("ce-vocal-preview-owner"))
                 if (compact && state.stage == ContinuousStage.BEAT) {
                     // A short window scrolls the source and instrument together. Transport and all-stop stay outside.
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("ce-beat-viewport")) {
@@ -101,6 +103,8 @@ import kotlin.math.roundToLong
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
+        vocalTakes?.let { CEVocalTakeDialog(it, onAction) }
+        vocalPunch?.let { CEVocalPunchDialog(it, onAction) }
         vocalGuide?.let { CEVocalGuideDialog(it, onAction) }
         fourStems?.let { controller -> com.choplab.ui.separation.FourStemDialog(controller,
             onStop = { onAction(ContinuousEditorAction.StopAll) }, onClose = { onAction(ContinuousEditorAction.CloseFourStems) }) }
@@ -769,6 +773,7 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.SYSTEM_TIMEOUT -> Res.string.ce_system_timeout
         ContinuousStatus.SYSTEM_EMPTY -> Res.string.ce_system_empty
         ContinuousStatus.VOICE_SAVED -> Res.string.ce_voice_saved; ContinuousStatus.VOICE_SAVED_SONG_ONLY -> Res.string.ce_voice_saved_song_only
+        ContinuousStatus.VOICE_SAVED_TAKE_ONLY -> Res.string.vocal_take_saved_only
         ContinuousStatus.VOICE_SAVED_PAD_ONLY -> Res.string.ce_voice_saved_pad_only; ContinuousStatus.VOICE_INTERRUPTED -> Res.string.ce_voice_interrupted
         ContinuousStatus.VOICE_TOO_SHORT -> Res.string.ce_voice_too_short; ContinuousStatus.VOICE_NOT_SAVED -> Res.string.ce_voice_not_saved
         ContinuousStatus.VOICE_LIMIT -> Res.string.ce_voice_limit; ContinuousStatus.VOICE_EMPTY -> Res.string.ce_voice_empty

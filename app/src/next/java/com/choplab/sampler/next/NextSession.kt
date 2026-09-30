@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import com.choplab.core.*
+import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.jvm.*
@@ -95,6 +96,12 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, voice, microphone::request)
+        override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
+                backend.renderVocalComp(project, draft, name)
+        }
         override val fourStems = FourStemFactory {
             backend.createFourStemWorker(OnnxFourStemFactory(FourStemModelStore(File(context.filesDir, "next-four-stem-model").toPath()))) {
                 try {

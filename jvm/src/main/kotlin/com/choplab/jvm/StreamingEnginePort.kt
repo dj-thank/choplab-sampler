@@ -141,6 +141,9 @@ open class StreamingEnginePort(
     @Volatile private var renderedBlocks = 0L
     /** The device in use, for the diagnostics reader to ask about; the owner alone writes to and closes it. */
     @Volatile private var attachedSink: AudioSink? = null
+    @Volatile private var routeGeneration = 0L
+    /** Changes on every output adoption/detach, including same-format normal lifecycle replacement. */
+    fun outputRouteGeneration(): Long = routeGeneration
     @Volatile private var writtenFrame = -1L
     @Volatile private var completedCueBeforeReset = -1L
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
@@ -398,6 +401,7 @@ open class StreamingEnginePort(
                     sink = opened
                     // Block times describe this device only.
                     renderedBlocks = 0
+                    routeGeneration++
                     attachedSink = opened
                     writtenFrame = requireNotNull(engineView).offset + activeEngine.frame
                     statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults)
@@ -422,6 +426,7 @@ open class StreamingEnginePort(
             writtenFrame = -1
             if (activeEngine.recordingStartedFrame >= 0) completedCueBeforeReset =
                 requireNotNull(engineView).offset + activeEngine.recordingStartedFrame
+            routeGeneration++
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             sink = null
@@ -547,6 +552,7 @@ open class StreamingEnginePort(
             statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = ++faults)
         } finally {
             closed = true
+            routeGeneration++
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             // A device still opening is closed as soon as it exists.

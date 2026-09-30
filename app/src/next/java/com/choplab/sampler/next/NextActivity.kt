@@ -120,12 +120,14 @@ class NextActivity : ComponentActivity() {
         val vocalGuide by session.presenter.vocalGuide.collectAsState()
         val fourStems by session.presenter.fourStems.collectAsState()
         val onlineSource by session.presenter.onlineSource.collectAsState()
+        val vocalTakes by session.presenter.vocalTakes.collectAsState()
+        val vocalPunch by session.presenter.vocalPunch.collectAsState()
         val failed by session.backend.persistenceFailure.collectAsState()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("next-editor")) {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                 session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics,
                 lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                onlineSource = onlineSource, quickStart = session.quickStart)
+                onlineSource = onlineSource, vocalTakes = vocalTakes, vocalPunch = vocalPunch, quickStart = session.quickStart)
         }
     }
 

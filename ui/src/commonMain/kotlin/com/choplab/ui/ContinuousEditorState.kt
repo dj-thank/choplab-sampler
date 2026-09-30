@@ -18,7 +18,7 @@ enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160), FREE(0) }
 enum class ContinuousCapability {
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE, FOUR_STEMS,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, FOUR_STEMS,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
@@ -38,7 +38,7 @@ enum class ContinuousStatus {
      * A voice take went to a BANK D PAD and onto the song; with BANK D full, onto the song only; to the PAD only when
      * the song refused it; it stopped at its length limit, or because the microphone went away.
      */
-    VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
+    VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_SAVED_TAKE_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
     /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     /** A song edit refused, as the song could no longer play: too many clips at once, too many or too long. */
@@ -278,6 +278,10 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 sealed interface ContinuousEditorAction {
     data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
+    data object OpenVocalPunch : ContinuousEditorAction
+    data object CloseVocalPunch : ContinuousEditorAction
+    data object OpenVocalTakes : ContinuousEditorAction
+    data object CloseVocalTakes : ContinuousEditorAction
     data object OpenFourStems : ContinuousEditorAction
     data object CloseFourStems : ContinuousEditorAction
     data object OpenVocalGuide : ContinuousEditorAction
