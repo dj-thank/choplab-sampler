@@ -221,7 +221,12 @@ class VocalTakeHostTest {
             assertTrue(next.dispatch(VocalAction.WholeTake))
             assertTrue(f.backend.studio.dispatch(Action.Edit(Intent.Rename("Changed"))).accepted)
             assertFalse(next.dispatch(VocalAction.Apply("Stale")))
-            assertTrue(next.dispatch(VocalAction.Reload)); assertTrue(next.dispatch(VocalAction.WholeTake))
+            assertTrue(next.dispatch(VocalAction.Reload), "Reload must accept the current document")
+            // The actor edit is committed before the host's work/availability collectors reach EDITABLE.
+            // A real button stays disabled at that boundary; wait for the same published UI condition.
+            until { next.state.value.editable && f.presenter.state.value.projectTitle == "Changed" &&
+                f.backend.studio.work.value.let { it.jobId == null && it.preparationId == null } }
+            assertTrue(next.dispatch(VocalAction.WholeTake), "Choose the take after the committed edit is available")
             val recording = async { f.presenter.dispatch(ContinuousEditorAction.RecordVoice) }
             permissionEntered.await()
             until { next.state.value.availability == VocalAvailability.RECORDING }
