@@ -190,8 +190,10 @@ class CacheAndStreamingTest {
         val port = DetachedEnginePort(ProgramCompiler(object : com.choplab.core.PcmPort {
             override suspend fun load(asset: Asset): PcmAsset = error("No assets in this fixture")
         }))
-        assertTrue(port.apply(EngineCommand.SwapProgram(0, 1, EngineProgram.EMPTY)))
-        assertTrue(port.snapshot().frame > 0)
-        assertTrue(port.apply(EngineCommand.Stop(0, 2)))
+        try {
+            assertTrue(port.apply(EngineCommand.SwapProgram(0, 1, EngineProgram.EMPTY)))
+            assertTrue(port.snapshot().frame > 0)
+            assertTrue(port.apply(EngineCommand.Stop(0, 2)))
+        } finally { port.close() }
     }
 }

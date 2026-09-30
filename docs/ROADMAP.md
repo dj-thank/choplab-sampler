@@ -1,10 +1,10 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-09-28。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-01。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
-## 最初に読む現状とSSOT（2026-09-28照合）
+## 最初に読む現状とSSOT（2026-10-01照合）
 
-9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、ローカル実装・統合・Mac利用検証を再開する。同日の追加指定に従い、未完実装はGPT-6 Astra・推論Maxが担当し、rootがPR統合・外部更新・Mac端末検証を担当する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
+9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。2026-10-01にはMacの元セッション3件・Windowsの元セッション2件の人間42発言とWindows再構築原案を直接照合した。元の意図は、自分の素材からビートを演奏・配置し、同期歌詞を見て歌い、声と音を整え、保存して続け、作品として書き出すこと。8月の4工程・大きな4×4 PADと案2の連動配置、SOURCE/HANDの独立を維持する。5画面への再編と各PR再承認は後の訂正で撤回されたが、vocal/comp/punch/pitch/mixer/FX/4stem/coach等の制作要件は保持する。Claudeクラウド本文は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、ローカル実装・統合・Mac利用検証を再開する。同日の追加指定に従い、未完実装はGPT-6 Astra・推論Maxが担当し、rootがPR統合・外部更新・Mac端末検証を担当する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
 
 ### 正本と参照順
 
@@ -24,7 +24,9 @@
 
 ### 現在の修正対象と再開点
 
-Windows音声のhost接続候補 [PR195](https://github.com/dj-thank/choplab-sampler/pull/195) はrootが `desktop/next/NextWindowsAudio`・`NextBackend`・`LinkedPreviewMain` と音声resourceを担当する。main `72c96173` のtake/comp/punchを合成し、非同期microphone factoryと入力buffer/route metadataをmono変換まで保持した。既定WASAPI出力、明示録音まで入力を開かない、歌mono/システム音stereo、録音中・旧route未解放の明示切替拒否、制作内容を保つ再接続を実host＋合成native endpointで確認。2026-10-01 rootのhost4/native ports13/punch4件とAndroid Preview compile成功。旧head `576af75c` の必須CI3件は成功、今回の合成headは再検証する。同revisionのWindows package/native経路・実音・長時間・Humanは観測まで未確認。rollbackは本PRのrevert。
+ミキサー/FXの本番候補はrootが統合を担当。schema13、track/bank/stem/vocal/guide・masterのgain/pan/mute/solo/metersとEQ/filter/comp/delay/reverb、16/24bit・float stems ZIP、tailを同一graphで接続する。候補 `76ff87f7` でMacの本番host15・Presenter79/controller3・schema/archive2件とAndroid Preview compile成功。日英wide/compact文字2倍→mix変更1UndoRedo→meter→16/24bit WAV/stems ZIP→archive/autosave再開で原音bytesを保持。FIRの係数・加算順・PCM bitを保つ参照削減 `ae029886` を合成。2026-10-01 05:03–05:05 JST、M1/macOS27/JDK21.0.12.1・48k/block192の同一80reader/17FX・warm/measure各1万blockでp99 0.896→0.758ms、最大1.006→0.873ms、render割当0/PCM欠落0、PCM peak124,526,560/134,217,728 bytes・終了保持0。単発Mac補助証拠で、Pixel32voice/fade/scratch/clickの25%目標・10分実音受入は未確認。最新headのWindows/Linux CIで既存DetachedEnginePort試験の終了時close漏れを検出しfixtureを修正。共有予算の拒否と既存出力保全を弱めず、rootのJVM全206件で再検証成功。同headのWindows package CIは成功、Linux UI212件中ガイドのpointer試験1件でsemantic scrollの整数途中到着を完了扱いする不具合を検出。subpixel保持を再現する試験を加え、実frame-clock/再構成完了まで待つ限定修正で日英wide/compact通し2件成功。48px・clip・固定停止・Press前後center完全一致の判定は維持。main `0bd41924` のSOURCE解析・WASAPIを合成し、rootでmix/解析/punch/Windows音声host11・Presenter79/関連controller7・Stream/export16件とAndroid Preview compile成功。後続practiceの全体zero検査で旧stream fixtureの共有PCM owner未closeを順序固定で再現し、終了時closeへ修正（同JVM17件成功、zero判定維持）。修正headの必須CI後にVOCAL依存から順に統合し、実音・DEVICE/HUMANは別判定。rollbackはミキサー候補のrevert。
+ミキサーの通しで検出したBANK間の配置routingを `41661c3c` で修正。STEP/PAD/Fill/演奏録音/NOTE REPEATはPAD所有BANKへ配置し、新規routeとclipを1Undoにする。PAD pan焼込み `8f33b5d2` と合成し、PAD+.8/BANK−.8でも演奏の順次panを維持する。合法な長いBANK/track名と配置先表示も保持。2026-10-01 Macの新実PCM/24bit/原音/1Undo/archive再開host3・STEP3/mix2/repeat1、core11・UI109件（Presenter85/配置23/STEP panel1）とAndroid Preview compile成功。effect拒否時に旧文書を保持する契約を弱めず、既存試験の録音前commandと安全Stop後回復を対象時点に限定した。main `f7912879` のNOTE REPEAT統合と合成済み。head `60d9c382` の[run 36786677169](https://github.com/dj-thank/choplab-sampler/actions/runs/36786677169)はLinux verify・history成功、Windows desktop379件中1件で既存 `StepPatternHostIntegrationTest` が新BANK routeをnullのままと期待して失敗した（STEP Flow3件とは別class）。Linux verifyはこのdesktop hostを対象に含めない。期待を所有BANK・中立track・全8clipの一致へ更新し、全BANKに異なる名前/色/役割を与えて他BANKと既存trackの保持を検査する。1Undo/Redo・24bit・原音bytes・archive再開の判定は維持。Macで実STEP host1件（日英wide/phone文字2倍の4通し）・STEP Flow3・BANK route3・MixerHost2の計9件成功。修正headのWindowsを含む必須CIは待ち。
+
 
 以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 

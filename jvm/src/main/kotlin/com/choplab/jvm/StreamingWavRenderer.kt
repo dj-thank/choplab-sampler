@@ -20,8 +20,8 @@ object StreamingWavRenderer {
         cancelled: () -> Boolean = { false },
         prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()) { "Paged PCM needs worker preparation" }; render() },
     ): StreamingRenderStats {
-        require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..480_000 && blockFrames in 1..65_536)
-        val buffers = kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L + 2048) }
+        require(frames.toLong() in 1..ProjectLimits.MAX_TIMELINE_FRAMES && tailFrames in 0..MixerProgram.MAX_TAIL_FRAMES && blockFrames in 1..65_536)
+        val buffers = kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L + 2048 + MixerDsp.PCM_BYTES) }
         try {
         val engine = EngineCore(program, EngineConfig(controlCapacity = 4, eventCapacity = 8, outputMode = EngineOutputMode.EXPORT))
         try {

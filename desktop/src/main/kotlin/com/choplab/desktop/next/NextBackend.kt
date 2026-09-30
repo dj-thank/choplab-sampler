@@ -78,6 +78,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
 
     suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
         shared.renderVocalComp(project, draft, name)
+
     fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
                             memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory) = shared.createFourStemWorker(factory, memoryProbe)
 
@@ -141,7 +142,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                         }
                     }
                     HostFileServices(named,
-                    FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) }, decoder = decoder) }
+                    FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve), FileStemExportPort(compiler, files::resolve)) }, decoder = decoder) }
                 catch (failure: Throwable) { try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }; throw failure }
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"),
                 microphone = microphone ?: { windows?.openMicrophone() ?: if (windows == null) JavaSoundMicInput.open() else null }) }

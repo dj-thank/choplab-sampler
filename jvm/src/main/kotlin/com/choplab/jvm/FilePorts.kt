@@ -177,16 +177,17 @@ class WavExportPort(private val compiler: ProgramCompiler, private val resolve: 
     override suspend fun export(project: Project, target: PlaybackTarget, request: ExportRequest): ExportReceipt = withContext(Dispatchers.Default) {
         val program = compiler.compile(project, target, 0)
         try {
+        val tail = if (request.tailMode == ExportTailMode.INCLUDE_GRAPH_TAIL) maxOf(request.tailFrames, program.mixer.tailFrames) else request.tailFrames
         coroutineContext.ensureActive()
         withContext(Dispatchers.IO) {
             val context = coroutineContext
             atomicOutput(resolve(request.location), { !context[kotlinx.coroutines.Job]!!.isActive }) { output ->
-                StreamingWavRenderer.render(program, output, request.frames, request.tailFrames, request.bits, request.seed,
+                StreamingWavRenderer.render(program, output, request.frames, tail, request.bits, request.seed,
                     cancelled = { !context[kotlinx.coroutines.Job]!!.isActive },
                     prepared = { windows, render -> kotlinx.coroutines.runBlocking(context) { compiler.prepared(windows, render) } })
             }
         }
-        ExportReceipt(request.frames.toLong() + request.tailFrames, 48_000, 2, request.bits)
+        ExportReceipt(request.frames.toLong() + tail, 48_000, 2, request.bits)
         } finally { program.releasePreparation() }
     }
 }
@@ -202,11 +203,12 @@ private class CancellableInput(input: InputStream, private val context: Coroutin
  * A host must replace this port when attaching its output driver; it must not share this EngineCore.
  */
 class DetachedEnginePort(private val compiler: ProgramCompiler) : EnginePort, Closeable {
-    private val engine = EngineCore()
+    private val memory = kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(MixerDsp.PCM_BYTES + 2048) }
+    private val engine = try { EngineCore() } catch (failure: Throwable) { memory.close(); throw failure }
     private val snapshot = EngineSnapshot()
     private val event = MutableEngineEvent()
     private val scratch = FloatArray(2)
-    override fun close() { engine.close() }
+    override fun close() { engine.close(); memory.close() }
     override suspend fun prepare(project: Project, patternId: String, revision: Long): EngineProgram = compiler.compile(project, patternId, revision)
     override suspend fun prepare(project: Project, target: PlaybackTarget, revision: Long): EngineProgram = compiler.compile(project, target, revision)
     override suspend fun apply(command: EngineCommand): Boolean {

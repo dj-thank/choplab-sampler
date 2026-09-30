@@ -102,6 +102,26 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
             requestPage(index)
             return 0f
         }
+        remember(index, page, cursor)
+        return page.samples[(frame and pageMask) * 2 + channel]
+    }
+
+    /** Fast path only when the complete FIR window lies in the same page. A miss falls back to
+     * sample(), which preserves requests/miss counts and whole-frame stereo silence. */
+    internal fun span(firstFrame: Int, count: Int, cursor: PcmReadCursor): FloatArray? {
+        val index = firstFrame ushr pageShift
+        if (firstFrame < 0 || count <= 0 || firstFrame > frameCount - count ||
+            ((firstFrame + count - 1) ushr pageShift) != index) return null
+        val cached = if (cursor.cache === this && cursor.page == index) cursor.samples else null
+        if (cached != null) { cursor.spanOffset = (firstFrame and pageMask) * 2; return cached }
+        if (closed || failed) return null
+        val page = entries[index].page ?: return null
+        remember(index, page, cursor)
+        cursor.spanOffset = (firstFrame and pageMask) * 2
+        return page.samples
+    }
+
+    private fun remember(index: Int, page: Page, cursor: PcmReadCursor?) {
         if (cursor != null) { cursor.cache = this; cursor.page = index; cursor.samples = page.samples }
         page.accessed = true
         if (page.hinted.load() == 0 && page.hinted.compareAndSet(0, 1)) {
@@ -109,7 +129,6 @@ class PagedPcm(val frameCount: Int, val pageFrames: Int = PAGE_FRAMES,
             requestPage(index + 1); requestPage(index - 1)
             requestPage(index + 2); requestPage(index - 2)
         }
-        return page.samples[(frame and pageMask) * 2 + channel]
     }
 
     /** One worker consumes page numbers, then calls [publish] or [fail]. No render-side callback. */

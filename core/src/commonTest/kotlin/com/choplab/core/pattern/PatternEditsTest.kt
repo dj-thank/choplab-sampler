@@ -133,6 +133,25 @@ class PatternEditsTest {
         assertTrue(base.clips.isEmpty()); assertEquals(2, base.assets.size)
     }
 
+    @Test fun newBankRouteKeepsLongLegalLabelsAndJoinsItsClipsInOneUndo() {
+        val base = project().let { p -> p.copy(
+            banks = p.banks.map { if (it.id == 1) it.copy(name = "B".repeat(48)) else it }.frozen(),
+            pads = p.pads.map { if (it.id == 16) p.pads[0].copy(id = 16) else it }.frozen(),
+            tracks = frozenListOf(Track("legacy", "Earlier beat", TrackKind.BANK)),
+            patterns = frozenListOf(Pattern("p", notes = frozenListOf(Note(0, 16))))) }
+        val plan = PatternPlacement.plan(base, listOf(SongSection("p")), 0)
+        var serial = 0
+        val intent = PatternPlacement.intent(base, plan, plan.renders.associateWith { rendered(it, base) },
+            { "id-${++serial}" }, "P".repeat(80))
+        val session = EditSession(base)
+        val edit = session.plan(intent); edit.effects.indices.forEach { session.acknowledge(edit, it) }; session.commit(edit)
+        val route = assertNotNull(session.project.banks[1].trackId)
+        assertNotEquals("legacy", route); assertEquals(route, session.project.clips.single().trackId)
+        assertEquals(80, session.project.tracks.last().name.length); assertEquals(1, session.undoCount)
+        val undo = assertNotNull(session.planUndo()); undo.effects.indices.forEach { session.acknowledge(undo, it) }; session.commit(undo)
+        assertEquals(base, session.project)
+    }
+
     private fun project(tempo: Tempo = Tempo()): Project {
         val assets = (0..1).map { Asset((it + 1).toString().padStart(64, '0'), "wav", 38444, 48_000, 2, 4800, "sound$it") }.frozen()
         return Project(assets = assets, pads = (0..127).map { id -> if (id < 2) Pad(id, assets[id].hash, FrameRange(0, 4800), releaseFrames = 96) else Pad(id) }.frozen(), tempo = tempo)

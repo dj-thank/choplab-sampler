@@ -225,6 +225,12 @@ class NextSession private constructor(
         }
         override suspend fun chooseOpen(): Location? = pickers.pick(PickerKind.PROJECT)?.let(documents::opened)
         override suspend fun chooseSave(): Location? = pickers.pick(PickerKind.SAVE_PROJECT, suggestedName("choplab"))?.let(documents::created)
+        override val stemsAvailable get() = backend.stemsAvailable
+        override fun readMixer(target: com.choplab.engine.MixerSnapshot) = backend.engine.status.value.phase == DriverPhase.ATTACHED && backend.engine.copyMixerReadout(target)
+        override suspend fun chooseStems(frames: Long): com.choplab.core.StemExportRequest? {
+            val uri = pickers.pick(PickerKind.EXPORT_STEMS, suggestedName("zip")) ?: return null
+            return com.choplab.core.StemExportRequest(documents.created(uri), Math.toIntExact(frames))
+        }
         override suspend fun chooseExport(frames: Long): ExportRequest? {
             val uri = pickers.pick(PickerKind.EXPORT_WAV, suggestedName("wav")) ?: return null
             return ExportRequest(documents.created(uri), Math.toIntExact(frames), bits = 24)

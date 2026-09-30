@@ -11,7 +11,10 @@ import kotlin.test.*
 
 /** The global near-full cache and its actual worker stay alive throughout this render measurement. */
 class GlobalPcmRealtimeTest {
-    @Test fun fullLongCachesAndEightyReadersKeepRenderAllocationZeroWithinOne128MiBBudget() = runBlocking {
+    @Test fun fullLongCachesAndEightyReadersKeepRenderAllocationZeroWithinOne128MiBBudget() = measure(false)
+    @Test fun fullMixerFxAndEightyReadersKeepRenderAllocationZeroWithinOne128MiBBudget() = measure(true)
+
+    private fun measure(effects: Boolean): Unit = runBlocking {
         val directory = Files.createTempDirectory("pcm-global-realtime-")
         val memory = PcmMemoryBudget()
         val decoder = GlobalPcmBudgetTest.SyntheticDecoder()
@@ -26,18 +29,25 @@ class GlobalPcmRealtimeTest {
                 store.publish(asset, ByteArrayInputStream(bytes))
                 val lease = pcm.acquire(asset).also(leases::add)
                 pcm.prefetch(lease.pcm, 0, 512 * PagedPcm.PAGE_FRAMES)
-                pcm.prefetch(lease.pcm, late - 16_384, late + 24_576)
+                pcm.prefetch(lease.pcm, late - 16_384, late + if (effects) 212_992 else 24_576)
                 assertEquals(512, lease.pcm.pages!!.statistics().loadedPages)
             }
             // A failed new decode cannot silence/replace any of the seven active sources.
             assertFailsWith<PcmMemoryLimit> { memory.reserve(16L * 1024 * 1024) }
             assertTrue(leases.none { it.pcm.evicted })
             val pads = (0 until 30).map { Pad(it, leases[it % 7].pcm, late, late + 8_192, mode = PlayMode.LOOP,
-                attackFrames = 0, loopCrossfadeFrames = 0) }
+                attackFrames = 0, loopCrossfadeFrames = 0, mixBus = it % MixerProgram.MAX_BUSES) }
             val arrangement = Arrangement((0 until 32).map {
-                ArrangementClip("clip-$it", leases[it % 7].pcm, 0, late, late + 8_192, trackIndex = it % 16)
+                ArrangementClip("clip-$it", leases[it % 7].pcm, 0, late, late + if (effects) 200_000 else 8_192, trackIndex = it % 16)
             })
-            val engine = EngineCore(EngineProgram(pads, arrangement = arrangement), EngineConfig(controlCapacity = 128, eventCapacity = 2))
+            val mixer = if (!effects) MixerProgram.BYPASS else MixerProgram(List(MixerProgram.MAX_BUSES) {
+                TrackFx(MixInsert(MixEq(18f, -18f, 18f), MixFilter(MixFilterMode.HIGH_PASS, 20f),
+                    MixCompressor(true, -60f, 20f, .1f, 2000f, 18f)), 1f, 1f)
+            }, MixSettings(MixDelay(true, 96_000, .6f, 2f), MixReverb(true, 3f, .95f, 2f),
+                MixInsert(MixEq(18f, -18f, 18f), MixFilter(MixFilterMode.LOW_PASS, 20_000f),
+                    MixCompressor(true, -60f, 20f, .1f, 2000f, 18f)), 8f))
+            memory.reserve(MixerDsp.PCM_BYTES).use {
+            val engine = EngineCore(EngineProgram(pads, arrangement = arrangement, mixer = mixer), EngineConfig(controlCapacity = 128, eventCapacity = 2))
             try {
                 memory.reserve(8192).use {
                     var id = 0L
@@ -60,13 +70,16 @@ class GlobalPcmRealtimeTest {
                     engine.render(output) // Complete the initial 16 fade voices before the first new burst.
                     val perBlock = 22
                     fun command(frame: Long, order: Long, block: Int, index: Int): EngineCommand = when (index) {
-                        0 -> EngineCommand.Seek(frame, order, 0)
+                        // Full-FX passes keep >2 seconds of ring history; a seek every block would
+                        // measure permanently empty delay/reverb rings, not the actual worst graph.
+                        0 -> if (!effects || block % 1000 == 0) EngineCommand.Seek(frame, order, 0)
+                            else EngineCommand.SetSongMonitorGain(frame, order, 1f)
                         1 -> EngineCommand.SeekOriginalSource(frame, order, late + (block * 193L) % 8_192)
                         2 -> EngineCommand.SetOriginalPitch(frame, order, if (block % 2 == 0) 24f else 17f)
                         3 -> EngineCommand.ScratchOriginalPosition(frame, order, late + if (block % 2 == 0) 7_499.0 else 500.0, 192)
                         4 -> EngineCommand.SetHandMonitorGain(frame, order, if (block % 3 == 0) .5f else 1f)
                         5 -> EngineCommand.ScratchOriginalCut(frame, order, if (block % 5 == 0) 0f else 1f)
-                        else -> EngineCommand.Trigger(frame, order, 0)
+                        else -> EngineCommand.Trigger(frame, order, (block + index) % 30)
                     }
                     repeat(10_000) { block ->
                         repeat(perBlock) { engine.controls.offer(command(engine.frame, id++, block, it)) }
@@ -97,6 +110,7 @@ class GlobalPcmRealtimeTest {
                     val stats = memory.statistics()
                     println("GLOBAL_PCM_MAX_MIX JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=10000 " +
                         "seven400sCaches=7x512pages arrangement=32 primary=30PAD+1HAND+1click fade=16 SOURCE=1 maxPcmReaders=80 " +
+                        "fullMixerFx=$effects fxBuses=${if (effects) 17 else 0} mixerPcmBytes=${MixerDsp.PCM_BYTES} " +
                         "sourcePitch=24/17st handSpeed=+/-8 lateSourceFrame=$late renderAllocatedBytes=$allocated firstAllocatingBlock=$firstAllocatingBlock " +
                         "p99ns=${times[9899]} maxNs=${times.last()} p99BlockFraction=${times[9899] / 4_000_000.0} " +
                         "globalPcmPeak=${stats.peakBytes} globalPcmLimit=${stats.limitBytes} underrunFrames=${engine.pcmUnderrunFrames}; synthetic JVM, no device claim")
@@ -107,6 +121,13 @@ class GlobalPcmRealtimeTest {
                     assertEquals(32, engine.activeClipCount)
                     assertTrue(engine.originalPlaying)
                     assertTrue(stats.peakBytes <= stats.limitBytes)
+                    if (effects) {
+                        val meter = MixerSnapshot()
+                        assertTrue(engine.mixerReadout.copyInto(meter))
+                        assertTrue(meter.peak[MixerProgram.DELAY_RETURN * 2] > 0f)
+                        assertTrue(meter.peak[MixerProgram.REVERB_RETURN * 2] > 0f)
+                        assertTrue((0 until MixerProgram.MAX_BUSES).all { meter.peak[it * 2] > 0f })
+                    }
                     engine.controls.offer(EngineCommand.StopAll(engine.frame, id))
                     engine.render(stopOutput)
                     assertEquals(0, engine.activeVoiceCount)
@@ -115,6 +136,7 @@ class GlobalPcmRealtimeTest {
                     assertTrue(stopOutput.drop(EngineCore.STOP_TAIL_FRAMES * 2).all { it == 0f })
                 }
             } finally { engine.close() }
+            }
         } finally {
             leases.forEach { it.close() }; pcm.close()
             assertEquals(0, memory.statistics().usedBytes)

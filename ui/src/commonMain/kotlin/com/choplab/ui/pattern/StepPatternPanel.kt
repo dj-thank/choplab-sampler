@@ -32,8 +32,14 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
     val validStart = firstBar.toIntOrNull()?.let { it in 1..26_041 } == true
     val validRepeat = repeats.toIntOrNull()?.let { it in 1..128 } == true
     val newName = stringResource(Res.string.pattern_editor_default_name, state.project.patterns.size + 1)
-    val trackName = state.project.tracks.firstOrNull { it.kind == com.choplab.core.model.TrackKind.BANK }?.name
-        ?: stringResource(Res.string.pattern_editor_track)
+    val trackName = stringResource(Res.string.pattern_editor_track)
+    val destinations = state.sequence.flatMap { section ->
+        state.project.patterns.first { it.id == section.patternId }.notes.filter { it.velocity > 0f }.map { it.padId / 16 }
+    }.distinct().sorted().map { id ->
+        val bank = state.project.banks[id]
+        bank.trackId?.let { route -> state.project.tracks.first { it.id == route }.name }
+            ?: com.choplab.core.pattern.PatternPlacement.routeName(bank, trackName)
+    }.joinToString(" / ")
     DisposableEffect(controller) { onDispose { controller.close() } }
     Surface(modifier.fillMaxWidth().testTag("pattern-editor")) {
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -172,7 +178,7 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
             OutlinedTextField(firstBar, { input -> firstBar = input.take(5); input.toIntOrNull()?.takeIf { it in 1..26_041 }?.let { dispatch(PatternAction.FirstBar(it)) } },
                 enabled = state.editable, isError = !validStart, label = { Text(stringResource(Res.string.pattern_editor_start)) }, modifier = Modifier.fillMaxWidth().testTag("pattern-start"))
             val bars = state.sequence.sumOf { section -> state.project.patterns.first { it.id == section.patternId }.bars * section.repeats }
-            if (state.sequence.isNotEmpty()) Text(stringResource(Res.string.pattern_editor_destination, trackName, state.firstBar, state.firstBar + bars),
+            if (state.sequence.isNotEmpty()) Text(stringResource(Res.string.pattern_editor_destination, destinations, state.firstBar, state.firstBar + bars),
                 Modifier.testTag("pattern-queue-range"))
             Button({ dispatch(PatternAction.Place(trackName)) }, enabled = state.editable && !state.dirty && state.sequence.isNotEmpty() && validStart,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pattern-place")) { Text(stringResource(Res.string.pattern_editor_place)) }

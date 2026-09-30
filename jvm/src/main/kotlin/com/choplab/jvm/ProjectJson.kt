@@ -28,7 +28,7 @@ object ProjectJson {
         "assets" to arr(p.assets.map { a -> obj("hash" to str(a.hash), "extension" to str(a.extension), "byteCount" to num(a.byteCount),
             "sampleRate" to num(a.sampleRate), "channels" to num(a.channels), "frames" to num(a.frames), "name" to str(a.name),
             "role" to str(a.role.name), "required" to bool(a.required), "derivedFrom" to nullable(a.derivedFrom)) }),
-        "banks" to arr(p.banks.map { b -> obj("id" to num(b.id), "name" to str(b.name), "color" to num(b.color), "role" to str(b.role)) }),
+        "banks" to arr(p.banks.map { b -> obj("id" to num(b.id), "name" to str(b.name), "color" to num(b.color), "role" to str(b.role), "trackId" to nullable(b.trackId)) }),
         "pads" to arr(p.pads.map { a -> obj("id" to num(a.id), "assetHash" to nullable(a.assetHash), "range" to (a.range?.let(::range) ?: JsonNull),
             "name" to str(a.name), "mode" to str(a.mode.name), "pitchSemitones" to num(a.pitchSemitones), "gain" to num(a.gain), "pan" to num(a.pan),
             "reverse" to bool(a.reverse), "chokeGroup" to num(a.chokeGroup), "attackFrames" to num(a.attackFrames),
@@ -39,7 +39,8 @@ object ProjectJson {
             "notes" to arr(v.notes.map { n -> obj("tick" to num(n.tick), "padId" to num(n.padId), "velocity" to num(n.velocity)) })) }),
         "song" to arr(p.song.map { v -> obj("patternId" to str(v.patternId), "repeats" to num(v.repeats)) }),
         "tracks" to arr(p.tracks.map { v -> obj("id" to str(v.id), "name" to str(v.name), "kind" to str(v.kind.name), "gain" to num(v.gain),
-            "pan" to num(v.pan), "mute" to bool(v.mute), "solo" to bool(v.solo)) }),
+            "pan" to num(v.pan), "mute" to bool(v.mute), "solo" to bool(v.solo), "fx" to trackFxJson(v.fx)) }),
+        "mix" to mixSettingsJson(p.mix),
         "clips" to arr(p.clips.map { v -> obj("id" to str(v.id), "trackId" to str(v.trackId), "assetHash" to str(v.assetHash), "range" to range(v.range), "startTick" to num(v.startTick), "timelineStartFrame" to (v.timelineStartFrame?.let(::num) ?: JsonNull), "gain" to num(v.gain), "pan" to num(v.pan)) }),
         "lyrics" to arr(p.lyrics.map { v -> obj("id" to str(v.id), "text" to str(v.text), "startTick" to num(v.startTick), "endTick" to num(v.endTick),
             "words" to arr(v.words.map { w -> obj("text" to str(w.text), "startTick" to num(w.startTick), "endTick" to num(w.endTick), "timingOrigin" to str(w.timingOrigin.name)) })) }),
@@ -57,7 +58,8 @@ object ProjectJson {
         require(schema in 10..ProjectLimits.SCHEMA) { "Unsupported project schema" }
         p.fields("schemaVersion", "id", "title", "tempo", "assets", "banks", "pads", "patterns", "song", "tracks", "clips", "lyrics", "takes", "source",
             *(if (schema >= 11) arrayOf("lyricStructure") else emptyArray()),
-            *(if (schema >= 12) arrayOf("vocalComps") else emptyArray()))
+            *(if (schema >= 12) arrayOf("vocalComps") else emptyArray()),
+            *(if (schema >= 13) arrayOf("mix") else emptyArray()))
         val tempo = p.getValue("tempo").obj().fields("milliBpm", "swingPermille")
         return Project(
             id = p.string("id"), title = p.string("title"), tempo = Tempo(tempo.int("milliBpm"), tempo.int("swingPermille")),
@@ -66,7 +68,11 @@ object ProjectJson {
                 Asset(a.string("hash"), a.string("extension"), a.long("byteCount"), a.int("sampleRate"), a.int("channels"), a.long("frames"),
                     a.string("name"), AssetRole.valueOf(a.string("role")), a.boolean("required"), a.optionalString("derivedFrom"))
             },
-            banks = p.list("banks", 8) { e -> e.obj().fields("id", "name", "color", "role").let { Bank(it.int("id"), it.string("name"), it.int("color"), it.string("role")) } },
+            banks = p.list("banks", 8) { e ->
+                e.obj().fields("id", "name", "color", "role", *(if (schema >= 13) arrayOf("trackId") else emptyArray())).let {
+                    Bank(it.int("id"), it.string("name"), it.int("color"), it.string("role"), if (schema >= 13) it.optionalString("trackId") else null)
+                }
+            },
             pads = p.list("pads", 128) { e ->
                 val a = e.obj().fields("id", "assetHash", "range", "name", "mode", "pitchSemitones", "gain", "pan", "reverse", "chokeGroup", "attackFrames",
                     "releaseFrames", "loopCrossfadeFrames", "decayFrames", "sustainLevel", optional = setOf("tone"))
@@ -81,9 +87,11 @@ object ProjectJson {
             },
             song = p.list("song", 1024) { e -> e.obj().fields("patternId", "repeats").let { SongSection(it.string("patternId"), it.int("repeats")) } },
             tracks = p.list("tracks", 64) { e ->
-                val a = e.obj().fields("id", "name", "kind", "gain", "pan", "mute", "solo")
-                Track(a.string("id"), a.string("name"), TrackKind.valueOf(a.string("kind")), a.float("gain"), a.float("pan"), a.boolean("mute"), a.boolean("solo"))
+                val a = e.obj().fields("id", "name", "kind", "gain", "pan", "mute", "solo", *(if (schema >= 13) arrayOf("fx") else emptyArray()))
+                Track(a.string("id"), a.string("name"), TrackKind.valueOf(a.string("kind")), a.float("gain"), a.float("pan"), a.boolean("mute"), a.boolean("solo"),
+                    if (schema >= 13) readTrackFx(a.getValue("fx")) else com.choplab.engine.TrackFx())
             },
+            mix = if (schema >= 13) readMixSettings(p.getValue("mix")) else com.choplab.engine.MixSettings(),
             clips = p.list("clips", 4096) { e ->
                 val a = e.obj()
                 val required = setOf("id", "trackId", "assetHash", "range", "startTick")

@@ -106,7 +106,7 @@ internal class ArrangementMixer {
         return true
     }
 
-    fun render(sequenceFrame: Long): Boolean {
+    fun render(sequenceFrame: Long, mixer: MixerDsp? = null): Boolean {
         pcmMiss = false
         outputLeft = 0.0
         outputRight = 0.0
@@ -134,7 +134,11 @@ internal class ArrangementMixer {
             val missing = pcmCursor.missing
             pcmCursor.clear()
             if (missing) pcmMiss = true
-            else { outputLeft += left * clip.leftGain.toDouble(); outputRight += right * clip.rightGain.toDouble() }
+            else {
+                val l = left * clip.leftGain.toDouble(); val r = right * clip.rightGain.toDouble()
+                outputLeft += l; outputRight += r
+                mixer?.add(clip.trackIndex, l, r)
+            }
         }
         return true
     }

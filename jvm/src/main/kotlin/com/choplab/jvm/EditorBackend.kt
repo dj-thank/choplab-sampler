@@ -18,7 +18,7 @@ import kotlin.math.abs
 /** Import, project and export ports a host builds on the backend's asset store and compiler.
  * Paths or content URIs stay host-private behind opaque [Location] handles.
  */
-class HostFileServices(val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort)
+class HostFileServices(val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort, val stems: StemExportPort? = null)
 
 /**
  * UI-independent composition root shared by the desktop and Android editor hosts: one [Studio], one
@@ -32,6 +32,7 @@ class EditorBackend private constructor(
     private val pcm: WavPcmPort,
     private val scope: CoroutineScope,
     val audition: SourceAuditionController,
+    val stemsAvailable: Boolean,
     private val autosave: AutosaveStore,
     private val decoder: OriginalAudioDecoder?,
 ) {
@@ -88,6 +89,7 @@ class EditorBackend private constructor(
     suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
         try { vocalCompRenderer.render(project, draft, name) }
         catch (_: PcmMemoryLimit) { throw com.choplab.core.vocal.VocalEditException(com.choplab.core.vocal.VocalProblem.LIMIT) }
+
     /** The worker borrows the shared PCM; closing it never closes playback's cache or decoder. */
     fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
                             memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory): com.choplab.core.separation.FourStemPort =
@@ -100,15 +102,16 @@ class EditorBackend private constructor(
         analyseSourceMusic(pcm, asset, range)
 
     /**
-     * Renders [pad] from [source] with its pitch, reverse and tone, as it sounds from its PAD, into a 48 kHz float WAV in
-     * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
+     * Renders [pad] from [source] with its pitch, reverse, tone and own pan into a 48 kHz float WAV in the store.
+     * Placement retains the PAD gain and applies the destination BANK mix once; neither is baked here.
+     * The same PAD renders to the same bytes, so placing it again adds nothing.
      */
     suspend fun renderPad(pad: Pad, source: Asset): Asset = withContext(Dispatchers.Default) {
         pcm.acquire(source).use { lease ->
             val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
             pcm.memory.reserve(PadRender.frames(prepared) * 8L + 256 * 1024).use {
                 val context = currentCoroutineContext()
-                val samples = PadRender.render(prepared) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
+                val samples = PadRender.render(prepared, bakePan = true) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
                 val marks = buildList {
                     if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
                     if (pad.reverse) add("rev")
@@ -210,9 +213,9 @@ class EditorBackend private constructor(
                 output = engine(compiler)
                 val services = files(assets, compiler)
                 val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
-                val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output),
+                val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output, services.stems),
                     recovered?.project ?: Project(), recovered?.revision ?: 0)
-                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), autosave, decoder)
+                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), services.stems != null, autosave, decoder)
             } catch (failure: Throwable) {
                 scope?.cancel()
                 try { output?.close() } finally { pcm.close(); decoder?.close() }

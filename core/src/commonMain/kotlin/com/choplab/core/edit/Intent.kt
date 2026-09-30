@@ -9,6 +9,10 @@ sealed interface Intent {
     data class Rename(val title: String) : Intent
     data class SetTempo(val tempo: Tempo, val gesture: String? = null) : Intent
     data class SetBank(val bank: Bank) : Intent
+    data class SetTrackMix(val track: Track) : Intent
+    /** First BANK mix creates its explicit route and track together; later edits retain that identity. */
+    data class SetBankMix(val bankId: Int, val track: Track) : Intent
+    data class SetMasterMix(val settings: com.choplab.engine.MixSettings) : Intent
     data class ImportAsset(val asset: Asset) : Intent
     data class SetSourceRange(val range: FrameRange, val gesture: String? = null) : Intent
     data class SetSourcePitch(val semitones: Double, val gesture: String? = null) : Intent
@@ -49,7 +53,9 @@ sealed interface Intent {
     /** The song's tracks, clips and takes; [assets] are new sounds its clips bring in, such as a rendered PAD. */
     data class SetArrangement(val tracks: FrozenList<Track>, val clips: FrozenList<Clip>, val takes: FrozenList<Take>,
                               val assets: FrozenList<Asset> = frozenListOf(),
-                              val vocalComps: FrozenList<VocalComp>? = null) : Intent
+                              val vocalComps: FrozenList<VocalComp>? = null,
+                              /** A placement can establish its BANK routes atomically with its clips. */
+                              val banks: FrozenList<Bank>? = null) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
     data class SetStructuredLyrics(val lines: FrozenList<LyricLine>, val structure: LyricStructure) : Intent
     /** A confirmed guide proposal joins its rendered sounds and lyric alignment in one Undo. */
@@ -71,6 +77,27 @@ object Reducer {
             is Intent.Rename -> before.copy(title = intent.title)
             is Intent.SetTempo -> before.copy(tempo = intent.tempo)
             is Intent.SetBank -> before.copy(banks = before.banks.map { if (it.id == intent.bank.id) intent.bank else it }.frozen())
+            is Intent.SetTrackMix -> {
+                val current = requireNotNull(before.tracks.firstOrNull { it.id == intent.track.id })
+                require(current.kind == intent.track.kind && current.name == intent.track.name) { "Mixing cannot change track identity" }
+                before.copy(tracks = before.tracks.map { if (it.id == current.id) intent.track else it }.frozen())
+            }
+            is Intent.SetBankMix -> {
+                require(intent.bankId in before.banks.indices)
+                val bank = before.banks[intent.bankId]
+                require(intent.track.kind == TrackKind.BANK)
+                val tracks = if (bank.trackId == null) {
+                    require(before.tracks.none { it.id == intent.track.id }) { "A new BANK route cannot replace another track" }
+                    before.tracks + intent.track
+                } else {
+                    val current = before.tracks.first { it.id == bank.trackId }
+                    require(current.id == intent.track.id && current.name == intent.track.name) { "Mixing cannot change BANK identity" }
+                    before.tracks.map { if (it.id == current.id) intent.track else it }
+                }
+                before.copy(banks = before.banks.map { if (it.id == bank.id) it.copy(trackId = intent.track.id) else it }.frozen(),
+                    tracks = tracks.frozen())
+            }
+            is Intent.SetMasterMix -> before.copy(mix = intent.settings)
             is Intent.ImportAsset -> before.copy(
                 assets = mergeAssets(before.assets, listOf(intent.asset)),
                 source = Source(intent.asset.hash, FrameRange(0, intent.asset.frames)),
@@ -178,8 +205,16 @@ object Reducer {
                         if (next == null || clip.range.end > next.frames) clip else clip.copy(assetHash = next.hash)
                     }.frozen())
             }
-            is Intent.SetArrangement -> before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
-                tracks = intent.tracks, clips = intent.clips, takes = intent.takes, vocalComps = intent.vocalComps ?: before.vocalComps)
+            is Intent.SetArrangement -> {
+                intent.banks?.let { banks ->
+                    require(banks.size == before.banks.size && banks.indices.all { index ->
+                        banks[index].copy(trackId = before.banks[index].trackId) == before.banks[index]
+                    }) { "Arrangement placement can only establish BANK routes" }
+                }
+                before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
+                    tracks = intent.tracks, clips = intent.clips, takes = intent.takes,
+                    vocalComps = intent.vocalComps ?: before.vocalComps, banks = intent.banks ?: before.banks)
+            }
             is Intent.SetLyrics -> before.copy(lyrics = intent.lines, lyricStructure = before.lyricStructure?.retainFor(intent.lines))
             is Intent.SetStructuredLyrics -> before.copy(lyrics = intent.lines, lyricStructure = intent.structure)
             is Intent.ApplyVocalGuide -> before.copy(assets = mergeAssets(before.assets, intent.assets), tracks = intent.tracks,
@@ -202,7 +237,12 @@ object Reducer {
         if (before == after) return Reduction(before, Mutation.NONE, frozenListOf())
         // Tapping lyric timing during playback edits the document without interrupting its voices.
         if (before.copy(lyrics = after.lyrics, lyricStructure = after.lyricStructure) == after) return Reduction(after, Mutation.PROJECT, frozenListOf(), key)
-        val stopped = before.pads.indices.filter { before.pads[it] != after.pads[it] && before.pads[it].assetHash != null }.frozen()
+        val mixChanged = before.mix != after.mix || before.tracks != after.tracks ||
+            before.banks.map { it.trackId } != after.banks.map { it.trackId }
+        val stopped = before.pads.indices.filter {
+            before.pads[it].assetHash != null && (before.pads[it] != after.pads[it] ||
+                (mixChanged && (before.banks[it / 16].trackId != null || after.banks[it / 16].trackId != null)))
+        }.frozen()
         val effects = buildList {
             if (stopped.isNotEmpty()) add(Effect.StopPads(stopped))
             add(Effect.PublishProject)

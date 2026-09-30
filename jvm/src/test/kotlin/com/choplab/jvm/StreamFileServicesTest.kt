@@ -34,18 +34,24 @@ class StreamFileServicesTest {
         override fun discard(location: Location) { discarded += location.handle; outputs.remove(location.handle) }
     }
 
-    private class Setup(val documents: MemoryDocuments = MemoryDocuments(), decoder: HostDecoder? = null) {
+    private class Setup(val documents: MemoryDocuments = MemoryDocuments(), decoder: HostDecoder? = null) : AutoCloseable {
         val root: Path = Files.createTempDirectory("choplab-stream-")
         val scratch: Path = root.resolve("scratch")
         val assets = FileAssetStore(root.resolve("assets"))
-        val compiler = ProgramCompiler(WavPcmPort(assets))
+        val pcm = WavPcmPort(assets)
+        val compiler = ProgramCompiler(pcm)
         val services = StreamFileServices(documents, scratch, decoder).create(assets, compiler)
+        override fun close() { pcm.close(); root.toFile().deleteRecursively() }
     }
+
+    private val setups = mutableListOf<Setup>()
+    private fun setup(decoder: HostDecoder? = null) = Setup(decoder = decoder).also(setups::add)
+    @AfterTest fun closeSetups() { setups.forEach(Setup::close); setups.clear() }
 
     private val loop = Fixtures.wav(samples = ShortArray(4096) { (it * 37 % 2000 - 1000).toShort() })
 
     @Test fun anEarlierAppsProjectOpensThroughScratchNamedAfterThePickedFile() = runBlocking<Unit> {
-        val setup = Setup()
+        val setup = setup()
         setup.documents.inputs["old"] = legacyProjectFile("loop.wav" to loop)
         setup.documents.names["old"] = "Download/My Old Beat.choplab"
         val opened = setup.services.projects.openDocument(Location("old"))
@@ -57,7 +63,7 @@ class StreamFileServicesTest {
     }
 
     @Test fun wavImportKeepsTheNameTheUserSawAndLeavesNoScratch() = runBlocking<Unit> {
-        val setup = Setup()
+        val setup = setup()
         setup.documents.inputs["a"] = loop
         setup.documents.names["a"] = "Download/ループ:1.wav"
         val asset = setup.services.importer.import(Location("a"))
@@ -69,7 +75,7 @@ class StreamFileServicesTest {
 
     @Test fun otherFormatsGoThroughTheHostDecoderOnce() = runBlocking<Unit> {
         val calls = AtomicInteger()
-        val setup = Setup(decoder = { location, target ->
+        val setup = setup(decoder = { location, target ->
             assertEquals("song", location.handle)
             calls.incrementAndGet()
             Files.write(target, loop)
@@ -84,7 +90,7 @@ class StreamFileServicesTest {
     }
 
     @Test fun withoutADecoderOnlyWavIsAccepted() = runBlocking<Unit> {
-        val setup = Setup()
+        val setup = setup()
         setup.documents.inputs["m"] = "ID3 compressed audio".toByteArray()
         assertFailsWith<IllegalArgumentException> { setup.services.importer.import(Location("m")) }
         setup.documents.inputs["short"] = "RIFF".toByteArray()
@@ -99,7 +105,7 @@ class StreamFileServicesTest {
     }
 
     @Test fun savedProjectReachesTheHostWhole() = runBlocking<Unit> {
-        val setup = Setup()
+        val setup = setup()
         val asset = seed(setup)
         val project = Fixtures.project(asset)
         setup.services.projects.save(project, 3, Location("out"))
@@ -114,7 +120,7 @@ class StreamFileServicesTest {
     }
 
     @Test fun interruptedWriteDiscardsTheHalfWrittenDocument() = runBlocking<Unit> {
-        val setup = Setup()
+        val setup = setup()
         val asset = seed(setup)
         setup.documents.failAfterBytes = 100
         assertFailsWith<IOException> { setup.services.projects.save(Fixtures.project(asset), 1, Location("out")) }
@@ -123,8 +129,47 @@ class StreamFileServicesTest {
         assertTrue(setup.scratch.isEmptyDirectory())
     }
 
+    @Test fun stemsReachTheHostOnlyAfterRenderingAndProviderFailureDiscardsThePartialZip() = runBlocking<Unit> {
+        val setup = setup()
+        try {
+            val project = Fixtures.project(seed(setup))
+            val phases = mutableListOf<StemExportPhase>()
+            val exporter = requireNotNull(setup.services.stems)
+            val request = StemExportRequest(Location("stems"), 4096, tailMode = ExportTailMode.EXACT)
+            val receipt = exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request) { progress ->
+                if (progress.phase == StemExportPhase.COMPLETE) assertNotNull(setup.documents.outputs["stems"])
+                else assertFalse(setup.documents.outputs.containsKey("stems"))
+                phases += progress.phase
+            }
+            assertEquals(4096, receipt.frames)
+            val entries = Fixtures.unzip(requireNotNull(setup.documents.outputs["stems"])).toMap()
+            assertEquals(2, entries.size)
+            assertEquals(32, entries.getValue("stem-01.wav").inputStream().use(WavCodec::inspect).bits)
+            assertEquals(StemExportPhase.COMPLETE, phases.last())
+            assertTrue(setup.scratch.isEmptyDirectory())
+            setup.documents.failAfterBytes = 100
+            assertFailsWith<IOException> { exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request.copy(location = Location("failed"))) }
+            assertTrue("failed" in setup.documents.discarded); assertNull(setup.documents.outputs["failed"])
+            assertTrue(setup.scratch.isEmptyDirectory())
+            setup.documents.failAfterBytes = null
+            assertFailsWith<kotlinx.coroutines.CancellationException> {
+                exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request.copy(location = Location("cancelled"))) {
+                    throw kotlinx.coroutines.CancellationException("cancel before publishing")
+                }
+            }
+            assertNull(setup.documents.outputs["cancelled"]); assertTrue(setup.scratch.isEmptyDirectory())
+            val retained = setup.documents.outputs.getValue("stems")
+            PcmScratchBudget.reserve(com.choplab.core.model.ProjectLimits.MAX_TOTAL_BYTES).use {
+                assertFailsWith<IllegalArgumentException> { exporter.export(project, PlaybackTarget.Pattern("pattern-1"), request) }
+                assertContentEquals(retained, setup.documents.outputs.getValue("stems"))
+                assertTrue(setup.scratch.isEmptyDirectory())
+            }
+            assertContentEquals(loop, setup.assets.read(project.assets.single()))
+        } finally { setup.close() }
+    }
+
     @Test fun exportPublishesTheRenderedWav() = runBlocking<Unit> {
-        val setup = Setup()
+        val setup = setup()
         val project = Fixtures.project(seed(setup))
         val receipt = setup.services.exporter.export(project, PlaybackTarget.Pattern("pattern-1"), ExportRequest(Location("wav"), 4096, bits = 16))
         assertEquals(4096L, receipt.frames)
