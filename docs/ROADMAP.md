@@ -1,10 +1,10 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-09-28。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-01。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
-## 最初に読む現状とSSOT（2026-09-28照合）
+## 最初に読む現状とSSOT（2026-10-01照合）
 
-9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。Claudeクラウド本文とWindowsの原履歴全体は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、ローカル実装・統合・Mac利用検証を再開する。同日の追加指定に従い、未完実装はGPT-6 Astra・推論Maxが担当し、rootがPR統合・外部更新・Mac端末検証を担当する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
+9月24日の「Choplab UIを改善」と9月25日の「ChopLab再構築計画を実行」は元セッションに保存されたユーザー発言の抽出・レビューから、元のローカルセッション「ChopLabの作業を進める」（9月26〜27日）と「GitHub作業を統合して検証」（9月27〜28日）はローカル履歴から利用者の依頼・訂正を照合した。2026-10-01にはMacの元セッション3件・Windowsの元セッション2件の人間42発言とWindows再構築原案を直接照合した。元の意図は、自分の素材からビートを演奏・配置し、同期歌詞を見て歌い、声と音を整え、保存して続け、作品として書き出すこと。8月の4工程・大きな4×4 PADと案2の連動配置、SOURCE/HANDの独立を維持する。5画面への再編と各PR再承認は後の訂正で撤回されたが、vocal/comp/punch/pitch/mixer/FX/4stem/coach等の制作要件は保持する。Claudeクラウド本文は今回直接読んでいない。目的は**Macでも全制作機能を日常的に使い、取り込みの速度・品質・UXを改善し、Windowsの実運用状態とAndroidを含めて要件どおりに完成させること**。PR統合やテスト成功だけで完了にせず、このMacでの制作通しを含む。9月28日の追加依頼「すべて完成させてMacでも使えるように」により、ローカル実装・統合・Mac利用検証を再開する。同日の追加指定に従い、未完実装はGPT-6 Astra・推論Maxが担当し、rootがPR統合・外部更新・Mac端末検証を担当する。以前のClaudeクラウドへの移管指定は保全履歴として残し、現在の担当をrootに更新する。既存branch・データを保全し、作業は独立worktreeで進める。
 
 ### 正本と参照順
 
@@ -23,6 +23,8 @@
 開始時・大きな判断時・完了時にこの順で関係する契約を確認する。mainの文書が共有の正本、未統合branch/PRは候補、インストール済みartifactは別revisionとして扱う。新しいユーザー訂正は該当契約と本書へ反映し、古いセッション要約やZIPを新しい正本にしない。会話全文・認証情報・個人パス・端末識別子は公開しない。参照画像はDESIGNからGitHubだけで読める。
 
 ### 現在の修正対象と再開点
+
+ミキサー/FXの本番候補はrootが統合を担当。schema13、track/bank/stem/vocal/guide・masterのgain/pan/mute/solo/metersとEQ/filter/comp/delay/reverb、16/24bit・float stems ZIP、tailを同一graphで接続する。候補 `76ff87f7` でMacの本番host15・Presenter79/controller3・schema/archive2件とAndroid Preview compile成功。日英wide/compact文字2倍→mix変更1UndoRedo→meter→16/24bit WAV/stems ZIP→archive/autosave再開で原音bytesを保持。共有PCM/割当0を確認したが、全FX1万blockのp99は測定条件によって25%を超え、CPU受入は未達として性能修正を継続する。最新headの必須CI後にVOCAL依存から順に統合し、実音・DEVICE/HUMANは別判定。rollbackはミキサー候補のrevert。
 
 以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
