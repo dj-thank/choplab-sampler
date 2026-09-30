@@ -174,7 +174,7 @@ import kotlin.math.roundToLong
 }
 
 /**
- * Fills the song with the selected PAD every beat, half or quarter beat through a few bars from the bar holding [from],
+ * Fills the song with the selected PAD on the chosen straight or triplet grid from the bar holding [from],
  * the song position when it was opened; applying is one Undo.
  */
 @Composable internal fun CEPadFillDialog(state: ContinuousEditorState, pad: ContinuousPad, from: Long,
@@ -190,10 +190,12 @@ import kotlin.math.roundToLong
                 Text(stringResource(Res.string.ce_pad_fill_from, ContinuousClipEdits.barAt(from, state.tempo) + 1),
                     Modifier.testTag("ce-pad-fill-from"), fontSize = 14.sp)
                 Text(stringResource(Res.string.ce_pad_fill_spacing), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for ((grid, label) in listOf(ContinuousGrid.BEAT to Res.string.ce_fill_quarters, ContinuousGrid.HALF to Res.string.ce_fill_eighths,
-                            ContinuousGrid.QUARTER to Res.string.ce_fill_sixteenths)) {
-                        Choice(stringResource(label), spacing == grid, "ce-fill-${grid.name.lowercase()}", Modifier.weight(1f)) { spacing = grid }
+                            ContinuousGrid.QUARTER to Res.string.ce_fill_sixteenths,
+                            ContinuousGrid.EIGHTH_TRIPLET to Res.string.pattern_editor_eighth_triplet,
+                            ContinuousGrid.SIXTEENTH_TRIPLET to Res.string.pattern_editor_sixteenth_triplet)) {
+                        Choice(stringResource(label), spacing == grid, "ce-fill-${grid.name.lowercase()}", Modifier) { spacing = grid }
                     }
                 }
                 Text(stringResource(Res.string.ce_pad_fill_length), fontSize = 14.sp, fontWeight = FontWeight.Bold)

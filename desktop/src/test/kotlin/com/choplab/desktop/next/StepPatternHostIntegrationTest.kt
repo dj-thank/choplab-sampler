@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.Density
 import com.choplab.core.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.FrameRange
+import com.choplab.core.model.Note
 import com.choplab.jvm.WavCodec
 import com.choplab.ui.*
 import com.choplab.ui.pattern.PatternPhase
@@ -25,7 +26,7 @@ import kotlin.test.*
 
 /** Normal BEAT pointers -> presenter-owned factory -> real host render -> atomic edit -> WAV/archive. No devices/providers. */
 class StepPatternHostIntegrationTest {
-    @Test fun normalBeatEntryEditsRepeatsPlacesAndRestoresAtDesktopAndPhoneInBothLanguages() = runBlocking<Unit> {
+    @Test fun normalBeatEntryEditsTripletsRepeatsPlacesAndRestoresAtDesktopAndPhoneInBothLanguages() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {
             for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
@@ -70,8 +71,10 @@ class StepPatternHostIntegrationTest {
                     scene.pointer("ce-step-patterns")
                     val editor = requireNotNull(presenter.stepPatterns.value)
                     scene.setText("pattern-name", "A")
+                    scene.pointer("pattern-grid-320")
                     scene.pointer("pattern-step-0")
-                    scene.pointer("pattern-step-4")
+                    scene.pointer("pattern-step-1")
+                    scene.pointer("pattern-quantize-320")
                     scene.pointer("pattern-save")
                     until { editor.state.value.phase == PatternPhase.EDITING && !editor.state.value.dirty }
                     assertEquals(original.revision + 1, backend.studio.document.value.revision)
@@ -80,6 +83,7 @@ class StepPatternHostIntegrationTest {
                     scene.pointer("pattern-new")
                     scene.setText("pattern-name", "B")
                     scene.pointer("pattern-bars-2")
+                    scene.pointer("pattern-grid-160")
                     scene.pointer("pattern-pad")
                     scene.pointer("pattern-pad-1")
                     scene.awaitOwners(2)
@@ -101,6 +105,9 @@ class StepPatternHostIntegrationTest {
                     assertEquals(beforePlacement.revision + 1, placed.revision)
                     assertEquals(8, placed.project.clips.size)
                     assertEquals(listOf(1, 2), placed.project.patterns.map { it.bars })
+                    assertEquals(listOf(Note(0, 0), Note(320, 0)), placed.project.patterns[0].notes)
+                    assertEquals(listOf(Note(160, 1), Note(1_440, 1)), placed.project.patterns[1].notes)
+                    assertEquals(listOf(3_840L, 4_160, 7_680, 8_000, 11_680, 12_960, 19_360, 20_640), placed.project.clips.map { it.startTick })
                     assertEquals(original.project.source, placed.project.source)
                     assertEquals(original.project.banks, placed.project.banks)
                     assertEquals(1, backend.studio.selection.value.padId)

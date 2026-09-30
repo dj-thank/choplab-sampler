@@ -26,6 +26,7 @@ data class StepPatternState(
     val name: String = draft.name,
     val selectedPadId: Int = 0,
     val columns: Int = 16,
+    val gridTicks: Int = PatternEdits.STEP_TICKS,
     val page: Int = 0,
     val velocity: Float = 1f,
     val sequence: FrozenList<SongSection> = frozenListOf(),
@@ -38,7 +39,8 @@ data class StepPatternState(
     val applied: Boolean = false,
 ) {
     val dirty: Boolean get() = project.patterns.firstOrNull { it.id == draft.id } != draft || name != draft.name
-    val pages: Int get() = (draft.bars * 16 + columns - 1) / columns
+    val steps: Int get() = draft.lengthTicks / gridTicks
+    val pages: Int get() = (steps + columns - 1) / columns
     val editable: Boolean get() = phase == PatternPhase.EDITING && availability == PatternAvailability.EDITABLE && problem != PatternProblem.STALE_DOCUMENT
 }
 sealed interface PatternAction {
@@ -47,10 +49,11 @@ sealed interface PatternAction {
     data class Name(val value: String) : PatternAction
     data class Resize(val bars: Int, val trim: Boolean = false) : PatternAction
     data class Columns(val count: Int) : PatternAction
+    data class Grid(val ticks: Int) : PatternAction
     data class Page(val index: Int) : PatternAction
     data class SelectPad(val id: Int) : PatternAction
     data class Velocity(val value: Float) : PatternAction
-    data class Toggle(val step: Int) : PatternAction
+    data class Toggle(val step: Int, val gridTicks: Int = PatternEdits.STEP_TICKS) : PatternAction
     data class Quantize(val ticks: Int) : PatternAction
     data object ClearPad : PatternAction
     data class Repeats(val count: Int) : PatternAction
@@ -137,6 +140,7 @@ class StepPatternController(
                         }
                     }
                     is PatternAction.Columns -> { require(action.count in listOf(16, 32, 64)); next = next.copy(columns = action.count, page = 0) }
+                    is PatternAction.Grid -> { require(action.ticks in PatternEdits.INPUT_GRID_TICKS); next = next.copy(gridTicks = action.ticks, page = 0) }
                     is PatternAction.Page -> { require(action.index in 0 until current.pages); next = next.copy(page = action.index) }
                     is PatternAction.SelectPad -> {
                         require(action.id in 0..127)
@@ -145,7 +149,12 @@ class StepPatternController(
                         return@withLock true
                     }
                     is PatternAction.Velocity -> { require(action.value.isFinite() && action.value in 0.01f..1f); next = next.copy(velocity = action.value) }
-                    is PatternAction.Toggle -> next = next.copy(draft = PatternEdits.toggle(current.project, current.draft, current.selectedPadId, action.step, current.velocity))
+                    is PatternAction.Toggle -> {
+                        // A click from a replaced grid must not silently target a different musical position.
+                        require(action.gridTicks == current.gridTicks)
+                        next = next.copy(draft = PatternEdits.toggle(current.project, current.draft, current.selectedPadId,
+                            action.step, current.velocity, action.gridTicks))
+                    }
                     is PatternAction.Quantize -> next = next.copy(draft = PatternEdits.quantize(current.draft, current.selectedPadId, action.ticks))
                     PatternAction.ClearPad -> next = next.copy(draft = PatternEdits.clear(current.draft, current.selectedPadId))
                     is PatternAction.Repeats -> { require(action.count in 1..128); next = next.copy(repeats = action.count) }
