@@ -47,10 +47,10 @@ object NextOnlineSelfTest {
             }
             val selected = NextOnline(directory.resolve("library"), backend::validateLibraryFile, provider).use { online ->
                 check(online.search(candidate.url)); idle(online)
-                check(online.state.value.candidates == listOf(candidate) && downloads == 0 && online.state.value.selection == null)
+                check(online.state.value.candidates == listOf(candidate) && downloads == 0 && online.state.value.saved == null)
                 check(online.acquire(candidate.id)); idle(online)
-                check(online.state.value.status == NextOnline.Status.SELECTED && downloads == 1)
-                requireNotNull(online.state.value.selection).also {
+                check(online.state.value.phase == OnlineSourcePhase.SAVED && downloads == 1)
+                requireNotNull(online.state.value.saved).also {
                     check(it.title == candidate.title && Files.readAllBytes(it.path).contentEquals(Files.readAllBytes(input)))
                 }
             }

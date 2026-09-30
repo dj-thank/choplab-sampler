@@ -4,6 +4,8 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.pow
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /** All counts and positions are stereo frames, never interleaved sample indices. */
 object EngineFormat {
@@ -14,17 +16,54 @@ object EngineFormat {
     const val MAX_RESIDENT_BYTES = 128L * 1024 * 1024
 }
 
-/** Owns a defensive copy. Neither the caller nor a Program can mutate published PCM. */
-class PcmAsset private constructor(private val pcm: FloatArray) {
-    val frameCount: Int get() = pcm.size / 2
-    val residentBytes: Long get() = pcm.size.toLong() * 4
+/** Per reader, preallocated: another engine sharing the asset cannot create a false miss. */
+internal class PcmReadCursor {
+    var missing = false
+    var cache: PagedPcm? = null
+    var page = -1
+    var samples: FloatArray? = null
+    fun reset() { missing = false; clear() }
+    fun clear() { cache = null; page = -1; samples = null }
+}
+
+/** Owns defensive resident samples or a bounded immutable-page cache. Published samples never mutate. */
+@OptIn(ExperimentalAtomicApi::class)
+class PcmAsset private constructor(private var pcm: FloatArray?, val pages: PagedPcm? = null) {
+    // The atomic lease fence permits this worker-only mutation only after all readers have finished.
+    // Sample reads keep a stable plain array; there is no atomic/volatile operation per resident tap.
+    val frameCount: Int = pcm?.size?.div(2) ?: pages!!.frameCount
+    val residentBytes: Long = pcm?.size?.toLong()?.times(4) ?: pages!!.capacityBytes
+    private val leases = AtomicInt(0)
+    val evicted: Boolean get() = leases.load() < 0
+    val leaseCount: Int get() = leases.load().coerceAtLeast(0)
+    fun acquire(): PcmLease = checkNotNull(tryAcquire()) { "PCM was evicted" }
+    fun tryAcquire(): PcmLease? = if (retainPcm()) PcmLease(this) else null
+    /** No allocation, callbacks or destruction: safe for the producer and the render retention table. */
+    internal fun retainPcm(): Boolean {
+        while (true) {
+            val before = leases.load()
+            if (before < 0) return false
+            check(before < Int.MAX_VALUE)
+            if (leases.compareAndSet(before, before + 1)) return true
+        }
+    }
+    internal fun releasePcm() { check(leases.fetchAndAdd(-1) > 0) }
+    /** Worker only. A published/queued/being-prepared asset cannot lose its samples. */
+    fun evictIfUnleased(): Boolean {
+        if (!leases.compareAndSet(0, -1)) return false
+        pcm = null
+        pages?.close()
+        return true
+    }
+    val cacheMisses: Long get() = pages?.misses ?: 0
     fun sample(frame: Int, channel: Int): Float {
         require(frame in 0 until frameCount && channel in 0..1)
-        return pcm[frame * 2 + channel]
+        return at(frame, channel)
     }
-    internal fun at(frame: Int, channel: Int): Float = pcm[frame * 2 + channel]
+    internal fun at(frame: Int, channel: Int, cursor: PcmReadCursor? = null): Float = pcm?.get(frame * 2 + channel) ?: pages!!.sample(frame, channel, cursor)
 
     companion object {
+        fun paged(pages: PagedPcm): PcmAsset = PcmAsset(null, pages)
         fun fromInterleaved(samples: FloatArray, maxBytes: Long = EngineFormat.MAX_RESIDENT_BYTES): PcmAsset {
             require(samples.isNotEmpty() && samples.size % 2 == 0)
             require(maxBytes in 8..EngineFormat.MAX_RESIDENT_BYTES && samples.size.toLong() * 4 <= maxBytes)
@@ -117,6 +156,7 @@ class EngineProgram(
     val tempo: Tempo = Tempo(),
     val revision: Long = 0,
     val arrangement: Arrangement? = null,
+    private val preparedPcm: PcmLeaseGroup? = null,
 ) {
     private val slots: Array<Pad?> = arrayOfNulls(EngineFormat.PAD_COUNT)
     private val assets: Array<PcmAsset>
@@ -144,6 +184,18 @@ class EngineProgram(
         assets = ownedAssets.toTypedArray()
     }
     fun pad(id: Int): Pad? = if (id in slots.indices) slots[id] else null
+
+    /** The receiver releases this handoff on success, rejection, cancellation and stale completion. */
+    fun releasePreparation() { preparedPcm?.close() }
+    /** A driver keeps its confirmed program alive across output loss; call only outside render. */
+    fun retainPcm(): Boolean {
+        for (index in assets.indices) if (!assets[index].retainPcm()) {
+            for (previous in 0 until index) assets[previous].releasePcm()
+            return false
+        }
+        return true
+    }
+    fun releasePcm() { for (asset in assets) asset.releasePcm() }
 
     companion object { val EMPTY = EngineProgram() }
 }

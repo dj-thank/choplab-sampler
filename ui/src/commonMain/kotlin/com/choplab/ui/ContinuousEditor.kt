@@ -28,7 +28,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.choplab.ui.resources.*
+import com.choplab.ui.ai.VocalGuideController
 import com.choplab.ui.ai.LyricProposalController
+import com.choplab.ui.pattern.StepPatternController
+import com.choplab.ui.source.OnlineSourceController
+import com.choplab.ui.source.OnlineSourceDialog
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
@@ -44,12 +48,16 @@ import kotlin.math.roundToLong
     /** Output health for the SAVE stage's diagnostics card; without it the card is not shown. */
     diagnostics: (() -> ContinuousDiagnostics?)? = null,
     lyricProposal: LyricProposalController? = null,
+    stepPatterns: StepPatternController? = null,
+    vocalGuide: VocalGuideController? = null,
+    onlineSource: OnlineSourceController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
             val compact = maxWidth < 900.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CEHeader(state, onAction, compact)
+                CEHeader(state, onAction, compact, readout, refreshKey)
+                if (state.vocalPreview) Text(stringResource(Res.string.vocal_source_owned), Modifier.testTag("ce-vocal-preview-owner"))
                 if (compact && state.stage == ContinuousStage.BEAT) {
                     // A short window scrolls the source and instrument together. Transport and all-stop stay outside.
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("ce-beat-viewport")) {
@@ -89,6 +97,9 @@ import kotlin.math.roundToLong
         CEScratchPanel(state, onAction, readout, refreshKey)
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
+        stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
+        vocalGuide?.let { CEVocalGuideDialog(it, onAction) }
+        onlineSource?.let { OnlineSourceDialog(it) { onAction(ContinuousEditorAction.CloseOnline) } }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)
         }
@@ -303,7 +314,8 @@ import kotlin.math.roundToLong
     }
 }
 
-@Composable private fun CEHeader(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean) {
+@Composable private fun CEHeader(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean,
+    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
     @Composable fun Brand() { Column {
         Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 22.sp)
         Text(stringResource(Res.string.ce_subbrand), color = CEColor.Tan, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
@@ -323,8 +335,12 @@ import kotlin.math.roundToLong
     Column(Modifier.fillMaxWidth().heightIn(min = 70.dp).clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (compact) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                Box(Modifier.weight(1f)) {
+                    CEPcmHealth(state, onAction, readout, refreshKey) {
+                        Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                    }
+                }
                 CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, primary = true, tag = "ce-stop-all")
             }
             BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -341,7 +357,7 @@ import kotlin.math.roundToLong
                 Box(Modifier.horizontalScroll(scroll)) { Stages(Modifier.width(width)) }
             }
         } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(160.dp)) { Brand() }
+            Box(Modifier.width(160.dp)) { CEPcmHealth(state, onAction, readout, refreshKey) { Brand() } }
             Stages(Modifier.weight(1f))
             Text("${stringResource(Res.string.ce_bpm)} ${state.bpm}", color = CEColor.Green, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, Modifier.widthIn(min = 100.dp), primary = true, tag = "ce-stop-all")
@@ -620,6 +636,9 @@ import kotlin.math.roundToLong
             else stringResource(Res.string.ce_diag_render_value, percent(d.renderP99), percent(d.renderMax), d.measuredBlocks.toString())),
         stringResource(Res.string.ce_diag_underruns) to (d.underruns?.let { stringResource(Res.string.ce_diag_times, it.toString()) } ?: unreported),
         stringResource(Res.string.ce_diag_losses) to stringResource(Res.string.ce_diag_times, d.outputLosses.toString()),
+        stringResource(Res.string.ce_pcm_title) to cePcmStatus(d.pcm.status),
+        stringResource(Res.string.ce_pcm_missing_label) to d.pcm.underrunFrames.toString(),
+        stringResource(Res.string.ce_pcm_queue_label) to d.pcm.droppedRequests.toString(),
         stringResource(Res.string.ce_diag_frames) to (if (d.drawnFrames == null || d.slowFrames == null) stringResource(Res.string.ce_diag_frames_unknown)
             else stringResource(Res.string.ce_diag_frames_value, d.drawnFrames.toString(), d.slowFrames.toString())),
     )
@@ -650,15 +669,19 @@ import kotlin.math.roundToLong
     val live by CELive(state.songPlaying, refreshKey, readout)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
     val stretch = maxWidth >= 1000.dp && LocalDensity.current.fontScale <= 1.3f
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CEColor.Ink)
-        .then(if (stretch) Modifier else Modifier.horizontalScroll(rememberScrollState())).padding(horizontal = 8.dp, vertical = 6.dp),
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(CEColor.Ink).padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Stop remains visible even when large text pushes the other transport controls off screen.
+        if (!stretch) CEActionButton(stringResource(Res.string.ce_stop), ContinuousEditorAction.StopSong, state,
+            ContinuousCapability.SONG_PLAYBACK, onAction, dark = true, tag = "ce-song-stop")
+        Row(if (stretch) Modifier.fillMaxWidth() else Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(Res.string.ce_song), color = CEColor.Cream, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         CEActionButton(stringResource(Res.string.ce_top), ContinuousEditorAction.SeekSong(0), state, ContinuousCapability.SONG_SEEK, onAction, dark = true)
         CEActionButton(stringResource(if (state.songPlaying) Res.string.ce_pause else Res.string.ce_play),
             if (state.songPlaying) ContinuousEditorAction.PauseSong else ContinuousEditorAction.PlaySong,
             state, ContinuousCapability.SONG_PLAYBACK, onAction, primary = true, tag = "ce-song-play")
-        CEActionButton(stringResource(Res.string.ce_stop), ContinuousEditorAction.StopSong, state, ContinuousCapability.SONG_PLAYBACK, onAction, dark = true, tag = "ce-song-stop")
+        if (stretch) CEActionButton(stringResource(Res.string.ce_stop), ContinuousEditorAction.StopSong, state, ContinuousCapability.SONG_PLAYBACK, onAction, dark = true, tag = "ce-song-stop")
         Text("${ceTime(live.songFrame)} / ${ceTime(state.timelineDurationFrames)}", color = CEColor.Cream, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
         Slider((live.songFrame.toFloat() / state.timelineDurationFrames).coerceIn(0f, 1f), { onAction(ContinuousEditorAction.SeekSong((it * state.timelineDurationFrames).roundToLong())) },
             (if (stretch) Modifier.weight(1f) else Modifier.width(220.dp)).heightIn(min = 48.dp).testTag("ce-song-seek"), enabled = state.permits(ContinuousCapability.SONG_SEEK),
@@ -666,6 +689,7 @@ import kotlin.math.roundToLong
         CEValueSlider(stringResource(Res.string.ce_song_gain), state.songMonitorGain, state, ContinuousCapability.SONG_MONITOR_GAIN,
             { onAction(ContinuousEditorAction.SetSongMonitorGain(it)) }, Modifier.width(if (stretch) 220.dp else 260.dp), dark = true, tag = "ce-song-monitor")
         CETempo(state, onAction)
+        }
     }
     }
 }

@@ -28,6 +28,9 @@ internal class OriginalSourceVoice {
     /** Source frames per output frame: exactly 1 at zero semitones, so unpitched playback stays sample-exact. */
     private var step = 1.0
     val monitorGain = ParameterSmoother(1f)
+    private val pcmCursor = PcmReadCursor()
+    var pcmMiss = false
+        private set
     var outputLeft = 0.0
         private set
     var outputRight = 0.0
@@ -85,13 +88,18 @@ internal class OriginalSourceVoice {
         transitionAge = 0
     }
     fun render(interpolator: PitchInterpolator) {
+        pcmMiss = false
         val gain = monitorGain.next().toDouble()
         val source = source
         var targetLeft = 0.0
         var targetRight = 0.0
         if (playing && source != null) {
-            targetLeft = interpolator.read(source.asset, position, step, 0, source.startFrame, source.endFrame, source.loop)
-            targetRight = interpolator.read(source.asset, position, step, 1, source.startFrame, source.endFrame, source.loop)
+            pcmCursor.reset()
+            targetLeft = interpolator.read(source.asset, position, step, 0, source.startFrame, source.endFrame, source.loop, cursor = pcmCursor)
+            targetRight = interpolator.read(source.asset, position, step, 1, source.startFrame, source.endFrame, source.loop, cursor = pcmCursor)
+            pcmMiss = pcmCursor.missing
+            pcmCursor.clear()
+            if (pcmMiss) { targetLeft = 0.0; targetRight = 0.0 }
         }
         if (transitionAge < TRANSITION_FRAMES - 1) {
             val blend = smoothUnit(transitionAge.toDouble() / (TRANSITION_FRAMES - 1))

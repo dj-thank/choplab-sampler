@@ -23,7 +23,9 @@ sealed interface Action {
     data class SelectPattern(val id: String) : Action
     data class SelectPlaybackTarget(val target: PlaybackTarget) : Action
     data class SelectSlice(val index: Int?) : Action
-    data class Import(val location: Location) : Action
+    data class Import(val location: Location, val expectedRevision: Long? = null) : Action {
+        init { require(expectedRevision == null || expectedRevision >= 0) }
+    }
     data class Open(val location: Location) : Action
     data class New(val project: Project = Project()) : Action
     data class Save(val location: Location) : Action
@@ -64,7 +66,9 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
     private val session = EditSession(initial, initialRevision)
     private val ownerJob = SupervisorJob(scope.coroutineContext[Job])
     private val ownedScope = CoroutineScope(scope.coroutineContext + ownerJob)
-    private val mailbox = Channel<Message>(64)
+    private val mailbox = Channel<Message>(64, onUndeliveredElement = { message ->
+        if (message is Message.Prepared) message.result.getOrNull()?.releasePreparation()
+    })
     private val _document = MutableStateFlow(DocumentState(initial, initialRevision))
     private val _selection = MutableStateFlow(SelectionState(patternId = initial.patterns.first().id))
     private val _work = MutableStateFlow(WorkState())
@@ -127,6 +131,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
                 while (true) {
                     val pending = mailbox.tryReceive().getOrNull() ?: break
                     if (pending is Message.Request) pending.answer.complete(ActionResult(false, Notice.Rejected(Rejection.CLOSED)))
+                    if (pending is Message.Prepared) pending.result.getOrNull()?.releasePreparation()
                 }
                 ownerJob.cancel()
             }
@@ -161,7 +166,9 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             beforeEdit()
             begin(null, answer, Purpose.SELECT, action.target)
         }
-        is Action.Import -> start(Operation.IMPORT) { services.importer.import(action.location).also { require(services.assets.containsVerified(it)) } }
+        is Action.Import -> if (action.expectedRevision != null && action.expectedRevision != session.revision)
+            ActionResult(false, Notice.StaleCompletion).also { notice(Notice.StaleCompletion) }
+            else start(Operation.IMPORT) { services.importer.import(action.location).also { require(services.assets.containsVerified(it)) } }
         is Action.Open -> {
             cancelAllWork()
             start(Operation.OPEN) { services.projects.openDocument(action.location) }
@@ -239,29 +246,32 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             val result = try { Result.success(services.engine.prepare(project, target, plan?.revision ?: pending.revision)) }
             catch (cancel: CancellationException) { if (!isActive) return@launch else Result.failure(cancel) }
             catch (failure: Exception) { Result.failure(failure) }
-            mailbox.send(Message.Prepared(id, pending.generation, pending.revision, result))
+            try { mailbox.send(Message.Prepared(id, pending.generation, pending.revision, result)) }
+            catch (failure: Throwable) { result.getOrNull()?.releasePreparation(); throw failure }
         }
         return null
     }
 
     private suspend fun prepared(message: Message.Prepared) {
-        val pending = preparation
-        if (pending == null || pending.id != message.id) return
-        if (pending.answer?.isCancelled == true || message.generation != generation || message.revision != session.revision) {
-            cancelPreparation(); notice(Notice.StaleCompletion); return
-        }
-        preparation = null
-        val result = try {
-            if (message.result.isFailure) {
-                pending.plan?.let(session::cancel); failed(Operation.EDIT)
-            } else commitPrepared(pending.plan, pending.pattern, pending.target, message.result.getOrThrow(), pending.purpose)
-        } catch (cancel: CancellationException) { pending.answer?.cancel(cancel); throw cancel }
-        catch (_: Exception) { failed(Operation.EDIT) }
-        clearPreparationWork(pending)
-        pending.answer?.complete(result)
-        if (result.accepted && pending.purpose == Purpose.IMPORT) notice(Notice.Completed(Operation.IMPORT))
-        if (result.accepted && pending.purpose == Purpose.OPEN) notice(Notice.Completed(Operation.OPEN))
-        if (result.accepted && pending.purpose == Purpose.RESCUE) notice(requireNotNull(pending.rescued))
+        try {
+            val pending = preparation
+            if (pending == null || pending.id != message.id) return
+            if (pending.answer?.isCancelled == true || message.generation != generation || message.revision != session.revision) {
+                cancelPreparation(); notice(Notice.StaleCompletion); return
+            }
+            preparation = null
+            val result = try {
+                if (message.result.isFailure) {
+                    pending.plan?.let(session::cancel); failed(Operation.EDIT)
+                } else commitPrepared(pending.plan, pending.pattern, pending.target, message.result.getOrThrow(), pending.purpose)
+            } catch (cancel: CancellationException) { pending.answer?.cancel(cancel); throw cancel }
+            catch (_: Exception) { failed(Operation.EDIT) }
+            clearPreparationWork(pending)
+            pending.answer?.complete(result)
+            if (result.accepted && pending.purpose == Purpose.IMPORT) notice(Notice.Completed(Operation.IMPORT))
+            if (result.accepted && pending.purpose == Purpose.OPEN) notice(Notice.Completed(Operation.OPEN))
+            if (result.accepted && pending.purpose == Purpose.RESCUE) notice(requireNotNull(pending.rescued))
+        } finally { message.result.getOrNull()?.releasePreparation() }
     }
 
     private suspend fun commitPrepared(plan: EditPlan?, pattern: String, target: PlaybackTarget, program: EngineProgram?, purpose: Purpose): ActionResult {

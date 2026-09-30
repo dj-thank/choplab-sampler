@@ -5,10 +5,12 @@ import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
+import com.choplab.core.pattern.PatternProblem
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
 import com.choplab.engine.PlayMode
 import com.choplab.ui.ai.*
+import com.choplab.ui.pattern.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlin.math.pow
@@ -16,6 +18,87 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun stepPatternEntryAndApplyRefuseBusySourceVoiceAndPadRecordingWhileCloseStillWorks() = runBlocking<Unit> {
+        for (block in 0..3) {
+            val h = Harness(voice = true, render = true)
+            val release = CompletableDeferred<Unit>()
+            try {
+                h.until { it.permits(ContinuousCapability.STEP_PATTERNS) }
+                assertTrue(withTimeout(1_000) { h.presenter.dispatch(ContinuousEditorAction.OpenStepPatterns) })
+                val controller = requireNotNull(h.presenter.stepPatterns.value)
+                assertTrue(controller.dispatch(PatternAction.Name("Unapplied draft")))
+                val before = h.studio.document.value
+                h.ports.takeFrames = null
+                var preparing: Deferred<ActionResult>? = null
+                when (block) {
+                    0 -> {
+                        h.engine.duringPrepare = { release.await() }
+                        preparing = async { h.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())) }
+                        h.until { it.unavailable[ContinuousCapability.STEP_PATTERNS] == ContinuousUnavailable.BUSY }
+                    }
+                    1 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+                    2 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+                    3 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+                }
+                h.until { !it.permits(ContinuousCapability.STEP_PATTERNS) }
+                withTimeout(5_000) { controller.state.first { it.availability != PatternAvailability.EDITABLE } }
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenStepPatterns))
+                assertFalse(controller.dispatch(PatternAction.Save))
+                // Check the final host guard separately from the controller's observed availability.
+                assertFalse(h.presenter.applyPreparedEdit(Intent.Rename("Refused"), before.revision))
+                assertEquals(before, h.studio.document.value)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseStepPatterns))
+                assertNull(h.presenter.stepPatterns.value)
+                assertEquals(PatternPhase.CLOSED, controller.state.value.phase)
+                release.complete(Unit); preparing?.await()
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+                assertEquals(before.project, h.studio.document.value.project)
+            } finally { release.complete(Unit); h.close() }
+        }
+    }
+
+    @Test fun stepPatternCloseNavigateStopHostCloseAndRevisionChangeRejectLateRenderedAssets() = runBlocking<Unit> {
+        for (exit in 0..4) {
+            val h = Harness(render = true, adjust = { it.copy(patterns = frozenListOf(Pattern("pattern-1", notes = frozenListOf(Note(0, 0))))) })
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            try {
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenStepPatterns))
+                val controller = requireNotNull(h.presenter.stepPatterns.value)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenStepPatterns))
+                assertSame(controller, h.presenter.stepPatterns.value, "Duplicate open keeps one draft owner")
+                assertTrue(controller.dispatch(PatternAction.Queue))
+                h.ports.duringPerformance = { entered.complete(Unit); withContext(NonCancellable) { release.await() } }
+                val rendering = async { runCatching { controller.dispatch(PatternAction.Place("Patterns")) } }
+                withTimeout(5_000) { entered.await() }
+                when (exit) {
+                    0 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseStepPatterns))
+                    1 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
+                    2 -> assertTrue(withTimeout(1_000) { h.presenter.dispatch(ContinuousEditorAction.StopAll) })
+                    3 -> h.presenter.close()
+                    4 -> assertTrue(h.studio.dispatch(Action.Edit(Intent.Rename("New revision"))).accepted)
+                }
+                val kept = h.studio.document.value
+                release.complete(Unit)
+                assertNotEquals(true, withTimeout(5_000) { rendering.await() }.getOrNull())
+                if (exit in listOf(0, 1, 3)) {
+                    assertNull(h.presenter.stepPatterns.value)
+                    assertEquals(PatternPhase.CLOSED, controller.state.value.phase)
+                } else {
+                    // Awaiting the cancelled renderer does not join the document observer: it cancels
+                    // work before publishing the stale draft. StopAll itself awaits its Cancel action.
+                    if (exit == 4) withTimeout(5_000) {
+                        controller.state.first { it.phase == PatternPhase.EDITING && it.problem == PatternProblem.STALE_DOCUMENT }
+                    }
+                    assertSame(controller, h.presenter.stepPatterns.value)
+                    assertEquals(PatternPhase.EDITING, controller.state.value.phase)
+                }
+                assertEquals(kept, h.studio.document.value, "A late rendered asset cannot enter the project after exit $exit")
+                assertTrue(kept.project.clips.isEmpty())
+            } finally { release.complete(Unit); h.close() }
+        }
+    }
+
     @Test fun lyricProposalEntryAndApplyRefusePreparationSourceVoiceAndPadRecording() = runBlocking<Unit> {
         for (block in 0..3) {
             val ai = FakeLyricPort()
@@ -1745,17 +1828,27 @@ class ContinuousEditorPresenterTest {
     }
 
     @Test fun aTakeNeverOutgrowsTheEngineBudgetAndHostsWithoutAMicrophoneKeepItOff() = runBlocking<Unit> {
-        // The original fills the engine's PCM budget but for half a second.
-        val limit = com.choplab.core.ProgramCompiler.RESIDENT_FRAME_LIMIT
+        // Fill managed PCM with eight distinct small resident assets. A single long original now
+        // uses bounded pages, so its duration is no longer an oracle for retained RAM.
+        val limit = ProgramCompiler.RESIDENT_FRAME_LIMIT
+        val smallFrames = PcmResidency.SMALL_ASSET_BYTES / 8
         val h = Harness { p ->
-            val long = p.assets[0].copy(frames = limit - 48_000 - 24_000)
-            p.copy(assets = frozenListOf(long, p.assets[1]), source = Source(long.hash, FrameRange(0, long.frames)),
-                pads = p.pads.map { if (it.id == 2) Pad(2, long.hash, FrameRange(0, 48_000)) else it }.frozen())
+            val fillers = (0..6).map { p.assets[0].copy(hash = it.toString(16).repeat(64),
+                frames = smallFrames, byteCount = smallFrames * 8 + 44) }
+            val original = p.assets[0].copy(frames = limit - 7 * smallFrames - 48_000 - 24_000)
+            p.copy(assets = (listOf(original, p.assets[1]) + fillers).frozen(), source = Source(original.hash, FrameRange(0, original.frames)),
+                pads = p.pads.map { when (it.id) {
+                    2 -> Pad(2, original.hash, FrameRange(0, 48_000))
+                    in 3..9 -> Pad(it.id, fillers[it.id - 3].hash, FrameRange(0, 48_000))
+                    else -> it
+                } }.frozen())
         }
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
             // Once the placement's work is done: while it runs, recording is only busy.
             val placed = h.until { it.clips.isNotEmpty() && it.unavailable[ContinuousCapability.RECORD_VOICE] != ContinuousUnavailable.BUSY }
+            assertEquals(com.choplab.engine.EngineFormat.MAX_RESIDENT_BYTES - 24_000 * 8L,
+                ProgramCompiler.residentBudgetBytes(h.studio.document.value.project), "Shared PAD/clip assets count once; only half a second remains")
             assertEquals(ContinuousUnavailable.NOT_CONNECTED, placed.unavailable[ContinuousCapability.RECORD_VOICE], "No microphone on this host")
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             h.ports.voice = true
@@ -1764,6 +1857,21 @@ class ContinuousEditorPresenterTest {
             h.until { it.status == ContinuousStatus.VOICE_NO_ROOM }
             assertTrue(h.ports.voiceStarts.isEmpty(), "The microphone is not opened")
             assertEquals(0, h.ports.stops, "and nothing that plays is stopped")
+        } finally { h.close() }
+    }
+
+    @Test fun aPagedFourHundredSecondOriginalStillLeavesRoomForABoundedVoiceTake() = runBlocking<Unit> {
+        val h = Harness(voice = true, originalFrames = 400L * 48_000) { p ->
+            p.copy(source = p.source!!.copy(range = FrameRange(0, p.assets[0].frames)))
+        }
+        try {
+            assertTrue(ProgramCompiler.residentFrames(h.studio.document.value.project) < ProgramCompiler.RESIDENT_FRAME_LIMIT)
+            assertTrue(h.studio.document.value.project.source!!.range.length > ProgramCompiler.RESIDENT_FRAME_LIMIT)
+            assertTrue(ProgramCompiler.residentBudgetBytes(h.studio.document.value.project) < 20L * 1024 * 1024)
+            h.ports.takeFrames = null
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice), "Paged duration alone cannot block recording")
+            assertTrue(h.ports.voiceStarts.single() in 1..300)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
         } finally { h.close() }
     }
 
@@ -2176,6 +2284,8 @@ class ContinuousEditorPresenterTest {
     private class FakePorts(private val kits: Boolean = false, voice: Boolean = false, private val render: Boolean = false) : ContinuousEditorPorts {
         override var lyricProposal: LyricProposalPort? = null
         override val padRenderAvailable get() = render
+        override val stepPatternsAvailable get() = render
+        @Volatile var duringPerformance: (suspend () -> Unit)? = null
         val renders = java.util.concurrent.CopyOnWriteArrayList<Pad>()
         @Volatile var renderFails = false
         /** Renders as a host would name and size it: an octave up halves the sound. */
@@ -2186,6 +2296,7 @@ class ContinuousEditorPresenterTest {
             return Asset("c".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "${source.name} +12", AssetRole.RENDERED, derivedFrom = source.hash)
         }
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?): Asset? {
+            duringPerformance?.let { it() }
             if (renderFails) return null
             val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
             val frames = minOf(limitFrames.toLong(), if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,

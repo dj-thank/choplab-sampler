@@ -11,6 +11,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // The upstream's documented release channel; unrelated coordinates never resolve through it.
+        exclusiveContent {
+            forRepository { maven("https://jitpack.io") }
+            filter { includeGroup("com.github.TeamNewPipe") }
+        }
     }
 }
 

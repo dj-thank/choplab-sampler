@@ -18,8 +18,8 @@ enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
 enum class ContinuousCapability {
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL,
-    IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE,
+    RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
@@ -163,6 +163,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
     val original: ContinuousSource? = null,
     val originalPlaying: Boolean = false,
+    val vocalPreview: Boolean = false,
     /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
     val liveChopping: Boolean = false,
     /** A voice take is being recorded while the song plays. */
@@ -249,6 +250,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     /** Frames drawn since the editor opened, and those that took 1/30 s or longer. */
     val drawnFrames: Long? = null,
     val slowFrames: Long? = null,
+    val pcm: ContinuousPcmReadout = ContinuousPcmReadout(),
 )
 
 /** Read only in source waveform/time or song timeline/transport subtrees, never whole-app ticks. */
@@ -269,14 +271,19 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     /** Independent original HAND position in native source frames; -1 while inactive. */
     val handSourceFrame: Double = -1.0,
     val countInBeatsRemaining: Int = 0,
+    val pcm: ContinuousPcmReadout = ContinuousPcmReadout(),
 )
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
     data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
+    data object OpenVocalGuide : ContinuousEditorAction
+    data object CloseVocalGuide : ContinuousEditorAction
     data object OpenLyricProposal : ContinuousEditorAction
     data object CloseLyricProposal : ContinuousEditorAction
+    data object OpenStepPatterns : ContinuousEditorAction
+    data object CloseStepPatterns : ContinuousEditorAction
     data class BankPadEdit(val action: BankPadEditAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
@@ -284,6 +291,7 @@ sealed interface ContinuousEditorAction {
     data object OpenSpotifyMetadata : ContinuousEditorAction
     data object SeparateSource : ContinuousEditorAction
     data object ImportOnline : ContinuousEditorAction
+    data object CloseOnline : ContinuousEditorAction
     data object RecordSource : ContinuousEditorAction
     data object RecordSystemSource : ContinuousEditorAction
     data object StopSourceRecording : ContinuousEditorAction
@@ -294,6 +302,7 @@ sealed interface ContinuousEditorAction {
     data object Undo : ContinuousEditorAction
     data object Redo : ContinuousEditorAction
     data object StopAll : ContinuousEditorAction
+    data object ReloadAudio : ContinuousEditorAction
     data object PlayOriginal : ContinuousEditorAction
     data object StopOriginal : ContinuousEditorAction
     data class SeekOriginal(val sourceFrame: Long) : ContinuousEditorAction

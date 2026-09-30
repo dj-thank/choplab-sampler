@@ -1,7 +1,45 @@
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
 }
+
+val verifyNewPipeDesugaring = tasks.register("verifyNewPipeDesugaring") {
+    group = "verification"
+    description = "Verify the reviewed API 29 NIO desugaring graph before APK preparation"
+    val pins = rootProject.file("config/newpipe-dependencies.json")
+    inputs.file(pins)
+    inputs.files(configurations.named("coreLibraryDesugaring"))
+    doLast {
+        val document = JsonSlurper().parse(pins) as Map<*, *>
+        val rows = (document["artifacts"] as List<*>).map { it as Map<*, *> }
+            .filter { it["scope"] == "android-desugar" }.associateBy { it["coordinate"] as String }
+        val resolved = configurations.getByName("coreLibraryDesugaring").resolvedConfiguration
+        val graph = mutableSetOf<String>()
+        fun visit(dependency: ResolvedDependency) {
+            if (graph.add("${dependency.moduleGroup}:${dependency.moduleName}:${dependency.moduleVersion}"))
+                dependency.children.forEach(::visit)
+        }
+        resolved.firstLevelModuleDependencies.forEach(::visit)
+        check(graph == rows.keys) { "NIO desugaring dependency graph changed; review provenance, licenses and pins" }
+        graph.forEach { coordinate ->
+            val artifact = resolved.resolvedArtifacts.single { it.moduleVersion.id.toString() == coordinate && it.extension == "jar" }
+            val expected = rows.getValue(coordinate)["binary"] as Map<*, *>
+            val digest = MessageDigest.getInstance("SHA-256")
+            artifact.file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(artifact.file.length() == (expected["bytes"] as Number).toLong() && actual == expected["sha256"]) {
+                "NIO desugaring artifact changed; review provenance, license and pins: $coordinate"
+            }
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyNewPipeDesugaring) }
 
 kotlin {
     jvmToolchain(21)
@@ -93,6 +131,11 @@ android {
         }
         create("preview") {
             initWith(getByName("release"))
+            // Explicit local compatibility probe; this does not change the release size/signing gate.
+            if (providers.gradleProperty("choplabNewPipeR8Probe").orNull == "true") {
+                isMinifyEnabled = true
+                proguardFile(rootProject.file("config/newpipe-r8-probe.pro"))
+            }
             applicationIdSuffix = ".preview"
             versionNameSuffix = "-preview"
             isDebuggable = false
@@ -104,6 +147,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -145,6 +189,7 @@ androidComponents {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.nio)
     for (configuration in listOf("debugImplementation", "previewImplementation")) {
         add(configuration, project(":jvm"))
         add(configuration, project(":ui"))

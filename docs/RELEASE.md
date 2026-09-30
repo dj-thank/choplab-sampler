@@ -36,10 +36,22 @@ source/history scannerを短くすること自体は合格条件ではありま�
 2. Androidのsignature fingerprint、debuggable、package/version、permission/exported component、alignmentを検査。正式/Preview/debugは明示した別契約であり、見つかったbytesを後から適切な種類と呼び替えない。
 3. Windows全app-imageのversionとruntime/library/resourceを含むhash、最終APK/ZIP内部を検査。source検査だけでは生成物の安全を証明しない。
 4. ZIPは展開前にentry/path/count/size/CRC/local-central整合、compressed span/descriptorの連続所有を検証。safe名のtextでも音声magic/secretを走査。UTF-16/32、comment/extra field、nested ZIPも対象にする。
-5. 既存上限の意味を保持: 4,096 entries、通常text512KiB/member、metadata/output4MiB/archive、decoded text入力4MiB、100:1、LZMA辞書16MiB。nested depth3、64archives、16MiB/member、256MiB共有container/expanded上限。root/history集計やJIMAGEの例外も無制限化せず、置換にはattack/negative fixtureを付ける。
+5. 既存上限の意味を保持: 4,096 entries、通常text512KiB/member、metadata/output4MiB/archive、decoded text入力4MiB、100:1、LZMA辞書16MiB。nested depth3、通常64archives、16MiB/member、256MiB共有container/expanded上限。NewPipe同梱後の明示Windows app-image/PreviewとMac NEXT Previewの3種の配布ZIPだけはnested JARを最大80件まで検査する（他の上限と全JAR内容検査は維持）。root/history集計やJIMAGEの例外も無制限化せず、置換にはattack/negative fixtureを付ける。
 6. 正式download後、manifest/hash/attestation/publication前にも最終配布surfaceを検査。SBOMとsource/artifact identityを結び付け、依存licenseと再配布条件をNOTICEへ反映。
 
 公開証明書とprivate keyを区別し、合成fixtureの許容は必要箇所だけに限定します。第三者依存のGPL等はNOTICE追記だけで完了にせず、combined workの配布条件・対応source・build手順を確認します。
+
+## NewPipe/NIOを含む配布の条件
+
+NewPipeExtractorはGPL-3.0-or-laterで、直接リンクした組合せをChopLabのMIT表示だけで配布可能とは扱いません。元コードのMIT表示を保持しながら、組合せ全体と各依存に必要な条件を満たします。[GNUの組合せに関する説明](https://www.gnu.org/licenses/gpl-faq.en.html#GPLStaticVsDynamic)と[GPLv3の対応source・配布条件](https://www.gnu.org/licenses/gpl-3.0.html)を根拠とし、次を公開判定へ含めます。Preview/CI artifactという呼称だけでは、第三者への配布に伴う条件を免除しません。
+
+1. **配布bytesとの対応**: `config/newpipe-dependencies.json` のruntime 7 JARとAndroid desugar 2 JARの解決graph・bytes/hashを検証し、APK内のD8/R8生成classとdesktopに同梱する実JARをsource・licenseへ対応付ける。config JARにも補助classがあるため、build用設定だけとして除外しない。hash一致は取得物の同一性であり、licenseやsourceの完全性の代用ではない。
+2. **対応sourceとbuild**: 配布revisionのChopLab、NewPipeと必要な依存の改変に適したsource、生成設定・変換・build/install用script、必要なversion/取得手順を提供する。一般のtool/system libraryの範囲はGPL本文に従って判定する。source JAR、Git source manifest、ChopLabだけの `git archive` は単独で完全なCorresponding Sourceを示さない。NIOの公式source候補とbuild targetは[NOTICE](../NOTICE.md#android-nio-desugar-215--source-and-license-evidence)に記録済みだが、全class/header対応と再build一致は未検証。byte一致の再buildは対応を確認する検証方法であり、それだけをGPLの法的要件と読み替えない。
+3. **実際の提供経路**: 配布binaryと一緒に完全なlicense本文・著作権/noticeを渡し、binary取得ページのすぐ近くから対応sourceを同等に取得できるようにする。GPLv3 6(d)の第三者server利用を選ぶ場合も、正しいsourceへの明確な案内と必要な可用性の責任は配布者に残る。最終APK/ZIPを再取得して本文とsource linkをreadbackする。現状のrelease asset一覧/SBOMだけでは、NIOを含む完全な対応source提供とAPKへのnotice配達は確認できていない。
+4. **未確定なlicense対応**: NIO本体の `NOASSERTION` を残したまま一律Classpath例外の適用済みとはしない。configurationのBSD本文を含め、実classと元header/例外を照合する。既存のyoutubedl-android、FFmpeg、yt-dlp、Java runtime等も、それぞれの配布構成に必要な条件を別に満たす。機能やcodecを削ってサイズ・license判定だけを通過させない。
+5. **provider受入との分離**: 実サービスへの取得試験は、素材の権利とサービスが許す取得・自動アクセスの条件、利用者の明示同意をそれぞれ確認してrootが実行する。[YouTube利用規約](https://www.youtube.com/static?template=terms)はダウンロード等と自動アクセスを別に制限しているため、権利者の許可・CC表記・アプリの同意だけでNewPipeによる取得が許可されたと推定しない。今回の依存調査では実providerを呼び出しておらず、許可根拠のある対象・方法を確定するまでは `PROVIDER_PASS` は未確認。softwareの配布条件も満たしたことにはならない。
+
+これらの未確認事項が残る間は `PUBLIC_PASS` にしません。sourceの公開場所や配布条件を変更する外部操作はrootの配布判断で実施し、秘密鍵・token・私有音声を対応sourceへ含めません。
 
 ## CIと運用のreadback
 

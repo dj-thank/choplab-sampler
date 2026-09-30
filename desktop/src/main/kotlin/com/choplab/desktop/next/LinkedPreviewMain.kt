@@ -17,9 +17,10 @@ import com.choplab.jvm.OriginalAudioImportPort
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
-import com.choplab.jvm.ai.GeminiLyricProvider
+import com.choplab.jvm.ai.*
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.VocalGuidePort
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -102,9 +103,13 @@ fun main() {
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
                 val lyricProposal by presenter.lyricProposal.collectAsState()
+                val stepPatterns by presenter.stepPatterns.collectAsState()
+                val vocalGuide by presenter.vocalGuide.collectAsState()
+                val onlineSource by presenter.onlineSource.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, lyricProposal = lyricProposal)
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, onlineSource = onlineSource)
             }
         }
     } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -113,12 +118,23 @@ fun main() {
 internal class DesktopEditorPorts(
     private val backend: NextBackend,
     private val spotify: SpotifyDesktopSession = SpotifyDesktopSession(onStatus = {}, purpose = SpotifySessionPurpose.METADATA_ONLY),
+    private val onlineDirectory: () -> Path = { DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library") },
+    private val onlineBackend: () -> com.choplab.sampler.source.YoutubeSourceBackend = { com.choplab.sampler.source.newpipe.NewPipeSourceBackend() },
     private val parent: () -> AwtWindow?,
 ) : ContinuousEditorPorts, AutoCloseable {
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
-    override fun close() = spotify.close()
+    private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
+    override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
+        override val preview = speechPreview
+        override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort {
+            val directory = backend.assets.directory.parent.resolve("vocal-guide")
+            return VocalTtsService(DesktopTtsProvider(directory.resolve("temporary")), TtsCache(directory.resolve("cache")), backend.assets)
+        }
+    }
+    override fun close() { try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
     override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
         override fun createProvider() = GeminiLyricProvider()
     }
@@ -147,12 +163,15 @@ internal class DesktopEditorPorts(
     override suspend fun scratchOriginalCut(gain: Float) = backend.audition.scratchCut(gain)
     override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
     override val padRenderAvailable = true
+    override val stepPatternsAvailable = true
     override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
     override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
         backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
-        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining)
+        handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
+        pcm = pcmReadout())
+    private fun pcmReadout() = backend.engine.pcmPlayback().let { ContinuousPcmReadout(it.status, it.underrunFrames, it.droppedRequests) }
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
     override suspend fun drumKit(kitId: String) = backend.prepareDrumKit(kitId)
@@ -161,7 +180,7 @@ internal class DesktopEditorPorts(
         ContinuousDiagnostics(outputAttached = health.attached, floatOutput = health.encoding?.let { it == SinkEncoding.FLOAT32 },
             sampleRate = health.sampleRate, blockFrames = health.blockFrames, bufferFrames = health.bufferFrames,
             pendingFrames = health.pendingFrames, underruns = health.underruns, outputLosses = health.outputLosses,
-            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax)
+            measuredBlocks = health.measuredBlocks, renderP99 = health.renderP99, renderMax = health.renderMax, pcm = pcmReadout())
     }
     /** Java Sound reports no microphone before one is opened: a host without one answers at the first take. */
     override val voiceAvailable get() = true
@@ -197,6 +216,12 @@ internal class DesktopEditorPorts(
         backend.separation(source, DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), "${source.name} — $suffix")
     }?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override val onlineAvailable = true
+    override val onlineSource = com.choplab.ui.source.OnlineSourceHost { scope, stop ->
+        val port = NextOnlineSourcePort(onlineDirectory(), backend::validateLibraryFile, scope, stop, onlineBackend())
+        com.choplab.ui.source.OnlineImportSession(port) { id -> port.saved(id)?.let {
+            com.choplab.ui.source.OnlineImportSelection(backend.files.registerNamed(it.path, it.title, it.hash), it.hash)
+        } }
+    }
     override suspend fun chooseOnline() = NextOnlineDialog.choose(parent(),
         DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override val libraryAvailable = true

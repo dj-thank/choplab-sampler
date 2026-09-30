@@ -28,21 +28,21 @@ object AdsrEnvelope {
 }
 
 /** Source-domain crossfade precedes pitch filtering. No source frames are removed or added. */
-internal fun loopSample(asset: PcmAsset, frame: Int, channel: Int, start: Int, end: Int, crossfadeFrames: Int): Double {
+internal fun loopSample(asset: PcmAsset, frame: Int, channel: Int, start: Int, end: Int, crossfadeFrames: Int, cursor: PcmReadCursor? = null): Double {
     val width = minOf(crossfadeFrames, (end - start) / 2)
-    if (width == 0) return asset.at(frame, channel).toDouble()
+    if (width == 0) return asset.at(frame, channel, cursor).toDouble()
     val a: Double
     val b: Double
     val phase: Double
     if (frame >= end - width) {
-        a = asset.at(frame, channel).toDouble()
-        b = asset.at(start, channel).toDouble()
+        a = asset.at(frame, channel, cursor).toDouble()
+        b = asset.at(start, channel, cursor).toDouble()
         phase = if (width == 1) .5 else .5 * (frame - (end - width)) / (width - 1)
     } else if (frame < start + width) {
-        a = asset.at(end - 1, channel).toDouble()
-        b = asset.at(frame, channel).toDouble()
+        a = asset.at(end - 1, channel, cursor).toDouble()
+        b = asset.at(frame, channel, cursor).toDouble()
         phase = if (width == 1) .5 else .5 + .5 * (frame - start) / (width - 1)
-    } else return asset.at(frame, channel).toDouble()
+    } else return asset.at(frame, channel, cursor).toDouble()
     return a + (b - a) * smoothUnit(phase)
 }
 
@@ -131,7 +131,7 @@ internal class SincTable(val taps: Int, val phases: Int, cutoff: Double, beta: D
         }
     }
     fun read(asset: PcmAsset, position: Double, channel: Int, start: Int, end: Int, wrap: Boolean,
-             crossfadeFrames: Int = 0): Double {
+             crossfadeFrames: Int = 0, cursor: PcmReadCursor? = null): Double {
         val base = floor(position).toInt()
         val phase = (position - base) * phases
         val p = phase.toInt().coerceIn(0, phases - 1)
@@ -146,8 +146,8 @@ internal class SincTable(val taps: Int, val phases: Int, cutoff: Double, beta: D
                 frame = start + ((frame - start) % length + length) % length
             } else if (frame < start || frame >= end) continue
             val weight = coefficients[a + i] + (coefficients[b + i] - coefficients[a + i]) * blend
-            val value = if (wrap) loopSample(asset, frame, channel, start, end, crossfadeFrames)
-                else asset.at(frame, channel).toDouble()
+            val value = if (wrap) loopSample(asset, frame, channel, start, end, crossfadeFrames, cursor)
+                else asset.at(frame, channel, cursor).toDouble()
             result += value * weight
         }
         return result
@@ -171,7 +171,8 @@ internal class SincTable(val taps: Int, val phases: Int, cutoff: Double, beta: D
  * Centered FIR removes group delay; output length is ceil(inputFrames * outRate / inRate).
  */
 object OfflineResampler {
-    fun resample(input: FloatArray, inputRate: Int, outputRate: Int = EngineFormat.SAMPLE_RATE): FloatArray {
+    fun resample(input: FloatArray, inputRate: Int, outputRate: Int = EngineFormat.SAMPLE_RATE, checkCancelled: () -> Unit = {}): FloatArray {
+        checkCancelled()
         require(inputRate in 8_000..192_000 && outputRate in 8_000..192_000)
         require(input.isNotEmpty() && input.size % 2 == 0 && input.all { it.isFinite() })
         if (inputRate == outputRate) return input.copyOf()
@@ -183,6 +184,7 @@ object OfflineResampler {
         val table = SincTable(512, 4096, (pass + nyquist) / (2 * inputRate), 14.0)
         val result = FloatArray(outputFrames.toInt() * 2)
         for (frame in 0 until outputFrames.toInt()) {
+            if (frame % 4096 == 0) checkCancelled()
             val position = frame.toDouble() * inputRate / outputRate
             result[frame * 2] = table.read(asset, position, 0, 0, asset.frameCount, false).toFloat()
             result[frame * 2 + 1] = table.read(asset, position, 1, 0, asset.frameCount, false).toFloat()
@@ -207,17 +209,17 @@ class PitchInterpolator {
         return read(asset, position, speed, channel, startFrame, endFrame, loop).toFloat()
     }
     internal fun read(asset: PcmAsset, position: Double, speed: Double, channel: Int, start: Int, end: Int, loop: Boolean,
-                      crossfadeFrames: Int = 0): Double {
+                      crossfadeFrames: Int = 0, cursor: PcmReadCursor? = null): Double {
         if (abs(speed) <= 1.0 && position == floor(position)) {
             var frame = position.toInt()
             if (loop) frame = start + ((frame - start) % (end - start) + end - start) % (end - start)
             return if (frame in start until end) {
-                if (loop) loopSample(asset, frame, channel, start, end, crossfadeFrames) else asset.at(frame, channel).toDouble()
+                if (loop) loopSample(asset, frame, channel, start, end, crossfadeFrames, cursor) else asset.at(frame, channel, cursor).toDouble()
             } else 0.0
         }
         var band = 0
         while (band < speeds.lastIndex && abs(speed) > speeds[band]) band++
-        return tables[band].read(asset, position, channel, start, end, loop, crossfadeFrames)
+        return tables[band].read(asset, position, channel, start, end, loop, crossfadeFrames, cursor)
     }
 }
 

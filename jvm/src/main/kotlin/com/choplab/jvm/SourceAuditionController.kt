@@ -22,8 +22,9 @@ class SourceAuditionController(
     private val jobs = CoroutineScope(scope.coroutineContext + owner)
     private val generation = AtomicLong()
     private val order = AtomicLong()
-    private val preparation = AtomicReference<Deferred<com.choplab.engine.PcmAsset>?>(null)
+    private val preparation = AtomicReference<Job?>(null)
     private val loaded = AtomicReference<Asset?>(null)
+    private val loadedPcm = AtomicReference<com.choplab.engine.PcmLease?>(null)
     private val controls = Mutex()
     /** The song key the original should play at; sent again with every source, so a rebuilt output keeps it. */
     @Volatile private var semitones = 0f
@@ -37,26 +38,38 @@ class SourceAuditionController(
     }
 
     private suspend fun ensureSource(asset: Asset, token: Long): Boolean {
-        if (loaded.get() == asset && driver.originalPlayback().loaded) return true
-        val job = jobs.async { pcm.load(asset) }
+        val status = loadedPcm.get()?.pcm?.pages?.status
+        if (loaded.get() == asset && driver.originalPlayback().loaded &&
+            status != com.choplab.engine.PcmReadStatus.FAILED && status != com.choplab.engine.PcmReadStatus.CLOSED) return true
+        val delivery = AtomicReference<com.choplab.engine.PcmLease?>(null)
+        val job = jobs.async {
+            pcm.acquire(asset).also { delivery.set(it); ensureActive() }
+        }
+        job.invokeOnCompletion { failure -> if (failure != null) delivery.getAndSet(null)?.close() }
         preparation.set(job)
-        if (token != generation.get()) { preparation.compareAndSet(job, null); job.cancel(); return false }
+        if (token != generation.get()) {
+            preparation.compareAndSet(job, null); job.cancel(); delivery.getAndSet(null)?.close(); return false
+        }
         try {
-            val data = job.await()
+            val data = job.await().pcm
             return controls.withLock {
                 if (token != generation.get()) return@withLock false
                 val accepted = command { frame, id -> EngineCommand.SetOriginalSource(frame, id, OriginalSource(data)) } &&
                     command { frame, id -> EngineCommand.SetOriginalPitch(frame, id, semitones) }
-                if (accepted && token == generation.get()) { loaded.set(asset); keyApplied = true }
+                if (accepted && token == generation.get()) {
+                    loaded.set(asset); loadedPcm.getAndSet(delivery.getAndSet(null))?.close(); keyApplied = true
+                }
                 accepted && token == generation.get()
             }
-        } finally { preparation.compareAndSet(job, null) }
+        } finally { preparation.compareAndSet(job, null); job.cancel(); delivery.getAndSet(null)?.close() }
     }
 
     suspend fun play(asset: Asset): Boolean {
         cancelPreparation()
         val token = generation.get()
         if (!ensureSource(asset, token)) return false
+        val position = driver.originalPlayback().sourceFrame
+        if (!warm(token, if (position >= (loadedPcm.get()?.pcm?.frameCount ?: 0)) 0 else position)) return false
         return controls.withLock {
             token == generation.get() && (keyApplied || sendKey()) && command { frame, id -> EngineCommand.PlayOriginalSource(frame, id) }
         }
@@ -68,6 +81,7 @@ class SourceAuditionController(
     suspend fun clear(): Boolean {
         cancelPreparation()
         loaded.set(null)
+        loadedPcm.getAndSet(null)?.close()
         return controls.withLock { command { frame, id -> EngineCommand.SetOriginalSource(frame, id, null) } }
     }
     suspend fun seek(asset: Asset, nativeFrame: Long): Boolean {
@@ -76,6 +90,7 @@ class SourceAuditionController(
         val token = generation.get()
         if (!ensureSource(asset, token)) return false
         val frame48 = ProgramFrames.to48k(nativeFrame, asset.sampleRate)
+        if (!warm(token, frame48)) return false
         return controls.withLock { token == generation.get() && command { frame, id -> EngineCommand.SeekOriginalSource(frame, id, frame48) } }
     }
     /**
@@ -121,6 +136,7 @@ class SourceAuditionController(
         val first = first48.toInt()
         val last = last48.toInt()
         val at = from * 48_000.0 / asset.sampleRate
+        if (!warm(token, at.toLong())) return false
         return controls.withLock {
             token == generation.get() && command { frame, id -> EngineCommand.SetHandMonitorGain(frame, id, handMonitorGain) } &&
                 token == generation.get() && command { frame, id -> EngineCommand.ScratchOriginalStart(frame, id, at, first, last) }
@@ -132,7 +148,11 @@ class SourceAuditionController(
      */
     suspend fun scratchTo(position: Double, durationFrames: Int): Boolean {
         val asset = loaded.get() ?: return false
-        return controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalPosition(frame, id, position * 48_000 / asset.sampleRate, durationFrames) } }
+        val token = generation.get()
+        // Preparation remains cancellable. A late seek cannot restart a hand already released.
+        val current = driver.handPlayback().sourceFrame
+        if (!warm(token, maxOf(0.0, current).toLong())) return false
+        return controls.withLock { token == generation.get() && command { frame, id -> EngineCommand.ScratchOriginalPosition(frame, id, position * 48_000 / asset.sampleRate, durationFrames) } }
     }
     suspend fun scratchCut(gain: Float): Boolean {
         require(gain.isFinite() && gain in 0f..1f)
@@ -143,6 +163,20 @@ class SourceAuditionController(
         cancelPreparation()
         return controls.withLock { command { frame, id -> EngineCommand.ScratchOriginalEnd(frame, id) } }
     }
+    private suspend fun warm(token: Long, frame: Long): Boolean {
+        val port = pcm as? com.choplab.core.PrefetchPcmPort ?: return token == generation.get()
+        val lease = loadedPcm.get()?.pcm?.tryAcquire() ?: return false
+        val data = lease.pcm
+        if (frame >= data.frameCount) { lease.close(); return token == generation.get() } // END never wraps.
+        val job = jobs.async {
+            port.prefetch(data, maxOf(0L, frame - 12_288).toInt(), minOf(data.frameCount.toLong(), frame + 12_288).toInt())
+        }
+        job.invokeOnCompletion { lease.close() }
+        preparation.set(job)
+        if (token != generation.get()) { preparation.compareAndSet(job, null); job.cancel(); return false }
+        return try { job.await(); token == generation.get() } finally { preparation.compareAndSet(job, null); job.cancel() }
+    }
+
     fun nativeHandFrame(): Double {
         val asset = loaded.get() ?: return -1.0
         val hand = driver.handPlayback().sourceFrame
@@ -155,7 +189,7 @@ class SourceAuditionController(
     private suspend fun command(factory: (Long, Long) -> EngineCommand): Boolean =
         send(factory(driver.snapshot().frame, order.incrementAndGet()))
 
-    override fun close() { cancelPreparation(); loaded.set(null); owner.cancel() }
+    override fun close() { cancelPreparation(); loaded.set(null); loadedPcm.getAndSet(null)?.close(); owner.cancel() }
 
     private object ProgramFrames {
         fun to48k(frame: Long, rate: Int): Long = (frame * 48_000 + rate - 1) / rate

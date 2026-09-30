@@ -98,6 +98,12 @@ HISTORICAL_NON_COMMIT_TREE_LIMIT = 128
 HISTORICAL_NON_COMMIT_REF_LIMIT = 4_096
 ZIP_NESTED_DEPTH_LIMIT = 3
 ZIP_NESTED_ARCHIVE_COUNT_LIMIT = 64
+PACKAGED_APP_NESTED_ARCHIVE_COUNT_LIMIT = 80
+PACKAGED_APP_ARCHIVE_NAMES = frozenset({
+    "ChopLab-windows-app-image.zip",
+    "ChopLab-windows-preview.zip",
+    "ChopLab-mac-next-preview.zip",
+})
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
 ZIP_NESTED_TOTAL_LIMIT = 256 * 1024 * 1024
 CURRENT_ZIP_ARCHIVE_COUNT_LIMIT = 128
@@ -2701,6 +2707,7 @@ def scan_zip(
     entry_count_limit: int = ZIP_ENTRY_COUNT_LIMIT,
     lzma_dictionary_limit: int = ZIP_LZMA_DICTIONARY_LIMIT,
     nested_total_limit: int = ZIP_NESTED_TOTAL_LIMIT,
+    nested_archive_count_limit: int = ZIP_NESTED_ARCHIVE_COUNT_LIMIT,
     _nested_depth: int = 0,
     _nested_budget: ZipNestedScanBudget | None = None,
     _candidate_budget: ZipCandidateScanBudget | None = None,
@@ -3231,11 +3238,11 @@ def scan_zip(
                         continue
                     if (
                         nested_budget.archive_count + 1
-                        > ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+                        > nested_archive_count_limit
                     ):
                         findings.append(
                             f"{archive_label}: nested archive count exceeds "
-                            f"{ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
+                            f"{nested_archive_count_limit}"
                         )
                         continue
                     # Mac Skiko's two architectures occupy ~18 MiB compressed. Still
@@ -3333,6 +3340,7 @@ def scan_zip(
                             entry_count_limit=entry_count_limit,
                             lzma_dictionary_limit=lzma_dictionary_limit,
                             nested_total_limit=nested_total_limit,
+                            nested_archive_count_limit=nested_archive_count_limit,
                             _nested_depth=_nested_depth + 1,
                             _nested_budget=nested_budget,
                             _candidate_budget=candidate_budget,
@@ -3642,11 +3650,11 @@ def scan_zip(
                         continue
                     if (
                         nested_budget.archive_count + 1
-                        > ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+                        > nested_archive_count_limit
                     ):
                         findings.append(
                             f"{archive_label}: nested archive count exceeds "
-                            f"{ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
+                            f"{nested_archive_count_limit}"
                         )
                         continue
                     if (
@@ -3690,6 +3698,7 @@ def scan_zip(
                             ),
                             lzma_dictionary_limit=lzma_dictionary_limit,
                             nested_total_limit=nested_total_limit,
+                            nested_archive_count_limit=nested_archive_count_limit,
                             _nested_depth=_nested_depth + 1,
                             _nested_budget=nested_budget,
                             _candidate_budget=candidate_budget,
@@ -3832,11 +3841,11 @@ def scan_zip(
                                             continue
                                         if (
                                             nested_budget.archive_count + 1
-                                            > ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+                                            > nested_archive_count_limit
                                         ):
                                             findings.append(
                                                 f"{archive_label}: nested archive count "
-                                                f"exceeds {ZIP_NESTED_ARCHIVE_COUNT_LIMIT}"
+                                                f"exceeds {nested_archive_count_limit}"
                                             )
                                             continue
                                         if (
@@ -3869,6 +3878,7 @@ def scan_zip(
                                                 entry_count_limit=entry_count_limit,
                                                 lzma_dictionary_limit=lzma_dictionary_limit,
                                                 nested_total_limit=nested_total_limit,
+                                                nested_archive_count_limit=nested_archive_count_limit,
                                                 _nested_depth=_nested_depth + 1,
                                                 _nested_budget=nested_budget,
                                                 _candidate_budget=candidate_budget,
@@ -4221,6 +4231,14 @@ def scan_public_path(
     return findings
 
 
+def explicit_archive_nested_limit(path: Path) -> int:
+    return (
+        PACKAGED_APP_NESTED_ARCHIVE_COUNT_LIMIT
+        if path.name in PACKAGED_APP_ARCHIVE_NAMES
+        else ZIP_NESTED_ARCHIVE_COUNT_LIMIT
+    )
+
+
 def scan_explicit_text_file(
     path: Path,
     *,
@@ -4311,6 +4329,7 @@ def main() -> int:
             scan_zip(
                 archive_path,
                 label=str(archive_path),
+                nested_archive_count_limit=explicit_archive_nested_limit(archive_path),
                 _candidate_budget=zip_budget,
             )
         )

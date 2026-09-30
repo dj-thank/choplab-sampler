@@ -49,6 +49,8 @@ interface ExportPort {
 interface PcmPort {
     /** 48 kHz stereo, ceil(sourceFrames * 48000 / sourceRate); bounded resident copy. */
     suspend fun load(asset: Asset): PcmAsset
+    /** Own until the last read/control handoff finishes; production caches atomically pin their hit. */
+    suspend fun acquire(asset: Asset): com.choplab.engine.PcmLease = load(asset).acquire()
 }
 
 data class TransportState(
