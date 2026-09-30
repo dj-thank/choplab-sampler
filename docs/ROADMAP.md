@@ -24,7 +24,7 @@
 
 ### 現在の修正対象と再開点
 
-ミキサー/FXの本番候補はrootが統合を担当。schema13、track/bank/stem/vocal/guide・masterのgain/pan/mute/solo/metersとEQ/filter/comp/delay/reverb、16/24bit・float stems ZIP、tailを同一graphで接続する。候補 `76ff87f7` でMacの本番host15・Presenter79/controller3・schema/archive2件とAndroid Preview compile成功。日英wide/compact文字2倍→mix変更1UndoRedo→meter→16/24bit WAV/stems ZIP→archive/autosave再開で原音bytesを保持。FIRの係数・加算順・PCM bitを保つ参照削減 `ae029886` を合成。2026-10-01 05:03–05:05 JST、M1/macOS27/JDK21.0.12.1・48k/block192の同一80reader/17FX・warm/measure各1万blockでp99 0.896→0.758ms、最大1.006→0.873ms、render割当0/PCM欠落0、PCM peak124,526,560/134,217,728 bytes・終了保持0。単発Mac補助証拠で、Pixel32voice/fade/scratch/clickの25%目標・10分実音受入は未確認。最新headの必須CI後にVOCAL依存から順に統合し、実音・DEVICE/HUMANは別判定。rollbackはミキサー候補のrevert。
+ミキサー/FXの本番候補はrootが統合を担当。schema13、track/bank/stem/vocal/guide・masterのgain/pan/mute/solo/metersとEQ/filter/comp/delay/reverb、16/24bit・float stems ZIP、tailを同一graphで接続する。候補 `76ff87f7` でMacの本番host15・Presenter79/controller3・schema/archive2件とAndroid Preview compile成功。日英wide/compact文字2倍→mix変更1UndoRedo→meter→16/24bit WAV/stems ZIP→archive/autosave再開で原音bytesを保持。FIRの係数・加算順・PCM bitを保つ参照削減 `ae029886` を合成。2026-10-01 05:03–05:05 JST、M1/macOS27/JDK21.0.12.1・48k/block192の同一80reader/17FX・warm/measure各1万blockでp99 0.896→0.758ms、最大1.006→0.873ms、render割当0/PCM欠落0、PCM peak124,526,560/134,217,728 bytes・終了保持0。単発Mac補助証拠で、Pixel32voice/fade/scratch/clickの25%目標・10分実音受入は未確認。最新headのWindows/Linux CIで既存DetachedEnginePort試験の終了時close漏れを検出しfixtureを修正。共有予算の拒否と既存出力保全を弱めず、rootのJVM全206件で再検証成功。修正headの必須CI後にVOCAL依存から順に統合し、実音・DEVICE/HUMANは別判定。rollbackはミキサー候補のrevert。
 
 以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
