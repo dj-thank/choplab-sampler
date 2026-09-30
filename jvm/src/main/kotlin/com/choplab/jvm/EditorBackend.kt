@@ -88,6 +88,10 @@ class EditorBackend private constructor(
     suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
         try { vocalCompRenderer.render(project, draft, name) }
         catch (_: PcmMemoryLimit) { throw com.choplab.core.vocal.VocalEditException(com.choplab.core.vocal.VocalProblem.LIMIT) }
+    /** The worker borrows the shared PCM; closing it never closes playback's cache or decoder. */
+    fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
+                            memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory): com.choplab.core.separation.FourStemPort =
+        com.choplab.jvm.separation.FourStemService(assets, pcm, assets.directory.parent.resolve("four-stem-temporary"), factory, memoryProbe)
 
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
     suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)

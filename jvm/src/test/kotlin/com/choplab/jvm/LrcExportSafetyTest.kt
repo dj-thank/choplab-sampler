@@ -9,6 +9,15 @@ import java.util.concurrent.CancellationException
 import kotlin.test.*
 
 class LrcExportSafetyTest {
+    @Test fun preflightValidationUsesTheSameStrictBoundariesAsWrite() {
+        LrcTextIO.validate("")
+        LrcTextIO.validate("[00:01.000]音を拾う 🎵\n")
+        assertFailsWith<CharacterCodingException> { LrcTextIO.validate("\ud800") }
+        assertFailsWith<IllegalArgumentException> {
+            LrcTextIO.validate("a".repeat(LrcTextIO.MAX_CHARACTERS + 1))
+        }
+    }
+
     @Test fun malformedSurrogatesNeverOpenTheDestination() {
         for (text in listOf("\ud800", "\udc00", "line\ud800end", "\udc00\ud800", "\ud800\ud800")) {
             var opens = 0
