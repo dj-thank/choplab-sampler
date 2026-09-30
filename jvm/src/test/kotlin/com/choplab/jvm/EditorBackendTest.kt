@@ -101,6 +101,51 @@ class EditorBackendTest {
         } finally { backend.shutdown() }
     }
 
+    @Test fun placedPadPanPublishesBeforeBankMixAndPreservesSourceAndSharedBudget() = runBlocking<Unit> {
+        val dir = directory()
+        val input = dir.resolve("pan.wav")
+        val samples = FloatArray(4096 * 2) { i ->
+            (kotlin.math.sin(i / 2 * .07) * if (i % 2 == 0) .16 else -.07).toFloat()
+        }
+        Files.newOutputStream(input).use { WavCodec.writeFloat(it, samples) }
+        val files = CountingFiles()
+        val beforeBudget = PcmMemoryBudget.shared.statistics().usedBytes
+        val backend = EditorBackend.create(dir.resolve("profile"), ::silentEngine, files::services)
+        try {
+            assertTrue(backend.studio.dispatch(Action.Import(files.register(input))).accepted)
+            waitUntil { backend.studio.work.value.jobId == null && backend.studio.document.value.project.source != null }
+            val before = backend.studio.document.value
+            val source = before.project.asset(requireNotNull(before.project.source).assetHash)
+            val original = backend.assets.read(source)
+            val pad = com.choplab.core.model.Pad(0, source.hash, com.choplab.core.model.FrameRange(100, 3_000),
+                gain = .23f, pan = .8f, reverse = true, pitchSemitones = -3.0, tone = .4f,
+                attackFrames = 500, decayFrames = 300, sustainLevel = .2f, releaseFrames = 900)
+            val result = backend.renderPad(pad, source)
+            val rendered = WavCodec.read(java.io.ByteArrayInputStream(backend.assets.read(result)))
+            val voice = ProgramCompiler.enginePad(pad.copy(gain = 1f, attackFrames = 0, decayFrames = 0,
+                sustainLevel = 1f, releaseFrames = 1), source, com.choplab.engine.PcmAsset.fromInterleaved(samples))
+            val live = com.choplab.engine.OfflineRender.render(com.choplab.engine.EngineProgram(listOf(voice)),
+                listOf(com.choplab.engine.EngineCommand.Trigger(0, 0, 0)), rendered.samples.size / 2)
+            for (i in 0 until live.size - 4) assertEquals(live[i], rendered.samples[i], 1e-6f, "Pan sample $i")
+            assertTrue(rendered.info.floatingPoint); assertEquals(32, rendered.info.bits)
+            assertEquals(com.choplab.core.model.AssetRole.RENDERED, result.role); assertEquals(source.hash, result.derivedFrom)
+            assertEquals(result, backend.renderPad(pad.copy(gain = .9f, attackFrames = 0, releaseFrames = 1,
+                decayFrames = 0, sustainLevel = 1f), source), "Gain and envelope remain outside the placed audio")
+            val otherPan = backend.renderPad(pad.copy(pan = -.8f), source)
+            assertNotEquals(result.hash, otherPan.hash, "Each direction retains its own stereo pan")
+            val count = Files.list(dir.resolve("profile/assets")).use { it.count() }
+            val memory = PcmMemoryBudget.shared
+            memory.reserve(memory.limitBytes - memory.statistics().usedBytes).use {
+                assertFailsWith<PcmMemoryLimit> { backend.renderPad(pad.copy(pan = .4f), source) }
+            }
+            assertEquals(count, Files.list(dir.resolve("profile/assets")).use { it.count() }, "Admission refusal publishes no partial asset")
+            assertEquals(result, backend.renderPad(pad, source), "Refusal returns the borrowed source and output reservation")
+            assertContentEquals(original, backend.assets.read(source)); assertContentEquals(original, Files.readAllBytes(input))
+            assertEquals(before, backend.studio.document.value)
+        } finally { backend.shutdown(); dir.toFile().deleteRecursively() }
+        assertEquals(beforeBudget, PcmMemoryBudget.shared.statistics().usedBytes)
+    }
+
     @Test fun noteRepeatReadsLateLongSourceWindowsAndRefusesOversizedOutputBeforePublishing() = runBlocking<Unit> {
         val dir = directory()
         val files = CountingFiles()

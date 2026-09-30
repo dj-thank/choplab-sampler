@@ -102,15 +102,16 @@ class EditorBackend private constructor(
         analyseSourceMusic(pcm, asset, range)
 
     /**
-     * Renders [pad] from [source] with its pitch, reverse and tone, as it sounds from its PAD, into a 48 kHz float WAV in
-     * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
+     * Renders [pad] from [source] with its pitch, reverse, tone and own pan into a 48 kHz float WAV in the store.
+     * Placement retains the PAD gain and applies the destination BANK mix once; neither is baked here.
+     * The same PAD renders to the same bytes, so placing it again adds nothing.
      */
     suspend fun renderPad(pad: Pad, source: Asset): Asset = withContext(Dispatchers.Default) {
         pcm.acquire(source).use { lease ->
             val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
             pcm.memory.reserve(PadRender.frames(prepared) * 8L + 256 * 1024).use {
                 val context = currentCoroutineContext()
-                val samples = PadRender.render(prepared) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
+                val samples = PadRender.render(prepared, bakePan = true) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
                 val marks = buildList {
                     if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
                     if (pad.reverse) add("rev")
