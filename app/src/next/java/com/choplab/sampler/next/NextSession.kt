@@ -106,6 +106,9 @@ class NextSession private constructor(
                 return withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use(LrcTextIO::read) }
             }
             override suspend fun exportLrc(text: String): Boolean {
+                // CreateDocument may create/replace a document before returning its Uri.
+                // Reject malformed/oversized text before opening the system picker.
+                withContext(Dispatchers.IO) { LrcTextIO.validate(text) }
                 val uri = pickers.pick(PickerKind.EXPORT_LRC, suggestedName("lrc")) ?: return false
                 withContext(Dispatchers.IO) {
                     LrcTextIO.write(text) {
