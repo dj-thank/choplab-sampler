@@ -19,7 +19,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 import java.util.Locale
-import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.test.*
 
 class VocalGuidePanelTest {
@@ -120,10 +120,12 @@ class VocalGuidePanelTest {
             if (node.positionInRoot.y < area.top || node.positionInRoot.y + node.size.height > area.bottom) {
                 val axis = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
                 val distance = node.positionInRoot.y - area.top - area.height / 3f
-                val destination = (axis.value() + distance).coerceIn(0f, axis.maxValue())
+                // ScrollState rounds its pixel position. A one-pixel tolerance can accept the
+                // penultimate animation frame while the target still moves under the pointer.
+                val destination = (axis.value() + distance).coerceIn(0f, axis.maxValue()).roundToInt().toFloat()
                 assertTrue(requireNotNull(scroll.config[SemanticsActions.ScrollBy].action)(0f, distance))
                 // ScrollBy starts an animation. Wait for its requested destination before measuring or pressing.
-                until("scroll to $value") { abs(axis.value() - destination) <= 1f }
+                until("scroll to $value") { axis.value() == destination }
             }
         }
         hit(value, width, height)
