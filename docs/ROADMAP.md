@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+Windows音声のhost接続候補 [PR195](https://github.com/dj-thank/choplab-sampler/pull/195) はrootが `desktop/next/NextWindowsAudio`・`NextBackend`・`LinkedPreviewMain` と音声resourceを担当する。main `72c96173` のtake/comp/punchを合成し、非同期microphone factoryと入力buffer/route metadataをmono変換まで保持した。既定WASAPI出力、明示録音まで入力を開かない、歌mono/システム音stereo、録音中・旧route未解放の明示切替拒否、制作内容を保つ再接続を実host＋合成native endpointで確認。2026-10-01 rootのhost4/native ports13/punch4件とAndroid Preview compile成功。旧head `576af75c` の必須CI3件は成功、今回の合成headは再検証する。同revisionのWindows package/native経路・実音・長時間・Humanは観測まで未確認。rollbackは本PRのrevert。
+
 以下はmain `53025c14876102ac7f2b43990ea9244d724339f7`、公開branch、PRと端末を9月28日に照合した結果。開始時にheadを再確認する。
 
 | 対象 | 確認した状態 | 次担当が満たす完了条件 |
