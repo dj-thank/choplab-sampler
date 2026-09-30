@@ -1,0 +1,32 @@
+<resources>
+    <string name="vocal_take_title">声のテイク</string>
+    <string name="vocal_take_retained">元の録音をすべて残します。テイク全体か、歌詞の行ごとに選び、試聴して曲へ反映します。</string>
+    <string name="vocal_take_empty">先に声を録音してください。</string>
+    <string name="vocal_take_choice">テイク %1$d · %2$s</string>
+    <string name="vocal_take_preview">選んだテイクを試聴</string>
+    <string name="vocal_take_whole">テイク全体を使う</string>
+    <string name="vocal_take_lines">歌詞の行ごとに選ぶ</string>
+    <string name="vocal_comp_name">声のコンプ</string>
+    <string name="vocal_comp_reopen">選択を編集：%1$s</string>
+    <string name="vocal_comp_crossfade">つなぎ目を10 msでなじませ、曲の時刻を保ちます。短い行や録音の端では短くします。</string>
+    <string name="vocal_comp_range">%1$s ～ %2$s 秒</string>
+    <string name="vocal_comp_replacements">置き換える配置にチェックを入れてください。チェックのない配置は残り、コンプと重なって鳴ります。元テイクはすべて残ります。</string>
+    <string name="vocal_comp_placement">%1$s · %2$s 秒</string>
+    <string name="vocal_comp_preview">コンプを試聴</string>
+    <string name="vocal_take_apply">曲へ反映・1回で戻せます</string>
+    <string name="vocal_cancel">準備を取り消す</string>
+    <string name="vocal_close">閉じる</string>
+    <string name="vocal_stop_preview">試聴を止める</string>
+    <string name="vocal_reload">保存済みテイクを読み直す</string>
+    <string name="vocal_take_applied">コンプを反映しました。元テイクは残っています。</string>
+    <string name="vocal_no_lines">先に時刻付きの歌詞を用意してください。</string>
+    <string name="vocal_take_short">このテイクには行全体の録音がありません。</string>
+    <string name="vocal_take_limit">制作または保存先の空き容量が足りません。</string>
+    <string name="vocal_recording">録音を終えてからテイクを編集してください。</string>
+    <string name="vocal_take_busy">処理が終わるまでお待ちください。</string>
+    <string name="vocal_take_stale">曲が変わりました。保存済みテイクを読み直してください。</string>
+    <string name="vocal_closed">テイクの編集は閉じています。</string>
+    <string name="vocal_invalid">テイクと行の範囲を確認してください。</string>
+    <string name="vocal_render_failed">コンプを準備できませんでした。元テイクと配置は変わりません。</string>
+    <string name="vocal_take_apply_failed">反映できませんでした。元テイクと配置は変わりません。</string>
+</resources>

@@ -1,0 +1,15 @@
+<resources>
+    <string name="quick_start_title">Your first song</string>
+    <string name="quick_start_help">How to use Earth Song</string>
+    <string name="quick_start_intro">Start with an audio file you can use, or add built-in drums in BEAT. You can close this guide and explore at any time.</string>
+    <string name="quick_start_capture">Choose a file or open a saved project. SOURCE lets you listen to the original. Importing keeps its original bytes; it does not place the whole recording in your song.</string>
+    <string name="quick_start_chop">Choose a range in the original and assign it to a PAD. BANK A–H each hold 16 PADs. Change the start, end and playing mode from the PAD settings.</string>
+    <string name="quick_start_beat">Play the PADs, then place the sounds on the song timeline. The PAD details open step/pattern editing. You can also record your voice and open Lyrics here. The original and song have separate play and volume controls.</string>
+    <string name="quick_start_save">Save a project to keep editable sounds and arrangements, or export WAV to share the finished mix. Autosave helps you resume on this device; save a project for a separate copy. Undo reverses an edit.</string>
+    <string name="quick_start_controls_title">Keyboard and reading aloud</string>
+    <string name="quick_start_controls">Use Tab and Shift+Tab to move focus, then Enter or Space to press a focused button. Focused PADs use Enter or Space; arrow keys move a focused clip. Escape closes this guide. Android screen readers can use each PAD’s labeled actions. Stop all stays available while you work.</string>
+    <string name="quick_start_reopen">Open “How to use Earth Song” in SOURCE to read this again. This guide does not request microphone permission, download audio or start playback.</string>
+    <string name="quick_start_continue">Close and explore</string>
+    <string name="quick_start_read_failed">The guide preference could not be read. Your music is unaffected.</string>
+    <string name="quick_start_save_failed">The guide preference could not be saved, so it may appear next time. Your music is unaffected.</string>
+</resources>
