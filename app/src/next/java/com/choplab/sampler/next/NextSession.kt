@@ -1,6 +1,7 @@
 package com.choplab.sampler.next
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -12,6 +13,8 @@ import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.jvm.*
 import com.choplab.jvm.ai.*
+import com.choplab.jvm.separation.*
+import com.choplab.ui.separation.FourStemFactory
 import com.choplab.sampler.R
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
@@ -56,6 +59,7 @@ class NextSession private constructor(
     fun releaseOutput() { backend.engine.releaseOutput() }
     /** Stops the song and the original. Unlike the Stop button it leaves an edit, import, save or export running. */
     suspend fun stopSound() {
+        presenter.cancelFourStemPreparation()
         speechPreview.stop()
         backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
@@ -92,6 +96,16 @@ class NextSession private constructor(
             override val preview = speechPreview
             override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
                 backend.renderVocalComp(project, draft, name)
+        }
+        override val fourStems = FourStemFactory {
+            backend.createFourStemWorker(OnnxFourStemFactory(FourStemModelStore(File(context.filesDir, "next-four-stem-model").toPath()))) {
+                try {
+                    val info = ActivityManager.MemoryInfo()
+                    context.getSystemService(ActivityManager::class.java).getMemoryInfo(info)
+                    SeparationMemory(info.totalMem, info.availMem, info.lowMemory, com.choplab.core.separation.SeparationMemoryReceipt(
+                        com.choplab.core.separation.SeparationMemorySource.ANDROID_ACTIVITY_MANAGER, info.totalMem, info.availMem, info.lowMemory, System.currentTimeMillis()))
+                } catch (_: Exception) { SeparationMemory(0, 0, false) }
+            }
         }
         override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
             override val preview = speechPreview

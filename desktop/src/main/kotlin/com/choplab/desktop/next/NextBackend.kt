@@ -62,6 +62,9 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
         shared.renderVocalComp(project, draft, name)
 
+    fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
+                            memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory) = shared.createFourStemWorker(factory, memoryProbe)
+
     suspend fun flushAutosave() = shared.flushAutosave()
     suspend fun importAudio(path: Path): ActionResult = studio.dispatch(Action.Import(files.register(path)))
     suspend fun openProject(path: Path): ActionResult = studio.dispatch(Action.Open(files.register(path)))
