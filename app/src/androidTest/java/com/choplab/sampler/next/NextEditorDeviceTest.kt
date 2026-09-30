@@ -115,7 +115,13 @@ class NextEditorDeviceTest {
         val startup = model.state.value
         assertTrue("NEXT did not start: $startup", startup is NextViewModel.Startup.Ready)
         rule.waitUntil(30_000) { rule.onAllNodesWithTag("next-editor").fetchSemanticsNodes().isNotEmpty() }
-        return (startup as NextViewModel.Startup.Ready).session
+        val session = (startup as NextViewModel.Startup.Ready).session
+        rule.waitUntil(10_000) { !session.quickStart.state.value.loading }
+        if (session.quickStart.state.value.open) {
+            rule.onNodeWithTag("next-help-close").performClick()
+            rule.waitUntil(10_000) { rule.onAllNodesWithTag("next-quick-start").fetchSemanticsNodes().isEmpty() }
+        }
+        return session
     }
 
     /**

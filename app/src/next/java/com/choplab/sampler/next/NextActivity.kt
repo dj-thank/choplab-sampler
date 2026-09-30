@@ -123,7 +123,8 @@ class NextActivity : ComponentActivity() {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("next-editor")) {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                 session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics,
-                lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, onlineSource = onlineSource)
+                lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide,
+                onlineSource = onlineSource, quickStart = session.quickStart)
         }
     }
 
