@@ -22,8 +22,9 @@ internal class PcmReadCursor {
     var cache: PagedPcm? = null
     var page = -1
     var samples: FloatArray? = null
+    var spanOffset = 0
     fun reset() { missing = false; clear() }
-    fun clear() { cache = null; page = -1; samples = null }
+    fun clear() { cache = null; page = -1; samples = null; spanOffset = 0 }
 }
 
 /** Owns defensive resident samples or a bounded immutable-page cache. Published samples never mutate. */
@@ -61,6 +62,13 @@ class PcmAsset private constructor(private var pcm: FloatArray?, val pages: Page
         return at(frame, channel)
     }
     internal fun at(frame: Int, channel: Int, cursor: PcmReadCursor? = null): Float = pcm?.get(frame * 2 + channel) ?: pages!!.sample(frame, channel, cursor)
+    /** Borrow one contiguous immutable FIR window until the reader clears its existing cursor.
+     * No copy, pin, retained page, or allocation beyond that cursor's already-budgeted read page. */
+    internal fun span(firstFrame: Int, count: Int, cursor: PcmReadCursor): FloatArray? {
+        val resident = pcm
+        if (resident != null) { cursor.spanOffset = firstFrame * 2; return resident }
+        return pages!!.span(firstFrame, count, cursor)
+    }
 
     companion object {
         fun paged(pages: PagedPcm): PcmAsset = PcmAsset(null, pages)

@@ -140,11 +140,28 @@ internal class SincTable(val taps: Int, val phases: Int, cutoff: Double, beta: D
         val b = a + taps
         val length = end - start
         var result = 0.0
+        val first = base - left
+        val edge = if (wrap) minOf(crossfadeFrames, length / 2) else 0
+        // Most real-time FIR kernels are interior to both the source region and one PCM page.
+        // Resolve that immutable array once; preserve coefficient interpolation and summation order.
+        if (cursor != null && first >= start + edge && first <= end - edge - taps) {
+            val samples = asset.span(first, taps, cursor)
+            if (samples != null) {
+                val at = cursor.spanOffset + channel
+                for (i in 0 until taps) {
+                    val weight = coefficients[a + i] + (coefficients[b + i] - coefficients[a + i]) * blend
+                    result += samples[at + i * 2].toDouble() * weight
+                }
+                return result
+            }
+        }
         for (i in 0 until taps) {
             var frame = base + i - left
-            if (wrap) {
-                frame = start + ((frame - start) % length + length) % length
-            } else if (frame < start || frame >= end) continue
+            if (frame < start || frame >= end) {
+                if (!wrap) continue
+                val relative = (frame - start) % length
+                frame = start + if (relative < 0) relative + length else relative
+            }
             val weight = coefficients[a + i] + (coefficients[b + i] - coefficients[a + i]) * blend
             val value = if (wrap) loopSample(asset, frame, channel, start, end, crossfadeFrames, cursor)
                 else asset.at(frame, channel, cursor).toDouble()
@@ -202,6 +219,7 @@ class PitchInterpolator {
     // Resolve the immutable shared tables now, before entering render (including first use).
     private val speeds = PitchTables.speeds
     private val tables = PitchTables.tables
+    private val lastBand = speeds.size - 1
     fun sample(asset: PcmAsset, position: Double, speed: Double, channel: Int, startFrame: Int = 0,
                endFrame: Int = asset.frameCount, loop: Boolean = false): Float {
         require(position.isFinite() && speed.isFinite() && abs(speed) <= 8.0 && channel in 0..1)
@@ -218,7 +236,8 @@ class PitchInterpolator {
             } else 0.0
         }
         var band = 0
-        while (band < speeds.lastIndex && abs(speed) > speeds[band]) band++
+        val magnitude = abs(speed)
+        while (band < lastBand && magnitude > speeds[band]) band++
         return tables[band].read(asset, position, channel, start, end, loop, crossfadeFrames, cursor)
     }
 }
