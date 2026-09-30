@@ -210,7 +210,7 @@
       "coordinate": "com.android.tools:desugar_jdk_libs_nio:2.1.5",
       "scope": "android-desugar",
       "license": "NOASSERTION",
-      "license_url": "https://github.com/google/desugar_jdk_libs/blob/master/LICENSE",
+      "license_url": "https://github.com/google/desugar_jdk_libs/blob/73170c345e6a762fc6a1f0301bb15218850023ef/LICENSE",
       "binary": {
         "file": "desugar_jdk_libs_nio-2.1.5.jar",
         "url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_nio/2.1.5/desugar_jdk_libs_nio-2.1.5.jar",
@@ -225,9 +225,54 @@
           "sha256": "1ba5db067a494d09f5c4a94f4cb4d58fc6fd33e0a55417e0e46d3b288328f3bc"
         }
       ],
-      "corresponding_source_status": "Exact 2.1.5 source/build mapping must be resolved before distribution; the POM license URL identifies the upstream license, not a source delivery receipt.",
+      "corresponding_source_status": "The pinned source candidate declares NIO version 2.1.5 and its public build target. No byte-identical rebuild or complete mapping to the 1459 binary classes has been established; sources classifier is unavailable. Not distribution clearance.",
       "declared_license": "GNU General Public License, version 2, with the Classpath Exception (publisher POM declaration)",
-      "license_status": "The upstream Classpath exception applies only to source files with an explicit header designation. The 2.1.5 binary has no embedded license or source receipt and its sources classifier is unavailable. Exact source/build mapping and per-file exception coverage are not verified; this is not a distribution clearance."
+      "license_status": "Publisher POM declares GPLv2 with Classpath Exception, but exception coverage is per source header. The source candidate includes GPLv2/Classpath and other licenses; complete binary-to-source/header mapping is unverified. NOASSERTION is retained for aggregate review, not an absence of upstream terms.",
+      "source_candidate": {
+        "upstream": "https://github.com/google/desugar_jdk_libs",
+        "revision": "73170c345e6a762fc6a1f0301bb15218850023ef",
+        "version_file": "VERSION_JDK11_NIO.txt",
+        "build_target": "maven_release_jdk11_nio",
+        "archive": {
+          "url": "https://codeload.github.com/google/desugar_jdk_libs/zip/73170c345e6a762fc6a1f0301bb15218850023ef",
+          "bytes": 30020254,
+          "sha256": "cf0b48cb046b6517ed8e2a816c125116a907e13e48e341882ba6f4016a155d9f"
+        },
+        "status": "Release-preparation commit and public Bazel target verified. Binary rebuild, generated/renamed class mapping, and complete per-file license coverage are NOT VERIFIED."
+      }
+    },
+    {
+      "coordinate": "com.android.tools:desugar_jdk_libs_configuration_nio:2.1.5",
+      "scope": "android-desugar",
+      "license": "BSD-3-Clause",
+      "license_url": "https://r8.googlesource.com/r8/+/c331a820ddae7dea41f41a04375b784486d0f705/LICENSE",
+      "license_evidence": {
+        "source": "Official Google Maven POM and the reviewed binary JAR LICENSE agree. Full embedded notice is reproduced in NOTICE.md. This is not source/build or APK notice-delivery acceptance.",
+        "binary_entry": "LICENSE",
+        "bytes": 1491,
+        "sha256": "68834f116f8ff545f05d14753357b620748156d60ee36b26beab4cb3f317efe4"
+      },
+      "binary": {
+        "file": "desugar_jdk_libs_configuration_nio-2.1.5.jar",
+        "url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_configuration_nio/2.1.5/desugar_jdk_libs_configuration_nio-2.1.5.jar",
+        "bytes": 64007,
+        "sha256": "7db51661cd07d1fd5cf12769a75ba201910624bb3801c09363dd3cb28e31c51b"
+      },
+      "metadata": [
+        {
+          "file": "desugar_jdk_libs_configuration_nio-2.1.5.pom",
+          "url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_configuration_nio/2.1.5/desugar_jdk_libs_configuration_nio-2.1.5.pom",
+          "bytes": 1071,
+          "sha256": "6e5e9ec6db8093d26c469c18b9231b033e670333a770852debda90c222fa4835"
+        }
+      ],
+      "source_candidate": {
+        "upstream": "https://r8.googlesource.com/r8",
+        "revision": "c331a820ddae7dea41f41a04375b784486d0f705",
+        "configuration": "src/library_desugar/jdk11/desugar_jdk_libs_nio.json",
+        "status": "Official release-preparation commit identifies 2.1.5. Generated configuration and 29 helper classes have NOT been rebuilt or completely mapped to source. Official sources classifier returned HTTP 404 on 2026-09-28."
+      },
+      "corresponding_source_status": "Exact helper/configuration source and build receipt must accompany the combined-work source delivery; the embedded BSD notice does not establish that receipt."
     }
   ],
   "android_rules_source": "https://github.com/TeamNewPipe/NewPipe/blob/7e5df38aad4b2c035332b3f71aee3064d4fdaae4/app/proguard-rules.pro"
