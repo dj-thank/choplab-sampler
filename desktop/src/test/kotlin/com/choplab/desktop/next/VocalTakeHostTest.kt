@@ -8,13 +8,17 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import com.choplab.core.*
+import com.choplab.core.ai.VocalPreviewPort
+import com.choplab.core.ai.TtsResult
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
 import com.choplab.core.vocal.*
 import com.choplab.jvm.*
 import com.choplab.ui.*
+import com.choplab.ui.source.*
 import com.choplab.ui.vocal.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.nio.file.Files
 import java.util.Locale
 import java.util.concurrent.locks.LockSupport
@@ -23,6 +27,83 @@ import kotlin.test.*
 
 /** Actual host microphone/files/renderer/preview/Studio, with synthetic endpoints and real modal pointer input. */
 class VocalTakeHostTest {
+    @Test fun applyingCompKeepsItsWindowUntilTheOwnedEditFinishes() = runBlocking<Unit> {
+        val applying = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var stopBlocked = false
+        val f = Fixture { real -> object : ContinuousEditorPorts by real {
+            override val vocalGuide = null
+            override val onlineSource = idleOnlineHost {}
+            override val vocalTakes = object : VocalTakePort by real.vocalTakes {
+                override val preview = object : VocalPreviewPort by real.vocalTakes.preview {
+                    override suspend fun stop(): TtsResult<Unit> {
+                        if (stopBlocked) { applying.complete(Unit); release.await() }
+                        return real.vocalTakes.preview.stop()
+                    }
+                }
+                override suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset =
+                    real.vocalTakes.render(project, draft, name).also { stopBlocked = true }
+            }
+        } }
+        try {
+            f.ready()
+            assertEquals(VoiceTakes.Start.STARTED, f.backend.voice.start(1))
+            until { f.backend.voice.recordedMillis >= 100 }
+            val recording = assertNotNull(f.backend.voice.stop("Candidate"))
+            val track = Track("voice", "VOICE", TrackKind.VOCAL)
+            val take = Take("take", track.id, recording.asset.hash, FrameRange(0, recording.asset.frames), 0)
+            assertTrue(f.backend.studio.dispatch(Action.Edit(VocalCompEdits.retain(f.backend.studio.document.value.project, recording.asset, take, track))).accepted)
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenVocalTakes))
+            val controller = assertNotNull(f.presenter.vocalTakes.value)
+            assertTrue(controller.dispatch(VocalAction.WholeTake))
+            val before = f.backend.studio.document.value
+            val committing = async { controller.dispatch(VocalAction.Apply("Comp")) }
+            withTimeout(5_000) { applying.await() }
+            assertEquals(VocalPhase.APPLYING, controller.state.value.phase)
+            for (action in listOf(ContinuousEditorAction.ImportOnline, ContinuousEditorAction.OpenStepPatterns,
+                ContinuousEditorAction.Navigate(ContinuousStage.BEAT))) {
+                assertFalse(withTimeout(1_000) { f.presenter.dispatch(action) })
+                assertSame(controller, f.presenter.vocalTakes.value)
+                assertNull(f.presenter.onlineSource.value)
+                assertNull(f.presenter.stepPatterns.value)
+                assertEquals(before, f.backend.studio.document.value)
+            }
+            release.complete(Unit)
+            assertTrue(committing.await())
+            assertEquals(before.revision + 1, f.backend.studio.document.value.revision)
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before.project, f.backend.studio.document.value.project)
+        } finally { release.complete(Unit); f.close() }
+    }
+
+    @Test fun onlineAndVocalWindowsTransferOwnershipInBothDirectionsWithoutEditing() = runBlocking<Unit> {
+        var closes = 0
+        val f = Fixture { real -> object : ContinuousEditorPorts by real {
+            override val onlineSource = idleOnlineHost { closes++ }
+        } }
+        try {
+            f.ready()
+            val before = f.backend.studio.document.value
+            for (action in listOf(ContinuousEditorAction.OpenVocalTakes, ContinuousEditorAction.OpenVocalPunch)) {
+                assertTrue(f.presenter.dispatch(action))
+                val takes = f.presenter.vocalTakes.value
+                val punch = f.presenter.vocalPunch.value
+                assertTrue(takes != null || punch != null)
+                assertTrue(f.presenter.dispatch(ContinuousEditorAction.ImportOnline))
+                assertNull(f.presenter.vocalTakes.value)
+                assertNull(f.presenter.vocalPunch.value)
+                takes?.let { assertEquals(VocalPhase.CLOSED, it.state.value.phase) }
+                punch?.let { assertTrue(it.state.value.closed) }
+                val online = assertNotNull(f.presenter.onlineSource.value)
+                assertTrue(f.presenter.dispatch(action))
+                assertNull(f.presenter.onlineSource.value)
+                assertTrue(online.state.value.closed)
+                assertEquals(before, f.backend.studio.document.value)
+            }
+            assertEquals(2, closes)
+        } finally { f.close() }
+    }
+
     @Test fun recordingsEnterTheLibraryThenLineChoicesPreviewApplyUndoExportAndReopenInBothLanguagesAndSizes() = runBlocking<Unit> {
         val localeBefore = Locale.getDefault()
         try { for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(Triple(1440,838,1f), Triple(390,844,2f))) {
@@ -98,12 +179,13 @@ class VocalTakeHostTest {
     }
 
     @Test fun closeAndRevisionChangeFenceALateRenderAndRecordingPermissionRefusesCompApply() = runBlocking<Unit> {
-        for (ending in listOf(ContinuousEditorAction.CloseVocalTakes, ContinuousEditorAction.StopOriginal)) {
+        for (ending in listOf(ContinuousEditorAction.CloseVocalTakes, ContinuousEditorAction.StopOriginal, ContinuousEditorAction.ImportOnline)) {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val permission = CompletableDeferred<Unit>()
         val permissionEntered = CompletableDeferred<Unit>()
         val f = Fixture { real -> object : ContinuousEditorPorts by real {
+            override val onlineSource = idleOnlineHost {}
             override val vocalTakes = object : VocalTakePort by real.vocalTakes {
                 override suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset {
                     entered.complete(Unit); withContext(NonCancellable) { release.await() }
@@ -148,6 +230,20 @@ class VocalTakeHostTest {
             permission.complete(Unit); assertFalse(recording.await())
         } finally { release.complete(Unit); permission.complete(Unit); f.close() }
         }
+    }
+
+    private fun idleOnlineHost(closed: () -> Unit) = OnlineSourceHost { _, stop ->
+        val port = object : OnlineSourcePort {
+            override val state = MutableStateFlow(OnlineWorkerState())
+            override fun search(query: String, catalog: OnlineCatalog) = false
+            override fun inspect(id: String) = false
+            override fun selectFormat(id: String) = false
+            override fun save(id: String) = false
+            override fun cancel() = Unit
+            override fun stopAll() = stop()
+            override fun close() = closed()
+        }
+        OnlineImportSession(port) { null }
     }
 
     private class Fixture(wrap: (DesktopEditorPorts)->ContinuousEditorPorts = { it }) {

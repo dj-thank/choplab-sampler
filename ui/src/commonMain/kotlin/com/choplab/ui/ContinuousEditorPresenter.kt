@@ -469,8 +469,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.CloseStepPatterns -> { closeStepPatterns(); true }
                 ContinuousEditorAction.CloseOnline -> closeOnline()
                 is ContinuousEditorAction.Navigate -> {
-                    if (action.stage != view.value.stage && !closeOnline()) return@withLock false
-                    if (action.stage != view.value.stage) { bankPadEditor.dispatch(BankPadEditAction.Cancel); closeLyricProposal(); closeStepPatterns(); closeVocalGuide(); closeVocalTakes() }
+                    if (action.stage != view.value.stage && (!closeOnline() || !closeVocalTakes())) return@withLock false
+                    if (action.stage != view.value.stage) { bankPadEditor.dispatch(BankPadEditAction.Cancel); closeLyricProposal(); closeStepPatterns(); closeVocalGuide() }
                     releaseHeld()
                     if (action.stage != ContinuousStage.BEAT && view.value.scratch != null) { letGoScratch(); view.update { it.copy(scratch = null) } }
                     // The take belongs to the BEAT stage, where its stop button is: leaving it ends the take.
@@ -829,6 +829,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openVocalPunch(): Boolean {
         val port = ports.vocalPunch ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null || !closeVocalTakes()) return false
+        if (!closeOnline()) return false
         if (punchEditor.value != null) return true
         closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close); bankPadEditor.dispatch(BankPadEditAction.Cancel)
@@ -877,6 +878,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openVocalTakes(): Boolean {
         val port = ports.vocalTakes ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (takeEditor.value != null) return true
         closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
@@ -920,7 +922,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (bankPadBlock(view.value, studio.work.value) != null) return false
         if (!closeOnline()) return false
         if (vocal.value != null) return true
-        closeLyricProposal(); closeStepPatterns(); closeVocalTakes()
+        if (!closeVocalTakes()) return false
+        closeLyricProposal(); closeStepPatterns()
         lyricEditor.dispatch(LyricAction.Close)
         bankPadEditor.dispatch(BankPadEditAction.Cancel)
         val controller = VocalGuideController(studio.document, vocalAvailability, port.createSynthesis(), port.preview, object : VocalGuideActions {
@@ -950,7 +953,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (bankPadBlock(view.value, studio.work.value) != null) return false
         if (!closeOnline()) return false
         if (proposal.value != null) return true
-        closeStepPatterns(); closeVocalGuide(); closeVocalTakes()
+        if (!closeVocalTakes()) return false
+        closeStepPatterns(); closeVocalGuide()
         val controller = LyricProposalController(studio.document, port.createProvider(), LyricProposalApply { placement, revision ->
             applyPreparedEdit(Intent.SetStructuredLyrics(placement.lines, placement.structure), revision)
         }, jobs, port.availability)
@@ -970,7 +974,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (!ports.stepPatternsAvailable || bankPadBlock(view.value, studio.work.value) != null) return false
         if (!closeOnline()) return false
         if (patterns.value != null) return true
-        closeLyricProposal(); closeVocalGuide(); closeVocalTakes()
+        if (!closeVocalTakes()) return false
+        closeLyricProposal(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
         bankPadEditor.dispatch(BankPadEditAction.Cancel)
         val controller = StepPatternController(studio.document, studio.selection, patternAvailability, object : StepPatternPorts {
@@ -997,6 +1002,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openOnline(): Boolean {
         val host = ports.onlineSource ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeVocalPunch() || !closeVocalTakes()) return false
         if (online.value != null) return true
         val revision = studio.document.value.revision
         val session = host.open(jobs) { onAction(ContinuousEditorAction.StopAll) }
