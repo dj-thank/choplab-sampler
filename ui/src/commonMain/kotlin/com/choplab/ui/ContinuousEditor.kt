@@ -51,6 +51,7 @@ import kotlin.math.roundToLong
     lyricProposal: LyricProposalController? = null,
     stepPatterns: StepPatternController? = null,
     vocalGuide: VocalGuideController? = null,
+    fourStems: com.choplab.ui.separation.FourStemController? = null,
     onlineSource: OnlineSourceController? = null,
     quickStart: QuickStartController? = null,
 ) {
@@ -101,6 +102,8 @@ import kotlin.math.roundToLong
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
         vocalGuide?.let { CEVocalGuideDialog(it, onAction) }
+        fourStems?.let { controller -> com.choplab.ui.separation.FourStemDialog(controller,
+            onStop = { onAction(ContinuousEditorAction.StopAll) }, onClose = { onAction(ContinuousEditorAction.CloseFourStems) }) }
         onlineSource?.let { OnlineSourceDialog(it) { onAction(ContinuousEditorAction.CloseOnline) } }
         quickStart?.let { QuickStartGuide(it, state.permits(ContinuousCapability.IMPORT_AUDIO),
             { onAction(ContinuousEditorAction.ImportAudio) }, { onAction(ContinuousEditorAction.StopAll) }) }
@@ -474,6 +477,8 @@ import kotlin.math.roundToLong
                 else CEActionButton(stringResource(Res.string.ce_device_record), ContinuousEditorAction.RecordSystemSource,
                     state, ContinuousCapability.RECORD_SYSTEM_SOURCE, onAction, Modifier.weight(1f), tag = "ce-system-record")
             }
+            CEActionButton(stringResource(Res.string.four_stem_title), ContinuousEditorAction.OpenFourStems,
+                state, ContinuousCapability.FOUR_STEMS, onAction, Modifier.fillMaxWidth(), tag = "ce-four-stems-open")
             if (ContinuousCapability.SEPARATE_SOURCE in state.capabilities) {
                 CEActionButton(stringResource(Res.string.ce_separate), ContinuousEditorAction.SeparateSource,
                     state, ContinuousCapability.SEPARATE_SOURCE, onAction, Modifier.fillMaxWidth(), tag = "ce-separate")
