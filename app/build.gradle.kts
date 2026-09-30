@@ -8,24 +8,34 @@ plugins {
 
 val verifyNewPipeDesugaring = tasks.register("verifyNewPipeDesugaring") {
     group = "verification"
-    description = "Verify the reviewed API 29 NIO desugaring artifact before APK preparation"
+    description = "Verify the reviewed API 29 NIO desugaring graph before APK preparation"
     val pins = rootProject.file("config/newpipe-dependencies.json")
     inputs.file(pins)
+    inputs.files(configurations.named("coreLibraryDesugaring"))
     doLast {
         val document = JsonSlurper().parse(pins) as Map<*, *>
-        val pin = (document["artifacts"] as List<*>).map { it as Map<*, *> }.single { it["scope"] == "android-desugar" }
-        val artifact = configurations.getByName("coreLibraryDesugaring").resolvedConfiguration.resolvedArtifacts.single {
-            it.moduleVersion.id.toString() == pin["coordinate"]
+        val rows = (document["artifacts"] as List<*>).map { it as Map<*, *> }
+            .filter { it["scope"] == "android-desugar" }.associateBy { it["coordinate"] as String }
+        val resolved = configurations.getByName("coreLibraryDesugaring").resolvedConfiguration
+        val graph = mutableSetOf<String>()
+        fun visit(dependency: ResolvedDependency) {
+            if (graph.add("${dependency.moduleGroup}:${dependency.moduleName}:${dependency.moduleVersion}"))
+                dependency.children.forEach(::visit)
         }
-        val expected = pin["binary"] as Map<*, *>
-        val digest = MessageDigest.getInstance("SHA-256")
-        artifact.file.inputStream().use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
-        }
-        val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-        check(artifact.file.length() == (expected["bytes"] as Number).toLong() && actual == expected["sha256"]) {
-            "NIO desugaring artifact changed; review provenance, license and pins"
+        resolved.firstLevelModuleDependencies.forEach(::visit)
+        check(graph == rows.keys) { "NIO desugaring dependency graph changed; review provenance, licenses and pins" }
+        graph.forEach { coordinate ->
+            val artifact = resolved.resolvedArtifacts.single { it.moduleVersion.id.toString() == coordinate && it.extension == "jar" }
+            val expected = rows.getValue(coordinate)["binary"] as Map<*, *>
+            val digest = MessageDigest.getInstance("SHA-256")
+            artifact.file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(artifact.file.length() == (expected["bytes"] as Number).toLong() && actual == expected["sha256"]) {
+                "NIO desugaring artifact changed; review provenance, license and pins: $coordinate"
+            }
         }
     }
 }
