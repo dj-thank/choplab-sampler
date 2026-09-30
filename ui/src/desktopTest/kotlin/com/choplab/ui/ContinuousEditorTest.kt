@@ -731,7 +731,7 @@ class ContinuousEditorTest {
         val previous = Locale.getDefault()
         try {
             for (locale in listOf(Locale.JAPAN, Locale.US)) for ((width, height, font) in listOf(
-                Triple(1920, 1080, 1.3f), Triple(1600, 900, 1.3f), Triple(390, 844, 2f))) {
+                Triple(1920, 1080, 1.3f), Triple(1600, 900, 1.3f), Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
                 Locale.setDefault(locale)
                 val actions = mutableListOf<ContinuousEditorAction>()
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
@@ -739,6 +739,10 @@ class ContinuousEditorTest {
                 }
                 try {
                     scene.settle()
+                    val choices = requireNotNull(scene.tag("ce-grid-choices"))
+                    assertNotNull(choices.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange),
+                        "The choices keep a scroll viewport at every window and text size")
+                    assertTrue(choices.boundsInWindow.width >= 48)
                     for (grid in ContinuousGrid.entries) {
                         val tag = "ce-grid-${grid.name.lowercase()}"
                         scene.reach(tag)
