@@ -32,6 +32,7 @@ sealed interface Action {
     data class Export(val request: ExportRequest, val target: PlaybackTarget? = null) : Action
     data object CancelWork : Action
     data class Trigger(val padId: Int, val velocity: Float = 1f) : Action
+    data class StartNoteRepeat(val padId: Int, val ticks: Int, val durationFrames: Int? = null) : Action
     data class Release(val padId: Int) : Action
     /**
      * A PAD scratched by hand: taken at [sourceFrame] (its asset's frames at 48 kHz), then moved to absolute positions
@@ -195,6 +196,10 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         is Action.Trigger -> {
             require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
             playback { frame, id -> EngineCommand.Trigger(frame, id, action.padId, action.velocity) }
+        }
+        is Action.StartNoteRepeat -> {
+            require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
+            playback { frame, id -> EngineCommand.StartNoteRepeat(frame, id, action.padId, action.ticks, action.durationFrames) }
         }
         is Action.ScratchStart -> {
             require(session.project.pads[action.padId].assetHash != null)

@@ -1,0 +1,13 @@
+<resources>
+    <string name="ce_note_repeat">ノートリピート</string>
+    <string name="ce_note_repeat_setting">ノートリピート：%1$s</string>
+    <string name="ce_note_repeat_help">PADを押した瞬間から、曲のテンポとスウィングで反復します。指を離すと止まります。読み上げのクリックやEnter・スペースは1拍だけ鳴らします。録音時の「拍に合わせる」は、フレーズ全体の先頭に適用します。</string>
+    <string name="ce_note_repeat_click">1拍だけ反復</string>
+    <string name="ce_note_repeat_off">オフ</string>
+    <string name="ce_note_repeat_quarter">4分音符</string>
+    <string name="ce_note_repeat_eighth">8分音符</string>
+    <string name="ce_note_repeat_sixteenth">16分音符</string>
+    <string name="ce_note_repeat_thirty_second">32分音符</string>
+    <string name="ce_note_repeat_eighth_triplet">8分3連</string>
+    <string name="ce_note_repeat_sixteenth_triplet">16分3連</string>
+</resources>

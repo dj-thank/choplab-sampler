@@ -8,6 +8,8 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 
 初期案は32voice＋16fade枠。scratch/preview/metronomeも予算に含め、満杯時のsteal/release規則を試験します。Stop/Panicはqueue満杯でも消失させず、鳴り続けやstale voiceを防ぎます。1.5ms lookaheadと-1dBFS sample ceilingはlimiter候補であり、遅延・tailを全経路で扱います。
 
+note repeatは押したframeを起点に、曲のtempo/swingと同じ有理数clockで4/8/16/32分・8/16分3連を刻む。保持PADごとに既存primary内の2枠を予約し、前の発音を96frameで解放しながら次を始める。指を離すとPADのrelease、停止・画面移動・program/tempo変更・出力喪失で保持を終える。読み上げ・Enter/Spaceの単一操作はengine側で1拍に制限し、UI timerを発音clockにしない。録音では同じclock・stereo/envelope/加工のpre-masterフレーズを不変float資産にし、quantizeはフレーズ先頭へ適用、録音1回=1Undoで曲へ置く。曲と書出しはその同じ資産を使い、元音とPAD設定を保持する。長尺入力は小窓で読み、出力PCMを共有128MiBから先に予約する。
+
 位置scratchは開始、時刻付き絶対source位置、CUT、終了を受けます。touch/mouse/将来jogをadapterで位置へ変換し、更新周期、補間、負速、端、idle silence、解放fadeを一つの実装で定義します。鳴っているPADをつかむ操作は、その位置から開始し、つかんだ時に再生中だったPAD voiceだけを一度だけ復帰させます。通常の8倍を超える移動は8倍で追って遅れて着き、動き始めと停止は2 msでfadeし、止めたまま離しても鳴らしません。
 
 原曲のSOURCEとHANDは同じ不変PCMを共有し、再生位置・音量・CUT・操作所有は独立します。HANDを動かしてもSOURCEは再生を続け、HAND終了はSOURCEのseek・pause・resumeを発行しません。SOURCEのseek/playもHANDを移動させません。HANDは移動中だけ発音し、終了・取消・画面移動・出力切断で一度だけ解放します。SOURCE停止・交換・全停止はHANDも解放し、残る96frameのscalar fadeは旧PCMを保持しません。HANDはprimary32枠の1枠を予約し、満杯時はtyped拒否、CUTと専用gainは別に扱います。配置32＋primary32＋fade16＋SOURCE1の最大81同時readerと128MiBの常駐予算を維持します。原曲監視とHANDは書出しへ混ぜず、PADの加工・配置は制作のmix経路を使います。
