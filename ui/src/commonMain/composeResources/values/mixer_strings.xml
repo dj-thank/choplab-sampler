@@ -53,7 +53,7 @@
     <string name="mixer_meter_unrouted">This BANK is not routed yet. Its meter shows the combined unrouted PADs.</string>
     <string name="mixer_meter_unavailable">Meter unavailable</string>
     <string name="mixer_meter_levels">Peak L %1$s / R %2$s dBFS · RMS L %3$s / R %4$s dBFS</string>
-    <string name="mixer_export_bits">%1$d-bit WAV · dither at final quantization</string>
+    <string name="mixer_export_bits">%1$d-bit WAV</string>
     <string name="mixer_export_tail">Include effect tails after the song</string>
     <string name="mixer_export_tail_hint">Export through the last clip, then include the effects tail.</string>
     <string name="mixer_export_exact_hint">End exactly at the last clip. Effect tails are cut.</string>

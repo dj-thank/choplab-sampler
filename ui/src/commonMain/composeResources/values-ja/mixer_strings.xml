@@ -53,7 +53,7 @@
     <string name="mixer_meter_unrouted">未設定BANKは、まだ個別でなく未ルーティング音の合計を表示します。</string>
     <string name="mixer_meter_unavailable">メーター取得なし</string>
     <string name="mixer_meter_levels">Peak L %1$s / R %2$s dBFS · RMS L %3$s / R %4$s dBFS</string>
-    <string name="mixer_export_bits">%1$d bit WAV · 最終量子化時にディザ</string>
+    <string name="mixer_export_bits">%1$d bit WAV</string>
     <string name="mixer_export_tail">曲の末尾に余韻を含める</string>
     <string name="mixer_export_tail_hint">最後のクリップまで＋エフェクトの余韻を書き出します。</string>
     <string name="mixer_export_exact_hint">最後のクリップまでの長さで切ります。エフェクトの余韻は含みません。</string>

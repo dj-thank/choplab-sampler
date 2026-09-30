@@ -69,6 +69,11 @@ class MixerHostTest {
                 assertNotNull((0 until com.choplab.engine.MixerProgram.MAX_BUSES).firstOrNull { meter.program.busId(it) == "bank" })
                 assertTrue(f.presenter.dispatch(ContinuousEditorAction.StopAll))
                 scene.pointer("ce-export-bits-16"); scene.pointer("ce-export-tail")
+                scene.reach("ce-export-bits-16")
+                val evidence = java.io.File(System.getProperty("choplab.ui.evidenceDir", "build/reports/ui-evidence"), "mixer-save").apply { mkdirs() }
+                scene.render(System.nanoTime()).use { image -> requireNotNull(image.encodeToData()).use {
+                    java.io.File(evidence, "save-${locale.language}-${width}x$height.png").writeBytes(it.bytes)
+                } }
                 scene.pointer("ce-export"); until { f.presenter.state.value.status == ContinuousStatus.EXPORTED }
                 val exact = Files.newInputStream(f.wav).use(WavCodec::read)
                 assertEquals(16, exact.info.bits); assertEquals(4096, exact.info.frames)

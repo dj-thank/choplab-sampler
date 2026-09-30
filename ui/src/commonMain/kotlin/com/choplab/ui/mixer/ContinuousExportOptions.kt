@@ -2,7 +2,9 @@ package com.choplab.ui.mixer
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,6 +25,8 @@ import org.jetbrains.compose.resources.stringResource
             val label = stringResource(Res.string.mixer_export_bits, bits)
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(state.exportBits == bits, { onAction(ContinuousEditorAction.ExportBits(bits)) }, enabled = enabled,
+                    colors = RadioButtonDefaults.colors(selectedColor = CEColor.Orange, unselectedColor = CEColor.Cream,
+                        disabledSelectedColor = CEColor.Orange.copy(alpha = .5f), disabledUnselectedColor = CEColor.Tan),
                     modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("ce-export-bits-$bits")
                         .semantics { contentDescription = label })
                 Text(label, color = CEColor.Cream, fontSize = 16.sp)
@@ -31,6 +35,8 @@ import org.jetbrains.compose.resources.stringResource
         val label = stringResource(Res.string.mixer_export_tail)
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Switch(state.exportTail, { onAction(ContinuousEditorAction.ExportTail(it)) }, enabled = enabled,
+                colors = SwitchDefaults.colors(checkedThumbColor = CEColor.Ink, checkedTrackColor = CEColor.Orange,
+                    uncheckedThumbColor = CEColor.Cream, uncheckedTrackColor = CEColor.Border, uncheckedBorderColor = CEColor.Cream),
                 modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("ce-export-tail")
                     .semantics { contentDescription = label })
             Text(label, Modifier.weight(1f), color = CEColor.Cream, fontSize = 16.sp)
