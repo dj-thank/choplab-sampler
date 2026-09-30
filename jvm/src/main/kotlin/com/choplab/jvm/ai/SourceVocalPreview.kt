@@ -59,6 +59,7 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
     }
 
     override suspend fun start(asset: Asset, expectedRevision: Long): TtsResult<Unit> = controls.withLock {
+        currentCoroutineContext().ensureActive()
         if (closed.get()) return@withLock ttsFailure(TtsProblem.CLOSED)
         if (studio.document.value.revision != expectedRevision) return@withLock ttsFailure(TtsProblem.STALE_DOCUMENT)
         if (asset.sampleRate != 48_000 || asset.channels != 2 || asset.role != AssetRole.RENDERED) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
