@@ -6,6 +6,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.choplab.core.*
+import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.desktop.DesktopProfile
@@ -19,6 +20,8 @@ import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
 import com.choplab.jvm.ai.*
+import com.choplab.jvm.separation.*
+import com.choplab.ui.separation.FourStemFactory
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
@@ -110,12 +113,16 @@ fun main() {
                 val lyricProposal by presenter.lyricProposal.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
                 val vocalGuide by presenter.vocalGuide.collectAsState()
+                val fourStems by presenter.fourStems.collectAsState()
                 val onlineSource by presenter.onlineSource.collectAsState()
                 val sourceAnalysis by presenter.sourceAnalysis.collectAsState()
+                val vocalTakes by presenter.vocalTakes.collectAsState()
+                val vocalPunch by presenter.vocalPunch.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
-                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, quickStart = quickStart)
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
+                    onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, quickStart = quickStart)
             }
         }
     } finally { quickStart.close(); ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -124,15 +131,24 @@ fun main() {
 internal class DesktopEditorPorts(
     private val backend: NextBackend,
     private val spotify: SpotifyDesktopSession = SpotifyDesktopSession(onStatus = {}, purpose = SpotifySessionPurpose.METADATA_ONLY),
+    private val fourStemSessions: FourStemSessionFactory = OnnxFourStemFactory(FourStemModelStore(backend.assets.directory.parent.resolve("four-stem-model"))),
+    private val fourStemMemory: () -> SeparationMemory = FourStemMemoryProbe()::sample,
     private val onlineDirectory: () -> Path = { DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library") },
     private val onlineBackend: () -> com.choplab.sampler.source.YoutubeSourceBackend = { com.choplab.sampler.source.newpipe.NewPipeSourceBackend() },
     private val parent: () -> AwtWindow?,
 ) : ContinuousEditorPorts, AutoCloseable {
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
+    override val fourStems = FourStemFactory { backend.createFourStemWorker(fourStemSessions, fourStemMemory) }
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
+    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice)
+    override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
+            backend.renderVocalComp(project, draft, name)
+    }
     override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
         override val preview = speechPreview
         override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort {

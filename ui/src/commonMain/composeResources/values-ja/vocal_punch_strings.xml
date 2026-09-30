@@ -1,0 +1,35 @@
+<resources>
+    <string name="punch_title">区間を録り直す</string>
+    <string name="punch_commit_help">録音候補はまとめて 1 回の Undo で保存します。既存の配置は変えず、テイク画面で試聴してから別の操作で適用します。</string>
+    <string name="punch_start">開始（秒）</string>
+    <string name="punch_end">終了（秒・この位置を含まない）</string>
+    <string name="punch_preroll">プレロール %1$d 小節</string>
+    <string name="punch_countin">最初のカウントイン %1$d 小節</string>
+    <string name="punch_passes">繰り返し %1$d 回</string>
+    <string name="punch_loop_help">各回でプレロールに戻ります。選択した音声は合計 5 分・最大 8 回。つなぎ目用の前後 5 ms も保持します。</string>
+    <string name="punch_manual">今回の手動補正（ms・正は前へ）</string>
+    <string name="punch_unmeasured">入力到着時刻と出力待ち時間による推定です。往復遅延・drift は未測定で、±5 ms の達成を示すものではありません。手動値はこの録音だけに使います。</string>
+    <string name="punch_route">入力 %1$d Hz / %2$s frames、出力 %3$d Hz / %4$s frames。時計: host monotonic</string>
+    <string name="punch_invalidated">ルート条件が変わり、補正は失効しました。候補は未補正で保持します。</string>
+    <string name="punch_manual_active">手動補正・実測ではありません</string>
+    <string name="punch_estimated">時刻推定・往復は未測定</string>
+    <string name="punch_progress">録音 %1$d / %2$d 回</string>
+    <string name="punch_saved">%1$d 個の候補を保存しました</string>
+    <string name="punch_choices">テイクを試聴・選択する</string>
+    <string name="punch_record">候補を録音して保存</string>
+    <string name="punch_stop">停止して候補を保存</string>
+    <string name="punch_close">閉じる</string>
+    <string name="punch_permission">マイクの許可がありません。</string>
+    <string name="punch_no_input">マイクを開けませんでした。</string>
+    <string name="punch_no_output">出力を接続してから録音してください。</string>
+    <string name="punch_no_room">録音に必要なメモリまたは保存容量が足りません。</string>
+    <string name="punch_stale">制作が変わったため、古い録音結果は適用していません。</string>
+    <string name="punch_interrupted">入出力が中断されました。録れた候補は保持します。</string>
+    <string name="punch_empty">選択区間に音声を録音できませんでした。</string>
+    <string name="punch_save_failed">候補を制作へ保存できませんでした。</string>
+    <string name="punch_cancelled">録音開始前に取り消しました。</string>
+    <string name="punch_busy">ほかの録音や処理が終わってから開始してください。</string>
+    <string name="punch_cue">録音の開始時刻を確定できませんでした。</string>
+    <string name="punch_invalid">範囲・繰り返し回数・補正を確認してください。合計録音は 5 分までです。</string>
+    <string name="punch_splice">選択テイクで録り直し区間を置換</string>
+</resources>

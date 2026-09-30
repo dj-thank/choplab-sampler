@@ -1,0 +1,34 @@
+<resources>
+    <string name="four_stem_title">Separate into 4 parts</string>
+    <string name="four_stem_local">Processes the entire original on this device. The audio stays here; the source and song change only when you place the results.</string>
+    <string name="four_stem_memory_observation">Last RAM check: %1$d MiB available / %2$d MiB total · %3$s</string>
+    <string name="four_stem_memory_limit">This observation does not reserve memory or guarantee a later allocation. Availability is checked again before loading the model.</string>
+    <string name="four_stem_memory_mac">macOS estimate: free and file-backed pages</string>
+    <string name="four_stem_memory_windows">Windows physical memory status</string>
+    <string name="four_stem_memory_linux">Linux MemAvailable estimate</string>
+    <string name="four_stem_memory_android">Android ActivityManager</string>
+    <string name="four_stem_download">Allow the fixed 166 MB model to download if it is missing or needs repair</string>
+    <string name="four_stem_start">Separate the original</string>
+    <string name="four_stem_preparing">Preparing four parts. You can cancel or close this window.</string>
+    <string name="four_stem_progress">Processed %1$d%%</string>
+    <string name="four_stem_cancelling">Stopping the worker and releasing its audio memory…</string>
+    <string name="four_stem_cancel">Cancel separation</string>
+    <string name="four_stem_heads">Drums · bass · other instruments · vocals</string>
+    <string name="four_stem_all">All parts</string>
+    <string name="four_stem_acapella">Vocals only</string>
+    <string name="four_stem_instrumental">Without vocals</string>
+    <string name="four_stem_first_bar">Place from bar</string>
+    <string name="four_stem_apply_hint">Adds four tracks together. Vocals-only and without-vocals mute the other tracks; every part stays saved.</string>
+    <string name="four_stem_apply">Place all four tracks · one Undo</string>
+    <string name="four_stem_applied">Placed in the song. Save to preserve the original and all four parts.</string>
+    <string name="four_stem_model_missing">The model is not installed. Allow its download, then start again.</string>
+    <string name="four_stem_model_invalid">The model could not be verified. Allow a repair download, then retry.</string>
+    <string name="four_stem_download_failed">Model download failed. Check the connection and retry.</string>
+    <string name="four_stem_ram">Available device memory is insufficient or could not be checked. Close other memory-heavy apps and retry.</string>
+    <string name="four_stem_pcm">Audio memory is full. Stop playback or close another audio task and retry.</string>
+    <string name="four_stem_space">The four outputs exceed a duration or storage limit, or free space is insufficient.</string>
+    <string name="four_stem_stale">The project changed. Close and reopen separation from the current original.</string>
+    <string name="four_stem_busy">Unavailable during recording, arming, or another edit. Finish that operation first.</string>
+    <string name="four_stem_cancelled">Cancelled. The project was not changed.</string>
+    <string name="four_stem_failed">Separation or placement failed. The original was kept; check the source and retry.</string>
+</resources>

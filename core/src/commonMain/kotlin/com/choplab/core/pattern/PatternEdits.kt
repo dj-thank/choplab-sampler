@@ -21,7 +21,10 @@ private fun reject(problem: PatternProblem): Nothing = throw PatternEditExceptio
 object PatternEdits {
     const val STEP_TICKS = ProjectLimits.PPQ / 4
     const val BAR_TICKS = ProjectLimits.PPQ * 4
-    val QUANTIZE_TICKS = listOf(ProjectLimits.PPQ, ProjectLimits.PPQ / 2, STEP_TICKS)
+    const val EIGHTH_TRIPLET_TICKS = ProjectLimits.PPQ / 3
+    const val SIXTEENTH_TRIPLET_TICKS = ProjectLimits.PPQ / 6
+    val INPUT_GRID_TICKS = listOf(STEP_TICKS, EIGHTH_TRIPLET_TICKS, SIXTEENTH_TRIPLET_TICKS)
+    val QUANTIZE_TICKS = listOf(ProjectLimits.PPQ, ProjectLimits.PPQ / 2) + INPUT_GRID_TICKS
 
     fun create(project: Project, name: String, copy: Pattern? = null): Pattern {
         if (project.patterns.size >= ProjectLimits.MAX_PATTERNS) reject(PatternProblem.PATTERN_LIMIT)
@@ -34,10 +37,11 @@ object PatternEdits {
         if (!trim && pattern.notes.any { it.tick >= length }) reject(PatternProblem.TRIM_REQUIRED)
         return pattern.copy(bars = bars, notes = pattern.notes.filter { it.tick < length }.frozen())
     }
-    fun toggle(project: Project, pattern: Pattern, padId: Int, step: Int, velocity: Float): Pattern {
-        if (padId !in 0..127 || step !in 0 until pattern.bars * 16 || !velocity.isFinite() || velocity !in 0f..1f) reject(PatternProblem.INVALID_INPUT)
+    fun toggle(project: Project, pattern: Pattern, padId: Int, step: Int, velocity: Float, gridTicks: Int = STEP_TICKS): Pattern {
+        if (padId !in 0..127 || gridTicks !in INPUT_GRID_TICKS ||
+            step !in 0 until pattern.lengthTicks / gridTicks || !velocity.isFinite() || velocity !in 0f..1f) reject(PatternProblem.INVALID_INPUT)
         if (project.pads[padId].assetHash == null) reject(PatternProblem.EMPTY_PAD)
-        val tick = step * STEP_TICKS
+        val tick = step * gridTicks
         val existing = pattern.notes.any { it.padId == padId && it.tick == tick }
         val notes = pattern.notes.filterNot { it.padId == padId && it.tick == tick } + if (existing) emptyList() else listOf(Note(tick, padId, velocity))
         return pattern.copy(notes = notes.sortedWith(compareBy(Note::tick, Note::padId)).frozen())

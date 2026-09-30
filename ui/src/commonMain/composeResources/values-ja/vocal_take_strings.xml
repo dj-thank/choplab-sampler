@@ -1,6 +1,6 @@
 <resources>
     <string name="vocal_take_title">声のテイク</string>
-    <string name="vocal_take_retained">元の録音をすべて残します。テイク全体か、歌詞の行ごとに選び、試聴して曲へ反映します。</string>
+    <string name="vocal_take_retained">録音の保存とコンプの反映は、それぞれ1回で戻せます。元の録音をすべて残します。テイク全体か、歌詞の行ごとに選び、試聴して曲へ反映します。</string>
     <string name="vocal_take_empty">先に声を録音してください。</string>
     <string name="vocal_take_choice">テイク %1$d · %2$s</string>
     <string name="vocal_take_preview">選んだテイクを試聴</string>
@@ -29,4 +29,6 @@
     <string name="vocal_invalid">テイクと行の範囲を確認してください。</string>
     <string name="vocal_render_failed">コンプを準備できませんでした。元テイクと配置は変わりません。</string>
     <string name="vocal_take_apply_failed">反映できませんでした。元テイクと配置は変わりません。</string>
+    <string name="vocal_take_saved_only">録音を声のテイクに保存しました。曲には配置できなかったため、既存の並びは変わりません。</string>
+    <string name="vocal_preview_source_owned">声の試聴中 · 原曲操作は停止後に戻ります</string>
 </resources>

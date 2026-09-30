@@ -51,7 +51,14 @@ fun VocalTakePanel(controller: VocalTakeController, onClose: () -> Unit, modifie
                 }
                 val draft = state.draft
                 if (draft != null) {
-                    item { Text(stringResource(Res.string.vocal_comp_crossfade)) }
+                    item {
+                        Text(stringResource(Res.string.vocal_comp_crossfade))
+                        state.punchRange?.let { range ->
+                            Text(stringResource(Res.string.vocal_comp_range, time(range.first), time(range.second)))
+                            OutlinedButton({ action(VocalAction.SplicePunch) }, enabled = state.editable && state.selectedTake != null,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("vocal-splice-punch")) { Text(stringResource(Res.string.punch_splice)) }
+                        }
+                    }
                     items(draft.segments, key = { "line-${it.id}" }) { line ->
                         val label = state.project.lyrics.firstOrNull { it.id == line.lyricLineId }?.text
                             ?: stringResource(Res.string.vocal_take_whole)

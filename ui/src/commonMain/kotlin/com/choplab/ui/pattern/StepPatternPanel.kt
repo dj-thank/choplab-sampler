@@ -57,7 +57,7 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
             }
             OutlinedTextField(state.name, { dispatch(PatternAction.Name(it.take(80))) }, enabled = state.editable,
                 modifier = Modifier.fillMaxWidth().testTag("pattern-name"), label = { Text(stringResource(Res.string.pattern_editor_name)) })
-            Text(stringResource(Res.string.pattern_editor_length, state.draft.bars, state.draft.bars * 16))
+            Text(stringResource(Res.string.pattern_editor_length, state.draft.bars, state.steps))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (bars in 1..8) FilterChip(state.draft.bars == bars, { dispatch(PatternAction.Resize(bars)) }, enabled = state.editable,
                     label = { Text(stringResource(Res.string.pattern_editor_bars, bars)) }, modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-bars-$bars"))
@@ -68,6 +68,16 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pattern-trim-confirm")) { Text(stringResource(Res.string.pattern_editor_trim_confirm)) }
                 TextButton(onClick = { dispatch(PatternAction.Dismiss) }) { Text(stringResource(Res.string.pattern_editor_keep_length)) }
             }
+            Text(stringResource(Res.string.pattern_editor_grid))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((ticks, label) in listOf(PatternEdits.STEP_TICKS to Res.string.pattern_editor_sixteenth,
+                    PatternEdits.EIGHTH_TRIPLET_TICKS to Res.string.pattern_editor_eighth_triplet,
+                    PatternEdits.SIXTEENTH_TRIPLET_TICKS to Res.string.pattern_editor_sixteenth_triplet)) {
+                    FilterChip(state.gridTicks == ticks, { dispatch(PatternAction.Grid(ticks)) }, enabled = state.editable,
+                        label = { Text(stringResource(label)) }, modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-grid-$ticks"))
+                }
+            }
+            Text(stringResource(Res.string.pattern_editor_grid_hint), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(Res.string.pattern_editor_columns))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (columns in listOf(16, 32, 64)) FilterChip(state.columns == columns, { dispatch(PatternAction.Columns(columns)) }, enabled = state.editable,
@@ -93,9 +103,10 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
                 }
             }
             if (pad.assetHash == null) Text(stringResource(Res.string.pattern_editor_empty_pad))
+            val gridTicks = state.gridTicks
             val first = state.page * state.columns
-            val end = minOf(first + state.columns, state.draft.bars * 16)
-            Text(stringResource(Res.string.pattern_editor_page, first + 1, end, state.draft.bars * 16, state.page + 1, state.pages))
+            val end = minOf(first + state.columns, state.steps)
+            Text(stringResource(Res.string.pattern_editor_page, first + 1, end, state.steps, state.page + 1, state.pages))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ dispatch(PatternAction.Page(state.page - 1)) }, enabled = state.editable && state.page > 0,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-page-previous")) { Text(stringResource(Res.string.pattern_editor_previous)) }
@@ -103,19 +114,21 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
                     modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-page-next")) { Text(stringResource(Res.string.pattern_editor_next)) }
             }
             Text(stringResource(Res.string.pattern_editor_scroll), style = MaterialTheme.typography.bodySmall)
-            key(state.draft.id, state.page, state.columns) {
+            key(state.draft.id, state.page, state.columns, state.gridTicks) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("pattern-grid"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (step in first until end) {
-                        val selected = state.draft.notes.any { it.padId == pad.id && it.tick == step * PatternEdits.STEP_TICKS }
-                        val label = stringResource(Res.string.pattern_editor_step, step + 1, step / 16 + 1, step % 16 / 4 + 1)
-                        FilterChip(selected, { dispatch(PatternAction.Toggle(step)) }, enabled = state.editable && pad.assetHash != null,
+                        val tick = step * gridTicks
+                        val selected = state.draft.notes.any { it.padId == pad.id && it.tick == tick }
+                        val label = stringResource(Res.string.pattern_editor_step, step + 1, tick / PatternEdits.BAR_TICKS + 1,
+                            tick % PatternEdits.BAR_TICKS / ProjectLimits.PPQ + 1)
+                        FilterChip(selected, { dispatch(PatternAction.Toggle(step, gridTicks)) }, enabled = state.editable && pad.assetHash != null,
                             label = { Text((step + 1).toString()) }, modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 52.dp)
                                 .testTag("pattern-step-$step").semantics { contentDescription = label })
                     }
                 }
             }
             val notes = state.draft.notes.filter { it.padId == pad.id }
-            Text(stringResource(Res.string.pattern_editor_notes, notes.size, notes.count { it.tick % PatternEdits.STEP_TICKS != 0 }))
+            Text(stringResource(Res.string.pattern_editor_notes, notes.size, notes.count { it.tick % state.gridTicks != 0 }))
             Text(stringResource(Res.string.pattern_editor_velocity))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (percent in listOf(25, 50, 75, 100)) FilterChip(state.velocity == percent / 100f, { dispatch(PatternAction.Velocity(percent / 100f)) },
@@ -123,7 +136,10 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
             }
             Text(stringResource(Res.string.pattern_editor_quantize))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((ticks, label) in listOf(960 to Res.string.pattern_editor_quarter, 480 to Res.string.pattern_editor_eighth, 240 to Res.string.pattern_editor_sixteenth)) {
+                for ((ticks, label) in listOf(960 to Res.string.pattern_editor_quarter, 480 to Res.string.pattern_editor_eighth,
+                    PatternEdits.STEP_TICKS to Res.string.pattern_editor_sixteenth,
+                    PatternEdits.EIGHTH_TRIPLET_TICKS to Res.string.pattern_editor_eighth_triplet,
+                    PatternEdits.SIXTEENTH_TRIPLET_TICKS to Res.string.pattern_editor_sixteenth_triplet)) {
                     OutlinedButton({ dispatch(PatternAction.Quantize(ticks)) }, enabled = state.editable && notes.isNotEmpty(),
                         modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-quantize-$ticks")) { Text(stringResource(label)) }
                 }
