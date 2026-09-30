@@ -1,0 +1,26 @@
+<resources>
+    <string name="source_analysis_title">BPM and key candidates</string>
+    <string name="source_analysis_entry">Find SOURCE BPM / key</string>
+    <string name="source_analysis_range">Selected original audio: %1$s–%2$s seconds (up to %3$d seconds).</string>
+    <string name="source_analysis_local">Analysis stays on this device and uses the original audio before listening pitch changes. It changes no sound or song settings.</string>
+    <string name="source_analysis_start">Analyse this range</string>
+    <string name="source_analysis_running">Listening for regular attacks and tonal notes…</string>
+    <string name="source_analysis_cancel">Cancel analysis</string>
+    <string name="source_analysis_short">Use a range at least 4 seconds long with several beats or notes.</string>
+    <string name="source_analysis_tempo">BPM candidates</string>
+    <string name="source_analysis_tempo_hint">A rhythm may fit half or double time. Check by ear, choose a candidate, then apply. Tap tempo and manual input remain available.</string>
+    <string name="source_analysis_no_tempo">No clear regular beat found in this range.</string>
+    <string name="source_analysis_apply">Apply selected BPM to the song</string>
+    <string name="source_analysis_key">Key candidates</string>
+    <string name="source_analysis_key_hint">These describe tonal notes in this range, not a confirmed key for the whole song. Drums, speech and changing keys may give no useful candidate.</string>
+    <string name="source_analysis_no_key">Not enough clear tonal notes to suggest a key.</string>
+    <string name="source_analysis_key_value">%1$s %2$s</string>
+    <string name="source_analysis_major">major</string>
+    <string name="source_analysis_minor">minor</string>
+    <string name="source_analysis_applied">BPM applied. One Undo restores the previous tempo.</string>
+    <string name="source_analysis_stale">The song changed. Close and reopen to analyse the current SOURCE.</string>
+    <string name="source_analysis_busy">Wait for the current operation to finish.</string>
+    <string name="source_analysis_recording">Finish recording before analysing or applying.</string>
+    <string name="source_analysis_failed">This range could not be analysed. The song is unchanged; you can retry.</string>
+    <string name="source_analysis_apply_failed">BPM was not applied. Check the current song and retry.</string>
+</resources>

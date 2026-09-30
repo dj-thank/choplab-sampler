@@ -76,6 +76,7 @@ class WasapiStreamsTest {
             val input = assertIs<WasapiOpen.Ready<WasapiMicInput>>(streams.openInput(mode)).stream
             assertEquals(48_000, input.sampleRate)
             assertEquals(2, input.channels)
+            assertEquals(480, input.bufferFrames)
             val expected = FloatArray(1_337 * 2) { if (it % 2 == 0) it / 1024f else -it / 2048f }
             var at = 0
             var chunk = 0

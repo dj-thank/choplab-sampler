@@ -33,6 +33,8 @@ import com.choplab.ui.ai.LyricProposalController
 import com.choplab.ui.pattern.StepPatternController
 import com.choplab.ui.source.OnlineSourceController
 import com.choplab.ui.source.OnlineSourceDialog
+import com.choplab.ui.analysis.SourceAnalysisController
+import com.choplab.ui.analysis.SourceAnalysisDialog
 import com.choplab.ui.onboarding.*
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
@@ -54,6 +56,7 @@ import kotlin.math.roundToLong
     vocalGuide: VocalGuideController? = null,
     fourStems: com.choplab.ui.separation.FourStemController? = null,
     onlineSource: OnlineSourceController? = null,
+    sourceAnalysis: SourceAnalysisController? = null,
     vocalTakes: com.choplab.ui.vocal.VocalTakeController? = null,
     vocalPunch: com.choplab.ui.vocal.VocalPunchController? = null,
     quickStart: QuickStartController? = null,
@@ -116,6 +119,7 @@ import kotlin.math.roundToLong
         fourStems?.let { controller -> com.choplab.ui.separation.FourStemDialog(controller,
             onStop = { onAction(ContinuousEditorAction.StopAll) }, onClose = { onAction(ContinuousEditorAction.CloseFourStems) }) }
         onlineSource?.let { OnlineSourceDialog(it) { onAction(ContinuousEditorAction.CloseOnline) } }
+        sourceAnalysis?.let { SourceAnalysisDialog(it, { onAction(ContinuousEditorAction.StopAll) }, { onAction(ContinuousEditorAction.CloseSourceAnalysis) }) }
         quickStart?.let { QuickStartGuide(it, state.permits(ContinuousCapability.IMPORT_AUDIO),
             { onAction(ContinuousEditorAction.ImportAudio) }, { onAction(ContinuousEditorAction.StopAll) }) }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
@@ -710,7 +714,9 @@ import kotlin.math.roundToLong
         // Stop remains visible even when large text pushes the other transport controls off screen.
         if (!stretch) CEActionButton(stringResource(Res.string.ce_stop), ContinuousEditorAction.StopSong, state,
             ContinuousCapability.SONG_PLAYBACK, onAction, dark = true, tag = "ce-song-stop")
-        Row(if (stretch) Modifier.fillMaxWidth() else Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+        BoxWithConstraints(if (stretch) Modifier.fillMaxWidth() else Modifier.weight(1f)) {
+        val viewportWidth = maxWidth
+        Row(if (stretch) Modifier.fillMaxWidth() else Modifier.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(Res.string.ce_song), color = CEColor.Cream, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         CEActionButton(stringResource(Res.string.ce_top), ContinuousEditorAction.SeekSong(0), state, ContinuousCapability.SONG_SEEK, onAction, dark = true)
@@ -724,7 +730,10 @@ import kotlin.math.roundToLong
             colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan))
         CEValueSlider(stringResource(Res.string.ce_song_gain), state.songMonitorGain, state, ContinuousCapability.SONG_MONITOR_GAIN,
             { onAction(ContinuousEditorAction.SetSongMonitorGain(it)) }, Modifier.width(if (stretch) 220.dp else 260.dp), dark = true, tag = "ce-song-monitor")
-        CETempo(state, onAction)
+        // A swung tempo can be wider than the compact viewport at large text sizes. Wrap its label
+        // within that measured width so scrolling can expose the entire input target beside fixed Stop.
+        CETempo(state, onAction, Modifier.widthIn(max = viewportWidth))
+        }
         }
     }
     }
@@ -733,7 +742,7 @@ import kotlin.math.roundToLong
 /** Swing choices in permille: straight, then the drum machines' classic steps; 660 is close to triplets. */
 private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
 
-@Composable private fun CETempo(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
+@Composable private fun CETempo(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     var value by remember(state.bpm) { mutableStateOf(state.bpm.toString()) }
     var swing by remember(state.swingPermille) { mutableStateOf(state.swingPermille) }
@@ -743,7 +752,7 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
     // A swung song says so beside its tempo, as it changes how every beat placed on the grid sounds.
     CEButton(if (state.swingPermille == 500) "${state.bpm} ${stringResource(Res.string.ce_bpm)}"
         else stringResource(Res.string.ce_tempo_swing, state.bpm, state.swingPermille / 10),
-        { value = state.bpm.toString(); swing = state.swingPermille; taps = emptyList(); open = true },
+        { value = state.bpm.toString(); swing = state.swingPermille; taps = emptyList(); open = true }, modifier,
         enabled = state.permits(ContinuousCapability.TEMPO), dark = true, reason = CEReason(state, ContinuousCapability.TEMPO), tag = "ce-tempo")
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(stringResource(Res.string.ce_bpm)) },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -754,6 +763,9 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
                 taps = ceTap(taps, clock.elapsedNow().inWholeMilliseconds)
                 ceTapBpm(taps)?.let { value = it.toString() }
             }, Modifier.fillMaxWidth().heightIn(min = 64.dp), tag = "ce-tap-tempo")
+            CEButton(stringResource(Res.string.source_analysis_entry), { open = false; onAction(ContinuousEditorAction.OpenSourceAnalysis) },
+                Modifier.fillMaxWidth(), enabled = state.permits(ContinuousCapability.SOURCE_ANALYSIS),
+                reason = CEReason(state, ContinuousCapability.SOURCE_ANALYSIS), tag = "ce-source-analysis")
             // The swing is chosen here and applied with the tempo: straight, or the drum machines' classic steps.
             Text(stringResource(Res.string.ce_swing_value, swing / 10), Modifier.padding(top = 8.dp).testTag("ce-swing-value"),
                 fontWeight = FontWeight.SemiBold)
