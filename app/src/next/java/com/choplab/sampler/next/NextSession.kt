@@ -19,6 +19,7 @@ import com.choplab.sampler.R
 import com.choplab.ui.*
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
+import com.choplab.ui.onboarding.QuickStartController
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -50,6 +51,9 @@ class NextSession private constructor(
     private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
     private val speechPreview = SourceVocalPreview(backend, scope)
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
+    private val guideStore = FileQuickStartStore(backend.assets.directory.parent.resolve("ui"))
+    val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
+        guideStore::completed, guideStore::complete)
     @Volatile var closedWithoutAutosave = false
         private set
 
@@ -77,6 +81,7 @@ class NextSession private constructor(
             { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
 
     suspend fun shutdown() {
+        quickStart.close()
         withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close(); microphone.close() }
         // Closing the presenter keeps a take still recording; anything left after that is dropped.
         try { withContext(NonCancellable) { presenter.close() } }
@@ -122,6 +127,9 @@ class NextSession private constructor(
                 return withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use(LrcTextIO::read) }
             }
             override suspend fun exportLrc(text: String): Boolean {
+                // CreateDocument may create/replace a document before returning its Uri.
+                // Reject malformed/oversized text before opening the system picker.
+                withContext(Dispatchers.IO) { LrcTextIO.validate(text) }
                 val uri = pickers.pick(PickerKind.EXPORT_LRC, suggestedName("lrc")) ?: return false
                 withContext(Dispatchers.IO) {
                     LrcTextIO.write(text) {

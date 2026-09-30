@@ -1,0 +1,15 @@
+<resources>
+    <string name="quick_start_title">はじめの一曲</string>
+    <string name="quick_start_help">おとひろいの使い方</string>
+    <string name="quick_start_intro">使える音声ファイルを選ぶか、ビート工程で内蔵ドラムから始められます。この説明はいつでも閉じて、画面を試せます。</string>
+    <string name="quick_start_capture">ファイルを選ぶか、保存した制作を開きます。SOURCE で元の音を聴けます。取り込んだ元のファイルは保持し、録音全体を勝手に曲へ配置しません。</string>
+    <string name="quick_start_chop">元の音から範囲を選び、PAD に割り当てます。BANK A〜H にそれぞれ16個の PAD があります。PAD の設定から開始・終了や鳴らし方を調整できます。</string>
+    <string name="quick_start_beat">PAD を鳴らし、音を曲のタイムラインに配置します。PAD の詳細からステップ・パターンを編集できます。声の録音や歌詞もこの工程から開きます。原曲と曲の再生・音量は別々です。</string>
+    <string name="quick_start_save">制作ファイルの保存は、音と配置を後から編集するためのものです。WAV 書き出しは完成したミックスを共有するために使います。自動保存はこの端末での再開用なので、別のコピーは制作ファイルとして保存してください。編集は Undo で戻せます。</string>
+    <string name="quick_start_controls_title">キーボードと読み上げ</string>
+    <string name="quick_start_controls">Tab・Shift+Tab で移動し、Enter・Space で選んだボタンを押せます。選んだ PAD は Enter・Space、選んだクリップの移動は矢印キーで操作します。Escape でこの説明を閉じます。Android の読み上げでは、各 PAD の名前付き操作を使えます。作業中も全停止を使えます。</string>
+    <string name="quick_start_reopen">SOURCE の「おとひろいの使い方」から再表示できます。この説明だけでマイクの許可・音声のダウンロード・再生は始まりません。</string>
+    <string name="quick_start_continue">閉じて始める</string>
+    <string name="quick_start_read_failed">使い方の表示設定を読み込めませんでした。制作データには影響しません。</string>
+    <string name="quick_start_save_failed">使い方の表示設定を保存できなかったため、次回も表示されることがあります。制作データには影響しません。</string>
+</resources>

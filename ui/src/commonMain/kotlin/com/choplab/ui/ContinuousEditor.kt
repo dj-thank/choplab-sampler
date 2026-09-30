@@ -33,6 +33,7 @@ import com.choplab.ui.ai.LyricProposalController
 import com.choplab.ui.pattern.StepPatternController
 import com.choplab.ui.source.OnlineSourceController
 import com.choplab.ui.source.OnlineSourceDialog
+import com.choplab.ui.onboarding.*
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
@@ -55,6 +56,7 @@ import kotlin.math.roundToLong
     onlineSource: OnlineSourceController? = null,
     vocalTakes: com.choplab.ui.vocal.VocalTakeController? = null,
     vocalPunch: com.choplab.ui.vocal.VocalPunchController? = null,
+    quickStart: QuickStartController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -85,7 +87,7 @@ import kotlin.math.roundToLong
                     if (state.stage == ContinuousStage.BEAT) CEOriginalDock(state, onAction, readout, refreshKey, compact = false)
                     Box(Modifier.weight(1f).fillMaxWidth().testTag("ce-stage-${state.stage.name}")) {
                         when (state.stage) {
-                            ContinuousStage.CAPTURE -> CECapture(state, onAction, readout, refreshKey)
+                            ContinuousStage.CAPTURE -> CECapture(state, onAction, readout, refreshKey, quickStart)
                             ContinuousStage.CHOP -> CEChop(state, onAction, readout, refreshKey, compact)
                             ContinuousStage.BEAT -> CEBeatWorkspace(state, onAction, readout, refreshKey, compact)
                             ContinuousStage.SAVE -> CESave(state, onAction, compact, diagnostics)
@@ -114,6 +116,8 @@ import kotlin.math.roundToLong
         fourStems?.let { controller -> com.choplab.ui.separation.FourStemDialog(controller,
             onStop = { onAction(ContinuousEditorAction.StopAll) }, onClose = { onAction(ContinuousEditorAction.CloseFourStems) }) }
         onlineSource?.let { OnlineSourceDialog(it) { onAction(ContinuousEditorAction.CloseOnline) } }
+        quickStart?.let { QuickStartGuide(it, state.permits(ContinuousCapability.IMPORT_AUDIO),
+            { onAction(ContinuousEditorAction.ImportAudio) }, { onAction(ContinuousEditorAction.StopAll) }) }
         CEBankPadEditor(state.bankPadEditor, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked) {
             onAction(ContinuousEditorAction.StopAll)
         }
@@ -425,7 +429,7 @@ import kotlin.math.roundToLong
 }
 
 @Composable private fun CECapture(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
+    readout: () -> ContinuousEditorReadout, refreshKey: Long, quickStart: QuickStartController?) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val waveHeight = (maxHeight * .37f).coerceAtLeast(220.dp)
         val wideTransport = maxWidth >= 900.dp && LocalDensity.current.fontScale <= 1.3f
@@ -437,6 +441,7 @@ import kotlin.math.roundToLong
                 CEActionButton(stringResource(Res.string.ce_load_audio), ContinuousEditorAction.ImportAudio, state, ContinuousCapability.IMPORT_AUDIO, onAction, Modifier.weight(1f), tag = "ce-import")
                 CEActionButton(stringResource(Res.string.ce_open_project), ContinuousEditorAction.OpenProject, state, ContinuousCapability.OPEN_PROJECT, onAction, Modifier.weight(1f), tag = "ce-open")
             }
+            quickStart?.let { QuickStartHelp(it) }
             CEWaveform(original?.peaks.orEmpty(), Modifier.fillMaxWidth().height(waveHeight),
                 stringResource(Res.string.ce_original_wave, original?.title.orEmpty()),
                 position = { if (original == null) 0f else live.value.originalFrame.toFloat() / original.frames },
