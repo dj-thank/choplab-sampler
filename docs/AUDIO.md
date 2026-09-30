@@ -34,6 +34,12 @@ EngineCoreをAndroid、Windows、offline exportで共用します。内部は48k
 
 native資産の30,000,000frame（48kHzで625秒）と資産/disk scratchの1GiB上限は別に維持する。400秒のproduction通しと44.1/48/96kHzの精度oracleは候補revisionの証拠であり、全上限・全端末の性能を保証しない。renderにはfile/network I/O、allocation、blocking lock、logを入れない。固定条件の性能結果と実端末の10分underrunは分けて[ROADMAP](ROADMAP.md)に示す。
 
+## SOURCEのBPM・キー候補
+
+解析はworkerで、再生pitchを変える前の選択範囲の先頭最大30秒を扱う。native範囲を48kHzへstart切上げ/end切下げで写し、左右を測定後に合成して逆相打消しを避ける。4秒未満では候補を出さない。BPMは50ms RMSの10ms間隔増分と自己相関から40–240の候補を求め、半分/倍の曖昧さを含め最大3件にする。キーは8192frameの窓を100ms間隔で測定し、音程のあるピークのchromaとmajor/minor profileの相関から最大3件にする。相関は確率ではない。雑音・単音・短い打音など根拠不足では棄権し、範囲の候補を曲全体の確定キーとしない。
+
+SOURCEと同じPCM leaseを使い、作業配列と4096frame以下の読取窓の1MiBを共有128MiBから先に予約する。足りなければactive音源を保って拒否する。取消・遅着・終了で予約/leaseを返し、編集中のrevision変更や録音/別処理中は適用を拒否する。候補選択では編集せず、BPMの明示適用だけをexpectedRevision付き1編集にし、swing・原音・配置を保持する。合成tempo/chord、逆相、無音/雑音/単音、native範囲、予算不足、取消/stale、Undo/archive/exportをローカルで確かめる。実曲の検出品質と端末の処理時間/実音は別受入とする。
+
 ## 録音・遅延
 
 入力event時刻、要求frame、適用frame、出力遅延、往復実測、手動補正を分けます。OS timestampだけで指先から耳までの遅延を断定しません。固定60ms補正をroute別測定へ置換し、時計領域、長時間drift、route/format変更と補正失効を扱います。

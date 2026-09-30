@@ -87,6 +87,9 @@ class EditorBackend private constructor(
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
     suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)
 
+    suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange): com.choplab.core.analysis.SourceMusicResult =
+        analyseSourceMusic(pcm, asset, range)
+
     /**
      * Renders [pad] from [source] with its pitch, reverse and tone, as it sounds from its PAD, into a 48 kHz float WAV in
      * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
