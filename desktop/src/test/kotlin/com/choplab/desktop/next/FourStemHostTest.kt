@@ -15,7 +15,9 @@ import com.choplab.jvm.*
 import com.choplab.jvm.separation.*
 import com.choplab.ui.*
 import com.choplab.ui.separation.*
+import com.choplab.ui.source.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.ByteArrayOutputStream
 import java.nio.FloatBuffer
 import java.nio.file.Files
@@ -26,6 +28,49 @@ import kotlin.test.*
 
 /** SOURCE entry, actual Desktop ports/worker/Studio/export/archive. Only inference and audio endpoints are synthetic. */
 class FourStemHostTest {
+    @Test fun switchingSourceToolsClosesThePreviousOwnerAndFencesLateSeparationWithoutChangingTheSong() = runBlocking<Unit> {
+        val native = GainFactory().apply { release = CompletableDeferred() }
+        val onlineCloses = AtomicInteger()
+        val f = Fixture(native, wrap = { real -> object : ContinuousEditorPorts by real {
+            override val onlineSource = OnlineSourceHost { _, stop ->
+                OnlineImportSession(object : OnlineSourcePort {
+                    override val state = MutableStateFlow(OnlineWorkerState())
+                    override fun search(query: String, catalog: OnlineCatalog) = false
+                    override fun inspect(id: String) = false
+                    override fun selectFormat(id: String) = false
+                    override fun save(id: String) = false
+                    override fun cancel() {}
+                    override fun stopAll() = stop()
+                    override fun close() { onlineCloses.incrementAndGet() }
+                }) { null }
+            }
+        } })
+        try {
+            f.ready()
+            val before = f.backend.studio.document.value
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.ImportOnline))
+            val online = assertNotNull(f.presenter.onlineSource.value)
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenFourStems))
+            assertTrue(online.state.value.closed)
+            assertNull(f.presenter.onlineSource.value)
+            assertEquals(1, onlineCloses.get())
+            val editor = assertNotNull(f.presenter.fourStems.value)
+            assertTrue(editor.start()); withTimeout(10_000) { native.entered.await() }
+            assertTrue(withTimeout(1_000) { f.presenter.dispatch(ContinuousEditorAction.ImportOnline) })
+            assertNull(f.presenter.fourStems.value)
+            assertEquals(FourStemPhase.CLOSED, editor.state.value.phase)
+            assertNotNull(f.presenter.onlineSource.value)
+            assertEquals(0, native.closes.get(), "Switching tools must not release a still-running native session")
+            assertTrue(PcmMemoryBudget.shared.statistics().usedBytes >= FourStemSpec.PIPELINE_PCM_BYTES + FourStemSpec.NATIVE_IO_PCM_BYTES)
+            native.release!!.complete(Unit)
+            until { native.closes.get() == 1 }
+            until { PcmMemoryBudget.shared.statistics().usedBytes < FourStemSpec.PIPELINE_PCM_BYTES }
+            assertEquals(before, f.backend.studio.document.value)
+            assertEquals(f.original.byteCount, f.backend.assets.storedBytes())
+        } finally { native.release!!.complete(Unit); f.close() }
+        assertEquals(2, onlineCloses.get())
+    }
+
     @Test fun sourceEntryPreparesThenExplicitlyPlacesFourHeadsAsOneUndoAndReopensAllBytesInBothLanguagesAndSizes() = runBlocking<Unit> {
         val localeBefore = Locale.getDefault()
         try { for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(Triple(1440,838,1f), Triple(390,844,2f))) {

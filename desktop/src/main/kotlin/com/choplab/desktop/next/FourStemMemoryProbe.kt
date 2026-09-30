@@ -50,7 +50,14 @@ class FourStemMemoryProbe internal constructor(
     private fun mac(): Observation? {
         val statistics = command(MemoryProbeSystem.VM_STAT) ?: return null
         val total = unsigned(command(MemoryProbeSystem.TOTAL) ?: return null)
-        val pressure = unsigned(command(MemoryProbeSystem.PRESSURE) ?: return null)
+        // The userspace sysctl maps XNU's internal levels to NOTE_MEMORYSTATUS_PRESSURE_* flags.
+        // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_memorystatus_notify.c
+        // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/event_private.h
+        val lowMemory = when (unsigned(command(MemoryProbeSystem.PRESSURE) ?: return null)) {
+            1L -> false // NORMAL
+            2L, 4L -> true // WARN or CRITICAL
+            else -> return null
+        }
         val lines = checkedLines(statistics)
         val header = lines.single { it.startsWith("Mach Virtual Memory Statistics:") }
         val pageSize = Regex("Mach Virtual Memory Statistics: \\(page size of ([0-9]+) bytes\\)")
@@ -62,7 +69,7 @@ class FourStemMemoryProbe internal constructor(
         // Do not add inactive/active/purgeable/compressed/swap pages or treat immediate-free alone as available.
         // https://github.com/apple-oss-distributions/xnu/blob/main/doc/vm/memorystatus.md
         val available = Math.multiplyExact(Math.addExact(free, fileBacked), pageSize)
-        return Observation(SeparationMemorySource.MAC_FREE_AND_FILE_BACKED, total, available, pressure != 0L)
+        return Observation(SeparationMemorySource.MAC_FREE_AND_FILE_BACKED, total, available, lowMemory)
     }
 
     private fun linux(): Observation? {
@@ -104,7 +111,7 @@ internal object MemoryProbeSystem {
     const val PROCESS_MILLIS = 750L
     val VM_STAT = listOf("/usr/bin/vm_stat")
     val TOTAL = listOf("/usr/sbin/sysctl", "-n", "hw.memsize")
-    val PRESSURE = listOf("/usr/sbin/sysctl", "-n", "vm.memory_pressure")
+    val PRESSURE = listOf("/usr/sbin/sysctl", "-n", "kern.memorystatus_vm_pressure_level")
 
     fun command(arguments: List<String>): String? = command(arguments) { command ->
         ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).apply {

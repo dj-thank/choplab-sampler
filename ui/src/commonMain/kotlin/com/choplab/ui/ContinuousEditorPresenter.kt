@@ -829,6 +829,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openFourStems(): Boolean {
         val factory = ports.fourStems ?: return false
         if (studio.document.value.project.source == null || bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline()) return false
         if (separation.value != null) return true
         closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
@@ -938,6 +939,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openOnline(): Boolean {
         val host = ports.onlineSource ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeFourStems()) return false
         if (online.value != null) return true
         val revision = studio.document.value.revision
         val session = host.open(jobs) { onAction(ContinuousEditorAction.StopAll) }

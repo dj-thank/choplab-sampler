@@ -24,9 +24,13 @@ class FourStemMemoryProbeTest {
         assertEquals(16 * GIB, receipt.totalBytes)
         assertEquals(f.epoch, receipt.measuredAtEpochMillis)
         assertEquals(listOf(MemoryProbeSystem.VM_STAT, MemoryProbeSystem.TOTAL, MemoryProbeSystem.PRESSURE), f.commands)
+        assertEquals(listOf("/usr/sbin/sysctl", "-n", "kern.memorystatus_vm_pressure_level"), MemoryProbeSystem.PRESSURE)
+        // The userspace sysctl returns dispatch flags, not XNU's internal 0/1/2/3 levels.
+        for (pressure in listOf("2", "4")) {
+            f.pressure = pressure
+            assertEquals(SeparationProblem.LOW_MEMORY, f.probe.sample().refusal())
+        }
         f.pressure = "1"
-        assertEquals(SeparationProblem.LOW_MEMORY, f.probe.sample().refusal())
-        f.pressure = "0"
         f.mac = mac(4096, 32768, 393216)
         assertEquals((32768L + 393216) * 4096, f.probe.sample().availableBytes)
     }
@@ -49,7 +53,7 @@ class FourStemMemoryProbeTest {
         for (text in listOf(null, "", "-1", "0", "18446744073709551615", "17179869184\n1")) {
             val f = Fixture("Mac OS X"); f.total = text; assertUnknown(f.probe)
         }
-        for (text in listOf(null, "", "-1", "normal")) {
+        for (text in listOf(null, "", "-1", "normal", "0", "3", "8", "86")) {
             val f = Fixture("Mac OS X"); f.pressure = text; assertUnknown(f.probe)
         }
     }
@@ -129,7 +133,7 @@ class FourStemMemoryProbeTest {
     private class Fixture(os: String) {
         var mac: String? = mac()
         var total: String? = (16 * GIB).toString()
-        var pressure: String? = "0"
+        var pressure: String? = "1"
         var linux: String? = "MemTotal: 4194304 kB\nMemAvailable: 2097152 kB\n"
         var win: WindowsPhysicalMemory? = WindowsPhysicalMemory(32 * GIB, 16 * GIB, 50)
         var epoch = 1_800_000_000_000L
