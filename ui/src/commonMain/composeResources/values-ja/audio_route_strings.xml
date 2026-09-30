@@ -1,0 +1,7 @@
+<resources>
+    <string name="next_audio_menu">音声</string>
+    <string name="next_audio_wasapi">WASAPI</string>
+    <string name="next_audio_java_sound">Java Soundに切り替える</string>
+    <string name="next_audio_retry">音声を接続し直す</string>
+    <string name="next_audio_refused">音声を切り替えられません。録音・試聴を止め、少し待って再試行してください。</string>
+</resources>

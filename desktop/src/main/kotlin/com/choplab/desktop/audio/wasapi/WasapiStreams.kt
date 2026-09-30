@@ -122,6 +122,7 @@ class WasapiAudioSink internal constructor(private val owner: WasapiOwner) : Aud
 
 class WasapiMicInput internal constructor(private val owner: WasapiOwner) : MicInput {
     override val sampleRate: Int get() = WASAPI_CLIENT_RATE
+    override val bufferFrames: Int? get() = owner.deviceBufferFrames.takeIf { it > 0 }
     override val channels: Int get() = WASAPI_CLIENT_CHANNELS
     override fun read(buffer: FloatArray): Int = owner.read(buffer)
     override fun stop() = owner.requestStop()

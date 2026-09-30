@@ -1,0 +1,7 @@
+<resources>
+    <string name="next_audio_menu">Audio</string>
+    <string name="next_audio_wasapi">WASAPI</string>
+    <string name="next_audio_java_sound">Switch to Java Sound</string>
+    <string name="next_audio_retry">Reconnect audio</string>
+    <string name="next_audio_refused">Audio could not be switched. Stop recording and previews, wait a moment, and try again.</string>
+</resources>
