@@ -149,7 +149,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                 com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"))
                 else -> null
             } } catch (failure: Throwable) {
-                try { runBlocking { voice.close(); shared.shutdown(flush = false) } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
+                try { runBlocking { voice.close() } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
+                try { runBlocking { shared.shutdown(flush = false) } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
                 try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
                 throw failure
             }
