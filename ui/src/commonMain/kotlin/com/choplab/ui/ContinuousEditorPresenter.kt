@@ -35,6 +35,7 @@ interface ContinuousEditorPorts {
     val fourStems: FourStemFactory? get() = null
     /** This host stores complete performed PAD voices for step/pattern arrangement placement. */
     val stepPatternsAvailable: Boolean get() = false
+    val noteRepeatAvailable: Boolean get() = false
     val systemAudioCapture: SystemAudioCapture? get() = null
     val separationAvailable: Boolean get() = false
     suspend fun separateSource(source: Asset): Location? = null
@@ -101,6 +102,8 @@ interface ContinuousEditorPorts {
     suspend fun renderPad(pad: Pad, source: Asset): Asset? = null
     /** Complete performed voice, including gain/pan and release. */
     suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset? = null
+    suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: Tempo, ticks: Int, releaseAt: Int,
+                                 limitFrames: Int, stopAt: Int? = null): Asset? = null
 }
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */
@@ -183,6 +186,7 @@ private data class EditorView(
     val track: String? = null,
     val pixelsPerSecond: Float = 24f,
     val grid: ContinuousGrid = ContinuousGrid.BEAT,
+    val noteRepeat: ContinuousNoteRepeat = ContinuousNoteRepeat.OFF,
     val paneFraction: Float = .41f,
     val pane: ContinuousPane = ContinuousPane.PADS,
     val originalPlaying: Boolean = false,
@@ -613,18 +617,41 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.SelectPad -> { releaseHeld(); send(Action.SelectPad(action.padId)) }
                 is ContinuousEditorAction.TapPad -> {
                     taps.remove(action.padId)?.cancel()
-                    if (!send(Action.Trigger(action.padId))) false else {
-                        if (project.pads[action.padId].mode == PlayMode.GATE) taps[action.padId] = jobs.launch {
-                            delay(120); serialized.withLock { releaseRecordedPad(action.padId); send(Action.Release(action.padId)); taps.remove(action.padId) }
+                    val rate = view.value.noteRepeat
+                    val duration = ((960 * com.choplab.engine.SequenceClock.UNITS_PER_TICK + project.tempo.milliBpm - 1) / project.tempo.milliBpm).toInt()
+                    val played = if (rate == ContinuousNoteRepeat.OFF) send(Action.Trigger(action.padId))
+                        else ports.noteRepeatAvailable && send(Action.StartNoteRepeat(action.padId, rate.ticks, duration))
+                    if (!played) {
+                        if (rate != ContinuousNoteRepeat.OFF) dropPendingRepeat(action.padId)
+                        false
+                    } else {
+                        if (rate != ContinuousNoteRepeat.OFF) recordRepeatRetrigger(project, action.padId)
+                        if (rate != ContinuousNoteRepeat.OFF) view.update { v -> v.copy(hits = v.hits?.let { r -> r.copy(pending = r.pending.mapValues { (_, hit) ->
+                            if (hit.padId == action.padId && hit.repeatTicks > 0) releaseHit(hit, minOf(duration, hit.limitFrames)) else hit
+                        }) }) }
+                        if (rate != ContinuousNoteRepeat.OFF || project.pads[action.padId].mode == PlayMode.GATE) taps[action.padId] = jobs.launch {
+                            delay(if (rate == ContinuousNoteRepeat.OFF) 120 else (duration + 47L) / 48)
+                            serialized.withLock { releaseRecordedPad(action.padId); releasePadAudio(action.padId); taps.remove(action.padId) }
                         }
                         true
                     }
                 }
-                is ContinuousEditorAction.HoldPad -> send(Action.Trigger(action.padId)).also { if (it) held += action.padId }
+                is ContinuousEditorAction.HoldPad -> {
+                    // A new hold takes ownership from a preceding accessible finite click.
+                    taps.remove(action.padId)?.cancel()
+                    val rate = view.value.noteRepeat
+                    val played = if (rate == ContinuousNoteRepeat.OFF) send(Action.Trigger(action.padId))
+                        else ports.noteRepeatAvailable && send(Action.StartNoteRepeat(action.padId, rate.ticks))
+                    if (played) {
+                        if (rate != ContinuousNoteRepeat.OFF) recordRepeatRetrigger(project, action.padId)
+                        held += action.padId
+                    } else if (rate != ContinuousNoteRepeat.OFF) dropPendingRepeat(action.padId)
+                    played
+                }
                 is ContinuousEditorAction.ReleasePad -> {
                     held -= action.padId
                     releaseRecordedPad(action.padId)
-                    send(Action.Release(action.padId))
+                    releasePadAudio(action.padId)
                 }
                 is ContinuousEditorAction.TogglePadLoop -> {
                     val pad = project.pads[action.padId]
@@ -704,6 +731,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     view.update { it.copy(clip = action.clipId, track = project.clips.firstOrNull { c -> c.id == action.clipId }?.trackId) }; true
                 }
                 is ContinuousEditorAction.SetGrid -> { view.update { it.copy(grid = action.grid) }; true }
+                is ContinuousEditorAction.SetNoteRepeat -> if (!ports.noteRepeatAvailable || bankPadBlock(view.value, studio.work.value) != null) false else {
+                    releaseHeld(); view.update { it.copy(noteRepeat = action.rate) }; true
+                }
                 is ContinuousEditorAction.SetPixelsPerSecond -> { require(action.value.isFinite()); view.update { it.copy(pixelsPerSecond = action.value.coerceIn(4f, 240f)) }; true }
                 ContinuousEditorAction.FitTimeline -> { view.update { it.copy(pixelsPerSecond = (720f / (songFrames(project) / 48_000f)).coerceIn(4f, 240f)) }; true }
                 is ContinuousEditorAction.ResizePanes -> { require(action.fraction.isFinite()); view.update { it.copy(paneFraction = action.fraction.coerceIn(.2f, .8f)) }; true }
@@ -743,10 +773,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         }
                         else -> {
                             val heard = ContinuousHit(press.padId, (press.songFrame - recording.outputDelayFrames).coerceAtLeast(0),
-                                performed = true, limitFrames = (recording.songEnd - press.songFrame).coerceAtMost(com.choplab.engine.PadRender.MAX_FRAMES.toLong()).toInt())
+                                performed = true, limitFrames = (recording.songEnd - press.songFrame).coerceAtMost(com.choplab.engine.PadRender.MAX_FRAMES.toLong()).toInt(),
+                                repeatTicks = view.value.noteRepeat.ticks)
                             val group = project.pads[press.padId].chokeGroup
                             fun choked(hit: ContinuousHit): ContinuousHit =
-                                if (group != 0 && hit.performed && project.pads[hit.padId].chokeGroup == group)
+                                if (group != 0 && hit.performed && hit.repeatTicks == 0 && project.pads[hit.padId].chokeGroup == group)
                                     releaseHit(hit, (heard.timelineFrame - hit.timelineFrame).coerceAtLeast(0).coerceAtMost(hit.limitFrames.toLong()).toInt())
                                 else hit
                             view.update { it.copy(hits = recording.copy(
@@ -758,10 +789,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.EndHit -> {
                     val recording = view.value.hits
                     val heard = recording?.pending?.get(action.gesture)
-                    if (recording != null && heard != null && (action.cancelled || project.pads[heard.padId].mode != PlayMode.LOOP)) {
+                    if (recording != null && heard != null && (action.cancelled || heard.repeatTicks > 0 || project.pads[heard.padId].mode != PlayMode.LOOP)) {
                         val end = action.songFrame ?: ports.readout().songFrame
                         val heldFrames = (end - action.gesture.songFrame).coerceIn(0L, heard.limitFrames.toLong()).toInt()
-                        val released = if (project.pads[heard.padId].mode == PlayMode.ONE_SHOT) heard
+                        val released = if (heard.repeatTicks == 0 && project.pads[heard.padId].mode == PlayMode.ONE_SHOT) heard
                             else releaseHit(heard, heldFrames)
                         view.update { it.copy(hits = recording.copy(pending = recording.pending - action.gesture,
                             played = if (action.cancelled) recording.played else recording.played + released)) }
@@ -1597,11 +1628,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 val source = project.asset(requireNotNull(pad.assetHash))
                 val natural = kotlin.math.ceil(requireNotNull(pad.range).length * 48_000.0 / source.sampleRate / 2.0.pow(pad.pitchSemitones / 12)).toLong()
                 val upper = minOf(hit.limitFrames.toLong(),
-                    if (pad.mode == PlayMode.LOOP) Long.MAX_VALUE else natural,
+                    if (pad.mode == PlayMode.LOOP || hit.repeatTicks > 0) Long.MAX_VALUE else natural,
                     hit.releaseAfterFrames?.let { it.toLong() + pad.releaseFrames } ?: Long.MAX_VALUE,
                     hit.stopAfterFrames?.let { it.toLong() + com.choplab.engine.EngineCore.STEAL_FADE_FRAMES } ?: Long.MAX_VALUE)
                 if (resident + upper > ProgramCompiler.RESIDENT_FRAME_LIMIT) { refusal = ContinuousStatus.PLACE_NO_ROOM; continue }
-                val asset = try { ports.renderPerformance(pad, source, hit.releaseAfterFrames, hit.limitFrames, hit.stopAfterFrames) }
+                val asset = try {
+                    if (hit.repeatTicks > 0) ports.renderNoteRepeat(pad, source, project.tempo, hit.repeatTicks,
+                        requireNotNull(hit.releaseAfterFrames), hit.limitFrames, hit.stopAfterFrames)
+                    else ports.renderPerformance(pad, source, hit.releaseAfterFrames, hit.limitFrames, hit.stopAfterFrames)
+                }
                     catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { null }
                 if (asset == null) { refusal = ContinuousStatus.PLACE_FAILED; continue }
                 performances[hit] = asset
@@ -1936,7 +1971,38 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun releaseHeld() {
         val release = held.toSet() + taps.keys
         taps.values.forEach(Job::cancel); taps.clear()
-        release.forEach { send(Action.Release(it)) }; held.clear()
+        release.forEach { releaseRecordedPad(it); releasePadAudio(it) }; held.clear()
+    }
+    private fun dropPendingRepeat(padId: Int) {
+        view.update { v -> v.copy(hits = v.hits?.let { r ->
+            val refused = r.pending.entries.lastOrNull { (_, hit) -> hit.padId == padId && hit.repeatTicks > 0 && hit.releaseAfterFrames == null }?.key
+            if (refused == null) r else r.copy(pending = r.pending - refused)
+        }) }
+    }
+    /** Match the engine's admitted 96-frame repeat retrigger/choke, never a refused press. */
+    private fun recordRepeatRetrigger(project: Project, padId: Int) {
+        view.update { v -> v.copy(hits = v.hits?.let { r ->
+            val incoming = r.pending.entries.lastOrNull { (_, hit) -> hit.padId == padId && hit.repeatTicks > 0 && hit.releaseAfterFrames == null }
+                ?: return@let r
+            val group = project.pads[padId].chokeGroup
+            fun end(hit: ContinuousHit): ContinuousHit {
+                if (hit.repeatTicks == 0 || (hit.padId != padId && (group == 0 || project.pads[hit.padId].chokeGroup != group))) return hit
+                val after = (incoming.value.timelineFrame - hit.timelineFrame).coerceIn(0L, hit.limitFrames.toLong()).toInt()
+                return releaseHit(hit, after).copy(stopAfterFrames = minOf(hit.stopAfterFrames ?: after, after))
+            }
+            r.copy(played = r.played.map(::end), pending = r.pending.mapValues { (gesture, hit) -> if (gesture === incoming.key) hit else end(hit) })
+        }) }
+    }
+    private suspend fun releasePadAudio(padId: Int): Boolean {
+        if (send(Action.Release(padId))) return true
+        // A full command queue must not leave a held repeat running. Preserve the recorded pass at
+        // its last transport frame before the guaranteed Stop mailbox resets that clock.
+        val end = snapshotHitEnd()
+        val stopped = send(Action.Silence)
+        val caller = currentCoroutineContext()[Job]
+        taps.values.filter { it !== caller }.forEach(Job::cancel); taps.clear(); held.clear()
+        if (stopped && end != null) finishHits(end, stopVoices = true)
+        return stopped
     }
     /**
      * A pass covers the range only: once the original has played past its end, [pass] ends with the original. Never
@@ -2038,6 +2104,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (ports.vocalTakes != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.VOCAL_TAKES
             if (ports.vocalPunch != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.VOCAL_PUNCH
             if (ports.stepPatternsAvailable && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.STEP_PATTERNS
+            if (ports.noteRepeatAvailable && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.NOTE_REPEAT
             capabilities += setOf(ContinuousCapability.SAVE_PROJECT, ContinuousCapability.HISTORY, ContinuousCapability.TEMPO,
                 ContinuousCapability.MOVE_CLIP, ContinuousCapability.TRIM_CLIP, ContinuousCapability.SPLIT_CLIP,
                 ContinuousCapability.DUPLICATE_CLIP, ContinuousCapability.DELETE_CLIP, ContinuousCapability.TRACK_MUTE, ContinuousCapability.CLIP_GAIN)
@@ -2091,7 +2158,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             selectedClipId = v.clip?.takeIf { id -> p.clips.any { it.id == id } }, selectedTrackId = v.track,
             timelineDurationFrames = songFrames(p), pixelsPerSecond = v.pixelsPerSecond, paneFraction = v.paneFraction,
             compactPane = v.pane, songPlaying = input.playing, songMonitorGain = v.songGain, bpm = p.tempo.milliBpm / 1000,
-            milliBpm = p.tempo.milliBpm, swingPermille = p.tempo.swingPermille, grid = v.grid,
+            milliBpm = p.tempo.milliBpm, swingPermille = p.tempo.swingPermille, grid = v.grid, noteRepeat = v.noteRepeat,
             canUndo = input.document.canUndo, canRedo = input.document.canRedo, capabilities = capabilities,
             unavailable = ContinuousCapability.entries.filterNot { it in capabilities }.associateWith { capability ->
                 // Recording needs an attached output clock and (for the PADs) a PAD with a sound.

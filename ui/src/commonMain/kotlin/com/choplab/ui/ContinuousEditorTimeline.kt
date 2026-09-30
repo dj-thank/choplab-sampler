@@ -113,6 +113,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: ((CEPaddedDrag?) -> Unit)?, onDrop: ((Int, Offset) -> Unit)?,
     compactDetails: Boolean = false, maximumPadSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity) {
     var details by remember { mutableStateOf(false) }
+    var repeatSettings by remember { mutableStateOf(false) }
+    if (repeatSettings) CENoteRepeatDialog(state, onAction) { repeatSettings = false }
     val pad = state.selectedPad
     val padName = pad?.name?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.ce_empty)
     // The fill panel's starting song position while it is open; another PAD closes it.
@@ -177,6 +179,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
         CEActionButton(stringResource(Res.string.pattern_editor_title), ContinuousEditorAction.OpenStepPatterns,
             state, ContinuousCapability.STEP_PATTERNS, onAction, Modifier.fillMaxWidth(), tag = "ce-step-patterns")
+        CEButton(stringResource(Res.string.ce_note_repeat_setting, stringResource(noteRepeatLabel(state.noteRepeat))),
+            { repeatSettings = true }, Modifier.fillMaxWidth(), enabled = state.permits(ContinuousCapability.NOTE_REPEAT),
+            primary = state.noteRepeat != ContinuousNoteRepeat.OFF, reason = CEReason(state, ContinuousCapability.NOTE_REPEAT), tag = "ce-note-repeat")
         ContinuousRecordingGuidePanel(state.recordingGuide) { onAction(ContinuousEditorAction.RecordingGuide(it)) }
         }
         CEBanks(state, onAction)

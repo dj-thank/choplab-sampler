@@ -78,6 +78,9 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
     suspend fun renderPerformance(pad: com.choplab.core.model.Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset =
         shared.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
+    suspend fun renderNoteRepeat(pad: com.choplab.core.model.Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                 releaseAt: Int, limitFrames: Int, stopAt: Int? = null): Asset =
+        shared.renderNoteRepeat(pad, source, tempo, ticks, releaseAt, limitFrames, stopAt)
 
     /** Caller owns and closes the job; the captured source is verified again on its worker. */
     internal fun separation(source: Asset, library: Path, title: String): NextSeparation = NextSeparation(

@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -206,6 +207,7 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
     val latestHit by rememberUpdatedState(hit)
     val cutLabel = stringResource(Res.string.ce_chop_pad_action)
     val playLabel = stringResource(Res.string.ce_hits_pad_action)
+    val repeatLabel = stringResource(Res.string.ce_note_repeat_click)
     BoxWithConstraints(modifier.fillMaxWidth().testTag("ce-pad-grid")) {
         // Fill the instrument's width. Narrow windows scroll instead of making a PAD too small to play or read.
         val minimumSide = if (font > 1.5f) 80.dp else 64.dp
@@ -240,11 +242,11 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 val frame = latestCapture?.invoke()
                                 if (tryAwaitRelease() && frame != null) latestAction(ContinuousEditorAction.CapturePad(id, frame))
                             })
-                        } else if (hit != null) Modifier.pointerInput(id, filled, pad.mode) {
+                        } else if (hit != null || state.noteRepeat != ContinuousNoteRepeat.OFF) Modifier.pointerInput(id, filled, pad.mode, state.noteRepeat) {
                             // As a tap plays it: a one-shot plays out and a loop keeps looping; a PAD that sounds while
                             // held stops when let go.
-                            val whileHeld = pad.mode == ContinuousPadMode.GATE
-                            if (filled) detectTapGestures(onPress = {
+                            val whileHeld = pad.mode == ContinuousPadMode.GATE || state.noteRepeat != ContinuousNoteRepeat.OFF
+                            if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) detectTapGestures(onPress = {
                                 val gesture = latestHit?.invoke()?.let { ContinuousHitGesture(id, it) }
                                 if (gesture != null) latestAction(ContinuousEditorAction.BeginHit(gesture))
                                 latestAction(if (whileHeld) ContinuousEditorAction.HoldPad(id) else ContinuousEditorAction.TapPad(id))
@@ -257,9 +259,22 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                         } else Modifier.combinedClickable(interactionSource = interaction, indication = null,
                             onClick = { onAction(ContinuousEditorAction.SelectPad(id)); if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) onAction(ContinuousEditorAction.TapPad(id)) },
                             onLongClick = if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) ({ if (!held) { held = true; onAction(ContinuousEditorAction.HoldPad(id)) } }) else null))
-                        .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null, hit != null, onPadDrag != null) {
+                        .then(if (capture == null && filled && state.noteRepeat != ContinuousNoteRepeat.OFF && state.permits(ContinuousCapability.PAD_AUDITION))
+                            Modifier.onKeyEvent { event ->
+                                if (event.key != Key.Spacebar && event.key != Key.Enter && event.key != Key.NumPadEnter) false
+                                else {
+                                    // A key activation, like a screen-reader click, is one engine-timed beat.
+                                    // Holding a keyboard key cannot accumulate autorepeat commands or a stuck PAD.
+                                    if (event.type == KeyEventType.KeyUp) {
+                                        latestHit?.invoke()?.let { latestAction(ContinuousEditorAction.BeginHit(ContinuousHitGesture(id, it))) }
+                                        latestAction(ContinuousEditorAction.TapPad(id))
+                                    }
+                                    true
+                                }
+                            }.focusable() else Modifier)
+                        .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null, hit != null, onPadDrag != null, state.noteRepeat) {
                             // A compact pane has no visible drop target: its vertical gestures belong to scrolling.
-                            if (onPadDrag != null && onPadDrop != null && capture == null && hit == null && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
+                            if (onPadDrag != null && onPadDrop != null && capture == null && hit == null && state.noteRepeat == ContinuousNoteRepeat.OFF && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
                                 var position = Offset.Zero
                                 detectDragGestures(onDragStart = { at ->
                                     position = rootOrigin + at
@@ -280,11 +295,14 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                                 latestCapture?.invoke()?.let { latestAction(ContinuousEditorAction.CapturePad(id, it)) }; true
                             }
                             // A screen reader user plays and records the PAD at the moment it is activated.
-                            if (hit != null && filled) onClick(playLabel) {
+                            if (hit != null && filled) onClick(if (state.noteRepeat == ContinuousNoteRepeat.OFF) playLabel else repeatLabel) {
                                 latestHit?.invoke()?.let { frame ->
                                     latestAction(ContinuousEditorAction.BeginHit(ContinuousHitGesture(id, frame)))
                                     latestAction(ContinuousEditorAction.TapPad(id))
                                 }; true
+                            }
+                            else if (capture == null && filled && state.noteRepeat != ContinuousNoteRepeat.OFF && state.permits(ContinuousCapability.PAD_AUDITION)) onClick(repeatLabel) {
+                                latestAction(ContinuousEditorAction.TapPad(id)); true
                             }
                         }
                         .padding(if (font > 1.5f && side < 96.dp) 6.dp else 8.dp)) {
