@@ -687,7 +687,8 @@ class ContinuousEditorTest {
             assertEquals(listOf("1", "2", "3"), bars.take(3).map { it.config[SemanticsProperties.Text].single().text })
             assertEquals(65.2f, bars[1].boundsInRoot.left - bars[0].boundsInRoot.left, .5f)
             // The choices: one selected, each read with what it is for.
-            for ((grid, label) in listOf(ContinuousGrid.BEAT to "1拍", ContinuousGrid.HALF to "1/2拍", ContinuousGrid.QUARTER to "1/4拍", ContinuousGrid.FREE to "自由")) {
+            for ((grid, label) in listOf(ContinuousGrid.BEAT to "1拍", ContinuousGrid.HALF to "1/2拍", ContinuousGrid.QUARTER to "1/4拍",
+                ContinuousGrid.EIGHTH_TRIPLET to "8 分 3 連", ContinuousGrid.SIXTEENTH_TRIPLET to "16 分 3 連", ContinuousGrid.FREE to "自由")) {
                 val node = requireNotNull(scene.tag("ce-grid-${grid.name.lowercase()}"))
                 assertEquals(grid == ContinuousGrid.BEAT, node.config.getOrNull(SemanticsProperties.Selected))
                 assertEquals(listOf("拍に合わせる $label"), node.config.getOrNull(SemanticsProperties.ContentDescription))
@@ -695,6 +696,12 @@ class ContinuousEditorTest {
             }
             scene.click("ce-grid-quarter")
             assertEquals(ContinuousEditorAction.SetGrid(ContinuousGrid.QUARTER), actions.last())
+            scene.reach("ce-grid-eighth_triplet")
+            scene.click("ce-grid-eighth_triplet")
+            assertEquals(ContinuousEditorAction.SetGrid(ContinuousGrid.EIGHTH_TRIPLET), actions.last())
+            scene.reach("ce-grid-sixteenth_triplet")
+            scene.click("ce-grid-sixteenth_triplet")
+            assertEquals(ContinuousEditorAction.SetGrid(ContinuousGrid.SIXTEENTH_TRIPLET), actions.last())
             // The zoom buttons say what they do, not "−" and "+".
             assertEquals(listOf("縮小"), requireNotNull(scene.tag("ce-zoom-out")).config.getOrNull(SemanticsProperties.ContentDescription))
             assertEquals(listOf("拡大"), requireNotNull(scene.tag("ce-zoom-in")).config.getOrNull(SemanticsProperties.ContentDescription))
@@ -718,6 +725,38 @@ class ContinuousEditorTest {
             assertNotEquals(moved.timelineStartFrame, landing, "Shown on the beat, not where the finger stopped")
             scene.capture("beat-grid-desktop.png")
         } finally { scene.close(); Locale.setDefault(previous) }
+    }
+
+    @Test fun straightTripletAndFreeGridChoicesRemainReachableAtWideAndCompactTextSizes() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPAN, Locale.US)) for ((width, height, font) in listOf(
+                Triple(1920, 1080, 1.3f), Triple(1600, 900, 1.3f), Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
+                Locale.setDefault(locale)
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE), actions::add, ContinuousEditorFixture::readout)
+                }
+                try {
+                    scene.settle()
+                    val choices = requireNotNull(scene.tag("ce-grid-choices"))
+                    assertNotNull(choices.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange),
+                        "The choices keep a scroll viewport at every window and text size")
+                    assertTrue(choices.boundsInWindow.width >= 48)
+                    for (grid in ContinuousGrid.entries) {
+                        val tag = "ce-grid-${grid.name.lowercase()}"
+                        scene.reach(tag)
+                        val node = requireNotNull(scene.tag(tag))
+                        val bounds = node.boundsInWindow
+                        assertTrue(bounds.width >= 48 && bounds.height >= 48 && bounds.width >= node.size.width - 1 &&
+                            bounds.height >= node.size.height - 1 && bounds.left >= 0 && bounds.right <= width && bounds.top >= 0 && bounds.bottom <= height,
+                            "$locale $width font=$font $tag clipped: $bounds, size=${node.size}")
+                        scene.click(tag)
+                        assertEquals(ContinuousEditorAction.SetGrid(grid), actions.last())
+                    }
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
     }
 
     @Test fun onAPhoneWithLargeTextTheArrangementScrollsToEveryControl() = runBlocking<Unit> {
@@ -867,7 +906,7 @@ class ContinuousEditorTest {
             assertEquals("4小節目から", text("ce-pad-fill-from"))
             assertEquals(listOf(true, false, false), listOf("ce-fill-beat", "ce-fill-half", "ce-fill-quarter").map(::chosen))
             assertEquals(listOf(false, false, true, false), listOf(1, 2, 4, 8).map { chosen("ce-fill-bars-$it") })
-            (listOf("ce-fill-beat", "ce-fill-half", "ce-fill-quarter") + listOf(1, 2, 4, 8).map { "ce-fill-bars-$it" }).forEach { tag ->
+            (listOf("ce-fill-beat", "ce-fill-half", "ce-fill-quarter", "ce-fill-eighth_triplet", "ce-fill-sixteenth_triplet") + listOf(1, 2, 4, 8).map { "ce-fill-bars-$it" }).forEach { tag ->
                 assertTrue(requireNotNull(scene.tag(tag)).boundsInRoot.height >= 48f, tag)
             }
             scene.click("ce-fill-quarter")
@@ -891,12 +930,19 @@ class ContinuousEditorTest {
             val opener = requireNotNull(phone.tag("ce-pad-fill"))
             requireNotNull(opener.config[SemanticsActions.OnClick].action)()
             phone.settle()
-            for (tag in listOf("ce-fill-beat", "ce-fill-quarter", "ce-fill-bars-1", "ce-fill-bars-8", "ce-pad-fill-apply")) {
+            for (tag in listOf("ce-fill-beat", "ce-fill-quarter", "ce-fill-eighth_triplet", "ce-fill-sixteenth_triplet", "ce-fill-bars-1", "ce-fill-bars-8", "ce-pad-fill-apply")) {
+                phone.reach(tag)
                 val node = requireNotNull(phone.tag(tag)) { tag }
-                node.config.getOrNull(SemanticsActions.ScrollToIndex)
-                assertTrue(node.size.height >= 48, "$tag keeps a 48 dp target")
+                val bounds = node.boundsInWindow
+                assertTrue(bounds.width >= 48 && bounds.height >= 48 && bounds.left >= 0 && bounds.right <= 390 && bounds.top >= 0 && bounds.bottom <= 844,
+                    "$tag keeps a reachable 48 dp target: $bounds")
             }
+            phone.reach("ce-fill-sixteenth_triplet")
+            phone.click("ce-fill-sixteenth_triplet")
+            phone.reach("ce-pad-fill-apply")
             phone.capture("pad-fill-phone-font200.png")
+            phone.click("ce-pad-fill-apply")
+            assertEquals(ContinuousEditorAction.FillPad(2, "melody", ContinuousEditorFixture.readout().songFrame, ContinuousGrid.SIXTEENTH_TRIPLET, 4), actions.last())
         } finally { phone.close(); Locale.setDefault(previous) }
     }
 

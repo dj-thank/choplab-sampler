@@ -7,6 +7,7 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.choplab.core.*
+import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.desktop.DesktopProfile
@@ -117,6 +118,8 @@ fun main() {
                 val vocalGuide by presenter.vocalGuide.collectAsState()
                 val fourStems by presenter.fourStems.collectAsState()
                 val onlineSource by presenter.onlineSource.collectAsState()
+                val vocalTakes by presenter.vocalTakes.collectAsState()
+                val vocalPunch by presenter.vocalPunch.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
                 backend.windowsAudio?.let { audio ->
                     val route by audio.route.collectAsState()
@@ -151,7 +154,7 @@ fun main() {
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                    onlineSource = onlineSource, quickStart = quickStart)
+                    onlineSource = onlineSource, vocalTakes = vocalTakes, vocalPunch = vocalPunch, quickStart = quickStart)
             }
         }
     } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -172,6 +175,12 @@ internal class DesktopEditorPorts(
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
+    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice)
+    override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
+            backend.renderVocalComp(project, draft, name)
+    }
     override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
         override val preview = speechPreview
         override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort {

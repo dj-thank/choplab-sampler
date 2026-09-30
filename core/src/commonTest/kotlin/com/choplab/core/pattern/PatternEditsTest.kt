@@ -42,6 +42,29 @@ class PatternEditsTest {
         assertEquals(1, PatternEdits.clear(result, 0).notes.size)
     }
 
+    @Test fun tripletInputAndQuantizationKeepExclusiveBoundsAndOtherPads() {
+        val project = project()
+        for (grid in listOf(PatternEdits.EIGHTH_TRIPLET_TICKS, PatternEdits.SIXTEENTH_TRIPLET_TICKS)) {
+            for (bars in 1..8) {
+                val pattern = Pattern("p", bars = bars)
+                val steps = pattern.lengthTicks / grid
+                val last = PatternEdits.toggle(project, pattern, 1, steps - 1, .5f, grid)
+                assertEquals(listOf(Note(pattern.lengthTicks - grid, 1, .5f)), last.notes)
+                assertTrue(PatternEdits.toggle(project, last, 1, steps - 1, .5f, grid).notes.isEmpty())
+                for (invalid in listOf(-1, steps)) assertEquals(PatternProblem.INVALID_INPUT,
+                    assertFailsWith<PatternEditException> { PatternEdits.toggle(project, pattern, 1, invalid, 1f, grid) }.problem)
+                val offGrid = pattern.copy(notes = frozenListOf(Note(grid / 2 - 1, 0, .2f), Note(grid / 2, 0, .5f),
+                    Note(grid - 1, 0, .8f), Note(pattern.lengthTicks - 1, 0, .9f), Note(grid / 2, 1, .7f)))
+                val snapped = PatternEdits.quantize(offGrid, 0, grid)
+                assertEquals(listOf(Note(0, 0, .2f), Note(grid / 2, 1, .7f), Note(grid, 0, .8f),
+                    Note(pattern.lengthTicks - grid, 0, .9f)), snapped.notes)
+                assertEquals(snapped, PatternEdits.quantize(snapped, 0, grid), "Quantizing twice is a no-op")
+            }
+        }
+        for (grid in listOf(0, -160, 1, 480)) assertEquals(PatternProblem.INVALID_INPUT,
+            assertFailsWith<PatternEditException> { PatternEdits.toggle(project, project.patterns.first(), 0, 0, 1f, grid) }.problem)
+    }
+
     @Test fun repeatsUseAbsoluteTicksWithNoCumulativeFrameRoundingOrLostSwing() {
         for (tempo in listOf(Tempo(97_125, 500), Tempo(97_125, 710), Tempo(240_000, 750), Tempo(40_000, 540))) {
             val base = project(tempo).copy(patterns = frozenListOf(Pattern("a", bars = 1, notes = frozenListOf(Note(0, 0), Note(240, 1))),

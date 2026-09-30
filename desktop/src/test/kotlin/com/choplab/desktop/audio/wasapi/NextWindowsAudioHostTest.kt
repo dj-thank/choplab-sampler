@@ -34,6 +34,7 @@ class NextWindowsAudioHostTest {
             assertEquals(setOf(WasapiStreamMode.OUTPUT), native.keys)
             assertNotNull(backend.systemAudio)
             assertEquals(VoiceTakes.Start.STARTED, backend.voice.start(1))
+            assertEquals(480, backend.voice.inputBufferFrames, "Native capture metadata survives stereo-to-mono adaptation")
             val mic = native.getValue(WasapiStreamMode.MICROPHONE)
             mic.enqueue(WasapiStreamsTest.Packet(FloatArray(960) { if (it % 2 == 0) .4f else -.2f }, 0, 1_000_000))
             await { backend.voice.recordedMillis >= 10 }

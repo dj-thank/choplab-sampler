@@ -1814,7 +1814,7 @@ class ContinuousEditorPresenterTest {
         val h = Harness(voice = true)
         try {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
-            h.engine.refuses = { p -> p.tracks.any { it.kind == TrackKind.VOCAL } }
+            h.engine.refuses = { p -> p.clips.any { clip -> p.tracks.any { it.id == clip.trackId && it.kind == TrackKind.VOCAL } } }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
             h.until { it.status == ContinuousStatus.VOICE_SAVED_PAD_ONLY }
@@ -1823,7 +1823,30 @@ class ContinuousEditorPresenterTest {
             assertEquals(ContinuousStatus.VOICE_SAVED_PAD_ONLY, h.presenter.state.value.status)
             val p = h.studio.document.value.project
             assertEquals("VOICE 1", p.pads[48].name)
-            assertTrue(p.tracks.none { it.kind == TrackKind.VOCAL } && p.clips.size == 1, "Only the PAD changed")
+            assertEquals(1, p.tracks.count { it.kind == TrackKind.VOCAL })
+            assertEquals(p.pads[48].assetHash, p.takes.single().assetHash, "The original is retained in the library alongside its PAD")
+            assertEquals(1, p.clips.size, "The refused vocal placement cannot alter the existing song")
+        } finally { h.close() }
+    }
+
+    @Test fun fullVoiceBankAndRefusedPlacementStillKeepTheTakeLibraryWithOneUndo() = runBlocking<Unit> {
+        val h = Harness(voice = true) { p -> p.copy(pads = p.pads.map {
+            if (it.id in 48..63) Pad(it.id, p.assets[1].hash, FrameRange(0, 48_000)) else it
+        }.frozen()) }
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            val before = h.studio.document.value
+            h.engine.refuses = { p -> p.clips.any { clip -> p.tracks.any { it.id == clip.trackId && it.kind == TrackKind.VOCAL } } }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            h.until { it.status == ContinuousStatus.VOICE_SAVED_TAKE_ONLY }
+            val saved = h.studio.document.value
+            assertEquals(before.revision + 1, saved.revision)
+            assertEquals(before.project.pads, saved.project.pads)
+            assertEquals(before.project.clips, saved.project.clips)
+            assertEquals("VOICE 1", saved.project.asset(saved.project.takes.single().assetHash).name)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo)); assertEquals(before.project, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Redo)); assertEquals(saved.project, h.studio.document.value.project)
         } finally { h.close() }
     }
 

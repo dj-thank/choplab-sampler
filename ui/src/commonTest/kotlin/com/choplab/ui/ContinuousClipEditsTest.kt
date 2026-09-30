@@ -246,6 +246,35 @@ class ContinuousClipEditsTest {
         assertEquals(5, ceGridLines(straight, ContinuousGrid.QUARTER, 96f, 7f, 0f, 48f).size)
     }
 
+    @Test fun tripletSnapNudgeFillAndDrawingShareTheSameClockAndExclusiveEnd() {
+        val hit = fixture().let { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(range = FrameRange(0, 240)) else it }.frozen()) }
+        for (swing in listOf(500, 600)) for (grid in listOf(ContinuousGrid.EIGHTH_TRIPLET, ContinuousGrid.SIXTEENTH_TRIPLET)) {
+            val p = hit.copy(tempo = Tempo(120_000, swing))
+            val expectedBeat = when {
+                swing == 500 && grid == ContinuousGrid.EIGHTH_TRIPLET -> listOf(0L, 8_000, 16_000, 24_000)
+                swing == 500 -> listOf(0L, 4_000, 8_000, 12_000, 16_000, 20_000, 24_000)
+                grid == ContinuousGrid.EIGHTH_TRIPLET -> listOf(0L, 8_800, 16_800, 24_000)
+                else -> listOf(0L, 4_800, 8_800, 12_000, 16_800, 20_800, 24_000)
+            }
+            val filled = apply(p, ContinuousEditorAction.FillPad(0, null, 0, grid, 8))
+            assertEquals(8 * 3_840 / grid.ticks, filled.clips.size)
+            assertEquals(expectedBeat, filled.clips.take(expectedBeat.size).map { filled.start(it) })
+            assertEquals(8 * 3_840L - grid.ticks, filled.clips.last().startTick)
+            assertTrue(filled.clips.all { it.startTick < 8 * 3_840L })
+            for ((step, frame) in expectedBeat.withIndex()) {
+                val tick = step * grid.ticks.toLong()
+                assertEquals(tick, ContinuousClipEdits.snapTick(frame + 100, p.tempo, grid))
+                assertEquals(frame, ContinuousClipEdits.landingFrame(frame + 100, p.tempo, grid))
+                assertEquals(tick + grid.ticks, ContinuousClipEdits.adjacentTick(frame, p.tempo, grid, forward = true))
+            }
+            val drawn = ceGridLines(p.tempo, grid, 240f, 6f, 0f, 120f)
+            assertEquals(expectedBeat.map { it / 200f }, drawn.map { it.first })
+            val live = apply(p, ContinuousEditorAction.PlaceHits(listOf(ContinuousHit(0, expectedBeat[1] - 100),
+                ContinuousHit(0, expectedBeat[1] + 100), ContinuousHit(0, expectedBeat[2] + 100))), grid)
+            assertEquals(listOf(grid.ticks.toLong(), 2L * grid.ticks), live.clips.map { it.startTick })
+        }
+    }
+
     @Test fun playedHitsGoOntoTheGridOnceEachAsPlacingPutsThem() {
         // 120 BPM: a beat is 24 000 frames. PAD 1 plays another part of PAD 0's sound.
         val p = fixture().let { p -> p.copy(pads = p.pads.map { when (it.id) {
@@ -392,4 +421,3 @@ class ContinuousClipEditsTest {
         assertEquals(3, apply(both, ContinuousEditorAction.RepeatBars(0, 2, 1)).clips.size)
     }
 }
-

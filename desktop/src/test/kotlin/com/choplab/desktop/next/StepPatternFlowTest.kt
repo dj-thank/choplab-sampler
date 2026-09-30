@@ -20,7 +20,13 @@ import kotlin.test.*
 
 /** Real Studio, PAD-performance renderer, arrangement engine, WAV, archive and restart; no native devices. */
 class StepPatternFlowTest {
-    @Test fun twoEditedPatternsRepeatThroughPerformedClipsOneUndoStereoExportAndArchiveRestore() = runBlocking<Unit> {
+    @Test fun twoEditedPatternsRepeatThroughPerformedClipsOneUndoStereoExportAndArchiveRestore() = patternFlow(PatternEdits.STEP_TICKS)
+
+    @Test fun tripletPatternsKeepSwingOneUndoStereoExportAndArchiveRestore() {
+        for (grid in listOf(PatternEdits.EIGHTH_TRIPLET_TICKS, PatternEdits.SIXTEENTH_TRIPLET_TICKS)) patternFlow(grid)
+    }
+
+    private fun patternFlow(grid: Int) = runBlocking<Unit> {
         val directory = Files.createTempDirectory("step-pattern-flow-")
         val profile = directory.resolve("profile")
         val backend = backend(profile)
@@ -44,8 +50,10 @@ class StepPatternFlowTest {
             }
             val editor = StepPatternController(backend.studio.document, backend.studio.selection, availability, ports, scope).also { controller = it }
             suspend fun action(value: PatternAction) { assertTrue(editor.dispatch(value), value.toString()) }
+            action(PatternAction.Grid(grid))
             action(PatternAction.Name("A"))
-            for (step in listOf(0, 4, 8, 12)) action(PatternAction.Toggle(step))
+            val barSteps = PatternEdits.BAR_TICKS / grid
+            for (step in listOf(0, 1, 2, barSteps - 1)) action(PatternAction.Toggle(step, grid))
             assertEquals(beforePattern, backend.studio.document.value.project)
             val revision = backend.studio.document.value.revision
             action(PatternAction.Save)
@@ -59,7 +67,7 @@ class StepPatternFlowTest {
             action(PatternAction.New("B")); action(PatternAction.Resize(2)); action(PatternAction.SelectPad(1))
             waitUntil { editor.state.value.selectedPadId == 1 }
             action(PatternAction.Velocity(.75f))
-            for (step in listOf(1, 9, 17, 25)) action(PatternAction.Toggle(step))
+            for (step in listOf(1, 4, barSteps + 1, 2 * barSteps - 1)) action(PatternAction.Toggle(step, grid))
             action(PatternAction.Save)
             val b = editor.state.value.draft.id
             val patterns = backend.studio.document.value.project.patterns

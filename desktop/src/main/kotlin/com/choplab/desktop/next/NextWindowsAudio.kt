@@ -14,7 +14,7 @@ enum class NextAudioRoute { WASAPI, JAVA_SOUND }
 internal class NextWindowsAudio(
     private val streams: WasapiStreams = createWasapiStreams(),
     private val javaOutput: () -> AudioSink = JavaSoundSink::open,
-    private val javaInput: () -> MicInput? = JavaSoundMicInput::open,
+    private val javaInput: suspend () -> MicInput? = { JavaSoundMicInput.open() },
     private val memory: PcmMemoryBudget = PcmMemoryBudget.shared,
 ) : AutoCloseable {
     private val selected = MutableStateFlow(NextAudioRoute.WASAPI)
@@ -42,26 +42,22 @@ internal class NextWindowsAudio(
         }
     }
 
-    fun openMicrophone(): MicInput? = capture {
+    suspend fun openMicrophone(): MicInput? = capture {
         if (route.value == NextAudioRoute.JAVA_SOUND) return@capture javaInput()
-        runBlocking {
-            val reservation = memory.reserve(2048L * 2 * 4)
-            try {
-                val input = openCapture(WasapiStreamMode.MICROPHONE).also { microphone = it }
-                try { MonoInput(input, reservation) } catch (failure: Throwable) { input.requestClose(); throw failure }
-            } catch (failure: Throwable) { reservation.close(); throw failure }
-        }
+        val reservation = memory.reserve(2048L * 2 * 4)
+        try {
+            val input = openCapture(WasapiStreamMode.MICROPHONE).also { microphone = it }
+            try { MonoInput(input, reservation) } catch (failure: Throwable) { input.requestClose(); throw failure }
+        } catch (failure: Throwable) { reservation.close(); throw failure }
     }
 
-    fun openLoopback(): MicInput = checkNotNull(capture {
-        runBlocking {
-            captureFailures.remove(WasapiStreamMode.LOOPBACK)
-            check(route.value == NextAudioRoute.WASAPI)
-            openCapture(WasapiStreamMode.LOOPBACK).also { loopback = it }
-        }
+    suspend fun openLoopback(): MicInput = checkNotNull(capture {
+        captureFailures.remove(WasapiStreamMode.LOOPBACK)
+        check(route.value == NextAudioRoute.WASAPI)
+        openCapture(WasapiStreamMode.LOOPBACK).also { loopback = it }
     })
 
-    private fun capture(open: () -> MicInput?): MicInput? {
+    private suspend fun capture(open: suspend () -> MicInput?): MicInput? {
         synchronized(gate) { check(!closed.get() && !changing); openingInputs++ }
         return try {
             open()?.let { input ->
@@ -70,6 +66,8 @@ internal class NextWindowsAudio(
                     private val released = AtomicBoolean(false)
                     override val sampleRate get() = input.sampleRate
                     override val channels get() = input.channels
+                    override val bufferFrames get() = input.bufferFrames
+                    override val routeRevision get() = input.routeRevision
                     override fun onCaptureThread() = input.onCaptureThread()
                     override fun read(buffer: FloatArray) = input.read(buffer)
                     override fun stop() = input.stop()
@@ -113,6 +111,8 @@ internal class NextWindowsAudio(
         private val samples = FloatArray(4096)
         private val closed = AtomicBoolean(false)
         override val sampleRate get() = input.sampleRate
+        override val bufferFrames get() = input.bufferFrames
+        override val routeRevision get() = input.routeRevision
         override fun onCaptureThread() = input.onCaptureThread()
         override fun read(buffer: FloatArray): Int {
             require(buffer.size >= 2048)

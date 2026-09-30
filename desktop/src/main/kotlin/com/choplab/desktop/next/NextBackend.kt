@@ -76,6 +76,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         decoder.inspect(file.toPath(), hash) { Thread.currentThread().isInterrupted }
     }
 
+    suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
+        shared.renderVocalComp(project, draft, name)
     fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
                             memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory) = shared.createFourStemWorker(factory, memoryProbe)
 
@@ -115,13 +117,13 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     override fun close() = runBlocking { shutdown() }
 
     companion object {
-        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: (() -> MicInput?)? = null): NextBackend {
+        fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: (suspend () -> MicInput?)? = null): NextBackend {
             val windows = if (sinkFactory == null && System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) NextWindowsAudio() else null
             return createWithRoutes(directory, sinkFactory, microphone, windows)
         }
 
         internal fun createWithRoutes(directory: Path, sinkFactory: (() -> AudioSink)? = null,
-            microphone: (() -> MicInput?)? = null, windows: NextWindowsAudio? = null): NextBackend {
+            microphone: (suspend () -> MicInput?)? = null, windows: NextWindowsAudio? = null): NextBackend {
             val files = NextFileLocations()
             val decoder = DesktopOriginalAudioDecoder()
             val shared = try { EditorBackend.create(directory,
@@ -138,7 +140,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                     FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve)) }, decoder = decoder) }
                 catch (failure: Throwable) { try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }; throw failure }
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"),
-                microphone = microphone ?: windows?.let { it::openMicrophone } ?: { JavaSoundMicInput.open() }) }
+                microphone = microphone ?: { windows?.openMicrophone() ?: if (windows == null) JavaSoundMicInput.open() else null }) }
                 catch (failure: Throwable) {
                     try { runBlocking { shared.shutdown(flush = false) } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
                     try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }

@@ -8,6 +8,8 @@ import com.choplab.core.model.*
 import com.choplab.engine.PlayMode
 import com.choplab.engine.Tempo
 import com.choplab.ui.ai.*
+import com.choplab.ui.vocal.*
+import com.choplab.core.vocal.*
 import com.choplab.ui.pattern.*
 import com.choplab.ui.separation.*
 import com.choplab.core.separation.*
@@ -28,6 +30,8 @@ interface ContinuousEditorPorts {
     val lyricFiles: LyricFiles? get() = null
     val lyricProposal: LyricProposalPort? get() = null
     val vocalGuide: VocalGuidePort? get() = null
+    val vocalTakes: VocalTakePort? get() = null
+    val vocalPunch: VocalPunchPort? get() = null
     val fourStems: FourStemFactory? get() = null
     /** This host stores complete performed PAD voices for step/pattern arrangement placement. */
     val stepPatternsAvailable: Boolean get() = false
@@ -183,6 +187,7 @@ private data class EditorView(
     val pane: ContinuousPane = ContinuousPane.PADS,
     val originalPlaying: Boolean = false,
     val vocalPreview: Boolean = false,
+    val punchRecording: Boolean = false,
     val originalGain: Float = 1f,
     val songGain: Float = 1f,
     val handGain: Float = 1f,
@@ -255,6 +260,19 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private val lyricEditor = ContinuousLyricsController(studio, ports.lyricFiles) { intent, revision -> send(Action.Edit(intent, revision)) }
     private val proposal = MutableStateFlow<LyricProposalController?>(null)
     val lyricProposal: StateFlow<LyricProposalController?> = proposal.asStateFlow()
+    private val punchEditor = MutableStateFlow<VocalPunchController?>(null)
+    val vocalPunch = punchEditor.asStateFlow()
+    private var lastPunchRange: Pair<Long, Long>? = null
+    private val takeEditor = MutableStateFlow<VocalTakeController?>(null)
+    val vocalTakes: StateFlow<VocalTakeController?> = takeEditor.asStateFlow()
+    private val sourcePreview = ports.vocalGuide?.preview ?: ports.vocalTakes?.preview
+    private val takeAvailability = combine(view, studio.work) { editor, work ->
+        when (bankPadBlock(editor, work)) {
+            BankPadEditProblem.RECORDING -> VocalAvailability.RECORDING
+            null -> VocalAvailability.EDITABLE
+            else -> VocalAvailability.BUSY
+        }
+    }.stateIn(jobs, SharingStarted.Eagerly, VocalAvailability.EDITABLE)
     private val separation = MutableStateFlow<FourStemController?>(null)
     val fourStems: StateFlow<FourStemController?> = separation.asStateFlow()
     private val separationAvailability = combine(view, studio.work) { editor, work ->
@@ -302,7 +320,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private val consumer: Job
 
     init {
-        ports.vocalGuide?.preview?.let { preview -> jobs.launch {
+        require(ports.vocalGuide == null || ports.vocalTakes == null || ports.vocalGuide!!.preview === ports.vocalTakes!!.preview) {
+            "Vocal previews must share one SOURCE owner"
+        }
+        sourcePreview?.let { preview -> jobs.launch {
             preview.state.collect { current ->
                 view.update { it.copy(vocalPreview = current.ownsSource, originalPlaying = if (current.ownsSource) false else it.originalPlaying) }
                 refresh.update { it + 1 }
@@ -349,7 +370,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         jobs.launch { while (isActive) {
             studio.dispatch(Action.RefreshTransport)
             val passes = view.value.livePasses
-            ports.originalPlaying()?.takeIf { ports.vocalGuide?.preview?.state?.value?.ownsSource != true }?.let { playing -> view.update { v ->
+            ports.originalPlaying()?.takeIf { sourcePreview?.state?.value?.ownsSource != true }?.let { playing -> view.update { v ->
                 // A pass ends with the original, also when it reaches the end by itself.
                 if (v.livePasses != passes) v else v.copy(originalPlaying = playing, liveChop = v.liveChop.takeIf { playing })
             } }
@@ -370,7 +391,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     fun readout(): ContinuousEditorReadout {
-        val preview = ports.vocalGuide?.preview?.state?.value
+        val preview = sourcePreview?.state?.value
         val clock = ports.readout().let { if (preview?.ownsSource == true) it.copy(originalFrame = preview.originalFrame) else it }
         val held = grip
         val fraction = if (held?.target == ContinuousScratchTarget.ORIGINAL && clock.handSourceFrame >= 0)
@@ -402,17 +423,19 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun interrupt(action: ContinuousEditorAction) {
         if (action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.StopOriginal) {
             cancelFourStemPreparation()
-            vocal.value?.cancel(); ports.vocalGuide?.preview?.requestStop()
+            vocal.value?.cancel(); takeEditor.value?.dispatch(VocalAction.StopPreview); sourcePreview?.requestStop()
         }
-        if (action != ContinuousEditorAction.StopOriginal) voiceOpeningCancelled = true
+        if (action != ContinuousEditorAction.StopOriginal) { voiceOpeningCancelled = true; punchEditor.value?.stop() }
         if (action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.StopSourceRecording ||
             action == ContinuousEditorAction.DiscardSourceRecording) cancelSourceOpening()
         if (action == ContinuousEditorAction.StopOriginal || action == ContinuousEditorAction.StopAll) ports.cancelOriginalPreparation()
         // Nothing else runs while a take is added, and cancelling that edit would lose the take.
-        if (action != ContinuousEditorAction.StopOriginal && !finishingTake) studio.dispatch(Action.CancelWork)
+        if (action != ContinuousEditorAction.StopOriginal && !finishingTake &&
+            !(view.value.punchRecording && ports.vocalPunch?.progress?.value?.phase in setOf(PunchPhase.SAVING, PunchPhase.IDLE))) studio.dispatch(Action.CancelWork)
     }
 
     suspend fun dispatch(action: ContinuousEditorAction): Boolean {
+        if (action is ContinuousEditorAction.Navigate && action.stage != view.value.stage) punchEditor.value?.closeAndJoin()
         if (action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
             ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource)) {
             vocal.value?.cancel(TtsProblem.RECORDING)
@@ -420,7 +443,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         }
         if (action == ContinuousEditorAction.StopAll) online.value?.cancelPendingApply()
         // The controller can be awaiting a selected-PAD action; cancel outside our serialized edit lock.
-        if (action == ContinuousEditorAction.StopAll) patterns.value?.dispatch(PatternAction.Cancel)
+        if (action == ContinuousEditorAction.StopAll) { patterns.value?.dispatch(PatternAction.Cancel); takeEditor.value?.dispatch(VocalAction.Cancel) }
         if (endsScratch(action)) cancelScratchOpening()
         // Cancel preparation before waiting for a UI edit; Stop cannot queue behind decoding.
         if (interrupts(action)) interrupt(action)
@@ -433,13 +456,18 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ((action !is ContinuousEditorAction.CaptureHit && action !is ContinuousEditorAction.DropHit) || view.value.hits != null) &&
                 (action != ContinuousEditorAction.StopSourceRecording || view.value.recordingSource)) view.update { it.copy(status = null) }
             refusal = null
+            if (!view.value.punchRecording && (action in listOf(ContinuousEditorAction.OpenVocalGuide,
+                ContinuousEditorAction.OpenLyricProposal, ContinuousEditorAction.OpenStepPatterns,
+                ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits, ContinuousEditorAction.RecordSource,
+                ContinuousEditorAction.RecordSystemSource) || action is ContinuousEditorAction.Lyrics)) closeVocalPunch()
             val project = studio.document.value.project
             val preparingRecording = action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
                 ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource)
-            val previewRestored = !preparingRecording || ports.vocalGuide?.preview?.stop() !is TtsResult.Failure
+            val previewRestored = !preparingRecording || sourcePreview?.stop() !is TtsResult.Failure
             // Like the earlier app, a take in progress allows playing along and stopping, never document changes.
-            val accepted = if (!previewRestored || sourcePreviewBlocked(action)) false else if (((view.value.voice != null || view.value.hits != null) && !allowedWhileRecording(action)) ||
-                (view.value.recordingSource && !allowedWhileCollecting(action))) {
+            val accepted = if (!previewRestored || sourcePreviewBlocked(action)) false else if (((view.value.voice != null || view.value.hits != null || view.value.punchRecording) && !allowedWhileRecording(action)) ||
+                (view.value.recordingSource && !allowedWhileCollecting(action)) ||
+                (view.value.punchRecording && action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits))) {
                 refusal = ContinuousStatus.RECORDING_BUSY; false
             } else when (action) {
                 is ContinuousEditorAction.RecordingGuide -> {
@@ -452,6 +480,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.BankPadEdit -> bankPadEditor.dispatch(action.action)
                 is ContinuousEditorAction.Lyrics -> if (action.action != LyricAction.Close &&
                     (studio.work.value.jobId != null || studio.work.value.preparationId != null)) false else lyricEditor.dispatch(action.action)
+                ContinuousEditorAction.OpenVocalPunch -> openVocalPunch()
+                ContinuousEditorAction.CloseVocalPunch -> closeVocalPunch()
+                ContinuousEditorAction.OpenVocalTakes -> { if (!closeVocalPunch()) false else openVocalTakes() }
+                ContinuousEditorAction.CloseVocalTakes -> closeVocalTakes()
                 ContinuousEditorAction.OpenFourStems -> openFourStems()
                 ContinuousEditorAction.CloseFourStems -> closeFourStems()
                 ContinuousEditorAction.OpenVocalGuide -> openVocalGuide()
@@ -462,8 +494,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.CloseStepPatterns -> { closeStepPatterns(); true }
                 ContinuousEditorAction.CloseOnline -> closeOnline()
                 is ContinuousEditorAction.Navigate -> {
-                    if (action.stage != view.value.stage && !closeFourStems()) return@withLock false
-                    if (action.stage != view.value.stage && !closeOnline()) return@withLock false
+                    if (action.stage != view.value.stage && (!closeFourStems() || !closeOnline() || !closeVocalTakes())) return@withLock false
                     if (action.stage != view.value.stage) { bankPadEditor.dispatch(BankPadEditAction.Cancel); closeLyricProposal(); closeStepPatterns(); closeVocalGuide() }
                     releaseHeld()
                     if (action.stage != ContinuousStage.BEAT && view.value.scratch != null) { letGoScratch(); view.update { it.copy(scratch = null) } }
@@ -504,7 +535,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.Undo -> { endLiveChop(); send(Action.Undo) }
                 ContinuousEditorAction.Redo -> { endLiveChop(); send(Action.Redo) }
                 ContinuousEditorAction.StopAll -> {
-                    val restored = ports.vocalGuide?.preview?.stop() !is TtsResult.Failure
+                    val restored = sourcePreview?.stop() !is TtsResult.Failure
                     // Everything stops first, a scratch with it, so letting go afterwards plays nothing on.
                     val hitEnd = snapshotHitEnd()
                     releaseHeld(); val stopped = send(Action.Stop)
@@ -532,7 +563,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.PlayOriginal -> project.source?.let { source ->
                     ports.playOriginal(project.asset(source.assetHash)).also { ok -> if (ok) view.update { it.copy(originalPlaying = true) } }
                 } ?: false
-                ContinuousEditorAction.StopOriginal -> (ports.vocalGuide?.preview?.stop() !is TtsResult.Failure && ports.stopOriginal()).also { ok ->
+                ContinuousEditorAction.StopOriginal -> (sourcePreview?.stop() !is TtsResult.Failure && ports.stopOriginal()).also { ok ->
                     if (ok && grip?.target == ContinuousScratchTarget.ORIGINAL) letGoScratch()
                     view.update { it.copy(originalPlaying = if (ok) false else it.originalPlaying, liveChop = null) }
                 }
@@ -802,7 +833,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun drumBank(project: Project): List<Pad> = project.pads.subList(DrumKits.BANK * 16, DrumKits.BANK * 16 + 16).toList()
 
     private fun sourcePreviewBlocked(action: ContinuousEditorAction): Boolean {
-        if (ports.vocalGuide?.preview?.state?.value?.ownsSource != true) return false
+        if (sourcePreview?.state?.value?.ownsSource != true) return false
         return when (action) {
             ContinuousEditorAction.PlayOriginal, is ContinuousEditorAction.SeekOriginal, is ContinuousEditorAction.SetOriginalMonitorGain,
             is ContinuousEditorAction.SetOriginalPitch, is ContinuousEditorAction.SetSourceRange, ContinuousEditorAction.BeginLiveChop,
@@ -819,6 +850,98 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             else -> ttsFailure(TtsProblem.BUSY)
         }
     }
+    /** Publishes the modal, then releases the action lock before any decode/preview/apply callback. */
+    private suspend fun openVocalPunch(): Boolean {
+        val port = ports.vocalPunch ?: return false
+        if (bankPadBlock(view.value, studio.work.value) != null || !closeVocalTakes() || !closeFourStems()) return false
+        if (!closeOnline()) return false
+        if (punchEditor.value != null) return true
+        closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
+        lyricEditor.dispatch(LyricAction.Close); bankPadEditor.dispatch(BankPadEditAction.Cancel)
+        lateinit var controller: VocalPunchController
+        controller = VocalPunchController(studio.document, port.progress, object : VocalPunchActions {
+            override fun stop() = port.requestStop()
+            override suspend fun record(request: VocalPunchRequest, expectedRevision: Long): PunchCompletion {
+                val project = serialized.withLock {
+                    if (bankPadBlock(view.value, studio.work.value) != null || studio.document.value.revision != expectedRevision || controller.state.value.stopping)
+                        return PunchCompletion(VocalPunchResult(problem = PunchProblem.BUSY), false)
+                    if (sourcePreview?.stop() is TtsResult.Failure) return PunchCompletion(VocalPunchResult(problem = PunchProblem.BUSY), false)
+                    releaseHeld(); letGoScratch(); stopOriginal()
+                    view.update { it.copy(punchRecording = true) }
+                    studio.document.value.project
+                }
+                try {
+                    val result = port.capture(project, expectedRevision, request) { controller.state.value.stopping }
+                    return serialized.withLock {
+                        val captured = result.captured ?: return@withLock PunchCompletion(result, false)
+                        if (studio.document.value.revision != expectedRevision) return@withLock PunchCompletion(result.copy(problem = PunchProblem.STALE), false)
+                        val plan = request.plan(project)
+                        val intent = VocalPunchRecording.retain(project, captured, plan,
+                            result.alignment.framesFor(result.alignment.route), request.manualFrames48k, ::freshId)
+                        finishingTake = true
+                        try {
+                            val saved = send(Action.Edit(intent, expectedRevision))
+                            if (saved) lastPunchRange = request.startFrame to request.endFrame
+                            PunchCompletion(result.copy(problem = result.problem ?: if (saved) null else PunchProblem.SAVE_FAILED), saved)
+                        } finally { finishingTake = false }
+                    }
+                } finally { view.update { it.copy(punchRecording = false) } }
+            }
+        }, jobs, 0, songFrames(studio.document.value.project))
+        punchEditor.value = controller
+        jobs.launch { controller.state.first { it.closed }; punchEditor.compareAndSet(controller, null) }
+        return true
+    }
+    private fun closeVocalPunch(): Boolean {
+        val controller = punchEditor.value ?: return true
+        controller.requestClose()
+        if (controller.state.value.busy) return false
+        punchEditor.compareAndSet(controller, null)
+        return true
+    }
+
+    private suspend fun openVocalTakes(): Boolean {
+        val port = ports.vocalTakes ?: return false
+        if (bankPadBlock(view.value, studio.work.value) != null) return false
+        if (!closeOnline() || !closeFourStems()) return false
+        if (takeEditor.value != null) return true
+        closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
+        lyricEditor.dispatch(LyricAction.Close)
+        bankPadEditor.dispatch(BankPadEditAction.Cancel)
+        lateinit var controller: VocalTakeController
+        suspend fun preview(asset: Asset, revision: Long): Boolean = serialized.withLock {
+            currentCoroutineContext().ensureActive()
+            if (controller.state.value.phase == VocalPhase.CLOSED || vocalGuard(revision) is TtsResult.Failure) false
+            else {
+                releaseHeld(); letGoScratch(); endLiveChop()
+                port.preview.start(asset, revision) is TtsResult.Success
+            }
+        }
+        controller = VocalTakeController(studio.document, takeAvailability, object : VocalTakePorts {
+            override suspend fun render(project: Project, draft: VocalCompDraft, name: String) = port.render(project, draft, name)
+            override suspend fun apply(intent: Intent, expectedRevision: Long): Boolean {
+                if (port.preview.stop() is TtsResult.Failure) return false
+                return applyPreparedEdit(intent, expectedRevision)
+            }
+            override suspend fun previewTake(project: Project, takeId: String): Boolean {
+                val revision = controller.state.value.revision
+                val draft = VocalCompEdits.fullTake(project, takeId, "preview")
+                val asset = port.render(project, draft, project.asset(project.takes.first { it.id == takeId }.assetHash).name)
+                return preview(asset, revision)
+            }
+            override suspend fun previewComp(asset: Asset) = preview(asset, controller.state.value.revision)
+            override fun stopPreview() = port.preview.requestStop()
+        }, jobs, lastPunchRange)
+        takeEditor.value = controller
+        jobs.launch { controller.state.first { it.phase == VocalPhase.CLOSED }; takeEditor.compareAndSet(controller, null) }
+        return true
+    }
+    private suspend fun closeVocalTakes(): Boolean {
+        if (takeEditor.value?.state?.value?.phase == VocalPhase.APPLYING) return false
+        takeEditor.getAndUpdate { null }?.close()
+        return sourcePreview?.stop() !is TtsResult.Failure
+    }
+
     private fun separationGuard(revision: Long): SeparationResult<Unit> = when {
         studio.document.value.revision != revision -> separationFailure(SeparationProblem.STALE_DOCUMENT)
         bankPadBlock(view.value, studio.work.value) == BankPadEditProblem.RECORDING -> separationFailure(SeparationProblem.RECORDING)
@@ -829,7 +952,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openFourStems(): Boolean {
         val factory = ports.fourStems ?: return false
         if (studio.document.value.project.source == null || bankPadBlock(view.value, studio.work.value) != null) return false
-        if (!closeOnline()) return false
+        if (!closeOnline() || !closeVocalPunch() || !closeVocalTakes()) return false
         if (separation.value != null) return true
         closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
@@ -860,6 +983,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (bankPadBlock(view.value, studio.work.value) != null) return false
         if (!closeOnline()) return false
         if (vocal.value != null) return true
+        if (!closeVocalTakes()) return false
         closeLyricProposal(); closeStepPatterns()
         lyricEditor.dispatch(LyricAction.Close)
         bankPadEditor.dispatch(BankPadEditAction.Cancel)
@@ -883,7 +1007,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         jobs.launch { controller.state.first { it.phase == VocalGuidePhase.CLOSED }; vocal.compareAndSet(controller, null) }
         return true
     }
-    private suspend fun closeVocalGuide() { vocal.getAndUpdate { null }?.close(); ports.vocalGuide?.preview?.stop() }
+    private suspend fun closeVocalGuide() { vocal.getAndUpdate { null }?.close(); sourcePreview?.stop() }
 
     private suspend fun openLyricProposal(): Boolean {
         if (!closeFourStems()) return false
@@ -891,6 +1015,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (bankPadBlock(view.value, studio.work.value) != null) return false
         if (!closeOnline()) return false
         if (proposal.value != null) return true
+        if (!closeVocalTakes()) return false
         closeStepPatterns(); closeVocalGuide()
         val controller = LyricProposalController(studio.document, port.createProvider(), LyricProposalApply { placement, revision ->
             applyPreparedEdit(Intent.SetStructuredLyrics(placement.lines, placement.structure), revision)
@@ -912,6 +1037,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (!ports.stepPatternsAvailable || bankPadBlock(view.value, studio.work.value) != null) return false
         if (!closeOnline()) return false
         if (patterns.value != null) return true
+        if (!closeVocalTakes()) return false
         closeLyricProposal(); closeVocalGuide()
         lyricEditor.dispatch(LyricAction.Close)
         bankPadEditor.dispatch(BankPadEditAction.Cancel)
@@ -939,7 +1065,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun openOnline(): Boolean {
         val host = ports.onlineSource ?: return false
         if (bankPadBlock(view.value, studio.work.value) != null) return false
-        if (!closeFourStems()) return false
+        if (!closeVocalPunch() || !closeVocalTakes() || !closeFourStems()) return false
         if (online.value != null) return true
         val revision = studio.document.value.revision
         val session = host.open(jobs) { onAction(ContinuousEditorAction.StopAll) }
@@ -1026,7 +1152,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private fun bankPadBlock(editor: EditorView, work: WorkState): BankPadEditProblem? = when {
-        editor.voice != null || editor.startingVoice || editor.hits != null || editor.recordingSource || editor.startingSource || finishingTake -> BankPadEditProblem.RECORDING
+        editor.voice != null || editor.startingVoice || editor.punchRecording || editor.hits != null || editor.recordingSource || editor.startingSource || finishingTake -> BankPadEditProblem.RECORDING
         work.jobId != null || work.preparationId != null -> BankPadEditProblem.BUSY
         else -> null
     }
@@ -1036,7 +1162,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         is ContinuousEditorAction.BankPadEdit -> true
         is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
         ContinuousEditorAction.CloseLyricProposal, ContinuousEditorAction.CloseStepPatterns, ContinuousEditorAction.CloseVocalGuide,
-        ContinuousEditorAction.CloseFourStems, ContinuousEditorAction.CloseOnline -> true
+        ContinuousEditorAction.CloseFourStems, ContinuousEditorAction.CloseOnline, ContinuousEditorAction.CloseVocalTakes, ContinuousEditorAction.CloseVocalPunch -> true
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.StopSourceRecording,
         ContinuousEditorAction.DiscardSourceRecording, ContinuousEditorAction.StopAll,
         is ContinuousEditorAction.Navigate, is ContinuousEditorAction.CopyDiagnostics -> true
@@ -1142,6 +1268,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
 
     /** Hosts finish a recording before their final autosave, or when moving to the background. */
     suspend fun finishRecording(): Boolean {
+        ports.vocalPunch?.interrupt()
+        punchEditor.value?.closeAndJoin()
         cancelSourceOpening()
         voiceOpeningCancelled = true
         return serialized.withLock {
@@ -1154,7 +1282,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         is ContinuousEditorAction.BankPadEdit -> true
         is ContinuousEditorAction.Lyrics -> action.action == LyricAction.Close
         ContinuousEditorAction.CloseLyricProposal, ContinuousEditorAction.CloseStepPatterns, ContinuousEditorAction.CloseVocalGuide,
-        ContinuousEditorAction.CloseFourStems, ContinuousEditorAction.CloseOnline -> true
+        ContinuousEditorAction.CloseFourStems, ContinuousEditorAction.CloseOnline, ContinuousEditorAction.CloseVocalTakes, ContinuousEditorAction.CloseVocalPunch -> true
         ContinuousEditorAction.RecordVoice, ContinuousEditorAction.StopVoice, ContinuousEditorAction.StopAll,
         ContinuousEditorAction.RecordHits, ContinuousEditorAction.StopHits, is ContinuousEditorAction.CaptureHit,
         is ContinuousEditorAction.BeginHit, is ContinuousEditorAction.EndHit, is ContinuousEditorAction.DropHit,
@@ -1190,6 +1318,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun startVoice(project: Project): Boolean {
         if (view.value.voice != null) return true
         if (view.value.hits != null || !ports.voiceAvailable) return false
+        if (project.takes.size >= 1024 || (project.tracks.size >= 64 && project.tracks.none { it.kind == TrackKind.VOCAL })) { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
         val seconds = voiceSecondsLeft(project)
         if (seconds < 1) { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
         releaseHeld()
@@ -1293,10 +1422,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val track = if (vocal == null) Track(freshId("track"), "VOICE", TrackKind.VOCAL) else null
         val clip = Clip(freshId("clip"), (vocal ?: track!!).id, asset.hash, FrameRange(start, end), timelineStartFrame = at)
         val voicePad = pad?.let { Pad(it, asset.hash, FrameRange(0, asset.frames), asset.name, gain = .9f) }
+        // The saved candidate accompanies the ordinary first placement in the same recording Undo.
+        // Comp/punch selection is a later explicit edit; the recorded asset is never replaced.
+        val candidate = Take(freshId("take"), clip.trackId, asset.hash, clip.range, at)
         val placed = when {
-            addTake(Intent.AddVoiceTake(asset, voicePad, clip, track)) -> if (voicePad == null) ContinuousStatus.VOICE_SAVED_SONG_ONLY else ContinuousStatus.VOICE_SAVED
-            // The song refused the clip (too many at once, say): the PAD still keeps the take.
-            voicePad != null && addTake(Intent.AddVoiceTake(asset, voicePad, null, null)) -> ContinuousStatus.VOICE_SAVED_PAD_ONLY
+            addTake(Intent.AddVoiceTake(asset, voicePad, clip, track, candidate)) -> if (voicePad == null) ContinuousStatus.VOICE_SAVED_SONG_ONLY else ContinuousStatus.VOICE_SAVED
+            // A rejected audible placement never discards a valid original candidate, even when BANK D is full.
+            addTake(Intent.AddVoiceTake(asset, voicePad, null, track, candidate)) ->
+                if (voicePad == null) ContinuousStatus.VOICE_SAVED_TAKE_ONLY else ContinuousStatus.VOICE_SAVED_PAD_ONLY
             else -> return report(ContinuousStatus.FAILED, false)
         }
         if (voicePad != null) send(Action.SelectPad(voicePad.id))
@@ -1829,14 +1962,17 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun freshId(prefix: String): String {
         val p = studio.document.value.project
         var value: String
-        do { value = "$prefix-${++serial}" } while (p.clips.any { it.id == value } || p.tracks.any { it.id == value })
+        do { value = "$prefix-${++serial}" } while (p.clips.any { it.id == value } || p.tracks.any { it.id == value } || p.takes.any { it.id == value } || p.vocalComps.any { it.id == value })
         return value
     }
     suspend fun close() {
+        ports.vocalPunch?.interrupt()
+        punchEditor.value?.closeAndJoin()
         closeFourStems()
         closeVocalGuide()
-        ports.vocalGuide?.preview?.stop()
         online.getAndUpdate { null }?.close()
+        closeVocalTakes()
+        sourcePreview?.stop()
         closeLyricProposal()
         closeStepPatterns()
         cancelScratchOpening()
@@ -1855,7 +1991,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (view.value.voice != null || view.value.hits != null) { pauseSong(); finishVoice(); finishHits() }
             finishSource()
         }
-        ports.vocalGuide?.preview?.close()
+        sourcePreview?.close()
         owner.cancel()
     }
     private fun requireGain(gain: Float) { require(gain.isFinite() && gain in 0f..1f) }
@@ -1878,7 +2014,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val source = p.source?.let { s -> p.asset(s.assetHash).let { a -> ContinuousSource(a.hash, a.name, a.frames, a.sampleRate,
             peaks[a.hash].orEmpty(), s.range.start, s.range.end, s.pitchSemitones.toFloat()) } }
         val busy = input.work.jobId != null || input.work.preparationId != null
-        val recording = v.voice != null || v.startingVoice || v.recordingSource || v.hits != null
+        val recording = v.voice != null || v.startingVoice || v.punchRecording || v.recordingSource || v.hits != null
         val selected = p.pads[input.selection.padId]
         val capabilities = if (recording) mutableSetOf(ContinuousCapability.STOP_ALL)
             else mutableSetOf(ContinuousCapability.OPEN_PROJECT, ContinuousCapability.IMPORT_AUDIO, ContinuousCapability.STOP_ALL)
@@ -1899,6 +2035,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (ports.lyricFiles != null) capabilities += ContinuousCapability.LYRICS_FILES
             if (ports.lyricProposal != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.LYRIC_PROPOSAL
             if (ports.vocalGuide != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.VOCAL_GUIDE
+            if (ports.vocalTakes != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.VOCAL_TAKES
+            if (ports.vocalPunch != null && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.VOCAL_PUNCH
             if (ports.stepPatternsAvailable && !v.startingSource && !finishingTake) capabilities += ContinuousCapability.STEP_PATTERNS
             capabilities += setOf(ContinuousCapability.SAVE_PROJECT, ContinuousCapability.HISTORY, ContinuousCapability.TEMPO,
                 ContinuousCapability.MOVE_CLIP, ContinuousCapability.TRIM_CLIP, ContinuousCapability.SPLIT_CLIP,

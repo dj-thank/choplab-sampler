@@ -275,7 +275,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     }
 }
 
-/** Zoom, and what placing and moving snap to: one row where both fit, otherwise one each (phones, large text). */
+/** Keep the wide instrument's track height; grid choices scroll within the space after zoom. */
 @Composable private fun CETimelineTools(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val zoomOut = stringResource(Res.string.ce_zoom_out)
@@ -291,16 +291,27 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         @Composable fun Grid() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(snap, color = CEColor.Cream, fontSize = 14.sp)
             for ((grid, label) in listOf(ContinuousGrid.BEAT to Res.string.ce_grid_beat, ContinuousGrid.HALF to Res.string.ce_grid_half,
-                    ContinuousGrid.QUARTER to Res.string.ce_grid_quarter, ContinuousGrid.FREE to Res.string.ce_free)) {
+                    ContinuousGrid.QUARTER to Res.string.ce_grid_quarter,
+                    ContinuousGrid.EIGHTH_TRIPLET to Res.string.pattern_editor_eighth_triplet,
+                    ContinuousGrid.SIXTEENTH_TRIPLET to Res.string.pattern_editor_sixteenth_triplet,
+                    ContinuousGrid.FREE to Res.string.ce_free)) {
                 val text = stringResource(label)
                 CEButton(text, { onAction(ContinuousEditorAction.SetGrid(grid)) },
                     Modifier.semantics { contentDescription = "$snap $text"; selected = state.grid == grid },
                     dark = true, primary = state.grid == grid, tag = "ce-grid-${grid.name.lowercase()}")
             }
         }
-        if (maxWidth >= 640.dp && LocalDensity.current.fontScale <= 1.3f) Row(verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)) { Zoom(); Grid() }
-        else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { Zoom(); Box(Modifier.horizontalScroll(rememberScrollState())) { Grid() } }
+        @Composable fun GridViewport(modifier: Modifier) = Box(modifier.horizontalScroll(rememberScrollState())
+            .testTag("ce-grid-choices")) { Grid() }
+        if (maxWidth >= 650.dp && LocalDensity.current.fontScale <= 1.3f) Row(Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Zoom()
+            // A finite viewport with unbounded contents prevents later choices from measuring at zero width.
+            GridViewport(Modifier.weight(1f))
+        } else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Zoom()
+            GridViewport(Modifier.fillMaxWidth())
+        }
     }
 }
 
