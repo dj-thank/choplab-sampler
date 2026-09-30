@@ -125,7 +125,7 @@ class NextActivity : ComponentActivity() {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                 session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics,
                 lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                onlineSource = onlineSource)
+                onlineSource = onlineSource, quickStart = session.quickStart)
         }
     }
 
