@@ -28,6 +28,7 @@ class SourceAuditionController(
     private val controls = Mutex()
     /** The song key the original should play at; sent again with every source, so a rebuilt output keeps it. */
     @Volatile private var semitones = 0f
+    @Volatile private var loadedLoop = false
     /** Whether the loaded original took [semitones]; a key the output refused is sent again before the next play. */
     @Volatile private var keyApplied = false
     @Volatile private var handMonitorGain = 1f
@@ -37,9 +38,9 @@ class SourceAuditionController(
         preparation.getAndSet(null)?.cancel()
     }
 
-    private suspend fun ensureSource(asset: Asset, token: Long): Boolean {
+    private suspend fun ensureSource(asset: Asset, token: Long, loop: Boolean = false): Boolean {
         val status = loadedPcm.get()?.pcm?.pages?.status
-        if (loaded.get() == asset && driver.originalPlayback().loaded &&
+        if (loaded.get() == asset && loadedLoop == loop && driver.originalPlayback().loaded &&
             status != com.choplab.engine.PcmReadStatus.FAILED && status != com.choplab.engine.PcmReadStatus.CLOSED) return true
         val delivery = AtomicReference<com.choplab.engine.PcmLease?>(null)
         val job = jobs.async {
@@ -54,20 +55,20 @@ class SourceAuditionController(
             val data = job.await().pcm
             return controls.withLock {
                 if (token != generation.get()) return@withLock false
-                val accepted = command { frame, id -> EngineCommand.SetOriginalSource(frame, id, OriginalSource(data)) } &&
+                val accepted = command { frame, id -> EngineCommand.SetOriginalSource(frame, id, OriginalSource(data, loop = loop, loopCrossfadeFrames = if (loop) 480 else 0)) } &&
                     command { frame, id -> EngineCommand.SetOriginalPitch(frame, id, semitones) }
                 if (accepted && token == generation.get()) {
-                    loaded.set(asset); loadedPcm.getAndSet(delivery.getAndSet(null))?.close(); keyApplied = true
+                    loaded.set(asset); loadedLoop = loop; loadedPcm.getAndSet(delivery.getAndSet(null))?.close(); keyApplied = true
                 }
                 accepted && token == generation.get()
             }
         } finally { preparation.compareAndSet(job, null); job.cancel(); delivery.getAndSet(null)?.close() }
     }
 
-    suspend fun play(asset: Asset): Boolean {
+    suspend fun play(asset: Asset, loop: Boolean = false): Boolean {
         cancelPreparation()
         val token = generation.get()
-        if (!ensureSource(asset, token)) return false
+        if (!ensureSource(asset, token, loop)) return false
         val position = driver.originalPlayback().sourceFrame
         if (!warm(token, if (position >= (loadedPcm.get()?.pcm?.frameCount ?: 0)) 0 else position)) return false
         return controls.withLock {
@@ -84,11 +85,11 @@ class SourceAuditionController(
         loadedPcm.getAndSet(null)?.close()
         return controls.withLock { command { frame, id -> EngineCommand.SetOriginalSource(frame, id, null) } }
     }
-    suspend fun seek(asset: Asset, nativeFrame: Long): Boolean {
+    suspend fun seek(asset: Asset, nativeFrame: Long, loop: Boolean = false): Boolean {
         require(nativeFrame in 0..asset.frames)
         cancelPreparation()
         val token = generation.get()
-        if (!ensureSource(asset, token)) return false
+        if (!ensureSource(asset, token, loop)) return false
         val frame48 = ProgramFrames.to48k(nativeFrame, asset.sampleRate)
         if (!warm(token, frame48)) return false
         return controls.withLock { token == generation.get() && command { frame, id -> EngineCommand.SeekOriginalSource(frame, id, frame48) } }

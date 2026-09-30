@@ -91,6 +91,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         val pattern = project.patterns.first { it.id == studio.selection.value.patternId }
         return studio.dispatch(Action.Export(ExportRequest(files.register(path), frames ?: patternFrames(project, pattern), bits = bits)))
     }
+    fun practiceRenderer() = shared.practiceRenderer()
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = shared.loadPeaks(asset, maximumBuckets)
     suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
     suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = shared.analyseSource(asset, range)

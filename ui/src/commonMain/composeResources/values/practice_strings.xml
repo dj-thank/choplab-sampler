@@ -1,0 +1,27 @@
+<resources>
+    <string name="practice_title">Loop and slow practice</string>
+    <string name="practice_hint">Listen to a song interval through SOURCE at the same pitch. Practice does not change your song, Undo history or export. Stop restores the original SOURCE without restarting it.</string>
+    <string name="practice_start">Start (seconds)</string>
+    <string name="practice_end">End, excluded (seconds)</string>
+    <string name="practice_speed">Speed, with pitch preserved</string>
+    <string name="practice_speed_value">%1$s×</string>
+    <string name="practice_loop">Repeat the interval</string>
+    <string name="practice_limit">The selected and slowed audio must each fit within 30 seconds (up to 18 seconds selected at 0.6×). Loop edges blend for up to 10 ms without shortening the period. Settings last for this panel only.</string>
+    <string name="practice_preview">Start practice</string>
+    <string name="practice_preparing">Preparing the song interval…</string>
+    <string name="practice_playing">Practice playing through SOURCE</string>
+    <string name="practice_stopping">Stopping and restoring SOURCE…</string>
+    <string name="practice_stop">Stop practice</string>
+    <string name="practice_close">Close</string>
+    <string name="practice_invalid">Enter a valid interval and speed within the 30-second limits.</string>
+    <string name="practice_no_audio">Choose an interval inside the arranged song.</string>
+    <string name="practice_no_room">Not enough audio memory or storage. Shorten the interval and retry.</string>
+    <string name="practice_pcm">The source audio could not be read. Reload it and retry.</string>
+    <string name="practice_failed">The interval could not be prepared. Your song is unchanged.</string>
+    <string name="practice_stale">The song changed. Check the interval before starting again.</string>
+    <string name="practice_recording">Finish the recording before practicing.</string>
+    <string name="practice_busy">Wait for the current operation or preview to finish.</string>
+    <string name="practice_cancelled">Practice stopped.</string>
+    <string name="practice_no_output">Audio output is unavailable. Reconnect it and retry.</string>
+    <string name="practice_restore_failed">SOURCE could not be restored. Reconnect audio, then press Stop or Close to retry.</string>
+</resources>

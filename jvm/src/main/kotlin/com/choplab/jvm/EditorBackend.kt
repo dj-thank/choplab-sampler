@@ -89,6 +89,9 @@ class EditorBackend private constructor(
     suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
         try { vocalCompRenderer.render(project, draft, name) }
         catch (_: PcmMemoryLimit) { throw com.choplab.core.vocal.VocalEditException(com.choplab.core.vocal.VocalProblem.LIMIT) }
+    /** Offline practice uses the production compiler and the same PCM leases/budget as playback/export. */
+    fun practiceRenderer(): com.choplab.core.vocal.VocalPracticeRenderer = VocalPracticeWorker(
+        ProgramCompiler(pcm), assets, assets.directory.parent.resolve("practice-scratch"), memory = pcm.memory)
 
     /** The worker borrows the shared PCM; closing it never closes playback's cache or decoder. */
     fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,

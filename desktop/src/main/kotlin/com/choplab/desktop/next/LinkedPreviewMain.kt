@@ -24,6 +24,8 @@ import com.choplab.jvm.ai.*
 import com.choplab.jvm.separation.*
 import com.choplab.ui.separation.FourStemFactory
 import com.choplab.ui.*
+import com.choplab.ui.vocal.VocalPracticePort
+import com.choplab.jvm.ai.SourceVocalPreview
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
@@ -114,6 +116,7 @@ fun main() {
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
                 val lyricProposal by presenter.lyricProposal.collectAsState()
+                val vocalPractice by presenter.vocalPractice.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
                 val vocalGuide by presenter.vocalGuide.collectAsState()
                 val fourStems by presenter.fourStems.collectAsState()
@@ -155,7 +158,7 @@ fun main() {
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                    onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, quickStart = quickStart)
+                    onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, quickStart = quickStart)
             }
         }
     } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -190,6 +193,10 @@ internal class DesktopEditorPorts(
         }
     }
     override fun close() { try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
+        override val vocalPractice = object : VocalPracticePort {
+        override val renderer = backend.practiceRenderer()
+        override val preview = speechPreview
+    }
     override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
         override fun createProvider() = GeminiLyricProvider()
     }
