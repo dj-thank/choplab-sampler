@@ -131,7 +131,9 @@ class MacPackageConfigurationTest(unittest.TestCase):
             self.assertLess(removed[0], signed_app[0])
             plist_path = root / 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app/Contents/Info.plist'
             with plist_path.open('rb') as stream:
-                self.assertEqual('27.0', plistlib.load(stream)['LSMinimumSystemVersion'])
+                plist = plistlib.load(stream)
+                self.assertEqual('27.0', plist['LSMinimumSystemVersion'])
+                self.assertEqual('1', plist['LSEnvironment']['ORT_DISABLE_TELEMETRY'])
             manifest = json.loads((plist_path.parents[2] / 'manifest.json').read_text())
             self.assertEqual('27.0', manifest['minimum_system_version'])
 

@@ -70,6 +70,7 @@ internal fun desktopHistoryActionEnabled(
 }
 
 fun main(args: Array<String>) {
+    prepareDesktopOnnxRuntime()
     applyMacOsHostProperties(desktopAppName())
     runDesktopApplication(args)
 }

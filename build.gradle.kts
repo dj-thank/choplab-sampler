@@ -15,6 +15,11 @@ val choplabVersion = providers.gradleProperty("choplabVersion").orElse("0.0.0-de
 allprojects {
     group = "com.choplab"
     version = rootProject.providers.gradleProperty("choplabVersion").orElse("0.0.0-dev").get()
+    // Development CLIs and forked tests can initialize ORT without the application entry point.
+    if (!System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+        tasks.withType<JavaExec>().configureEach { environment("ORT_DISABLE_TELEMETRY", "1") }
+        tasks.withType<Test>().configureEach { environment("ORT_DISABLE_TELEMETRY", "1") }
+    }
 }
 
 tasks.cyclonedxDirectBom {

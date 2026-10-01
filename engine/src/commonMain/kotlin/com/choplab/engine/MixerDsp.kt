@@ -73,6 +73,7 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
     private var silentFrames = 0
     private var dormant = true
     private var stopping = -1
+    private var exportTrackStem = -1
     val readout = MixerReadout()
     var outputLeft = 0.0
         private set
@@ -84,6 +85,11 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
         private set
 
     fun use(value: MixerProgram) { program = value; reset() }
+    /** Worker-selected export projection; input activity and the full graph's finite tail stay intact. */
+    internal fun selectTrackStemForExport(bus: Int) {
+        require(bus in 0 until Arrangement.MAX_TRACKS)
+        exportTrackStem = bus
+    }
     fun beginBlock() { peak.fill(0.0); squares.fill(0.0); masterPeak.fill(0.0); masterSquares.fill(0.0) }
     fun endBlock(frame: Long, frames: Int) { readout.publish(frame, program, peak, squares, masterPeak, masterSquares, frames) }
     fun beginFrame() { input.fill(0.0); hasInput = false }
@@ -128,6 +134,17 @@ class MixerDsp(initial: MixerProgram = MixerProgram.BYPASS) {
             else smoothUnit((program.effectTailFrames - silentFrames).toDouble() / TAIL_FADE_FRAMES)
         val stopFade = if (stopping < 0) 1.0 else smoothUnit(stopping.toDouble() / EngineCore.STEAL_FADE_FRAMES)
         val fade = naturalFade * stopFade
+        if (exportTrackStem >= 0) {
+            // Track inserts have no shared sidechain. Other inserts, sends and the nonlinear
+            // master cannot influence this post-insert/pre-master stem. Keep the same InsertState
+            // and arithmetic, including global activity, tail, stop and reset above/below it.
+            val at = exportTrackStem * 2
+            val insert = inserts[exportTrackStem]
+            insert.process(program.prepared[exportTrackStem], input[at], input[at + 1])
+            stems[at] = insert.left * fade; stems[at + 1] = insert.right * fade
+            if (stopping >= 0 && --stopping <= 0) reset()
+            return
+        }
         for (bus in inserts.indices) {
             val at = bus * 2
             val insert = inserts[bus]

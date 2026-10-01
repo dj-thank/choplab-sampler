@@ -12,6 +12,7 @@ import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.desktop.DesktopProfile
 import com.choplab.desktop.applyMacOsHostProperties
+import com.choplab.desktop.prepareDesktopOnnxRuntime
 import com.choplab.desktop.isMacOsHost
 import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.SpotifySessionPurpose
@@ -54,6 +55,7 @@ import kotlin.coroutines.resume
 /** Development Preview entry; the existing production/default launcher remains unchanged. */
 fun main() {
     check(java.lang.Boolean.getBoolean("choplab.preview")) { "Linked editor requires the isolated Preview profile" }
+    prepareDesktopOnnxRuntime()
     val title = if (Locale.getDefault().language == "ja") "おとひろい NEXT" else "Earth Song NEXT"
     applyMacOsHostProperties(title)
     val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
