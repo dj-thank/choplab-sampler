@@ -121,6 +121,27 @@ class MixerExportTest {
         }
     }
 
+    @Test fun selectedTrackStemsKeepTheCompiledMuteSoloAndPanRules(): Unit = runBlocking {
+        fixture().use { f ->
+            for (project in listOf(f.project,
+                f.project.copy(tracks = f.project.tracks.mapIndexed { index, track -> track.copy(mute = index == 0) }.frozen()),
+                f.project.copy(tracks = f.project.tracks.mapIndexed { index, track -> track.copy(solo = index == 0) }.frozen()))) {
+                val program = f.compiler.compile(project, PlaybackTarget.Arrangement(), 1)
+                try {
+                    val buses = (0 until MixerProgram.MAX_BUSES).filter { program.mixer.busId(it) != null } +
+                        listOf(MixerProgram.DELAY_RETURN, MixerProgram.REVERB_RETURN)
+                    val reference = buses.map { it to ByteArrayOutputStream() }
+                    StreamingStemRenderer.render(program, reference, 4096, program.mixer.tailFrames, blockFrames = 17)
+                    for ((bus, expected) in reference) {
+                        val actual = ByteArrayOutputStream()
+                        StreamingStemRenderer.render(program, listOf(bus to actual), 4096, program.mixer.tailFrames, blockFrames = 192)
+                        assertContentEquals(expected.toByteArray(), actual.toByteArray(), "compiled bus=$bus")
+                    }
+                } finally { program.releasePreparation() }
+            }
+        }
+    }
+
     @Test fun productionWavUsesTheSameMasterGraphTailAndSingleIntegerBoundary(): Unit = runBlocking {
         fixture().use { f ->
             val program = f.compiler.compile(f.project, PlaybackTarget.Arrangement(), 1)
