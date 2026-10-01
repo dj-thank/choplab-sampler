@@ -15,7 +15,7 @@ fun <T> Iterable<T>.frozen(): FrozenList<T> = FrozenList.from(this)
 fun <T> frozenListOf(vararg values: T): FrozenList<T> = values.asList().frozen()
 
 object ProjectLimits {
-    const val SCHEMA = 13
+    const val SCHEMA = 14
     const val PPQ = 960
     const val PAD_COUNT = 128
     const val BANK_COUNT = 8
@@ -206,6 +206,7 @@ data class Project(
     val mix: com.choplab.engine.MixSettings = com.choplab.engine.MixSettings(),
     val lyricStructure: LyricStructure? = null,
     val vocalComps: FrozenList<VocalComp> = frozenListOf(),
+    val pitchCorrections: FrozenList<VocalPitchCorrection> = frozenListOf(),
 ) {
     init {
         require(schemaVersion == ProjectLimits.SCHEMA); requireId(id); requireLabel(title)
@@ -237,6 +238,7 @@ data class Project(
         clips.forEach { c -> checkRange(c.assetHash, c.range); require(tracks.any { it.id == c.trackId }) }
         takes.forEach { t -> checkRange(t.assetHash, t.range); require(tracks.any { it.id == t.trackId }) }
         validateVocalComps(this)
+        validateVocalPitchCorrections(this)
     }
     fun asset(hash: String): Asset = requireNotNull(assets.firstOrNull { it.hash == hash }) { "Unknown asset" }
 }

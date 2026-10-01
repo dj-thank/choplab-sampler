@@ -25,8 +25,7 @@ import com.choplab.jvm.ai.*
 import com.choplab.jvm.separation.*
 import com.choplab.ui.separation.FourStemFactory
 import com.choplab.ui.*
-import com.choplab.ui.vocal.VocalPracticePort
-import com.choplab.jvm.ai.SourceVocalPreview
+import com.choplab.ui.vocal.*
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
@@ -119,6 +118,7 @@ fun main() {
                 val refresh by presenter.refreshKey.collectAsState()
                 val lyricProposal by presenter.lyricProposal.collectAsState()
                 val vocalPractice by presenter.vocalPractice.collectAsState()
+                val vocalPitch by presenter.vocalPitch.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
                 val vocalGuide by presenter.vocalGuide.collectAsState()
                 val fourStems by presenter.fourStems.collectAsState()
@@ -160,7 +160,7 @@ fun main() {
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                    onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, quickStart = quickStart)
+                    onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, quickStart = quickStart)
             }
         }
     } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -181,6 +181,17 @@ internal class DesktopEditorPorts(
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
+    private val pitchRenderer = backend.pitchRenderer()
+    override val vocalPitch = object : VocalPitchHost {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft,
+            progress: (com.choplab.engine.PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch {
+            val result = pitchRenderer.render(project, draft, if (japanese) "声のピッチ補正" else "Voice pitch correction", progress)
+            return PreparedVocalPitch((result as? com.choplab.jvm.VocalPitchRenderResult.Rendered)?.asset, result.report)
+        }
+        override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft) =
+            pitchRenderer.original(project, draft, if (japanese) "原音の試聴" else "Original audition")
+    }
     override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice)
     override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
         override val preview = speechPreview
@@ -195,7 +206,7 @@ internal class DesktopEditorPorts(
         }
     }
     override fun close() { try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
-        override val vocalPractice = object : VocalPracticePort {
+    override val vocalPractice = object : VocalPracticePort {
         override val renderer = backend.practiceRenderer()
         override val preview = speechPreview
     }
