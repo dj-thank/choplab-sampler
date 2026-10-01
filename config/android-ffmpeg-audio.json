@@ -1,0 +1,466 @@
+{
+  "schema": 1,
+  "status": "candidate_requires_target_runtime_acceptance",
+  "ffmpeg": {
+    "version": "7.1.1",
+    "url": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz",
+    "sha256": "733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1",
+    "bytes": 11019500
+  },
+  "upstream": {
+    "coordinate": "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1",
+    "url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/ffmpeg/0.18.1/ffmpeg-0.18.1.aar",
+    "sha256": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49",
+    "checksum_url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/ffmpeg/0.18.1/ffmpeg-0.18.1.aar.sha256",
+    "checksum_algorithm": "sha256",
+    "checksum": "0a87ffa6cf912b0fe76c1a99b9107f543ee2f247935fae2c71f0822eb7bc5f49"
+  },
+  "ndk": {
+    "revision": "28.2.13676358",
+    "api": 29
+  },
+  "headerSourceIndex": {
+    "repository": "https://github.com/termux/termux-packages",
+    "commit": "45bfcc798e27ec6db94f4c8c23bbd74b32dd57eb"
+  },
+  "headers": [
+    {
+      "package": "game-music-emu",
+      "version": "0.6.4",
+      "url": "https://github.com/libgme/game-music-emu/releases/download/0.6.4/libgme-0.6.4-src.tar.gz",
+      "sha256": "6f94eac735d86bca998a7ce1170d007995191ef6d4388345a0dc5ffa1de0bafa",
+      "bytes": 343689
+    },
+    {
+      "package": "libbz2",
+      "version": "1.0.8",
+      "url": "https://fossies.org/linux/misc/bzip2-1.0.8.tar.xz",
+      "sha256": "47fd74b2ff83effad0ddf62074e6fad1f6b4a77a96e121ab421c20a216371a1f",
+      "bytes": 676224
+    },
+    {
+      "package": "libgnutls",
+      "version": "3.8.10",
+      "url": "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.10.tar.xz",
+      "sha256": "db7fab7cce791e7727ebbef2334301c821d79a550ec55c9ef096b610b03eb6b7",
+      "bytes": 6909856
+    },
+    {
+      "package": "libiconv",
+      "version": "1.18",
+      "url": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz",
+      "sha256": "3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8",
+      "bytes": 5822590
+    },
+    {
+      "package": "liblzma",
+      "version": "5.8.1",
+      "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.xz",
+      "sha256": "0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e",
+      "bytes": 1461872
+    },
+    {
+      "package": "libmp3lame",
+      "version": "3.100",
+      "url": "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz",
+      "sha256": "ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e",
+      "bytes": 1524133
+    },
+    {
+      "package": "libogg",
+      "version": "1.3.6",
+      "url": "https://github.com/xiph/ogg/releases/download/v1.3.6/libogg-1.3.6.tar.xz",
+      "sha256": "5c8253428e181840cd20d41f3ca16557a9cc04bad4a3d04cce84808677fa1061",
+      "bytes": 439952
+    },
+    {
+      "package": "libopencore-amr",
+      "version": "0.1.6",
+      "url": "https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-0.1.6.tar.gz/download",
+      "sha256": "483eb4061088e2b34b358e47540b5d495a96cd468e361050fae615b1809dc4a1",
+      "bytes": 939179
+    },
+    {
+      "package": "libopenmpt",
+      "version": "0.8.3",
+      "url": "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.3+release.autotools.tar.gz",
+      "sha256": "25d486a4da9728819274ed0959fd79a1c6358954710d54c14047c6457c8ca8ac",
+      "bytes": 1759774
+    },
+    {
+      "package": "libopus",
+      "version": "1.5.2",
+      "url": "https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz",
+      "sha256": "65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1",
+      "bytes": 7839412
+    },
+    {
+      "package": "libsoxr",
+      "version": "0.1.3",
+      "url": "https://sourceforge.net/projects/soxr/files/soxr-0.1.3-Source.tar.xz",
+      "sha256": "b111c15fdc8c029989330ff559184198c161100a59312f5dc19ddeb9b5a15889",
+      "bytes": 94384
+    },
+    {
+      "package": "libsrt",
+      "version": "1.5.4",
+      "url": "https://github.com/Haivision/srt/archive/refs/tags/v1.5.4.tar.gz",
+      "sha256": "d0a8b600fe1b4eaaf6277530e3cfc8f15b8ce4035f16af4a5eb5d4b123640cdd",
+      "bytes": 1743040
+    },
+    {
+      "package": "libssh",
+      "version": "0.11.3",
+      "url": "https://www.libssh.org/files/0.11/libssh-0.11.3.tar.xz",
+      "sha256": "7d8a1361bb094ec3f511964e78a5a4dba689b5986e112afabe4f4d0d6c6125c3",
+      "bytes": 622776
+    },
+    {
+      "package": "libvo-amrwbenc",
+      "version": "0.1.3",
+      "url": "https://sourceforge.net/projects/opencore-amr/files/vo-amrwbenc/vo-amrwbenc-0.1.3.tar.gz/download",
+      "sha256": "5652b391e0f0e296417b841b02987d3fd33e6c0af342c69542cbb016a71d9d4e",
+      "bytes": 608936
+    },
+    {
+      "package": "libvorbis",
+      "version": "1.3.7",
+      "url": "https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz",
+      "sha256": "b33cc4934322bcbf6efcbacf49e3ca01aadbea4114ec9589d1b1e9d20f72954b",
+      "bytes": 1203792
+    },
+    {
+      "package": "libxml2",
+      "version": "2.14.6",
+      "url": "https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.6.tar.xz",
+      "sha256": "7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a",
+      "bytes": 2327580
+    },
+    {
+      "package": "libzmq",
+      "version": "4.3.5",
+      "url": "https://github.com/zeromq/libzmq/releases/download/v4.3.5/zeromq-4.3.5.tar.gz",
+      "sha256": "6653ef5910f17954861fe72332e68b03ca6e4d9c7160eb3a8de5a5a913bfab43",
+      "bytes": 2530237
+    },
+    {
+      "package": "rubberband",
+      "version": "4.0.0",
+      "url": "https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2",
+      "sha256": "af050313ee63bc18b35b2e064e5dce05b276aaf6d1aa2b8a82ced1fe2f8028e9",
+      "bytes": 236705
+    }
+  ],
+  "derived": {
+    "aar": {
+      "bytes": 132315650,
+      "sha256": "02548a2f6cf9819507a66859af286abbc000af47b0f200d8cd299870b7e4aa26"
+    },
+    "members": [
+      {
+        "path": "jni/arm64-v8a/libffmpeg.so",
+        "bytes": 295712,
+        "sha256": "0d978e330558edc79c9f12d590ebec4d4baf0365fb696d02f29f918e648d84dd"
+      },
+      {
+        "path": "jni/arm64-v8a/libffmpeg.zip.so",
+        "bytes": 26742983,
+        "sha256": "75f736dff8c200e3f4d1d8f29aeb2cee08225ecb45e101e10c8c46fe324c30ae"
+      },
+      {
+        "path": "jni/arm64-v8a/libffprobe.so",
+        "bytes": 155968,
+        "sha256": "a2dc6d9b71357dbe451fd8c5a785cb504e05d4bc9e0456d1ad6c4a7f0691cd0a"
+      }
+    ],
+    "nativeEntries": [
+      {
+        "path": "licenses/FFmpeg-COPYING.GPLv3",
+        "bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        "origin": "pinned-ffmpeg-source"
+      },
+      {
+        "path": "usr/lib/libavcodec.so",
+        "bytes": 4634416,
+        "sha256": "54387fe1566d76216510863f3ffdd20c507e70bf644146693ce9c8b1a3f4dd3e",
+        "origin": "recompiled-ffmpeg"
+      },
+      {
+        "path": "usr/lib/libavdevice.so",
+        "bytes": 30184,
+        "sha256": "f734753906c107f40f4b8389ec81770a86f4ef21e48b7acb3b79f8ed763853c3",
+        "origin": "recompiled-ffmpeg"
+      },
+      {
+        "path": "usr/lib/libavfilter.so",
+        "bytes": 1258712,
+        "sha256": "9b6c5ab09d1c228920fe88a6848a448aad571429c257acfc90182c8f5016d68c",
+        "origin": "recompiled-ffmpeg"
+      },
+      {
+        "path": "usr/lib/libavformat.so",
+        "bytes": 2959768,
+        "sha256": "579044fa5e99888023d6edd4c45864476154806cbc27df65a81e16a4b825fce8",
+        "origin": "recompiled-ffmpeg"
+      },
+      {
+        "path": "usr/lib/libavutil.so",
+        "bytes": 704104,
+        "sha256": "1be87eed5dd3e08df95e37613fa61c4988a057ed764838379b7de094f21eab8a",
+        "origin": "recompiled-ffmpeg"
+      },
+      {
+        "path": "usr/lib/libbz2.so.1.0",
+        "bytes": 50328,
+        "sha256": "667055cac259f6a9404a24a6e927f410e2f41141709d27d5cce0071cbf525407",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libfftw3.so",
+        "bytes": 695944,
+        "sha256": "3357e90a5413a5395407aa292202006318005a55178cbcef68de1bbdfd9fd6f4",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libgme.so",
+        "bytes": 331152,
+        "sha256": "662dafbc5218642b47e04479095b052ce13ab5f3965573a956e31197bc205cd9",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libgmp.so",
+        "bytes": 402272,
+        "sha256": "d3a7002e8fb504301bc12278260e36eae34c81d15cf8afe72cf4a769832b6f92",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libgnutls.so",
+        "bytes": 1847760,
+        "sha256": "b384015e574b53649ce8e885ca24d6e5572210492f02a3eb38e0761661d3f982",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libhogweed.so.6",
+        "bytes": 290976,
+        "sha256": "1400b8cdec5a5efef3a9b83e86194b9364182751edbfcf2ecdf15a55fc911b65",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libiconv.so",
+        "bytes": 1082512,
+        "sha256": "53349c7a84ad06da53c3976754c742d6a79f3297562f0fbe61b7ee620f783667",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libidn2.so",
+        "bytes": 194016,
+        "sha256": "f5efe369f31db41c3bde8629eaa7788b69f8250b512b743cdc88e648679215fd",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libmp3lame.so",
+        "bytes": 244848,
+        "sha256": "1b38fc64b5ed67b84c7b89b3b034a969b460a657a0d496eddccde8511faa56b1",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libmpg123.so",
+        "bytes": 241368,
+        "sha256": "8d41657e9cfccbb203f5f552911c942b5ea5e3e4b7cd61c7abbeca2418d62584",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libnettle.so.8",
+        "bytes": 311344,
+        "sha256": "519b393a23b49d85b5a488c3e16e69d5fc9fd558c9f7bcd5a97189fefa6430ef",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libogg.so",
+        "bytes": 27760,
+        "sha256": "bf430f65013e219a867ff927249022ee900edbd6642fa9c4f36104b7c681beaa",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libopencore-amrnb.so",
+        "bytes": 138424,
+        "sha256": "aaf88c632c7b19a7e21a02c5a155088dad0acd3dab79cabfc87b2411c3f8052b",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libopencore-amrwb.so",
+        "bytes": 66296,
+        "sha256": "15c1eb89ad7368899090e951535c1b3f7cc9136aa771c3e410ba76f3e29acdd6",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libopenmpt.so",
+        "bytes": 1606168,
+        "sha256": "78ed9a1f28a53542530b5b6301dc335bfab948a5ee70843cd99d665d702de6fd",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libopus.so",
+        "bytes": 308248,
+        "sha256": "7a9f64c9db51e646b5ca27037fef1399475a360d697cb551937a3ca8a6900b6e",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/librubberband.so",
+        "bytes": 446448,
+        "sha256": "46800126ada5fcd73da29d76ac6650aea60988b19e57e7cc38e7a5b7c07724a8",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libsamplerate.so",
+        "bytes": 1485656,
+        "sha256": "d141090c9cfd5067d90ccadeb3ff63daec26f5439c03358f3e49d671fac734dc",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libsodium.so",
+        "bytes": 247392,
+        "sha256": "2ec7c9f7ee91bf39bf0f11ea761b144adc87ff33352f65f23f9c060c52be562b",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libsoxr.so",
+        "bytes": 961800,
+        "sha256": "57381eeaeb85f85a0ec046d428af91fc1f46ecbf7f1dd1ee21d04c8609c89fb7",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libsrt.so",
+        "bytes": 788608,
+        "sha256": "794c31da2a5896808aa9c599dbcf262b7e61a03c7f8e34153b669d43ee5d8ec7",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libssh.so",
+        "bytes": 534456,
+        "sha256": "ad6fea4895a740718ca71634ecda4124eaeac44ecf5d448bc4d486828b3b8f48",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libswresample.so",
+        "bytes": 103168,
+        "sha256": "c7f8eb096e4e15870ad1e47f5e8f4064adbe47b426425a3a827e511893f2abe9",
+        "origin": "recompiled-ffmpeg"
+      },
+      {
+        "path": "usr/lib/libunistring.so",
+        "bytes": 2011248,
+        "sha256": "e993b775f8ce105e5217c39639c33038e071daf15abbf73e2d7214d3205e15c9",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libvo-amrwbenc.so.0",
+        "bytes": 86928,
+        "sha256": "ed009d230d4f27e3fdd122629c8813ef2e58a3439c107d2aa0b762999087d161",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libvorbis.so",
+        "bytes": 150272,
+        "sha256": "8d0b6676b7ae54287021095cd2210f8241741f3cfee0702c8ecd7eb8a9474f45",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libvorbisenc.so",
+        "bytes": 647104,
+        "sha256": "5aff8bb63cd4690364629e3b6024a8eb449277259406781cac3b726160bc0e36",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libvorbisfile.so",
+        "bytes": 28472,
+        "sha256": "f66c7b549af6f23b01e2242ab49129641e1fcba516827e7031a1a81c54fd3da0",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libxml2.so.16",
+        "bytes": 1114128,
+        "sha256": "d59fe4eb5433f9151174856237b0260a282455b9cdeaa76368773b32e9d154e9",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libz.so.1",
+        "bytes": 71984,
+        "sha256": "48e2185711efd2aaecbcef631660ad1dda03cfdfe936341e591fefcecd6cbc2d",
+        "origin": "pinned-upstream-aar"
+      },
+      {
+        "path": "usr/lib/libzmq.so",
+        "bytes": 599176,
+        "sha256": "ed605151724f538478d1bdfe1f5b7111f87df2996ddf1e1982d2c96a124f4065",
+        "origin": "pinned-upstream-aar"
+      }
+    ]
+  },
+  "pythonLinkage": {
+    "upstream": {
+      "coordinate": "io.github.junkfood02.youtubedl-android:library:0.18.1",
+      "url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/library/0.18.1/library-0.18.1.aar",
+      "sha256": "579b5fb480892b1abc2b218c2089699d52759cc8d7ba256bf876453f0365faef",
+      "checksum_url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/library/0.18.1/library-0.18.1.aar.sha256",
+      "checksum_algorithm": "sha256",
+      "checksum": "579b5fb480892b1abc2b218c2089699d52759cc8d7ba256bf876453f0365faef"
+    },
+    "javaSource": {
+      "url": "https://repo.maven.apache.org/maven2/io/github/junkfood02/youtubedl-android/library/0.18.1/library-0.18.1-sources.jar",
+      "bytes": 11451,
+      "sha256": "26e94f33de0ba802f3507862d509f80d100c1c9065ded7556d16ff51249c4a9a"
+    },
+    "status": "candidate_requires_target_runtime_acceptance",
+    "dependencyAudit": [
+      {
+        "package": "ffmpeg",
+        "elfCount": 112,
+        "unversionedLzmaRequests": 0,
+        "versionedLzmaUsers": [
+          {
+            "path": "usr/lib/libavcodec.so.61.19.101",
+            "sha256": "6e23c82509a4d013f68c78e99c5ecdd33bf2ea3269b394573f3c12c53855b757",
+            "needed": "liblzma.so.5"
+          }
+        ]
+      },
+      {
+        "package": "python",
+        "elfCount": 140,
+        "unversionedLzmaRequests": 0,
+        "versionedLzmaUsers": [
+          {
+            "path": "usr/lib/python3.12/lib-dynload/_lzma.cpython-312.so",
+            "sha256": "914b20ecbcd9eaf7ce9c3732b9c05a774aadc5a621e089fee2682ea281794f7e",
+            "needed": "liblzma.so.5"
+          }
+        ]
+      }
+    ],
+    "change": {
+      "removed": {
+        "path": "usr/lib/liblzma.so",
+        "target": "liblzma.so.5.8.1",
+        "bytes": 16,
+        "sha256": "a42feea4600eeecda8ac5f20390c97e1b82ad95b51c3e1e212d1fbe736632c15"
+      },
+      "preservedEntryCount": 1006,
+      "preservedEntriesSha256": "37e90a671366f3d8c69141a0a783f8ec4d770ba75ffc6ab7ef0b338923596efb",
+      "cacheVersionBefore": 14305904,
+      "cacheVersionAfter": 41890175,
+      "compression": "stored; APK compression handles the unchanged retained bytes"
+    },
+    "member": {
+      "path": "jni/arm64-v8a/libpython.zip.so",
+      "bytes": 41890175,
+      "sha256": "3cfe0ce408f8459b4c6fb22c5465c26633ef49b29141338aff84fa6a3ca1abed"
+    },
+    "aar": {
+      "bytes": 89704638,
+      "sha256": "62d27790a6c1b080563a542d637e6fda3e906ebdfc2693b4d134d6b9e991f578",
+      "unchangedEntryCount": 25
+    }
+  }
+}
