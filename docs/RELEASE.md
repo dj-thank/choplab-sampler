@@ -87,7 +87,7 @@ python scripts/prepare_next_native_candidate.py unpack-windows `
 
 このworkflowは既定native、正式legacy identity、署名、release公開を変更しません。未知の再build hashは失敗にし、自動的にpinを更新しません。workflow作成・cross build・静的検査だけで対象runtime、実音、provider、公開配布、人の受入を成功と記録しません。rootが同じ全機能の統合sourceと対象runtimeを確認してから既定採用を判断し、署名・source/license提供・公開readbackは別のrelease条件として維持します。
 
-Windowsの手動workflow実行には、対象revisionへ `NextWholeCreationSelfTest` とその制作機能が統合されている必要があります。確認したmain `1cd9120b` には他の5つの通常self-testがあり、全制作classはまだありません。配布用変更の先行統合とworkflowの実行受入は別で、helperはrequired classの欠落・重複を実行前に拒否します。全制作を省略するflagや成功への条件分岐は設けず、rootが制作sourceの統合後にdispatchします。通常CIの既存検査とNEXT ZIP生成はこの手動受入に依存しません。
+Windowsの手動workflow実行には、対象revisionへ `NextWholeCreationSelfTest` とその制作機能が統合されている必要があります。確認したmain `05db49ea` には他の5つの通常self-testがあり、全制作classはまだありません。配布用変更の先行統合とworkflowの実行受入は別で、helperはrequired classの欠落・重複を実行前に拒否します。全制作を省略するflagや成功への条件分岐は設けず、rootが制作sourceの統合後にdispatchします。通常CIの既存検査とNEXT ZIP生成はこの手動受入に依存しません。
 
 Mac NEXT preview（`:desktop:packageMacLinkedPreview`、workflow `mac-preview.yml`、artifact `choplab-mac-next-preview`）は、新しい4工程の編集画面だけを試すための、ローカルad-hoc署名・未公証のApple Silicon用CI artifact（7日保存）です。固定済みmedia tool・ドラム分離モデル・ScreenCaptureKit helperを同梱し、複数codecの音源取込、オンライン取込、ドラム分離、端末音録音へ接続しています。各routeの検証範囲はROADMAPに記録し、同梱だけでprovider・録音許可・聴感受入の成功とは扱いません。Spotify情報の接続は専用metadataセッション（`user-library-read`）で扱い、音源・制作と分離します。public Client IDだけを同梱設定へ渡し、tokenはsession内メモリに保持して終了時に破棄します。OAuth/APIの実観測と、製品全体の一般配布条件の適合が確認できるまではPUBLIC_PASSとしません。旧YouTube自動照合は接続しません。専用bundle ID `com.choplab.sampler.preview.next`、データはPreview領域の `next-v10`。GitHub Releaseの公開物ではなく、Developer ID署名・公証・PUBLIC_PASSの成功にも数えません。
 
