@@ -186,7 +186,9 @@ jobs:
   windows:
     name: Test and package EXE
     runs-on: windows-latest
-    timeout-minutes: 35
+    # Full test/package reached 31m; leave time for both artifact scans and bounded lifecycle checks.
+    # This aggregate budget does not extend individual test or smoke deadlines.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
