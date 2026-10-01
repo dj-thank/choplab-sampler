@@ -15,6 +15,8 @@ Windows app-imageはprivate Java runtimeを含む一式であり、EXE単体で�
 
 Mac NEXT preview（`:desktop:packageMacLinkedPreview`、workflow `mac-preview.yml`、artifact `choplab-mac-next-preview`）は、新しい4工程の編集画面だけを試すための、ローカルad-hoc署名・未公証のApple Silicon用CI artifact（7日保存）です。固定済みmedia tool・ドラム分離モデル・ScreenCaptureKit helperを同梱し、複数codecの音源取込、オンライン取込、ドラム分離、端末音録音へ接続しています。各routeの検証範囲はROADMAPに記録し、同梱だけでprovider・録音許可・聴感受入の成功とは扱いません。Spotify情報の接続は専用metadataセッション（`user-library-read`）で扱い、音源・制作と分離します。public Client IDだけを同梱設定へ渡し、tokenはsession内メモリに保持して終了時に破棄します。OAuth/APIの実観測と、製品全体の一般配布条件の適合が確認できるまではPUBLIC_PASSとしません。旧YouTube自動照合は接続しません。専用bundle ID `com.choplab.sampler.preview.next`、データはPreview領域の `next-v10`。GitHub Releaseの公開物ではなく、Developer ID署名・公証・PUBLIC_PASSの成功にも数えません。
 
+ONNX Runtimeのテレメトリはアプリのプロセス内で停止する。非Windowsは[公式の初期化前要件](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md#disabling-telemetry)に従い、native ORTを読む前に`ORT_DISABLE_TELEMETRY=1`を設定する。MacのLaunchServices用plistと直接起動するdesktop入口、AndroidのApplication初期化、GradleのJavaExec/Test、同梱Javaを直接実行するMac受入scriptを対象にする。Javaの`setTelemetry(false)`も両分離モデルで呼ぶが、非Windowsの初期1DS uploaderを防ぐ代わりにはしない。WindowsはこのORT APIでETWを停止し、OS全体の設定は変更しない。モデル・推論設定は維持し、固定モデルの同じPCMとプロセスの自然終了を確認する。既存配布物への一時環境変数による診断は、修正を含むfresh packageの受入と区別する。
+
 ## 鍵と設定の区分
 
 | 設定名 | 内容 | 取り扱い |

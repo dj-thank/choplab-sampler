@@ -30,7 +30,7 @@ def main():
     libs = app / 'Contents/app'
     tools = libs / 'tools'
     java = app / 'Contents/runtime/Contents' / 'Home' / 'bin/java'
-    environment = dict(os.environ, PATH='/usr/bin:/bin')
+    environment = dict(os.environ, PATH='/usr/bin:/bin', ORT_DISABLE_TELEMETRY='1')
     with tempfile.TemporaryDirectory(prefix='choplab-mac-acceptance-') as temporary:
         directory = Path(temporary)
         sample = b''.join(struct.pack('<hh', round(8000 * math.sin(2 * math.pi * 701 * i / 48000)),
