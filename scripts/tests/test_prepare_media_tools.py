@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import urllib.error
+from unittest.mock import patch
 
 from scripts.prepare_media_tools import REQUIRED_FILES, TOOL_VERSIONS, cache_valid, digest, download, fetch
 
@@ -15,7 +16,11 @@ class MediaToolsCacheTest(unittest.TestCase):
         self.root = Path(temporary.name)
         for name in REQUIRED_FILES:
             (self.root / name).write_bytes(name.encode('ascii'))
-        self.manifest = dict(TOOL_VERSIONS, sha256={name: digest(self.root/name) for name in REQUIRED_FILES})
+        self.pin = {'windows': {'filename': 'qjs.exe', 'bytes': 7, 'sha256': digest(self.root/'qjs.exe')},
+                    'license': {'filename': 'QuickJS-LICENSE.txt', 'bytes': len(b'QuickJS-LICENSE.txt'), 'sha256': digest(self.root/'QuickJS-LICENSE.txt')}}
+        self.addCleanup(patch.stopall)
+        patch('scripts.prepare_media_tools.QUICKJS_PIN', self.pin).start()
+        self.manifest = dict(TOOL_VERSIONS, quickjsSource=self.pin, sha256={name: digest(self.root/name) for name in REQUIRED_FILES})
         self.write()
 
     def write(self):
@@ -34,10 +39,17 @@ class MediaToolsCacheTest(unittest.TestCase):
         self.write()
         self.assertFalse(cache_valid(self.root))
 
-    def test_modified_binary_or_missing_license_fails(self):
-        (self.root/'node.exe').write_bytes(b'changed')
+    def test_modified_binary_fails(self):
+        (self.root/'qjs.exe').write_bytes(b'changed')
         self.assertFalse(cache_valid(self.root))
-        (self.root/'FFmpeg-LICENSE.txt').unlink()
+
+    def test_self_reported_new_quickjs_digest_cannot_replace_the_upstream_pin(self):
+        (self.root/'qjs.exe').write_bytes(b'changed')
+        self.manifest['sha256']['qjs.exe'] = digest(self.root/'qjs.exe')
+        self.write()
+        self.assertFalse(cache_valid(self.root))
+    def test_missing_license_fails(self):
+        (self.root/'QuickJS-LICENSE.txt').unlink()
         self.assertFalse(cache_valid(self.root))
 
 

@@ -13,6 +13,7 @@ import com.choplab.desktop.audio.DesktopScratchPlayer
 import com.choplab.desktop.audio.ScratchVoicePlayer
 import com.choplab.sampler.separation.DrumSeparationService
 import com.choplab.desktop.separation.defaultSeparatorModelsDir
+import com.choplab.desktop.separation.defaultSeparatorModelStore
 import com.choplab.desktop.persistence.DesktopBeatFiles
 import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.persistence.AtomicProjectStore
@@ -210,6 +211,7 @@ class DesktopSamplerController(
         drumSeparationService ?: DrumSeparationService(
             defaultSeparatorModelsDir(),
             DesktopAudioDecoder::decode,
+            modelProvider = defaultSeparatorModelStore().let { store -> { progress, cancelled -> store.ensure(progress, cancelled) } },
         ).also { drumSeparationService = it }
     }
 
@@ -219,9 +221,6 @@ class DesktopSamplerController(
         if (mutableState.value.drumSeparation?.phase == DrumSeparationPhase.RUNNING) return
         if (rejectEditRequest()) return
         val service = separationService()
-        if (!service.isModelAvailable()) {
-            return setStatus("分離モデルがありません。ChopLabのアプリ一式を使用してください")
-        }
         drumSeparationWorkDir?.deleteRecursively()
         val work = Files.createTempDirectory("choplab-separation").toFile()
         drumSeparationWorkDir = work
@@ -243,6 +242,10 @@ class DesktopSamplerController(
             DrumSeparationService.Request(
                 sourceFile = input,
                 outputFile = output,
+                onModelProgress = { progress ->
+                    mutableState.update { it.copy(drumSeparation = DrumSeparationState(DrumSeparationPhase.RUNNING,
+                        progress, "分離モデルを取得しています（初回 約166MB）…")) }
+                },
                 onProgress = { progress ->
                     mutableState.update {
                         it.copy(drumSeparation = DrumSeparationState(

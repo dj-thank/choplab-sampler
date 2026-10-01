@@ -23,8 +23,10 @@ from pathlib import Path, PurePosixPath
 
 if __package__:
     from .android_runtime_policy import load_pins, runtime_candidate, verify_runtime_content, valid_resource_table
+    from . import windows_audio_runtime
 else:
     from android_runtime_policy import load_pins, runtime_candidate, verify_runtime_content, valid_resource_table
+    import windows_audio_runtime
 
 
 SENSITIVE_SUFFIXES = {
@@ -102,6 +104,7 @@ PACKAGED_APP_NESTED_ARCHIVE_COUNT_LIMIT = 80
 PACKAGED_APP_ARCHIVE_NAMES = frozenset({
     "ChopLab-windows-app-image.zip",
     "ChopLab-windows-preview.zip",
+    "ChopLab-windows-next.zip",
     "ChopLab-mac-next-preview.zip",
 })
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
@@ -167,7 +170,7 @@ ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
 ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT = 320 * 1024 * 1024
 ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT = 1024 * 1024 * 1024
 PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
-    {"ffmpeg.exe", "ffprobe.exe", "node.exe", "yt-dlp.exe"}
+    {"ffmpeg.exe", "ffprobe.exe", "node.exe", "qjs.exe", "yt-dlp.exe"}
 )
 # A released build of FFmpeg or Node carries strings that read like credentials -- PEM
 # headers and key-shaped literals in its own test material -- so scanning those bytes for
@@ -1202,7 +1205,13 @@ def is_packaged_runtime_binary_path(
     if len(parts) != 3 or parts[0] not in {"choplab", "choplab preview"}:
         return False
     if parts[1] == "tools":
-        return parts[2] in PACKAGED_RUNTIME_TOOL_NAMES
+        if parts[2] in PACKAGED_RUNTIME_TOOL_NAMES:
+            return True
+        try:
+            files = windows_audio_runtime.pinned_files()
+            return any(name.lower() == parts[2] and "/" not in name and name.lower().endswith(".dll") for name in files)
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
     if parts[1] == "models":
         return parts[2].endswith(".onnx")
     return (
@@ -1218,6 +1227,8 @@ def is_digest_verified_runtime_path(path: PurePosixPath) -> bool:
     mac = mac_packaged_runtime_parts(path)
     if mac is not None:
         return len(mac) == 2 and mac[0] in {"tools", "models"}
+    if len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] == "app":
+        return parts[2].startswith("onnxruntime-") and parts[2].endswith(".jar")
     return len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] in PACKAGED_RUNTIME_MANIFESTS
 
 
@@ -1265,6 +1276,26 @@ def packaged_runtime_digest_findings(
     """Check a packaged third-party binary against the digest the app-image records."""
     mac = mac_packaged_runtime_parts(entry)
     scope = mac[0] if mac is not None else entry.parts[1].lower()
+    if mac is None and scope == "app":
+        # No broad binary bypass: this Windows-only derived JAR is tied to its upstream
+        # Maven bytes and a reproducible, unchanged-entry projection checked at package time.
+        try:
+            pins = json.loads((REPOSITORY_ROOT / "config/windows-onnxruntime.json").read_text(encoding="utf-8"))
+            expected = pins["windows"]
+        except (OSError, ValueError, KeyError):
+            return [f"{member_label}: Windows runtime pins are unavailable"]
+        if entry.name != expected["filename"] or declared_size != expected["bytes"] or len(content) != declared_size or hashlib.sha256(content).hexdigest() != expected["sha256"]:
+            return [f"{member_label}: content does not match the pinned Windows runtime derivation"] + scan_secret_bytes(member_label, content)
+        raw = read_small_archive_member(archive, str(entry.parent / "onnxruntime-windows.json"), PACKAGED_RUNTIME_MANIFEST_LIMIT)
+        try:
+            receipt = json.loads(raw.decode("utf-8")) if raw is not None else None
+            entries = receipt["entries"]
+            digest = hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+            if receipt["upstream"] != pins["upstream"] or receipt["derived"] != expected or len(entries) != expected["entryCount"] or digest != expected["entriesSha256"]:
+                raise ValueError("Different derivation receipt")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return [f"{member_label}: missing or mismatched Windows runtime derivation receipt"]
+        return []
     manifest_name = str(entry.parent / "manifest.json") if mac is not None else PACKAGED_RUNTIME_MANIFESTS[scope].replace("ChopLab/", entry.parts[0] + "/", 1)
     if len(content) != declared_size:
         return [f"{member_label}: packaged runtime binary was read only in part"]
@@ -1296,6 +1327,36 @@ def packaged_runtime_digest_findings(
         return [
             f"{member_label}: content does not match the digest {manifest_name} records"
         ]
+    if mac is None and scope == "tools" and (entry.suffix.lower() == ".dll" or
+            (entry.name in {"ffmpeg.exe", "ffprobe.exe"} and manifest.get("ffmpegAudioInputsSha256") is not None)):
+        try:
+            profile = windows_audio_runtime.load_profile()
+            files = windows_audio_runtime.pinned_files(profile)
+            pin = files[entry.name]
+            if (actual != pin["sha256"] or declared_size != pin["bytes"] or
+                    manifest.get("ffmpegAudioInputsSha256") != windows_audio_runtime.inputs_hash(profile)):
+                raise ValueError("Different Windows audio runtime bytes or source profile")
+            # Bind the recipe/source and all notices, not just a self-reported
+            # hash for a DLL. Native members are independently checked above.
+            for name, expected_file in files.items():
+                if name.lower().endswith((".exe", ".dll")):
+                    continue
+                data = read_small_archive_member(archive, str(entry.parent / name), 512 * 1024)
+                if data is None or len(data) != expected_file["bytes"] or hashlib.sha256(data).hexdigest() != expected_file["sha256"]:
+                    raise ValueError("Missing or changed audio runtime notice/source receipt")
+        except (OSError, ValueError, KeyError, TypeError):
+            return [f"{member_label}: Windows FFmpeg differs from its source, artifact or notice pins"] + scan_secret_bytes(member_label, content)
+    if mac is None and scope == "tools" and entry.name == "qjs.exe":
+        try:
+            pin = json.loads((REPOSITORY_ROOT / "config/windows-quickjs.json").read_text(encoding="utf-8"))
+            binary, license_pin = pin["windows"], pin["license"]
+            if actual != binary["sha256"] or declared_size != binary["bytes"] or manifest.get("quickjsSource") != pin:
+                raise ValueError("QuickJS source/artifact identity mismatch")
+            license_bytes = read_small_archive_member(archive, str(entry.parent / license_pin["filename"]), 16 * 1024)
+            if license_bytes is None or len(license_bytes) != license_pin["bytes"] or hashlib.sha256(license_bytes).hexdigest() != license_pin["sha256"]:
+                raise ValueError("Missing or changed QuickJS license")
+        except (OSError, ValueError, KeyError, TypeError):
+            return [f"{member_label}: QuickJS differs from the pinned source, artifact or license"] + scan_secret_bytes(member_label, content)
     if scope == "models":
         pinned = pinned_separator_model_digest()
         if pinned is not None and pinned != actual:

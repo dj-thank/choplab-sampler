@@ -21,6 +21,8 @@ NEXTの50MB候補は `-PchoplabNextSizeProbe=true` で既存Previewのarm64/R8/r
 
 この候補だけはAGPの [DEX packaging](https://developer.android.com/reference/tools/gradle-api/9.2/com/android/build/api/variant/DexPackagingOptions) を `useLegacyPackaging=true` にし、最適化済みDEXの内容を変えずAPK内で可逆圧縮します。R8のreflection/TraceReferences保持、全nativeの固定bytes、ja/en資源は維持します。圧縮前後の全entry名・展開後bytes一致と同じmappingを検証し、APKのdownloadサイズとインストール後のDEX展開・最適化cacheを区別します。対象Androidの起動・codec・制作受入は対応するtest APKで別に確認します。
 
+同じ固定入力の再現は `python3.14 scripts/prepare_next_native_candidate.py android --ndk "$ANDROID_NDK_HOME" --work work/next-native-android` でも実行できます。下位recipeを順に呼び、native入力の固定値を確認してから候補をstageします。以下の本体buildへは、使用したrecipeの実出力pathを渡します。
+
 ```sh
 ./gradlew --no-daemon --max-workers=1 --no-watch-fs :app:assemblePreview :app:assemblePreviewAndroidTest \
   -PchoplabNextSizeProbe=true \
@@ -60,6 +62,31 @@ JDK 21とNDKを明示して実行し、`ffmpeg-audio-receipt.json` と最終APK�
 
 音声候補は `scripts/prepare_android_python_runtime.py --python-aar <固定元library AAR> --ffmpeg-aar <固定元FFmpeg AAR> --ndk <固定NDK> --work-dir <私有出力先>` の Python linkage 派生と組で検証します。`-PchoplabAndroidPythonRuntime=<library-linkage-arm64.aar>` を既存 `-PchoplabAndroidAudioRuntime=<ffmpeg-audio-arm64.aar>` に追加すると、Gradle artifact transform が元の module/依存 metadata を保持して固定 Python AAR だけを置換します。既定の上流 AAR は変えません。除去するのは system と衝突する版なし liblzma alias 1 個であり、版付き codec と Python/TLS は同 bytes です。元の初期化 source は ZIP の長さを `pythonLibVersion` として比較するため、recipe は元と異なる長さを必須とし、次の process 初期化で既存の展開 cache を再作成させます。利用者の制作・原音・署名には触れません。新しい APK bytes を再検査し、更新前の展開 cache がある状態と新規 cache の双方で root が実 Android codec 試験を完了するまでは採用候補です。
 
+Windowsの初期ZIPにドラム専用モデルを同梱せず、初回の分離操作でcommit/hash/size固定のモデルを取得します。従来画面とNEXTはprofile内の `models` cacheを共有し、別process間の排他・取消・hash不一致・原子的確定を維持します。元音やProject/archiveにmodelを混ぜません。明示指定／既存Mac bundleのモデルを優先する経路は維持します。初回downloadは165,612,636 bytes、必要空き容量はこれに64MiBの余裕を加算。4stemの別モデルと実推論受入は別に扱います。Windows ORTは完全な上流JARから全Java/noticeとwin-x64 nativeを残す再現可能な派生とし、元artifact・entry集合・派生bytesを固定manifestと公開面検査で照合します。Mac/Androidのruntime梱包をこの派生へ置換しません。
+
+WindowsのEJS runtimeは `config/windows-quickjs.json` に固定した公式QuickJS-NG 0.17.0 x64を使用します。Nodeを含む既存の外部tool directoryとMacは従来経路を維持。Windows package gateでは `tools/qjs.exe` のexact bytes、source receipt、同梱MIT本文、`scripts/acceptance/quickjs_offline.py` によるyt-dlp 2026.08.19のhash検証済みEJS fixture、同条件のZIPサイズを確認します。実Windows artifact上で実行した結果とMac上の同version fixtureを区別し、新runtimeでのprovider受入も別に残します。公式EJS実行環境の置換は音声codecを変更しません。
+
+Windows の最終 150 MB 目標用に、`config/windows-ffmpeg-audio.json` の FFmpeg 8.1.2 音声専用候補を opt-in で用意します。全 native 音声 codec、既存の外部音声 codec、Media Foundation の音声 encoder、audio filter、demux、GnuTLS/SRT/SSH/ZMQ を維持し、video codec と表示用 filter、不要な debug 情報を同梱対象から外します。Rubber Band は公式 4.0.0 source から構築。compiler と UCRT の DLL/headers、元 package と対応 source、派生 files を固定し、PE import の DLL と名前付き export を照合します。これだけで Windows 実行・音質・150 MB を合格にしません。
+
+Mac の隔離 Python 3.14 環境に Meson 1.9.0、Ninja 1.13.0 と既存の pkg-config/make を用意し、`python scripts/prepare_next_native_candidate.py windows --work work/next-native-windows` を実行します。下位 recipe の再build結果をrepository内の全file/ZIP固定値へ照合してから、`candidate/ffmpeg-windows-audio.zip` へstageします。固定LLVM-MinGWはmacOS universal版なので、このWindows cross buildはMacで行い、未固定のLinux compilerへ切り替えません。対応 source は同work配下の `windows/sources/` の依存 package と `windows/downloads/` の FFmpeg/Rubber Band の固定 archive です。MSYS2 source archive には upstream code と PKGBUILD/patch を含み、`.SRCINFO` の版を binary package と照合します。source/recipe/NOTICE の提供を release に含める前提は維持し、source を用意しただけで公開提供済みとは記録しません。
+
+Windows package へは `-PchoplabWindowsAudioRuntime=<展開した候補 directory>` を明示して渡します。候補の全 file set/hash/source/notice を検証し、従来の generated tools と別 directory に stage。既定の Gyan tools と Mac の標準 model 同梱経路は維持します。採用は同一 combined NEXT app-image の実 Windows codec/TLS/通常終了再開、全 archive 検査と CompressionLevelOptimal の ZIP 実測後に判断します。unsigned tools の cross build や旧 app-image への容量 projection を正式配布、署名成功、最終目標達成の証拠へ読み替えません。rollback は opt-in property を外して元の tools に戻すことと本変更の revert です。
+
+Windowsへ同じrevisionと候補ZIPを渡し、次を実行します。展開はZIP全体と内部file集合・hashをrepositoryの固定値へ照合し、新しいdirectoryだけへ確定します。受領したJSONの自己申告hashだけでは許可しません。
+
+```powershell
+python scripts/prepare_next_native_candidate.py unpack-windows `
+  --archive work/native-transfer/ffmpeg-windows-audio.zip --output work/next-native-runtime
+.\gradlew.bat --no-daemon :desktop:packageWindowsLinkedPreview `
+  -PchoplabWindowsAudioRuntime=work/next-native-runtime
+```
+
+手動起動の [NEXT native candidate workflow](../.github/workflows/next-native-candidate.yml) は、この同じrecipeからAndroidのNEXT本体と対応R8 test APK、Windowsの全NEXT app-imageを作ります。Androidは50,000,000 bytesと両APKの静的整合、Windowsは実同梱codec/TLSと、同じ最終ZIPからの全制作・通常終了再開を検査し、Optimal圧縮した150,000,000 bytes以下の候補だけをuploadします。Windows候補専用の `--kind windows-next-candidate` を使い、既存の初期200MB gateを成功として流用しません。artifact名は `choplab-android-next-native-candidate` / `choplab-windows-next-native-candidate`（7日保存）で、source revision・native入力hash・受入JSON・最終bytesのSHA-256を添付します。Android artifactは明示的に未署名であり、ownerが既存Previewと整合する鍵で署名後、最終bytesと対応instrumentationを再検査します。
+
+このworkflowは既定native、正式legacy identity、署名、release公開を変更しません。未知の再build hashは失敗にし、自動的にpinを更新しません。workflow作成・cross build・静的検査だけで対象runtime、実音、provider、公開配布、人の受入を成功と記録しません。rootが同じ全機能の統合sourceと対象runtimeを確認してから既定採用を判断し、署名・source/license提供・公開readbackは別のrelease条件として維持します。
+
+Windowsの手動workflow実行には、対象revisionへ `NextWholeCreationSelfTest` とその制作機能が統合されている必要があります。起点main `99f87a37` には他の5つの通常self-testがあり、全制作classはまだありません。配布用変更の先行統合とworkflowの実行受入は別で、helperはrequired classの欠落・重複を実行前に拒否します。全制作を省略するflagや成功への条件分岐は設けず、rootが制作sourceの統合後にdispatchします。通常CIの既存検査とNEXT ZIP生成はこの手動受入に依存しません。
+
 Mac NEXT preview（`:desktop:packageMacLinkedPreview`、workflow `mac-preview.yml`、artifact `choplab-mac-next-preview`）は、新しい4工程の編集画面だけを試すための、ローカルad-hoc署名・未公証のApple Silicon用CI artifact（7日保存）です。固定済みmedia tool・ドラム分離モデル・ScreenCaptureKit helperを同梱し、複数codecの音源取込、オンライン取込、ドラム分離、端末音録音へ接続しています。各routeの検証範囲はROADMAPに記録し、同梱だけでprovider・録音許可・聴感受入の成功とは扱いません。Spotify情報の接続は専用metadataセッション（`user-library-read`）で扱い、音源・制作と分離します。public Client IDだけを同梱設定へ渡し、tokenはsession内メモリに保持して終了時に破棄します。OAuth/APIの実観測と、製品全体の一般配布条件の適合が確認できるまではPUBLIC_PASSとしません。旧YouTube自動照合は接続しません。専用bundle ID `com.choplab.sampler.preview.next`、データはPreview領域の `next-v10`。GitHub Releaseの公開物ではなく、Developer ID署名・公証・PUBLIC_PASSの成功にも数えません。
 
 ## 鍵と設定の区分
@@ -83,7 +110,7 @@ source/history scannerを短くすること自体は合格条件ではありま�
 2. Androidのsignature fingerprint、debuggable、package/version、permission/exported component、alignmentを検査。正式/Preview/debugは明示した別契約であり、見つかったbytesを後から適切な種類と呼び替えない。
 3. Windows全app-imageのversionとruntime/library/resourceを含むhash、最終APK/ZIP内部を検査。source検査だけでは生成物の安全を証明しない。
 4. ZIPは展開前にentry/path/count/size/CRC/local-central整合、compressed span/descriptorの連続所有を検証。safe名のtextでも音声magic/secretを走査。UTF-16/32、comment/extra field、nested ZIPも対象にする。
-5. 既存上限の意味を保持: 4,096 entries、通常text512KiB/member、metadata/output4MiB/archive、decoded text入力4MiB、100:1、LZMA辞書16MiB。nested depth3、通常64archives、16MiB/member、256MiB共有container/expanded上限。NewPipe同梱後の明示Windows app-image/PreviewとMac NEXT Previewの3種の配布ZIPだけはnested JARを最大80件まで検査する（他の上限と全JAR内容検査は維持）。root/history集計やJIMAGEの例外も無制限化せず、置換にはattack/negative fixtureを付ける。
+5. 既存上限の意味を保持: 4,096 entries、通常text512KiB/member、metadata/output4MiB/archive、decoded text入力4MiB、100:1、LZMA辞書16MiB。nested depth3、通常64archives、16MiB/member、256MiB共有container/expanded上限。NewPipe同梱後の明示Windows app-image/Preview/NEXTとMac NEXT Previewの4種の配布ZIPだけはnested JARを最大80件まで検査する（他の上限と全JAR内容検査は維持）。root/history集計やJIMAGEの例外も無制限化せず、置換にはattack/negative fixtureを付ける。
 6. 正式download後、manifest/hash/attestation/publication前にも最終配布surfaceを検査。SBOMとsource/artifact identityを結び付け、依存licenseと再配布条件をNOTICEへ反映。
 
 公開証明書とprivate keyを区別し、合成fixtureの許容は必要箇所だけに限定します。第三者依存のGPL等はNOTICE追記だけで完了にせず、combined workの配布条件・対応source・build手順を確認します。

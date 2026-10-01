@@ -57,6 +57,7 @@ if (
 }
 
 $exeHash = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$signature = Get-AuthenticodeSignature -LiteralPath $exePath
 $metadata = [ordered]@{
     version = $ExpectedVersion
     product_version = $productVersionText
@@ -64,6 +65,10 @@ $metadata = [ordered]@{
     executable = $ExecutableName
     executable_sha256 = $exeHash
     commit = $env:GITHUB_SHA
+    authenticode_status = [string]$signature.Status
+    signing_certificate_sha1 = if ($null -ne $signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint } else { $null }
+    # NotSigned is an observed state, never a claim of trusted/public distribution.
+    public_release_verified = $false
 }
 
 if ($MetadataOutput) {

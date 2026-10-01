@@ -16,6 +16,10 @@
 
 `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` は別の境界です。必要な層を省略・昇格せず、scopeと未確認を併記します。historical receipt、画像、health応答、子agentの文章は新しい上位passではありません。
 
+Windows 音声専用 FFmpeg 候補の実行受入は、package された `tools` directory を指定して行います。隔離 Python に `python -m pip install -r config/windows-audio-acceptance-requirements.txt` を入れ、`python scripts/acceptance/windows_audio_tools.py --tools <app-image>/tools --work <new-private-directory>` を実行します。既存 `native_audio_codecs.py` を再利用して 11 codec・24bit/先頭末尾・左右極性・delay/end trim・44.1→48kHz・range seek・legacy converter と原本 hash を検査します。追加は実 CLI の 221 decoder/86 encoder と protocol/filter 名、Rubber Band の有限非無音出力、生成した一時 CA による loopback HTTPS の全 PCM 一致と不信 CA 拒否、同梱 yt-dlp→同梱 FFmpeg の MP3 後処理だけです。一時秘密鍵は試験後に消し、利用者の trust store や既存 profile を変更しません。
+
+この receipt は実行した個別 fixture の LOCAL 結果です。通常 EXE の終了再開、制作を通した全新機能、実モデル分離、QuickJS EJS、実 audio endpoint、provider、署名・公開・Human はそれぞれ既存の別 gate で追跡します。Mac の同 helper の部分試験を Windows 成功へ転用しません。cross-build、対応 source/hash と公開面検査の成功だけで audio runtime を既定に切り替えません。
+
 ## 0.18.0 moduleのコマンド
 
 checkoutのJDK/SDKを設定してrepository rootから実行します。Windowsは `gradlew.bat`、他hostは `./gradlew` を使います。
@@ -61,6 +65,29 @@ python3 scripts/run_mac_next_acceptance.py \
   --app 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app' \
   --java-home "$JAVA_HOME"
 ```
+
+Windows の同等な配布検証は `scripts/run_windows_acceptance.py` を実 Windows の対話 desktop 上で実行します。Python 3.11+、PowerShell 7、隔離 Python 環境の `yt-dlp[default]==2026.8.19` が必要です。後者は既存 `scripts/acceptance/quickjs_offline.py` が同梱 QuickJS を実行するための、同 version の EJS adapter です。同梱 `yt-dlp.exe` 自体の version/hash は別に検査し、実 provider 接続は行いません。
+
+対象は `:desktop:packageWindowsLinkedPreview` が生成する `desktop/build/windows-linked-preview-app-image/ChopLab Preview` 一式です。旧 `DesktopAppKt` の Preview ZIP は NEXT の証拠に使えません。梱包する writer は、専用出力先に `Compress-Archive -Path 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -DestinationPath 'dist/ChopLab-windows-next.zip' -CompressionLevel Optimal` で ZIP を作り、元 CI の source revision と SHA-256 を取得します。検証する側はこの値を別途照合して指定します。script は ZIP bytes を照合しますが、自己申告の source revision から source provenance を生成しません。
+
+```powershell
+# 先に隔離環境へ固定した adapter を導入する。実配布 tool は ZIP 内のものを使う。
+py -3 -m venv work/windows-acceptance-python
+& work/windows-acceptance-python/Scripts/python.exe -m pip install 'yt-dlp[default]==2026.8.19'
+& work/windows-acceptance-python/Scripts/python.exe scripts/run_windows_acceptance.py `
+  --archive dist/ChopLab-windows-next.zip `
+  --sha256 <independently-obtained-zip-sha256> --source-revision <full-ci-source-revision> `
+  --version <numeric-package-version> --output work/windows-acceptance-new-run `
+  --allow-drum-model-download
+```
+
+新規の `--output` にだけ展開・隔離 profile・合成旧版 data sentinel を作り、同梱 Java 21/tools、公開面、署名の観測状態、初期 ZIP 200 MB 条件と最終 150 MB 目標を記録します。`NextWholeCreationSelfTest` と既存 `NextSelfTest`、`NextCodecSelfTest`、`NextMicrophoneSelfTest`、`NextLibrarySelfTest`、`NextOnlineSelfTest` と QuickJS offline fixture を再利用し、同じ合成制作の profile を保って通常 EXE を 2 回起動・正常終了します。両回で autosave の Project/revision/全 asset hash、旧版 sentinel、終了後の package bytes を照合します。保存 bytes の一致は、復元した制作を人間が画面で確認した証拠にはしません。無音 endpoint の通常終了は実音・マイク・手操作の合格ではありません。
+
+`--allow-drum-model-download` を指定した場合だけ、既存 `NextSeparationProductionSelfTest` が初回の固定モデルを私有 cache へ取得し、次の新 JVM では HTTPS proxy を閉じて同じ cache の再使用を確認します。既にある固定モデルを `--drum-model <path>` でコピーして使う場合は、初回 download 成功とは記録しません。いずれも未指定なら分離は `NOT_RUN` です。4 stem は別の `--four-stem-model <path>` と `NextFourStemProductionSelfTest` により検証し、未指定なら `NOT_RUN` のままです。
+
+`acceptance.json` は check ごとに scope、PASS/FAIL/NOT_RUN、revision、ZIP hash と所要時間を残し、全体の `COMPLETED` は選択した手順の終了だけを示します。最終全機能通し・署名済み正式配布・provider・実音・Human GO へ昇格させません。ログと合成素材を含む run directory は私有の readback 用に保持し、公開前に対象を選んで既存 scanner を通します。既存版の installer は別の `scripts/test-install-windows-app.ps1` で隔離して確認し、この Preview harness から既存アプリを置換しません。
+
+全制作の入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は起点main `99f87a37` では未導入です。この配布変更は制作実装を取り込まず、helperが全6入口の一意なclassを確認してから実行します。欠けていれば `self-test-entrypoints=FAIL`、各制作試験は `NOT_RUN` で停止します。rootは必要な制作sourceを統合して同じZIPを作り直した後に、全制作を含む手動workflowを実行します。
 
 ## 必須の振る舞い
 

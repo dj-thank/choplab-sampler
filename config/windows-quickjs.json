@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "version": "0.17.0",
+  "sourceCommit": "6d46d07d04041b40f4f49eaa7fdebe44c314c699",
+  "source": "https://github.com/quickjs-ng/quickjs/tree/6d46d07d04041b40f4f49eaa7fdebe44c314c699",
+  "upstreamRelease": "https://github.com/quickjs-ng/quickjs/releases/tag/v0.17.0",
+  "ejsContract": "https://github.com/yt-dlp/yt-dlp/wiki/EJS",
+  "windows": {
+    "url": "https://github.com/quickjs-ng/quickjs/releases/download/v0.17.0/qjs-windows-x86_64.exe",
+    "filename": "qjs.exe",
+    "bytes": 2151363,
+    "sha256": "2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77"
+  },
+  "license": {
+    "url": "https://raw.githubusercontent.com/quickjs-ng/quickjs/6d46d07d04041b40f4f49eaa7fdebe44c314c699/LICENSE",
+    "filename": "QuickJS-LICENSE.txt",
+    "bytes": 1212,
+    "sha256": "96f73f9d2a16c21a36b418f06073be26e7d6d5e7c1bc99756b21a4f2c74ef171"
+  },
+  "sourceArchive": {
+    "url": "https://codeload.github.com/quickjs-ng/quickjs/tar.gz/6d46d07d04041b40f4f49eaa7fdebe44c314c699",
+    "bytes": 905853,
+    "sha256": "a62cf1ff7d6d2f82b90a2d247a57e9eb56b81c03feb1f372a53923426e358cb0"
+  }
+}

@@ -281,6 +281,11 @@ jobs:
         run: |
           .\scripts\verify-windows-artifact.ps1 -AppImage 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -ExpectedVersion $env:RELEASE_VERSION
           .\scripts\smoke-windows-app.ps1 -AppImage 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -SilentAudio
+          Compress-Archive -Path 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -DestinationPath 'dist/ChopLab-windows-next.zip' -CompressionLevel Optimal
+          python scripts/check_public_surface.py --archive dist/ChopLab-windows-next.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $zip = Resolve-Path 'dist/ChopLab-windows-next.zip'
+          (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path -Leaf $zip) | Set-Content -Encoding utf8 "$zip.sha256"
       - name: Upload Windows app-image artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -289,6 +294,8 @@ jobs:
           path: |
             dist/ChopLab-windows-preview.zip
             dist/ChopLab-windows-preview.zip.sha256
+            dist/ChopLab-windows-next.zip
+            dist/ChopLab-windows-next.zip.sha256
           retention-days: 7
 
       - name: Upload failed desktop test diagnostics

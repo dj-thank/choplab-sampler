@@ -40,7 +40,8 @@ class DesktopMacHostTest {
         }
         File(nodeBin, "node").apply { writeBytes(byteArrayOf(1)); setExecutable(true) }
         val split = locateDesktopMediaTools(emptyList(), listOf(bin, nodeBin), windows = false)
-        assertEquals(File(nodeBin, "node"), split?.node)
+        assertEquals(File(nodeBin, "node"), split?.javascript)
+        assertEquals("node:${File(nodeBin, "node").absolutePath}", split?.javascriptArgument)
         assertEquals(File(bin, "ffmpeg"), split?.ffmpeg)
         check(root.deleteRecursively())
     }
@@ -48,6 +49,21 @@ class DesktopMacHostTest {
     @Test
     fun missingToolMeansImportCannotStart() {
         assertNull(locateDesktopMediaTools(emptyList(), emptyList(), windows = false))
+    }
+
+    @Test
+    fun preparedWindowsQuickJsUsesTheExplicitEjsPathAndKeepsNodeFallback() {
+        val root = kotlin.io.path.createTempDirectory("choplab-tools with spaces").toFile()
+        try {
+            listOf("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "qjs.exe", "node.exe").forEach { name ->
+                File(root, name).apply { writeBytes(byteArrayOf(1)); setExecutable(true) }
+            }
+            val tools = locateDesktopMediaTools(listOf(root), emptyList(), windows = true)
+            assertEquals("quickjs:${File(root, "qjs.exe").absolutePath}", tools?.javascriptArgument)
+            check(File(root, "qjs.exe").delete())
+            val previous = locateDesktopMediaTools(listOf(root), emptyList(), windows = true)
+            assertEquals("node:${File(root, "node.exe").absolutePath}", previous?.javascriptArgument)
+        } finally { check(root.deleteRecursively()) }
     }
 
     @Test
