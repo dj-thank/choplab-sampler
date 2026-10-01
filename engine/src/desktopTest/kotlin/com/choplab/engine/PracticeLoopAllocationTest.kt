@@ -38,6 +38,47 @@ class PracticeLoopAllocationTest {
         allocationWitness = null
     }
 
+    @Test fun fullGraphAndSelectedStemKeepAllocationZeroWithTheSameClipActivity() {
+        val source = PcmAsset.fromInterleaved(FloatArray(8192) { i ->
+            if (i % 2 == 0) .08f * kotlin.math.cos((i / 2) * .031).toFloat()
+            else -.019f * kotlin.math.sin((i / 2) * .043).toFloat()
+        })
+        val insert = MixInsert(MixEq(3f, -2f, 4f), MixFilter(MixFilterMode.HIGH_PASS, 20f),
+            MixCompressor(true, -45f, 4f, .1f, 2000f))
+        val program = EngineProgram(arrangement = Arrangement(List(938) { index ->
+            ArrangementClip("clip-$index", source, index * 4096L, trackIndex = index % 2)
+        }), mixer = MixerProgram(List(2) { TrackFx(insert, .3f, .2f) }, MixSettings(
+            MixDelay(true, 137, .3f, .4f), MixReverb(true, .1f, .2f, .2f),
+            MixInsert(compressor = MixCompressor(true, -30f, 3f)), .7f)))
+        for (selected in listOf(false, true)) {
+            val engine = EngineCore(program, EngineConfig(outputMode = EngineOutputMode.EXPORT))
+            val master = FloatArray(384)
+            val stems = FloatArray(192 * MixerProgram.STEM_COUNT * 2)
+            try {
+                if (selected) engine.selectTrackStemForExport(0)
+                assertEquals(OfferResult.ACCEPTED, engine.controls.offer(EngineCommand.StartSequence(0, 1)))
+                // Ten thousand blocks alone stop halfway through this clip list. Prime its finite
+                // endpoint and graph tail too: first reaching nextClip == clipCount otherwise
+                // deoptimizes the JVM's previously one-sided branch inside the measured render.
+                val lifecycleFrames = program.arrangement!!.durationFrames + program.mixer.tailFrames
+                while (engine.frame < lifecycleFrames) engine.render(master, stemOutput = stems)
+                val primedFrames = engine.frame
+                assertEquals(OfferResult.ACCEPTED, engine.controls.offer(EngineCommand.StartSequence(engine.frame, 2)))
+                engine.prepareOfflineBlock(192) // Control preparation/allocation belongs outside render.
+                repeat(BLOCKS) { engine.render(master, stemOutput = stems) }
+                val measured = measure(allocationMeter(), beforeRender = { allocationWitness = ByteArray(128) }) {
+                    engine.render(master, stemOutput = stems)
+                }
+                val context = "STEM selected=$selected block=192 lifecycleWarmupFrames=$primedFrames warmup=$BLOCKS measured=$BLOCKS $measured"
+                println(context)
+                assertEquals(0L, measured.renderBytes, context)
+                assertTrue(measured.harnessBytes >= BLOCKS * 128L, context)
+                assertEquals(0L, engine.pcmUnderrunFrames)
+                assertTrue(engine.sequencePlaying, "The same clips remain active through both measurement windows")
+            } finally { engine.close(); allocationWitness = null }
+        }
+    }
+
     private data class Meter(val bean: ThreadMXBean, val thread: Long)
     private data class Measurement(val renderBytes: Long, val harnessBytes: Long, val firstBlock: Int)
 

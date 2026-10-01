@@ -24,6 +24,10 @@ object StreamingStemRenderer {
         runBlocking { PcmMemoryBudget.shared.reserve(bytes) }.use {
             val engine = EngineCore(program, EngineConfig(controlCapacity = 4, eventCapacity = 8, outputMode = EngineOutputMode.EXPORT))
             try {
+                // Retain the immutable full program and all PCM validation. A single arrangement
+                // track only needs its own insert; returns and pattern voices still use every bus.
+                outputs.singleOrNull()?.first?.takeIf { program.arrangement != null && it < Arrangement.MAX_TRACKS }
+                    ?.let(engine::selectTrackStemForExport)
                 require(engine.controls.offer(EngineCommand.StartSequence(0, 1)) == OfferResult.ACCEPTED)
                 require(engine.controls.offer(EngineCommand.Stop(frames.toLong(), 2)) == OfferResult.ACCEPTED)
                 val total = frames.toLong() + tailFrames
@@ -43,7 +47,10 @@ object StreamingStemRenderer {
                 while (written < total) {
                     if (cancelled()) throw CancellationException("Stem export cancelled")
                     val plan = engine.prepareOfflineBlock(minOf(blockFrames.toLong(), total - written).toInt())
-                    prepared(plan.windows) { engine.render(master, frameCount = plan.frames, stemOutput = stems) }
+                    // Resident/silent blocks need no page pin or worker/context dispatch, just as
+                    // in the master WAV renderer. Paged reads still prepare before every render.
+                    if (plan.windows.isEmpty()) engine.render(master, frameCount = plan.frames, stemOutput = stems)
+                    else prepared(plan.windows) { engine.render(master, frameCount = plan.frames, stemOutput = stems) }
                     check(engine.pcmUnderrunFrames == 0L) { "PCM missing during stem export" }
                     for (writer in writers) {
                         for (frame in 0 until plan.frames) {
