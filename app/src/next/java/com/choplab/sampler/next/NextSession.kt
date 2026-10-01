@@ -17,6 +17,8 @@ import com.choplab.jvm.separation.*
 import com.choplab.ui.separation.FourStemFactory
 import com.choplab.sampler.R
 import com.choplab.ui.*
+import com.choplab.ui.vocal.VocalPracticePort
+import com.choplab.jvm.ai.SourceVocalPreview
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
@@ -64,6 +66,7 @@ class NextSession private constructor(
     /** Stops the song and the original. Unlike the Stop button it leaves an edit, import, save or export running. */
     suspend fun stopSound() {
         presenter.cancelFourStemPreparation()
+        presenter.stopVocalPractice()
         speechPreview.stop()
         backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
@@ -86,7 +89,7 @@ class NextSession private constructor(
         // Closing the presenter keeps a take still recording; anything left after that is dropped.
         try { withContext(NonCancellable) { presenter.close() } }
         finally {
-            withContext(NonCancellable) { try { voice.close() } finally { backend.shutdown(flush = !closedWithoutAutosave) } }
+            withContext(NonCancellable) { try { speechPreview.close(); voice.close() } finally { backend.shutdown(flush = !closedWithoutAutosave) } }
             scope.cancel()
         }
     }
@@ -118,6 +121,10 @@ class NextSession private constructor(
                 AndroidTtsProvider(context), TtsCache(File(context.cacheDir, "next-tts-cache").toPath()), backend.assets)
         }
         override val onlineSource = AndroidOnlineSourceHost(context, documents)
+        override val vocalPractice = object : VocalPracticePort {
+            override val renderer = backend.practiceRenderer()
+            override val preview = speechPreview
+        }
         override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
             override fun createProvider() = GeminiLyricProvider()
         }

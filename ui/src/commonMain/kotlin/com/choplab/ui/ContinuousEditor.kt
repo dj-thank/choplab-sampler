@@ -60,6 +60,7 @@ import kotlin.math.roundToLong
     vocalTakes: com.choplab.ui.vocal.VocalTakeController? = null,
     vocalPunch: com.choplab.ui.vocal.VocalPunchController? = null,
     quickStart: QuickStartController? = null,
+    vocalPractice: com.choplab.ui.vocal.VocalPracticeController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -112,6 +113,7 @@ import kotlin.math.roundToLong
             }, { onAction(ContinuousEditorAction.StopAll) }, mixerReadout)
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
+        vocalPractice?.let { com.choplab.ui.vocal.VocalPracticeDialog(it) { onAction(ContinuousEditorAction.CloseVocalPractice) } }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
         vocalTakes?.let { CEVocalTakeDialog(it, onAction) }
         vocalPunch?.let { CEVocalPunchDialog(it, onAction) }

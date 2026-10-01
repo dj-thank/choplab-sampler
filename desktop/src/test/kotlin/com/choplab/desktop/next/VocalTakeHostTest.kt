@@ -33,6 +33,7 @@ class VocalTakeHostTest {
         var stopBlocked = false
         val f = Fixture { real -> object : ContinuousEditorPorts by real {
             override val vocalGuide = null
+            override val vocalPractice = null
             override val onlineSource = idleOnlineHost {}
             override val vocalTakes = object : VocalTakePort by real.vocalTakes {
                 override val preview = object : VocalPreviewPort by real.vocalTakes.preview {

@@ -58,6 +58,8 @@ import org.jetbrains.compose.resources.stringResource
                     enabled = state.permits(ContinuousCapability.VOCAL_PUNCH), tag = "ce-vocal-punch-open")
                 CEButton(stringResource(Res.string.vocal_take_title), { onAction(ContinuousEditorAction.OpenVocalTakes) }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_TAKES), tag = "ce-vocal-takes-open")
+                CEButton(stringResource(Res.string.practice_title), { onAction(ContinuousEditorAction.OpenVocalPractice) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_PRACTICE), tag = "ce-practice-open")
                 if (lyrics.lines.isEmpty()) Text(stringResource(Res.string.ce_lyrics_empty))
                 else LazyColumn(Modifier.fillMaxWidth().height(160.dp).testTag("ce-lyrics-list")) {
                     items(lyrics.lines, key = { it.id }) { line ->

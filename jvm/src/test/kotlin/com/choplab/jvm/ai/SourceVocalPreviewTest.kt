@@ -122,6 +122,61 @@ class SourceVocalPreviewTest {
         } finally { f.close(); previewScope.cancel(); repeat(100) { queued.poll()?.run() } }
     }
 
+    @Test fun practiceLoopsThePreparedPeriodAndCannotStopOrReplaceAnotherFeatureClaim() = runBlocking<Unit> {
+        val f = Fixture()
+        try {
+            f.open()
+            val before = f.studio.document.value
+            val short = f.guide.copy(frames = 481)
+            assertIs<TtsResult.Success<Unit>>(f.preview.start(short, before.revision, true, VocalPreviewOwner.PRACTICE))
+            waitUntil { f.preview.state.value.phase == VocalPreviewPhase.PLAYING }
+            val start = f.engine.snapshot().frame
+            waitUntil { f.engine.snapshot().frame >= start + 481 * 5 }
+            assertTrue(f.engine.originalPlayback().playing)
+            assertTrue(f.audition.nativeFrame() in 0..480)
+            val loaded = (f.commands.last { it is EngineCommand.SetOriginalSource } as EngineCommand.SetOriginalSource).source!!
+            assertTrue(loaded.loop); assertEquals(480, loaded.loopCrossfadeFrames)
+            assertEquals(TtsProblem.BUSY, assertIs<TtsResult.Failure>(f.preview.start(f.guide, before.revision)).failure.problem)
+            assertIs<TtsResult.Success<Unit>>(f.preview.stop())
+            f.preview.requestStop()
+            for (other in listOf(VocalPreviewOwner.GUIDE, VocalPreviewOwner.PITCH)) {
+                assertEquals(TtsProblem.BUSY, assertIs<TtsResult.Failure>(f.preview.start(short, before.revision, false, other)).failure.problem)
+                assertIs<TtsResult.Success<Unit>>(f.preview.stop(other))
+                f.preview.requestStop(other)
+            }
+            assertTrue(f.preview.state.value.ownsSource)
+            assertIs<TtsResult.Success<Unit>>(f.preview.stop(VocalPreviewOwner.PRACTICE))
+            assertFalse(f.preview.state.value.ownsSource)
+            assertFalse(f.engine.originalPlayback().playing)
+            assertEquals(5_000L, f.audition.nativeFrame())
+            assertFalse((f.commands.last { it is EngineCommand.SetOriginalSource } as EngineCommand.SetOriginalSource).source!!.loop)
+            assertEquals(before, f.studio.document.value)
+            assertIs<TtsResult.Success<Unit>>(f.preview.start(short, before.revision))
+            f.preview.requestStop(VocalPreviewOwner.PRACTICE)
+            waitUntil { !f.preview.state.value.ownsSource }
+            assertEquals(VocalPreviewPhase.IDLE, f.preview.state.value.phase)
+        } finally { f.close() }
+    }
+
+    @Test fun pitchCanAuditionTheUnchanged48kStereoOriginalWithoutRelabellingItsAsset() = runBlocking<Unit> {
+        val f = Fixture()
+        try {
+            f.open()
+            val before = f.studio.document.value
+            for (owner in listOf(VocalPreviewOwner.GUIDE, VocalPreviewOwner.PRACTICE))
+                assertEquals(TtsProblem.INVALID_AUDIO, assertIs<TtsResult.Failure>(f.preview.start(f.source, before.revision, false, owner)).failure.problem)
+            assertEquals(TtsProblem.INVALID_AUDIO, assertIs<TtsResult.Failure>(f.preview.start(f.source.copy(sampleRate=44_100), before.revision, false, VocalPreviewOwner.PITCH)).failure.problem)
+            assertEquals(TtsProblem.INVALID_AUDIO, assertIs<TtsResult.Failure>(f.preview.start(f.source.copy(channels=1), before.revision, false, VocalPreviewOwner.PITCH)).failure.problem)
+            assertIs<TtsResult.Success<Unit>>(f.preview.start(f.source, before.revision, false, VocalPreviewOwner.PITCH))
+            waitUntil { f.preview.state.value.phase == VocalPreviewPhase.PLAYING }
+            assertEquals(f.source.hash, f.preview.state.value.assetHash)
+            assertEquals(0f, f.pitch())
+            assertIs<TtsResult.Success<Unit>>(f.preview.stop(VocalPreviewOwner.PITCH))
+            assertEquals(5_000L, f.audition.nativeFrame())
+            assertEquals(before, f.studio.document.value)
+        } finally { f.close() }
+    }
+
     private class Fixture(private val previewScope: CoroutineScope? = null) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val source = Asset("a".repeat(64), "wav", 44, 48_000, 2, 480_000, "Original")

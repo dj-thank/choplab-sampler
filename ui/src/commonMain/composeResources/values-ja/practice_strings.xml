@@ -1,0 +1,27 @@
+<resources>
+    <string name="practice_title">区間ループ・ゆっくり練習</string>
+    <string name="practice_hint">曲の指定区間を、音程を保って SOURCE で聴きます。曲・Undo 履歴・書き出しは変わりません。停止すると元の SOURCE に戻り、自動再生しません。</string>
+    <string name="practice_start">開始（秒）</string>
+    <string name="practice_end">終了・この位置を含めない（秒）</string>
+    <string name="practice_speed">音程を保った速度</string>
+    <string name="practice_speed_value">%1$s倍</string>
+    <string name="practice_loop">区間をくり返す</string>
+    <string name="practice_limit">選択区間と速度変更後はそれぞれ30秒まで（0.6倍では選択18秒まで）。ループ端は最大10msでつなぎ、周期は短くしません。設定はこのパネルを閉じるまで有効です。</string>
+    <string name="practice_preview">練習を始める</string>
+    <string name="practice_preparing">曲の区間を準備中…</string>
+    <string name="practice_playing">SOURCE で練習中</string>
+    <string name="practice_stopping">停止して SOURCE を戻しています…</string>
+    <string name="practice_stop">練習を停止</string>
+    <string name="practice_close">閉じる</string>
+    <string name="practice_invalid">30秒の上限内で有効な区間と速度を指定してください。</string>
+    <string name="practice_no_audio">配置済みの曲の中から区間を選んでください。</string>
+    <string name="practice_no_room">音声メモリまたは保存容量が不足しています。区間を短くして再試行してください。</string>
+    <string name="practice_pcm">元音声を読み込めませんでした。音声を再読込して再試行してください。</string>
+    <string name="practice_failed">区間を準備できませんでした。曲は変更していません。</string>
+    <string name="practice_stale">曲が変更されました。区間を確認してから再開してください。</string>
+    <string name="practice_recording">録音を終えてから練習してください。</string>
+    <string name="practice_busy">処理またはほかの試聴が終わるまでお待ちください。</string>
+    <string name="practice_cancelled">練習を停止しました。</string>
+    <string name="practice_no_output">音声出力を利用できません。再接続して再試行してください。</string>
+    <string name="practice_restore_failed">SOURCE を戻せませんでした。音声出力を再接続し、停止か閉じるで再試行してください。</string>
+</resources>

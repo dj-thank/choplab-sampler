@@ -87,6 +87,21 @@ jobs:
           :app:lintRelease
           :app:assembleDebug
 
+      - name: Upload failed engine test diagnostics
+        if: ${{ failure() && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-engine-test-failure-linux
+          if-no-files-found: ignore
+          path: |
+            engine/build/test-results/desktopTest/*.xml
+            engine/build/reports/tests/desktopTest/**
+            core/build/test-results/desktopTest/*.xml
+            core/build/reports/tests/desktopTest/**
+            jvm/build/test-results/test/*.xml
+            jvm/build/reports/tests/test/**
+          retention-days: 7
+
       - name: Build release APK without publishing
         shell: bash
         run: |
@@ -283,6 +298,12 @@ jobs:
           name: choplab-desktop-test-failure
           if-no-files-found: ignore
           path: |
+            engine/build/test-results/desktopTest/*.xml
+            engine/build/reports/tests/desktopTest/**
+            core/build/test-results/desktopTest/*.xml
+            core/build/reports/tests/desktopTest/**
+            jvm/build/test-results/test/*.xml
+            jvm/build/reports/tests/test/**
             desktop/build/test-results/test/*.xml
             desktop/build/reports/tests/test/**
             ui/build/test-results/desktopTest/*.xml

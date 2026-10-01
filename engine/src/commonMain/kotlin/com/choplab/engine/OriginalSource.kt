@@ -8,8 +8,10 @@ class OriginalSource(
     val startFrame: Int = 0,
     val endFrame: Int = asset.frameCount,
     val loop: Boolean = false,
+    /** Endpoint blend, clamped to half the range; keeps the original frame period. */
+    val loopCrossfadeFrames: Int = 0,
 ) {
-    init { require(startFrame >= 0 && endFrame <= asset.frameCount && endFrame > startFrame) }
+    init { require(loopCrossfadeFrames in 0..24_000); require(startFrame >= 0 && endFrame <= asset.frameCount && endFrame > startFrame) }
 }
 
 enum class EngineOutputMode { MONITOR, EXPORT }
@@ -95,8 +97,8 @@ internal class OriginalSourceVoice {
         var targetRight = 0.0
         if (playing && source != null) {
             pcmCursor.reset()
-            targetLeft = interpolator.read(source.asset, position, step, 0, source.startFrame, source.endFrame, source.loop, cursor = pcmCursor)
-            targetRight = interpolator.read(source.asset, position, step, 1, source.startFrame, source.endFrame, source.loop, cursor = pcmCursor)
+            targetLeft = interpolator.read(source.asset, position, step, 0, source.startFrame, source.endFrame, source.loop, source.loopCrossfadeFrames, cursor = pcmCursor)
+            targetRight = interpolator.read(source.asset, position, step, 1, source.startFrame, source.endFrame, source.loop, source.loopCrossfadeFrames, cursor = pcmCursor)
             pcmMiss = pcmCursor.missing
             pcmCursor.clear()
             if (pcmMiss) { targetLeft = 0.0; targetRight = 0.0 }
