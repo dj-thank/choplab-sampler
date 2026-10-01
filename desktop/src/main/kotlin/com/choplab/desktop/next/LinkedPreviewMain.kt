@@ -124,6 +124,7 @@ fun main() {
                 val vocalGuide by presenter.vocalGuide.collectAsState()
                 val fourStems by presenter.fourStems.collectAsState()
                 val onlineSource by presenter.onlineSource.collectAsState()
+                val autoChop by presenter.autoChop.collectAsState()
                 val sourceAnalysis by presenter.sourceAnalysis.collectAsState()
                 val vocalTakes by presenter.vocalTakes.collectAsState()
                 val vocalPunch by presenter.vocalPunch.collectAsState()
@@ -161,7 +162,7 @@ fun main() {
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                    onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, quickStart = quickStart)
+                    autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, quickStart = quickStart)
             }
         }
     } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -225,6 +226,7 @@ internal class DesktopEditorPorts(
     }
     override val systemAudioCapture get() = backend.systemAudio
     private val japanese get() = Locale.getDefault().language == "ja"
+    override val autoChop get() = backend.autoChop
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
     override fun originalPlaying() = backend.engine.originalPlayback().playing
     override fun playingPads() = backend.engine.playingPads()

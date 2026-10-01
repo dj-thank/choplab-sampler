@@ -60,12 +60,25 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
 
     override suspend fun start(asset: Asset, expectedRevision: Long): TtsResult<Unit> = start(asset, expectedRevision, false, VocalPreviewOwner.GUIDE)
 
-    override suspend fun start(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner): TtsResult<Unit> = controls.withLock {
+    override suspend fun start(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner): TtsResult<Unit> =
+        startScoped(asset, expectedRevision, loop, owner, null)
+
+    override suspend fun startRange(asset: Asset, range: FrameRange, expectedRevision: Long, owner: VocalPreviewOwner): TtsResult<Unit> =
+        if (owner == VocalPreviewOwner.CHOP) startScoped(asset, expectedRevision, false, owner, range) else ttsFailure(TtsProblem.UNAVAILABLE)
+
+    private suspend fun startScoped(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner, range: FrameRange?): TtsResult<Unit> = controls.withLock {
         currentCoroutineContext().ensureActive()
         if (closed.get()) return@withLock ttsFailure(TtsProblem.CLOSED)
         if (studio.document.value.revision != expectedRevision) return@withLock ttsFailure(TtsProblem.STALE_DOCUMENT)
-        val roleAllowed = asset.role == AssetRole.RENDERED || (owner == VocalPreviewOwner.PITCH && asset.role == AssetRole.ORIGINAL)
-        if (asset.sampleRate != 48_000 || asset.channels != 2 || !roleAllowed) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
+        val project = studio.document.value.project
+        if (owner == VocalPreviewOwner.CHOP) {
+            val source = project.source
+            if (range == null || source?.assetHash != asset.hash || project.assets.none { it == asset } ||
+                range.start < source.range.start || range.end > source.range.end) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
+        } else {
+            val roleAllowed = asset.role == AssetRole.RENDERED || (owner == VocalPreviewOwner.PITCH && asset.role == AssetRole.ORIGINAL)
+            if (range != null || asset.sampleRate != 48_000 || asset.channels != 2 || !roleAllowed) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
+        }
         if (state.value.ownsSource && state.value.owner != owner) return@withLock ttsFailure(TtsProblem.BUSY)
         cancelLoad()
         val document = studio.document.value
@@ -77,7 +90,8 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
             val ready = try {
                 studio.dispatch(Action.Silence).accepted && current(token, expectedRevision) && audition.pause() &&
                     current(token, expectedRevision) && audition.pitch(0f) && audition.originalGain(1f) &&
-                    current(token, expectedRevision) && audition.seek(asset, 0, loop) && current(token, expectedRevision) && audition.play(asset, loop)
+                    current(token, expectedRevision) && audition.seek(asset, range?.start ?: 0, loop, range) &&
+                    current(token, expectedRevision) && audition.play(asset, loop, range)
             } catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { false }
             controls.withLock {

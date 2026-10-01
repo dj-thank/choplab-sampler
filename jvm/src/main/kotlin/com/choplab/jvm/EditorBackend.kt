@@ -36,6 +36,7 @@ class EditorBackend private constructor(
     private val autosave: AutosaveStore,
     private val decoder: OriginalAudioDecoder?,
 ) {
+    val autoChop: com.choplab.core.chop.AutoChopPort = AutoChopWorker(pcm)
     private val persistenceFailed = MutableStateFlow(false)
     val persistenceFailure: StateFlow<Boolean> = persistenceFailed.asStateFlow()
     init {

@@ -21,6 +21,8 @@ sealed interface Intent {
     data class AddMarker(val frame: Long) : Intent
     data class MoveMarker(val index: Int, val frame: Long, val gesture: String? = null) : Intent
     data class EqualChop(val count: Int) : Intent
+    /** Applies the reviewed markers only to the exact original/range that produced them, as one Undo. */
+    data class ApplyAutoChop(val source: Source, val markers: FrozenList<Long>) : Intent
     data class AssignSlice(val slice: Int, val padId: Int) : Intent
     data class AssignRange(val assetHash: String, val range: FrameRange, val padId: Int) : Intent
     /**
@@ -149,6 +151,10 @@ object Reducer {
                 require(intent.count in 1..128 && source.range.length >= intent.count)
                 val points = (1 until intent.count).map { source.range.start + source.range.length * it / intent.count }.frozen()
                 before.copy(source = source.copy(markers = points))
+            }
+            is Intent.ApplyAutoChop -> {
+                require(before.source == intent.source) { "Source changed" }
+                before.copy(source = intent.source.copy(markers = intent.markers))
             }
             is Intent.AssignSlice -> {
                 val source = requireNotNull(before.source) { "No source" }

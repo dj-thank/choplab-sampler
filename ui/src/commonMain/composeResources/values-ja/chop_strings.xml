@@ -1,0 +1,31 @@
+<resources>
+    <string name="chop_auto_title">自動チョップ</string>
+    <string name="chop_auto_range">選択範囲 %1$s — %2$s</string>
+    <string name="chop_auto_equal">等分</string>
+    <string name="chop_auto_attack">アタック検出</string>
+    <string name="chop_auto_count">分割数：%1$d</string>
+    <string name="chop_auto_max_count">分割数の上限：%1$d</string>
+    <string name="chop_auto_threshold">検出する最小音量：%1$d dBFS</string>
+    <string name="chop_auto_gap">切れ目の最小間隔：%1$d ms</string>
+    <string name="chop_auto_hint">切れ目を作り、区間を試聴してから適用します。元音声とPADは保たれます。適用後は切った区間をPADへ割り当てられます。</string>
+    <string name="chop_auto_prepare">切れ目を試す</string>
+    <string name="chop_auto_working">切れ目を調べています…</string>
+    <string name="chop_auto_short">この設定では範囲が短すぎます。範囲を広げるか、分割数・最小間隔を小さくしてください。</string>
+    <string name="chop_auto_none">切れ目が見つかりません。無音や続く音を確認し、最小音量を下げるか等分を選んでください。</string>
+    <string name="chop_auto_dense">切れ目が上限を超えました。最小間隔・最小音量・分割数の上限を調整してください。切れ目は変更していません。</string>
+    <string name="chop_auto_memory">音声用メモリに空きがありません。再生を止めてから試してください。</string>
+    <string name="chop_auto_busy">別の処理が終わってから試してください。</string>
+    <string name="chop_auto_recording">録音を終えてから開き直してください。</string>
+    <string name="chop_auto_stale">制作が変わりました。自動チョップを開き直してください。</string>
+    <string name="chop_auto_failed">切れ目や試聴を準備できませんでした。音源と出力を確認してください。</string>
+    <string name="chop_auto_slice">区間 %1$d / %2$d：%3$s — %4$s</string>
+    <string name="chop_auto_previous">前へ</string>
+    <string name="chop_auto_next">次へ</string>
+    <string name="chop_auto_preview">この区間を試聴</string>
+    <string name="chop_auto_preview_loading">試聴を準備しています…</string>
+    <string name="chop_auto_preview_playing">この区間を試聴中</string>
+    <string name="chop_auto_stop_preview">試聴を停止</string>
+    <string name="chop_auto_apply">切れ目を適用</string>
+    <string name="chop_auto_cancel">取り消す</string>
+    <string name="chop_auto_assign">区間を %1$s の PAD %2$d へ</string>
+</resources>

@@ -2,6 +2,8 @@ package com.choplab.ui
 
 import com.choplab.core.*
 import com.choplab.core.ai.*
+import com.choplab.core.chop.*
+import com.choplab.ui.chop.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
@@ -31,6 +33,8 @@ import kotlin.time.TimeSource
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
     val vocalPractice: VocalPracticePort? get() = null
+    val autoChop: AutoChopPort? get() = null
+    val sourcePreview: VocalPreviewPort? get() = vocalGuide?.preview
     val recordingCue: RecordingCuePort? get() = null
     val lyricFiles: LyricFiles? get() = null
     val lyricProposal: LyricProposalPort? get() = null
@@ -283,7 +287,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private var lastPunchRange: Pair<Long, Long>? = null
     private val takeEditor = MutableStateFlow<VocalTakeController?>(null)
     val vocalTakes: StateFlow<VocalTakeController?> = takeEditor.asStateFlow()
-    private val sourcePreview = ports.vocalGuide?.preview ?: ports.vocalTakes?.preview ?: ports.vocalPractice?.preview ?:
+    private val sourcePreview = ports.sourcePreview ?: ports.vocalGuide?.preview ?: ports.vocalTakes?.preview ?: ports.vocalPractice?.preview ?:
         ports.vocalPitch?.preview ?: ports.vocalCoach?.preview
     private val takeAvailability = combine(view, studio.work) { editor, work ->
         when (bankPadBlock(editor, work)) {
@@ -336,6 +340,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             else -> OnlineAvailability.EDITABLE
         }
     }.stateIn(jobs, SharingStarted.Eagerly, OnlineAvailability.EDITABLE)
+    private val chops = MutableStateFlow<AutoChopController?>(null)
+    val autoChop: StateFlow<AutoChopController?> = chops.asStateFlow()
+    private val chopAvailability = combine(view, studio.work) { editor, work ->
+        when (bankPadBlock(editor, work)) {
+            BankPadEditProblem.RECORDING -> AutoChopAvailability.RECORDING
+            null -> AutoChopAvailability.EDITABLE
+            else -> AutoChopAvailability.BUSY
+        }
+    }.stateIn(jobs, SharingStarted.Eagerly, AutoChopAvailability.EDITABLE)
     private val bankPadEditor = BankPadEditController(studio, { bankPadBlock(view.value, studio.work.value) }) { intent, revision ->
         send(Action.Edit(intent, revision))
     }
@@ -381,7 +394,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private val consumer: Job
 
     init {
-        require(listOfNotNull(ports.vocalGuide?.preview, ports.vocalTakes?.preview, ports.vocalPractice?.preview,
+        require(listOfNotNull(ports.sourcePreview, ports.vocalGuide?.preview, ports.vocalTakes?.preview, ports.vocalPractice?.preview,
             ports.vocalPitch?.preview, ports.vocalCoach?.preview).all { it === sourcePreview }) {
             "Vocal previews must share one SOURCE owner"
         }
@@ -488,7 +501,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun interrupt(action: ContinuousEditorAction) {
         if (action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.StopOriginal) {
             cancelFourStemPreparation()
-            vocal.value?.cancel(); takeEditor.value?.dispatch(VocalAction.StopPreview); sourcePreview?.requestStop()
+            vocal.value?.cancel(); takeEditor.value?.dispatch(VocalAction.StopPreview); requestSourcePreviewStop()
             ports.vocalPitch?.preview?.requestStop(VocalPreviewOwner.PITCH)
             pitch.value?.dispatch(PitchAction.Stop)
             coach.value?.dispatch(CoachAction.Stop)
@@ -516,10 +529,18 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (!closeVocalPitch()) return false
             if (ports.vocalPitch?.preview?.stop(VocalPreviewOwner.PITCH) is TtsResult.Failure) return false
         }
-        if (action in listOf(ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach) &&
+        if (action in listOf(ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.AutoChop) &&
             (vocal.value?.state?.value?.phase == VocalGuidePhase.APPLYING || !closeSourceAnalysis())) return false
         if (action is ContinuousEditorAction.Mixer && !closeSourceAnalysis()) return false
         if (action is ContinuousEditorAction.Navigate && action.stage != view.value.stage) punchEditor.value?.closeAndJoin()
+        if (action == ContinuousEditorAction.AutoChop && bankPadBlock(view.value, studio.work.value) != null) return false
+        if (action == ContinuousEditorAction.CloseAutoChop) return closeAutoChop()
+        // Close outside the edit lock: the proposal may be awaiting that same lock for a preview or apply.
+        if (closesAutoChop(action) && !closeAutoChop()) return false
+        if (action != ContinuousEditorAction.OpenSourceAnalysis && (closesAutoChop(action) ||
+            action == ContinuousEditorAction.AutoChop || action is ContinuousEditorAction.Mixer) && !closeSourceAnalysis()) return false
+        if (action == ContinuousEditorAction.StopAll) chops.value?.cancel()
+
         if (action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
             ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource)) {
             vocal.value?.cancel(TtsProblem.RECORDING)
@@ -555,7 +576,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.RecordSystemSource) || action is ContinuousEditorAction.Lyrics)) closeVocalPunch()
             val project = studio.document.value.project
             if (action is ContinuousEditorAction.BankPadEdit || action is ContinuousEditorAction.Lyrics ||
-                action in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalPunch, ContinuousEditorAction.OpenVocalTakes,
+                action in listOf(ContinuousEditorAction.AutoChop, ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalPunch, ContinuousEditorAction.OpenVocalTakes,
                     ContinuousEditorAction.OpenFourStems, ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.OpenLyricProposal,
                     ContinuousEditorAction.OpenStepPatterns, ContinuousEditorAction.ImportOnline)) mixerEditor.dispatch(MixerAction.Cancel)
             val preparingRecording = action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
@@ -719,7 +740,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.SetSourceRange -> edit(Intent.SetSourceRange(FrameRange(action.startFrame, action.endFrame)))
                 // The song key is part of the document (saved, one Undo per step); the backend plays the original at it.
                 is ContinuousEditorAction.SetOriginalPitch -> edit(Intent.SetSourcePitch(action.semitones.toDouble()))
-                ContinuousEditorAction.AutoChop -> edit(Intent.EqualChop(16))
+                ContinuousEditorAction.AutoChop -> openAutoChop()
+                ContinuousEditorAction.CloseAutoChop -> true // handled before the serialized edit lock
+                is ContinuousEditorAction.AssignSourceSlice -> {
+                    val source = project.source
+                    val shown = FrameRange(action.startFrame, action.endFrame)
+                    source?.assetHash == action.assetHash && source.slices().getOrNull(action.slice) == shown &&
+                        edit(Intent.AssignRange(action.assetHash, shown, action.padId))
+                }
                 is ContinuousEditorAction.AssignSourceRange -> project.source?.let {
                     edit(Intent.AssignRange(it.assetHash, it.range, action.padId))
                 } ?: false
@@ -969,6 +997,84 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         catch (_: ContinuousClipEdits.SongFull) { view.update { it.copy(status = ContinuousStatus.SONG_FULL) }; false }
         catch (_: Exception) { view.update { it.copy(status = ContinuousStatus.FAILED) }; false }
         }
+    }
+
+    private fun requestSourcePreviewStop() {
+        val preview = sourcePreview ?: return
+        val owner = preview.state.value.owner
+        if (owner == null) preview.requestStop() else preview.requestStop(owner)
+    }
+    private suspend fun stopSourcePreview(): Boolean {
+        val preview = sourcePreview ?: return true
+        val owner = preview.state.value.owner
+        return (if (owner == null) preview.stop() else preview.stop(owner)) !is TtsResult.Failure
+    }
+    private fun closesAutoChop(action: ContinuousEditorAction): Boolean = when (action) {
+        is ContinuousEditorAction.Navigate -> action.stage != view.value.stage
+        is ContinuousEditorAction.Mixer -> action.action is MixerAction.Open
+        is ContinuousEditorAction.BankPadEdit, is ContinuousEditorAction.Lyrics,
+        ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.OpenLyricProposal, ContinuousEditorAction.OpenStepPatterns,
+        ContinuousEditorAction.OpenFourStems, ContinuousEditorAction.OpenVocalTakes, ContinuousEditorAction.OpenVocalPunch,
+        ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenSourceAnalysis,
+        ContinuousEditorAction.OpenScratch, ContinuousEditorAction.ImportAudio, ContinuousEditorAction.ImportLibrary,
+        ContinuousEditorAction.ImportOnline, ContinuousEditorAction.SeparateSource, ContinuousEditorAction.OpenProject,
+        ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.RecordVoice,
+        ContinuousEditorAction.RecordHits -> true
+        else -> false
+    }
+    private suspend fun closeAutoChop(): Boolean {
+        val current = chops.value ?: return true
+        // Apply owns the controller lock while it awaits the serialized document commit.
+        if (current.state.value.applying) return false
+        if (!current.dispatch(AutoChopAction.Cancel)) return false
+        chops.compareAndSet(current, null)
+        return true
+    }
+    private fun chopBlocked(revision: Long): AutoChopProblem? = when {
+        studio.document.value.revision != revision -> AutoChopProblem.STALE
+        bankPadBlock(view.value, studio.work.value) == BankPadEditProblem.RECORDING -> AutoChopProblem.RECORDING
+        bankPadBlock(view.value, studio.work.value) != null -> AutoChopProblem.BUSY
+        else -> null
+    }
+    private suspend fun openAutoChop(): Boolean {
+        if (vocal.value?.state?.value?.phase == VocalGuidePhase.APPLYING || !closeSourceAnalysis()) return false
+        if (studio.document.value.project.source == null || bankPadBlock(view.value, studio.work.value) != null) return false
+        if (chops.value != null) return true
+        if (!closeFourStems() || !closeVocalTakes() || !closeVocalPunch() || !closeOnline() || !stopSourcePreview()) return false
+        closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
+        lyricEditor.dispatch(LyricAction.Close); bankPadEditor.dispatch(BankPadEditAction.Cancel)
+        releaseHeld()
+        if (!letGoScratch() || !endLiveChop()) return false
+        lateinit var controller: AutoChopController
+        controller = AutoChopController(studio.document, chopAvailability, ports.autoChop, object : AutoChopActions {
+            override val previewState = sourcePreview?.state
+            override suspend fun preview(asset: Asset, range: FrameRange, revision: Long): AutoChopProblem? {
+                chopBlocked(revision)?.let { return it }
+                return serialized.withLock {
+                    if (chops.value !== controller || controller.state.value.closed) return@withLock AutoChopProblem.CLOSED
+                    chopBlocked(revision)?.let { return@withLock it }
+                    if (!ports.originalAvailable) return@withLock AutoChopProblem.UNAVAILABLE
+                    val preview = sourcePreview ?: return@withLock AutoChopProblem.UNAVAILABLE
+                    when (val result = preview.startRange(asset, range, revision, VocalPreviewOwner.CHOP)) {
+                        is TtsResult.Success -> null
+                        is TtsResult.Failure -> if (result.failure.problem == TtsProblem.BUSY) AutoChopProblem.BUSY else AutoChopProblem.FAILED
+                    }
+                }
+            }
+            override suspend fun stopPreview() = sourcePreview?.stop(VocalPreviewOwner.CHOP) !is TtsResult.Failure
+            override fun requestStopPreview() { sourcePreview?.requestStop(VocalPreviewOwner.CHOP) }
+            override suspend fun apply(source: Source, markers: FrozenList<Long>, revision: Long): AutoChopProblem? {
+                chopBlocked(revision)?.let { return it }
+                return serialized.withLock {
+                    if (chops.value !== controller || controller.state.value.closed) return@withLock AutoChopProblem.CLOSED
+                    chopBlocked(revision)?.let { return@withLock it }
+                    if (send(Action.Edit(Intent.ApplyAutoChop(source, markers), revision))) null else AutoChopProblem.FAILED
+                }
+            }
+        }, jobs)
+        chops.value = controller
+        jobs.launch { controller.state.first { it.closed }; chops.compareAndSet(controller, null) }
+        return true
     }
 
     private fun drumBank(project: Project): List<Pad> = project.pads.subList(DrumKits.BANK * 16, DrumKits.BANK * 16 + 16).toList()
@@ -2335,6 +2441,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         return value
     }
     suspend fun close() {
+        closeAutoChop()
         analysis.getAndUpdate { null }?.dispose()
         closeVocalCoach()
         ports.vocalPunch?.interrupt()
@@ -2388,7 +2495,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private fun project(input: EditorInputs, v: EditorView, peaks: Map<String, List<Float>>): ContinuousEditorState {
         val p = input.document.project
         val source = p.source?.let { s -> p.asset(s.assetHash).let { a -> ContinuousSource(a.hash, a.name, a.frames, a.sampleRate,
-            peaks[a.hash].orEmpty(), s.range.start, s.range.end, s.pitchSemitones.toFloat()) } }
+            peaks[a.hash].orEmpty(), s.range.start, s.range.end, s.pitchSemitones.toFloat(), s.markers.toList()) } }
         val busy = input.work.jobId != null || input.work.preparationId != null
         val recording = v.voice != null || v.startingVoice || v.punchRecording || v.recordingSource || v.hits != null
         val selected = p.pads[input.selection.padId]
