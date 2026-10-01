@@ -85,7 +85,10 @@ class VocalPracticeHostTest {
                 scene.setText("practice-start","0.2"); scene.setText("practice-end","0.32")
                 scene.pointer("practice-speed-80")
                 scene.pointer("practice-preview")
-                until { controller.state.value.phase == PracticePhase.PLAYING }
+                try { until { controller.state.value.phase == PracticePhase.PLAYING } }
+                catch (failure: TimeoutCancellationException) {
+                    error("Practice did not start: ${controller.state.value}; preview=${h.host.vocalPractice.preview.state.value}; driver=${h.backend.engine.status.value}")
+                }
                 val frame = h.backend.engine.snapshot().frame
                 until { h.backend.engine.snapshot().frame >= frame + 7_200*3 }
                 assertTrue(h.backend.engine.originalPlayback().playing)

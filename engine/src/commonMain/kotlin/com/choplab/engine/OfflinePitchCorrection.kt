@@ -39,33 +39,12 @@ object OfflinePitchCorrection {
         val bytes = workspaceBytes(frames)
         checkCancelled()
         val source = SampleCache(reader, frames, checkCancelled)
-        val hops = frames / HOP_FRAMES + 1
-        val frequency = FloatArray(hops)
-        val confidence = FloatArray(hops)
+        val contour = contour(source, frames, settings.amount > 0f, checkCancelled, progress)
+        val frequency = contour.frequency
+        val reasons = contour.reasons
+        val channels = contour.channels
+        val hops = frequency.size
         val shifts = FloatArray(hops)
-        val reasons = ByteArray(hops) { PitchBypass.EDGE.ordinal.toByte() }
-        val channels = ByteArray(hops)
-        val analyzer = Yin(source)
-        if (settings.amount > 0f) for (i in 0 until hops) {
-            checkCancelled()
-            val center = i * HOP_FRAMES
-            if (center >= EDGE && center < frames - EDGE) {
-                analyzer.analyze(center)
-                frequency[i] = analyzer.frequency.toFloat()
-                confidence[i] = analyzer.confidence.toFloat()
-                reasons[i] = analyzer.reason.ordinal.toByte()
-                channels[i] = analyzer.channel.toByte()
-            }
-            if (i % 10 == 0) progress(PitchCorrectionPhase.ANALYZE, minOf(center, frames), frames)
-        }
-        progress(PitchCorrectionPhase.ANALYZE, frames, frames)
-        // Require neighboring reliable periods. A jump/transient never borrows the previous note's correction.
-        for (i in 1 until hops - 1) if (frequency[i] > 0f) {
-            if (frequency[i - 1] == 0f || frequency[i + 1] == 0f ||
-                abs(12 * log2(frequency[i].toDouble() / frequency[i - 1])) > .8 ||
-                abs(12 * log2(frequency[i + 1].toDouble() / frequency[i])) > .8)
-                reasons[i] = PitchBypass.UNSTABLE.ordinal.toByte()
-        }
         var baseline = 0.0
         var offset = 0.0
         var previousNote: Int? = null
@@ -144,6 +123,49 @@ object OfflinePitchCorrection {
         val counts = IntArray(PitchBypass.entries.size)
         reasons.forEach { counts[it.toInt()]++ }
         return PitchCorrectionReport(frames, corrected, counts[PitchBypass.NONE.ordinal], counts.toList(), bytes)
+    }
+
+    /** Worker-only observations from the same conservative YIN gate as correction. No score or note label. */
+    fun observe(reader: PitchPcmReader, frames: Int, checkCancelled: () -> Unit = {},
+                observation: (frame: Int, frequencyHz: Float, confidence: Float, bypass: PitchBypass) -> Unit) {
+        workspaceBytes(frames) // Validate the same bounded input before allocation.
+        val data = contour(SampleCache(reader, frames, checkCancelled), frames, true, checkCancelled) { _, _, _ -> }
+        for (hop in data.frequency.indices) {
+            checkCancelled()
+            observation(hop * HOP_FRAMES, data.frequency[hop], data.confidence[hop], PitchBypass.entries[data.reasons[hop].toInt()])
+        }
+    }
+
+    private class Contour(val frequency: FloatArray, val confidence: FloatArray, val reasons: ByteArray, val channels: ByteArray)
+    private fun contour(source: SampleCache, frames: Int, enabled: Boolean, checkCancelled: () -> Unit,
+                        progress: (PitchCorrectionPhase, Int, Int) -> Unit): Contour {
+        val hops = frames / HOP_FRAMES + 1
+        val frequency = FloatArray(hops)
+        val confidence = FloatArray(hops)
+        val reasons = ByteArray(hops) { PitchBypass.EDGE.ordinal.toByte() }
+        val channels = ByteArray(hops)
+        val analyzer = Yin(source)
+        if (enabled) for (i in 0 until hops) {
+            checkCancelled()
+            val center = i * HOP_FRAMES
+            if (center >= EDGE && center < frames - EDGE) {
+                analyzer.analyze(center)
+                frequency[i] = analyzer.frequency.toFloat()
+                confidence[i] = analyzer.confidence.toFloat()
+                reasons[i] = analyzer.reason.ordinal.toByte()
+                channels[i] = analyzer.channel.toByte()
+            }
+            if (i % 10 == 0) progress(PitchCorrectionPhase.ANALYZE, minOf(center, frames), frames)
+        }
+        progress(PitchCorrectionPhase.ANALYZE, frames, frames)
+        // Require neighboring reliable periods. A jump/transient never borrows the previous note's correction.
+        for (i in 1 until hops - 1) if (frequency[i] > 0f) {
+            if (frequency[i - 1] == 0f || frequency[i + 1] == 0f ||
+                abs(12 * log2(frequency[i].toDouble() / frequency[i - 1])) > .8 ||
+                abs(12 * log2(frequency[i + 1].toDouble() / frequency[i])) > .8)
+                reasons[i] = PitchBypass.UNSTABLE.ordinal.toByte()
+        }
+        return Contour(frequency, confidence, reasons, channels)
     }
 
     private class SampleCache(val reader: PitchPcmReader, val frames: Int, val cancelled: () -> Unit) {

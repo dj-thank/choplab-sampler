@@ -30,7 +30,8 @@ data class VocalPracticeState(val startSeconds: String, val endSeconds: String, 
 /** Session-only preparation and SOURCE ownership. No editing, Undo, save or export side effects. */
 class VocalPracticeController(private val document: StateFlow<DocumentState>,
     private val availability: StateFlow<PracticeAvailability>, private val ports: VocalPracticePorts,
-    scope: CoroutineScope, start: Long, end: Long) {
+    scope: CoroutineScope, start: Long, end: Long,
+    private val target: com.choplab.core.PlaybackTarget.Arrangement = com.choplab.core.PlaybackTarget.Arrangement()) {
     private val owner = SupervisorJob(scope.coroutineContext[Job])
     private val jobs = CoroutineScope(scope.coroutineContext + owner)
     private val mutable = MutableStateFlow(VocalPracticeState((start / 48_000.0).toString(), (end / 48_000.0).toString()))
@@ -58,7 +59,7 @@ class VocalPracticeController(private val document: StateFlow<DocumentState>,
         val before = state.value
         val request = try {
             fun frame(text: String): Long = requireNotNull(text.toDoubleOrNull()).also { require(it.isFinite() && it in 0.0..1800.0) }.let { (it * 48_000).roundToLong() }
-            VocalPracticeRequest(frame(before.startSeconds), frame(before.endSeconds), before.speed)
+            VocalPracticeRequest(frame(before.startSeconds), frame(before.endSeconds), before.speed, target)
         } catch (_: IllegalArgumentException) { mutable.update { it.copy(problem = PracticeProblem.INVALID_RANGE) }; return false }
         val captured = document.value
         if (!mutable.compareAndSet(before, before.copy(phase = PracticePhase.PREPARING, problem = null, progress = null))) return false
