@@ -78,7 +78,9 @@ def extract_source(archive: Path, destination: Path) -> Path:
             source.extractall(destination, filter="data")
         allowed = {str(PurePosixPath(member.name)) for member in members}
         allowed.update(str(parent) for name in tuple(allowed) for parent in PurePosixPath(name).parents)
-        if any(str(path.relative_to(destination)) not in allowed for path in destination.rglob("*")):
+        # TAR member names use '/', even when the cached filesystem uses '\\'.
+        # Normalize the native Path representation, not literal filename bytes.
+        if any(path.relative_to(destination).as_posix() not in allowed for path in destination.rglob("*")):
             raise ValueError("Cached source contains entries outside its pinned archive")
         # Reusing a build directory must not silently turn a locally edited
         # header/source into a receipt claiming the pinned, unmodified source.

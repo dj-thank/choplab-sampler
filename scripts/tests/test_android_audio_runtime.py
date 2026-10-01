@@ -1,6 +1,5 @@
 import io
 import json
-import os
 from pathlib import Path
 import tarfile
 import tempfile
@@ -22,7 +21,7 @@ class AndroidAudioRuntimeTest(unittest.TestCase):
             build_directory = work / "android-audio"
             build.prepare_build_source(build_directory, source)
             self.assertTrue((build_directory / "src/configure").is_file())
-            self.assertEqual("../ffmpeg-7.1.1", os.readlink(build_directory / "src"))
+            self.assertEqual(Path("../ffmpeg-7.1.1"), (build_directory / "src").readlink())
             build.prepare_build_source(build_directory, source)
             (build_directory / "src").unlink()
             (build_directory / "src").symlink_to(work, target_is_directory=True)
@@ -53,6 +52,28 @@ class AndroidAudioRuntimeTest(unittest.TestCase):
                 output.addfile(entry, io.BytesIO(b"header"))
             with self.assertRaises((tarfile.FilterError, ValueError)):
                 build.extract_source(archive, root / "unsafe")
+
+    def test_cached_source_symlink_cannot_replace_a_file_even_with_identical_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "source.tar"
+            with tarfile.open(archive, "w") as output:
+                for name in ("source/include/public.h", "source/include/other.h"):
+                    entry = tarfile.TarInfo(name)
+                    entry.size = 6
+                    output.addfile(entry, io.BytesIO(b"header"))
+            source = build.extract_source(archive, root / "extracted")
+            public = source / "include/public.h"
+            outside = root / "outside.h"
+            outside.write_bytes(b"header")
+            for target, message in ((source / "include/other.h", "differs from its pinned archive"),
+                                    (outside, "path escapes its archive")):
+                with self.subTest(target=target.name):
+                    public.unlink()
+                    public.symlink_to(target)
+                    with self.assertRaisesRegex(ValueError, message):
+                        build.extract_source(archive, root / "extracted")
+                    self.assertEqual(b"header", target.read_bytes())
 
     def test_derivation_preserves_java_notices_and_other_abis_byte_for_byte(self):
         with tempfile.TemporaryDirectory() as temporary:
