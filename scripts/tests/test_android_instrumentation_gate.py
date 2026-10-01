@@ -43,7 +43,8 @@ class AndroidInstrumentationGateTests(unittest.TestCase):
         ):
             result = gate.run_gate(self.root)
         run.assert_called_once_with(
-            ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest"],
+            ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest",
+             "-Pandroid.testInstrumentationRunnerArguments.notClass=com.choplab.sampler.audio.AndroidNativeCodecTest"],
             cwd=self.root,
             check=False,
         )
@@ -54,6 +55,19 @@ class AndroidInstrumentationGateTests(unittest.TestCase):
         status, output, _ = self.run_gate()
         self.assertEqual(status, 0)
         self.assertEqual(json.loads(output)["tests"], 1)
+
+    def test_opt_in_codec_failure_if_discovered_is_still_a_failed_gate(self) -> None:
+        self.write_xml(
+            '<testsuite tests="1" failures="1" errors="0" skipped="0">'
+            '<testcase classname="com.choplab.sampler.audio.AndroidNativeCodecTest" name="packagedTools">'
+            '<failure>org.junit.AssumptionViolatedException: codec was not explicitly selected</failure>'
+            '</testcase></testsuite>'
+        )
+        status, output, errors = self.run_gate()
+        self.assertEqual(1, status)
+        self.assertEqual(1, json.loads(output)["failures"])
+        self.assertIn("FAILURE: com.choplab.sampler.audio.AndroidNativeCodecTest.packagedTools", errors)
+        self.assertIn("AssumptionViolatedException", errors)
 
     def test_xml_is_discovered_after_gradle_produces_it(self) -> None:
         def complete(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
