@@ -72,18 +72,53 @@ def load_pins() -> tuple[RuntimePin, ...]:
             paths.add(pin.apk_path)
         else:
             raise ValueError("Unknown Android runtime kind")
-    return pins
+    return pins + load_audio_derivation_pins(raw)
+
+
+def load_audio_derivation_pins(upstream: dict) -> tuple[RuntimePin, ...]:
+    """Only reviewed arm64 replacements; the original AAR/module pins stay intact."""
+    profile_file = PIN_FILE.parent.parent / "config/android-ffmpeg-audio.json"
+    if profile_file.stat().st_size > 64 * 1024:
+        raise ValueError("Android audio derivation profile exceeds its bound")
+    profile = json.loads(profile_file.read_text(encoding="utf-8"))
+    original = next(s for s in upstream["sources"] if s["coordinate"] == "io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    if profile.get("schema") != 1 or profile.get("upstream") != original or profile.get("ffmpeg", {}).get("version") != "7.1.1":
+        raise ValueError("Android audio derivation lost its original artifact identity")
+    rows = profile.get("derived", {}).get("members", [])
+    paths = {"jni/arm64-v8a/" + name for name in ("libffmpeg.so", "libffprobe.so", "libffmpeg.zip.so")}
+    if len(rows) != 3 or {r["path"] for r in rows} != paths:
+        raise ValueError("Unexpected Android audio derivation members")
+    result = []
+    for row in rows:
+        if not 0 < row["bytes"] <= 64 * 1024 * 1024 or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
+            raise ValueError("Invalid Android audio derived member identity")
+        if any(p["aar_member"] == row["path"] and p["size"] == row["bytes"] for p in upstream["members"]):
+            raise ValueError("Ambiguous Android runtime candidate size")
+        result.append(RuntimePin("choplab:ffmpeg-audio:7.1.1", row["path"], "lib/" + row["path"][4:],
+                                 "native_zip" if row["path"].endswith(".zip.so") else "native_elf", row["bytes"], row["sha256"]))
+    python = profile.get("pythonLinkage", {})
+    python_original = next(s for s in upstream["sources"] if s["coordinate"] == "io.github.junkfood02.youtubedl-android:library:0.18.1")
+    row = python.get("member", {})
+    if (python.get("upstream") != python_original or row.get("path") != "jni/arm64-v8a/libpython.zip.so"
+            or not 0 < row.get("bytes", 0) <= 64 * 1024 * 1024 or not re.fullmatch(r"[0-9a-f]{64}", row.get("sha256", ""))):
+        raise ValueError("Invalid Python linkage derivation identity")
+    if any(p["aar_member"] == row["path"] and p["size"] == row["bytes"] for p in upstream["members"]):
+        raise ValueError("Python linkage derivation must change the size-based cache version")
+    result.append(RuntimePin("choplab:python-linkage:0.18.1", row["path"], "lib/" + row["path"][4:],
+                             "native_zip", row["bytes"], row["sha256"]))
+    return tuple(result)
 
 
 def runtime_candidate(name: str, size: int, pins: tuple[RuntimePin, ...]) -> RuntimePin | None:
     """Pick a bounded candidate; admission still requires its full exact digest."""
     path = PurePosixPath(name)
     known_names = {PurePosixPath(p.apk_path).name for p in pins if p.apk_path}
-    for pin in pins:
-        if pin.apk_path == name:
-            if size != pin.size:
-                raise ValueError("Pinned Android runtime size mismatch")
-            return pin
+    matches = [pin for pin in pins if pin.apk_path == name]
+    if matches:
+        sized = [pin for pin in matches if size == pin.size]
+        if len(sized) != 1:
+            raise ValueError("Pinned Android runtime size mismatch")
+        return sized[0]
     if path.name in known_names:
         raise ValueError("Pinned Android runtime occurs outside its exact ABI/path")
     for pin in pins:

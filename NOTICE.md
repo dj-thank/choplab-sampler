@@ -19,7 +19,7 @@ DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
 | Family | Upstream and license information | Distribution handling |
 |---|---|---|
 | Kotlin、coroutines、serialization | [JetBrains Kotlin](https://github.com/JetBrains/kotlin)、[kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines)、[kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) / Apache-2.0 | 各ライセンスと著作権表示を保持 |
-| AndroidX、Jetpack Compose | [AndroidX](https://android.googlesource.com/platform/frameworks/support/) / Apache-2.0 | 解決されたAAR/JARのnoticeを保持 |
+| AndroidX、Jetpack Compose | [AndroidX](https://android.googlesource.com/platform/frameworks/support/) / Apache-2.0 | 解決されたAAR/JARのnoticeを保持。AndroidX Test runner 1.7.0は対応instrumentation APKだけの明示依存 |
 | Compose Multiplatform、Skiko | [Compose](https://github.com/JetBrains/compose-multiplatform)、[Skiko](https://github.com/JetBrains/skiko) / Apache-2.0 | Skiaなど内包ネイティブ部品のnoticeも保持 |
 | Java Native Access | [JNA](https://github.com/java-native-access/jna) / Apache-2.0 または LGPL-2.1-or-later | 選択した配布条件と同梱native noticeを保持 |
 | ONNX Runtime | [ONNX Runtime](https://github.com/microsoft/onnxruntime) / MIT | ThirdPartyNoticesも含め、Android/Windowsそれぞれのartifactを確認 |
@@ -33,6 +33,12 @@ DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
 | Four-part separation model | [StemSplitio/htdemucs-onnxの固定model card](https://huggingface.co/StemSplitio/htdemucs-onnx/blob/d54ed9eb60e258ea82131c6ee14578628816456a/README.md) / MIT、元[Demucs](https://github.com/facebookresearch/demucs/blob/main/LICENSE)のattribution | 単一HT-Demucs、commit `d54ed9eb60e258ea82131c6ee14578628816456a`、`htdemucs_fp16weights.onnx` 165,612,636 bytes、SHA-256 `d05c269d0178d2a72ad484b10b11dd370193fc923201c3b27a99f848745db70a`。明示download・全size/hash検証・既存cache保全。FT drums専用モデルとは別 |
 | Desktop Java runtime | [Eclipse Temurin](https://adoptium.net/)、[OpenJDK](https://openjdk.org/legal/) | GPL-2.0 with Classpath Exception等。runtime/legalの同梱表示を保持 |
 | Gradle Wrapper / build plugins | [Gradle](https://github.com/gradle/gradle)、[CycloneDX Gradle](https://github.com/CycloneDX/cyclonedx-gradle-plugin) | Wrapper・build用依存の各licenseを保持 |
+
+Androidの任意指定の音声runtime候補は、元のFFmpeg AAR 0.18.1を保持し、arm64のFFmpeg/FFprobeとその共有library ZIPの3 entryだけを置換します。FFmpegは同じ7.1.1の[公式source](https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz)からNDK r28c/API 29で再buildし、音声decoder/encoder、音声filter、container/parser/protocolとTLSを残します。不要な動画codec・描画・debug情報を除き、共有libraryの重複を避けます。libvorbis、Opus、LAME、GnuTLS等の外部libraryとPython側の共有依存は、hash固定した元AARのbytesを変更せず再利用します。Java、consumer rules、他ABIも元bytesのままです。
+
+この候補と組み合わせる Python linkage 派生は、同じ library AAR 0.18.1 の arm64 ZIP にある link 用 alias `usr/lib/liblzma.so` だけを除きます。Android system の同名 library を私有 cache が隠す問題への互換修正です。実行時 SONAME `liblzma.so.5`、元 XZ 5.8.1 ELF、Python `_lzma` を含む 1,006 entry は内容と mode を保持します。元 Python/FFmpeg の 252 ELF の DT_NEEDED を検査し、除去名への依存がないことを recipe が要求します。再梱包に伴う ZIP 圧縮形式と bytes の変更は `config/android-ffmpeg-audio.json` に固定し、元 AAR/source の identity、25 個の他 AAR entry、依存 metadata、各ライセンス・対応 source の提供条件を維持します。codec/TLS の削除や OS library の同梱はしません。
+
+元AAR・公式source・上流Termux recipeのcommit・対応する18組の公開header source・NDK・派生AAR/各native entryのbytes/SHA-256は `config/android-ffmpeg-audio.json`、再build手順は `scripts/build_android_audio_runtime.py` が正本です。生成receiptは依存closure、変更しないentry集合、configure内容を含みます。このFFmpeg buildは `--enable-gpl --enable-version3` を用い、GPLv3本文をnative ZIP内の `licenses/FFmpeg-COPYING.GPLv3` に保持します。外部libraryの個別license、元AARの対応sourceとTermux patch群、必要なbuild/install手順、配布物近傍のsource提供と利用者へのnotice配達は引き続き公開判定の対象です。hash一致やこの候補recipeだけで、それら全ての提供を完了したとは扱いません。
 
 GPL部品を組み合わせた配布物には、その組合せに適用されるGPL条件と対応するsource/build手順が必要です。
 ChopLab単体のMIT表示だけで、組合せ全体をMIT-onlyと扱いません。
