@@ -101,6 +101,9 @@ class EditorBackend private constructor(
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
     suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)
 
+    /** The existing PCM lease/cache budget is shared with the worker and all playing voices. */
+    fun pitchRenderer(): VocalPitchRenderer = VocalPitchRenderer(assets, pcm, assets.directory.parent.resolve("vocal-pitch"))
+
     suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange): com.choplab.core.analysis.SourceMusicResult =
         analyseSourceMusic(pcm, asset, range)
 

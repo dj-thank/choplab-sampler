@@ -41,6 +41,8 @@ import org.jetbrains.compose.resources.stringResource
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(Res.string.ce_lyrics_timing_hint, state.milliBpm / 1000f))
+                CEButton(stringResource(Res.string.pitch_title), { onAction(ContinuousEditorAction.OpenVocalPitch) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_PITCH), tag = "ce-pitch-open")
                 CELyricFollow(lyrics.lines, state, readout, refreshKey)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CEButton(stringResource(Res.string.ce_lyrics_play), { onAction(ContinuousEditorAction.PlaySong) }, Modifier.weight(1f),

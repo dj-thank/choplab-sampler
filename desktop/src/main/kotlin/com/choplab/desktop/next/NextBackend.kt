@@ -94,6 +94,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     fun practiceRenderer() = shared.practiceRenderer()
     suspend fun loadPeaks(asset: Asset, maximumBuckets: Int = 512): List<Float> = shared.loadPeaks(asset, maximumBuckets)
     suspend fun prepareDrumKit(kitId: String): List<Asset> = shared.prepareDrumKit(kitId)
+    fun pitchRenderer(): VocalPitchRenderer = shared.pitchRenderer()
     suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = shared.analyseSource(asset, range)
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
     suspend fun renderPerformance(pad: com.choplab.core.model.Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset =

@@ -13,6 +13,8 @@ sealed interface Intent {
     /** First BANK mix creates its explicit route and track together; later edits retain that identity. */
     data class SetBankMix(val bankId: Int, val track: Track) : Intent
     data class SetMasterMix(val settings: com.choplab.engine.MixSettings) : Intent
+    data class ApplyVocalPitch(val correction: VocalPitchCorrection, val rendered: Asset, val expectedClip: Clip) : Intent
+    data class SelectVocalPitch(val correctionId: String, val expectedClip: Clip, val original: Boolean) : Intent
     data class ImportAsset(val asset: Asset) : Intent
     data class SetSourceRange(val range: FrameRange, val gesture: String? = null) : Intent
     data class SetSourcePitch(val semitones: Double, val gesture: String? = null) : Intent
@@ -74,6 +76,32 @@ data class Reduction(val project: Project, val mutation: Mutation, val effects: 
 object Reducer {
     fun reduce(before: Project, intent: Intent): Reduction {
         val edited = when (intent) {
+            is Intent.ApplyVocalPitch -> {
+                val current = requireNotNull(before.clips.firstOrNull { it.id == intent.expectedClip.id })
+                require(current == intent.expectedClip && current.id == intent.correction.clipId) { "Pitch target changed" }
+                require(before.tracks.first { it.id == current.trackId }.kind == TrackKind.VOCAL)
+                require(intent.rendered.hash == intent.correction.renderedAssetHash)
+                val old = before.pitchCorrections.firstOrNull { it.clipId == current.id }
+                require(old == null || old.id == intent.correction.id)
+                require((current.assetHash == intent.correction.sourceAssetHash && current.range == intent.correction.sourceRange) ||
+                    (old != null && current.assetHash == old.renderedAssetHash && current.range == FrameRange(0, before.asset(old.renderedAssetHash).frames) &&
+                        old.sourceAssetHash == intent.correction.sourceAssetHash && old.sourceRange == intent.correction.sourceRange))
+                before.copy(assets = mergeAssets(before.assets, frozenListOf(intent.rendered)),
+                    clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = intent.rendered.hash, range = FrameRange(0, intent.rendered.frames)) else it }.frozen(),
+                    pitchCorrections = (before.pitchCorrections.filterNot { it.clipId == current.id } + intent.correction).frozen())
+            }
+            is Intent.SelectVocalPitch -> {
+                val correction = requireNotNull(before.pitchCorrections.firstOrNull { it.id == intent.correctionId })
+                val current = requireNotNull(before.clips.firstOrNull { it.id == correction.clipId })
+                require(current == intent.expectedClip) { "Pitch target changed" }
+                require((current.assetHash == correction.sourceAssetHash && current.range == correction.sourceRange) ||
+                    (current.assetHash == correction.renderedAssetHash && current.range == FrameRange(0, before.asset(correction.renderedAssetHash).frames))) {
+                    "Trimmed/replaced voice needs a new correction"
+                }
+                val hash = if (intent.original) correction.sourceAssetHash else correction.renderedAssetHash
+                val range = if (intent.original) correction.sourceRange else FrameRange(0, before.asset(hash).frames)
+                before.copy(clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = hash, range = range) else it }.frozen())
+            }
             is Intent.Rename -> before.copy(title = intent.title)
             is Intent.SetTempo -> before.copy(tempo = intent.tempo)
             is Intent.SetBank -> before.copy(banks = before.banks.map { if (it.id == intent.bank.id) intent.bank else it }.frozen())
@@ -302,6 +330,7 @@ object Reducer {
         project.clips.forEach { used += it.assetHash }
         project.takes.forEach { used += it.assetHash }
         project.vocalComps.forEach { used += it.renderedAssetHash }
+        project.pitchCorrections.forEach { used += it.sourceAssetHash; used += it.renderedAssetHash }
         project.assets.forEach { asset -> asset.derivedFrom?.let { used += it } }
         val kept = project.assets.filter { it.hash in used || it.role != AssetRole.RENDERED }
         return if (kept.size == project.assets.size) project else project.copy(assets = kept.frozen())

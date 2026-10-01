@@ -15,7 +15,7 @@ class MixerPersistenceTest {
             val before = requireNotNull(javaClass.getResourceAsStream("/schema$schema-empty.json")).use { it.readBytes() }
             val migrated = ProjectJson.decode(before)
             assertEquals(Project(), migrated)
-            assertEquals(13, migrated.schemaVersion)
+            assertEquals(ProjectLimits.SCHEMA, migrated.schemaVersion)
             assertTrue(migrated.banks.all { it.trackId == null })
         }
         val encoded = ProjectJson.encode(Project())
@@ -24,7 +24,7 @@ class MixerPersistenceTest {
             assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(JsonObject(root - field))) }
         }
         for (mutant in listOf(
-            encoded.toString(Charsets.UTF_8).replace("\"schemaVersion\":13", "\"schemaVersion\":12"),
+            encoded.toString(Charsets.UTF_8).replace("\"schemaVersion\":${ProjectLimits.SCHEMA}", "\"schemaVersion\":12"),
             encoded.toString(Charsets.UTF_8).replace("\"feedback\":0.25", "\"feedback\":1.0"),
             encoded.toString(Charsets.UTF_8).replace("\"ratio\":4.0", "\"ratio\":\"4\""),
             encoded.toString(Charsets.UTF_8).replace("\"trackId\":null", "\"trackId\":\"missing\""),
@@ -62,7 +62,7 @@ class MixerPersistenceTest {
             assertEquals(p.takes, restored.takes); assertEquals(p.lyricStructure, restored.lyricStructure)
             // A schema12 reader cannot silently accept and erase these persisted effects.
             val current = ProjectJson.encode(restored).toString(Charsets.UTF_8)
-            assertFailsWith<IllegalArgumentException> { ProjectJson.decode(current.replace("\"schemaVersion\":13", "\"schemaVersion\":12").toByteArray()) }
+            assertFailsWith<IllegalArgumentException> { ProjectJson.decode(current.replace("\"schemaVersion\":${ProjectLimits.SCHEMA}", "\"schemaVersion\":12").toByteArray()) }
         } finally { directory.toFile().deleteRecursively() }
     }
 }
