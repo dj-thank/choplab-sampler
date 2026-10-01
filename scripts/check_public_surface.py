@@ -195,6 +195,7 @@ SHA256_TEXT = re.compile(r"\A[0-9a-f]{64}\Z")
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
 APK_SIGNING_BLOCK_MAX_SIZE = 16 * 1024 * 1024
 APK_SIGNING_BLOCK_PAIR_LIMIT = 128
+APK_SIGNING_BLOCK_ALIGNMENT = 4096
 APK_SIGNATURE_SUFFIXES = {".dsa", ".ec", ".rsa"}
 APK_BINARY_MEMBER_SCAN_LIMIT = 32 * 1024 * 1024
 APK_BINARY_TOTAL_SCAN_LIMIT = 64 * 1024 * 1024
@@ -2483,27 +2484,52 @@ def has_valid_icu_data_header(content: bytes, file_size: int) -> bool:
 def read_valid_apk_signing_block_values(
     stream: object,
     *,
-    block_start: int,
+    local_records_end: int,
     central_directory_start: int,
 ) -> list[bytes] | None:
-    block_size = central_directory_start - block_start
-    if block_size < 32 or block_size > APK_SIGNING_BLOCK_MAX_SIZE:
+    # Structural admission only; release signature verification remains apksigner's job.
+    # https://source.android.com/docs/security/features/apksigning/v2
+    span = central_directory_start - local_records_end
+    if (
+        local_records_end < 0
+        or span < 32
+        or span > APK_SIGNING_BLOCK_MAX_SIZE + APK_SIGNING_BLOCK_ALIGNMENT - 1
+    ):
         return None
     original_position: int | None = None
     try:
         original_position = stream.tell()
-        stream.seek(block_start)
-        leading_size_bytes = stream.read(8)
         stream.seek(central_directory_start - 24)
         trailing = stream.read(24)
-        if len(leading_size_bytes) != 8 or len(trailing) != 24:
+        if len(trailing) != 24 or trailing[8:] != APK_SIGNING_BLOCK_MAGIC:
             return None
-        leading_size = int.from_bytes(leading_size_bytes, "little")
         trailing_size = int.from_bytes(trailing[:8], "little")
+        block_size = trailing_size + 8
+        if block_size < 32 or block_size > APK_SIGNING_BLOCK_MAX_SIZE:
+            return None
+        block_start = central_directory_start - block_size
+        padding_size = block_start - local_records_end
+        if padding_size < 0:
+            return None
+        if padding_size:
+            # apksig generateApkSigningBlockPadding adds only the zero bytes needed
+            # to reach the next 4096-byte boundary; generateApkSigningBlock aligns
+            # the block's size too. This does not admit arbitrary ZIP gaps.
+            # https://android.googlesource.com/platform/tools/apksig/+/d0dbdf6ed826a2b5ceff4476cfcd7d6ae27252ba/src/main/java/com/android/apksig/internal/apk/ApkSigningBlockUtils.java
+            if (
+                padding_size != -local_records_end % APK_SIGNING_BLOCK_ALIGNMENT
+                or block_size % APK_SIGNING_BLOCK_ALIGNMENT
+            ):
+                return None
+            stream.seek(local_records_end)
+            padding = stream.read(padding_size)
+            if len(padding) != padding_size or any(padding):
+                return None
+        stream.seek(block_start)
+        leading_size_bytes = stream.read(8)
         if (
-            trailing[8:] != APK_SIGNING_BLOCK_MAGIC
-            or leading_size != trailing_size
-            or leading_size + 8 != block_size
+            len(leading_size_bytes) != 8
+            or int.from_bytes(leading_size_bytes, "little") != trailing_size
         ):
             return None
 
@@ -3870,7 +3896,7 @@ def scan_zip(
                         pair_values = (
                             read_valid_apk_signing_block_values(
                                 stream,
-                                block_start=expected_offset,
+                                local_records_end=expected_offset,
                                 central_directory_start=archive.start_dir,
                             )
                             if apk_archive and stream is not None

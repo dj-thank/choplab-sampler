@@ -1606,6 +1606,102 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             token_findings,
         )
 
+    @staticmethod
+    def aligned_apk_fixture(
+        padding_size: int = 269,
+        pairs: tuple[tuple[int, bytes], ...] = (
+            (0x7109871A, b"synthetic-v2-value"),
+            (0xF05368C0, b"synthetic-v3-value"),
+        ),
+        *,
+        align_block: bool = True,
+    ) -> tuple[bytearray, int, int, int]:
+        """SDK-shaped public-content fixture; no cryptographic signing claim."""
+        base = BytesIO()
+        with zipfile.ZipFile(base, "w", zipfile.ZIP_STORED) as archive:
+            archive.writestr("notes.txt", b"a" * (8192 - padding_size - 39))
+        data = base.getvalue()
+        with zipfile.ZipFile(BytesIO(data)) as archive:
+            local_end = archive.start_dir
+        encoded = b"".join(struct.pack("<QI", len(value) + 4, ident) + value for ident, value in pairs)
+        if align_block:
+            padding = -(32 + len(encoded)) % 4096
+            if padding:
+                if padding < 12:
+                    padding += 4096
+                encoded += struct.pack("<QI", padding - 8, 0x42726577) + bytes(padding - 12)
+        size = len(encoded) + 24
+        block = struct.pack("<Q", size) + encoded + struct.pack("<Q", size) + b"APK Sig Block 42"
+        gap = bytes(padding_size)
+        result = bytearray(data[:local_end] + gap + block + data[local_end:])
+        central_start = local_end + len(gap) + len(block)
+        eocd = len(result) - 22
+        struct.pack_into("<L", result, eocd + 16, central_start)
+        return result, local_end, local_end + len(gap), central_start
+
+    def test_apk_content_scan_accepts_only_sdk_alignment_and_keeps_zip_policy(self) -> None:
+        with TemporaryDirectory() as directory:
+            apk = Path(directory) / "aligned.apk"
+            ordinary_zip = Path(directory) / "ordinary.zip"
+            for gap in (0, 1, 269, 2896, 4095):
+                with self.subTest(gap=gap):
+                    data, local_end, block_start, central_start = self.aligned_apk_fixture(gap)
+                    self.assertEqual(gap, block_start - local_end)
+                    self.assertEqual(0, block_start % 4096)
+                    self.assertEqual(0, (central_start - block_start) % 4096)
+                    apk.write_bytes(data)
+                    self.assertEqual([], scan_zip(apk))
+                    ordinary_zip.write_bytes(data)
+                    self.assertTrue(any("unclaimed bytes" in f for f in scan_zip(ordinary_zip)))
+
+    def test_apk_content_scan_rejects_invalid_alignment_and_signing_block_bounds(self) -> None:
+        data, local_end, block_start, central_start = self.aligned_apk_fixture()
+        damaged = {}
+        for name, offset, value in (
+            ("nonzero-gap", local_end, b"x"),
+            ("wrong-magic", central_start - 1, b"x"),
+            ("size-mismatch", block_start, struct.pack("<Q", 4095)),
+            ("oversized-block", central_start - 24, struct.pack("<Q", 16 * 1024 * 1024)),
+            ("overlaps-local-record", central_start - 24, struct.pack("<Q", central_start - local_end)),
+            ("short-pair", block_start + 8, struct.pack("<Q", 3)),
+            ("overrunning-pair", block_start + 8, struct.pack("<Q", 4096)),
+        ):
+            candidate = bytearray(data)
+            candidate[offset:offset + len(value)] = value
+            damaged[name] = candidate
+        for extra in (-1, 1, 4096):
+            candidate = bytearray(data[:local_end] + bytes(block_start - local_end + extra) + data[block_start:])
+            struct.pack_into("<L", candidate, len(candidate) - 22 + 16, central_start + extra)
+            damaged[f"wrong-gap-length-{extra}"] = candidate
+        damaged["unaligned-block-size"] = self.aligned_apk_fixture(align_block=False)[0]
+        damaged["too-many-pairs"] = self.aligned_apk_fixture(pairs=tuple((i, b"x") for i in range(129)))[0]
+        with TemporaryDirectory() as directory:
+            apk = Path(directory) / "malformed.apk"
+            for name, candidate in damaged.items():
+                with self.subTest(name=name):
+                    apk.write_bytes(candidate)
+                    self.assertTrue(any("unclaimed bytes" in f for f in scan_zip(apk)))
+
+    def test_aligned_apk_signing_values_remain_fully_scanned_including_unknown_ids(self) -> None:
+        token = b"github_pat_" + b"p" * 24
+        nested = BytesIO()
+        with zipfile.ZipFile(nested, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("notes.txt", token)
+        private_der = bytes.fromhex("3015020100300d06092a864886f70d0101010500040178")
+        with TemporaryDirectory() as directory:
+            apk = Path(directory) / "aligned-values.apk"
+            for ident, value, finding in (
+                (0x7109871A, token, "secret-shaped content"),
+                (0xF05368C0, private_der, "DER signing material (private-key)"),
+                (0x12345678, nested.getvalue(), "secret-shaped content"),
+                (0x42726577, token, "secret-shaped content"),
+            ):
+                with self.subTest(ident=hex(ident)):
+                    data = self.aligned_apk_fixture(pairs=((ident, value),))[0]
+                    apk.write_bytes(data)
+                    findings = scan_zip(apk)
+                    self.assertTrue(any("APK signing-block pair" in f and finding in f for f in findings), findings)
+
     def test_apk_content_scan_reads_secret_inside_dex_binary(self) -> None:
         token = b"github_pat_" + b"x" * 24
         with TemporaryDirectory() as directory:
