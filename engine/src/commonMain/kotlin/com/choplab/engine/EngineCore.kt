@@ -126,6 +126,16 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     /**
+     * Worker only, before an arrangement export starts. Only this track's stem is requested;
+     * the master and other stems are unspecified. All clip reads, missing-PCM checks, scheduling
+     * and graph activity remain unchanged. Monitor, pattern and common-return exports stay full graph.
+     */
+    fun selectTrackStemForExport(bus: Int) {
+        require(config.outputMode == EngineOutputMode.EXPORT && frame == 0L && program.arrangement != null)
+        musicMixer.selectTrackStemForExport(bus)
+    }
+
+    /**
      * Export owner only, before render. Resolve this frame's commands/notes, then stop preparation at the
      * next event. At most 48 voices and 32 clips need pages; no speculative full-asset or full-pattern load.
      */

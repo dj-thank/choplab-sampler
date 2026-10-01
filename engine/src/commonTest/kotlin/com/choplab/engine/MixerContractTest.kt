@@ -4,6 +4,22 @@ import kotlin.math.*
 import kotlin.test.*
 
 class MixerContractTest {
+    @Test fun trackStemSelectionCannotPartiallyRenderAMonitorPatternReturnOrRunningEngine() {
+        val pcm = PcmAsset.fromMono(floatArrayOf(.25f, -.125f))
+        val program = EngineProgram(arrangement = Arrangement(listOf(ArrangementClip("clip", pcm, 0))))
+        val monitor = EngineCore(program)
+        val pattern = EngineCore(EngineProgram(), EngineConfig(outputMode = EngineOutputMode.EXPORT))
+        val export = EngineCore(program, EngineConfig(outputMode = EngineOutputMode.EXPORT))
+        try {
+            assertFailsWith<IllegalArgumentException> { monitor.selectTrackStemForExport(0) }
+            assertFailsWith<IllegalArgumentException> { pattern.selectTrackStemForExport(0) }
+            assertFailsWith<IllegalArgumentException> { export.selectTrackStemForExport(MixerProgram.DELAY_RETURN) }
+            export.selectTrackStemForExport(0)
+            export.render(FloatArray(2), stemOutput = FloatArray(MixerProgram.STEM_COUNT * 2))
+            assertFailsWith<IllegalArgumentException> { export.selectTrackStemForExport(1) }
+        } finally { monitor.close(); pattern.close(); export.close() }
+    }
+
     private fun sample(dsp: MixerDsp, left: Double, right: Double, input: Boolean = true) {
         dsp.beginFrame()
         if (input) dsp.add(0, left, right)
