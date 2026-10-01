@@ -72,6 +72,8 @@ Mac の隔離 Python 3.14 環境に Meson 1.9.0、Ninja 1.13.0 と既存の pkg-
 
 Windows package へは `-PchoplabWindowsAudioRuntime=<展開した候補 directory>` を明示して渡します。候補の全 file set/hash/source/notice を検証し、従来の generated tools と別 directory に stage。既定の Gyan tools と Mac の標準 model 同梱経路は維持します。採用は同一 combined NEXT app-image の実 Windows codec/TLS/通常終了再開、全 archive 検査と CompressionLevelOptimal の ZIP 実測後に判断します。unsigned tools の cross build や旧 app-image への容量 projection を正式配布、署名成功、最終目標達成の証拠へ読み替えません。rollback は opt-in property を外して元の tools に戻すことと本変更の revert です。
 
+Windows native候補は `PRIVATE_UNSIGNED` です。新規展開した配布物がWindowsのアプリケーション制御に拒否された場合は、実パッケージ受入を `HOLD` とし、署名・OS承認を満たした対象で同じ受入をやり直します。既存の許可pathへの移動や安全設定の無効化で成功へ置き換えません。native単体・旧appへのoverlayのLOCAL結果と、新規ZIPからのpackage受入は分けて記録します。
+
 Windowsへ同じrevisionと候補ZIPを渡し、次を実行します。展開はZIP全体と内部file集合・hashをrepositoryの固定値へ照合し、新しいdirectoryだけへ確定します。受領したJSONの自己申告hashだけでは許可しません。
 
 ```powershell
