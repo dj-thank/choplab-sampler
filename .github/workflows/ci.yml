@@ -96,6 +96,10 @@ jobs:
           path: |
             engine/build/test-results/desktopTest/*.xml
             engine/build/reports/tests/desktopTest/**
+            core/build/test-results/desktopTest/*.xml
+            core/build/reports/tests/desktopTest/**
+            jvm/build/test-results/test/*.xml
+            jvm/build/reports/tests/test/**
           retention-days: 7
 
       - name: Build release APK without publishing
@@ -296,6 +300,10 @@ jobs:
           path: |
             engine/build/test-results/desktopTest/*.xml
             engine/build/reports/tests/desktopTest/**
+            core/build/test-results/desktopTest/*.xml
+            core/build/reports/tests/desktopTest/**
+            jvm/build/test-results/test/*.xml
+            jvm/build/reports/tests/test/**
             desktop/build/test-results/test/*.xml
             desktop/build/reports/tests/test/**
             ui/build/test-results/desktopTest/*.xml
