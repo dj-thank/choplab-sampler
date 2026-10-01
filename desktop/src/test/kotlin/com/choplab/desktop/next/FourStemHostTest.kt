@@ -18,6 +18,7 @@ import com.choplab.ui.separation.*
 import com.choplab.ui.source.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import java.io.ByteArrayOutputStream
 import java.nio.FloatBuffer
 import java.nio.file.Files
@@ -55,7 +56,7 @@ class FourStemHostTest {
             assertNull(f.presenter.onlineSource.value)
             assertEquals(1, onlineCloses.get())
             val editor = assertNotNull(f.presenter.fourStems.value)
-            assertTrue(editor.start()); withTimeout(10_000) { native.entered.await() }
+            f.startWhenEditable(editor, "switch-source-tools") { native.entered.await() }
             assertTrue(withTimeout(1_000) { f.presenter.dispatch(ContinuousEditorAction.ImportOnline) })
             assertNull(f.presenter.fourStems.value)
             assertEquals(FourStemPhase.CLOSED, editor.state.value.phase)
@@ -141,7 +142,7 @@ class FourStemHostTest {
                 val before = f.backend.studio.document.value
                 assertTrue(withTimeout(1000) { f.presenter.dispatch(ContinuousEditorAction.OpenFourStems) })
                 val editor = assertNotNull(f.presenter.fourStems.value)
-                assertTrue(editor.start()); withTimeout(10000) { native.entered.await() }
+                f.startWhenEditable(editor, "ending=$ending") { native.entered.await() }
                 val retained = PcmMemoryBudget.shared.statistics().usedBytes
                 assertTrue(retained >= FourStemSpec.PIPELINE_PCM_BYTES + FourStemSpec.NATIVE_IO_PCM_BYTES)
                 withTimeout(1500) { when (ending) {
@@ -179,7 +180,7 @@ class FourStemHostTest {
             f.ready()
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenFourStems))
             val editor = assertNotNull(f.presenter.fourStems.value)
-            assertTrue(editor.start()); until { editor.state.value.phase == FourStemPhase.READY }
+            f.startWhenEditable(editor, "before-permission") { editor.state.first { it.phase == FourStemPhase.READY } }
             val before = f.backend.studio.document.value
             val recording = async { f.presenter.dispatch(ContinuousEditorAction.RecordVoice) }
             permissionEntered.await()
@@ -194,11 +195,50 @@ class FourStemHostTest {
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.CloseFourStems))
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenFourStems))
             val next = assertNotNull(f.presenter.fourStems.value)
-            assertTrue(next.start()); until { next.state.value.phase == FourStemPhase.READY }
+            f.startWhenEditable(next, "after-permission") { next.state.first { it.phase == FourStemPhase.READY } }
             assertTrue(f.backend.studio.dispatch(Action.Edit(Intent.Rename("Changed"))).accepted)
             assertFalse(next.apply()); assertEquals(SeparationProblem.STALE_DOCUMENT, next.state.value.problem)
             assertTrue(f.backend.studio.document.value.project.clips.isEmpty())
         } finally { permission.complete(Unit); f.close() }
+    }
+
+    @Test fun startWaitsForTheDialogAvailabilityEvenWhenTheHostIsAlreadyReady() = runBlocking<Unit> {
+        val f = Fixture()
+        val availability = MutableStateFlow(FourStemAvailability.BUSY)
+        val entered = CompletableDeferred<Unit>()
+        val calls = AtomicInteger()
+        var editor: FourStemController? = null
+        try {
+            f.ready()
+            val before = f.backend.studio.document.value
+            val controlled = FourStemController(f.backend.studio.document, availability, object : FourStemPort {
+                override suspend fun prepare(source: Asset, allowModelDownload: Boolean,
+                                             progress: (SeparationProgress) -> Unit): SeparationResult<PreparedFourStems> {
+                    calls.incrementAndGet(); entered.complete(Unit)
+                    return separationFailure(SeparationProblem.MODEL_MISSING)
+                }
+                override fun cancel() {}
+                override fun close() {}
+            }, object : FourStemActions {
+                override suspend fun prepareAllowed(expectedRevision: Long) = SeparationResult.Success(Unit)
+                override suspend fun apply(intent: Intent.SetArrangement, expectedRevision: Long) = error("No edit expected")
+            }, f.scope)
+            editor = controlled
+            assertTrue(f.presenter.state.value.permits(ContinuousCapability.FOUR_STEMS))
+            assertFalse(controlled.state.value.editable)
+            supervisorScope {
+                val starting = async(start = CoroutineStart.UNDISPATCHED) {
+                    f.startWhenEditable(controlled, "controlled-delayed-availability") { entered.await() }
+                }
+                // The separate dialog mirror can still be BUSY after the host capability becomes ready.
+                assertFalse(starting.isCompleted, "The single start must wait for the actual dialog availability")
+                assertEquals(0, calls.get())
+                availability.value = FourStemAvailability.EDITABLE
+                starting.await()
+            }
+            assertEquals(1, calls.get())
+            assertEquals(before, f.backend.studio.document.value)
+        } finally { editor?.close(); f.close() }
     }
 
     private class Fixture(val native: GainFactory = GainFactory(), wrap: (DesktopEditorPorts) -> ContinuousEditorPorts = { it }) {
@@ -222,6 +262,19 @@ class FourStemHostTest {
             assertTrue(backend.studio.dispatch(Action.New(Project(assets = frozenListOf(original), source = Source(original.hash, FrameRange(0, original.frames)),
                 lyrics = frozenListOf(LyricLine("line", "Keep me", 0, 3840))))).accepted)
             withTimeout(10000) { while (!presenter.state.value.permits(ContinuousCapability.FOUR_STEMS) || !presenter.state.value.permits(ContinuousCapability.RECORD_VOICE)) delay(5) }
+        }
+        suspend fun startWhenEditable(editor: FourStemController, context: String, started: suspend () -> Unit) {
+            fun diagnostic() = "$context: phase=${editor.state.value.phase}, availability=${editor.state.value.availability}, " +
+                "problem=${editor.state.value.problem}, revision=${backend.studio.document.value.revision}, " +
+                "work=${backend.studio.work.value}, status=${presenter.state.value.status}, blocked=${presenter.state.value.bankPadBlocked}"
+            // Keep the existing 10-second start-to-native/READY deadline, including dialog readiness.
+            val completed = withTimeoutOrNull(10_000) {
+                editor.state.first { it.editable }
+                assertTrue(editor.start(), "Start refused; ${diagnostic()}")
+                started()
+                true
+            }
+            assertEquals(true, completed, "Start did not become ready and enter its worker; ${diagnostic()}")
         }
         private var closed = false
         suspend fun shutdown() { if (!closed) { presenter.close(); real.close(); backend.shutdown(); scope.cancel(); closed = true } }
