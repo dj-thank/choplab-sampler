@@ -1,0 +1,34 @@
+<resources>
+    <string name="pitch_title">声のピッチ補正</string>
+    <string name="pitch_boundary">単音の声を対象にします。設定と試聴では曲を変えません。無声・曖昧な区間は原音を保ちます。</string>
+    <string name="pitch_clip">声 %1$d · %2$s</string>
+    <string name="pitch_key">キー</string>
+    <string name="pitch_chromatic">クロマチック（全12音）</string>
+    <string name="pitch_major">メジャー</string>
+    <string name="pitch_minor">ナチュラルマイナー</string>
+    <string name="pitch_amount">補正量（0–100%）</string>
+    <string name="pitch_retune">追従時間（0–500 ms）</string>
+    <string name="pitch_vibrato">ビブラート保持（0–100%）</string>
+    <string name="pitch_prepare">補正音を準備</string>
+    <string name="pitch_analyzing">音程を解析中 %1$d%</string>
+    <string name="pitch_rendering">補正音を作成中 %1$d%</string>
+    <string name="pitch_ready">補正区間 %1$d%。原音と聴き比べてから適用してください。</string>
+    <string name="pitch_unchanged">補正区間 %1$d%。原音のままです。</string>
+    <string name="pitch_preview_original">A · 原音を試聴</string>
+    <string name="pitch_preview_corrected">B · 補正音を試聴</string>
+    <string name="pitch_apply">曲に適用（1 Undo）</string>
+    <string name="pitch_saved">保存した A/B の選択（1 Undo）</string>
+    <string name="pitch_use_original">曲で原音を使う</string>
+    <string name="pitch_use_corrected">曲で補正音を使う</string>
+    <string name="pitch_applied">曲に適用しました。Undoで戻せます。</string>
+    <string name="pitch_no_voice">曲に配置した声を選んでください。</string>
+    <string name="pitch_invalid">数値と範囲を確認してください。</string>
+    <string name="pitch_stale">曲が変更されました。現在の曲を読み直してください。</string>
+    <string name="pitch_busy">処理中です。完了後にもう一度操作してください。</string>
+    <string name="pitch_recording">録音中はピッチ補正を変更できません。</string>
+    <string name="pitch_limit">メモリまたは保存容量の上限です。原音は保持しています。</string>
+    <string name="pitch_preview_failed">試聴を開始できません。出力と他の試聴を確認してください。</string>
+    <string name="pitch_failed">補正を完了できませんでした。原音と曲は保持しています。</string>
+    <string name="pitch_reload">現在の曲を読み直す</string>
+    <string name="pitch_cancel">処理・試聴を取り消す</string>
+</resources>

@@ -61,6 +61,7 @@ import kotlin.math.roundToLong
     vocalPunch: com.choplab.ui.vocal.VocalPunchController? = null,
     quickStart: QuickStartController? = null,
     vocalPractice: com.choplab.ui.vocal.VocalPracticeController? = null,
+    vocalPitch: com.choplab.ui.vocal.VocalPitchController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -114,6 +115,7 @@ import kotlin.math.roundToLong
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         vocalPractice?.let { com.choplab.ui.vocal.VocalPracticeDialog(it) { onAction(ContinuousEditorAction.CloseVocalPractice) } }
+        vocalPitch?.let { com.choplab.ui.vocal.CEPitchDialog(it, onAction) }
         stepPatterns?.let { CEStepPatternsDialog(it, onAction) }
         vocalTakes?.let { CEVocalTakeDialog(it, onAction) }
         vocalPunch?.let { CEVocalPunchDialog(it, onAction) }

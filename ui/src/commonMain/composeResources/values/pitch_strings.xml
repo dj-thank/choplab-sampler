@@ -1,0 +1,34 @@
+<resources>
+    <string name="pitch_title">Voice pitch correction</string>
+    <string name="pitch_boundary">For one voice at a time. Settings and audition leave the song unchanged. Unvoiced or uncertain spans keep the original.</string>
+    <string name="pitch_clip">Voice %1$d · %2$s</string>
+    <string name="pitch_key">Key</string>
+    <string name="pitch_chromatic">Chromatic (all 12 notes)</string>
+    <string name="pitch_major">Major</string>
+    <string name="pitch_minor">Natural minor</string>
+    <string name="pitch_amount">Correction amount (0–100%)</string>
+    <string name="pitch_retune">Retune time (0–500 ms)</string>
+    <string name="pitch_vibrato">Vibrato retention (0–100%)</string>
+    <string name="pitch_prepare">Prepare corrected voice</string>
+    <string name="pitch_analyzing">Analyzing pitch %1$d%</string>
+    <string name="pitch_rendering">Rendering correction %1$d%</string>
+    <string name="pitch_ready">Corrected %1$d%. Compare with the original before applying.</string>
+    <string name="pitch_unchanged">Corrected %1$d%. The original is unchanged.</string>
+    <string name="pitch_preview_original">A · Hear original</string>
+    <string name="pitch_preview_corrected">B · Hear correction</string>
+    <string name="pitch_apply">Apply to song (1 Undo)</string>
+    <string name="pitch_saved">Saved A/B selection (1 Undo)</string>
+    <string name="pitch_use_original">Use original in song</string>
+    <string name="pitch_use_corrected">Use correction in song</string>
+    <string name="pitch_applied">Applied to the song. Undo restores the previous sound.</string>
+    <string name="pitch_no_voice">Select a voice placed in the song.</string>
+    <string name="pitch_invalid">Check the numeric values and ranges.</string>
+    <string name="pitch_stale">The song changed. Reload the current song.</string>
+    <string name="pitch_busy">Another operation is running. Try again after it finishes.</string>
+    <string name="pitch_recording">Pitch correction cannot change during recording.</string>
+    <string name="pitch_limit">Memory or storage limit reached. The original is retained.</string>
+    <string name="pitch_preview_failed">Audition could not start. Check audio output and other previews.</string>
+    <string name="pitch_failed">Correction could not finish. The original and song are retained.</string>
+    <string name="pitch_reload">Reload current song</string>
+    <string name="pitch_cancel">Cancel processing and audition</string>
+</resources>

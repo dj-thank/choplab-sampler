@@ -17,8 +17,7 @@ import com.choplab.jvm.separation.*
 import com.choplab.ui.separation.FourStemFactory
 import com.choplab.sampler.R
 import com.choplab.ui.*
-import com.choplab.ui.vocal.VocalPracticePort
-import com.choplab.jvm.ai.SourceVocalPreview
+import com.choplab.ui.vocal.*
 import com.choplab.ui.ai.LyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
@@ -52,6 +51,7 @@ class NextSession private constructor(
     private val hasMicrophone = context.packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)
     private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
     private val speechPreview = SourceVocalPreview(backend, scope)
+    private val pitchRenderer = backend.pitchRenderer()
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
     private val guideStore = FileQuickStartStore(backend.assets.directory.parent.resolve("ui"))
     val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
@@ -67,6 +67,8 @@ class NextSession private constructor(
     suspend fun stopSound() {
         presenter.cancelFourStemPreparation()
         presenter.stopVocalPractice()
+        presenter.vocalPitch.value?.dispatch(PitchAction.Stop)
+        speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.PITCH)
         speechPreview.stop()
         backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
@@ -89,7 +91,10 @@ class NextSession private constructor(
         // Closing the presenter keeps a take still recording; anything left after that is dropped.
         try { withContext(NonCancellable) { presenter.close() } }
         finally {
-            withContext(NonCancellable) { try { speechPreview.close(); voice.close() } finally { backend.shutdown(flush = !closedWithoutAutosave) } }
+            withContext(NonCancellable) {
+                try { try { speechPreview.close() } finally { voice.close() } }
+                finally { backend.shutdown(flush = !closedWithoutAutosave) }
+            }
             scope.cancel()
         }
     }
@@ -99,6 +104,16 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val vocalPitch = object : VocalPitchHost {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft,
+                progress: (com.choplab.engine.PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch {
+                val result = pitchRenderer.render(project, draft, if (Locale.getDefault().language == "ja") "声のピッチ補正" else "Voice pitch correction", progress)
+                return PreparedVocalPitch((result as? VocalPitchRenderResult.Rendered)?.asset, result.report)
+            }
+            override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft) =
+                pitchRenderer.original(project, draft, if (Locale.getDefault().language == "ja") "原音の試聴" else "Original audition")
+        }
         override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, voice, microphone::request)
         override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
             override val preview = speechPreview
