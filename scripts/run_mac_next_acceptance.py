@@ -71,6 +71,8 @@ def verify(app, java_home, manifest_path=None):
     for key in ('JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS', 'LOCALAPPDATA'):
         environment.pop(key, None)
     environment['PATH'] = '/usr/bin:/bin'
+    # These raw packaged-Java fixtures intentionally bypass the product launcher.
+    environment['ORT_DISABLE_TELEMETRY'] = '1'
     with tempfile.TemporaryDirectory(prefix='choplab-next-acceptance-') as temporary:
         directory = Path(temporary)
         result = run(java, '-cp', libs / '*', 'com.choplab.desktop.next.NextSelfTest',

@@ -1,6 +1,7 @@
 package com.choplab.desktop.separation
 
 import com.choplab.desktop.source.DesktopAudioDecoder
+import com.choplab.desktop.prepareDesktopOnnxRuntime
 import com.choplab.sampler.separation.DrumSeparationService
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference
  * `./gradlew :desktop:separateDrums -PseparateInput=song.wav -PseparateOutput=drums.wav`.
  */
 fun main(args: Array<String>) {
+    prepareDesktopOnnxRuntime()
     val parsed = mutableMapOf<String, String>()
     var index = 0
     while (index < args.size - 1) {
