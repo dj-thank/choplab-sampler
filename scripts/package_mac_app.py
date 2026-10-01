@@ -139,6 +139,9 @@ def build(java_home, tools, signed=False, linked=False):
         plist['CFBundleDisplayName'] = display_name
         plist['CFBundleShortVersionString'] = version
         plist['CFBundleVersion'] = build_number
+        # Finder/LaunchServices supplies this before JVM startup. Direct launch is protected
+        # by the desktop entry point's native setenv before it loads any ORT classes.
+        plist['LSEnvironment'] = dict(plist.get('LSEnvironment', {}), ORT_DISABLE_TELEMETRY='1')
         minimum_os = minimum_system_version(app)
         plist['LSMinimumSystemVersion'] = minimum_os
         with plist_path.open('wb') as stream:

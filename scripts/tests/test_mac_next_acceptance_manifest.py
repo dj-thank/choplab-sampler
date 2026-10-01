@@ -1,13 +1,26 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from scripts.run_mac_next_acceptance import verify_package
+from scripts.run_mac_next_acceptance import verify, verify_package
 
 
 class MacNextAcceptanceManifestTest(unittest.TestCase):
+    def test_raw_java_fixture_disables_telemetry_before_starting_its_process(self):
+        with patch('scripts.run_mac_next_acceptance.verify_package', return_value={}), \
+                patch('scripts.run_mac_next_acceptance.run', side_effect=RuntimeError('first fixture')) as launch, \
+                patch.dict(os.environ, {'ORT_DISABLE_TELEMETRY': '0', 'JAVA_TOOL_OPTIONS': '-Dinjected=true'}):
+            with self.assertRaisesRegex(RuntimeError, 'first fixture'):
+                verify(Path('ChopLab NEXT.app'), Path('jdk'))
+            environment = launch.call_args.kwargs['environment']
+            self.assertEqual('1', environment['ORT_DISABLE_TELEMETRY'])
+            self.assertNotIn('JAVA_TOOL_OPTIONS', environment)
+            self.assertEqual('/usr/bin:/bin', environment['PATH'])
+            self.assertIn('com.choplab.desktop.next.NextSelfTest', launch.call_args.args)
+
     def fixture(self, root, manifest_path):
         app = root / 'ChopLab NEXT.app'
         app.mkdir()

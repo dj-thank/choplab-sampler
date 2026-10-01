@@ -37,7 +37,8 @@ class OnnxFourStemInference(model: Path, private val memory: PcmMemoryBudget = P
         available.refusal()?.let { throw SeparationException(it) }
         FourStemModelStore.verify(model, check)
         check()
-        environment = OrtEnvironment.getEnvironment()
+        // Hosts disable non-Windows 1DS before native initialization; the API also disables Windows ETW.
+        environment = OrtEnvironment.getEnvironment().also { it.setTelemetry(false) }
         val opened = OrtSession.SessionOptions().use { options ->
             options.setIntraOpNumThreads(1); options.setInterOpNumThreads(1)
             options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT)

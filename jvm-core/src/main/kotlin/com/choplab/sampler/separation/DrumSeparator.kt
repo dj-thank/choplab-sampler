@@ -136,7 +136,8 @@ class OnnxDrumChunkInference(
     /** Mobile: skip graph optimization and memory arenas so one segment peaks near 1 GB instead of 4.7 GB. */
     lowMemory: Boolean = false,
 ) : ChunkInference, AutoCloseable {
-    private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
+    // Hosts disable non-Windows 1DS before native initialization; the API also disables Windows ETW.
+    private val env: OrtEnvironment = OrtEnvironment.getEnvironment().also { it.setTelemetry(false) }
     private val session: OrtSession
 
     init {
