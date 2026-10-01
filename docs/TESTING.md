@@ -87,7 +87,7 @@ py -3 -m venv work/windows-acceptance-python
 
 `acceptance.json` は check ごとに scope、PASS/FAIL/NOT_RUN、revision、ZIP hash と所要時間を残し、全体の `COMPLETED` は選択した手順の終了だけを示します。最終全機能通し・署名済み正式配布・provider・実音・Human GO へ昇格させません。ログと合成素材を含む run directory は私有の readback 用に保持し、公開前に対象を選んで既存 scanner を通します。既存版の installer は別の `scripts/test-install-windows-app.ps1` で隔離して確認し、この Preview harness から既存アプリを置換しません。
 
-全制作の入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は起点main `99f87a37` では未導入です。この配布変更は制作実装を取り込まず、helperが全6入口の一意なclassを確認してから実行します。欠けていれば `self-test-entrypoints=FAIL`、各制作試験は `NOT_RUN` で停止します。rootは必要な制作sourceを統合して同じZIPを作り直した後に、全制作を含む手動workflowを実行します。
+全制作の入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は確認したmain `1cd9120b` では未導入です。この配布変更は制作実装を取り込まず、helperが全6入口の一意なclassを確認してから実行します。欠けていれば `self-test-entrypoints=FAIL`、各制作試験は `NOT_RUN` で停止します。rootは必要な制作sourceを統合して同じZIPを作り直した後に、全制作を含む手動workflowを実行します。
 
 ## 必須の振る舞い
 
