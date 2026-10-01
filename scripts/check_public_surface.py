@@ -2905,6 +2905,11 @@ def scan_zip(
 
             for info in entries:
                 name = info.filename
+                if info.orig_filename != name:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: ZIP filename "
+                        "normalization is not allowed"
+                    )
                 if "\\" in name:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: Windows path "

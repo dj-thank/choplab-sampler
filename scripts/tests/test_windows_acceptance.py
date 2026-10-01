@@ -37,7 +37,14 @@ class WindowsAcceptanceTest(unittest.TestCase):
             members.append(('ChopLab Preview/app/desktop.jar', jar.getvalue()))
         with zipfile.ZipFile(archive, 'w') as output:
             for name, data in members:
-                output.writestr(name, data)
+                if isinstance(name, zipfile.ZipInfo):
+                    info = name
+                else:
+                    # Preserve malformed names in both ZIP headers; ZipInfo's
+                    # constructor would turn backslashes into '/' on Windows.
+                    info = zipfile.ZipInfo()
+                    info.filename = info.orig_filename = name
+                output.writestr(info, data)
         return archive
 
     def test_extraction_refuses_traversal_aliases_case_collisions_and_symlinks(self):
@@ -47,14 +54,39 @@ class WindowsAcceptanceTest(unittest.TestCase):
         invalid = (
             [('Other/app.jar', b'x')], [('ChopLab Preview/../outside', b'x')],
             [('ChopLab Preview/file:stream', b'x')], [('ChopLab Preview\\outside', b'x')],
+            [('ChopLab Preview/file\x00hidden', b'x')],
             [('ChopLab Preview//alias', b'x')], [('ChopLab Preview/a', b'x'), ('ChopLab Preview/A', b'y')],
             [(link, b'../outside')],
         )
-        for members in invalid:
+        for index, members in enumerate(invalid):
             with self.subTest(members=str(members)):
+                destination = self.root / f'image-{index}'
                 with self.assertRaises(ValueError):
-                    acceptance.extract_image(self.archive(members), self.root / 'image')
-                self.assertFalse((self.root / 'image').exists())
+                    acceptance.extract_image(self.archive(members), destination)
+                self.assertFalse(destination.exists())
+
+    def test_raw_names_remain_rejected_after_zipinfo_windows_normalization(self):
+        canonical = self.archive([('ChopLab Preview/notice.txt', b'owned fixture')])
+        with patch.object(zipfile.os, 'sep', '\\'):
+            self.assertEqual([], acceptance.check_public_surface.scan_zip(canonical))
+            app = acceptance.extract_image(canonical, self.root / 'canonical')
+            self.assertEqual(b'owned fixture', (app / 'notice.txt').read_bytes())
+        for index, raw in enumerate(('ChopLab Preview\\alias.txt', 'ChopLab Preview/alias.txt\x00hidden')):
+            with self.subTest(raw=repr(raw)):
+                archive = self.archive([(raw, b'owned fixture')])
+                # Exercise the Windows reader behavior on every test host.
+                # No OS policy or real Windows acceptance is simulated here.
+                with patch.object(zipfile.os, 'sep', '\\'):
+                    with zipfile.ZipFile(archive) as source:
+                        entry = source.infolist()[0]
+                        self.assertEqual(raw, entry.orig_filename)
+                        self.assertNotEqual(raw, entry.filename)
+                    findings = acceptance.check_public_surface.scan_zip(archive)
+                    self.assertTrue(findings, 'The raw ZIP policy must reject the malformed member name')
+                    destination = self.root / f'normalized-{index}'
+                    with self.assertRaisesRegex(ValueError, 'Unsafe or unexpected'):
+                        acceptance.extract_image(archive, destination)
+                    self.assertFalse(destination.exists())
 
     def test_legacy_preview_and_conflicting_launcher_flags_do_not_prove_next(self):
         app = acceptance.extract_image(self.archive(), self.root / 'image')

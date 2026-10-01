@@ -82,7 +82,10 @@ def extract_image(archive, destination):
         seen = set()
         for member in members:
             path = PurePosixPath(member.filename)
-            if (not path.parts or path.parts[0] != 'ChopLab Preview' or path.is_absolute()
+            # ZipInfo normalizes Windows separators and truncates NULs. Reject
+            # that difference before the normalized name can reach extractall.
+            if (member.orig_filename != member.filename
+                    or not path.parts or path.parts[0] != 'ChopLab Preview' or path.is_absolute()
                     or '..' in path.parts or '\\' in member.filename or ':' in member.filename
                     or str(path).rstrip('/') != member.filename.rstrip('/')
                     or stat.S_ISLNK(member.external_attr >> 16)):
