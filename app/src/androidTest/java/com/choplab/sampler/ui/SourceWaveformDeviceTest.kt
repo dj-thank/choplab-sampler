@@ -1,8 +1,11 @@
 package com.choplab.sampler.ui
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.UiAutomation
+import android.graphics.Rect
 import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -198,71 +201,73 @@ class SourceWaveformDeviceTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val automation = instrumentation.uiAutomation
         val targetPackage = instrumentation.targetContext.packageName
-        automation.waitForIdle(100, 5_000)
-        val orderedDescriptions = listOf(
-            "選択開始ハンドル",
-            "選択終了ハンドル",
-            "チョップ1 の位置",
-            "チョップ2 の位置",
-            "チョップ3 の位置",
-            "チョップ4 の位置",
-            "チョップ5 の位置",
-        )
-        var diagnostic = FrameworkTreeDiagnostic()
-        var readySnapshot: FrameworkWaveformSnapshot? = null
-        // Root reacquisition alone does not require a cache refresh. Keep the same
-        // complete, owned snapshot for the assertions and the real framework action.
-        waitForFrameworkCondition(30_000, { diagnostic }) {
-            val current = automation.freshOwnedWaveformSnapshot(
-                targetPackage,
-                orderedDescriptions,
-                onDiagnostic = { diagnostic = it },
-            ) ?: return@waitForFrameworkCondition false
-            readySnapshot = current
-            true
-        }
-        val snapshot = requireNotNull(readySnapshot) {
-            "UiAutomation must expose the ready accessibility window"
-        }
-        val frameworkNodes = snapshot.nodes
-
-        assertEquals(
-            "Framework depth-first tree order must follow S, E, then numbered chop markers",
-            orderedDescriptions,
-            snapshot.depthFirstDescriptions,
-        )
-        frameworkNodes.forEachIndexed { index, node ->
-            assertTrue(
-                "${orderedDescriptions[index]} must expose accessibility focus to a service",
-                node.actionList.any { action ->
-                    action.id == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS
-                },
+        automation.withInteractiveWindows {
+            automation.waitForIdle(100, 5_000)
+            val orderedDescriptions = listOf(
+                "選択開始ハンドル",
+                "選択終了ハンドル",
+                "チョップ1 の位置",
+                "チョップ2 の位置",
+                "チョップ3 の位置",
+                "チョップ4 の位置",
+                "チョップ5 の位置",
             )
-        }
-
-        val firstMarker = frameworkNodes[2]
-        val initialState = requireNotNull(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(firstMarker).stateDescription?.toString()) {
-            "The framework marker must expose its initial position state"
-        }
-        val laterAction = firstMarker.actionList.firstOrNull { it.label?.toString() == "少し後へ" }
-        assertNotNull("Framework node must expose the custom nudge action", laterAction)
-        assertTrue(firstMarker.performAction(laterAction!!.id))
-        var changedState: String? = null
-        waitForFrameworkCondition(5_000, { diagnostic }) {
-            val current = automation.freshOwnedWaveformSnapshot(
-                targetPackage,
-                orderedDescriptions,
-                onDiagnostic = { diagnostic = it },
-            ) ?: return@waitForFrameworkCondition false
-            val currentState = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(current.nodes[2]).stateDescription?.toString()
-            if (currentState != null && currentState != initialState) {
-                changedState = currentState
+            var diagnostic = FrameworkTreeDiagnostic()
+            var readySnapshot: FrameworkWaveformSnapshot? = null
+            // Root reacquisition alone does not require a cache refresh. Keep the same
+            // complete, owned snapshot for the assertions and the real framework action.
+            waitForFrameworkCondition(30_000, { diagnostic }) {
+                val current = automation.freshOwnedWaveformSnapshot(
+                    targetPackage,
+                    orderedDescriptions,
+                    onDiagnostic = { diagnostic = it },
+                ) ?: return@waitForFrameworkCondition false
+                readySnapshot = current
                 true
-            } else {
-                false
             }
+            val snapshot = requireNotNull(readySnapshot) {
+                "UiAutomation must expose the ready accessibility window"
+            }
+            val frameworkNodes = snapshot.nodes
+
+            assertEquals(
+                "Framework depth-first tree order must follow S, E, then numbered chop markers",
+                orderedDescriptions,
+                snapshot.depthFirstDescriptions,
+            )
+            frameworkNodes.forEachIndexed { index, node ->
+                assertTrue(
+                    "${orderedDescriptions[index]} must expose accessibility focus to a service",
+                    node.actionList.any { action ->
+                        action.id == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS
+                    },
+                )
+            }
+
+            val firstMarker = frameworkNodes[2]
+            val initialState = requireNotNull(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(firstMarker).stateDescription?.toString()) {
+                "The framework marker must expose its initial position state"
+            }
+            val laterAction = firstMarker.actionList.firstOrNull { it.label?.toString() == "少し後へ" }
+            assertNotNull("Framework node must expose the custom nudge action", laterAction)
+            assertTrue(firstMarker.performAction(laterAction!!.id))
+            var changedState: String? = null
+            waitForFrameworkCondition(5_000, { diagnostic }) {
+                val current = automation.freshOwnedWaveformSnapshot(
+                    targetPackage,
+                    orderedDescriptions,
+                    onDiagnostic = { diagnostic = it },
+                ) ?: return@waitForFrameworkCondition false
+                val currentState = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(current.nodes[2]).stateDescription?.toString()
+                if (currentState != null && currentState != initialState) {
+                    changedState = currentState
+                    true
+                } else {
+                    false
+                }
+            }
+            assertNotEquals(initialState, requireNotNull(changedState))
         }
-        assertNotEquals(initialState, requireNotNull(changedState))
     }
 
     private fun waitForFrameworkCondition(
@@ -412,10 +417,14 @@ private data class FrameworkTreeDiagnostic(
     val ownedWindow: Boolean = false,
     val presentMask: Int = 0,
     val cacheClearSucceeded: Boolean = false,
+    // 2 means two or more: ambiguity is rejected without identifying any window.
+    val focusedApplicationWindows: Int = 0,
+    val visibleWindow: Boolean = false,
 ) {
     fun asJson(): String =
         "{\"rootNull\":$rootNull,\"ownedWindow\":$ownedWindow," +
-            "\"presentMask\":$presentMask,\"cacheClearSucceeded\":$cacheClearSucceeded}"
+            "\"presentMask\":$presentMask,\"cacheClearSucceeded\":$cacheClearSucceeded," +
+            "\"focusedApplicationWindows\":$focusedApplicationWindows,\"visibleWindow\":$visibleWindow}"
 }
 
 private data class FrameworkWaveformSnapshot(
@@ -423,20 +432,60 @@ private data class FrameworkWaveformSnapshot(
     val depthFirstDescriptions: List<String>,
 )
 
+private inline fun UiAutomation.withInteractiveWindows(block: () -> Unit) {
+    val previousInfo = requireNotNull(serviceInfo) { "UiAutomation service info is required" }
+    val previousFlags = previousInfo.flags
+    try {
+        previousInfo.flags = previousFlags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        serviceInfo = previousInfo
+        block()
+    } finally {
+        previousInfo.flags = previousFlags
+        serviceInfo = previousInfo
+    }
+}
+
 private fun UiAutomation.freshOwnedWaveformSnapshot(
     targetPackage: String,
     expectedDescriptions: List<String>,
     onDiagnostic: (FrameworkTreeDiagnostic) -> Unit,
 ): FrameworkWaveformSnapshot? {
     val cacheClearSucceeded = if (Build.VERSION.SDK_INT >= 34) clearCache() else false
-    val root = rootInActiveWindow
+    // Accessibility-active windows (for example an IME) need not be input-focused
+    // application windows. Never select an owned but background window by package alone.
+    val focusedWindows = windows.filter {
+        it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isFocused
+    }
+    val focusedCount = focusedWindows.size.coerceAtMost(2)
+    val window = focusedWindows.singleOrNull()
+    val root = window?.root
     if (root == null) {
-        onDiagnostic(FrameworkTreeDiagnostic(cacheClearSucceeded = cacheClearSucceeded))
+        onDiagnostic(FrameworkTreeDiagnostic(
+            cacheClearSucceeded = cacheClearSucceeded,
+            focusedApplicationWindows = focusedCount,
+        ))
         return null
     }
     var ownedWindow = root.packageName?.toString() == targetPackage
     if (!ownedWindow) {
-        onDiagnostic(FrameworkTreeDiagnostic(rootNull = false, cacheClearSucceeded = cacheClearSucceeded))
+        onDiagnostic(FrameworkTreeDiagnostic(
+            rootNull = false,
+            cacheClearSucceeded = cacheClearSucceeded,
+            focusedApplicationWindows = focusedCount,
+        ))
+        return null
+    }
+    // Ownership is checked before visibility, bounds, descriptions, or children.
+    val bounds = Rect()
+    requireNotNull(window).getBoundsInScreen(bounds)
+    var visibleWindow = root.isVisibleToUser && !bounds.isEmpty
+    if (!visibleWindow) {
+        onDiagnostic(FrameworkTreeDiagnostic(
+            rootNull = false,
+            ownedWindow = true,
+            cacheClearSucceeded = cacheClearSucceeded,
+            focusedApplicationWindows = focusedCount,
+        ))
         return null
     }
     val nodes = arrayOfNulls<AccessibilityNodeInfo>(expectedDescriptions.size)
@@ -452,6 +501,11 @@ private fun UiAutomation.freshOwnedWaveformSnapshot(
         }
         if (node.packageName?.toString() != targetPackage) {
             if (node === root) ownedWindow = false
+            return
+        }
+        if (node === root && !node.isVisibleToUser) {
+            visibleWindow = false
+            fresh = false
             return
         }
         val description = node.contentDescription?.toString()
@@ -470,9 +524,11 @@ private fun UiAutomation.freshOwnedWaveformSnapshot(
             ownedWindow = ownedWindow,
             presentMask = presentMask,
             cacheClearSucceeded = cacheClearSucceeded,
+            focusedApplicationWindows = focusedCount,
+            visibleWindow = visibleWindow,
         ),
     )
-    if (!fresh || !ownedWindow || nodes.any { it == null }) return null
+    if (!fresh || !ownedWindow || !visibleWindow || nodes.any { it == null }) return null
     return FrameworkWaveformSnapshot(
         nodes = nodes.map { requireNotNull(it) },
         depthFirstDescriptions = depthFirstDescriptions.toList(),
