@@ -98,6 +98,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     fun pitchRenderer(): VocalPitchRenderer = shared.pitchRenderer()
     fun coachAnalyzer() = shared.coachAnalyzer()
     suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = shared.analyseSource(asset, range)
+    fun stretchRenderer(): com.choplab.jvm.BeatStretchRenderer = shared.stretchRenderer()
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
     suspend fun renderPerformance(pad: com.choplab.core.model.Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset =
         shared.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)

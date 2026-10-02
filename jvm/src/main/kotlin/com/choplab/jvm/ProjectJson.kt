@@ -49,6 +49,7 @@ object ProjectJson {
             "timelineStartFrame" to num(v.timelineStartFrame), "compensationFrames" to num(v.compensationFrames)) }),
         "vocalComps" to arr(p.vocalComps.map(::vocalCompJson)),
         "pitchCorrections" to arr(p.pitchCorrections.map(::vocalPitchJson)),
+        "beatStretches" to arr(p.beatStretches.map(::beatStretchJson)),
         "source" to (p.source?.let { s -> obj("assetHash" to str(s.assetHash), "range" to range(s.range), "markers" to arr(s.markers.map(::num)),
             // Written only when set, like a PAD's tone, so a document heard at its own key stays as it was.
             *(if (s.pitchSemitones == 0.0) emptyArray() else arrayOf("pitchSemitones" to num(s.pitchSemitones)))) } ?: JsonNull),
@@ -61,7 +62,8 @@ object ProjectJson {
             *(if (schema >= 11) arrayOf("lyricStructure") else emptyArray()),
             *(if (schema >= 12) arrayOf("vocalComps") else emptyArray()),
             *(if (schema >= 13) arrayOf("mix") else emptyArray()),
-            *(if (schema >= 14) arrayOf("pitchCorrections") else emptyArray()))
+            *(if (schema >= 14) arrayOf("pitchCorrections") else emptyArray()),
+            *(if (schema >= 15) arrayOf("beatStretches") else emptyArray()))
         val tempo = p.getValue("tempo").obj().fields("milliBpm", "swingPermille")
         return Project(
             id = p.string("id"), title = p.string("title"), tempo = Tempo(tempo.int("milliBpm"), tempo.int("swingPermille")),
@@ -113,6 +115,7 @@ object ProjectJson {
             lyricStructure = if (schema == 10) null else readLyricStructure(p.getValue("lyricStructure")),
             vocalComps = if (schema < 12) frozenListOf() else p.list("vocalComps", 64, ::readVocalComp),
             pitchCorrections = if (schema < 14) frozenListOf() else p.list("pitchCorrections", 64, ::readVocalPitch),
+            beatStretches = if (schema < 15) frozenListOf() else p.list("beatStretches", 256, ::readBeatStretch),
             takes = p.list("takes", 1024) { e ->
                 val a = e.obj().fields("id", "trackId", "assetHash", "range", "timelineStartFrame", "compensationFrames")
                 Take(a.string("id"), a.string("trackId"), a.string("assetHash"), readRange(a.getValue("range")), a.long("timelineStartFrame"), a.int("compensationFrames"))

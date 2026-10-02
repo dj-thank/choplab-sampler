@@ -39,9 +39,10 @@
 
 音声クロックが主時計です。tick（960/四分音符）とframeの変換は端数を保持。LiveReadoutは整合した小さなsnapshotで、原子変数を読むだけで再描画が発生すると仮定しません。render内にI/O・ロック・確保を持ち込まず、実際のJVM/ARTで測定します。
 
-## 音声資産と保存（NEXT schema14の契約）
+## 音声資産と保存（NEXT schema15の契約）
 
-- NEXTのwriterはschema14、readerはschema10–13を明示移行して14を読む。schema13のmixer graphとschema14のピッチ補正recipeを保持し、旧schemaに後続の必須fieldがある場合は拒否する。旧アプリのschema7 writer/1–7 readerと別に扱う。構造化歌詞は曲名・言語・section名/種別/小節数、行IDと本文snapshotに結び付く読み・再計算したモーラ/韻を保存。word時刻はMANUAL/RETURNED/ESTIMATEDを保持する（[ADR9](adr/ADR-0009-structured-lyrics-and-timing.md)）。鍵・prompt・provider session・cache pathは保存しない。
+- NEXTのwriterはschema15、readerはschema10–14を明示移行して15を読む。schema13のmixer graph・schema14のピッチ補正recipeと、schema15のBEATテンポ伸縮の来歴を保持する。旧schemaに後続fieldを混ぜず、未知field・欠落・型違いを拒否する。旧アプリのschema7 writer/1–7 readerと別に扱う。構造化歌詞は曲名・言語・section名/種別/小節数、行IDと本文snapshotに結び付く読み・再計算したモーラ/韻を保存。word時刻はMANUAL/RETURNED/ESTIMATEDを保持する（[ADR9](adr/ADR-0009-structured-lyrics-and-timing.md)）。鍵・prompt・provider session・cache pathは保存しない。
+- BEATの伸縮来歴は対象PAD/clip ID、元hash/native範囲、結果hash/範囲、素材/曲のmilliBPM、algorithmVersionを最大256件保存する。結果は元hashを`derivedFrom`に持つ必須float WAVで、原音と結果をarchive・自動保存・Undoから保護する。1:1は元asset/native範囲をそのまま参照する。後のBPM変更はrecipeを書き換えず、元音からの明示再処理だけを1Undoで確定する。試聴・準備中の状態は文書に保存しない。
 - 声の各takeは録音資産と絶対48kHz開始位置を候補として保持し、通常clipを移動・削除しても失わない。compは選んだtake ID、start-inclusive/end-exclusiveの絶対frame、歴史的な歌詞行ID、確定したrender資産を保存する。歌詞の後編集や消去から選択レシピを推測し直さない。候補録音と通常配置は1Undo、明示comp適用は別の1Undo。必須資産はhash検証してarchive/autosave全世代とUndo参照から保護する。
 - 単音voiceのピッチ補正はclip ID、元資産hashとnative範囲、補正資産hash、key/scale/amount/retune/vibratoとalgorithm versionを保持する。準備・A/B試聴は文書を変えず、明示適用と保存済み原音/補正の切替はそれぞれ1Undo。再補正は保存した原音から行い、元take・配置時刻・左右・長さを保持する。原音と補正資産をarchive/autosave/Undoの参照から保護し、低信頼・無声・補正量0で変更がない候補は派生資産を確定しない。
 - `.choplab`: 先頭 `project.json`、`assets/<sha256>.<許可拡張子>`。元圧縮素材、編集/録音/生成float32 WAV、再生成可能PCM cacheを区別する。manifestから必須/派生/再生成可能を判断し、含まれるbytesをhash検証する。

@@ -203,6 +203,8 @@ BANK/PAD編集候補はAstra Max担当がcontroller6/panel3/archive1件、root�
 
 Google提案基盤は `LlmProvider` と薄いHTTP adapter、送信内容と同意、厳密schema/かな再計算、usage実値と料金不明、429待ち/明示再試行、取消/遅着/revision/終了を実装した。通常hostは用途・利用条件の実確認までUNVERIFIEDで送信を無効にする。HTTP adapter→controller→Studio expectedRevision→1Undo→LRC/archive/autosave再開の本番経路2件を含む19件が成功し、終了が入力検証と競合しても鍵やjobを残さない回帰も確認した。現在は本文を手動start tick/行長で配置し、title/sectionは提案のmetadataとして表示する。構造の永続化・FlowPlanner・TTS・安全な鍵保存は後続実装で、実Google API/課金・provider/public受入は未確認。本番VOCAL入口の候補 `fe07111`は別のhost接続変更として統合する。rollbackは本PRのrevert、元の制作と音声bytesを保持する。
 
+BEATの素材テンポ伸縮はmain `268e809f` の配布NOTICE、SOURCE整合readoutとpopup入力所有を保持した限定38path/new16候補。PAD／配置clipから明示Prepare→原音A/B→Applyの1Undoで、原音を残すlinked-stereo WSOLA資産と来歴を保存し、通常再生・24bit書出しへ渡す。schema15 writer／10–14の明示移行、40–240 BPM、SOURCE/HAND復帰、録音/job排他、取消・遅着・共有PCM上限と元4工程UIを維持する。2026-10-03 02:39:56–02:46:29 JST、M1/macOS27/JDK21・max1/2GiBのfresh 18class/80methodはfailure/error/skip0、Android Preview compileも成功。400秒のstream・300秒出力をoutput-sized配列なしで処理し、原音/native frame/左右、再処理が元区間から始まること、Tempo変更だけでは既存bytesを変更しないこと、通常hostの日英wide/compactでApply/Undo/書出し/archive/autosave再開を確認した。全996入力の照合では986本はcheckout bytes一致、bat/ps1の10本はtracked `.gitattributes` のCRLFとcanonical Git blob一致を別記した。旧73件を今回の合格へ読み替えず、現在SOURCE監視/Take接点を含めて実XMLを確認。一度のcode reviewで具体defectなし。必須CI・main統合・統合後の全制作packageと聴感/device/Humanは未完。rollbackは限定PRのrevertでschema15の受入archiveと原音を保持する。
+
 ## 要求を落とさない対応表
 
 | 要求 | 正本・担当段階 | 受入の焦点 |

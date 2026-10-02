@@ -1,0 +1,24 @@
+<resources>
+    <string name="stretch_title">テンポ伸縮</string>
+    <string name="stretch_boundary">音程と左右を保って曲のテンポへ合わせます。元音は残ります。曲のBPMを変えたら、もう一度準備して適用してください。</string>
+    <string name="stretch_source_bpm">元のBPM（40–240）</string>
+    <string name="stretch_target_bpm">曲のBPM：%1$s</string>
+    <string name="stretch_ratio">音の長さ：元の %1$s 倍</string>
+    <string name="stretch_saved">保存済み：%1$s → %2$s BPM。再処理は元音から行います。</string>
+    <string name="stretch_prepare">伸縮を準備</string>
+    <string name="stretch_original">A · 元の素材を聴く</string>
+    <string name="stretch_processed">B · 伸縮した素材を聴く</string>
+    <string name="stretch_progress">準備中… %1$d%%</string>
+    <string name="stretch_apply">伸縮を適用</string>
+    <string name="stretch_applied">適用しました。Undoで前の音へ戻せます。</string>
+    <string name="stretch_cancel">取消・試聴を止める</string>
+    <string name="stretch_reload">現在の編集を読み直す</string>
+    <string name="stretch_stale">対象や曲が変わりました。読み直してから準備してください。</string>
+    <string name="stretch_no_target">音のあるPADか、曲の配置を選んでください。</string>
+    <string name="stretch_invalid">BPMは40〜240で入力してください。極端に短い範囲は伸縮できません。</string>
+    <string name="stretch_limit">音声・保存容量・曲長の上限を超えます。範囲を短くしてください。</string>
+    <string name="stretch_recording">録音が終わってから伸縮してください。</string>
+    <string name="stretch_busy">ほかの処理が音声を解放しています。終わってから再実行してください。</string>
+    <string name="stretch_preview_failed">試聴を開始できませんでした。編集は変わっていません。</string>
+    <string name="stretch_failed">伸縮を完了できませんでした。編集は変わっていません。</string>
+</resources>
