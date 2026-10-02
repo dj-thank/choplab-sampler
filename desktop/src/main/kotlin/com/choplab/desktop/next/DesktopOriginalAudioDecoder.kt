@@ -10,6 +10,7 @@ import com.choplab.jvm.RawFloatFrameSource
 import com.choplab.jvm.PcmScratchBudget
 import kotlinx.coroutines.CancellationException
 import java.io.File
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -24,6 +25,8 @@ class DesktopOriginalAudioDecoder(
     private val maxResidentBytes: Long = EngineFormat.MAX_RESIDENT_BYTES,
 ) : OriginalAudioDecoder {
     init { require(timeoutMillis > 0 && maxResidentBytes in 8..EngineFormat.MAX_RESIDENT_BYTES && maxResidentBytes % 8 == 0L) }
+    internal var processStarter: (ProcessBuilder) -> Process = { it.start() }
+    internal var deleteTemporaryFile: (Path) -> Unit = { Files.deleteIfExists(it) }
     private val gate = ReentrantLock()
     private val metadata = object : LinkedHashMap<String, WavInfo>(256, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, WavInfo>?) = size > 256
@@ -75,17 +78,20 @@ class DesktopOriginalAudioDecoder(
     private fun readSource(path: Path, cancelled: () -> Boolean): PcmFrameSource {
         require(Files.isRegularFile(path) && Files.size(path) in 1..ProjectLimits.MAX_ASSET_BYTES)
         val memory = kotlinx.coroutines.runBlocking { com.choplab.jvm.PcmMemoryBudget.shared.reserve(256 * 1024L) }
+        var deferredMemory = false
         try {
         val (ffmpeg, ffprobe) = tools()
         val temporary = Files.createTempDirectory("choplab-decode-")
         var quota: java.io.Closeable? = null
         var transferred = false
+        var child: Process? = null
+        var failure: Throwable? = null
         try {
             val probe = temporary.resolve("probe.json")
             val error = temporary.resolve("error.txt")
             val input = listOf("-protocol_whitelist", "file,pipe", "-format_whitelist", "flac,mp3,mov,ogg,aac,aiff,matroska,webm", "-i", path.toAbsolutePath().toString())
             execute(listOf(ffprobe.toString(), "-v", "error") + input + listOf("-select_streams", "a:0",
-                "-show_entries", "stream=sample_rate,channels", "-of", "default=noprint_wrappers=1"), probe, error, cancelled, 64 * 1024L)
+                "-show_entries", "stream=sample_rate,channels", "-of", "default=noprint_wrappers=1"), probe, error, cancelled, 64 * 1024L) { child = it }
             val fields = Files.readAllLines(probe).associate { line ->
                 val parts = line.split('=', limit = 2)
                 require(parts.size == 2)
@@ -102,17 +108,14 @@ class DesktopOriginalAudioDecoder(
             execute(listOf(ffmpeg.toString(), "-nostdin", "-v", "error", "-xerror", "-err_detect", "explode") + input +
                 listOf("-map", "0:a:0", "-vn", "-sn", "-dn", "-ar", rate.toString(), "-ac", channels.toString(),
                     "-c:a", "pcm_f32le", "-f", "f32le", "-fs", (maximumBytes + 64 * 1024).toString(), raw.toString()),
-                stdout, error, cancelled, 64 * 1024L)
+                stdout, error, cancelled, 64 * 1024L) { child = it }
             val size = Files.size(raw)
             require(size in (channels * 4L)..maximumBytes && size % (channels * 4) == 0L) { "Audio exceeds the source frame limit" }
             val frames = size / (channels * 4)
             val info = WavInfo(rate, channels, frames, 32, true)
             val lease = requireNotNull(quota)
             val source = RawFloatFrameSource(raw, info) {
-                try {
-                    Files.list(temporary).use { entries -> entries.forEach(Files::deleteIfExists) }
-                    Files.deleteIfExists(temporary)
-                } finally { lease.close() }
+                try { deleteTemporary(temporary) } finally { lease.close() }
             }
             // Validate all native float samples with bounded storage before admitting metadata.
             var first = 0
@@ -124,23 +127,40 @@ class DesktopOriginalAudioDecoder(
             checkCancelled(cancelled)
             transferred = true
             return source
+        } catch (error: Throwable) {
+            failure = error
+            throw error
         } finally {
             if (!transferred) {
-                try {
-                    Files.list(temporary).use { entries -> entries.forEach(Files::deleteIfExists) }
-                    Files.deleteIfExists(temporary)
-                } finally { quota?.close() }
+                val dispose = { try { deleteTemporary(temporary) } finally { quota?.close() } }
+                val unfinished = child?.takeIf { it.isAlive }
+                if (unfinished == null) {
+                    preservingFailure(failure, dispose)
+                } else {
+                    // An uncooperative owned child still owns its files and the admission charge.
+                    // Java's onExit completes only after that exact process exits; no global kill/retry.
+                    deferredMemory = true
+                    unfinished.onExit().whenComplete { _, exitFailure ->
+                        if (exitFailure != null) failure?.addSuppressed(exitFailure)
+                        if (!unfinished.isAlive) {
+                            try { preservingFailure(failure, dispose) } finally { memory.close() }
+                        }
+                    }
+                }
             }
         }
-        } finally { memory.close() }
+        } finally { if (!deferredMemory) memory.close() }
     }
 
-    private fun execute(command: List<String>, output: Path, error: Path, cancelled: () -> Boolean, limit: Long) {
+    private fun execute(command: List<String>, output: Path, error: Path, cancelled: () -> Boolean, limit: Long,
+                        startedProcess: (Process) -> Unit) {
         checkCancelled(cancelled)
-        val process = ProcessBuilder(command).redirectOutput(output.toFile()).redirectError(error.toFile()).start()
-        process.outputStream.close()
+        val process = processStarter(ProcessBuilder(command).redirectOutput(output.toFile()).redirectError(error.toFile()))
+        startedProcess(process)
         val started = System.nanoTime()
+        var failure: Throwable? = null
         try {
+            process.outputStream.close()
             while (true) {
                 checkCancelled(cancelled)
                 require((System.nanoTime() - started) / 1_000_000 < timeoutMillis) { "Audio decode timed out" }
@@ -151,8 +171,66 @@ class DesktopOriginalAudioDecoder(
             require((System.nanoTime() - started) / 1_000_000 < timeoutMillis) { "Audio decode timed out" }
             require(process.exitValue() == 0) { "Audio could not be decoded" }
             require(Files.size(output) <= limit && Files.size(error) <= 64 * 1024)
+        } catch (error: Throwable) {
+            failure = error
+            throw error
         } finally {
-            if (process.isAlive) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS) }
+            preservingFailure(failure) { finishProcess(process) }
+        }
+    }
+
+    private fun finishProcess(process: Process) {
+        var interrupted = Thread.interrupted()
+        var failure: Throwable? = null
+        try {
+            try {
+                if (process.isAlive) process.destroyForcibly()
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (true) {
+                    try {
+                        check(process.waitFor((deadline - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS) && !process.isAlive) {
+                            "Audio decoder process did not terminate"
+                        }
+                        break
+                    } catch (_: InterruptedException) {
+                        interrupted = true
+                        check(System.nanoTime() < deadline) { "Audio decoder process did not terminate" }
+                    }
+                }
+            } catch (error: Throwable) { failure = error }
+            // Redirected streams may be null streams, but each Process still owns its Java handles.
+            for (stream in listOf(process.outputStream, process.inputStream, process.errorStream)) {
+                try { stream.close() } catch (error: Throwable) {
+                    if (failure == null) failure = error else failure.addSuppressed(error)
+                }
+            }
+            failure?.let { throw it }
+        } finally { if (interrupted) Thread.currentThread().interrupt() }
+    }
+
+    private fun deleteTemporary(temporary: Path) {
+        var interrupted = Thread.interrupted()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        try {
+            while (true) {
+                try {
+                    // Close the directory stream before deleting its children on Windows.
+                    val paths = Files.list(temporary).use { it.toList() }
+                    paths.forEach { deleteTemporaryFile(it) }
+                    deleteTemporaryFile(temporary)
+                    return
+                } catch (failure: FileSystemException) {
+                    if (System.nanoTime() >= deadline) throw failure
+                    try { Thread.sleep(25) } catch (_: InterruptedException) { interrupted = true }
+                }
+            }
+        } finally { if (interrupted) Thread.currentThread().interrupt() }
+    }
+
+    private inline fun preservingFailure(primary: Throwable?, cleanup: () -> Unit) {
+        try { cleanup() } catch (failure: Throwable) {
+            if (primary == null) throw failure
+            if (primary !== failure) primary.addSuppressed(failure)
         }
     }
 
