@@ -6,6 +6,7 @@ import com.choplab.engine.Tempo
 
 /** One durable user action. Selection and asynchronous work live in Studio, outside Project. */
 sealed interface Intent {
+    data class ApplyBeatStretch(val draft: StretchDraft, val rendered: Asset) : Intent
     data class Rename(val title: String) : Intent
     data class SetTempo(val tempo: Tempo, val gesture: String? = null) : Intent
     data class SetBank(val bank: Bank) : Intent
@@ -78,6 +79,7 @@ data class Reduction(val project: Project, val mutation: Mutation, val effects: 
 object Reducer {
     fun reduce(before: Project, intent: Intent): Reduction {
         val edited = when (intent) {
+            is Intent.ApplyBeatStretch -> BeatStretchEdits.reduce(before, intent)
             is Intent.ApplyVocalPitch -> {
                 val current = requireNotNull(before.clips.firstOrNull { it.id == intent.expectedClip.id })
                 require(current == intent.expectedClip && current.id == intent.correction.clipId) { "Pitch target changed" }
@@ -337,6 +339,7 @@ object Reducer {
         project.takes.forEach { used += it.assetHash }
         project.vocalComps.forEach { used += it.renderedAssetHash }
         project.pitchCorrections.forEach { used += it.sourceAssetHash; used += it.renderedAssetHash }
+        project.beatStretches.forEach { used += it.sourceAssetHash; used += it.renderedAssetHash }
         project.assets.forEach { asset -> asset.derivedFrom?.let { used += it } }
         val kept = project.assets.filter { it.hash in used || it.role != AssetRole.RENDERED }
         return if (kept.size == project.assets.size) project else project.copy(assets = kept.frozen())

@@ -54,6 +54,8 @@ class NextSession private constructor(
     private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
     private val speechPreview = SourceVocalPreview(backend, scope)
     private val pitchRenderer = backend.pitchRenderer()
+    private val stretchRenderer = backend.stretchRenderer()
+
     /** Explicit owner-session review only; normal creation never enables cloud sending. */
     val googleLyrics = GoogleLyricSession(System::currentTimeMillis)
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
@@ -74,6 +76,7 @@ class NextSession private constructor(
         presenter.vocalCoach.value?.dispatch(CoachAction.Stop)
         speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.COACH)
         presenter.vocalPitch.value?.dispatch(PitchAction.Stop)
+        presenter.beatStretch.value?.dispatch(com.choplab.ui.stretch.StretchAction.Cancel)
         speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.PITCH)
         speechPreview.stop()
         backend.studio.dispatch(Action.Silence)
@@ -115,6 +118,13 @@ class NextSession private constructor(
             override val analyzer = backend.coachAnalyzer()
             override val renderer = backend.practiceRenderer()
             override val preview = speechPreview
+        }
+        override val beatStretch = object : com.choplab.ui.stretch.BeatStretchHost {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft, progress: (Int, Int) -> Unit) =
+                stretchRenderer.render(project, draft, if (Locale.getDefault().language == "ja") "テンポ伸縮" else "Tempo stretch", progress)
+            override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft) =
+                stretchRenderer.original(project, draft, if (Locale.getDefault().language == "ja") "元の素材" else "Original sound")
         }
         override val vocalPitch = object : VocalPitchHost {
             override val preview = speechPreview

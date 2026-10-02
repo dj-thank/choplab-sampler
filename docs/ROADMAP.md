@@ -207,6 +207,8 @@ Google提案基盤は `LlmProvider` と薄いHTTP adapter、送信内容と同�
 
 Google作詞のowner session接続はbase `9ed970ab` の限定20pathを最新main `268e809f` へ通常mergeした `73bc41db` でLOCAL_PASS。通常Android/Desktop hostの既定UNVERIFIEDを保持し、現在dialog/key/modelに束縛した確認済みrecord、整数の費用上界・thinkingを含む課金output上限・期限・毎回同意が揃う1回だけをjob前に消費、HTTP直前に失効を再検査する。2026-10-03 02:51–02:54 JST、Mac/JDK21/max1/2GiBのfresh 8class36method（failure/error/skip0）とAndroid Preview compileが成功。通常Desktop hostのowned fake HTTP→schema/かな→preview→明示1Undo→archive/autosave、未確認/不足/不一致/overflow/予算超過/期限切れの0 POST、取消/失敗枠の非復活、条件変更による旧同意拒否、秘密非保存を確認。価格/model既定・利用者秘密の探索・依存追加・全体budget画面は加えていない。rootがcode review/全978入力照合とmerge後の実XMLをreadbackし、SOURCE/Practice監視も保持した。実ownerの用途/適合/区分/model/1回予算条件は未確認で実Google送信0回、課金・provider/device/Humanは未受入。必須CI・main統合と最終packageは継続し、rollbackは本限定変更のrevert。
 
+BEATの素材テンポ伸縮はmain `268e809f` の配布NOTICE、SOURCE整合readoutとpopup入力所有を保持した限定38path/new16候補。PAD／配置clipから明示Prepare→原音A/B→Applyの1Undoで、原音を残すlinked-stereo WSOLA資産と来歴を保存し、通常再生・24bit書出しへ渡す。schema15 writer／10–14の明示移行、40–240 BPM、SOURCE/HAND復帰、録音/job排他、取消・遅着・共有PCM上限と元4工程UIを維持する。2026-10-03 02:39:56–02:46:29 JST、M1/macOS27/JDK21・max1/2GiBのfresh 18class/80methodはfailure/error/skip0、Android Preview compileも成功。400秒のstream・300秒出力をoutput-sized配列なしで処理し、原音/native frame/左右、再処理が元区間から始まること、Tempo変更だけでは既存bytesを変更しないこと、通常hostの日英wide/compactでApply/Undo/書出し/archive/autosave再開を確認した。全996入力の照合では986本はcheckout bytes一致、bat/ps1の10本はtracked `.gitattributes` のCRLFとcanonical Git blob一致を別記した。旧73件を今回の合格へ読み替えず、現在SOURCE監視/Take接点を含めて実XMLを確認。一度のcode reviewで具体defectなし。必須CI・main統合・統合後の全制作packageと聴感/device/Humanは未完。rollbackは限定PRのrevertでschema15の受入archiveと原音を保持する。
+
 ## 要求を落とさない対応表
 
 | 要求 | 正本・担当段階 | 受入の焦点 |

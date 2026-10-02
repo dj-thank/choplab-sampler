@@ -122,6 +122,7 @@ fun main() {
                 val vocalPractice by presenter.vocalPractice.collectAsState()
                 val vocalPitch by presenter.vocalPitch.collectAsState()
                 val vocalCoach by presenter.vocalCoach.collectAsState()
+                val beatStretch by presenter.beatStretch.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
                 val vocalGuide by presenter.vocalGuide.collectAsState()
                 val fourStems by presenter.fourStems.collectAsState()
@@ -164,7 +165,7 @@ fun main() {
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                    autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, quickStart = quickStart)
+                    autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, beatStretch = beatStretch, quickStart = quickStart)
             }
         }
     } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
@@ -193,6 +194,14 @@ internal class DesktopEditorPorts(
         override val analyzer = backend.coachAnalyzer()
         override val renderer = backend.practiceRenderer()
         override val preview = speechPreview
+    }
+    private val stretchRenderer = backend.stretchRenderer()
+    override val beatStretch = object : com.choplab.ui.stretch.BeatStretchHost {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft, progress: (Int, Int) -> Unit) =
+            stretchRenderer.render(project, draft, if (japanese) "テンポ伸縮" else "Tempo stretch", progress)
+        override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft) =
+            stretchRenderer.original(project, draft, if (japanese) "元の素材" else "Original sound")
     }
     override val vocalPitch = object : VocalPitchHost {
         override val preview = speechPreview

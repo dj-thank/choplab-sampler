@@ -108,6 +108,7 @@ class EditorBackend private constructor(
 
     suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange): com.choplab.core.analysis.SourceMusicResult =
         analyseSourceMusic(pcm, asset, range)
+    fun stretchRenderer(): BeatStretchRenderer = BeatStretchRenderer(assets, pcm, assets.directory.parent.resolve("beat-stretch"))
 
     /**
      * Renders [pad] from [source] with its pitch, reverse, tone and own pan into a 48 kHz float WAV in the store.

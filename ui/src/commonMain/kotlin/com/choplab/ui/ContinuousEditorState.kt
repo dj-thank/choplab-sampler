@@ -23,6 +23,7 @@ enum class ContinuousNoteRepeat(val ticks: Int) {
  */
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160), FREE(0) }
 enum class ContinuousCapability {
+    BEAT_STRETCH,
     LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, NOTE_REPEAT, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, VOCAL_PRACTICE, VOCAL_PITCH, VOCAL_COACH, FOUR_STEMS, SOURCE_ANALYSIS,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
@@ -311,6 +312,8 @@ sealed interface ContinuousEditorAction {
     data object OpenStepPatterns : ContinuousEditorAction
     data object CloseStepPatterns : ContinuousEditorAction
     data object OpenVocalPitch : ContinuousEditorAction
+    data class OpenBeatStretch(val target: com.choplab.core.model.StretchTarget) : ContinuousEditorAction
+    data object CloseBeatStretch : ContinuousEditorAction
     data object CloseVocalPitch : ContinuousEditorAction
     data object OpenVocalCoach : ContinuousEditorAction
     data object CloseVocalCoach : ContinuousEditorAction

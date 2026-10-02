@@ -21,7 +21,7 @@ class VocalPitchPersistenceTest {
             }
         }
         val current = ProjectJson.parse(ProjectJson.encode(Project())).jsonObject
-        assertEquals(14, current.getValue("schemaVersion").jsonPrimitive.int)
+        assertEquals(ProjectLimits.SCHEMA, current.getValue("schemaVersion").jsonPrimitive.int)
         assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(JsonObject(current - "pitchCorrections"))) }
         val old13 = requireNotNull(javaClass.getResourceAsStream("/schema13-empty.json")).use { ProjectJson.parse(it.readBytes()).jsonObject }
         assertEquals(Project(), ProjectJson.decode(ProjectJson.encodeElement(old13)))
