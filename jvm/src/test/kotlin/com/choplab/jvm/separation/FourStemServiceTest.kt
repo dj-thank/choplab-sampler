@@ -187,7 +187,7 @@ class FourStemServiceTest {
             assertEquals(1, native.closes.get()); assertTrue(assets.verified(original)); assertEquals(original.byteCount, assets.storedBytes())
             val limitedAssets = FileAssetStore(directory.resolve("limited"), original.byteCount + 10)
             val limitedOriginal = source(directory, limitedAssets)
-            val limitedPcm = WavPcmPort(limitedAssets)
+            val limitedPcm = WavPcmPort(limitedAssets, memory = PcmMemoryBudget())
             val limited = FourStemService(limitedAssets, limitedPcm, directory.resolve("limited-scratch"), native) { available }
             val opensBeforeRefusal = native.opens.get()
             try {
