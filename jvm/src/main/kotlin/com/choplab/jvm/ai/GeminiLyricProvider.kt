@@ -111,6 +111,11 @@ class GeminiLyricProvider(
         if (closed) return failure(LyricAiProblem.CLOSED, false)
         return try {
             val wire = key.useValue { GeminiHttpRequest(request.model, it, GeminiLyricWire.request(request)) }
+            val attempt = request.googleAttempt ?: return failure(LyricAiProblem.PROVIDER_UNVERIFIED, false)
+            currentCoroutineContext().ensureActive()
+            attempt.beginHttp(request.model, key)?.let { reason ->
+                return LyricProviderResult.Failure(LyricAiFailure(LyricAiProblem.SESSION_ADMISSION_REFUSED, admissionProblem = reason))
+            }
             val response = withTimeout(timeoutMillis) { transport.post(wire) }
             if (closed) return failure(LyricAiProblem.CLOSED, true)
             when (response.status) {

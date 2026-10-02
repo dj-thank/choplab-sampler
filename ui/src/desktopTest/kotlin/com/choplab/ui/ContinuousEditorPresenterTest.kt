@@ -551,7 +551,9 @@ class ContinuousEditorPresenterTest {
                 h.until { it.permits(ContinuousCapability.LYRIC_PROPOSAL) }
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
                 val controller = requireNotNull(h.presenter.lyricProposal.value)
-                assertTrue(controller.generate(lyricRequest(), SessionApiKey("fake-key"), 0, 4, true))
+                val key = SessionApiKey("fake-key")
+                ai.review(controller, key)
+                assertTrue(controller.generate(lyricRequest(), key, 0, 4, true, controller.admissionVersion))
                 withTimeout(5_000) { controller.state.first { it.phase == LyricProposalPhase.PREVIEW } }
                 val before = h.studio.document.value
                 h.ports.takeFrames = null
@@ -596,7 +598,8 @@ class ContinuousEditorPresenterTest {
                 val controller = requireNotNull(h.presenter.lyricProposal.value)
                 val before = h.studio.document.value
                 val key = SessionApiKey("fake-key")
-                assertTrue(controller.generate(lyricRequest(), key, 0, 4, true))
+                ai.review(controller, key)
+                assertTrue(controller.generate(lyricRequest(), key, 0, 4, true, controller.admissionVersion))
                 withTimeout(5_000) { while (ai.calls == 0) delay(5) }
                 when (exit) {
                     0 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseLyricProposal))
@@ -623,7 +626,16 @@ class ContinuousEditorPresenterTest {
     }
 
     private class FakeLyricPort(private val respond: suspend () -> LyricProviderResult = { lyricSuccess() }) : LyricProposalPort {
-        override val availability = LyricProviderAvailability.AVAILABLE
+        private val session = GoogleLyricSession { 100L }
+        override val availability get() = session.state.value.availability
+        override fun openAdmission() = session.openDialog()
+        fun review(controller: com.choplab.ui.ai.LyricProposalController, key: SessionApiKey) {
+            controller.bindInputs(lyricRequest().model, key)
+            assertNull(session.install(requireNotNull(session.pendingReview()), ReviewedGoogleUse("gemini-test", GoogleAccountTier.PAID,
+                GoogleUseEligibility.REVIEWED_FOR_THIS_SESSION,
+                GoogleTokenPrice("gemini-test", GoogleAccountTier.PAID, "USD", 1_000, 100, 200, 10_000, 0, 1_000),
+                GoogleTokenBounds(4096, 128, 64), GoogleMoney("USD", 2_000), 0, 1_000)))
+        }
         @Volatile var opened = 0
         @Volatile var closed = 0
         @Volatile var calls = 0
