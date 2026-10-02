@@ -18,7 +18,7 @@ class GeminiLyricProviderTest {
         val provider = GeminiLyricProvider(UrlConnectionGeminiTransport { url -> Connection(url, reply()).also { connection = it } })
         val key = SessionApiKey("fake-session-key")
         try {
-            val result = assertIs<LyricProviderResult.Success>(provider.lyrics(request(), key))
+            val result = assertIs<LyricProviderResult.Success>(provider.lyrics(request(key), key))
             assertEquals("https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent", connection.url.toString())
             assertNull(connection.url.query)
             assertEquals("POST", connection.requestMethod)
@@ -27,6 +27,8 @@ class GeminiLyricProviderTest {
             assertEquals("fake-session-key", connection.getRequestProperty("x-goog-api-key"))
             val sent = Json.parseToJsonElement(connection.sent.toString("UTF-8")).jsonObject
             val config = sent.getValue("generationConfig").jsonObject
+            assertEquals(64, config.getValue("maxOutputTokens").jsonPrimitive.int)
+            assertFalse(connection.sent.toString("UTF-8").contains("nanoUnits"))
             val format = config.getValue("responseFormat").jsonObject.getValue("text").jsonObject
             assertEquals("APPLICATION_JSON", format.getValue("mimeType").jsonPrimitive.content)
             assertEquals(false, format.getValue("schema").jsonObject.getValue("additionalProperties").jsonPrimitive.boolean)
@@ -100,7 +102,7 @@ class GeminiLyricProviderTest {
             }, now = { now })
             val key = SessionApiKey("fake-key")
             try {
-                val failure = assertIs<LyricProviderResult.Failure>(provider.lyrics(request(), key)).failure
+                val failure = assertIs<LyricProviderResult.Failure>(provider.lyrics(request(key), key)).failure
                 assertEquals(LyricAiProblem.RATE_LIMITED, failure.problem); assertEquals(seconds, failure.retryAfterSeconds)
                 assertTrue(failure.costUnknown); assertEquals(1, calls)
                 assertFalse(failure.toString().contains("private"))
@@ -111,11 +113,11 @@ class GeminiLyricProviderTest {
         })
         val key = SessionApiKey("fake-key")
         try {
-            val failure = assertIs<LyricProviderResult.Failure>(offline.lyrics(request(), key)).failure
+            val failure = assertIs<LyricProviderResult.Failure>(offline.lyrics(request(key), key)).failure
             assertEquals(LyricAiProblem.OFFLINE, failure.problem)
             assertFalse(failure.toString().contains("private exception text"))
             offline.close()
-            assertEquals(LyricAiProblem.CLOSED, assertIs<LyricProviderResult.Failure>(offline.lyrics(request(), key)).failure.problem)
+            assertEquals(LyricAiProblem.CLOSED, assertIs<LyricProviderResult.Failure>(offline.lyrics(request(key), key)).failure.problem)
         } finally { offline.close(); key.close() }
     }
 
@@ -127,7 +129,7 @@ class GeminiLyricProviderTest {
                 BlockingConnection(url).also { connection = it; opened.complete(Unit) }
             }, timeoutMillis = if (mode == "timeout") 300 else 5_000)
             val key = SessionApiKey("fake-key")
-            val pending = async { provider.lyrics(request(), key) }
+            val pending = async { provider.lyrics(request(key), key) }
             try {
                 withTimeout(2_000) { opened.await(); while (connection.readStarted.count != 0L) delay(1) }
                 when (mode) {
@@ -149,7 +151,7 @@ class GeminiLyricProviderTest {
         for (bytes in listOf(ByteArray(GeminiLyricWire.MAX_RESPONSE_BYTES + 1) { 32 }, byteArrayOf(0xc3.toByte(), 0x28))) {
             val provider = GeminiLyricProvider(UrlConnectionGeminiTransport { url -> Connection(url, bytes) })
             val key = SessionApiKey("fake-key")
-            try { assertEquals(LyricAiProblem.INVALID_RESPONSE, assertIs<LyricProviderResult.Failure>(provider.lyrics(request(), key)).failure.problem) }
+            try { assertEquals(LyricAiProblem.INVALID_RESPONSE, assertIs<LyricProviderResult.Failure>(provider.lyrics(request(key), key)).failure.problem) }
             finally { provider.close(); key.close() }
         }
         var reads = 0
@@ -164,12 +166,84 @@ class GeminiLyricProviderTest {
         } finally { transport.close() }
     }
 
+    @Test fun changedCredentialDuringFinalAdmissionAndDuplicateAttemptMakeNoPost() = runBlocking<Unit> {
+        val reached = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        var hold = false
+        val session = GoogleLyricSession {
+            if (hold) { reached.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+            100L
+        }
+        val dialog = session.openDialog()
+        val key = SessionApiKey("private-fake-key")
+        val changed = SessionApiKey("private-fake-key") // Equal text is still a new credential input.
+        val input = LyricRequest("gemini-test", "private-theme", "", LyricLanguage.JAPANESE, LyricStyle.SONG, "", "", "")
+        dialog.bindInputs(input.model, key)
+        assertNull(session.install(requireNotNull(session.pendingReview()), reviewed()))
+        val admitted = input.forAttempt(assertIs<GoogleAttemptDecision.Allowed>(dialog.reserve(input, key, session.state.value.version)).attempt)
+        var calls = 0
+        val provider = GeminiLyricProvider(object : GeminiHttpTransport {
+            override suspend fun post(request: GeminiHttpRequest): GeminiHttpResponse { calls++; return GeminiHttpResponse(200, body = reply()) }
+        })
+        hold = true
+        val pending = async(Dispatchers.Default) { provider.lyrics(admitted, key) }
+        try {
+            withContext(Dispatchers.IO) { assertTrue(reached.await(5, TimeUnit.SECONDS)) }
+            dialog.bindInputs(input.model, changed)
+            release.countDown()
+            val refused = assertIs<LyricProviderResult.Failure>(pending.await()).failure
+            assertEquals(GoogleAdmissionProblem.INPUT_CHANGED, refused.admissionProblem)
+            assertFalse(refused.costUnknown)
+            assertEquals(0, calls)
+            assertEquals(GoogleAdmissionProblem.ATTEMPT_USED,
+                assertIs<LyricProviderResult.Failure>(provider.lyrics(admitted, key)).failure.admissionProblem)
+            assertEquals(LyricAiProblem.PROVIDER_UNVERIFIED,
+                assertIs<LyricProviderResult.Failure>(provider.lyrics(input, changed)).failure.problem)
+            assertEquals(0, calls)
+        } finally { release.countDown(); pending.cancelAndJoin(); provider.close(); key.close(); changed.close(); session.close() }
+    }
+
+    @Test fun failureTimeoutAndCancellationNeverRestoreTheSamePermit() = runBlocking<Unit> {
+        for (mode in listOf("failure", "timeout", "cancel")) {
+            var calls = 0
+            val entered = CompletableDeferred<Unit>()
+            val provider = GeminiLyricProvider(object : GeminiHttpTransport {
+                override suspend fun post(request: GeminiHttpRequest): GeminiHttpResponse {
+                    calls++; entered.complete(Unit)
+                    if (mode != "failure") awaitCancellation()
+                    return GeminiHttpResponse(429, "0")
+                }
+            }, timeoutMillis = 300)
+            val key = SessionApiKey("fake-key")
+            val admitted = request(key)
+            val pending = async { provider.lyrics(admitted, key) }
+            try {
+                withTimeout(2_000) { entered.await() }
+                if (mode == "cancel") pending.cancelAndJoin() else assertIs<LyricProviderResult.Failure>(pending.await())
+                assertEquals(GoogleAdmissionProblem.ATTEMPT_USED,
+                    assertIs<LyricProviderResult.Failure>(provider.lyrics(admitted, key)).failure.admissionProblem)
+                assertEquals(1, calls, mode)
+            } finally { pending.cancelAndJoin(); provider.close(); key.close() }
+        }
+    }
+
     private suspend fun execute(response: GeminiHttpResponse): LyricProviderResult {
         val provider = GeminiLyricProvider(object : GeminiHttpTransport { override suspend fun post(request: GeminiHttpRequest) = response })
         val key = SessionApiKey("fake-key")
-        return try { provider.lyrics(request(), key) } finally { provider.close(); key.close() }
+        return try { provider.lyrics(request(key), key) } finally { provider.close(); key.close() }
     }
-    private fun request() = LyricRequest("gemini-test", "private-theme", "", LyricLanguage.JAPANESE, LyricStyle.RAP, "", "", "")
+    private fun request(key: SessionApiKey): LyricRequest {
+        val input = LyricRequest("gemini-test", "private-theme", "", LyricLanguage.JAPANESE, LyricStyle.RAP, "", "", "")
+        val session = GoogleLyricSession { 100L }
+        val dialog = session.openDialog()
+        dialog.bindInputs(input.model, key)
+        assertNull(session.install(requireNotNull(session.pendingReview()), reviewed()))
+        return input.forAttempt(assertIs<GoogleAttemptDecision.Allowed>(dialog.reserve(input, key, session.state.value.version)).attempt)
+    }
+    private fun reviewed() = ReviewedGoogleUse("gemini-test", GoogleAccountTier.PAID,
+        GoogleUseEligibility.REVIEWED_FOR_THIS_SESSION,
+        GoogleTokenPrice("gemini-test", GoogleAccountTier.PAID, "USD", 1_000, 100, 200, 10_000, 0, 1_000),
+        GoogleTokenBounds(4096, 128, 64), GoogleMoney("USD", 2_000), 0, 1_000)
     private fun lyric(sectionCount: Int = 1, lineCount: Int = 1): String {
         val line = """{"text":"キャップ","reading":"きゃっぷ","mora":99,"rhymeVowels":"wrong"}"""
         val section = """{"name":"A","kind":"verse","bars":4,"lines":[${List(lineCount) { line }.joinToString()}]}"""

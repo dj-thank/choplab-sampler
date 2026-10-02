@@ -44,7 +44,7 @@ internal object GeminiLyricWire {
             }.toString()) }) })
         }) })
         put("generationConfig", buildJsonObject {
-            put("candidateCount", 1); put("maxOutputTokens", 8_192)
+            put("candidateCount", 1); put("maxOutputTokens", input.maxOutputTokens)
             put("responseFormat", buildJsonObject { put("text", buildJsonObject {
                 put("mimeType", "APPLICATION_JSON"); put("schema", schema)
             }) })
