@@ -79,7 +79,7 @@ Androidの2言語TTSと1件の実4stemは、ownerの隔離Preview・対応test A
 
 Macでは同じJVM/desktop suiteに加え、`:desktop:compileMacSystemAudioHelper`、`:desktop:desktopUiQualityTest`、`:desktop:desktopLongPressUiTest` を実行します。実ファイル・providerの取込は私有の隔離ライブラリで確認し、取得時間とdecode/再読込を分けて測ります。合成音源の比較ではフレーム・rate・左右・サンプル一致も確認します。
 
-Mac NEXTの梱包後は次を実行します。manifestの全ファイル・署名、PATHをシステム標準だけにした同梱codecで11種類（FLAC/MP3/AAC in M4A/raw AAC/Ogg/Opus/ALAC/AIFFとAIF/MP4/WebM）の取込、24bit losslessの値一致・44.1 kHz monoの共有変換・原本bytes保持・取消後再試行、同梱Javaでの取込/chop/PAD/pattern/保存/再開/UndoRedo/16・24bit書出し、合成マイクから実presenter/host窓口を通した原曲録音（44.1 kHz floatの全sample保持、PAD・曲・24bit出力・autosave再開）、実libraryでの追加/明示選択/タイトルと元bytes保持/bundle往復/UndoRedo/PAD配置/24bit書出し/保存再開、実launcherの画面応答と通常終了・再起動2回、自動保存の編集内容と全音源hash一致を確認します。合成素材・一時profile・無音出力を使い、利用者データは読み書きしません。実音・実マイク・ファイル窓口の手操作・聴感は別の確認です。
+Mac NEXTの梱包後は、同梱Javaから `NextWholeCreationSelfTest` の全制作を実行し、さらに次を確認します。manifestの全ファイル・署名、PATHをシステム標準だけにした同梱codecで11種類（FLAC/MP3/AAC in M4A/raw AAC/Ogg/Opus/ALAC/AIFFとAIF/MP4/WebM）の取込、24bit losslessの値一致・44.1 kHz monoの共有変換・原本bytes保持・取消後再試行、同梱Javaでの取込/chop/PAD/pattern/保存/再開/UndoRedo/16・24bit書出し、合成マイクから実presenter/host窓口を通した原曲録音（44.1 kHz floatの全sample保持、PAD・曲・24bit出力・autosave再開）、実libraryでの追加/明示選択/タイトルと元bytes保持/bundle往復/UndoRedo/PAD配置/24bit書出し/保存再開、実launcherの画面応答と通常終了・再起動2回、自動保存の編集内容と全音源hash一致を確認します。合成素材・一時profile・無音出力を使い、利用者データは読み書きしません。実音・実マイク・ファイル窓口の手操作・聴感は別の確認です。 全制作の合成TTS/分離modelと、同じpackageでの実codec・実モデル・日英の端末TTSは別のfixtureとして記録します。fresh packageの成功とインストール先の更新・bytes照合も分け、後者を実施するまではinstalled=falseを保持します。
 
 ```sh
 python3 scripts/run_mac_next_acceptance.py \
@@ -108,7 +108,13 @@ py -3 -m venv work/windows-acceptance-python
 
 `acceptance.json` は check ごとに scope、PASS/FAIL/NOT_RUN、revision、ZIP hash と所要時間を残し、全体の `COMPLETED` は選択した手順の終了だけを示します。最終全機能通し・署名済み正式配布・provider・実音・Human GO へ昇格させません。ログと合成素材を含む run directory は私有の readback 用に保持し、公開前に対象を選んで既存 scanner を通します。既存版の installer は別の `scripts/test-install-windows-app.ps1` で隔離して確認し、この Preview harness から既存アプリを置換しません。
 
-全制作の入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は確認したmain `05db49ea` では未導入です。この配布変更は制作実装を取り込まず、helperが全6入口の一意なclassを確認してから実行します。欠けていれば `self-test-entrypoints=FAIL`、各制作試験は `NOT_RUN` で停止します。rootは必要な制作sourceを統合して同じZIPを作り直した後に、全制作を含む手動workflowを実行します。
+全制作の公開入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は、既存5入口と合わせた全6入口の一意なclassをhelperで確認してから実行します。欠落・重複は `self-test-entrypoints=FAIL`、未実行の制作試験は `NOT_RUN` で停止し、全制作を省略して成功にする分岐は設けません。最終Windowsの同一ZIPによる全制作・通常終了再開は未完であり、rootが公開sourceを含む同じZIPを作り直して確認します。
+
+全制作は、SOURCE解析の明示テンポ適用/アタックchop→三連STEP/note repeat/BANKループ録音→WSOLA→歌詞/2take/punch/comp/guide→練習/pitch/coach→4stem→mix/FX・24bit WAV/stems/LRC→archiveとautosaveを新backendで再開→共有PCM解放、の9工程を順序どおりに確認します。15回の明示Undo/Redo、原音と全asset hash、再開後の同じ文書・同じ24bit出力、共有128MiB以内・終了PCM/lease0を要求します。Desktop入口とAndroidの `NextCreationProductionTest` は合成入力/マイク/clocked sink・決定的TTS/分離modelを使い、実voice/model・GUI・音声endpoint・provider・Humanの証拠にはしません。
+
+Androidの全制作は、同一source/runtimeの縮小Previewとmatching test APKに対し、ownerが `com.choplab.sampler.next.NextCreationProductionTest` と `choplabCreationFixture=true` を明示して実行します。全体の9 methodは既存runtime4、codec1、別fixtureの実TTS日英2＋実4stem1、合成Whole1です。codec1 methodが検査する11形式を11 methodと数えず、実native3件とWholeの `realTts=false` / `realModel=false` を混同しません。成功は各methodの実結果/skip0と対応receiptを照合して記録し、未実行を埋めません。
+
+Androidの今回の受入条件はlargeHeapを使わない既定heap192MiB・engine共有PCM128MiBです。WAV/STEM ZIP/project archive等のfile SHA-256は64KiBの固定bufferで逐次計算し、全fileをheapへ展開して上限を増やす回避をしません。共有予算不足時の録音開始前拒否、loop取消、録音/job排他と遅着拒否でも文書・原音を保持し、終了後のPCMと所有tmpは0を確認します。旧hash計算のOOMは旧attemptの失敗として残し、修正pairの成功とは分けます。OOM・timeout・cleanup失敗をskipや成功へ変えません。実行したrevision・pair bytes・時刻・結果はROADMAPと私有receiptへ束縛します。
 
 ## 必須の振る舞い
 
