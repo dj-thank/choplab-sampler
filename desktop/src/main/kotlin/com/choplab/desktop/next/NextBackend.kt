@@ -112,10 +112,11 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
             if (source.extension == "wav") java.nio.file.Files.newInputStream(path).use { WavCodec.read(it) }
             else decoder.decode(path, source.hash, cancelled)
         }, render = { audio, output, progress, cancelled ->
-            val model = com.choplab.desktop.separation.defaultSeparatorModelsDir()
-                .resolve(com.choplab.sampler.separation.SeparatorSpec.MODEL_FILE).toPath()
-            NextDrumSeparation.renderWithModel(audio, output, model, progress, cancelled)
-        }, title = title)
+            val model = com.choplab.desktop.separation.defaultSeparatorModelStore().ensure({ progress(it * .15f) }, cancelled).toPath()
+            NextDrumSeparation.renderWithModel(audio, output, model, { progress(.15f + it * .85f) }, cancelled)
+        }, title = title,
+        initialDownloadBytes = if (com.choplab.desktop.separation.defaultSeparatorModelStore().isInstalled()) 0
+            else com.choplab.sampler.separation.SeparatorSpec.MODEL_BYTES)
 
     /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
     suspend fun shutdown(flush: Boolean = true) {

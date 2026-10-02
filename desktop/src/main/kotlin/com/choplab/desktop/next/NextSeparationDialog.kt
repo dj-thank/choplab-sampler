@@ -14,7 +14,7 @@ internal object NextSeparationDialog {
         val labels = listOf(Res.string.ce_separate, Res.string.ce_separate_ready, Res.string.ce_separate_running,
             Res.string.ce_separate_done, Res.string.ce_separate_failed, Res.string.ce_separate_use,
             Res.string.ce_library_cancel, Res.string.ce_library_close, Res.string.ce_library_cancelled,
-            Res.string.ce_separate_name).map { getString(it) }
+            Res.string.ce_separate_name, Res.string.ce_separate_model_download).map { getString(it) }
         return suspendCancellableCoroutine { answer -> SwingUtilities.invokeLater {
             if (!answer.isActive) return@invokeLater
             val job = create(labels[9])
@@ -34,7 +34,8 @@ internal object NextSeparationDialog {
                 cancel.isEnabled = state.busy
                 progress.value = state.progress
                 status.text = when (state.status) {
-                    NextSeparation.Status.READY -> labels[1]
+                    NextSeparation.Status.READY -> labels[1] + if (job.initialDownloadBytes > 0) "\n\n" +
+                        labels[10].replace("%1\$d", ((job.initialDownloadBytes + 999_999) / 1_000_000).toString()) else ""
                     NextSeparation.Status.RUNNING -> "${labels[2]} ${state.progress}%"
                     NextSeparation.Status.DONE -> labels[3]
                     NextSeparation.Status.FAILED -> labels[4]

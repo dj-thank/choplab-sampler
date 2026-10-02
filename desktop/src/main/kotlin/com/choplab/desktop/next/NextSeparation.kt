@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal class NextSeparation(directory: Path, validate: (java.io.File) -> Unit,
     private val load: (cancelled: () -> Boolean) -> WavAudio,
     private val render: (WavAudio, Path, (Float) -> Unit, () -> Boolean) -> Unit,
-    private val title: String) : AutoCloseable {
+    private val title: String, val initialDownloadBytes: Long = 0) : AutoCloseable {
     enum class Status { READY, RUNNING, DONE, FAILED, CANCELLED }
     data class State(val status: Status = Status.READY, val busy: Boolean = false,
                      val progress: Int = 0, val result: NextLibrary.Selection? = null)

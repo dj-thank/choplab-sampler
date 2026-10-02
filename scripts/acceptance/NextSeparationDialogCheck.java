@@ -27,7 +27,7 @@ public class NextSeparationDialogCheck {
  static int renders=0;
  static NextSeparation job(Path root,String title){
   return new NextSeparation(root,f->Unit.INSTANCE,cancelled->new WavAudio(new WavInfo(44100,2,2,32,true),new float[]{.000001f,-.000002f,1.25f,-1.5f}),
-   (audio,path,progress,cancelled)->{try{renders++;try(var out=Files.newOutputStream(path)){WavCodec.INSTANCE.writeFloat(out,audio.getSamples(),44100,2);}return Unit.INSTANCE;}catch(Exception e){throw new RuntimeException(e);}},title);
+   (audio,path,progress,cancelled)->{try{renders++;try(var out=Files.newOutputStream(path)){WavCodec.INSTANCE.writeFloat(out,audio.getSamples(),44100,2);}return Unit.INSTANCE;}catch(Exception e){throw new RuntimeException(e);}},title,0L);
  }
  static void waitDialog()throws Exception{long end=System.nanoTime()+10_000_000_000L;while(dialog()==null){if(System.nanoTime()>end)throw new Exception("Dialog timeout");Thread.sleep(20);}}
  public static void main(String[]args)throws Exception{
