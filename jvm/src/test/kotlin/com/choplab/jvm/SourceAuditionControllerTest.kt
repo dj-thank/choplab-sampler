@@ -8,6 +8,9 @@ import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.LockSupport
+import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.test.*
 
@@ -23,6 +26,119 @@ class SourceAuditionControllerTest {
             length.also { LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000L / 48_000) }
         override fun close() = Unit
     } }
+
+    @Test fun rebuiltOutputCannotReuseThePreviousSessionsLoadedSourceDuringReadoutContention() = runBlocking<Unit> {
+        val f = SessionFixture(PcmMemoryBudget.shared.statistics().usedBytes)
+        try {
+            waitUntil { f.driver.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(f.audition.pitch(12f))
+            assertTrue(f.audition.play(f.asset))
+            // Seed this consumer thread with the old route's loaded=true snapshot.
+            assertTrue(f.driver.originalPlayback().loaded)
+            f.output.lost.set(true)
+            waitUntil { f.driver.status.value.phase == DriverPhase.EDITING_ONLY }
+            f.output.hold.set(true)
+            f.output.lost.set(false)
+            assertTrue(f.driver.reattach())
+            waitUntil { f.output.parked.get() && f.driver.status.value.phase == DriverPhase.ATTACHED }
+            f.observe.set(true)
+            val result = withReadoutPublishing(f.driver) {
+                // UNDISPATCHED retains the same thread-local old snapshot until the first real command.
+                val pending = async(start = CoroutineStart.UNDISPATCHED) { f.audition.play(f.asset) }
+                withTimeout(5_000) { f.firstCommand.await() }
+                pending
+            }
+            f.output.resume()
+            assertTrue(result.await(), "A fresh output must receive SOURCE and its key before Play: ${f.commands}")
+            assertEquals(listOf("SetOriginalSource", "SetOriginalPitch", "PlayOriginalSource"), f.commands.toList())
+            assertEquals(2, f.loads.get())
+            assertTrue(f.driver.originalPlayback().playing)
+        } finally { f.close() }
+        assertEquals(f.beforeBudget, PcmMemoryBudget.shared.statistics().usedBytes)
+    }
+
+    @Test fun sameOutputResumesItsAcknowledgedSourceWithoutReloadingOnAContendedFreshReader() = runBlocking<Unit> {
+        val f = SessionFixture(PcmMemoryBudget.shared.statistics().usedBytes)
+        val reader = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            waitUntil { f.driver.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(f.audition.pitch(12f))
+            assertTrue(f.audition.play(f.asset))
+            waitUntil { f.driver.originalPlayback().sourceFrame >= 4_800 }
+            assertTrue(f.audition.pause())
+            f.output.hold.set(true)
+            waitUntil { f.output.parked.get() }
+            val position = f.driver.originalPlayback().sourceFrame
+            assertTrue(position >= 4_800)
+            f.observe.set(true)
+            val result = withReadoutPublishing(f.driver) {
+                // A new consumer has no snapshot; contention must not turn an acknowledged source into empty.
+                val pending = async(reader) { f.audition.play(f.asset) }
+                withTimeout(5_000) { f.firstCommand.await() }
+                pending
+            }
+            f.output.resume()
+            assertTrue(result.await())
+            assertEquals(listOf("PlayOriginalSource"), f.commands.toList(), "Resume must not reset a loaded source to frame zero")
+            assertEquals(1, f.loads.get())
+            assertTrue(f.driver.originalPlayback().sourceFrame >= position)
+        } finally { f.close(); reader.close() }
+        assertEquals(f.beforeBudget, PcmMemoryBudget.shared.statistics().usedBytes)
+    }
+
+    /** Force the existing three-attempt seqlock to be busy only while the real audio owner is parked. */
+    private suspend fun <T> withReadoutPublishing(driver: StreamingEnginePort, block: suspend () -> T): T {
+        val view = StreamingEnginePort::class.java.getDeclaredField("engineView").run { isAccessible = true; get(driver) }
+        val engine = view.javaClass.getDeclaredField("engine").run { isAccessible = true; get(view) as EngineCore }
+        val version = LiveReadout::class.java.getDeclaredField("version").apply { isAccessible = true }
+        val before = version.getLong(engine.readout)
+        assertEquals(0L, before and 1L)
+        version.setLong(engine.readout, before + 1)
+        return try { block() } finally { version.setLong(engine.readout, before) }
+    }
+
+    private inner class SessionFixture(val beforeBudget: Long) : AutoCloseable {
+        val output = ParkedOutput()
+        val driver = StreamingEnginePort(compiler(), output::sink)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val loads = AtomicInteger()
+        val observe = AtomicBoolean()
+        val commands = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val firstCommand = CompletableDeferred<Unit>()
+        val asset = Asset("c".repeat(64), "wav", 44, 48_000, 2, 480_000, "source")
+        val audition = SourceAuditionController(driver, object : PcmPort {
+            override suspend fun load(asset: Asset): PcmAsset {
+                loads.incrementAndGet()
+                return PcmAsset.fromInterleaved(FloatArray(480_000 * 2) { if (it % 2 == 0) .1f else -.2f })
+            }
+        }, scope, send = { command ->
+            if (observe.get()) { commands += command.javaClass.simpleName; firstCommand.complete(Unit) }
+            driver.applyMonitoring(command)
+        })
+        override fun close() { output.resume(); audition.close(); scope.cancel(); driver.close() }
+    }
+
+    private class ParkedOutput {
+        val lost = AtomicBoolean()
+        val hold = AtomicBoolean()
+        val parked = AtomicBoolean()
+        private val release = Semaphore(0)
+        fun resume() { hold.set(false); release.release() }
+        fun sink() = object : AudioSink {
+            override val encoding = SinkEncoding.FLOAT32
+            override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
+                check(!lost.get()) { "Injected output loss" }
+                if (hold.get()) {
+                    parked.set(true)
+                    check(release.tryAcquire(5, TimeUnit.SECONDS)) { "Test did not release its audio owner" }
+                    parked.set(false)
+                }
+                LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000L / 48_000)
+                return length
+            }
+            override fun close() = Unit
+        }
+    }
 
     @Test fun releaseCancelsLateDecodeAndAlsoAStartWaitingForGainAcknowledgement() = runBlocking<Unit> {
         val driver = StreamingEnginePort(compiler(), paced)
