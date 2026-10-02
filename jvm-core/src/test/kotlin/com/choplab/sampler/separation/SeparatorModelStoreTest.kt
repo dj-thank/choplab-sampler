@@ -7,6 +7,9 @@ import java.security.MessageDigest
 import java.util.Random
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,6 +27,38 @@ class SeparatorModelStoreTest {
             opened.incrementAndGet()
             SeparatorModelStore.Download(payload.size.toLong(), ByteArrayInputStream(payload))
         }
+
+    @Test
+    fun concurrentStoresShareTheDownloadAndACancelledWaiterDoesNotRemoveItsPartialFile() {
+        val directory = Files.createTempDirectory("separator-shared").toFile()
+        val pool = Executors.newFixedThreadPool(2)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        val opened = AtomicInteger()
+        try {
+            val first = pool.submit<java.io.File> { store(directory, opened = opened).ensure(onProgress = {
+                if (entered.count > 0) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+            }) }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val cancel = java.util.concurrent.atomic.AtomicBoolean()
+            val waiting = CountDownLatch(1); val checks = AtomicInteger()
+            val second = pool.submit<Boolean> {
+                try { store(directory, opened = opened).ensure(isCancelled = {
+                    if (checks.incrementAndGet() >= 3) waiting.countDown()
+                    cancel.get()
+                }); false }
+                catch (_: CancellationException) { true }
+            }
+            assertTrue(waiting.await(5, TimeUnit.SECONDS))
+            cancel.set(true)
+            assertTrue(second.get(5, TimeUnit.SECONDS))
+            assertTrue(directory.resolve(SeparatorSpec.MODEL_FILE + ".part").exists())
+            release.countDown()
+            assertArrayEquals(bytes, first.get(5, TimeUnit.SECONDS).readBytes())
+            assertArrayEquals(bytes, store(directory, opened = opened).ensure().readBytes())
+            assertEquals(1, opened.get())
+            assertFalse(directory.resolve(SeparatorSpec.MODEL_FILE + ".part").exists())
+        } finally { release.countDown(); pool.shutdownNow(); directory.deleteRecursively() }
+    }
 
     @Test
     fun downloadsVerifiesAndReusesThePinnedModel() {

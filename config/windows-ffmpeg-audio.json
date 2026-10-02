@@ -1,0 +1,1331 @@
+{
+  "schema": 1,
+  "id": "ffmpeg-8.1.2-windows-audio-v1",
+  "state": "opt-in-candidate",
+  "target": "x86_64-windows-ucrt",
+  "version": "8.1.2",
+  "sourceDateEpoch": 1789603200,
+  "ffmpeg": {
+    "url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+    "filename": "ffmpeg-8.1.2.tar.xz",
+    "bytes": 11710924,
+    "sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c"
+  },
+  "rubberband": {
+    "url": "https://breakfastquay.com/files/releases/rubberband-4.0.0.tar.bz2",
+    "filename": "rubberband-4.0.0.tar.bz2",
+    "bytes": 236705,
+    "sha256": "af050313ee63bc18b35b2e064e5dce05b276aaf6d1aa2b8a82ced1fe2f8028e9"
+  },
+  "toolchain": {
+    "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-macos-universal.tar.xz",
+    "filename": "llvm-mingw-20260922-ucrt-macos-universal.tar.xz",
+    "bytes": 124289672,
+    "sha256": "52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3"
+  },
+  "nasm": {
+    "url": "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/nasm-2.16.03.tar.xz",
+    "filename": "nasm-2.16.03.tar.xz",
+    "bytes": 1032388,
+    "sha256": "1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148"
+  },
+  "buildTools": {
+    "python": "3.14",
+    "meson": "1.9.0",
+    "ninja": "1.13.0"
+  },
+  "packageIndex": {
+    "url": "https://repo.msys2.org/mingw/clang64/clang64.db",
+    "bytes": 574345,
+    "sha256": "a9f1764001b0d94489bb314d1adad10593ff4d175574e9058528733c4e9ea0f3"
+  },
+  "packages": [
+    {
+      "name": "mingw-w64-clang-x86_64-brotli",
+      "version": "1.2.0-1",
+      "license": [
+        "spdx:MIT"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+        "bytes": 469729,
+        "sha256": "29bfbb9783ec5b86b6a51bacbd47708f75e854a3e05b0850360dcf6e901a485d"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-brotli-1.2.0-1.src.tar.zst",
+        "filename": "mingw-w64-brotli-1.2.0-1.src.tar.zst",
+        "bytes": 644113,
+        "sha256": "2f0f93875aac21990d20f1eaf0ad8b970eb6f186c663c77ae47aaaf9e5711fcf"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-bzip2",
+      "version": "1.0.8-4",
+      "license": [
+        "custom"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-bzip2-1.0.8-4-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-bzip2-1.0.8-4-any.pkg.tar.zst",
+        "bytes": 100308,
+        "sha256": "bee14f4d52c1d58b59a17eb8953f1f4361689798d15709966a3d35ef7ce52dcf"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-bzip2-1.0.8-4.src.tar.zst",
+        "filename": "mingw-w64-bzip2-1.0.8-4.src.tar.zst",
+        "bytes": 818825,
+        "sha256": "fd9360917314d1cbccb3cb15ed8450d1e56b8a9f733b606504aba52c52159e54"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-fftw",
+      "version": "3.3.11-1",
+      "license": [
+        "spdx:GPL-2.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-fftw-3.3.11-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-fftw-3.3.11-1-any.pkg.tar.zst",
+        "bytes": 3768736,
+        "sha256": "1a02bfcd7eaab7fa02b1051265d0225abde3bb14016d0b7873dd2c92c3b7c559"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-fftw-3.3.11-1.src.tar.zst",
+        "filename": "mingw-w64-fftw-3.3.11-1.src.tar.zst",
+        "bytes": 4229778,
+        "sha256": "3d3f5489e62f1045aff687389500ffb65744c7e76970af879eccde1f887b3b58"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-gettext-runtime",
+      "version": "1.0-1",
+      "license": [
+        "spdx:GPL-3.0-or-later AND LGPL-2.1-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+        "bytes": 424222,
+        "sha256": "6f22a64727816c9d9c8289bac9493a3c50691da678de22489d0545114568bb90"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gettext-1.0-1.src.tar.zst",
+        "filename": "mingw-w64-gettext-1.0-1.src.tar.zst",
+        "bytes": 10267655,
+        "sha256": "cca0d0c8f60353faccc5ad40405240014e4a7ccc8b1c6ca9f4626aef3097d26e"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-gmp",
+      "version": "6.3.0-2",
+      "license": [
+        "LGPL3",
+        "GPL"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-gmp-6.3.0-2-any.pkg.tar.zst",
+        "bytes": 602611,
+        "sha256": "69f2f77c6c25e9f6bb0fed4ce0df1883054282236857cd17e6eb1aa0e717470e"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gmp-6.3.0-2.src.tar.zst",
+        "filename": "mingw-w64-gmp-6.3.0-2.src.tar.zst",
+        "bytes": 2097066,
+        "sha256": "f288f944fd9609db220bcf6a8dd0703a5674eeb906ef35eb8485bb8192135994"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-gnutls",
+      "version": "3.8.13-3",
+      "license": [
+        "spdx:GPL-3.0-or-later",
+        "spdx:LGPL-2.1-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-gnutls-3.8.13-3-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-gnutls-3.8.13-3-any.pkg.tar.zst",
+        "bytes": 2387055,
+        "sha256": "e49375bcfd776c0eafdddbfedf6e4a87dde308a502ea4ce7052267f6762187c2"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gnutls-3.8.13-3.src.tar.zst",
+        "filename": "mingw-w64-gnutls-3.8.13-3.src.tar.zst",
+        "bytes": 7280076,
+        "sha256": "7889cd73810d909642c0f122b40cfe0eaec5b0d2985804f145cd90c6a51c0435"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-gsm",
+      "version": "1.0.24-1",
+      "license": [
+        "custom"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-gsm-1.0.24-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-gsm-1.0.24-1-any.pkg.tar.zst",
+        "bytes": 71253,
+        "sha256": "82c373a19e3bf37bd8013655a051c231899592b10b2a6f06963805fe7a65e2c2"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-gsm-1.0.24-1.src.tar.zst",
+        "filename": "mingw-w64-gsm-1.0.24-1.src.tar.zst",
+        "bytes": 69390,
+        "sha256": "623729958cd0ca08e15ff6a51a54aa1bb73fe0356c29a42fc35342087497d61a"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-lame",
+      "version": "3.100-3",
+      "license": [
+        "LGPL"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-lame-3.100-3-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-lame-3.100-3-any.pkg.tar.zst",
+        "bytes": 370847,
+        "sha256": "0ee7bab16c09fbe321ec1e8a7614da31ccd3658997645743559a4f1010d57b0d"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-lame-3.100-3.src.tar.zst",
+        "filename": "mingw-w64-lame-3.100-3.src.tar.zst",
+        "bytes": 1526904,
+        "sha256": "dfd51143ea25aa0b67f5d355127b8a89a27379b1b128f0b2f9eed7c3327656ab"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libc++",
+      "version": "22.1.8-1",
+      "license": [
+        "spdx:Apache-2.0 WITH LLVM-exception"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libc++-22.1.8-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libc++-22.1.8-1-any.pkg.tar.zst",
+        "bytes": 1939106,
+        "sha256": "de0bd1b9d62f81b6ac06ea915af8da3fbd63e6705e1bb62ef3f553d1e5fbe4ef"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libc++-22.1.8-1.src.tar.zst",
+        "filename": "mingw-w64-libc++-22.1.8-1.src.tar.zst",
+        "bytes": 167068984,
+        "sha256": "e6836f20f4b5e7f4bc84ea9aff51de72fd2d04e383c7edf6d2b7f53c90154e2c"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libffi",
+      "version": "3.8.0-1",
+      "license": [
+        "spdx:MIT"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libffi-3.8.0-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libffi-3.8.0-1-any.pkg.tar.zst",
+        "bytes": 51575,
+        "sha256": "4d27339b52eabae86a1dff79cf432191ad8dd6acfa653b1179b12490234c66a6"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libffi-3.8.0-1.src.tar.zst",
+        "filename": "mingw-w64-libffi-3.8.0-1.src.tar.zst",
+        "bytes": 1582238,
+        "sha256": "641ea78ce0333839eab5262656f03fdcfd8496d7388bd7b27e4f0638aeed9adf"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libgme",
+      "version": "0.6.5-2",
+      "license": [
+        "LGPL"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libgme-0.6.5-2-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libgme-0.6.5-2-any.pkg.tar.zst",
+        "bytes": 239769,
+        "sha256": "e8e698727433cf8b95b1ada347d64d954c572890b5837667d07d3ac8abbb2d89"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libgme-0.6.5-2.src.tar.zst",
+        "filename": "mingw-w64-libgme-0.6.5-2.src.tar.zst",
+        "bytes": 349057,
+        "sha256": "b77a9be1dd65255df797a793a525a25a73b75a8c3c1379f79b2ea9376e854fd6"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libiconv",
+      "version": "1.19-1",
+      "license": [
+        "spdx:LGPL-2.1-or-later",
+        "documentation:spdx:GPL-3.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+        "bytes": 736821,
+        "sha256": "26c4ac9f2023eecdfffb291cab40c60585a0cd0f72539ca03c5558f3ecd309ec"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libiconv-1.19-1.src.tar.zst",
+        "filename": "mingw-w64-libiconv-1.19-1.src.tar.zst",
+        "bytes": 5131029,
+        "sha256": "74428280c17094da5b702c29b2e1a0abae59556ea5dfdd65705cc8ccc1e000fb"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libidn2",
+      "version": "2.3.8-4",
+      "license": [
+        "spdx:GPL-2.0-or-later",
+        "spdx:LGPL-3.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libidn2-2.3.8-4-any.pkg.tar.zst",
+        "bytes": 174549,
+        "sha256": "91b56797068c2e73c4ee26fa89dd8e9d2de464c639f01c948c12886dbc5b138d"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libidn2-2.3.8-4.src.tar.zst",
+        "filename": "mingw-w64-libidn2-2.3.8-4.src.tar.zst",
+        "bytes": 2147337,
+        "sha256": "cd83e8514fbeb6a4499299b88691b9b9ecc3114cca1e2be4f6c54aab6ae9ddd0"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libogg",
+      "version": "1.3.6-1",
+      "license": [
+        "spdx:BSD-3-Clause"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libogg-1.3.6-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libogg-1.3.6-1-any.pkg.tar.zst",
+        "bytes": 214060,
+        "sha256": "cfb8802eeae4211e6e51bbd1297fd43b8019f958a6c738f777a599dc68d50d64"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libogg-1.3.6-1.src.tar.zst",
+        "filename": "mingw-w64-libogg-1.3.6-1.src.tar.zst",
+        "bytes": 606383,
+        "sha256": "af94ea3c4011694b7a68904144ec1ab73c6c649152c78cb93a7df2a6c386b351"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libopenmpt",
+      "version": "0.8.9-1",
+      "license": [
+        "spdx:BSD-3-Clause"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libopenmpt-0.8.9-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libopenmpt-0.8.9-1-any.pkg.tar.zst",
+        "bytes": 1677531,
+        "sha256": "eca037af34ddbdc734a1b937542f2c5dacd0aea83864416c42cd774636dce130"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libopenmpt-0.8.9-1.src.tar.zst",
+        "filename": "mingw-w64-libopenmpt-0.8.9-1.src.tar.zst",
+        "bytes": 1763119,
+        "sha256": "a4da2ecddb7151ff614c15785f9fcf4e4b26c4e15169f980dd77861a3773c147"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libsamplerate",
+      "version": "0.2.2-1",
+      "license": [
+        "spdx:BSD-2-Clause"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libsamplerate-0.2.2-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libsamplerate-0.2.2-1-any.pkg.tar.zst",
+        "bytes": 1397725,
+        "sha256": "082d2c4114c288624202b8784841707d4c6e8505c634fefa62bb2adbd2561d53"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libsamplerate-0.2.2-1.src.tar.zst",
+        "filename": "mingw-w64-libsamplerate-0.2.2-1.src.tar.zst",
+        "bytes": 3321928,
+        "sha256": "7528af70b04da314fd5adc8c4ffe63d4bdc2f616ac7d3ac0d28876a1ac4eae52"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libsodium",
+      "version": "1.0.22-3",
+      "license": [
+        "spdx:ISC"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libsodium-1.0.22-3-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libsodium-1.0.22-3-any.pkg.tar.zst",
+        "bytes": 303520,
+        "sha256": "409ba3ae61cd6c9a37bc4409511e7ef69c4d8f03cdde5f3111e20cf354ad28d7"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libsodium-1.0.22-3.src.tar.zst",
+        "filename": "mingw-w64-libsodium-1.0.22-3.src.tar.zst",
+        "bytes": 2007568,
+        "sha256": "ccada82e42ce8a5cc26cfa874d2bfda03cfe128fe622f4db66272ba93099a78d"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libssh",
+      "version": "0.12.2-1",
+      "license": [
+        "spdx:LGPL-2.1-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libssh-0.12.2-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libssh-0.12.2-1-any.pkg.tar.zst",
+        "bytes": 387876,
+        "sha256": "4b68f20f864beac583c76c26ab250822a322f31d17f9426c0f9a7f7d39491e14"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libssh-0.12.2-1.src.tar.zst",
+        "filename": "mingw-w64-libssh-0.12.2-1.src.tar.zst",
+        "bytes": 762807,
+        "sha256": "b935d915b5392e573f65855c491e476ae38860d3929d2b564e507aa660c3e05b"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libtasn1",
+      "version": "4.21.0-1",
+      "license": [
+        "GPL3, LGPL"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libtasn1-4.21.0-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libtasn1-4.21.0-1-any.pkg.tar.zst",
+        "bytes": 205386,
+        "sha256": "964ea9469d8c71e9f44fed7aa0c437806dac3a71d4c0612046cd9243eb49b20e"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libtasn1-4.21.0-1.src.tar.zst",
+        "filename": "mingw-w64-libtasn1-4.21.0-1.src.tar.zst",
+        "bytes": 1732161,
+        "sha256": "c626129c5131eef0a45c736274f0844747605a105161cc0f7d39f6e1c70ed0ff"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libunistring",
+      "version": "1.4.2-1",
+      "license": [
+        "spdx:LGPL-3.0-or-later OR GPL-3.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst",
+        "bytes": 849338,
+        "sha256": "5e7c731bd1db6fa508f6347689cee9335b581c84c0f6d2de155fd3792e5484b1"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libunistring-1.4.2-1.src.tar.zst",
+        "filename": "mingw-w64-libunistring-1.4.2-1.src.tar.zst",
+        "bytes": 4770800,
+        "sha256": "a5bafb360d5c13c5c52ef071d5a8288ce2345346b902f20ed6e9322766ec60eb"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libvorbis",
+      "version": "1.3.7-3",
+      "license": [
+        "custom"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libvorbis-1.3.7-3-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libvorbis-1.3.7-3-any.pkg.tar.zst",
+        "bytes": 400954,
+        "sha256": "3d8731e195d6bfca0404a1f1145646862c1d3c1e2ffd0d9d49df99467f4649b8"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libvorbis-1.3.7-3.src.tar.zst",
+        "filename": "mingw-w64-libvorbis-1.3.7-3.src.tar.zst",
+        "bytes": 1653869,
+        "sha256": "429f3219de93435cbaa7737627b3b548ba8917d09c525f2005b9283ac5b39142"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libwinpthread",
+      "version": "14.0.0.r426.g4564ee4b5-1",
+      "license": [
+        "spdx:MIT AND BSD-3-Clause-Clear"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst",
+        "bytes": 31279,
+        "sha256": "76ad0b7af74e876f6af49adc584a3fc592db231de57812c3e018f2b0c3a254cc"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-winpthreads-14.0.0.r426.g4564ee4b5-1.src.tar.zst",
+        "filename": "mingw-w64-winpthreads-14.0.0.r426.g4564ee4b5-1.src.tar.zst",
+        "bytes": 54807189,
+        "sha256": "5493832de1b7e24f09edb556ed409091b0844f9677212c4865618d6f93c508be"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-libxml2",
+      "version": "2.15.4-1",
+      "license": [
+        "spdx:MIT"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-libxml2-2.15.4-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-libxml2-2.15.4-1-any.pkg.tar.zst",
+        "bytes": 1012534,
+        "sha256": "61de987a3655c1bc81ea50ee1bdc6ac91836d96e91115ba8afdb82283272f6d8"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-libxml2-2.15.4-1.src.tar.zst",
+        "filename": "mingw-w64-libxml2-2.15.4-1.src.tar.zst",
+        "bytes": 3805864,
+        "sha256": "e283bdd176377f82c3af57458d8623afedbba6d504d4480f93f49e39fb0a1417"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-mpg123",
+      "version": "1.33.7-1",
+      "license": [
+        "spdx:LGPL-2.1-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-mpg123-1.33.7-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-mpg123-1.33.7-1-any.pkg.tar.zst",
+        "bytes": 531241,
+        "sha256": "f85eb887f338319a4bee0d10197e4ed70440b0acc3c9d74d05b22f4ab3bc6f94"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-mpg123-1.33.7-1.src.tar.zst",
+        "filename": "mingw-w64-mpg123-1.33.7-1.src.tar.zst",
+        "bytes": 1126100,
+        "sha256": "f924cfca2e6cb867e4efc2aa3935bac24593da1631bf1a8613bc35b4fae88c18"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-nettle",
+      "version": "4.0-1",
+      "license": [
+        "spdx:GPL-2.0-or-later",
+        "spdx:LGPL-3.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-nettle-4.0-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-nettle-4.0-1-any.pkg.tar.zst",
+        "bytes": 581370,
+        "sha256": "626c06c8e2198c2e5cc5c8e2ba0a1faa2670039ae1f5968ac8df8655a594b64c"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-nettle-4.0-1.src.tar.zst",
+        "filename": "mingw-w64-nettle-4.0-1.src.tar.zst",
+        "bytes": 2630115,
+        "sha256": "453187e86139bce3c5b94542cc709ead7f523f0fc33ce4cc2b8fe9d5a9719cdd"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-openal",
+      "version": "1.25.2-1",
+      "license": [
+        "spdx:GPL-2.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-openal-1.25.2-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-openal-1.25.2-1-any.pkg.tar.zst",
+        "bytes": 1686776,
+        "sha256": "21ac02b95333e1889a00c1f6d2c0d6c51cc67b505e3a78d217daa0d35aa1dcdc"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-openal-1.25.2-1.src.tar.zst",
+        "filename": "mingw-w64-openal-1.25.2-1.src.tar.zst",
+        "bytes": 1394046,
+        "sha256": "303b60d2a227b97a667449e607991c74243a2f1225ad2e954b4c8d8e35172c10"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-opencore-amr",
+      "version": "0.1.6-1",
+      "license": [
+        "Apache"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-opencore-amr-0.1.6-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-opencore-amr-0.1.6-1-any.pkg.tar.zst",
+        "bytes": 206574,
+        "sha256": "df7a7809946de7b9f472e9f1c8f6171137725facd5f1c4cb605113911c8ad0f5"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-opencore-amr-0.1.6-1.src.tar.zst",
+        "filename": "mingw-w64-opencore-amr-0.1.6-1.src.tar.zst",
+        "bytes": 936796,
+        "sha256": "359bb4bcea1f8f49f875898887c25ab5c3c95af5b34afeca00fffd7256e5bccb"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-openssl",
+      "version": "3.6.5-1",
+      "license": [
+        "spdx:Apache-2.0"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-openssl-3.6.5-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-openssl-3.6.5-1-any.pkg.tar.zst",
+        "bytes": 8178262,
+        "sha256": "c6be6a00e4c5672306d3abefa195d8341d57f6d9c52a066bc6145d50038e4c62"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-openssl-3.6.5-1.src.tar.zst",
+        "filename": "mingw-w64-openssl-3.6.5-1.src.tar.zst",
+        "bytes": 54979777,
+        "sha256": "997157ec74a6a722d7c8848605b1389a31a103d4b9f2aa6a40e179373a139cd1"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-opus",
+      "version": "1.6.1-1",
+      "license": [
+        "spdx:BSD-3-Clause"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-opus-1.6.1-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-opus-1.6.1-1-any.pkg.tar.zst",
+        "bytes": 391078,
+        "sha256": "addb5607cb62769bf3c9dd2b8be7cea4cc8664eb449bdf77221bd5821b47e93a"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-opus-1.6.1-1.src.tar.zst",
+        "filename": "mingw-w64-opus-1.6.1-1.src.tar.zst",
+        "bytes": 10472894,
+        "sha256": "f9f4f73a700edcd35e11d7f47bcb164c850b781fa2cccb48cd30d505262b43a2"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-p11-kit",
+      "version": "0.26.5-1",
+      "license": [
+        "spdx:BSD-3-Clause"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-p11-kit-0.26.5-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-p11-kit-0.26.5-1-any.pkg.tar.zst",
+        "bytes": 665483,
+        "sha256": "e80802646ba0e9dba2bc881258476735920ded7d288cb386e0d26c77c7a46fea"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-p11-kit-0.26.5-1.src.tar.zst",
+        "filename": "mingw-w64-p11-kit-0.26.5-1.src.tar.zst",
+        "bytes": 1094024,
+        "sha256": "1665c40c6237bbb9be868ecfc00ab65f9038047e4c608126de575ae4ecb5ca12"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-speex",
+      "version": "1.2.1-1",
+      "license": [
+        "BSD"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-speex-1.2.1-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-speex-1.2.1-1-any.pkg.tar.zst",
+        "bytes": 562761,
+        "sha256": "963b49323ea5973e2d493c39c0f49dc516239a31d5b12b27e99dc2323a80736f"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-speex-1.2.1-1.src.tar.zst",
+        "filename": "mingw-w64-speex-1.2.1-1.src.tar.zst",
+        "bytes": 1044182,
+        "sha256": "e1a419b525ee19d808c47fce97890a4cae610627c5a74e533a1c322d596f11ef"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-srt",
+      "version": "1.5.7-1",
+      "license": [
+        "spdx:MPL-2.0"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-srt-1.5.7-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-srt-1.5.7-1-any.pkg.tar.zst",
+        "bytes": 831745,
+        "sha256": "1bc4b7314c479b8a074792e4f043e19e299944991fb8d55ee35ace411fb5607e"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-srt-1.5.7-1.src.tar.zst",
+        "filename": "mingw-w64-srt-1.5.7-1.src.tar.zst",
+        "bytes": 1795977,
+        "sha256": "bed7eb763e6d6c98aaf826d2375a959714669a8040a378ae19a81bed1d342daf"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-vo-amrwbenc",
+      "version": "0.1.3-2",
+      "license": [
+        "spdx:Apache-2.0"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-vo-amrwbenc-0.1.3-2-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-vo-amrwbenc-0.1.3-2-any.pkg.tar.zst",
+        "bytes": 121173,
+        "sha256": "41ae3626cc9f56b6d5b4894e6fc7a9c9cc64784c85e93cb92cd1aadc6c9ba35c"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-vo-amrwbenc-0.1.3-2.src.tar.zst",
+        "filename": "mingw-w64-vo-amrwbenc-0.1.3-2.src.tar.zst",
+        "bytes": 608333,
+        "sha256": "14a432a462366514aec5ca1014e4746897690e5a0f1c9512552cd9a49a3f248b"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-xz",
+      "version": "5.8.4-1",
+      "license": [
+        "spdx:0BSD AND LGPL-2.1-or-later AND GPL-2.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-xz-5.8.4-1-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-xz-5.8.4-1-any.pkg.tar.zst",
+        "bytes": 913351,
+        "sha256": "6fc8efc101a0a638f7d637731b24cc2989f479a0a41d76a6723fd82ae3bffac9"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-xz-5.8.4-1.src.tar.zst",
+        "filename": "mingw-w64-xz-5.8.4-1.src.tar.zst",
+        "bytes": 1569458,
+        "sha256": "b8acbc56b2bfe08df7bffff423f3bf07ee85dbec4e07416017ab04c8afb9d13e"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-zeromq",
+      "version": "4.3.5-5",
+      "license": [
+        "spdx:MPL-2.0"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-zeromq-4.3.5-5-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-zeromq-4.3.5-5-any.pkg.tar.zst",
+        "bytes": 530658,
+        "sha256": "2f2b792d314198e75242a71fccd507d86388b60006d28ac086679462a50d1ba3"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zeromq-4.3.5-5.src.tar.zst",
+        "filename": "mingw-w64-zeromq-4.3.5-5.src.tar.zst",
+        "bytes": 2509004,
+        "sha256": "f45afb530b95c9049f8f0d28984f6c484e65e757063de74859dc32be1d2a5f25"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-zlib",
+      "version": "1.3.2-2",
+      "license": [
+        "spdx:Zlib"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+        "bytes": 111651,
+        "sha256": "96d8db2f2bf24c0d4e82b899d50a3497d97536a8bd38ce275401d0f2b9580b5e"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-2.src.tar.zst",
+        "filename": "mingw-w64-zlib-1.3.2-2.src.tar.zst",
+        "bytes": 1326375,
+        "sha256": "eef69dea52357e01b272d6fd6dc4d7c0773f71260cb7bcde6047c8c383518db3"
+      }
+    },
+    {
+      "name": "mingw-w64-clang-x86_64-zstd",
+      "version": "1.5.7-2",
+      "license": [
+        "spdx:BSD-3-Clause OR GPL-2.0-or-later"
+      ],
+      "binary": {
+        "url": "https://repo.msys2.org/mingw/clang64/mingw-w64-clang-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+        "filename": "mingw-w64-clang-x86_64-zstd-1.5.7-2-any.pkg.tar.zst",
+        "bytes": 597342,
+        "sha256": "2d75c4ddf8f4f7b76fe33e3f1eea16450f9b3aede14285c886462d72f0ffd87d"
+      },
+      "source": {
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zstd-1.5.7-2.src.tar.zst",
+        "filename": "mingw-w64-zstd-1.5.7-2.src.tar.zst",
+        "bytes": 2402010,
+        "sha256": "306797282df799e95d550e6d0bb4b0a7b848027b8e13893a24236e060837c217"
+      }
+    }
+  ],
+  "configure": [
+    "../ffmpeg-8.1.2/configure",
+    "--prefix=/choplab/native",
+    "--target-os=mingw32",
+    "--arch=x86_64",
+    "--enable-cross-compile",
+    "--cross-prefix=x86_64-w64-mingw32-",
+    "--pkg-config=pkg-config",
+    "--cc=x86_64-w64-mingw32-clang",
+    "--cxx=x86_64-w64-mingw32-clang++",
+    "--ar=llvm-ar",
+    "--ranlib=llvm-ranlib",
+    "--nm=llvm-nm",
+    "--strip=llvm-strip",
+    "--windres=x86_64-w64-mingw32-windres",
+    "--disable-autodetect",
+    "--enable-shared",
+    "--disable-static",
+    "--disable-debug",
+    "--disable-doc",
+    "--disable-ffplay",
+    "--disable-swscale",
+    "--disable-hwaccels",
+    "--disable-indevs",
+    "--enable-indev=dshow,lavfi,openal",
+    "--disable-outdevs",
+    "--enable-gpl",
+    "--enable-version3",
+    "--enable-small",
+    "--disable-w32threads",
+    "--enable-pthreads",
+    "--enable-mediafoundation",
+    "--enable-d3d11va",
+    "--extra-ldflags=-Wl,--gc-sections -Wl,--no-insert-timestamp -L../rubberband-install/choplab/native/lib -L../sysroot/clang64/lib",
+    "--extra-cflags=-Os -ffunction-sections -fdata-sections -I../rubberband-install/choplab/native/include -I../sysroot/clang64/include",
+    "--extra-libs=-liconv",
+    "--disable-decoders",
+    "--disable-encoders",
+    "--disable-filters",
+    "--enable-decoder=aac,aac_fixed,aac_latm,ac3,ac3_fixed,acelp_kelvin,adpcm_4xm,adpcm_adx,adpcm_afc,adpcm_agm,adpcm_aica,adpcm_argo,adpcm_circus,adpcm_ct,adpcm_dtk,adpcm_ea,adpcm_ea_maxis_xa,adpcm_ea_r1,adpcm_ea_r2,adpcm_ea_r3,adpcm_ea_xas,adpcm_g722,adpcm_g726,adpcm_g726le,adpcm_ima_acorn,adpcm_ima_alp,adpcm_ima_amv,adpcm_ima_apc,adpcm_ima_apm,adpcm_ima_cunning,adpcm_ima_dat4,adpcm_ima_dk3,adpcm_ima_dk4,adpcm_ima_ea_eacs,adpcm_ima_ea_sead,adpcm_ima_escape,adpcm_ima_hvqm2,adpcm_ima_hvqm4,adpcm_ima_iss,adpcm_ima_magix,adpcm_ima_moflex,adpcm_ima_mtf,adpcm_ima_oki,adpcm_ima_pda,adpcm_ima_qt,adpcm_ima_rad,adpcm_ima_smjpeg,adpcm_ima_ssi,adpcm_ima_wav,adpcm_ima_ws,adpcm_ima_xbox,adpcm_ms,adpcm_mtaf,adpcm_n64,adpcm_psx,adpcm_psxc,adpcm_sanyo,adpcm_sbpro_2,adpcm_sbpro_3,adpcm_sbpro_4,adpcm_swf,adpcm_thp,adpcm_thp_le,adpcm_vima,adpcm_xa,adpcm_xmd,adpcm_yamaha,adpcm_zork,ahx,alac,als,amrnb,amrwb,anull,apac,ape,aptx,aptx_hd,atrac1,atrac3,atrac3al,atrac3p,atrac3pal,atrac9,binkaudio_dct,binkaudio_rdft,bmv_audio,bonk,cbd2_dpcm,cook,dca,derf_dpcm,dfpwm,dolby_e,dsd_lsbf,dsd_lsbf_planar,dsd_msbf,dsd_msbf_planar,dsicinaudio,dss_sp,dst,eac3,evrc,fastaudio,ffwavesynth,flac,ftr,g723_1,g728,g729,gremlin_dpcm,gsm,gsm_ms,hca,hcom,hdr,iac,ilbc,imc,interplay_acm,interplay_dpcm,libgsm,libgsm_ms,libopencore_amrnb,libopencore_amrwb,libopus,libspeex,libvorbis,mace3,mace6,metasound,misc4,mlp,mp1,mp1float,mp2,mp2float,mp3,mp3adu,mp3adufloat,mp3float,mp3on4,mp3on4float,mpc7,mpc8,msnsiren,nellymoser,on2avc,opus,osq,paf_audio,pcm_alaw,pcm_bluray,pcm_dvd,pcm_f16le,pcm_f24le,pcm_f32be,pcm_f32le,pcm_f64be,pcm_f64le,pcm_lxf,pcm_mulaw,pcm_s16be,pcm_s16be_planar,pcm_s16le,pcm_s16le_planar,pcm_s24be,pcm_s24daud,pcm_s24le,pcm_s24le_planar,pcm_s32be,pcm_s32le,pcm_s32le_planar,pcm_s64be,pcm_s64le,pcm_s8,pcm_s8_planar,pcm_sga,pcm_u16be,pcm_u16le,pcm_u24be,pcm_u24le,pcm_u32be,pcm_u32le,pcm_u8,pcm_vidc,qcelp,qdm2,qdmc,qoa,ra_144,ra_288,ralf,roq_dpcm,sbc,sdx2_dpcm,shorten,sipr,siren,smackaud,sol_dpcm,sonic,tak,truehd,truespeech,tta,twinvq,vmdaudio,vorbis,wady_dpcm,wavarc,wavpack,wmalossless,wmapro,wmav1,wmav2,wmavoice,ws_snd1,xan_dpcm,xma1,xma2",
+    "--enable-encoder=aac,aac_mf,ac3,ac3_fixed,ac3_mf,adpcm_adx,adpcm_argo,adpcm_g722,adpcm_g726,adpcm_g726le,adpcm_ima_alp,adpcm_ima_amv,adpcm_ima_apm,adpcm_ima_qt,adpcm_ima_ssi,adpcm_ima_wav,adpcm_ima_ws,adpcm_ms,adpcm_swf,adpcm_yamaha,alac,anull,aptx,aptx_hd,dca,dfpwm,eac3,flac,g723_1,hdr,libgsm,libgsm_ms,libmp3lame,libopencore_amrnb,libopus,libspeex,libvo_amrwbenc,libvorbis,mlp,mp2,mp2fixed,mp3_mf,nellymoser,opus,pcm_alaw,pcm_bluray,pcm_dvd,pcm_f32be,pcm_f32le,pcm_f64be,pcm_f64le,pcm_mulaw,pcm_s16be,pcm_s16be_planar,pcm_s16le,pcm_s16le_planar,pcm_s24be,pcm_s24daud,pcm_s24le,pcm_s24le_planar,pcm_s32be,pcm_s32le,pcm_s32le_planar,pcm_s64be,pcm_s64le,pcm_s8,pcm_s8_planar,pcm_u16be,pcm_u16le,pcm_u24be,pcm_u24le,pcm_u32be,pcm_u32le,pcm_u8,pcm_vidc,ra_144,roq_dpcm,sbc,sonic,sonic_ls,truehd,tta,vorbis,wavpack,wmav1,wmav2",
+    "--enable-filter=aap,abench,abuffer,acompressor,acontrast,acopy,acrossfade,acrossover,acrusher,acue,adeclick,adeclip,adecorrelate,adelay,adenorm,aderivative,adrc,adynamicequalizer,adynamicsmooth,aecho,aemphasis,aeval,aevalsrc,aexciter,afade,afdelaysrc,afftdn,afftfilt,afir,afireqsrc,afirsrc,aformat,afreqshift,afwtdn,agate,aiir,aintegral,ainterleave,alatency,alimiter,allpass,aloop,amerge,ametadata,amix,amovie,amultiply,anequalizer,anlmdn,anlmf,anlms,anoisesrc,anull,anullsink,anullsrc,apad,aperms,aphaser,aphaseshift,apsnr,apsyclip,apulsator,arealtime,aresample,areverse,arls,arnndn,asdr,asegment,aselect,asendcmd,asetnsamples,asetpts,asetrate,asettb,ashowinfo,asidedata,asisdr,asoftclip,aspectralstats,asplit,asr,astats,astreamselect,asubboost,asubcut,asupercut,asuperpass,asuperstop,atempo,atilt,atrim,axcorrelate,azmq,bandpass,bandreject,bass,biquad,bs2b,channelmap,channelsplit,chorus,compand,compensationdelay,concat,crossfeed,crystalizer,dcshift,deesser,dialoguenhance,drmeter,dynaudnorm,earwax,ebur128,equalizer,extrastereo,firequalizer,flanger,flite,haas,hdcd,headphone,highpass,highshelf,hilbert,join,ladspa,loudnorm,lowpass,lowshelf,lv2,mcompand,pan,replaygain,rubberband,sidechaincompress,sidechaingate,silencedetect,silenceremove,sinc,sine,sofalizer,speechnorm,stereotools,stereowiden,superequalizer,surround,tiltshelf,treble,tremolo,vibrato,virtualbass,volume,volumedetect,whisper",
+    "--enable-gnutls",
+    "--enable-gmp",
+    "--enable-bzlib",
+    "--enable-lzma",
+    "--enable-zlib",
+    "--enable-iconv",
+    "--enable-libxml2",
+    "--enable-libsrt",
+    "--enable-libssh",
+    "--enable-libzmq",
+    "--enable-openal",
+    "--enable-libgme",
+    "--enable-libopenmpt",
+    "--enable-libmp3lame",
+    "--enable-libopencore-amrnb",
+    "--enable-libopencore-amrwb",
+    "--enable-libvo-amrwbenc",
+    "--enable-libgsm",
+    "--enable-libopus",
+    "--enable-libspeex",
+    "--enable-libvorbis",
+    "--enable-librubberband"
+  ],
+  "derived": {
+    "archive": {
+      "bytes": 21235856,
+      "sha256": "723f8597f2ae5b5d4ad550244343aaed253eecebe3bc30c623dcc5ccad7fd6f1"
+    },
+    "files": {
+      "FFmpeg-LICENSE.txt": {
+        "bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "FFmpeg-SOURCES.json": {
+        "bytes": 36137,
+        "sha256": "ab2671cf732badd05854d99106387b1c7d36ffd2a0fb1b09b5cbfe750b4adeb9"
+      },
+      "FFmpeg-runtime.json": {
+        "bytes": 50844,
+        "sha256": "dca815770f7c42e5e21bc3b650ed85bbfba676c000a426fdf5804110e3b432b4"
+      },
+      "avcodec-62.dll": {
+        "bytes": 4183552,
+        "sha256": "37e1197257c9ae72065e67ea25086078970e888fb42e3283eafc9020b9183dc5"
+      },
+      "avdevice-62.dll": {
+        "bytes": 114688,
+        "sha256": "61776b69bcaa8b4169a1a5eced5ce8cbaa293f5322a2a2d47772eb81d462731f"
+      },
+      "avfilter-11.dll": {
+        "bytes": 1032192,
+        "sha256": "69d6daef28512e5d104acffbbd47a4bb13415a1597b39d6153cadb399bffece0"
+      },
+      "avformat-62.dll": {
+        "bytes": 2338816,
+        "sha256": "5422eeaab8c187b33d1f48d4c7de5a67c6d8704e2b3fa2f6659113990609d0e9"
+      },
+      "avutil-60.dll": {
+        "bytes": 717312,
+        "sha256": "026bee47930a1ee402e541825ec0080f7b47db061029a8222291b2c3d3494263"
+      },
+      "ffmpeg-notices/LLVM-MinGW-LICENSE.txt": {
+        "bytes": 15141,
+        "sha256": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+      },
+      "ffmpeg-notices/brotli/LICENSE.txt": {
+        "bytes": 1084,
+        "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+      },
+      "ffmpeg-notices/bzip2/LICENSE.txt": {
+        "bytes": 1896,
+        "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3"
+      },
+      "ffmpeg-notices/ffmpeg/COPYING.GPLv2.txt": {
+        "bytes": 18092,
+        "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+      },
+      "ffmpeg-notices/ffmpeg/COPYING.GPLv3.txt": {
+        "bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "ffmpeg-notices/ffmpeg/COPYING.LGPLv2.1.txt": {
+        "bytes": 26517,
+        "sha256": "246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30"
+      },
+      "ffmpeg-notices/ffmpeg/COPYING.LGPLv3.txt": {
+        "bytes": 7651,
+        "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+      },
+      "ffmpeg-notices/fftw/AUTHORS.txt": {
+        "bytes": 585,
+        "sha256": "14e1b1c6a7d84613c85a4c457b4167fb4927ce239ec45123e85ba5eefca4e7bb"
+      },
+      "ffmpeg-notices/fftw/COPYING.txt": {
+        "bytes": 18002,
+        "sha256": "231f7edcc7352d7734a96eef0b8030f77982678c516876fcb81e25b32d68564c"
+      },
+      "ffmpeg-notices/fftw/COPYRIGHT.txt": {
+        "bytes": 844,
+        "sha256": "8a74b35d541d93fdf58a22a3d3baa48ae3edbf6d715edfeb6457c21968ae43ac"
+      },
+      "ffmpeg-notices/gettext-runtime/COPYING.txt": {
+        "bytes": 495,
+        "sha256": "7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0"
+      },
+      "ffmpeg-notices/gettext-runtime/intl-COPYING.LIB.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/gettext-runtime/libasprintf-COPYING.LIB.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/gettext-runtime/libasprintf-COPYING.txt": {
+        "bytes": 65,
+        "sha256": "03133addae5b99a6148c538300e6d97074453089be1423b741bd081f18e2b298"
+      },
+      "ffmpeg-notices/gmp/AUTHORS.txt": {
+        "bytes": 4098,
+        "sha256": "da5870e2f0482c5dc15b4cfed8bbfb51ce1279c8f8fc52bdb8c13c7cee949c32"
+      },
+      "ffmpeg-notices/gmp/COPYING.LESSERv3.txt": {
+        "bytes": 7639,
+        "sha256": "a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c"
+      },
+      "ffmpeg-notices/gmp/COPYING.txt": {
+        "bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "ffmpeg-notices/gnutls/AUTHORS.txt": {
+        "bytes": 11500,
+        "sha256": "79bca1136dc515b930f2f85975c0c4c687e7d430be27a9b59113637c33b8e7a3"
+      },
+      "ffmpeg-notices/gnutls/COPYING.LESSERv2.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/gnutls/COPYING.txt": {
+        "bytes": 35149,
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      },
+      "ffmpeg-notices/gsm/license.txt.txt": {
+        "bytes": 1450,
+        "sha256": "81c68a3374937ed9b5e4929c709e81a2c4b35b5d1f450ecf8c473e2daea46ff6"
+      },
+      "ffmpeg-notices/lame/COPYING.txt": {
+        "bytes": 25284,
+        "sha256": "bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd"
+      },
+      "ffmpeg-notices/lame/LICENSE.txt": {
+        "bytes": 487,
+        "sha256": "7a40cbd8818c57e5285e83c772a459a996d1662c824a879836b97b473c07cae4"
+      },
+      "ffmpeg-notices/libc++/LICENSE.txt": {
+        "bytes": 16703,
+        "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b"
+      },
+      "ffmpeg-notices/libffi/LICENSE.txt": {
+        "bytes": 1132,
+        "sha256": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c"
+      },
+      "ffmpeg-notices/libgme/license.txt.txt": {
+        "bytes": 26938,
+        "sha256": "d2efc89fbb7533572a472d34e07964951810a3a4f8d3159ecc2dcaa1452c5c26"
+      },
+      "ffmpeg-notices/libiconv/COPYING.LIB.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/libiconv/COPYING.txt": {
+        "bytes": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      },
+      "ffmpeg-notices/libiconv/README.txt": {
+        "bytes": 5741,
+        "sha256": "4ae66e61d1c6593c84c47105b368d579bcee1af566dbb959ec63a0c48425dcf4"
+      },
+      "ffmpeg-notices/libiconv/libcharset-COPYING.LIB.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/libidn2/AUTHORS.txt": {
+        "bytes": 212,
+        "sha256": "7719304df806ca5cd68c1f1c7e0139e0c11ed14fede560ae192d3c4d1989e839"
+      },
+      "ffmpeg-notices/libidn2/COPYING.LESSERv3.txt": {
+        "bytes": 7652,
+        "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+      },
+      "ffmpeg-notices/libidn2/COPYING.txt": {
+        "bytes": 35149,
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      },
+      "ffmpeg-notices/libidn2/COPYING.unicode.txt": {
+        "bytes": 8782,
+        "sha256": "01d621eef165cf4d3d3dbb737aa0699178d94c6f18cf87e9dde6db3ca7790f46"
+      },
+      "ffmpeg-notices/libogg/COPYING.txt": {
+        "bytes": 1466,
+        "sha256": "d2ab5758336489da61c12cc5bb757da5339c4ae9001f9bb0562b4370249af814"
+      },
+      "ffmpeg-notices/libopenmpt/LICENSE.txt": {
+        "bytes": 1621,
+        "sha256": "2c999e99533c10a347916a72e075bacf10fcedeff793bd90d41d812b46161da2"
+      },
+      "ffmpeg-notices/libsamplerate/COPYING.txt": {
+        "bytes": 1334,
+        "sha256": "2c1f76ce2effdddb425018405d5690c0b1ab4e6976e35296b0a6db65c5e1a55d"
+      },
+      "ffmpeg-notices/libsodium/LICENSE.txt": {
+        "bytes": 823,
+        "sha256": "508a76d186356c0dd807a670ef510964f8724557024796a2c426c6c0e19ab683"
+      },
+      "ffmpeg-notices/libssh/AUTHORS.txt": {
+        "bytes": 488,
+        "sha256": "95b6a58ab69d7687d9486b4a859ebfc00fff25b0942cc51239ada2702ae69d1b"
+      },
+      "ffmpeg-notices/libssh/COPYING.txt": {
+        "bytes": 25008,
+        "sha256": "1656186e951db1c010a8485481fa94587f7e53a26d24976bef97945ad0c4df5a"
+      },
+      "ffmpeg-notices/libtasn1/COPYING.LESSERv2.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/libtasn1/COPYING.txt": {
+        "bytes": 35149,
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      },
+      "ffmpeg-notices/libunistring/LICENSE.LIB.txt": {
+        "bytes": 7639,
+        "sha256": "a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c"
+      },
+      "ffmpeg-notices/libunistring/LICENSE.txt": {
+        "bytes": 35149,
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      },
+      "ffmpeg-notices/libvorbis/AUTHORS.txt": {
+        "bytes": 65,
+        "sha256": "f5cab9f16035f770f50299f85cf2938c06dc3a9a30425961067788102ec896d3"
+      },
+      "ffmpeg-notices/libvorbis/COPYING.txt": {
+        "bytes": 1470,
+        "sha256": "ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a"
+      },
+      "ffmpeg-notices/libwinpthread/COPYING.txt": {
+        "bytes": 2883,
+        "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177"
+      },
+      "ffmpeg-notices/libxml2/COPYING.txt": {
+        "bytes": 1314,
+        "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+      },
+      "ffmpeg-notices/mpg123/COPYING.txt": {
+        "bytes": 40718,
+        "sha256": "c22482728a634a8dfdb4ff72a96d4c1ed64cd8f3e79335c401751ac591609366"
+      },
+      "ffmpeg-notices/nettle/AUTHORS.txt": {
+        "bytes": 4267,
+        "sha256": "6fd91e60caa0c33dd22888b710fcfa36532bbbef00d85c78de385dcd97f7b9ee"
+      },
+      "ffmpeg-notices/nettle/COPYING.LESSERv3.txt": {
+        "bytes": 7652,
+        "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+      },
+      "ffmpeg-notices/openal/COPYING.txt": {
+        "bytes": 23330,
+        "sha256": "d808ce217e5b611854da622b57ec29fe545584c48bc5352fae72a4b6e5074a15"
+      },
+      "ffmpeg-notices/openal/LICENSE-pffft.txt": {
+        "bytes": 1669,
+        "sha256": "64056328b3e7bc104e24ef96accc1a7abead156f0c02d1b87c97e3f3a28030de"
+      },
+      "ffmpeg-notices/opencore-amr/LICENSE.txt": {
+        "bytes": 10271,
+        "sha256": "8b3f1762349248d444ab9acbafe73941254e36e1064954da56bb9ddbd5873ddb"
+      },
+      "ffmpeg-notices/openssl/LICENSE.txt": {
+        "bytes": 10175,
+        "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+      },
+      "ffmpeg-notices/opus/COPYING.txt": {
+        "bytes": 1945,
+        "sha256": "01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551"
+      },
+      "ffmpeg-notices/p11-kit/AUTHORS.txt": {
+        "bytes": 36,
+        "sha256": "cde5ccbf5083e28d1b38333b5817be06c158fb3218f21ee5594b6125a9372591"
+      },
+      "ffmpeg-notices/p11-kit/COPYING.txt": {
+        "bytes": 1447,
+        "sha256": "2e1ba993904df807a10c3eda1e5c272338edc35674b679773a8b3ad460731054"
+      },
+      "ffmpeg-notices/rubberband/COPYING.txt": {
+        "bytes": 30260,
+        "sha256": "cedd4c1885d75991bf1077cc6e33359103cf04fbc996f20d30ab043d5fc5fcc5"
+      },
+      "ffmpeg-notices/speex/LICENSE.txt": {
+        "bytes": 1773,
+        "sha256": "2654a4264b2bfe298dedc508748d140111840c315cc8eb646a3a68c13fa75b01"
+      },
+      "ffmpeg-notices/srt/LICENSE.txt": {
+        "bytes": 16726,
+        "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+      },
+      "ffmpeg-notices/vo-amrwbenc/COPYING.txt": {
+        "bytes": 10271,
+        "sha256": "8b3f1762349248d444ab9acbafe73941254e36e1064954da56bb9ddbd5873ddb"
+      },
+      "ffmpeg-notices/vo-amrwbenc/NOTICE.txt": {
+        "bytes": 13467,
+        "sha256": "e2ae60e14bece975eeab49210fcaf4ee529b77e6ca13e7d6556b6bb203897b31"
+      },
+      "ffmpeg-notices/xz/COPYING.0BSD.txt": {
+        "bytes": 607,
+        "sha256": "0b01625d853911cd0e2e088dcfb743261034a091bb379246cb25a14cc4c74bf1"
+      },
+      "ffmpeg-notices/xz/COPYING.GPLv2.txt": {
+        "bytes": 17984,
+        "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+      },
+      "ffmpeg-notices/xz/COPYING.GPLv3.txt": {
+        "bytes": 35149,
+        "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+      },
+      "ffmpeg-notices/xz/COPYING.LGPLv2.1.txt": {
+        "bytes": 26419,
+        "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+      },
+      "ffmpeg-notices/xz/COPYING.txt": {
+        "bytes": 3119,
+        "sha256": "616a3ad264ce29b8f1cb97e53037b139d406899ca8d1f799651e17bfa09830b8"
+      },
+      "ffmpeg-notices/zeromq/AUTHORS.txt": {
+        "bytes": 2350,
+        "sha256": "9c7e32ac52c546ce6c9b328f348b2053ff6d56630cba06727e2e5abf644f4aed"
+      },
+      "ffmpeg-notices/zeromq/LICENSE.txt": {
+        "bytes": 16725,
+        "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+      },
+      "ffmpeg-notices/zlib/LICENSE.txt": {
+        "bytes": 1002,
+        "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+      },
+      "ffmpeg-notices/zstd/LICENSE.txt": {
+        "bytes": 1549,
+        "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+      },
+      "ffmpeg.exe": {
+        "bytes": 390656,
+        "sha256": "b9a4c2e158752dbe26457496dc1832d4348d877b10a8c5df8b8875f95e1ed0e1"
+      },
+      "ffprobe.exe": {
+        "bytes": 183296,
+        "sha256": "77baef7a54e5d99609e6d6a190871c0f7d937fba805804ce78d0f5564be25128"
+      },
+      "libbrotlicommon.dll": {
+        "bytes": 144896,
+        "sha256": "2c21a9ea0c965904b58c37237fd4e33a4cf90c5b6320b0f7e17f3d5304bba985"
+      },
+      "libbrotlidec.dll": {
+        "bytes": 61440,
+        "sha256": "53be248c41da8fc7ffc9223b9b7825a0a6e825910769cec9faf88e3cbb791183"
+      },
+      "libbrotlienc.dll": {
+        "bytes": 783360,
+        "sha256": "eebf8163c55a639af1675a16122f99ded8818c3aae96a463af7bdcb100b9202c"
+      },
+      "libbz2-1.dll": {
+        "bytes": 119296,
+        "sha256": "9423d22ac6e6ea4cedec5f63c194fe9809acbb8e56669e48982551313c69e3ff"
+      },
+      "libc++.dll": {
+        "bytes": 1659392,
+        "sha256": "7344daed05388589e9bd691ed1d30c568c374da4b8b6a12e1502185948c03cd4"
+      },
+      "libcrypto-3-x64.dll": {
+        "bytes": 5520896,
+        "sha256": "4d7a4dcad9e54005d14c5ff383caf430955dc564d40e9aa4721eb24e5b2d144e"
+      },
+      "libffi-8.dll": {
+        "bytes": 39936,
+        "sha256": "ded1b2d4ae65458afcc9241c014018d73ca4920879fdc66a952e85e5ec012226"
+      },
+      "libfftw3-3.dll": {
+        "bytes": 4315648,
+        "sha256": "edea66b95f883e1f32875d0612b113391638bd3f225c07f188bd4854dfd41a49"
+      },
+      "libgme.dll": {
+        "bytes": 377344,
+        "sha256": "6dc01876525e6023cbe7b5aeccce225527f29265b5c317527e42ce780a70a3a6"
+      },
+      "libgmp-10.dll": {
+        "bytes": 723968,
+        "sha256": "3f3482cc32744fbdfa8f816e9345ab29f75db0b14ee50fb0f429b6b7f85310e8"
+      },
+      "libgnutls-30.dll": {
+        "bytes": 2342912,
+        "sha256": "88d53e0c786758a76c06904ff2dff4728ed37ea832e6fcfafe47a4b7d4e479e9"
+      },
+      "libgsm.dll": {
+        "bytes": 63488,
+        "sha256": "5eea6be6f24469ff6345077db88b686f95c2eb7d0f72de84900bfd646add5d27"
+      },
+      "libhogweed-7.dll": {
+        "bytes": 282112,
+        "sha256": "da7c406d5fa63ab93a0ce130749667b88c7ff009ef1e0c2c0ceca8a931f97338"
+      },
+      "libiconv-2.dll": {
+        "bytes": 1115648,
+        "sha256": "c9f9b9addeac620eeccb6a23fc5a423fa1244e18431c00e1219db00d479ea332"
+      },
+      "libidn2-0.dll": {
+        "bytes": 242176,
+        "sha256": "af99fc714849e1748040a1001b505bf8a9609001cbaec30a2374d1aae21c4ddb"
+      },
+      "libintl-8.dll": {
+        "bytes": 302592,
+        "sha256": "b648dfd190711371bedd58f36cf7bf80cc60be0ff78e574e57f3bd81135eeff5"
+      },
+      "libmp3lame-0.dll": {
+        "bytes": 387584,
+        "sha256": "7e3cb5de500b8dfc1c2c497354a91630ead210b23b109eece504be152435293c"
+      },
+      "libmpg123-0.dll": {
+        "bytes": 387072,
+        "sha256": "8a23fb5e9c4e0bbc19d4e0779d01475696658f499dd571aa14901f67467c23b0"
+      },
+      "libnettle-9.dll": {
+        "bytes": 363520,
+        "sha256": "454c31b734c2ed3d50e5b1e6c147ed8e015c0bbe35d199a41647ab9ada1da5ef"
+      },
+      "libogg-0.dll": {
+        "bytes": 40448,
+        "sha256": "48ab3e91aa01714522bc6dc277168bd5e45fecf06de024ebff28f073a0883f67"
+      },
+      "libopenal-1.dll": {
+        "bytes": 2690560,
+        "sha256": "582fc706fa118e8d2dffb27bbd670f67f91f131e15f6de2032630e1d8bb0c3f1"
+      },
+      "libopencore-amrnb-0.dll": {
+        "bytes": 211968,
+        "sha256": "3d97d01fb68f1134d77850bc6f4be0203252e26aaf3b32dda77138d69e1597db"
+      },
+      "libopencore-amrwb-0.dll": {
+        "bytes": 133632,
+        "sha256": "f59ba886c0d7311a796ec23c38c418261d8a0207e5070d9200709e9f627342da"
+      },
+      "libopenmpt-0.dll": {
+        "bytes": 2439680,
+        "sha256": "7a11a820ef7d960e4fa69bdd08bc5974c40a98c7af8644401863202fe3fec4d1"
+      },
+      "libopus-0.dll": {
+        "bytes": 579584,
+        "sha256": "def3b9f63b11a22f67609a3d835cab04865c223e0f871a5c5d1a31a768f52b2c"
+      },
+      "libp11-kit-0.dll": {
+        "bytes": 1541120,
+        "sha256": "b83a0d5141bf8c2fa5b58f94de9af55feee32a1edf9217a7bc2ed9616989be50"
+      },
+      "librubberband-3.dll": {
+        "bytes": 505856,
+        "sha256": "145a0aaf11cf9637510144f98105d30da6a6bbbe5cc075359a74df3e55665caf"
+      },
+      "libsamplerate-0.dll": {
+        "bytes": 1506304,
+        "sha256": "8f4d27d191247e8bd470a810327a4cb4b48dc0b4dc26da6e08dbe41cd349a471"
+      },
+      "libsodium-26.dll": {
+        "bytes": 575488,
+        "sha256": "6cc61ee644a899a1d9d1c580cae5cd3deb45702b0ae46e46b17da7137bf3d4b6"
+      },
+      "libspeex-1.dll": {
+        "bytes": 199168,
+        "sha256": "4c74fe785314b861098a2d117c239bbbd590b88cf7ddc2d3a0555849e87bb384"
+      },
+      "libsrt.dll": {
+        "bytes": 844288,
+        "sha256": "0ce2b6c624105c787ae9e46f964ce3ab3a2301576c638491f3708eb8e15ccd99"
+      },
+      "libssh.dll": {
+        "bytes": 593408,
+        "sha256": "2783f0fdb754aef710e0299376e388c1e4c610df468acdf90094bd25f1b66f02"
+      },
+      "libtasn1-6.dll": {
+        "bytes": 111616,
+        "sha256": "1d5b5714a07a7d1d4d064fa90b74a2ed4f0594dafa163d6929da48718facee00"
+      },
+      "libunistring-5.dll": {
+        "bytes": 2447872,
+        "sha256": "6de19dcb3ac480b19d5493be81cec8d44c4c8b86f29b1e7101ef7d2a751523ca"
+      },
+      "libvo-amrwbenc-0.dll": {
+        "bytes": 210944,
+        "sha256": "5733011f23cd9d0ef3a6aebee9eecd2926171a8d803509c1dbd442a25a6b189a"
+      },
+      "libvorbis-0.dll": {
+        "bytes": 234496,
+        "sha256": "6e90721aeeed4402534c367f69f8dc4386e2c738499eac4c2141d3879a824d3c"
+      },
+      "libvorbisenc-2.dll": {
+        "bytes": 565248,
+        "sha256": "f1afd5819d38c40b0c792fd8bae96b38d9aee598f823007ef6125373c8cbac35"
+      },
+      "libvorbisfile-3.dll": {
+        "bytes": 44032,
+        "sha256": "9aa2fb4ae8c183987810f4d50b54b7d6346d71594bfed82e33874a4859f16d28"
+      },
+      "libwinpthread-1.dll": {
+        "bytes": 70656,
+        "sha256": "5e4334e49d3052caaa3c27423c72321343b463f1427b67ce46642dfca69d2603"
+      },
+      "libxml2-16.dll": {
+        "bytes": 1294336,
+        "sha256": "fd602daf6c95744cc0b7930dddd01fe04c24c4b96790d2bcd89a2d88744a84e0"
+      },
+      "libzmq.dll": {
+        "bytes": 848384,
+        "sha256": "03a25b2a1d6f136e59337c8a3c7cce927f20879e3a61330f5f0f37ff030e6182"
+      },
+      "libzstd.dll": {
+        "bytes": 1030144,
+        "sha256": "a4a29141c6dc489c59c260b5d4f781c195cea11ed231ee0cbfc6d3803b0708b7"
+      },
+      "swresample-6.dll": {
+        "bytes": 117248,
+        "sha256": "88a6be6eede976cb2c39a2b7f1c4aab7cc3147d921c6a0c01423fcb21e95518e"
+      },
+      "zlib1.dll": {
+        "bytes": 131072,
+        "sha256": "94dd0a72d4da79e25294a91d1edf902d76eade7512d9218609a5fe43e3a7397a"
+      }
+    },
+    "payloadBytes": 48219035,
+    "profileInputsSha256": "518ffde5952cd505b7f8952eeb3b5cd8683b759389ea794b254c42831a95f304"
+  }
+}

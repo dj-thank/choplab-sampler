@@ -127,16 +127,35 @@ tasks.register<JavaExec>("runWasapiProbe") {
     mainClass.set("com.choplab.desktop.audio.wasapi.WasapiProbeMainKt")
 }
 
+val windowsAudioRuntime = providers.gradleProperty("choplabWindowsAudioRuntime")
+val windowsMediaToolsDirectory = if (windowsAudioRuntime.isPresent) "work/media-tools-audio" else "work/media-tools"
 val prepareMediaTools = tasks.register<Exec>("prepareMediaTools") {
     onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
     workingDir(rootProject.projectDir)
-    commandLine("python", "scripts/prepare_media_tools.py", "--out", "work/media-tools")
+    commandLine(listOf("python", "scripts/prepare_media_tools.py", "--out", windowsMediaToolsDirectory) +
+        windowsAudioRuntime.orNull?.let { listOf("--ffmpeg-audio-runtime", it) }.orEmpty())
 }
 
-val prepareSeparatorModel = tasks.register<Exec>("prepareSeparatorModel") {
+val windowsRuntimeDirectory = layout.buildDirectory.dir("windows-runtime-inputs")
+val stageWindowsRuntime = tasks.register<Sync>("stageWindowsRuntime") {
+    dependsOn(tasks.installDist)
+    onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
+    from(tasks.installDist.map { it.destinationDir.resolve("lib") })
+    from(rootProject.file("licenses/onnxruntime-LICENSE.txt"))
+    into(windowsRuntimeDirectory)
+}
+val prepareWindowsRuntime = tasks.register<Exec>("prepareWindowsRuntime") {
+    dependsOn(stageWindowsRuntime)
     onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
     workingDir(rootProject.projectDir)
-    commandLine("python", "scripts/prepare_separator_model.py", "--out", "work/separator-models")
+    doFirst {
+        val upstream = tasks.installDist.get().destinationDir.resolve("lib").listFiles()!!.single {
+            it.name.startsWith("onnxruntime-") && it.extension == "jar"
+        }
+        commandLine("python", "scripts/prepare_windows_runtime.py", "--input", upstream.absolutePath,
+            "--output", windowsRuntimeDirectory.get().file(upstream.name).asFile.absolutePath,
+            "--receipt", windowsRuntimeDirectory.get().file("onnxruntime-windows.json").asFile.absolutePath)
+    }
 }
 
 val windowsPackageDirectory=providers.gradleProperty("windowsPackageDirectory").orElse("windows-app-image")
@@ -147,9 +166,9 @@ val desktopRuntimeToolchain = javaToolchains.launcherFor {
 
 fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean, linked: Boolean = false) {
     tasks.register<Exec>(taskName) {
-        dependsOn(tasks.installDist, prepareMediaTools, prepareSeparatorModel)
+        dependsOn(prepareWindowsRuntime, prepareMediaTools)
         onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
-        val inputDir = tasks.installDist.get().destinationDir.resolve("lib")
+        val inputDir = windowsRuntimeDirectory.get().asFile
         val destinationDir = layout.buildDirectory.dir(outputFolder).get().asFile
         doFirst {
             val buildRoot = layout.buildDirectory.get().asFile.canonicalFile.toPath()
@@ -189,12 +208,8 @@ fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.
         if (spotifyClient.isNotEmpty()) args("--java-options", "-Dchoplab.spotifyClientId=$spotifyClient")
         doLast {
             project.copy {
-                from(rootProject.file("work/media-tools"))
+                from(rootProject.file(windowsMediaToolsDirectory))
                 into(destinationDir.resolve("$imageName/tools"))
-            }
-            project.copy {
-                from(rootProject.file("work/separator-models"))
-                into(destinationDir.resolve("$imageName/models"))
             }
             project.copy {
                 from(rootProject.file("LICENSE"), rootProject.file("NOTICE.md"))

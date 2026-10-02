@@ -1,0 +1,3 @@
+<resources>
+    <string name="ce_separate_model_download">The first separation downloads a verified model (about %1$d MB). It stays in a private cache for offline reuse. Cancel stops the download.</string>
+</resources>

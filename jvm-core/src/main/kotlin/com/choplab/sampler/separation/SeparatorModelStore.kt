@@ -8,6 +8,9 @@ import java.net.URL
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.nio.channels.FileChannel
+import java.nio.channels.OverlappingFileLockException
 import java.security.MessageDigest
 import java.util.concurrent.CancellationException
 
@@ -40,16 +43,40 @@ class SeparatorModelStore(
      */
     @Synchronized
     fun ensure(onProgress: (Float) -> Unit = {}, isCancelled: () -> Boolean = { false }): File {
+        checkCancellation(isCancelled)
+        if (verifiedExisting(isCancelled)) return modelFile
+        require(directory.isDirectory || directory.mkdirs()) { "分離モデルの保存先を作成できません" }
+        // Legacy/NEXT and separate application processes share one private cache. A cancelled
+        // waiter must never delete another downloader's partial file or publish unverified bytes.
+        FileChannel.open(directory.resolve(SeparatorSpec.MODEL_FILE + ".lock").toPath(),
+            StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+            while (true) {
+                checkCancellation(isCancelled)
+                val lock = try { channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+                if (lock != null) return lock.use { ensureLocked(onProgress, isCancelled) }
+                try { Thread.sleep(25) } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt(); throw CancellationException("model cache wait cancelled")
+                }
+            }
+        }
+    }
+
+    private fun verifiedExisting(isCancelled: () -> Boolean): Boolean {
         val target = modelFile
         if (target.isFile && target.length() == expectedBytes) {
-            if (verifiedLength == target.length() && verifiedModified == target.lastModified()) return target
+            if (verifiedLength == target.length() && verifiedModified == target.lastModified()) return true
             if (sha256(target, isCancelled).equals(expectedSha256, ignoreCase = true)) {
                 remember(target)
-                return target
+                return true
             }
-            target.delete()
         }
-        require(directory.isDirectory || directory.mkdirs()) { "分離モデルの保存先を作成できません" }
+        return false
+    }
+
+    private fun ensureLocked(onProgress: (Float) -> Unit, isCancelled: () -> Boolean): File {
+        checkCancellation(isCancelled)
+        if (verifiedExisting(isCancelled)) return modelFile
+        val target = modelFile
         val required = expectedBytes + SPACE_MARGIN_BYTES
         if (directory.usableSpace < required) {
             throw IllegalStateException("端末の空き容量が不足しています（分離モデルに約${required / (1024 * 1024)}MB必要）")
@@ -58,14 +85,14 @@ class SeparatorModelStore(
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             var written = 0L
-            open(SeparatorSpec.MODEL_URL).stream.use { input ->
+            val download = open(SeparatorSpec.MODEL_URL)
+            download.stream.use { input ->
+                if (download.length >= 0 && download.length != expectedBytes) throw IOException("分離モデルのサイズが想定と異なります")
                 partialFile.outputStream().buffered(BUFFER_BYTES).use { output ->
                     val buffer = ByteArray(BUFFER_BYTES)
                     var lastReported = -1
                     while (true) {
-                        if (isCancelled() || Thread.currentThread().isInterrupted) {
-                            throw CancellationException("model download cancelled")
-                        }
+                        checkCancellation(isCancelled)
                         val count = input.read(buffer)
                         if (count < 0) break
                         if (count == 0) continue
@@ -86,12 +113,17 @@ class SeparatorModelStore(
             if (!actual.equals(expectedSha256, ignoreCase = true)) {
                 throw IOException("分離モデルの検証に失敗しました（SHA-256不一致）")
             }
+            checkCancellation(isCancelled)
             moveIntoPlace(partialFile, target)
             remember(target)
             return target
         } finally {
             partialFile.delete()
         }
+    }
+
+    private fun checkCancellation(isCancelled: () -> Boolean) {
+        if (isCancelled() || Thread.currentThread().isInterrupted) throw CancellationException("model download cancelled")
     }
 
     private fun remember(file: File) {
@@ -112,7 +144,7 @@ class SeparatorModelStore(
         file.inputStream().buffered(BUFFER_BYTES).use { input ->
             val buffer = ByteArray(BUFFER_BYTES)
             while (true) {
-                if (isCancelled()) throw CancellationException("model verification cancelled")
+                checkCancellation(isCancelled)
                 val count = input.read(buffer)
                 if (count < 0) break
                 digest.update(buffer, 0, count)

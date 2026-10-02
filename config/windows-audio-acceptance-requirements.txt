@@ -1,0 +1,4 @@
+# Test-only certificate generation for the owned loopback TLS fixture.
+cryptography==50.0.2
+# Same-version EJS adapter for packaged QuickJS; synthetic challenges only.
+yt-dlp[default]==2026.8.19
