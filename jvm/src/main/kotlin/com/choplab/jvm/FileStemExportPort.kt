@@ -57,7 +57,8 @@ class FileStemExportPort(private val compiler: ProgramCompiler, private val reso
             // DEFLATE level zero permits streaming CRC/data descriptors; the JDK owns ZIP64 offsets.
             // No full entry is buffered. Bound stored-block/header/ZIP64 overhead before opening output.
             val diskBytes = maximumBytes + maximumBytes / 1000 + selected.size * 256 + 1024 * 1024
-            require(Files.getFileStore(parent).usableSpace >= diskBytes) { "Insufficient space for atomic stem export" }
+            // Android can deny FileStore enumeration; a path capacity query retains the same disk gate.
+            require(parent.toFile().usableSpace >= diskBytes) { "Insufficient space for atomic stem export" }
             val scratch = if (publish != null) PcmScratchBudget.reserve(diskBytes) else null
             try {
             // Includes the native zlib workspace and its input/output windows, not only JVM arrays.
