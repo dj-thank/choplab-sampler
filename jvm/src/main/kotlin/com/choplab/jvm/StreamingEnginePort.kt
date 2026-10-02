@@ -62,6 +62,14 @@ data class DriverPlayback(val fraction: Float = 0f, val elapsedSeconds: Int = 0,
 /** What the audio owner last reported: how often it looped, what waits for it, and whether a device is still opening. */
 data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int, val openingDevice: Boolean, val engineFrame: Long)
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
+/** A failed bounded read is not evidence that SOURCE stopped. All values are read on the caller's thread. */
+sealed interface OriginalPlaybackProbe {
+    data class Ready(val playback: OriginalPlayback) : OriginalPlaybackProbe
+    /** The same attached engine is publishing; try again on the next control tick. */
+    data object Contended : OriginalPlaybackProbe
+    /** No stable attached engine/output session; lifecycle and fault observers decide how to restore ownership. */
+    data object Unavailable : OriginalPlaybackProbe
+}
 /** HAND position is independent of SOURCE; -1 means no hand currently owns the region. */
 data class HandPlayback(val sourceFrame: Double, val gain: Float)
 data class PcmPlayback(val status: PcmReadStatus, val underrunFrames: Long, val droppedRequests: Long)
@@ -423,6 +431,19 @@ open class StreamingEnginePort(
         val snapshot = snapshots.get()
         engineView?.engine?.readout?.copyInto(snapshot)
         return OriginalPlayback(snapshot.originalLoaded, snapshot.originalPlaying, snapshot.originalSourceFrame, snapshot.originalMonitorGain)
+    }
+    /** Coherent SOURCE completion evidence only; no fallback to a fresh, stale or partially copied snapshot. */
+    fun originalPlaybackProbe(): OriginalPlaybackProbe {
+        val current = engineView ?: return OriginalPlaybackProbe.Unavailable
+        val session = outputSession
+        if (statusValue.value.phase != DriverPhase.ATTACHED) return OriginalPlaybackProbe.Unavailable
+        val snapshot = snapshots.get()
+        val copied = current.engine.readout.copyInto(snapshot)
+        if (current !== engineView || session !== outputSession || statusValue.value.phase != DriverPhase.ATTACHED)
+            return OriginalPlaybackProbe.Unavailable
+        if (!copied) return OriginalPlaybackProbe.Contended
+        return OriginalPlaybackProbe.Ready(OriginalPlayback(snapshot.originalLoaded, snapshot.originalPlaying,
+            snapshot.originalSourceFrame, snapshot.originalMonitorGain))
     }
     fun pcmPlayback(): PcmPlayback {
         val snapshot = snapshots.get()
