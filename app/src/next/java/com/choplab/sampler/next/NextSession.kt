@@ -206,6 +206,8 @@ class NextSession private constructor(
         override val noteRepeatAvailable = true
         override val sourceAnalysisAvailable = true
         override suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = backend.analyseSource(asset, range)
+        override val loopOverdubAvailable = true
+        override suspend fun createLoopOverdub(startFrame: Long, frames: Int, grid: IntArray, routes: List<com.choplab.engine.LoopOverdubRoute>) = backend.createLoopOverdub(startFrame, frames, grid, routes)
         override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
             backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)

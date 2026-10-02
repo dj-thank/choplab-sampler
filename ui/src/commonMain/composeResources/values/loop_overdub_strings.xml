@@ -1,0 +1,10 @@
+<resources>
+    <string name="ce_overdub">Loop overdub</string>
+    <string name="ce_overdub_help">Loop from the bar at the playhead. PAD sounds join the next pass; the grid moves each press as a whole. Finish adds the recorded BANKs to the song in one Undo. Discard keeps the song unchanged. Up to 5 minutes of layering.</string>
+    <string name="ce_overdub_bars">Bars: %1$d</string>
+    <string name="ce_overdub_start">Start loop</string>
+    <string name="ce_overdub_finish">Finish loop</string>
+    <string name="ce_overdub_discard">Discard this loop</string>
+    <string name="ce_overdub_not_saved">The loop could not be saved. Finish retries; Discard removes this take.</string>
+    <string name="ce_overdub_interrupted">Output stopped. The recorded loop was kept as one Undo.</string>
+</resources>

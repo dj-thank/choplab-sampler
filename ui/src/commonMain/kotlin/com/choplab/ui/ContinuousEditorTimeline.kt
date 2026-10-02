@@ -113,6 +113,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: ((CEPaddedDrag?) -> Unit)?, onDrop: ((Int, Offset) -> Unit)?,
     compactDetails: Boolean = false, maximumPadSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity) {
     var details by remember { mutableStateOf(false) }
+    var overdubSettings by remember { mutableStateOf(false) }
+    if (overdubSettings) CELoopOverdubDialog(state, onAction) { overdubSettings = false }
     var repeatSettings by remember { mutableStateOf(false) }
     if (repeatSettings) CENoteRepeatDialog(state, onAction) { repeatSettings = false }
     val pad = state.selectedPad
@@ -188,6 +190,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         CEButton(stringResource(Res.string.ce_note_repeat_setting, stringResource(noteRepeatLabel(state.noteRepeat))),
             { repeatSettings = true }, Modifier.fillMaxWidth(), enabled = state.permits(ContinuousCapability.NOTE_REPEAT),
             primary = state.noteRepeat != ContinuousNoteRepeat.OFF, reason = CEReason(state, ContinuousCapability.NOTE_REPEAT), tag = "ce-note-repeat")
+        CEButton(stringResource(Res.string.ce_overdub), { overdubSettings = true }, Modifier.fillMaxWidth(),
+            enabled = state.permits(ContinuousCapability.LOOP_OVERDUB), reason = CEReason(state, ContinuousCapability.LOOP_OVERDUB), tag = "ce-overdub")
         ContinuousRecordingGuidePanel(state.recordingGuide) { onAction(ContinuousEditorAction.RecordingGuide(it)) }
         }
         CEBanks(state, onAction)
@@ -216,7 +220,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice || state.startingVoiceRecording) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-voice")
             else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
-        @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
+        @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(if (state.loopOverdubBars > 0) Res.string.ce_overdub_finish else Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-hits")
             else CEActionButton(stringResource(Res.string.ce_record_hits), ContinuousEditorAction.RecordHits, state, ContinuousCapability.RECORD_HITS, onAction, modifier, tag = "ce-record-hits")
         @Composable fun Scratch(modifier: Modifier) = CEActionButton(stringResource(Res.string.ce_scratch), ContinuousEditorAction.OpenScratch, state,
@@ -230,6 +234,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f)) }
             }
         }
+        if (state.loopOverdubBars > 0) CEButton(stringResource(Res.string.ce_overdub_discard),
+            { onAction(ContinuousEditorAction.CancelLoopOverdub) }, Modifier.fillMaxWidth(), tag = "ce-overdub-discard")
         CELyricsButton(state, onAction, Modifier.fillMaxWidth())
         }
         // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.

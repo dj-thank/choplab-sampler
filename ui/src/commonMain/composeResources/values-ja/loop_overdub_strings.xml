@@ -1,0 +1,10 @@
+<resources>
+    <string name="ce_overdub">ループ重ね録り</string>
+    <string name="ce_overdub_help">再生位置のある小節から繰り返します。PAD の音は次の周回から加わり、拍への吸着は押した音全体にかかります。「終了」で演奏した BANK を曲へ置き、1回の「戻す」で戻せます。「破棄」では曲を変えません。重ねる時間は最大5分です。</string>
+    <string name="ce_overdub_bars">%1$d 小節</string>
+    <string name="ce_overdub_start">重ね録り開始</string>
+    <string name="ce_overdub_finish">重ね録り終了</string>
+    <string name="ce_overdub_discard">この重ね録りを破棄</string>
+    <string name="ce_overdub_not_saved">重ね録りを保存できませんでした。「終了」で再試行、「破棄」でこの録音を取り消せます。</string>
+    <string name="ce_overdub_interrupted">音声出力が止まりました。録れたループを1回の「戻す」で戻せる形で保存しました。</string>
+</resources>

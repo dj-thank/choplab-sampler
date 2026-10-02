@@ -98,7 +98,7 @@ class ContinuousEditorPresenterTest {
                     ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch,
                     ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.CloseAutoChop)) +
                     listOf(ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop,
-                        ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0")))
+                        ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0")), ContinuousEditorAction.RecordLoopOverdub(1))
                 for (action in actions) assertFalse(withTimeout(1_000) { h.presenter.dispatch(action) }, "$kind: $action")
                 if (analysis != null) assertSame(analysis, h.presenter.sourceAnalysis.value)
                 if (guide != null) assertSame(guide, h.presenter.vocalGuide.value)
@@ -154,7 +154,7 @@ class ContinuousEditorPresenterTest {
                 ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
                 ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.CloseBeatStretch,
                 ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits, ContinuousEditorAction.RecordSource,
-                ContinuousEditorAction.RecordSystemSource)) {
+                ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.RecordLoopOverdub(1))) {
                 assertFalse(withTimeout(1_000) { h.presenter.dispatch(action) }, action.toString())
             }
             assertSame(stretch, h.presenter.beatStretch.value)

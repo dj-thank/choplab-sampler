@@ -829,6 +829,8 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.PLACE_NO_ROOM -> Res.string.ce_place_no_room; ContinuousStatus.PLACE_FAILED -> Res.string.ce_place_failed
         ContinuousStatus.SONG_FULL -> Res.string.ce_song_full
         ContinuousStatus.HITS_PLACED -> Res.string.ce_hits_placed; ContinuousStatus.HITS_PARTLY -> Res.string.ce_hits_partly
+        ContinuousStatus.LOOP_NOT_SAVED -> Res.string.ce_overdub_not_saved
+        ContinuousStatus.LOOP_INTERRUPTED -> Res.string.ce_overdub_interrupted
         ContinuousStatus.HITS_EMPTY -> Res.string.ce_hits_empty; ContinuousStatus.HITS_UNCHANGED -> Res.string.ce_hits_unchanged
         ContinuousStatus.MIC_UNAVAILABLE -> Res.string.ce_mic_unavailable; ContinuousStatus.RECORDING_BUSY -> Res.string.ce_recording_busy
         ContinuousStatus.RECORDING_ARM_TIMEOUT -> Res.string.ce_recording_arm_timeout

@@ -722,6 +722,7 @@ private fun EngineCommand.relativeTo(offset: Long, wireOrder: Long): EngineComma
     val orderId = wireOrder
     return when (this) {
         is EngineCommand.Trigger -> EngineCommand.Trigger(frame, orderId, padId, velocity)
+        is EngineCommand.StartLoopOverdub -> EngineCommand.StartLoopOverdub(frame, orderId, take)
         is EngineCommand.StartNoteRepeat -> EngineCommand.StartNoteRepeat(frame, orderId, padId, ticks, durationFrames)
         is EngineCommand.Release -> EngineCommand.Release(frame, orderId, padId)
         is EngineCommand.Stop -> EngineCommand.Stop(frame, orderId)

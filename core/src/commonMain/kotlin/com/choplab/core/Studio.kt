@@ -34,6 +34,7 @@ sealed interface Action {
     data class ExportStems(val request: StemExportRequest, val target: PlaybackTarget? = null) : Action
     data object CancelWork : Action
     data class Trigger(val padId: Int, val velocity: Float = 1f) : Action
+    data class StartLoopOverdub(val take: com.choplab.engine.LoopOverdub) : Action
     data class StartNoteRepeat(val padId: Int, val ticks: Int, val durationFrames: Int? = null) : Action
     data class Release(val padId: Int) : Action
     /**
@@ -218,6 +219,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
             playback { frame, id -> EngineCommand.Trigger(frame, id, action.padId, action.velocity) }
         }
+        is Action.StartLoopOverdub -> playback { frame, id -> EngineCommand.StartLoopOverdub(frame, id, action.take) }
         is Action.StartNoteRepeat -> {
             require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
             playback { frame, id -> EngineCommand.StartNoteRepeat(frame, id, action.padId, action.ticks, action.durationFrames) }
