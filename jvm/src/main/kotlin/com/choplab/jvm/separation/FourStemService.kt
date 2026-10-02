@@ -62,8 +62,8 @@ class FourStemService(private val assets: FileAssetStore, private val pcm: WavPc
                     Files.createDirectories(temporaryDirectory)
                     require(!Files.isSymbolicLink(temporaryDirectory))
                     // Space for all temporary outputs and a cross-filesystem publication copy, plus bounded filesystem overhead.
-                    if (Files.getFileStore(temporaryDirectory).usableSpace < outputBytes * 4 + 16L * 1024 * 1024 ||
-                        Files.getFileStore(assets.directory).usableSpace < outputBytes * 4 + 16L * 1024 * 1024)
+                    if (temporaryDirectory.toFile().usableSpace < outputBytes * 4 + 16L * 1024 * 1024 ||
+                        assets.directory.toFile().usableSpace < outputBytes * 4 + 16L * 1024 * 1024)
                         throw SeparationException(SeparationProblem.NO_SPACE)
                     val scratch = try { PcmScratchBudget.reserve(outputBytes * 4) }
                         catch (_: IllegalArgumentException) { throw SeparationException(SeparationProblem.NO_SPACE) }

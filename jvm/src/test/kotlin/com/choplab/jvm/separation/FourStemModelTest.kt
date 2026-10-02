@@ -20,11 +20,14 @@ class FourStemModelTest {
             val before = byteArrayOf(9, 8, 7); Files.write(store.model, before)
             val unrelated = directory.resolve("previous.part"); Files.write(unrelated, byteArrayOf(1))
             assertEquals(SeparationProblem.MODEL_INVALID, assertFailsWith<SeparationException> { store.ensure(false) }.problem)
+            assertEquals(0, downloads); assertEquals(0, released)
             assertEquals(SeparationProblem.MODEL_INVALID, assertFailsWith<SeparationException> { store.ensure(true) }.problem)
+            assertContentEquals(before, Files.readAllBytes(store.model)); assertContentEquals(byteArrayOf(1), Files.readAllBytes(unrelated))
+            assertEquals(2L, Files.list(directory).use { it.count() }); assertEquals(1, downloads); assertEquals(1, released)
             assertEquals(SeparationProblem.CANCELLED, assertFailsWith<SeparationException> {
                 store.ensure(true, progress = { _, _ -> cancel = true }, check = { if (cancel) throw SeparationException(SeparationProblem.CANCELLED) })
             }.problem)
-            assertContentEquals(before, Files.readAllBytes(store.model)); assertTrue(Files.exists(unrelated))
+            assertTrue(cancel); assertContentEquals(before, Files.readAllBytes(store.model)); assertContentEquals(byteArrayOf(1), Files.readAllBytes(unrelated))
             assertEquals(2L, Files.list(directory).use { it.count() }); assertEquals(2, downloads); assertEquals(2, released)
         } finally { directory.toFile().deleteRecursively() }
     }

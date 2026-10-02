@@ -291,7 +291,7 @@ android {
             // Check the optimized app through Android's public launcher/runtime boundary.
             // The regular Compose tests access internals that R8 can legitimately inline/remove.
             java.setSrcDirs(emptyList<String>())
-            kotlin.setSrcDirs(listOf("src/nextRuntimeTest/java", "src/androidTest/java/com/choplab/sampler/audio"))
+            kotlin.setSrcDirs(listOf("src/nextRuntimeTest/java", "src/nextAndroidTest/java", "src/androidTest/java/com/choplab/sampler/audio"))
         }
     }
 
