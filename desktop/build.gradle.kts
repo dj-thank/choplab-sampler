@@ -137,6 +137,15 @@ val prepareMediaTools = tasks.register<Exec>("prepareMediaTools") {
 }
 
 val windowsRuntimeDirectory = layout.buildDirectory.dir("windows-runtime-inputs")
+val windowsNoticesDirectory = layout.buildDirectory.dir("windows-source-notices")
+val prepareWindowsNotices = tasks.register<Exec>("prepareWindowsNotices") {
+    onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
+    workingDir(rootProject.projectDir)
+    outputs.dir(windowsNoticesDirectory)
+    outputs.upToDateWhen { false }
+    commandLine("python", "scripts/prepare_source_notices.py", "--platform", "windows", "--out",
+        windowsNoticesDirectory.get().asFile.absolutePath)
+}
 val stageWindowsRuntime = tasks.register<Sync>("stageWindowsRuntime") {
     dependsOn(tasks.installDist)
     onlyIf { System.getProperty("os.name").contains("Windows",ignoreCase=true) }
@@ -166,7 +175,7 @@ val desktopRuntimeToolchain = javaToolchains.launcherFor {
 
 fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.gradle.api.provider.Provider<String>, preview: Boolean, linked: Boolean = false) {
     tasks.register<Exec>(taskName) {
-        dependsOn(prepareWindowsRuntime, prepareMediaTools)
+        dependsOn(prepareWindowsRuntime, prepareMediaTools, prepareWindowsNotices)
         onlyIf { System.getProperty("os.name").contains("Windows", ignoreCase = true) }
         val inputDir = windowsRuntimeDirectory.get().asFile
         val destinationDir = layout.buildDirectory.dir(outputFolder).get().asFile
@@ -212,7 +221,7 @@ fun registerWindowsImage(taskName: String, imageName: String, outputFolder: org.
                 into(destinationDir.resolve("$imageName/tools"))
             }
             project.copy {
-                from(rootProject.file("LICENSE"), rootProject.file("NOTICE.md"))
+                from(windowsNoticesDirectory)
                 into(destinationDir.resolve(imageName))
             }
         }

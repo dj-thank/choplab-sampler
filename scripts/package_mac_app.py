@@ -119,8 +119,7 @@ def build(java_home, tools, signed=False, linked=False):
         application = app / 'Contents/app'
         shutil.copytree(tools, application / 'tools')
         shutil.copytree(ROOT / 'work/separator-models', application / 'models')
-        for name in ('LICENSE', 'NOTICE.md'):
-            shutil.copy2(ROOT / name, application / name)
+        run('python3', ROOT / 'scripts/prepare_source_notices.py', '--platform', 'mac', '--out', application)
         # jlink uses ../ links for repeated licenses. Materialize only in-bundle legal
         # documents so the archive retains the same strict no-parent-traversal policy.
         runtime = app / 'Contents/runtime'

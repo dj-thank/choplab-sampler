@@ -46,6 +46,21 @@ val verifyNewPipeDesugaring = tasks.register("verifyNewPipeDesugaring") {
 }
 tasks.named("preBuild") { dependsOn(verifyNewPipeDesugaring) }
 
+abstract class PrepareSourceNotices : Exec() {
+    @get:OutputDirectory
+    abstract val destinationDirectory: DirectoryProperty
+}
+val prepareSourceNotices = tasks.register<PrepareSourceNotices>("prepareSourceNotices") {
+    group = "distribution"
+    workingDir(rootProject.projectDir)
+    destinationDirectory.set(layout.buildDirectory.dir("generated/source-notice-assets"))
+    // Git revision/dirty state must be refreshed even when input text is unchanged.
+    outputs.upToDateWhen { false }
+    val python = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "python" else "python3"
+    commandLine(python, "scripts/prepare_source_notices.py", "--platform", "android", "--out",
+        destinationDirectory.get().dir("source-notices").asFile.absolutePath)
+}
+
 // Explicit candidate only until the same arm64 bytes pass target codec/runtime
 // acceptance. This never changes release signing or the default upstream AAR.
 val androidAudioRuntimeCandidate = providers.gradleProperty("choplabAndroidAudioRuntime").orNull?.let(rootProject::file)
@@ -297,6 +312,9 @@ android {
 }
 
 androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(prepareSourceNotices) { it.destinationDirectory }
+    }
     onVariants(selector().withBuildType("preview")) { variant ->
         if (nextSizeProbe) {
             // Store the identical optimized DEX with lossless APK compression.
