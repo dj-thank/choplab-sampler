@@ -287,7 +287,6 @@ android {
             manifest.srcFile("src/next/AndroidManifest.xml")
         }
         for (tests in listOf("testDebug", "testPreview")) getByName(tests) { kotlin.srcDir("src/testNext/java") }
-        getByName("androidTest") { kotlin.srcDir("src/nextAndroidTest/java") }
         if (nextSizeProbe) getByName("androidTest") {
             // Check the optimized app through Android's public launcher/runtime boundary.
             // The regular Compose tests access internals that R8 can legitimately inline/remove.
