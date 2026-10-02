@@ -161,6 +161,13 @@ open class StreamingEnginePort(
     /** Changes on every output adoption/detach, including same-format normal lifecycle replacement. */
     fun outputRouteGeneration(): Long = routeGeneration
     @Volatile private var outputSession: Any = Any()
+    /** Control-side cache identity only; retaining it never retains a replaced engine or its PCM workspace. */
+    internal fun sourceOutputSession(): Any? {
+        val session = outputSession
+        val device = attachedSink ?: return null
+        return if (!closed && statusValue.value.phase == DriverPhase.ATTACHED &&
+            session === outputSession && device === attachedSink) session else null
+    }
     @Volatile private var writtenFrame = -1L
     @Volatile private var completedCueBeforeReset = -1L
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
