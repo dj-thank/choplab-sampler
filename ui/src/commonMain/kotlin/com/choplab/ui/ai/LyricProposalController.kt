@@ -21,6 +21,7 @@ data class LyricProposalState(
     val modelVersion: String? = null,
     val failure: LyricAiFailure? = null,
     val retryRemainingSeconds: Long = 0,
+    val admission: GoogleAdmissionState? = null,
 ) {
     override fun toString() = "LyricProposalState(phase=$phase)"
 }
@@ -35,14 +36,17 @@ class LyricProposalController(
     private val provider: LlmProvider,
     private val apply: LyricProposalApply,
     scope: CoroutineScope,
-    val availability: LyricProviderAvailability = LyricProviderAvailability.UNVERIFIED,
+    private val admission: GoogleLyricDialog = GoogleLyricSession.unverified().openDialog(),
     private val clockMillis: () -> Long = defaultClock(),
 ) {
     private val owner = SupervisorJob(scope.coroutineContext[Job])
     private val jobs = CoroutineScope(scope.coroutineContext + owner)
     private val mutex = Mutex()
-    private val mutable = MutableStateFlow(LyricProposalState())
+    private val mutable = MutableStateFlow(LyricProposalState(admission = admission.state.value))
     val state: StateFlow<LyricProposalState> = mutable.asStateFlow()
+    val availability get() = admission.state.value.availability
+    val admissionVersion get() = admission.state.value.version
+    fun bindInputs(model: String, key: SessionApiKey?) = admission.bindInputs(model, key)
     private var generation = 0L
     private var basedOnRevision: Long? = null
     private var retryAt = 0L
@@ -51,8 +55,20 @@ class LyricProposalController(
     private val closed get() = closing.value
     @Volatile private var work: Job? = null
     @Volatile private var key: SessionApiKey? = null
+    private var activeAttempt: GoogleLyricAttempt? = null
 
     init {
+        jobs.launch { admission.state.collect { value -> mutex.withLock {
+            if (!closed && activeAttempt?.isCurrent() == false &&
+                state.value.phase in listOf(LyricProposalPhase.GENERATING, LyricProposalPhase.PREVIEW)) {
+                generation++; work?.cancel(); key?.close(); key = null; basedOnRevision = null
+                publish(LyricProposalState(phase = LyricProposalPhase.FAILED,
+                    failure = LyricAiFailure(LyricAiProblem.SESSION_ADMISSION_REFUSED, costUnknown = true,
+                        admissionProblem = GoogleAdmissionProblem.INPUT_CHANGED)))
+            } else mutable.update { current ->
+                if (closed) LyricProposalState(phase = LyricProposalPhase.CLOSED) else current.copy(admission = value)
+            }
+        } } }
         jobs.launch {
             document.collect { value -> mutex.withLock {
                 if (!closed && basedOnRevision != null && value.revision != basedOnRevision &&
@@ -67,13 +83,10 @@ class LyricProposalController(
 
     /** Exactly one explicit button press and consent authorizes one attempt. There is no background retry. */
     suspend fun generate(request: LyricRequest, sessionKey: SessionApiKey, startTick: Long, beatsPerLine: Int,
-                         consent: Boolean): Boolean = mutex.withLock {
+                         consent: Boolean, consentVersion: Long): Boolean = mutex.withLock {
         if (closed || state.value.phase == LyricProposalPhase.GENERATING || state.value.phase == LyricProposalPhase.APPLYING) {
-            sessionKey.close(); return@withLock false
-        }
-        if (availability != LyricProviderAvailability.AVAILABLE) {
-            sessionKey.close(); publish(LyricProposalState(phase = LyricProposalPhase.FAILED,
-                failure = LyricAiFailure(LyricAiProblem.PROVIDER_UNVERIFIED))); return@withLock false
+            if (sessionKey !== key) sessionKey.close()
+            return@withLock false
         }
         if (!consent) {
             sessionKey.close(); publish(state.value.copy(phase = LyricProposalPhase.FAILED,
@@ -84,6 +97,17 @@ class LyricProposalController(
             sessionKey.close(); publish(LyricProposalState(phase = LyricProposalPhase.FAILED,
                 failure = LyricAiFailure(LyricAiProblem.INVALID_INPUT))); return@withLock false
         }
+        val permission = admission.reserve(request, sessionKey, consentVersion)
+        if (permission is GoogleAttemptDecision.Refused) {
+            sessionKey.close()
+            publish(state.value.copy(phase = LyricProposalPhase.FAILED, failure = LyricAiFailure(
+                if (permission.problem == GoogleAdmissionProblem.UNVERIFIED) LyricAiProblem.PROVIDER_UNVERIFIED else LyricAiProblem.SESSION_ADMISSION_REFUSED,
+                admissionProblem = permission.problem)))
+            return@withLock false
+        }
+        permission as GoogleAttemptDecision.Allowed
+        activeAttempt = permission.attempt
+        val admittedRequest = request.forAttempt(permission.attempt)
         work?.cancel(); key?.close()
         key = sessionKey
         // Dialog/host close is synchronous and may win while this request is validating under the mutex.
@@ -93,7 +117,7 @@ class LyricProposalController(
         basedOnRevision = snapshot.revision
         publish(LyricProposalState(phase = LyricProposalPhase.GENERATING, before = snapshot.project.lyrics))
         work = jobs.launch {
-            val result = try { provider.lyrics(request, sessionKey) }
+            val result = try { provider.lyrics(admittedRequest, sessionKey) }
                 catch (cancel: CancellationException) { throw cancel }
                 catch (_: Exception) { LyricProviderResult.Failure(LyricAiFailure(LyricAiProblem.PROVIDER_REJECTED, costUnknown = true)) }
                 finally { sessionKey.close() }
@@ -167,6 +191,7 @@ class LyricProposalController(
     /** Host/dialog lifetime owns the provider. Close cannot trigger an edit or retain the proposal/credentials. */
     fun close() {
         if (!closing.compareAndSet(false, true)) return
+        admission.close()
         work?.cancel(); key?.close(); key = null
         try { provider.close() } finally {
             owner.cancel()
@@ -174,7 +199,7 @@ class LyricProposalController(
         }
     }
     private fun publish(value: LyricProposalState) {
-        mutable.update { if (closed) LyricProposalState(phase = LyricProposalPhase.CLOSED) else value }
+        mutable.update { if (closed) LyricProposalState(phase = LyricProposalPhase.CLOSED) else value.copy(admission = admission.state.value) }
     }
     private companion object {
         fun defaultClock(): () -> Long { val start = TimeSource.Monotonic.markNow(); return { start.elapsedNow().inWholeMilliseconds } }
